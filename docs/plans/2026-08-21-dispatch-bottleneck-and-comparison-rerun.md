@@ -1302,6 +1302,103 @@ Più il commit giusto su **entrambi** i repository: gli esperimenti che cambiano
 la strumentazione cambiano mcFaas *e* il catalogo di NanoLab, e una metrica
 pubblicata dalla piattaforma ma non richiesta dal catalogo torna vuota senza dirlo.
 
+## B. Osservare le funzioni senza strumentarle
+
+Il control plane vede le funzioni dall'esterno per costruzione, e cAdvisor vede i
+loro container. Molto di ciò che serve a uno scheduler è già lì; questa sezione
+registra il primo tentativo di estrarlo, **compresi i due modi in cui è andato
+storto prima di funzionare**, perché sono ripetibili.
+
+### Il costo di CPU di una funzione: fisso e marginale
+
+`word-stats-java`, budget 4 core, fasi **dopo il riscaldamento**
+(`spike600`, `hold350`, `peak900`), sole build che tengono il passo del generatore
+(`jvm` e `native-o3-g1`), 18 osservazioni:
+
+```
+core = 0,168 + 0,351 CPU-ms per richiesta
+```
+
+| | |
+|---|---|
+| costo fisso | **0,168 core** |
+| costo marginale | **0,351 CPU-ms per richiesta** (errore standard 0,052) |
+| significatività | marginale a **6,7 errori standard** sopra zero |
+| R² | 0,738 |
+
+| tasso | core totali | quota fissa |
+|---:|---:|---:|
+| 350 rps | 0,291 | 58 % |
+| 600 rps | 0,379 | 44 % |
+| 900 rps | 0,484 | 35 % |
+
+A carico moderato **più di metà della CPU della funzione non serve le richieste**:
+è GC, JIT, thread di background, scrape. È il numero che decide se conviene
+consolidare una funzione su poche repliche cariche o spargerla.
+
+### I due errori da non rifare
+
+**Primo: adattare il modello su tutte le celle insieme.** Le stime per-cella del
+marginale vanno da **−0,19 a +0,34** CPU-ms, con R² fra 0,02 e 0,63. Un marginale
+negativo è fisicamente impossibile: il modello stava interpolando rumore. Il
+controllo che lo rivela è gratuito — **l'immagine della funzione è identica in
+tutte e sedici le celle**, quindi la scomposizione deve venire uguale, e se non
+viene il modello è sbagliato, non i dati.
+
+**Secondo: mettere sull'asse dei tassi il tasso *offerto* invece di quello
+*ottenuto*.** A target 900 il tasso reale va da 890 rps a 4 core a ~300 a 1 core;
+mescolando i budget si confrontano regimi diversi sullo stesso asse, e la CPU a
+350 risulta più bassa che a 200. Vanno usate solo le celle che tengono il passo.
+
+C'è anche un terzo effetto, più sottile: i punti a 200 rps (`hold200`,
+`recover200`) cadono presto nella run e portano ancora il riscaldamento (§22.3).
+Includerli sposta l'intercetta da 0,168 a 0,245 core, cioè del 46%.
+
+### Quattro lacune, tutte risolvibili senza toccare le funzioni
+
+1. **Il catalogo interroga le metriche per-funzione di UNA sola funzione.**
+   `queries_for(function, ...)` costruisce il selettore per un nome, quindi di
+   `word-stats-javascript` abbiamo la CPU del container ma **non** la latenza di
+   servizio. Ogni analisi multi-funzione è cieca a metà. È la lacuna più grave.
+2. **Nessun percentile su `function_latency`**: raccogliamo `count` e `sum`,
+   quindi solo la media. Per l'ammissione conta la coda, non la media. Si abilita
+   nella configurazione Micrometer del **control plane**.
+3. **Nessun throttling per i container funzione**: il selettore aggiunto in
+   `3323982a` è `container="control-plane"`. Oggi le funzioni non hanno limiti
+   (§22.1), ma quando ne avranno servirà.
+4. **Byte di rete per richiesta** da cAdvisor: distingue payload grandi da piccoli
+   senza sapere nulla del contenuto.
+
+### La sola cosa che richiede la funzione — e il canale esiste già
+
+Il control plane non può dedurre quanto tempo la funzione abbia speso **dentro il
+proprio handler**, separato da rete, accodamento interno e serializzazione.
+
+Ma il meccanismo c'è: `ExternalDispatcher` legge già `X-Cold-Start`,
+`X-Init-Duration-Ms` e `X-NanoFaaS-Function-Status` dalla risposta. Un
+`X-Duration-Ms` è **un'intestazione in più**, non una strumentazione, e ricade
+negli SDK che sono nostri.
+
+Quella sola intestazione chiuderebbe la domanda aperta della §22.2: se la durata
+vista dalla funzione resta piatta mentre quella vista dal control plane sale del
+18% al picco, il tempo è nel control plane; se salgono insieme, è nella funzione
+o nella rete.
+
+### Cosa serve a uno scheduler, in ordine di valore
+
+1. **Fisso contro marginale** — decide consolidamento e numero di repliche. Già
+   derivabile, e la procedura è qui sopra.
+2. **Frazione di CPU sul tempo di servizio** — decide la concorrenza utile: una
+   funzione che aspetta la tollera alta, una che calcola no.
+3. **Coda della distribuzione del servizio** — decide ammissione e timeout.
+   Richiede la lacuna 2.
+4. **Degrado contro richieste in volo** — è l'ingresso naturale del governor di
+   concorrenza, e si costruisce correlando `function_inFlight` con
+   `function_latency`, entrambi già pubblicati.
+
+Le prime due non richiedono nulla di nuovo. La terza è configurazione. Solo il
+tempo interno all'handler richiede la funzione, ed è un'intestazione.
+
 ### Stato corrente
 
 Il prossimo passo non è un'altra sonda sul dispatch. È decidere il budget di CPU
