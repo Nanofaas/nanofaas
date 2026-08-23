@@ -164,14 +164,6 @@ class InvocationServiceEarlyRefusalTest {
         assertThat(preparedOn.get()).isNotEqualTo(caller).startsWith("boundedElastic");
     }
 
-    @Test
-    void theDiagnosticHopFlagIsOffUnlessAskedFor() {
-        // The scaffolding for the A/B must never be what ships. Reading it here
-        // rather than trusting the declaration means an image built without the
-        // -D still refuses every hop it does not need.
-        assertThat(Boolean.getBoolean("nanofaas.experiment.hopOnPrepare")).isFalse();
-    }
-
     private static FunctionSpec spec(String name) {
         return new FunctionSpec(name, "image", null, Map.of(), null,
                 1000, 1, 10, 0, null, ExecutionMode.LOCAL, null, null, null);

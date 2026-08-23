@@ -2396,6 +2396,19 @@ più nell'argfile (`-Dnanofaas.experiment.hopOnPrepare=true`), quindi le due cel
 differiscono per la cosa in esame e nient'altro — ciò che il confronto della §32
 non poteva dichiarare, avendo preso i suoi bracci da due provisioning diversi.
 
+> **Per rifare questa matrice.** L'impalcatura che produce il braccio A **non
+> esiste più**: la proprietà `nanofaas.experiment.hopOnPrepare` e la variante
+> NanoLab `jvm-c2-hop` sono state cancellate dopo che l'esperimento ha risposto.
+> B è migliore di A su ogni metrica separata, quindi tenere vivo un interruttore
+> la cui posizione «acceso» è una regressione misurata sarebbe stato solo un
+> trabocchetto — e mezzo (flag senza variante, o variante senza flag) avrebbe
+> prodotto un «controllo» identico a B senza dirlo.
+>
+> Per ricostruirla servono i due commit che la introducono: mcFaas `97ff150b`
+> («Add temporary scaffolding so both arms build from one source tree») e NanoLab `3acee9d`
+> («Give the A/B its control variant»). I raw archiviati restano
+> validi: sono stati misurati quando l'impalcatura c'era.
+
 L'alternanza dei bracci non è estetica: se durante la matrice qualcosa deriva, la
 deriva colpisce entrambi invece di sommarsi a uno.
 
