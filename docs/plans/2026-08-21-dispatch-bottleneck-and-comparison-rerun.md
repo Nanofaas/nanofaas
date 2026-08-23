@@ -2325,13 +2325,12 @@ I 1.660 task in coda **erano** sottomissioni cross-thread da `boundedElastic`.
 Toglierle li ha fatti sparire. Anche l'arretrato di connessioni è sparito con
 loro, il che conferma che era lo stesso fenomeno visto da due lati.
 
-### Previsione 2: non verificabile, ed è colpa mia
+### Previsione 2: non verificabile qui, verificata nella §33
 
-Avevo previsto `jvm_threads_live` più basso al picco. **Non c'è un valore di
-confronto**: la metrica è stata aggiunta insieme al fix, quindi la run A non la
-contiene. Ho registrato una previsione contro un dato che non esisteva. Il valore
-misurato in B è 25–27 thread vivi, 13–14 runnable, coerente con venti thread di
-`boundedElastic` mai nati — ma è un indizio, non un confronto.
+Avevo previsto `jvm_threads_live` più basso al picco. **In questa coppia non c'è
+un valore di confronto**: la metrica è stata aggiunta insieme al fix, quindi la
+run A non la contiene. Ho registrato una previsione contro un dato che non
+esisteva. La §33 la verifica, e la conferma.
 
 ### Previsione 3: NON confermata, ed è il risultato
 
@@ -2348,9 +2347,15 @@ misurato in B è 25–27 thread vivi, 13–14 runnable, coerente con venti threa
 **Il server ha restituito l'89% del tempo che tratteneva. Il chiamante ne ha
 guadagnato l'11%.**
 
-L'ultima riga è il punto: il tempo **fuori** dal server non è sceso, è
-*aumentato*. Se fosse una costante, togliere 61 ms dentro ne avrebbe dati 61 al
-chiamante. Gliene ha dati 16.
+L'ultima riga sembra il punto: il tempo **fuori** dal server non scende, cresce.
+Se fosse una costante, togliere 61 ms dentro ne avrebbe dati 61 al chiamante;
+gliene ha dati 16.
+
+> **Attenzione (§33).** Queste due righe sono una cella per braccio. Ripetute tre
+> volte a testa nella stessa matrice, **non superano la dispersione**: la
+> residenza sta a 1,8σ e il «fuori» a 1,7σ. La direzione regge, la quantità no, e
+> il motivo è che il braccio A è instabile — 131,7 / 36,7 / 49,2 ms su tre
+> ripetizioni identiche. Il −11% lato chiamante invece sopravvive.
 
 ### Cosa questo corregge nella §29
 
@@ -2382,3 +2387,110 @@ risposta. Questa volta la misura serve davvero, e non è raccolta da nessuno.
 **Il fattoriale 2×2 della §30 va rimandato.** Il suo secondo fattore — più event
 loop — cerca di curare una coda che ora è profonda 5. Prima va misurato il
 generatore; poi si saprà se resta qualcosa da fattorializzare.
+
+## 33. L'A/B con la dispersione: cosa sopravvive a tre ripetizioni
+
+Run `azure-ab-hop`, 2026-08-23: **due varianti × 3 ripetizioni, stesso
+provisioning, bracci alternati**. `jvm-c2-hop` è `jvm-c2` con una sola stringa in
+più nell'argfile (`-Dnanofaas.experiment.hopOnPrepare=true`), quindi le due celle
+differiscono per la cosa in esame e nient'altro — ciò che il confronto della §32
+non poteva dichiarare, avendo preso i suoi bracci da due provisioning diversi.
+
+L'alternanza dei bracci non è estetica: se durante la matrice qualcosa deriva, la
+deriva colpisce entrambi invece di sommarsi a uno.
+
+<!-- tabella:ab-salto -->
+| metrica | A: con salto (n=3) | B: senza salto (n=3) | Δ | separazione |
+|---|---:|---:|---:|:--:|
+| **Lato chiamante (k6)** | | | | |
+| k6 richieste/s | 870.25 ± 0.02 | 869.92 ± 0.60 | -0.0 % | no (0.8σ) |
+| k6 latenza media | 124.84 ± 7.39 | 110.89 ± 4.60 | -11.2 % | **sì** |
+| k6 p95 | 1158 ± 65 | 1029 ± 36 | -11.1 % | **sì** |
+| k6 p99 | 1725 ± 73 | 1557 ± 48 | -9.7 % | **sì** |
+| k6 servite | 8.44 ± 1.07 | 6.44 ± 0.08 | -23.7 % | **sì** |
+| k6 rifiutate | 858.87 ± 41.71 | 782.00 ± 26.64 | -9.0 % | **sì** |
+| k6 % rifiuti | 13.68 ± 0.19 | 13.47 ± 0.26 | -1.6 % | no (0.9σ) |
+| k6 waiting (TTFB) | 124.79 ± 7.39 | 110.84 ± 4.60 | -11.2 % | **sì** |
+| k6 connecting | 0.03 ± 0.00 | 0.03 ± 0.00 | +0.2 % | no (0.1σ) |
+| VU usate al picco | 4013 ± 437 | 3781 ± 429 | -5.8 % | no (0.5σ) |
+| arrivi non emessi | 0.00 ± 0.00 | 0.00 ± 0.00 | — | no (0.0σ) |
+| **Dove va il tempo** | | | | |
+| residenza nel server | 72.51 ± 51.61 | 6.01 ± 0.76 | -91.7 % | no (1.8σ) |
+| dentro l'handler | 1.74 ± 0.11 | 1.64 ± 0.15 | -5.7 % | no (0.7σ) |
+| fuori dal server | 52.32 ± 44.31 | 104.88 ± 5.00 | +100.4 % | no (1.7σ) |
+| handler, solo 200 | 1.92 ± 0.13 | 1.87 ± 0.18 | -2.7 % | no (0.3σ) |
+| handler, solo 429 | 0.59 ± 0.10 | 0.16 ± 0.03 | -73.3 % | **sì** |
+| **Netty e thread** | | | | |
+| event loop pending, picco | 1700 ± 813 | 8 ± 3 | -99.5 % | **sì** |
+| connessioni attive, picco | 1743 ± 816 | 51 ± 4 | -97.1 % | **sì** |
+| connessioni aperte, picco | 10018 ± 2 | 10016 ± 1 | -0.0 % | no (1.0σ) |
+| thread vivi, picco | 44.33 ± 0.58 | 25.33 ± 0.58 | -42.9 % | **sì** |
+| thread runnable, picco | 14.00 ± 1.00 | 13.33 ± 0.58 | -4.8 % | no (0.8σ) |
+| **Coda applicativa** | | | | |
+| coda, profondita' picco | 20.00 ± 0.00 | 20.00 ± 0.00 | +0.0 % | no (0.0σ) |
+| in volo, picco | 2.00 ± 0.00 | 2.00 ± 0.00 | +0.0 % | no (0.0σ) |
+| dispatch totali | 249651 ± 479 | 250315 ± 781 | +0.3 % | no (1.0σ) |
+| rifiuti in coda | 40443 ± 480 | 39781 ± 781 | -1.6 % | no (1.0σ) |
+| attesa in coda | 0.61 ± 0.09 | 0.59 ± 0.12 | -4.2 % | no (0.2σ) |
+| servizio della funzione | 0.71 ± 0.04 | 0.70 ± 0.01 | -1.7 % | no (0.5σ) |
+| **Risorse** | | | | |
+| CPU al picco | 2.36 ± 0.08 | 2.18 ± 0.34 | -7.6 % | no (0.7σ) |
+| RSS al picco (MiB) | 1701 ± 10 | 1689 ± 4 | -0.7 % | no (1.5σ) |
+| heap al picco (MiB) | 1315 ± 2 | 1272 ± 33 | -3.2 % | no (1.8σ) |
+| periodi CFS strozzati % | 2.60 ± 0.44 | 1.84 ± 0.13 | -28.9 % | **sì** |
+| pause GC (s) | 37.42 ± 0.27 | 37.23 ± 0.03 | -0.5 % | no (1.0σ) |
+<!-- /tabella:ab-salto -->
+
+### Cosa sopravvive
+
+**Il guadagno per il chiamante è reale**: −11,2% sulla media, −11,1% sul p95,
+−9,7% sul p99, −23,7% sulle richieste servite. Tutti separati. Il −11,3% letto
+con una cella per braccio nella §32 ha retto.
+
+**Gli effetti lato server sono enormi e separati**: coda degli event loop
+−99,5%, connessioni attive −97,1%, costo dell'handler per un 429 −73,3%, periodi
+CFS strozzati −28,9%.
+
+**La previsione 2 della §30 è confermata.** `jvm_threads_live` al picco: `44, 44,
+45` contro `25, 25, 26`, dispersione ±0,58 su entrambi i bracci. **Diciannove
+thread di differenza**, che è il pool `boundedElastic` (`10 × 2 CPU`) che in B
+non nasce mai perché nessuno lo usa. L'ipotesi dei venti thread era giusta.
+
+### Cosa non sopravvive, e perché
+
+| | A: con salto | B: senza salto | separazione |
+|---|---:|---:|:--:|
+| residenza nel server | 72,51 ± **51,61** | 6,01 ± 0,76 | no (1,8σ) |
+| fuori dal server | 52,32 ± **44,31** | 104,88 ± 5,00 | no (1,7σ) |
+
+Le due righe su cui la §32 aveva costruito la sua conclusione **non superano la
+dispersione**. Non perché l'effetto sia piccolo — il rapporto fra le medie è 12× —
+ma perché il braccio A varia enormemente fra ripetizioni identiche:
+
+| dispersione relativa | A | B | rapporto |
+|---|---:|---:|---:|
+| residenza nel server | **71,2 %** | 12,7 % | 5,6× |
+| fuori dal server | **84,7 %** | 4,8 % | 17,8× |
+
+I tre valori grezzi della residenza in A: **131,7 / 36,7 / 49,2 ms**. In B:
+**5,8 / 6,9 / 5,4**.
+
+### Il risultato che non avevo previsto
+
+**Il salto non aggiunge solo latenza: aggiunge imprevedibilità.** Venti thread che
+si contendono due core producono un tempo di residenza che varia di 3,6× fra
+ripetizioni della stessa configurazione. Toglierli non rende il sistema solo più
+veloce, lo rende **misurabile**: B ha una dispersione del 5% dove A ha il 71%.
+
+È anche il motivo per cui il confronto della §32 aveva prodotto un numero
+apparentemente netto (−89,1%) su un fenomeno che una cella sola non poteva
+quantificare. Con n=1 la varianza non è invisibile: è indistinguibile dal
+segnale.
+
+### Cosa resta aperto
+
+Il tempo fuori dal server resta il termine dominante — ~105 ms su 111 in B — e
+questa matrice **non lo attribuisce**. Dice però una cosa nuova: dopo il fix è
+**stabile** (±4,8%), il che lo rende finalmente un bersaglio misurabile invece
+che rumore. La domanda della §29 — server o generatore — resta aperta, e ora ha
+uno sfondo abbastanza silenzioso da poterla porre.
