@@ -2507,3 +2507,51 @@ questa matrice **non lo attribuisce**. Dice però una cosa nuova: dopo il fix è
 **stabile** (±4,8%), il che lo rende finalmente un bersaglio misurabile invece
 che rumore. La domanda della §29 — server o generatore — resta aperta, e ora ha
 uno sfondo abbastanza silenzioso da poterla porre.
+
+## 34. Quando si toglie un meter, e quando no
+
+Domanda posta il 2026-08-23: perché cancellare sonde che hanno dato risposte e
+potrebbero servire, se non rallentano la piattaforma? La condizione è giusta ed è
+misurabile, quindi l'ho misurata invece di continuare ad argomentarla.
+
+Micrometer 1.17, JVM, minimo di 7 tornate da 2 milioni dopo 6 milioni di
+riscaldamento. In blocco e non per operazione: `System.nanoTime()` su questa
+macchina quantizza a ~42 ns, quindi cronometrare una singola `record()` misura
+l'orologio e non il meter — il primo tentativo ha prodotto mediane di 0 e 42 ns,
+che erano granularità travestita da dato.
+
+| operazione | costo | netto |
+|---|---:|---:|
+| incremento nudo (riferimento) | 1,65 ns | — |
+| `Counter.increment` | 4,86 ns | +3,21 |
+| `Timer.record(valore noto)` | 20,55 ns | +18,90 |
+| `Timer.record` + due `nanoTime` | 43,01 ns | +41,36 |
+
+A 2.430 richieste/s su due core, **un timer completo di cronometraggio costa lo
+0,005% del budget**; venti ne costano lo 0,1%. Codice in
+[`../experiments/dispatch-bottleneck/MeterCost.java`](../experiments/dispatch-bottleneck/MeterCost.java).
+
+### La regola, corretta
+
+La formulazione che avevo — «la strumentazione che ha risposto alla sua domanda
+va rimossa» — è **sbagliata**, e con quei numeri sotto gli occhi si vede perché:
+il costo non è il criterio, perché non c'è costo. Un meter diagnostico si toglie
+solo se:
+
+1. **mente**, cioè pubblica numeri che non rappresentano ciò che dichiarano; oppure
+2. porta con sé una **struttura dati** sul percorso caldo, che è un'altra cosa dai
+   20 ns del meter.
+
+Le due sonde di riacquisizione (§14) soddisfacevano entrambe, e non per caso: la
+`ConcurrentLinkedQueue<Long>` che le alimentava era **la causa** della bugia — lo
+slot veniva liberato prima che il timestamp entrasse in coda, quindi un timestamp
+in ritardo finiva accoppiato a un'acquisizione successiva. Riportavano 4,788 ms
+dove il tetto fisico era 2,081.
+
+`netty_connections_total` non era una metrica ma un **nome di query sbagliato**
+(la serie è `connections`, senza suffisso): cancellarlo era correggere un refuso.
+
+Tutto il resto — visite e inattività dello scheduler, possesso dello slot, offer e
+poll della coda, ritardo di risveglio, segnali coalesced, limite di batch — **è
+ancora acceso**, ed è la ragione per cui la §33 ha potuto leggere 75 serie invece
+di riprovare gli esperimenti che le avevano prodotte.
