@@ -42,15 +42,26 @@ class MetricsProfileConfigurationTest {
         // deployment gets when nobody says otherwise.
         record ControlInput(String meter, String reader) {}
         var inputs = new ControlInput[]{
+                // Read inside this JVM.
                 new ControlInput("function_latency_ms", "ConcurrencyGovernor, Vegas signal"),
                 new ControlInput("function_e2e_latency_ms", "ConcurrencyGovernor, Vegas signal"),
                 new ControlInput("function_dispatch_total", "autoscaler, ScalingMetricsReader"),
+                // Read outside it, by Kubernetes. The HPA specs this platform builds
+                // (KubernetesMetricsTranslator) name nanofaas_in_flight,
+                // nanofaas_rps and nanofaas_queue_depth, which prometheus-adapter
+                // maps from these three series - see the rules in
+                // deploy/helm/nanofaas/values.yaml. Deny one and the HPA stops
+                // scaling, with nothing in this process to say why.
+                new ControlInput("function_inFlight", "HPA via nanofaas_in_flight"),
+                new ControlInput("function_queue_depth", "HPA via nanofaas_queue_depth"),
         };
 
         SimpleMeterRegistry basic = registryFor(MetricsProfileConfiguration.MetricsProfile.BASIC);
         for (ControlInput input : inputs) {
             if (input.meter().endsWith("_total")) {
                 Counter.builder(input.meter()).tag("function", "echo").register(basic);
+            } else if (!input.meter().endsWith("_ms")) {
+                Gauge.builder(input.meter(), () -> 1).tag("function", "echo").register(basic);
             } else {
                 io.micrometer.core.instrument.Timer.builder(input.meter())
                         .tag("function", "echo").register(basic);
