@@ -1645,6 +1645,76 @@ done
 
 Nove celle, nessuna compilazione nativa: circa 2h30 in tutto.
 
+## 25. Il tempo che nessuno misurava: 668 ms davanti all'applicazione
+
+Al `peak900` del 2026-08-23, 4 core, `native-os`. Separando la latenza vista da
+k6 fra richieste servite e rifiutate — il bilancio delle medie, dato che
+`http_req_duration{expected_response:true}` copre solo le riuscite:
+
+| build (4 core) | tutte | servite | **rifiutate** | n rifiutate |
+|---|---:|---:|---:|---:|
+| native-os | 118,9 ms | 18,3 ms | **675,4 ms** | 28.603 |
+| native-o3 | 112,6 ms | 18,6 ms | **587,3 ms** | 31.150 |
+| native-o3-g1 | 23,0 ms | 12,7 ms | 116,1 ms | 19.498 |
+| jvm | 2,0 ms | 2,0 ms | — | 0 |
+
+**Le richieste servite sono veloci; quelle rifiutate ci mettono 675 ms a ricevere
+un 429.** Nella stessa finestra il control plane misura 5,25 ms di attesa in coda
+e 1,30 ms di servizio: **668 ms passano dove nessun meter guardava.**
+
+### Cosa questo ribalta
+
+La coda da 20 è la coda **applicativa**, a valle. Prima di raggiungerla una
+richiesta va accettata dal socket, letta, deserializzata e instradata, e con
+arrivi a 900/s contro un'ammissione da ~415/s l'eccesso si accumula nella accept
+queue del kernel e nei read pending di Netty.
+
+Quindi «la coda è da 20» è vero e fuorviante: non è l'arretrato del sistema, è un
+piccolo buffer a valle di uno molto più grande e invisibile. È anche la ragione
+per cui la firma «coda piena, slot vuoti» ha mandato dieci run a cercare un
+difetto nel dispatch — la congestione vera stava davanti.
+
+E il rifiuto: **economico in CPU** (3,83 µs misurati, appendice `refusal-cost`) e
+**caro in orologio** per il chiamante. Le due cose non si contraddicono, misurano
+risorse diverse.
+
+**Le VU di k6 sono tenute da questo**: ~300 rifiuti al secondo appesi 0,68 s fanno
+~200 VU di stato stazionario, più i picchi. Non aspettano in coda, aspettano di
+sentirsi dire di no.
+
+### La metrica
+
+`reactor.netty.http.server.connections.active` è quel backlog, e non era
+abilitata: Reactor Netty pubblica le proprie metriche solo se il server è
+costruito con `metrics(true, …)`, che nessuna configurazione faceva
+(`NettyServerMetricsConfig`, mcFaas). Il tag URI è collassato a una costante
+apposta — i path di questa piattaforma contengono un nome di funzione, e taggare
+per URI aggiungerebbe una serie per funzione registrata a ogni contatore di
+connessione.
+
+### Cosa si può fare, in ordine di efficacia
+
+**1. Non rifiutare.** È l'unica cura che elimina il problema invece di
+accorciarlo, ed è già dimostrata: `seriale + C2` a 2 core ha **zero** rifiuti
+(§23), quindi nessun arretrato a monte e p95 2,5 ms. Finché la capacità copre il
+carico offerto, i 668 ms non esistono.
+
+**2. Rifiutare presto, e il meccanismo esiste già.** Il modulo `sync-queue` ha un
+`SyncQueueAdmissionController` che rifiuta su `DEPTH` **e** su `EST_WAIT`, cioè
+prima di accodare, stimando l'attesa e dicendo no quando supera un limite. È
+esattamente la conversione di «aspetta 675 ms e poi 429» in «429 subito».
+
+Non è mai stato caricato in nessuna di queste run — `COMPARISON_MODULES` è
+`k8s-deployment-provider,async-queue`. E l'unica volta che è stato valutato
+(issue #197) la conclusione fu che costava 6× di p95: misurata a **1 CPU**, cioè
+nel regime che la §20 ha dimostrato strozzato. Quel verdetto va rifatto.
+
+**3. Limitare il backlog del kernel.** Un `SO_BACKLOG` corto fa rifiutare le
+connessioni in eccesso al kernel invece di accodarle: converte un 429 lento in un
+errore di connessione veloce. Il più economico e il contratto peggiore — il
+chiamante non riceve uno stato HTTP né un `Retry-After` — quindi l'ultima
+risorsa, non la prima.
+
 ### Stato corrente
 
 Il prossimo passo non è un'altra sonda sul dispatch. È decidere il budget di CPU
