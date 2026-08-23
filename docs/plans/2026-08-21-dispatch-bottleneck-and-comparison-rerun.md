@@ -1401,14 +1401,29 @@ Ognuno gira sotto `caffeinate -dimsu` staccato con doppio fork, perché un
 `Bash` in primo piano muore con la sessione e si porta via `caffeinate`: su macOS
 si verifica con `pmset -g assertions`, mai con `pgrep`.
 
-Prima di leggere una run nuova:
+Il ciclo completo per una run nuova, tre comandi:
 
 ```bash
-python3 docs/experiments/dispatch-bottleneck/check_metrics.py <run-dir>
+cd docs/experiments/dispatch-bottleneck
+
+# 1. le metriche hanno risposto?
+python3 check_metrics.py <run-dir-di-nanolab>
+
+# 2. portala in raw/ e rigenera i checksum (idempotente)
+./archive_run.sh <run-dir-di-nanolab> [nome-in-raw]
+
+# 3. rigenera le tabelle dentro il documento
+python3 build_tables.py raw --update=../../plans/2026-08-21-dispatch-bottleneck-and-comparison-rerun.md
 ```
 
-Distingue tre stati che si confondono in uno: serie **vuota** (nessuno la
-pubblica), serie **a zero** (pubblicata, evento mai accaduto), serie **viva**.
+Il primo distingue tre stati che si confondono in uno: serie **vuota** (nessuno
+la pubblica), serie **a zero** (pubblicata, evento mai accaduto), serie **viva**.
+
+Il secondo esiste perché l'ho fatto a mano quattro volte: quello che serve per
+rileggere una cella è il manifest (che dichiara il regime), `k6-summary.json`
+(che ha più di `summary.json` — `dropped_iterations` e le VU vivono solo lì),
+`summary.json`, e lo snapshot Prometheus compresso. Dimenticarne uno si scopre
+settimane dopo, quando la cella non si rilegge più.
 
 ## B. Osservare le funzioni senza strumentarle
 
