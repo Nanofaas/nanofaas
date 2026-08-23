@@ -93,7 +93,7 @@ dichiarato.
 | «`releaseSlot` non risveglia lo scheduler» | **Falsa** | `QueueManager.releaseSlot(String)` (`QueueManager.java:137`) fa già `notifyWork` se `queued() > 0`. Percorso: `ExecutionCompletionHandler.releaseDispatchSlot` → `QueueBackedEnqueuer` → `QueueManager`. Il fronte di risveglio c'è. |
 | «Ogni dispatch fa un round trip alle API di Kubernetes nel wake-up gate» | **Falsa** | `DeploymentWakeUpGate.isEligible` (`:196`) richiede `scalingConfig != null && strategy == INTERNAL && minReplicas == 0`. Le funzioni del confronto **non hanno `scalingConfig`**, quindi `ensureReady` ritorna `completedFuture(null)` immediatamente. Nessuna chiamata, nessun timer. |
 | «Il limite è la concorrenza perché gli slot sono saturi» | **Falsa** | N = λ·S = **0,45 su 2**. Gli slot sono vuoti per il 78 % del tempo. |
-| «Il limite è la CPU delle *funzioni*» | **Falsa** | I container funzione usano 0,27 e 0,12 core contro un limite di 500m. Hanno margine. |
+| «Il limite è la CPU delle *funzioni*» | **Falsa** | I pod funzione **non hanno alcun limite** (§22.1): `buildResources` non ne impone quando lo spec non li dichiara, e il confronto non li dichiara. Usano 0,27 e 0,12 core perché tanto serve loro. |
 | «Il limite è la CPU del *control plane*» | **VERA — §20** | Era l'ipotesi che nessuno aveva formulato. `values.yaml:24` impone `limits.cpu: "1"`; al picco l'85,2% dei periodi CFS è strozzato, e a 4 CPU il dispatch passa da 303,7 a 843,4/s. |
 | «Il limite è la dimensione della coda» | **Falsa** | Una coda più grande scambia rifiuti con attese: non aggiunge capacità di drenaggio. |
 | «La serializzazione del payload pesa sul thread» | **Falsa** | I payload k6 sono ~120 byte (`runtime-comparison.js:87-92`). |
@@ -1134,6 +1134,83 @@ E nonostante l'handicap la JVM vince a ≥2 core con p95 3,2 ms.
 Le flag sono ora un build-arg `JVM_TUNING` (default identico a prima, mcFaas
 `e8bd580f`), e un fattoriale 2×2 — collettore × tiering, NanoLab `ebd11ba` —
 misura i due fattori separatamente a 1 e 2 core.
+
+### 22.1 Chi impone quali limiti, e chi non ne impone
+
+Tre blocchi `resources` diversi vivono in questo sistema e **non è vero che si
+somigliano**. Sbagliare quale si sta guardando è costato due conclusioni sbagliate
+in mezz'ora, la seconda costruita sopra la prima.
+
+| chi | limite CPU | da dove | dichiarato dallo scenario? |
+|---|---|---|---|
+| **control plane** | **1 CPU** (finché non lo si dichiara) | `deploy/helm/nanofaas/values.yaml:24` | ora sì, `controlPlaneCpu` |
+| **Prometheus** | 500m | `values.yaml:45` | no, ed è irrilevante per la misura |
+| **pod funzione** | **nessuno** | — | lo scenario non dichiara `resources` |
+
+I pod funzione non hanno limiti perché `KubernetesDeploymentBuilder.buildResources`
+costruisce un `ResourceRequirements` **vuoto** quando `spec.resources()` è nullo, e
+il confronto registra le funzioni senza quel blocco: il `comparison-manifest.json`
+di una run non contiene né `resources` né `cpu`.
+
+**Il tranello concreto.** Al `peak900` `word-stats-java` misura **0,491 core** di
+media. Il `500m` di Prometheus è lì nello stesso file, e la coincidenza invita a
+concludere «è appiccicata alla sua quota». Non lo è: non ne ha una. Il segnale che
+lo smentiva era nei dati fin dall'inizio — i **picchi a 0,693 e 0,751**, che sopra
+una quota rigida non possono esistere. Un valore che supera il limite che gli
+attribuisci è una smentita, non un artefatto di misura.
+
+### 22.2 Il peggioramento comune al picco, non spiegato
+
+Fra `hold350` e `peak900`, a 4 core, la latenza media di servizio peggiora per
+**tutte** le build:
+
+| build | hold350 | peak900 | variazione |
+|---|---:|---:|---:|
+| jvm | 0,720 ms | 0,852 ms | +18% |
+| native-o3-g1 | 0,611 ms | 0,719 ms | +18% |
+| native-o3 | 0,902 ms | 1,348 ms | **+50%** |
+
+Le prime due si muovono **identiche**. Un effetto uguale su build diverse non
+viene dalle build: solo il +50% di `native-o3` è suo, ed è il collettore seriale
+sotto un tasso di allocazione più alto.
+
+Il +18% comune **non è spiegato**, e non è saturazione delle funzioni (§22.1).
+Candidati, in ordine di plausibilità:
+
+1. `function_latency` è misurata **dal control plane**, da quando spedisce a
+   quando riceve il completamento. Sotto più carico i suoi event loop hanno più
+   lavoro e la callback viene processata più tardi.
+2. Contesa sulla VM fra control plane, due funzioni, Prometheus e k3s.
+3. Comportamento di cache e predizione dei salti a throughput più alto.
+
+**La misura che deciderebbe**: confrontare la durata vista *dalla funzione* con
+quella vista *dal control plane*. Se divergono al picco il tempo è nel control
+plane; se salgono insieme è nella funzione o nella rete. L'SDK Java espone già una
+durata di esecuzione e **non la raccogliamo** — è una riga nel catalogo, non un
+esperimento.
+
+### 22.3 Il riscaldamento non è (soprattutto) il JIT
+
+Latenza media di servizio per fase, 4 core, media di 3 ripetizioni (ms):
+
+| build | warm40 | climb200 | hold200 | spike600 | hold350 | peak900 |
+|---|---:|---:|---:|---:|---:|---:|
+| jvm | 3,748 | 1,198 | 0,839 | 0,753 | 0,720 | 0,852 |
+| native-o3-g1 | 2,936 | 1,031 | 0,702 | 0,609 | 0,611 | 0,719 |
+| native-o3 | 2,965 | 1,093 | 0,770 | 0,802 | 0,902 | 1,348 |
+
+La JVM scende di **cinque volte** fra `warm40` e `hold350` e poi è piatta: sembra
+il JIT. Ma **le build native fanno la stessa curva**, con lo stesso fattore, e il
+JIT non ce l'hanno. Quindi il grosso del riscaldamento è condiviso — pool di
+connessioni, arene di buffer Netty, pagine toccate la prima volta, cache del
+kernel, k3s che assesta il routing.
+
+Attribuibile al JIT è soltanto lo **scarto** fra JVM e nativo: +0,81 ms a
+`warm40`, che scende a +0,14 a regime. Reale, ma molto più piccolo di quanto la
+curva grezza della sola riga `jvm` suggerisca.
+
+Guardare una serie senza il suo controllo produce la spiegazione che ci si
+aspettava. È lo stesso schema del `process_cpu_usage` letto senza denominatore.
 
 ### Stato corrente
 
