@@ -2109,3 +2109,53 @@ ora gira sull'event loop, cioè proprio sulla risorsa sotto accusa. Il verso
 dovrebbe restare favorevole — l'event loop smette di *sottomettere* un task e in
 cambio esegue 0,085 µs di lavoro — ma è un ragionamento, non una misura, e va
 verificato nella prossima run invece che assunto.
+
+## 30. Si può limitare la coda dell'event loop? Sì, e non serve
+
+Domanda posta mentre il run era in volo. Verificato contro i jar sul classpath,
+non a memoria.
+
+| knob | esiste? | cosa limita | cosa succede oltre il limite |
+|---|---|---|---|
+| `io.netty.eventLoop.maxPendingTasks` | **sì**, default `Integer.MAX_VALUE` | i task **sottomessi** all'event loop | `RejectedExecutionHandlers.reject()` → eccezione dentro il loop |
+| `HttpServer.maxConnections(int)` | **sì** (Reactor Netty) | le **connessioni**, all'accept | la connessione viene chiusa |
+| `HttpServer.maxKeepAliveRequests` | sì | richieste per connessione | la connessione viene chiusa |
+| `SO_BACKLOG` | sì | la coda di accept | rifiuto TCP |
+
+**Nessuno dei quattro risolve il nostro caso, e per tre ragioni diverse.**
+
+`maxPendingTasks` limita la cosa sbagliata con il contratto peggiore. La coda
+dell'event loop contiene i task **sottomessi da altri thread**, non le letture in
+arrivo — una lettura non è un task accodato, è il selettore che si sveglia. E
+quando è piena il gestore lancia: il chiamante non riceve un 429, riceve una
+connessione rotta. Peggio, i task più probabilmente in coda sono le **scritture
+di risposta**, quindi il limite butterebbe via risposte a richieste già servite.
+
+`maxConnections`, `maxKeepAliveRequests` e `SO_BACKLOG` limitano tutti le
+connessioni, ed è il punto cieco già visto nella §25: le nostre 10.006 connessioni
+sono aperte durante il riscaldamento, molto prima del picco. Limitarle a 500
+rifiuterebbe 9.500 VU all'avvio e il test misurerebbe un'altra cosa.
+
+### La conclusione che conta
+
+**La coda da limitare non è di Netty, ed è meglio non crearla.** Se
+`reactor_netty_eventloop_pending_tasks` conta i task sottomessi da altri thread,
+la fonte dominante nel nostro percorso è esattamente quella che il fix della §29
+ha tolto: un thread di `boundedElastic` che finisce e riprogramma la scrittura
+della risposta sull'event loop della connessione.
+
+### Previsione, registrata prima dei dati
+
+Il run `azure-load2x-threads`, lanciato con il fix dentro, deve mostrare:
+
+1. `netty_eventloop_pending` **molto più basso** dei 1.660 di `azure-load2x-verify`
+   — se i task in coda erano sottomissioni da boundedElastic, togliere il salto
+   li fa sparire;
+2. `jvm_threads_live` **più basso al picco**, perché i venti thread di
+   boundedElastic non nascono se nessuno li usa;
+3. e solo se entrambe si avverano, `netty_connections_active` e la latenza dei
+   rifiuti devono scendere con loro.
+
+Se 1 e 2 si avverano ma 3 no, l'ipotesi dei thread è giusta sul meccanismo e
+sbagliata sulla causa, e i 942 ms stanno altrove. È il risultato più utile dei
+tre, perché chiude una strada invece di lasciarla aperta.
