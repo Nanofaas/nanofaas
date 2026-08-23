@@ -79,6 +79,15 @@ def cell(path):
     trend = k6.get("mixed_sync_duration") or k6.get("http_req_duration")
     out["p95_sync_ms"] = trend.get("p(95)", float("nan"))
     out["scartati_gen"] = (k6.get("dropped_iterations") or {}).get("count", 0)
+    probe = k6.get("mixed_probe_duration")
+    if probe:
+        out["probe_p95_ms"] = probe.get("p(95)", float("nan"))
+        out["probe_max_ms"] = probe.get("max", float("nan"))
+    over = k6.get("mixed_probe_over_budget")
+    if over:
+        passes, fails = over.get("passes", 0), over.get("fails", 0)
+        out["probe_fuori_budget_%"] = 100 * passes / (passes + fails) if passes + fails else float("nan")
+
     rate = k6.get("mixed_idem_same_execution")
     if rate:
         passes, fails = rate.get("passes", 0), rate.get("fails", 0)
@@ -130,6 +139,9 @@ ROWS = [
     ("chiavi di idempotenza tenute", "chiavi_max"),
     ("coppie idempotenti", "coppie_idem"),
     ("  stessa esecuzione (%)", "idem_ok_%"),
+    ("probe liveness p95 (ms)", "probe_p95_ms"),
+    ("probe liveness max (ms)", "probe_max_ms"),
+    ("  campioni oltre 1000 ms (%)", "probe_fuori_budget_%"),
     ("periodi CFS strozzati (%)", "strozzati_%"),
     ("cpu al picco (core)", "cpu_picco"),
     ("scartati dal generatore", "scartati_gen"),
