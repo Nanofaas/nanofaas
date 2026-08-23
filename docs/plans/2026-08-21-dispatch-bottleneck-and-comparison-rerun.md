@@ -2159,3 +2159,80 @@ Il run `azure-load2x-threads`, lanciato con il fix dentro, deve mostrare:
 Se 1 e 2 si avverano ma 3 no, l'ipotesi dei thread è giusta sul meccanismo e
 sbagliata sulla causa, e i 942 ms stanno altrove. È il risultato più utile dei
 tre, perché chiude una strada invece di lasciarla aperta.
+
+## 31. Cosa dice la letteratura, e cosa ho quasi sbagliato
+
+Ricerca del 2026-08-23, con il run in volo.
+
+### Conferma la regola, non la diagnosi
+
+La regola documentata per WebFlux è **«stai sull'event loop per default, usa uno
+scheduler solo se devi»**: `boundedElastic` è per lavoro **bloccante** (JDBC, file,
+API legacy), `parallel` per lavoro CPU-intensivo. Il fix della §29 applica
+esattamente questa regola. Ma è una regola di stile: non dimostra che il salto
+fosse la causa dei 942 ms.
+
+### Il vicolo cieco in cui stavo entrando
+
+L'issue Netty [#9105](https://github.com/netty/netty/issues/9105) descrive un
+meccanismo che sembra scritto per il nostro caso: la coda MPSC di JCTools usata
+dagli event loop **non è non-bloccante**, e può far girare a vuoto l'event loop
+in attesa di un task il cui thread offerente è stato sospeso dal sistema
+operativo. Con venti thread `boundedElastic` e quattro loop su due core,
+sospensioni ne avvengono in continuazione.
+
+**Non è il nostro meccanismo: è stato chiuso in Netty 4.1.37 e noi siamo su
+4.2.15.** Verificato sul classpath, non a memoria. Se non l'avessi controllato
+avrei attribuito i 942 ms a un bug corretto sette anni fa.
+
+### Un articolo che consiglia l'opposto del mio fix
+
+«[Spring WebFlux: reactor meltdown](https://jdriven.com/blog/2020/10/Spring-WebFlux-reactor-meltdown-slow-responses)»
+descrive lo stesso sintomo — risposte lentissime, event loop affamati — e la sua
+cura è **spostare il lavoro su `boundedElastic`**, cioè il contrario di quello che
+ho fatto. Non è una contraddizione: là il lavoro era una `sleep` da 11 secondi.
+Qui non blocca nulla. Ma vale la pena scriverlo, perché chi legge il commit della
+§29 senza questo contesto può concludere che sia il verso sbagliato.
+
+### Una preoccupazione sulla metrica, chiusa
+
+L'issue [#2669](https://github.com/reactor/reactor-netty/issues/2669) sostiene che
+`reactor.netty.eventloop.pending.tasks` non si aggiorni. È marcato
+`status/invalid`, e la ragione si vede nel codice: il gauge è costruito come
+`Gauge.builder(..., singleThreadEventExecutor::pendingTasks)`, cioè con un
+**supplier**, quindi legge il valore vivo a ogni scrape. I nostri dati lo
+confermano — la serie va da 0 a 1.660 e torna a 0.
+
+### La tecnica canonica per il problema vero
+
+[Netflix concurrency-limits](https://github.com/Netflix/concurrency-limits)
+è la forma di riferimento di quello che serve qui, ed è **controllo di congestione
+TCP applicato all'ammissione**:
+
+- **Vegas** stima la coda del collo di bottiglia come `L × (1 − minRTT/sampleRTT)`
+  e alza o abbassa il limite secondo due soglie;
+- **Gradient2** confronta due medie esponenziali su finestre diversa lunghezza e
+  taglia aggressivamente quando la divergenza indica accodamento;
+- il limite deriva da Little: `Limite = RPS medio × latenza media`;
+- la strategia `Simple` **rifiuta appena gli in-flight raggiungono il limite**, con
+  un 429.
+
+nanoFaaS ha già metà di questo: il modulo `concurrency-control` usa un segnale
+Vegas, ma governa la concorrenza **della funzione**, non l'ammissione. E
+`SyncQueueAdmissionController` su `EST_WAIT` è la strategia `Simple` con un'altra
+stima. Nessuno dei due era caricato in queste run.
+
+### Il knob con la trappola
+
+`reactor.netty.ioWorkerCount` controlla il numero di event loop (default
+`max(availableProcessors, 4)`, che è come ho ricavato i nostri 4), ma **va passato
+come proprietà di sistema** `-Dreactor.netty.ioWorkerCount=N`: metterlo in
+`application.yml` non ha effetto e non dà errore.
+
+### Quello che la letteratura non offre
+
+Il **costo per task dell'event loop** — il numero che deciderebbe se 415 task per
+loop possono valere 900 ms — è stato chiesto nell'issue
+[#1433](https://github.com/reactor/reactor-netty/issues/1433) nel 2020 e non
+risulta implementato. Resta non osservabile direttamente, e va dedotto dal
+confronto fra le due run.
