@@ -1665,9 +1665,15 @@ e 1,30 ms di servizio: **668 ms passano dove nessun meter guardava.**
 ### Cosa questo ribalta
 
 La coda da 20 è la coda **applicativa**, a valle. Prima di raggiungerla una
-richiesta va accettata dal socket, letta, deserializzata e instradata, e con
-arrivi a 900/s contro un'ammissione da ~415/s l'eccesso si accumula nella accept
-queue del kernel e nei read pending di Netty.
+richiesta va letta dal socket, deserializzata e instradata, e con arrivi a 900/s
+contro un'ammissione da ~415/s l'eccesso si accumula prima di arrivarci.
+
+**Correzione del 2026-08-23:** questa sezione diceva «nella accept queue del
+kernel e nei read pending di Netty». La accept queue è sbagliata. `http_req_-
+connecting` misura 0,01 ms mediato su tutte le richieste, e una connessione per
+VU spiega lo 0,4–0,5% delle richieste: **~99% viaggia su connessioni già
+stabilite**, e non tocca mai la coda di accept. I candidati veri sono i buffer di
+ricezione **per-connessione** e i read pending degli event loop (§27).
 
 Quindi «la coda è da 20» è vero e fuorviante: non è l'arretrato del sistema, è un
 piccolo buffer a valle di uno molto più grande e invisibile. È anche la ragione
@@ -1798,6 +1804,19 @@ di una connessione libera, handshake, spinta dei byte — dall'attesa del server
 
 **Il 99–100% è `http_req_waiting`**: richiesta completamente inviata, primo byte
 di risposta non ancora tornato. Gli altri quattro sono centesimi di millisecondo.
+
+Attenzione a cosa `http_req_waiting` **non** distingue. Copre quattro cose: la
+rete, i byte fermi nel buffer di ricezione del socket, l'evento di lettura
+accodato nell'event loop, e l'applicazione che sta davvero lavorando. Dire «il
+server non risponde» le confonde, e la differenza fra «non ci è ancora arrivato»
+e «ci sta lavorando» è esattamente la domanda aperta.
+
+E un'implicazione che restringe il campo: `http_req_connecting` vale 0,01 ms
+mediato su tutte le richieste, e una connessione per VU spiega lo 0,4–0,5% delle
+richieste. Quindi **~99% viaggia su connessioni già stabilite** e non attraversa
+mai la coda di accept. Misurare `ListenOverflows`, `somaxconn` o il `Recv-Q` del
+*listen socket* descriverebbe l'esperienza dell'1% — restano i buffer di
+ricezione **per-connessione** e i read pending degli event loop.
 
 Quindi l'attesa **non** è l'apertura della connessione, **non** è il pool del
 client, **non** è il trasferimento. È il server che non risponde. Cade con essa
