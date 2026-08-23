@@ -74,7 +74,18 @@ def mean(xs):
 
 
 def sd(xs):
-    return statistics.pstdev(xs) if len(xs) > 1 else 0.0
+    """Sample standard deviation: three repetitions are a sample of the runs the
+    configuration could have produced, not the population of them."""
+    return statistics.stdev(xs) if len(xs) > 1 else 0.0
+
+
+def pm(xs, fmt="%.1f"):
+    """value ± dispersion, with n so the reader knows how coarse the ± is."""
+    if not xs:
+        return "—"
+    if len(xs) == 1:
+        return fmt % xs[0]
+    return (fmt + " ± " + fmt) % (mean(xs), sd(xs))
 
 
 def collect(root, cpu, build):
@@ -105,18 +116,24 @@ def collect(root, cpu, build):
 
 
 def table_latency(root):
-    out = ["| cpu | build | rps | p95 (ms) | p99 (ms) | scarti | dispatch |",
-           "|---:|---|---:|---:|---:|---:|---:|"]
+    """Every column carries its dispersion over the three repetitions.
+
+    Three is enough to say whether two rows differ and not enough to characterise
+    a distribution: read the ± as "how far apart the three runs landed", not as a
+    confidence interval. Where it is 0.0 the three agreed to the printed digit.
+    """
+    out = ["| cpu | build | n | rps | p95 (ms) | p99 (ms) | scarti % | dispatch |",
+           "|---:|---|---:|---:|---:|---:|---:|---:|"]
     for cpu in (4, 3, 2, 1):
         for i, b in enumerate(BUILDS):
             a = collect(root, cpu, b)
             if not a["rps"]:
                 continue
-            out.append("| %s | %s | %.1f | %.1f ± %.1f | %.1f | %.1f %% | %s |" % (
-                f"**{cpu}**" if i == 0 else "", LABEL[b], mean(a["rps"]),
-                mean(a["p95"]), sd(a["p95"]), mean(a["p99"]), mean(a["drop"]),
-                f"{mean(a['disp']):,.0f}".replace(",", ".")))
-        out.append("| | | | | | | |")
+            out.append("| %s | %s | %d | %s | %s | %s | %s | %s |" % (
+                f"**{cpu}**" if i == 0 else "", LABEL[b], len(a["rps"]),
+                pm(a["rps"]), pm(a["p95"]), pm(a["p99"]), pm(a["drop"], "%.2f"),
+                pm([x / 1000 for x in a["disp"]], "%.1f") + "k"))
+        out.append("| | | | | | | | |")
     return "\n".join(out[:-1])
 
 

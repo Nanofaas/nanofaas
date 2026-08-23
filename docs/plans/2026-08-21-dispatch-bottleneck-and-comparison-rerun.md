@@ -1031,28 +1031,34 @@ Da due core in su, quindi, questo esperimento non misura più capacità: misura
 latenza sotto un carico che per la JVM è banale. Per trovarne il tetto serve un
 profilo con picco molto più alto.
 
+Ogni colonna porta la **dispersione sulle tre ripetizioni**, come deviazione
+standard campionaria. Tre ripetizioni bastano a dire se due righe differiscono e
+non bastano a caratterizzare una distribuzione: il `±` va letto come «quanto sono
+finite distanti le tre run», non come intervallo di confidenza. Dove è `0.0` le
+tre hanno concordato fino alla cifra stampata.
+
 <!-- tabella:latenza -->
-| cpu | build | rps | p95 (ms) | p99 (ms) | scarti | dispatch |
-|---:|---|---:|---:|---:|---:|---:|
-| **4** | JVM (seriale, C1) | 435.1 | 3.2 ± 0.1 | 6.0 | 0.0 % | 145.049 |
-|  | Native −Os, seriale | 415.5 | 871.4 ± 34.9 | 1631.1 | 15.8 % | 115.847 |
-|  | Native −O3, seriale | 418.4 | 870.7 ± 25.6 | 1156.5 | 19.1 % | 112.084 |
-|  | Native −O3, G1 | 435.0 | 171.6 ± 4.3 | 293.9 | 9.7 % | 130.045 |
-| | | | | | | |
-| **3** | JVM (seriale, C1) | 435.1 | 3.3 ± 0.0 | 6.2 | 0.0 % | 145.049 |
-|  | Native −Os, seriale | 415.9 | 913.8 ± 71.8 | 1497.4 | 17.0 % | 114.188 |
-|  | Native −O3, seriale | 419.4 | 822.5 ± 27.5 | 1215.8 | 16.7 % | 115.638 |
-|  | Native −O3, G1 | 435.0 | 215.8 ± 8.1 | 328.5 | 9.6 % | 130.237 |
-| | | | | | | |
-| **2** | JVM (seriale, C1) | 435.1 | 3.7 ± 0.1 | 7.8 | 0.0 % | 144.981 |
-|  | Native −Os, seriale | 415.2 | 913.5 ± 42.1 | 1489.4 | 17.7 % | 113.121 |
-|  | Native −O3, seriale | 420.6 | 805.9 ± 11.5 | 1160.2 | 15.9 % | 117.166 |
-|  | Native −O3, G1 | 434.9 | 275.2 ± 4.2 | 434.9 | 10.4 % | 128.806 |
-| | | | | | | |
-| **1** | JVM (seriale, C1) | 435.1 | 113.7 ± 0.4 | 174.5 | 26.0 % | 100.786 |
-|  | Native −Os, seriale | 422.8 | 812.9 ± 19.5 | 1271.6 | 28.4 % | 96.743 |
-|  | Native −O3, seriale | 421.9 | 834.0 ± 32.3 | 1256.8 | 25.6 % | 101.390 |
-|  | Native −O3, G1 | 435.1 | 93.8 ± 1.5 | 156.8 | 18.3 % | 114.746 |
+| cpu | build | n | rps | p95 (ms) | p99 (ms) | scarti % | dispatch |
+|---:|---|---:|---:|---:|---:|---:|---:|
+| **4** | JVM (seriale, C1) | 3 | 435.1 ± 0.0 | 3.2 ± 0.2 | 6.0 ± 0.2 | 0.00 ± 0.00 | 145.0 ± 0.0k |
+|  | Native −Os, seriale | 3 | 415.5 ± 3.3 | 871.4 ± 42.8 | 1631.1 ± 384.4 | 15.84 ± 0.47 | 115.8 ± 1.2k |
+|  | Native −O3, seriale | 3 | 418.4 ± 0.5 | 870.7 ± 31.3 | 1156.5 ± 9.4 | 19.09 ± 2.23 | 112.1 ± 3.3k |
+|  | Native −O3, G1 | 3 | 435.0 ± 0.1 | 171.6 ± 5.2 | 293.9 ± 37.8 | 9.68 ± 0.28 | 130.0 ± 0.4k |
+| | | | | | | | |
+| **3** | JVM (seriale, C1) | 3 | 435.1 ± 0.0 | 3.3 ± 0.0 | 6.2 ± 0.1 | 0.00 ± 0.00 | 145.0 ± 0.0k |
+|  | Native −Os, seriale | 3 | 415.9 ± 1.8 | 913.8 ± 87.9 | 1497.4 ± 301.5 | 17.02 ± 2.26 | 114.2 ± 3.6k |
+|  | Native −O3, seriale | 3 | 419.4 ± 2.1 | 822.5 ± 33.6 | 1215.8 ± 89.9 | 16.69 ± 2.31 | 115.6 ± 3.0k |
+|  | Native −O3, G1 | 3 | 435.0 ± 0.1 | 215.8 ± 9.9 | 328.5 ± 18.4 | 9.60 ± 0.17 | 130.2 ± 0.2k |
+| | | | | | | | |
+| **2** | JVM (seriale, C1) | 3 | 435.1 ± 0.0 | 3.7 ± 0.1 | 7.8 ± 1.0 | 0.03 ± 0.01 | 145.0 ± 0.0k |
+|  | Native −Os, seriale | 3 | 415.2 ± 1.5 | 913.5 ± 51.5 | 1489.4 ± 351.0 | 17.70 ± 2.78 | 113.1 ± 3.9k |
+|  | Native −O3, seriale | 3 | 420.6 ± 1.5 | 805.9 ± 14.1 | 1160.2 ± 69.4 | 15.89 ± 0.22 | 117.2 ± 0.4k |
+|  | Native −O3, G1 | 3 | 434.9 ± 0.1 | 275.2 ± 5.1 | 434.9 ± 5.0 | 10.40 ± 0.09 | 128.8 ± 0.1k |
+| | | | | | | | |
+| **1** | JVM (seriale, C1) | 3 | 435.1 ± 0.0 | 113.7 ± 0.4 | 174.5 ± 10.5 | 26.03 ± 0.23 | 100.8 ± 0.3k |
+|  | Native −Os, seriale | 3 | 422.8 ± 0.7 | 812.9 ± 23.9 | 1271.6 ± 30.2 | 28.37 ± 0.81 | 96.7 ± 1.3k |
+|  | Native −O3, seriale | 3 | 421.9 ± 1.9 | 834.0 ± 39.6 | 1256.8 ± 61.5 | 25.64 ± 0.03 | 101.4 ± 0.4k |
+|  | Native −O3, G1 | 3 | 435.1 ± 0.0 | 93.8 ± 1.9 | 156.8 ± 3.7 | 18.34 ± 0.53 | 114.7 ± 0.8k |
 <!-- /tabella:latenza -->
 
 ### Risorse
@@ -1084,6 +1090,33 @@ profilo con picco molto più alto.
 |  | Native −O3, seriale | 0.91 | 1.63 | 18.3 % | 479 | 17.3 | 9.7 |
 |  | Native −O3, G1 | 0.92 | 1.50 | 24.6 % | 553 | 18.9 | 7.3 |
 <!-- /tabella:risorse -->
+
+### La dispersione è essa stessa un risultato
+
+Il `rps` della JVM ha `± 0,0` a tutti e quattro i budget, e il dispatch `± 0,0k`:
+tre run indipendenti producono lo stesso numero. Non è una proprietà del
+generatore — le build native, sotto lo stesso profilo, hanno `rps` fino a
+`± 3,3` e dispatch fino a `± 3,9k`.
+
+Dove le build seriali sono davvero erratiche è la **coda**. In dispersione
+relativa (deviazione / media):
+
+| | p95 | p99 |
+|---|---:|---:|
+| JVM @4 | 5,0 % | **2,8 %** |
+| Native −Os @4 | 4,9 % | **23,6 %** |
+| Native −O3, G1 @4 | 3,1 % | 12,9 % |
+
+Sul p95 si assomigliano tutte, intorno al 3–5%. Sul p99 no: `native-os` varia del
+**23,6%** fra una ripetizione e l'altra, cioè ±384 ms in valore assoluto. Una
+build il cui p99 cambia di centinaia di millisecondi fra run identiche non è solo
+lenta: è **imprevedibile**, ed è una proprietà che un confronto sui soli valori
+medi non mostra.
+
+C'è anche una lettura da non fare: gli scarti della JVM a 2 core hanno una
+dispersione relativa del 22,1%, che sembra enorme finché non si guarda il valore
+assoluto — `0,03 % ± 0,01`. Su quantità quasi nulle la dispersione relativa non
+significa niente.
 
 ### Cosa dicono
 
@@ -1441,15 +1474,15 @@ tutto il resto è invariato.
 <!-- tabella:jvm-2x2 -->
 | cpu | collettore + JIT | p95 (ms) | p99 (ms) | scarti | dispatch | servizio (ms) | core | RSS MiB | strozz |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| **2** | seriale + C1 *(baseline)* | 21.1 ± 3.6 | 32.5 | 1.0 % | 143.069 | 0.757 | 0.91 | 880 | 7.0 % |
-|  | **G1** + C1 | 46.6 ± 2.0 | 82.3 | 6.0 % | 133.785 | 0.794 | 1.34 | 1130 | 10.7 % |
+| **2** | seriale + C1 *(baseline)* | 21.1 ± 4.4 | 32.5 | 1.0 % | 143.069 | 0.757 | 0.91 | 880 | 7.0 % |
+|  | **G1** + C1 | 46.6 ± 2.4 | 82.3 | 6.0 % | 133.785 | 0.794 | 1.34 | 1130 | 10.7 % |
 |  | seriale + **C2** | 2.5 ± 0.1 | 5.1 | 0.0 % | 145.048 | 0.515 | 0.53 | 969 | 0.9 % |
 |  | **G1 + C2** | 3.0 ± 0.0 | 14.3 | 0.1 % | 144.855 | 0.554 | 0.71 | 1287 | 2.8 % |
 | | | | | | | | | | |
-| **1** | seriale + C1 *(baseline)* | 118.1 ± 13.5 | 173.1 | 26.1 % | 101.123 | 0.770 | 0.74 | 715 | 22.8 % |
-|  | **G1** + C1 | 152.6 ± 5.8 | 286.1 | 33.1 % | 91.310 | 2.266 | 0.94 | 855 | 34.6 % |
-|  | seriale + **C2** | 18.2 ± 7.6 | 44.6 | 1.6 % | 142.122 | 0.540 | 0.58 | 957 | 11.6 % |
-|  | **G1 + C2** | 58.1 ± 1.9 | 100.8 | 7.7 % | 131.947 | 0.702 | 0.69 | 1209 | 19.7 % |
+| **1** | seriale + C1 *(baseline)* | 118.1 ± 16.5 | 173.1 | 26.1 % | 101.123 | 0.770 | 0.74 | 715 | 22.8 % |
+|  | **G1** + C1 | 152.6 ± 7.1 | 286.1 | 33.1 % | 91.310 | 2.266 | 0.94 | 855 | 34.6 % |
+|  | seriale + **C2** | 18.2 ± 9.3 | 44.6 | 1.6 % | 142.122 | 0.540 | 0.58 | 957 | 11.6 % |
+|  | **G1 + C2** | 58.1 ± 2.4 | 100.8 | 7.7 % | 131.947 | 0.702 | 0.69 | 1209 | 19.7 % |
 <!-- /tabella:jvm-2x2 -->
 
 Letto come effetti rispetto al baseline, che è la domanda per cui il fattoriale
@@ -1496,7 +1529,7 @@ Il baseline `seriale + C1` a 2 core è per costruzione identico alla riga `jvm` 
 
 | stesso build, 2 core | sweep (§22) | fattoriale (§23) |
 |---|---:|---:|
-| p95 | **3,7 ± 0,1 ms** | **21,1 ± 3,6 ms** |
+| p95 | **3,7 ± 0,1 ms** | **21,1 ± 4,4 ms** |
 | p99 | 7,8 ms | 32,5 ms |
 | scarti | 0,03 % | 1,01 % |
 | dispatch | 144.981 | 143.069 |
