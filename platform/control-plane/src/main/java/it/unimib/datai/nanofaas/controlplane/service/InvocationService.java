@@ -78,6 +78,21 @@ public class InvocationService {
         this.reactiveCoordinator = reactiveCoordinator;
     }
 
+    /**
+     * Diagnostic scaffolding, temporary. Restores the pre-31a0dac8 behaviour of
+     * hopping every sync invocation to boundedElastic, so both arms of an A/B can
+     * be built from one source tree - the comparison harness builds one image per
+     * variant from a single checkout, and a control from a different night is not
+     * a control (section 23.1 measured 5.7x between two matrices on the same
+     * build at the same budget).
+     *
+     * Off unless -Dnanofaas.experiment.hopOnPrepare=true is passed, which the
+     * image takes through JVM_TUNING into its argfile. Delete this and its two
+     * uses once the factorial has answered; a flag that outlives its experiment
+     * becomes a configuration nobody dares remove.
+     */
+    private static final boolean HOP_ALWAYS = Boolean.getBoolean("nanofaas.experiment.hopOnPrepare");
+
     public Mono<SyncInvocation> invokeSyncReactive(String functionName,
                                                    InvocationRequest request,
                                                    String idempotencyKey,
@@ -110,7 +125,7 @@ public class InvocationService {
         //
         // Requests that will be refused paid it too, which is the part worth
         // removing: deciding a 429 should not need a second thread.
-        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+        if (HOP_ALWAYS || (idempotencyKey != null && !idempotencyKey.isBlank())) {
             prepared = prepared.subscribeOn(Schedulers.boundedElastic());
         }
         return prepared.flatMap(p -> reactiveCoordinator.invoke(p.lookup(), p.spec(), timeoutOverrideMs, offloadContext));
