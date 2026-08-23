@@ -79,7 +79,7 @@ Questa conclusione **non dipende** da nulla di ciò che segue: vale perché la
 capacità era tenuta fissa in tutte le celle (§3.4).
 
 **Ma i numeri assoluti sì.** Tutte e dodici le celle hanno girato contro un
-control plane limitato a 1 CPU dal chart, strozzato per l'85% dei periodi al
+control plane limitato a 1 CPU dal chart, strozzato al 100% dei periodi al
 picco (§20). Il confronto *fra* build resta valido — il vincolo era identico
 ovunque — ma i ~435 rps non sono un tetto di nanoFaaS: sono il tetto di un core.
 Una matrice che voglia numeri assoluti va rifatta con `controlPlaneCpu`
@@ -94,7 +94,7 @@ dichiarato.
 | «Ogni dispatch fa un round trip alle API di Kubernetes nel wake-up gate» | **Falsa** | `DeploymentWakeUpGate.isEligible` (`:196`) richiede `scalingConfig != null && strategy == INTERNAL && minReplicas == 0`. Le funzioni del confronto **non hanno `scalingConfig`**, quindi `ensureReady` ritorna `completedFuture(null)` immediatamente. Nessuna chiamata, nessun timer. |
 | «Il limite è la concorrenza perché gli slot sono saturi» | **Falsa** | N = λ·S = **0,45 su 2**. Gli slot sono vuoti per il 78 % del tempo. |
 | «Il limite è la CPU delle *funzioni*» | **Falsa** | I pod funzione **non hanno alcun limite** (§22.1): `buildResources` non ne impone quando lo spec non li dichiara, e il confronto non li dichiara. Usano 0,27 e 0,12 core perché tanto serve loro. |
-| «Il limite è la CPU del *control plane*» | **VERA — §20** | Era l'ipotesi che nessuno aveva formulato. `values.yaml:24` impone `limits.cpu: "1"`; al picco l'85,2% dei periodi CFS è strozzato, e a 4 CPU il dispatch passa da 303,7 a 843,4/s. |
+| «Il limite è la CPU del *control plane*» | **VERA — §20** | Era l'ipotesi che nessuno aveva formulato. `values.yaml:24` impone `limits.cpu: "1"`; al picco il 100% dei periodi CFS è strozzato, e a 4 CPU il dispatch passa da 303,7 a 843,4/s. |
 | «Il limite è la dimensione della coda» | **Falsa** | Una coda più grande scambia rifiuti con attese: non aggiunge capacità di drenaggio. |
 | «La serializzazione del payload pesa sul thread» | **Falsa** | I payload k6 sono ~120 byte (`runtime-comparison.js:87-92`). |
 
@@ -292,8 +292,8 @@ JSON da centinaia di MB. Restringi sempre a `*/src/main` o usa `--include='*.jav
 - Coda al massimo (20) con **42 563 rifiuti** su ~145 000 arrivi.
 - Attesa in coda **6,4×** il tempo di servizio.
 - CPU del processo **0,91 core** al picco — che sembrava «nessun thread saturo» e
-  invece era **il 91% dell'unico core concesso**, con l'85,2% dei periodi CFS
-  strozzati (§20). Questa riga è la ragione per cui le sonde §10–§19 hanno cercato
+  invece era **il 91% dell'unico core concesso**, con il 100% dei periodi CFS
+  strozzati al picco (§20). Questa riga è la ragione per cui le sonde §10–§19 hanno cercato
   nel posto sbagliato.
 - Capacità teorica a 2 slot e 1,94 ms di servizio: **~1030 rps**. Dispacciati: **228**.
 
@@ -912,13 +912,20 @@ Run del 2026-08-22: `azure-cpu1-throttling-c2` e `azure-cpu4-c2`, `native-o3-g1`
 una ripetizione, stesso profilo e stessa build. Unica variabile:
 `controlPlane.resources.limits.cpu`. Commit mcFaas `3323982a`, NanoLab `9f5ab50`.
 
-| al `peak900` | 1 CPU | 4 CPU |
+| al `peak900` (finestra t+400..430 s) | 1 CPU | 4 CPU |
 |---|---:|---:|
 | dispatch/s | 303,7 | **843,4** |
-| periodi CFS strozzati | **85,2%** | **0,0%** |
-| secondi strozzati (30 s) | 44,74 | 0,00 |
+| periodi CFS strozzati | **100,0%** | **4,5%** |
+| secondi strozzati nella finestra | 50,2 | 0,0 |
 | attesa in coda | 50,27 ms | 0,34 ms |
 | profondità coda | 20,00 / 20 | 3,33 |
+
+**Correzione del 2026-08-23.** Questa tabella diceva 85,2% e 0,0%. Ricalcolata dai
+raw con la finestra dichiarata, dà 100,0% e 4,5%: il dato era **sottostimato**, non
+gonfiato, e la conclusione ne esce più netta. Il perché è nella §29 — i contatori
+cAdvisor sono funzioni a gradino e una derivata per intervallo ne legge gli
+artefatti. La frazione strozzata **non significa niente senza la sua finestra**:
+la stessa cella a 1 CPU dà 24,6% sull'intera run e 100,0% sui 30 s di picco.
 
 **Il collo di bottiglia era la quota cgroup del control plane**, non il percorso
 di dispatch. `deploy/helm/nanofaas/values.yaml:24` impone 1 CPU, nessuna delle
@@ -1992,3 +1999,84 @@ serie si muovono insieme e una cella sola non le separa. Non dice se il ginocchi
 della §26 si sposta con 10.000 VU invece di 1.800: le VU usate al picco sono
 4.617 su 10.000, quindi **il generatore non era più il limite**, ma senza le tre
 ripetizioni non è un confronto.
+
+## 29. Un difetto di misura, e un difetto di codice
+
+Cercando la causa dei 942 ms della §28 ho trovato due cose. Nessuna delle due è
+la causa, e va detto subito.
+
+### Il difetto di misura: i contatori cAdvisor sono a gradino
+
+`container_cpu_cfs_periods_total` ripete lo stesso valore fra scrape consecutivi
+nel **67,7%** dei campioni; `..._throttled_periods_total` nell'**89,6%**. cAdvisor
+aggiorna più lentamente dello scrape a 5 s, quindi una derivata per intervallo
+alterna zeri e salti, e chi legge i salti ottiene numeri inventati.
+
+I contatori dell'applicazione **non** hanno il difetto: `http_server_ok_count` e
+`http_server_ok_sum` non ripetono mai un valore (0,0%). Le tabelle della §28 si
+appoggiano solo a questi, quindi reggono.
+
+Ma la conseguenza vera è un'altra:
+
+| finestra | 1 CPU | 4 CPU | 2 CPU al 2× |
+|---|---:|---:|---:|
+| intera run (0–480 s) | 24,6 % | 1,0 % | 3,0 % |
+| picco largo (385–435 s) | 98,6 % | 3,1 % | 17,1 % |
+| **picco stretto (400–430 s)** | **100,0 %** | **4,5 %** | **19,8 %** |
+| solo la salita (60–180 s) | 4,6 % | 0,0 % | 0,8 % |
+
+**La frazione strozzata non significa niente senza la sua finestra.** Lo stesso
+identico archivio dice 24,6% o 100,0% a seconda di dove si guarda, e sono
+entrambi veri. La §20 è stata corretta di conseguenza — diceva 85,2% e il valore
+giusto per la sua finestra è 100,0%, quindi era sottostimata.
+
+Regola: leggere questi contatori come **differenza fra due estremi di una
+finestra dichiarata**, mai come derivata per intervallo.
+
+### Il difetto di codice: un salto di thread per ogni richiesta
+
+`InvocationService.invokeSyncReactive` mandava **ogni** invocazione sincrona su
+`Schedulers.boundedElastic()`. Il commento lo giustificava con
+`createOrReuseExecution`, che «può girare a vuoto su claim di idempotenza
+contesi» — vero, ma solo dentro il ciclo in cui entra **quando c'è una chiave**.
+Senza chiave esce al primo ramo senza toccare un lock, e il resto del blocco è un
+controllo di rate, un lookup in mappa e un controllo di coda.
+
+Misurato con reactor-core, 200.000 giri dopo 100.000 di riscaldamento:
+
+| | media | p50 | p95 | p99 |
+|---|---:|---:|---:|---:|
+| senza salto | **0,085 µs** | 0,125 | 0,167 | 0,208 |
+| `subscribeOn(boundedElastic)` | **6,149 µs** | 6,167 | 8,250 | 10,041 |
+
+**Settantadue volte il lavoro che protegge**, e il rapporto non cambia saturando
+la macchina (6,11 µs con 11 burner, 7,16 con 22). Corretto in `31a0dac8`: il
+salto ora avviene solo se c'è una chiave di idempotenza, con due test che
+fissano il ramo — invertirlo sarebbe silenzioso, il codice funziona in entrambi i
+casi e cambia solo il nome del thread.
+
+**Non è la causa dei 942 ms**, e il conto lo dice: 6,1 µs a 2.430 richieste al
+secondo sono lo **0,7% di un budget da due core**. È una cosa più piccola,
+separata e dimostrata.
+
+### Cosa resta aperto, e cosa serve per chiuderlo
+
+I 942 ms non sono attribuiti. Quello che è stabilito:
+
+- l'handler ne spende **0,848**, e la contabilità chiude (391.833 richieste
+  registrate contro 391.629 inviate da k6: nessuna persa);
+- **non è fame di CPU del control plane**: al picco il 19,8% dei periodi è
+  strozzato, che vale ~8 ms di attesa attesa, non 900;
+- non è l'apertura di connessioni (§27), non è la coda applicativa (2 in volo,
+  20 in coda, tutto spiegato dal tempo dell'handler).
+
+Quello che **non** è stabilito è se il tempo mancante sia nel server o **nel
+generatore**. k6 misura fino a quando *lui* legge la risposta, non a quando la
+risposta arriva: con 10.000 VU su 8 core, il ritardo di scheduling delle sue
+goroutine finisce dentro `http_req_waiting` esattamente come ci finirebbe un
+ritardo del server.
+
+**La misura che manca è la CPU del generatore**, e non è raccolta da nessuna
+query — l'unica macchina dell'esperimento che nessuno guarda è quella che produce
+il numero su cui si sta ragionando. Finché non c'è, «il tempo è davanti
+all'applicazione» resta vero e ambiguo: davanti a quale?
