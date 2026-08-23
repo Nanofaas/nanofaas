@@ -1004,6 +1004,33 @@ invece delle 12 stimate.
 
 ### Latenza e throughput
 
+**`rps` non è capacità.** Il profilo è `ramping-arrival-rate`, ad anello aperto:
+programma **195.776 arrivi** in 450 s e li emette secondo l'orario, qualunque cosa
+faccia la piattaforma. Una build che tiene il passo segna esattamente 435,1 —
+quindi la colonna dice «ha retto il ritmo del generatore, sì o no», **non** quanto
+throughput potrebbe reggere. Tre righe a 435,0–435,1 non hanno la stessa capacità:
+stanno tutte e tre sopra la soglia richiesta, e la colonna non dice di quanto.
+
+Quanto siano lontane dal proprio limite lo dice il numero di VU che k6 deve
+tenere occupate, cioè il lavoro in volo, su 1.200 disponibili:
+
+| build (4 core) | iterazioni | rate | VU usate | scartate dal generatore |
+|---|---:|---:|---:|---:|
+| JVM | 195.776 | 435,1 | **7** | 0 |
+| native-o3-g1 | 195.776 | 435,1 | 251 | 0 |
+| native-o3 | 188.557 | 419,0 | **1.121** | **7.219** |
+
+La JVM serve tutto con **sette VU su milleduecento**: non è vicina alla
+saturazione, è a un ordine di grandezza di distanza, e il suo tetto reale resta
+**ignoto** perché questo profilo non lo avvicina mai. G1 nativo regge lo stesso
+ritmo tenendo 251 richieste in volo, trentasei volte tante. E `native-o3` scende
+a 419 **non perché la piattaforma rifiuti**: k6 esaurisce le VU trattenute da
+risposte lente e scarta gli arrivi che non riesce a emettere.
+
+Da due core in su, quindi, questo esperimento non misura più capacità: misura
+latenza sotto un carico che per la JVM è banale. Per trovarne il tetto serve un
+profilo con picco molto più alto.
+
 | cpu | build | rps | p95 (ms) | p99 (ms) | scarti | dispatch |
 |---:|---|---:|---:|---:|---:|---:|
 | **4** | JVM (seriale, C1) | 435.1 | 3.2 ± 0.1 | 6.0 | 0.0 % | 145.049 |
