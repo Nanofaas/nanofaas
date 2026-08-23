@@ -21,7 +21,7 @@ public class IdempotencyStore {
     private final ConcurrentMap<String, StoredKey> keys;
 
     public IdempotencyStore() {
-        this(keyLifetime(new ExecutionStoreProperties(null, null, null)));
+        this(keyLifetime(new ExecutionStoreProperties(null, null, null, null)));
     }
 
     /**

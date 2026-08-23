@@ -22,10 +22,11 @@ public class ExecutionStore {
     private final ScheduledExecutorService janitor;
     private final Duration cleanupTtl;
     private final Duration ttl;
+    private final Duration syncTtl;
     private final Duration maxLifetime;
 
     public ExecutionStore() {
-        this(new ExecutionStoreProperties(null, null, null));
+        this(new ExecutionStoreProperties(null, null, null, null));
     }
 
     // @Autowired is required: with two constructors Spring would otherwise pick the
@@ -53,6 +54,7 @@ public class ExecutionStore {
     /** Pacchetto-privato: le prove di sfratto costruiscono il negozio senza registro. */
     ExecutionStore(ExecutionStoreProperties properties) {
         this.ttl = properties.ttl();
+        this.syncTtl = properties.syncTtl();
         this.cleanupTtl = properties.cleanupTtl();
         this.maxLifetime = properties.maxLifetime();
         this.janitor = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -96,6 +98,7 @@ public class ExecutionStore {
     void evictExpired() {
         Instant now = Instant.now();
         Instant cutoff = now.minus(ttl);
+        Instant syncCutoff = now.minus(syncTtl);
         Instant cleanupCutoff = now.minus(cleanupTtl);
         Instant lifetimeCutoff = now.minus(maxLifetime);
 
@@ -111,7 +114,9 @@ public class ExecutionStore {
             Instant completedAt = executionRecord.finishedAt();
             Instant retentionAnchor = completedAt == null ? created : completedAt;
 
-            if (retentionAnchor.isBefore(cutoff)) {
+            // Retention follows who can still read the record, not one clock for all.
+            Instant deadline = executionRecord.readableAfterFinishing() ? cutoff : syncCutoff;
+            if (retentionAnchor.isBefore(deadline)) {
                 return true;
             }
             if (retentionAnchor.isBefore(cleanupCutoff)) {

@@ -27,21 +27,21 @@ class IdempotencyKeyLifetimeTest {
         // A terminal record is held `ttl` past completion, a stuck one `maxLifetime`
         // past creation; the key has to outlive whichever kept the record.
         assertThat(IdempotencyStore.keyLifetime(
-                new ExecutionStoreProperties(Duration.ofMinutes(30), Duration.ofMinutes(20), Duration.ofMinutes(30))))
+                new ExecutionStoreProperties(Duration.ofMinutes(30), Duration.ofMinutes(20), Duration.ofMinutes(30), null)))
                 .isGreaterThanOrEqualTo(Duration.ofMinutes(30));
         assertThat(IdempotencyStore.keyLifetime(
-                new ExecutionStoreProperties(Duration.ofMinutes(5), Duration.ofMinutes(2), Duration.ofHours(2))))
+                new ExecutionStoreProperties(Duration.ofMinutes(5), Duration.ofMinutes(2), Duration.ofHours(2), null)))
                 .isGreaterThanOrEqualTo(Duration.ofHours(2));
         // And it never drops under the platform's own retry horizon: the default
         // 30s timeout across three retries plus the first attempt is two minutes.
         assertThat(IdempotencyStore.keyLifetime(
-                new ExecutionStoreProperties(Duration.ofSeconds(1), Duration.ofSeconds(1), Duration.ofSeconds(1))))
+                new ExecutionStoreProperties(Duration.ofSeconds(1), Duration.ofSeconds(1), Duration.ofSeconds(1), null)))
                 .isGreaterThanOrEqualTo(Duration.ofMinutes(2));
     }
 
     @Test
     void theDefaultsAgreeWithoutBeingToldTo() {
-        ExecutionStoreProperties defaults = new ExecutionStoreProperties(null, null, null);
+        ExecutionStoreProperties defaults = new ExecutionStoreProperties(null, null, null, null);
         assertThat(IdempotencyStore.keyLifetime(defaults))
                 .isGreaterThanOrEqualTo(defaults.ttl())
                 .isGreaterThanOrEqualTo(defaults.maxLifetime());

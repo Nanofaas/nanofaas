@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.controlplane.execution;
 
 import it.unimib.datai.nanofaas.common.model.ErrorInfo;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +24,21 @@ public class ExecutionRecord {
 
     private final String executionId;
     private final CompletableFuture<InvocationResult> completion;
+    /**
+     * Whether anyone can still ask about this execution once it has finished.
+     *
+     * <p>An ASYNC caller holds nothing but the id, so {@code GET /v1/executions/{id}}
+     * is its only way of learning the outcome. A keyed execution has to be findable by
+     * a retry replaying that key. A plain synchronous one has already had its answer
+     * handed back on the connection the caller was holding.
+     *
+     * <p>Decided once, at construction, and deliberately not read from the current task:
+     * a retry replaces the task with one whose idempotency key is null (the retry is
+     * internal and must not claim the key again), so asking the task later would
+     * demote exactly the executions that had trouble - and idempotency would quietly
+     * stop working for them.
+     */
+    private final boolean readableAfterFinishing;
 
     // Guarded by 'this' - all mutable state is accessed under synchronization
     private InvocationTask task;
@@ -43,12 +59,19 @@ public class ExecutionRecord {
     public ExecutionRecord(String executionId, InvocationTask task) {
         this.executionId = executionId;
         this.task = task;
+        this.readableAfterFinishing = task.kind() == InvocationKind.ASYNC
+                || (task.idempotencyKey() != null && !task.idempotencyKey().isBlank());
         this.completion = new CompletableFuture<>();
         this.state = ExecutionState.QUEUED;
     }
 
     public String executionId() {
         return executionId;
+    }
+
+    /** See {@link #readableAfterFinishing}. */
+    public boolean readableAfterFinishing() {
+        return readableAfterFinishing;
     }
 
     public CompletableFuture<InvocationResult> completion() {
