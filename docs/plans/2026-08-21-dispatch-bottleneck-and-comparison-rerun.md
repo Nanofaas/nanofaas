@@ -1472,32 +1472,39 @@ Mattina del 2026-08-23. Due matrici da 4 varianti × 3 ripetizioni a **2 e 1 cor
 tutto il resto è invariato.
 
 <!-- tabella:jvm-2x2 -->
-| cpu | collettore + JIT | p95 (ms) | p99 (ms) | scarti | dispatch | servizio (ms) | core | RSS MiB | strozz |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| **2** | seriale + C1 *(baseline)* | 21.1 ± 4.4 | 32.5 | 1.0 % | 143.069 | 0.757 | 0.91 | 880 | 7.0 % |
-|  | **G1** + C1 | 46.6 ± 2.4 | 82.3 | 6.0 % | 133.785 | 0.794 | 1.34 | 1130 | 10.7 % |
-|  | seriale + **C2** | 2.5 ± 0.1 | 5.1 | 0.0 % | 145.048 | 0.515 | 0.53 | 969 | 0.9 % |
-|  | **G1 + C2** | 3.0 ± 0.0 | 14.3 | 0.1 % | 144.855 | 0.554 | 0.71 | 1287 | 2.8 % |
-| | | | | | | | | | |
-| **1** | seriale + C1 *(baseline)* | 118.1 ± 16.5 | 173.1 | 26.1 % | 101.123 | 0.770 | 0.74 | 715 | 22.8 % |
-|  | **G1** + C1 | 152.6 ± 7.1 | 286.1 | 33.1 % | 91.310 | 2.266 | 0.94 | 855 | 34.6 % |
-|  | seriale + **C2** | 18.2 ± 9.3 | 44.6 | 1.6 % | 142.122 | 0.540 | 0.58 | 957 | 11.6 % |
-|  | **G1 + C2** | 58.1 ± 2.4 | 100.8 | 7.7 % | 131.947 | 0.702 | 0.69 | 1209 | 19.7 % |
+| cpu | collettore + JIT | n | p95 (ms) | scarti % | dispatch | core | RSS MiB | strozz % |
+|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| **2** | seriale + C1 *(baseline)* | 3 | 21.1 ± 4.4 | 1.01 ± 0.40 | 143.1 ± 0.8k | 0.91 ± 0.01 | 880 ± 3 | 7.0 ± 0.5 |
+|  | **G1** + C1 | 3 | 46.6 ± 2.4 | 5.95 ± 0.29 | 133.8 ± 0.5k | 1.34 ± 0.08 | 1130 ± 6 | 10.7 ± 0.1 |
+|  | seriale + **C2** | 3 | 2.5 ± 0.1 | 0.00 ± 0.00 | 145.0 ± 0.0k | 0.53 ± 0.09 | 969 ± 4 | 0.9 ± 0.1 |
+|  | **G1 + C2** | 3 | 3.0 ± 0.0 | 0.10 ± 0.01 | 144.9 ± 0.0k | 0.71 ± 0.06 | 1287 ± 8 | 2.8 ± 0.2 |
+| | | | | | | | | |
+| **1** | seriale + C1 *(baseline)* | 3 | 118.1 ± 16.5 | 26.05 ± 2.71 | 101.1 ± 4.1k | 0.74 ± 0.07 | 715 ± 21 | 22.8 ± 0.7 |
+|  | **G1** + C1 | 3 | 152.6 ± 7.1 | 33.08 ± 2.94 | 91.3 ± 4.5k | 0.94 ± 0.15 | 855 ± 29 | 34.6 ± 1.7 |
+|  | seriale + **C2** | 3 | 18.2 ± 9.3 | 1.61 ± 0.90 | 142.1 ± 1.6k | 0.58 ± 0.03 | 957 ± 5 | 11.6 ± 1.2 |
+|  | **G1 + C2** | 3 | 58.1 ± 2.4 | 7.74 ± 1.59 | 131.9 ± 2.3k | 0.69 ± 0.03 | 1209 ± 24 | 19.7 ± 3.9 |
 <!-- /tabella:jvm-2x2 -->
 
+Ogni colonna porta la dispersione sulle tre ripetizioni. Serve: a 1 core il p95
+del baseline si sposta di **±16,5 ms** fra run identiche, che è più di quanto
+valgano alcune delle differenze rivendicate altrove in questo documento.
+
 Letto come effetti rispetto al baseline, che è la domanda per cui il fattoriale
-esiste:
+esiste. L'ultima colonna dice se la differenza supera le due dispersioni messe
+insieme — un criterio volutamente grezzo: con tre ripetizioni un test t
+vestirebbe meglio la stessa informazione, e questa è l'affermazione più debole
+che i dati sostengono:
 
 <!-- tabella:jvm-effetti -->
-| cpu | effetto | Δ p95 | Δ scarti | Δ dispatch | Δ core |
-|---:|---|---:|---:|---:|---:|
-| **2** | solo collettore (G1) | +25.5 ms | +4.9 pt | -6.5 % | +0.42 |
-|  | solo JIT (C2) | -18.5 ms | -1.0 pt | +1.4 % | -0.38 |
-|  | entrambi | -18.1 ms | -0.9 pt | +1.2 % | -0.20 |
-| | | | | | |
-| **1** | solo collettore (G1) | +34.5 ms | +7.0 pt | -9.7 % | +0.20 |
-|  | solo JIT (C2) | -99.9 ms | -24.4 pt | +40.5 % | -0.16 |
-|  | entrambi | -60.0 ms | -18.3 pt | +30.5 % | -0.05 |
+| cpu | effetto | Δ p95 | Δ scarti | Δ dispatch | Δ core | Δ p95 supera la dispersione? |
+|---:|---|---:|---:|---:|---:|---|
+| **2** | solo collettore (G1) | +25.5 ms | +4.9 pt | -6.5 % | +0.42 | **separato** |
+|  | solo JIT (C2) | -18.5 ms | -1.0 pt | +1.4 % | -0.38 | **separato** |
+|  | entrambi | -18.1 ms | -0.9 pt | +1.2 % | -0.20 | **separato** |
+| | | | | | | |
+| **1** | solo collettore (G1) | +34.5 ms | +7.0 pt | -9.7 % | +0.20 | **separato** |
+|  | solo JIT (C2) | -99.9 ms | -24.4 pt | +40.5 % | -0.16 | **separato** |
+|  | entrambi | -60.0 ms | -18.3 pt | +30.5 % | -0.05 | **separato** |
 <!-- /tabella:jvm-effetti -->
 
 ### Il JIT è tutto il guadagno, e il collettore è una perdita
@@ -1521,6 +1528,12 @@ quello che il JIT guadagna.
 
 **Conseguenza operativa:** togliere `-XX:TieredStopAtLevel=1` e **tenere**
 `-XX:+UseSerialGC`. Una riga, e a 1 core vale il 40% di dispatch in più.
+
+Tutte e sei le differenze superano la dispersione, quindi nessuna delle
+conclusioni sopra poggia su rumore. Un numero però va preso morbido: `seriale+C2`
+a 1 core misura **18,2 ± 9,3 ms**, cioè una dispersione pari a metà del valore.
+Che sia molto meglio dei 118,1 del baseline è fuori discussione; *quanto* meglio,
+con tre ripetizioni, no.
 
 ### 23.1 Lo stesso build in due matrici dà numeri diversi di 5,7×
 

@@ -254,20 +254,26 @@ def _jvm_row(root, cpu, variant):
 
 
 def table_jvm_2x2(root):
-    """Collector on one axis, JIT tiering on the other, at two budgets."""
-    out = ["| cpu | collettore + JIT | p95 (ms) | p99 (ms) | scarti | dispatch | servizio (ms) | core | RSS MiB | strozz |",
-           "|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
+    """Collector on one axis, JIT tiering on the other, at two budgets.
+
+    Every column carries its spread over the three repetitions, because the
+    factorial's whole job is to say whether a quadrant differs from another and
+    a mean alone cannot: at one core the baseline's p95 moves by 13.5ms between
+    runs, which is most of some of the differences being claimed.
+    """
+    out = ["| cpu | collettore + JIT | n | p95 (ms) | scarti % | dispatch | core | RSS MiB | strozz % |",
+           "|---:|---|---:|---:|---:|---:|---:|---:|---:|"]
     for cpu in (2, 1):
         for i, v in enumerate(JVM_VARIANTS):
             a = _jvm_row(root, cpu, v)
             if not a["p95"]:
                 continue
-            out.append("| %s | %s | %.1f ± %.1f | %.1f | %.1f %% | %s | %.3f | %.2f | %.0f | %.1f %% |" % (
-                f"**{cpu}**" if i == 0 else "", JVM_LABEL[v],
-                mean(a["p95"]), sd(a["p95"]), mean(a["p99"]), mean(a["drop"]),
-                f"{mean(a['disp']):,.0f}".replace(",", "."),
-                mean(a["serv"]), mean(a["cpu_av"]), mean(a["rss"]), mean(a["thr"])))
-        out.append("| | | | | | | | | | |")
+            out.append("| %s | %s | %d | %s | %s | %s | %s | %s | %s |" % (
+                f"**{cpu}**" if i == 0 else "", JVM_LABEL[v], len(a["p95"]),
+                pm(a["p95"]), pm(a["drop"], "%.2f"),
+                pm([x / 1000 for x in a["disp"]], "%.1f") + "k",
+                pm(a["cpu_av"], "%.2f"), pm(a["rss"], "%.0f"), pm(a["thr"], "%.1f")))
+        out.append("| | | | | | | | | |")
     return "\n".join(out[:-1])
 
 
@@ -279,8 +285,8 @@ def table_jvm_effects(root):
     to the collector and how much to the JIT - which four absolute numbers do not
     say on their own.
     """
-    out = ["| cpu | effetto | Δ p95 | Δ scarti | Δ dispatch | Δ core |",
-           "|---:|---|---:|---:|---:|---:|"]
+    out = ["| cpu | effetto | Δ p95 | Δ scarti | Δ dispatch | Δ core | Δ p95 supera la dispersione? |",
+           "|---:|---|---:|---:|---:|---:|---|"]
     for cpu in (2, 1):
         base = _jvm_row(root, cpu, "jvm")
         if not base["p95"]:
@@ -291,13 +297,19 @@ def table_jvm_effects(root):
             a = _jvm_row(root, cpu, v)
             if not a["p95"]:
                 continue
-            out.append("| %s | %s | %+.1f ms | %+.1f pt | %+.1f %% | %+.2f |" % (
-                f"**{cpu}**" if v == "jvm-g1" else "", name,
-                mean(a["p95"]) - mean(base["p95"]),
+            d95 = mean(a["p95"]) - mean(base["p95"])
+            # Crude on purpose: with three repetitions a t test would dress up
+            # the same information. "Separato" means the two means differ by more
+            # than the two spreads put together, which is the weakest claim the
+            # data supports and the only one worth printing.
+            spread = sd(a["p95"]) + sd(base["p95"])
+            verdict = "**separato**" if abs(d95) > spread else "dentro la dispersione (±%.1f)" % spread
+            out.append("| %s | %s | %+.1f ms | %+.1f pt | %+.1f %% | %+.2f | %s |" % (
+                f"**{cpu}**" if v == "jvm-g1" else "", name, d95,
                 mean(a["drop"]) - mean(base["drop"]),
                 (mean(a["disp"]) / mean(base["disp"]) - 1) * 100,
-                mean(a["cpu_av"]) - mean(base["cpu_av"])))
-        out.append("| | | | | | |")
+                mean(a["cpu_av"]) - mean(base["cpu_av"]), verdict))
+        out.append("| | | | | | | |")
     return "\n".join(out[:-1])
 
 
