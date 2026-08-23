@@ -192,11 +192,105 @@ def function_cpu_model(root, cpu=4, builds=("jvm", "native-o3-g1")):
     return "\n".join(rows + tab)
 
 
+JVM_VARIANTS = ("jvm", "jvm-g1", "jvm-c2", "jvm-g1-c2")
+JVM_LABEL = {
+    "jvm": "seriale + C1 *(baseline)*",
+    "jvm-g1": "**G1** + C1",
+    "jvm-c2": "seriale + **C2**",
+    "jvm-g1-c2": "**G1 + C2**",
+}
+
+
+def _jvm_cells(root, cpu, variant):
+    base = Path(root) / f"azure-jvm-2x2-cpu{cpu}" / variant
+    for run in sorted(base.glob("run-*")):
+        snap = run / "metrics" / "prometheus-snapshot.json"
+        if not snap.exists():
+            snap = snap.with_suffix(".json.gz")
+        summ = run / "summary.json"
+        if snap.exists() and summ.exists():
+            yield load(snap), json.loads(summ.read_text())
+
+
+def _jvm_row(root, cpu, variant):
+    acc = {k: [] for k in ("p95", "p99", "drop", "disp", "thr", "cpu_av", "rss", "qw", "serv")}
+    for doc, summ in _jvm_cells(root, cpu, variant):
+        s, k = Snap(doc), summ["k6"]
+        acc["p95"].append(k["http_req_duration"]["p(95)"])
+        acc["p99"].append(k["http_req_duration"]["p(99)"])
+        acc["drop"].append(k["http_req_failed"]["value"] * 100)
+        acc["disp"].append(s.last("function_dispatch_total"))
+        per = s.last("container_cpu_periods@control-plane")
+        acc["thr"].append(s.last("container_cpu_throttled_periods@control-plane") / per * 100 if per else 0.0)
+        acc["cpu_av"].append(mean(s.window("container_cpu_cores@control-plane", 375, 405)))
+        rss = s.window("container_memory_bytes@control-plane", 0, 1e9)
+        if rss:
+            acc["rss"].append(max(rss) / 1048576)
+        n = s.last("function_queue_wait_count")
+        if n:
+            acc["qw"].append(s.last("function_queue_wait_sum") / n * 1000)
+        c = s.delta("function_latency_count", 320, 365)
+        t = s.delta("function_latency_sum", 320, 365)
+        if c:
+            acc["serv"].append(t / c * 1000)
+    return acc
+
+
+def table_jvm_2x2(root):
+    """Collector on one axis, JIT tiering on the other, at two budgets."""
+    out = ["| cpu | collettore + JIT | p95 (ms) | p99 (ms) | scarti | dispatch | servizio (ms) | core | RSS MiB | strozz |",
+           "|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
+    for cpu in (2, 1):
+        for i, v in enumerate(JVM_VARIANTS):
+            a = _jvm_row(root, cpu, v)
+            if not a["p95"]:
+                continue
+            out.append("| %s | %s | %.1f ± %.1f | %.1f | %.1f %% | %s | %.3f | %.2f | %.0f | %.1f %% |" % (
+                f"**{cpu}**" if i == 0 else "", JVM_LABEL[v],
+                mean(a["p95"]), sd(a["p95"]), mean(a["p99"]), mean(a["drop"]),
+                f"{mean(a['disp']):,.0f}".replace(",", "."),
+                mean(a["serv"]), mean(a["cpu_av"]), mean(a["rss"]), mean(a["thr"])))
+        out.append("| | | | | | | | | | |")
+    return "\n".join(out[:-1])
+
+
+def table_jvm_effects(root):
+    """The 2x2 read as effects: what each factor buys, and whether they add up.
+
+    Written as differences against the baseline rather than as four rows, because
+    the question the factorial exists to answer is how much of the change belongs
+    to the collector and how much to the JIT - which four absolute numbers do not
+    say on their own.
+    """
+    out = ["| cpu | effetto | Δ p95 | Δ scarti | Δ dispatch | Δ core |",
+           "|---:|---|---:|---:|---:|---:|"]
+    for cpu in (2, 1):
+        base = _jvm_row(root, cpu, "jvm")
+        if not base["p95"]:
+            continue
+        for v, name in (("jvm-g1", "solo collettore (G1)"),
+                        ("jvm-c2", "solo JIT (C2)"),
+                        ("jvm-g1-c2", "entrambi")):
+            a = _jvm_row(root, cpu, v)
+            if not a["p95"]:
+                continue
+            out.append("| %s | %s | %+.1f ms | %+.1f pt | %+.1f %% | %+.2f |" % (
+                f"**{cpu}**" if v == "jvm-g1" else "", name,
+                mean(a["p95"]) - mean(base["p95"]),
+                mean(a["drop"]) - mean(base["drop"]),
+                (mean(a["disp"]) / mean(base["disp"]) - 1) * 100,
+                mean(a["cpu_av"]) - mean(base["cpu_av"])))
+        out.append("| | | | | | |")
+    return "\n".join(out[:-1])
+
+
 BLOCKS = {
     "latenza": table_latency,
     "risorse": table_resources,
     "fasi": table_phases,
     "modello-cpu-funzione": function_cpu_model,
+    "jvm-2x2": table_jvm_2x2,
+    "jvm-effetti": table_jvm_effects,
 }
 
 

@@ -402,6 +402,26 @@ contro 880. Le build native seriali non tengono il passo nemmeno con quattro cor
 liberi — 16–19% di scarti, coda a ~10 su 20, **0% di throttling e 1,0 core usati
 su 4** — che è una firma di collo di bottiglia ancora da spiegare.
 
+## Fattoriale JVM: collettore x JIT (24 celle)
+
+`azure-jvm-2x2-cpu2` e `azure-jvm-2x2-cpu1`, 2026-08-23. Quattro varianti — le
+combinazioni di `-XX:+UseSerialGC`/`-XX:+UseG1GC` con C1-solo/tiering completo —
+per 3 ripetizioni, a 2 e 1 core. mcFaas `e8bd580f`, NanoLab `ebd11ba`. Tabelle
+generate in §23 del piano.
+
+Esito: **restituire C2 è tutto il guadagno, G1 è una perdita**. A 2 core il p95
+scende da 21,1 a 2,5 ms e la CPU **cala** da 0,91 a 0,53 core; a 1 core il p95
+passa da 118,1 a 18,2 ms con il 40% di dispatch in più. G1 peggiora ogni asse a
+entrambi i budget e costa 250–400 MiB di RSS. I due effetti **non si sommano**:
+`G1+C2` è peggio di `seriale+C2`.
+
+Azione: togliere `-XX:TieredStopAtLevel=1`, tenere `-XX:+UseSerialGC`.
+
+E un avvertimento quantificato (§23.1): lo **stesso** build allo **stesso** budget
+misura p95 3,7 ± 0,1 ms nella matrice dello sweep e 21,1 ± 3,6 in questa. Stretto
+dentro ciascuna, diverso di **5,7×** fra le due. I confronti valgono dentro una
+matrice, mai fra matrici.
+
 ## Raw e riproduzione
 
 `raw/` contiene, per ogni cella, `comparison-manifest.json`, `k6-summary.json`,

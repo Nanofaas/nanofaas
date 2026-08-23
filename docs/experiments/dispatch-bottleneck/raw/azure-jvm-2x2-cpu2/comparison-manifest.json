@@ -1,0 +1,58 @@
+{
+  "started_at": "2026-08-23T05:08:32.931096+00:00",
+  "functions": [
+    "word-stats-java",
+    "word-stats-javascript"
+  ],
+  "repetitions": 3,
+  "order": [
+    "jvm run 1",
+    "jvm-g1 run 1",
+    "jvm-c2 run 1",
+    "jvm-g1-c2 run 1",
+    "jvm run 2",
+    "jvm-g1 run 2",
+    "jvm-c2 run 2",
+    "jvm-g1-c2 run 2",
+    "jvm run 3",
+    "jvm-g1 run 3",
+    "jvm-c2 run 3",
+    "jvm-g1-c2 run 3"
+  ],
+  "variants": [
+    {
+      "key": "jvm",
+      "label": "JVM (Java 25, JIT)",
+      "rationale": "The baseline everything else is compared against, and the only build that JIT-compiles from a profile gathered during the run itself.",
+      "build_env": {},
+      "image": "127.0.0.1:5000/nanofaas/control-plane:jvm"
+    },
+    {
+      "key": "jvm-g1",
+      "label": "JVM (G1, C1 only)",
+      "rationale": "Isolates the collector: G1 against the baseline's serial, JIT held at C1.",
+      "build_env": {
+        "JVM_TUNING": "-XX:+UseG1GC -XX:TieredStopAtLevel=1"
+      },
+      "image": "127.0.0.1:5000/nanofaas/control-plane:jvm-g1"
+    },
+    {
+      "key": "jvm-c2",
+      "label": "JVM (serial GC, full tiering)",
+      "rationale": "Isolates the JIT: C2 restored, collector held at the baseline's serial.",
+      "build_env": {
+        "JVM_TUNING": "-XX:+UseSerialGC"
+      },
+      "image": "127.0.0.1:5000/nanofaas/control-plane:jvm-c2"
+    },
+    {
+      "key": "jvm-g1-c2",
+      "label": "JVM (G1, full tiering)",
+      "rationale": "The JVM as it would be deployed on more than one core, and the only JVM build that meets native-o3-g1 on equal terms.",
+      "build_env": {
+        "JVM_TUNING": "-XX:+UseG1GC"
+      },
+      "image": "127.0.0.1:5000/nanofaas/control-plane:jvm-g1-c2"
+    }
+  ]
+}

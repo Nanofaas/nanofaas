@@ -1431,6 +1431,93 @@ o nella rete.
 Le prime due non richiedono nulla di nuovo. La terza è configurazione. Solo il
 tempo interno all'handler richiede la funzione, ed è un'intestazione.
 
+## 23. Il fattoriale JVM: collettore × JIT
+
+Mattina del 2026-08-23. Due matrici da 4 varianti × 3 ripetizioni a **2 e 1 core**,
+`azure-jvm-2x2-cpu2` e `azure-jvm-2x2-cpu1`. Commit mcFaas `e8bd580f`, NanoLab
+`ebd11ba`. Le quattro varianti sono i quadranti di collettore × tiering del JIT;
+tutto il resto è invariato.
+
+<!-- tabella:jvm-2x2 -->
+| cpu | collettore + JIT | p95 (ms) | p99 (ms) | scarti | dispatch | servizio (ms) | core | RSS MiB | strozz |
+|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| **2** | seriale + C1 *(baseline)* | 21.1 ± 3.6 | 32.5 | 1.0 % | 143.069 | 0.757 | 0.91 | 880 | 7.0 % |
+|  | **G1** + C1 | 46.6 ± 2.0 | 82.3 | 6.0 % | 133.785 | 0.794 | 1.34 | 1130 | 10.7 % |
+|  | seriale + **C2** | 2.5 ± 0.1 | 5.1 | 0.0 % | 145.048 | 0.515 | 0.53 | 969 | 0.9 % |
+|  | **G1 + C2** | 3.0 ± 0.0 | 14.3 | 0.1 % | 144.855 | 0.554 | 0.71 | 1287 | 2.8 % |
+| | | | | | | | | | |
+| **1** | seriale + C1 *(baseline)* | 118.1 ± 13.5 | 173.1 | 26.1 % | 101.123 | 0.770 | 0.74 | 715 | 22.8 % |
+|  | **G1** + C1 | 152.6 ± 5.8 | 286.1 | 33.1 % | 91.310 | 2.266 | 0.94 | 855 | 34.6 % |
+|  | seriale + **C2** | 18.2 ± 7.6 | 44.6 | 1.6 % | 142.122 | 0.540 | 0.58 | 957 | 11.6 % |
+|  | **G1 + C2** | 58.1 ± 1.9 | 100.8 | 7.7 % | 131.947 | 0.702 | 0.69 | 1209 | 19.7 % |
+<!-- /tabella:jvm-2x2 -->
+
+Letto come effetti rispetto al baseline, che è la domanda per cui il fattoriale
+esiste:
+
+<!-- tabella:jvm-effetti -->
+| cpu | effetto | Δ p95 | Δ scarti | Δ dispatch | Δ core |
+|---:|---|---:|---:|---:|---:|
+| **2** | solo collettore (G1) | +25.5 ms | +4.9 pt | -6.5 % | +0.42 |
+|  | solo JIT (C2) | -18.5 ms | -1.0 pt | +1.4 % | -0.38 |
+|  | entrambi | -18.1 ms | -0.9 pt | +1.2 % | -0.20 |
+| | | | | | |
+| **1** | solo collettore (G1) | +34.5 ms | +7.0 pt | -9.7 % | +0.20 |
+|  | solo JIT (C2) | -99.9 ms | -24.4 pt | +40.5 % | -0.16 |
+|  | entrambi | -60.0 ms | -18.3 pt | +30.5 % | -0.05 |
+<!-- /tabella:jvm-effetti -->
+
+### Il JIT è tutto il guadagno, e il collettore è una perdita
+
+**Restituire C2 è la correzione.** A 2 core il p95 passa da 21,1 a **2,5 ms**, gli
+scarti da 1,0% a **zero**, e — il dato che sorprende — la CPU **scende** da 0,91 a
+**0,53 core**. Codice ottimizzato fa lo stesso lavoro con meno istruzioni: il
+costo di compilazione si ripaga molte volte in una run da 450 s.
+
+A 1 core l'effetto è drammatico: p95 da 118,1 a **18,2 ms**, scarti dal 26,1% al
+**1,6%**, dispatch **+40,5%**. La configurazione scelta «per ambienti a core
+singolo» è proprio quella che a un core costa di più.
+
+**G1 peggiora tutto, a entrambi i budget.** Da solo aggiunge +25,5 ms di p95 a 2
+core e +34,5 a 1, con più scarti, meno dispatch e più CPU. E costa memoria:
+da 880 MiB del baseline a 1130 (G1+C1) e 1287 (G1+C2).
+
+**I due effetti non si sommano.** `G1 + C2` è **peggio** di `seriale + C2` su ogni
+asse — 3,0 contro 2,5 ms a 2 core, 58,1 contro 18,2 a 1. Il collettore sottrae a
+quello che il JIT guadagna.
+
+**Conseguenza operativa:** togliere `-XX:TieredStopAtLevel=1` e **tenere**
+`-XX:+UseSerialGC`. Una riga, e a 1 core vale il 40% di dispatch in più.
+
+### 23.1 Lo stesso build in due matrici dà numeri diversi di 5,7×
+
+Il baseline `seriale + C1` a 2 core è per costruzione identico alla riga `jvm` di
+`azure-matrix-cpu2` nella §22. Non lo è nei risultati:
+
+| stesso build, 2 core | sweep (§22) | fattoriale (§23) |
+|---|---:|---:|
+| p95 | **3,7 ± 0,1 ms** | **21,1 ± 3,6 ms** |
+| p99 | 7,8 ms | 32,5 ms |
+| scarti | 0,03 % | 1,01 % |
+| dispatch | 144.981 | 143.069 |
+| RSS | 881 MiB | 880 MiB |
+| periodi strozzati | 0,9 % | **7,0 %** |
+
+Le tre ripetizioni sono strette **dentro** ciascuna matrice — 3,6/3,8/3,7 contro
+16,4/25,1/21,7 — quindi non è rumore campionario: sono due popolazioni diverse.
+Dispatch e memoria coincidono, quindi il control plane è lo stesso; a divergere
+sono latenza e throttling, cioè l'ambiente.
+
+Non è spiegato. Il candidato più semplice è l'host Azure: le due matrici hanno
+provisionato VM distinte a ore diverse.
+
+**Ne discende una regola operativa, non un'ipotesi:** i confronti valgono
+**dentro** una matrice, mai fra matrici. È la ragione per cui il baseline è stato
+rieseguito qui invece di riusare quello della §22, e questa tabella quantifica
+quanto sarebbe costato riusarlo: un fattore **5,7** sul p95. Vale anche per la
+§22 stessa — l'ordinamento fra build regge, i valori assoluti di p95 sono
+proprietà di quella nottata.
+
 ### Stato corrente
 
 Il prossimo passo non è un'altra sonda sul dispatch. È decidere il budget di CPU
