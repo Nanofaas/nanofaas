@@ -1715,6 +1715,68 @@ errore di connessione veloce. Il più economico e il contratto peggiore — il
 chiamante non riceve uno stato HTTP né un `Retry-After` — quindi l'ultima
 risorsa, non la prima.
 
+## 26. Il carico crescente: fermato a metà, e perché
+
+Run del 2026-08-23, `azure-load{1,2,3}x`, `jvm-c2` a **2 core**, 3 ripetizioni
+per braccio, unica variabile la scala del profilo. Il braccio 4× è stato
+**interrotto**: i dati erano già compromessi dal 2×.
+
+| scala | offerti | disp/s al picco | p95 | scarti | VU usate | arrivi non emessi |
+|---:|---:|---:|---:|---:|---:|---:|
+| **1×** | 900 | 881,0 | **2,4 ms** | 0,36 % | 701 / 1200 | 470 (0,2 %) |
+| 2× | 1.800 | 1591,2 | 185,8 ms | 5,82 % | **1760 / 1800** | 14.003 (3,6 %) |
+| 3× | 2.700 | 513,8 | 1484 ms | 23,3 % | **2700 / 2700** | 76.444 (13 %) |
+
+### Cosa è solido
+
+Fra 900 e 1.800 offerti la piattaforma passa da **p95 2,4 ms a 185,8**. Il
+ginocchio sta lì in mezzo — molto prima dei 3.799 rps che Little prevedeva dal
+limite di concorrenza, e prima ancora dei 5.157 del modello di CPU. Entrambe le
+previsioni sono **sbagliate per eccesso**, e questo è il risultato utile.
+
+### Cosa non è solido, e come lo sapevamo
+
+A 3× le VU sono esaurite al **100%** e il 13% degli arrivi non è mai stato
+emesso. I 513,8 dispatch/s non sono un tetto della piattaforma: sono l'equilibrio
+fra una piattaforma che collassa (73.880 rifiuti) e un generatore esausto.
+
+Il budget di mezzo secondo con cui avevo dimensionato il pool era troppo
+ottimista: a 3× l'iterazione media dura 218 ms e al picco molto di più, quindi
+servivano ~4.000 VU per la sola funzione Java contro le 1.350 concesse.
+
+La tabella `dropped_iterations` ha fatto il suo lavoro — ha reso l'esaurimento
+visibile invece di lasciarlo passare per capacità — ma **a posteriori**. La
+lezione è che quella tabella va guardata sul primo braccio e usata per
+ridimensionare il pool prima di lanciare i successivi, non a fine sweep.
+
+### Un difetto di strumentazione scoperto qui
+
+`netty_connections_active`, aggiunta in §25 proprio per vedere l'arretrato a
+monte, è tornata **vuota**. Non è il filtro del profilo metriche
+(`MetricsProfileConfiguration` in `advanced` risponde `NEUTRAL`).
+
+Diagnosi probabile, **non verificata**: Reactor Netty registra i propri meter su
+`Metrics.globalRegistry`, e Spring Boot 3+ non aggiunge più il registro
+dell'applicazione a quello globale — i meter esistono e l'endpoint Prometheus non
+li esporta. Il controllo è locale: avviare il control plane e leggere
+`/actuator/prometheus`. Da fare prima di qualunque altra run che dipenda da
+quella serie.
+
+### Il prossimo tentativo
+
+1. Verificare la metrica Netty in locale, gratis.
+2. Dimensionare le VU sul regime **collassato**, non su un budget di latenza — o
+   togliere il vincolo distribuendo il generatore su più VM.
+3. Bracci più fitti **fra 1× e 2×**, dove il ginocchio è davvero, invece che
+   oltre dove nessuno dei due lati regge.
+
+### Nota operativa sul teardown
+
+Fermare lo script salta il teardown, che ne è l'ultimo passo: le VM restano
+accese. E i dischi di questa run si chiamavano `..._OsDisk_1_...` invece di
+`..._disk1_...`, quindi i due passaggi abituali non sono bastati e ne è servito
+un terzo. Il filtro giusto è sul prefisso del nome, non sul suffisso.
+
 ### Stato corrente
 
 Il prossimo passo non è un'altra sonda sul dispatch. È decidere il budget di CPU

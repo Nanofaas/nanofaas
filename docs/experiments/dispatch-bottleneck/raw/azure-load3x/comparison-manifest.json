@@ -1,0 +1,31 @@
+{
+  "started_at": "2026-08-23T11:44:03.286483+00:00",
+  "functions": [
+    "word-stats-java",
+    "word-stats-javascript"
+  ],
+  "repetitions": 3,
+  "order": [
+    "jvm-c2 run 1",
+    "jvm-c2 run 2",
+    "jvm-c2 run 3"
+  ],
+  "variants": [
+    {
+      "key": "jvm-c2",
+      "label": "JVM (serial GC, full tiering)",
+      "rationale": "Isolates the JIT: C2 restored, collector held at the baseline's serial.",
+      "build_env": {
+        "JVM_TUNING": "-XX:+UseSerialGC"
+      },
+      "image": "127.0.0.1:5000/nanofaas/control-plane:jvm-c2"
+    }
+  ],
+  "regime": {
+    "control_plane_cpu": "2",
+    "load_scale": 3.0,
+    "load_profile": "comparison",
+    "backend": "k8s",
+    "scenario": "packages/nanolab/scenarios-v2/runtime-comparison-load3x.yaml"
+  }
+}
