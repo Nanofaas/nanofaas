@@ -1712,15 +1712,28 @@ accorciarlo, ed è già dimostrata: `seriale + C2` a 2 core ha **zero** rifiuti
 (§23), quindi nessun arretrato a monte e p95 2,5 ms. Finché la capacità copre il
 carico offerto, i 668 ms non esistono.
 
-**2. Rifiutare presto, e il meccanismo esiste già.** Il modulo `sync-queue` ha un
-`SyncQueueAdmissionController` che rifiuta su `DEPTH` **e** su `EST_WAIT`, cioè
-prima di accodare, stimando l'attesa e dicendo no quando supera un limite. È
-esattamente la conversione di «aspetta 675 ms e poi 429» in «429 subito».
+**2. Rifiutare presto — la strategia esiste, ma nel modulo sbagliato.** Il modulo
+`sync-queue` ha un `SyncQueueAdmissionController` che rifiuta su `DEPTH` **e** su
+`EST_WAIT`, cioè prima di accodare, stimando l'attesa e dicendo no quando supera
+un limite. È esattamente la conversione di «aspetta 675 ms e poi 429» in «429
+subito».
 
-Non è mai stato caricato in nessuna di queste run — `COMPARISON_MODULES` è
-`k8s-deployment-provider,async-queue`. E l'unica volta che è stato valutato
-(issue #197) la conclusione fu che costava 6× di p95: misurata a **1 CPU**, cioè
-nel regime che la §20 ha dimostrato strozzato. Quel verdetto va rifatto.
+**Decisione del 2026-08-23: `sync-queue` non si attiva e non si attiverà.** Il
+percorso sincrono di queste run passa da `async-queue` (`COMPARISON_MODULES` è
+`k8s-deployment-provider,async-queue`), quindi validare quella strategia
+significa **spostarla in `async-queue`**, non accendere un modulo in più.
+
+La metà `DEPTH` è già lì: `InvocationEnqueuer.isQueueFull` più
+`refuseEarlyIfQueueFull` fanno esattamente quello. Manca `EST_WAIT`, e sono tre
+classi per ~120 righe — `WaitEstimator` è Little (`attesa = profondità /
+throughput` su finestra scorrevole, per-funzione con fallback globale), e
+`async-queue` pubblica già i due ingressi che gli servono, `function_queue_depth`
+e `function_dispatch_total`.
+
+L'unica volta che la strategia è stata valutata (issue #197) la conclusione fu
+che costava 6× di p95: misurata a **1 CPU**, cioè nel regime che la §20 ha
+dimostrato strozzato al 100% dei periodi. Quel verdetto va rifatto, dopo lo
+spostamento.
 
 **3. ~~Limitare il backlog del kernel.~~ Ritirata il 2026-08-23.** Questa
 sezione proponeva un `SO_BACKLOG` corto per convertire un 429 lento in un errore
@@ -1988,8 +2001,9 @@ sezione dice quale delle due conta: **rifiutare presto**. Con l'handler a 0,85 m
 non c'è nulla da ottimizzare dentro l'applicazione — il 93% di CPU non attribuito
 resta un problema aperto, ma non è *questo* problema. Il tempo si accumula a
 monte, e l'unico modo di non accumularlo è non accettare lavoro che non si può
-servire, cioè `SyncQueueAdmissionController` su `EST_WAIT`, mai caricato in
-nessuna di queste run e bocciato una volta sola sotto strozzatura da 1 CPU.
+servire — la strategia `EST_WAIT`, oggi in `sync-queue`, **da spostare in
+`async-queue`** perché `sync-queue` non si attiva (§25, decisione del
+2026-08-23). Bocciata una volta sola, sotto strozzatura da 1 CPU.
 
 ### Cosa questa cella non dice
 
@@ -2220,7 +2234,10 @@ TCP applicato all'ammissione**:
 nanoFaaS ha già metà di questo: il modulo `concurrency-control` usa un segnale
 Vegas, ma governa la concorrenza **della funzione**, non l'ammissione. E
 `SyncQueueAdmissionController` su `EST_WAIT` è la strategia `Simple` con un'altra
-stima. Nessuno dei due era caricato in queste run.
+stima — e il suo `WaitEstimator` è Little esplicito, `profondità / throughput`,
+cioè la stessa legge che Netflix usa per derivare il limite. Nessuno dei due era
+caricato in queste run, e la seconda **va spostata in `async-queue`** prima di
+poterla validare: `sync-queue` non si attiva (§25).
 
 ### Il knob con la trappola
 
