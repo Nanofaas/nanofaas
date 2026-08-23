@@ -511,6 +511,168 @@ def table_salto(root):
     return "\n".join(out)
 
 
+def _ab_cells(root, arm, run_dir="azure-ab-hop"):
+    """Every repetition of one arm, as (Snap, k6 metrics, run path)."""
+    base = Path(root) / run_dir / arm
+    for run in sorted(base.glob("run-*")):
+        snap = run / "metrics" / "prometheus-snapshot.json.gz"
+        if not snap.exists():
+            snap = snap.with_suffix("")
+        if snap.exists():
+            yield Snap(load(snap)), _k6_raw(run), run
+
+
+def _ab_readings(root, arm, run_dir="azure-ab-hop"):
+    """One dict of lists: metric name -> one value per repetition.
+
+    Everything is taken over the whole run and weighted by requests where a
+    weighting applies. Section 32 is the reason: comparing Little at a peak
+    instant with k6's run average put the server at 98% of the caller's clock
+    when the honest figure was 48%.
+    """
+    from datetime import datetime
+    acc = {}
+
+    def add(key, value):
+        acc.setdefault(key, []).append(value)
+
+    for s, k, _ in _ab_cells(root, arm, run_dir):
+        n_all = k["http_reqs"]["count"]
+        n_bad = k["http_req_failed"]["passes"]
+        n_ok = k["http_req_failed"]["fails"]
+        d_all = k["http_req_duration"]["avg"]
+        d_ok = k["http_req_duration{expected_response:true}"]["avg"]
+        # k6 publishes successes apart and everything together; rejections are the
+        # remainder of the weighted mean and are never measured directly.
+        d_bad = (d_all * n_all - d_ok * n_ok) / n_bad if n_bad else float("nan")
+
+        add("k6 richieste/s", k["http_reqs"]["rate"])
+        add("k6 latenza media", d_all)
+        add("k6 p95", k["http_req_duration"]["p(95)"])
+        add("k6 p99", k["http_req_duration"]["p(99)"])
+        add("k6 servite", d_ok)
+        add("k6 rifiutate", d_bad)
+        add("k6 % rifiuti", 100 * n_bad / n_all)
+        add("k6 waiting (TTFB)", k["http_req_waiting"]["avg"])
+        add("k6 connecting", k["http_req_connecting"]["avg"])
+        add("VU usate al picco", k["vus"]["max"])
+        drop = k.get("dropped_iterations")
+        add("arrivi non emessi", drop["count"] if drop else 0.0)
+
+        # Residenza lato server: Little sul misuratore del server, pesata sulle
+        # richieste, sull'intera run.
+        ser = lambda n: [(datetime.fromisoformat(x["timestamp"]), x["value"])
+                         for x in s.q.get(n, {}).get("points") or []]
+
+        def rate(n):
+            e = ser(n)
+            return {b[0]: (b[1] - a[1]) / (b[0] - a[0]).total_seconds()
+                    for a, b in zip(e, e[1:]) if b[1] >= a[1]}
+
+        active = dict(ser("netty_connections_active"))
+        ok_r, ko_r = rate("http_server_ok_count"), rate("http_server_rejected_count")
+        ts = [t for t in sorted(active) if t in ok_r or t in ko_r]
+        served = sum(ok_r.get(t, 0) + ko_r.get(t, 0) for t in ts)
+        resident = sum(active[t] for t in ts) / served * 1000 if served else float("nan")
+        handler = ((s.last("http_server_ok_sum") + s.last("http_server_rejected_sum"))
+                   / (s.last("http_server_ok_count") + s.last("http_server_rejected_count")) * 1000)
+        add("residenza nel server", resident)
+        add("dentro l'handler", handler)
+        add("fuori dal server", d_all - resident)
+        add("handler, solo 200", s.last("http_server_ok_sum") / s.last("http_server_ok_count") * 1000)
+        add("handler, solo 429",
+            s.last("http_server_rejected_sum") / s.last("http_server_rejected_count") * 1000)
+
+        peak = lambda n: max((float(x["value"]) for x in s.q.get(n, {}).get("points") or []),
+                             default=float("nan"))
+        add("event loop pending, picco", peak("netty_eventloop_pending"))
+        add("connessioni attive, picco", peak("netty_connections_active"))
+        add("connessioni aperte, picco", peak("netty_connections"))
+        add("thread vivi, picco", peak("jvm_threads_live"))
+        add("thread runnable, picco", peak("jvm_threads_runnable"))
+
+        add("coda, profondita' picco", peak("function_queue_depth"))
+        add("in volo, picco", peak("function_inFlight"))
+        add("dispatch totali", s.last("function_dispatch_total"))
+        add("rifiuti in coda", s.last("function_queue_rejected_total"))
+        qc = s.last("function_queue_wait_count")
+        add("attesa in coda", s.last("function_queue_wait_sum") / qc * 1000 if qc else 0.0)
+        lc = s.last("function_latency_count")
+        add("servizio della funzione", s.last("function_latency_sum") / lc * 1000 if lc else 0.0)
+
+        add("CPU al picco", peak("container_cpu_cores@control-plane"))
+        add("RSS al picco (MiB)", peak("container_memory_bytes@control-plane") / 1048576)
+        add("heap al picco (MiB)", peak("jvm_heap_used_bytes") / 1048576)
+        per = s.last("container_cpu_periods@control-plane") - (
+            s.at("container_cpu_periods@control-plane", 0) or 0)
+        thr = s.last("container_cpu_throttled_periods@control-plane") - (
+            s.at("container_cpu_throttled_periods@control-plane", 0) or 0)
+        add("periodi CFS strozzati %", 100 * thr / per if per else 0.0)
+        add("pause GC (s)", s.last("jvm_gc_pause_sum"))
+    return acc
+
+
+_AB_GROUPS = (
+    ("Lato chiamante (k6)", ["k6 richieste/s", "k6 latenza media", "k6 p95", "k6 p99",
+                             "k6 servite", "k6 rifiutate", "k6 % rifiuti",
+                             "k6 waiting (TTFB)", "k6 connecting",
+                             "VU usate al picco", "arrivi non emessi"]),
+    ("Dove va il tempo", ["residenza nel server", "dentro l'handler", "fuori dal server",
+                          "handler, solo 200", "handler, solo 429"]),
+    ("Netty e thread", ["event loop pending, picco", "connessioni attive, picco",
+                        "connessioni aperte, picco", "thread vivi, picco",
+                        "thread runnable, picco"]),
+    ("Coda applicativa", ["coda, profondita' picco", "in volo, picco", "dispatch totali",
+                          "rifiuti in coda", "attesa in coda", "servizio della funzione"]),
+    ("Risorse", ["CPU al picco", "RSS al picco (MiB)", "heap al picco (MiB)",
+                 "periodi CFS strozzati %", "pause GC (s)"]),
+)
+
+
+def _separation(a, b):
+    """|differenza| in unita' di deviazione campionaria aggregata.
+
+    Not a p-value. Three repetitions per arm give four degrees of freedom, and a
+    p-value computed on that would claim a precision the design does not have.
+    The ratio says the same thing without the claim: below 2 the arms overlap.
+    """
+    if len(a) < 2 or len(b) < 2:
+        return None
+    pooled = ((sd(a) ** 2 + sd(b) ** 2) / 2) ** 0.5
+    if pooled == 0:
+        return float("inf") if mean(a) != mean(b) else 0.0
+    return abs(mean(a) - mean(b)) / pooled
+
+
+def table_ab_salto(root):
+    a = _ab_readings(root, "jvm-c2-hop")
+    b = _ab_readings(root, "jvm-c2")
+    if not a or not b:
+        return "_(dati non ancora presenti)_"
+    n_a = len(next(iter(a.values())))
+    n_b = len(next(iter(b.values())))
+    out = [f"| metrica | A: con salto (n={n_a}) | B: senza salto (n={n_b}) | Δ | separazione |",
+           "|---|---:|---:|---:|:--:|"]
+    for group, keys in _AB_GROUPS:
+        out.append(f"| **{group}** | | | | |")
+        for key in keys:
+            xa, xb = a.get(key, []), b.get(key, [])
+            if not xa or not xb:
+                continue
+            # A metric added mid-investigation is absent from the older arm, and a
+            # NaN printed as a number would read as a measurement. Say so instead.
+            if any(v != v for v in xa) or any(v != v for v in xb):
+                side = "A" if any(v != v for v in xa) else "B"
+                out.append(f"| {key} | _non raccolta nel braccio {side}_ | | | — |")
+                continue
+            fmt = "%.0f" if max(abs(mean(xa)), abs(mean(xb))) >= 1000 else "%.2f"
+            delta = f"{(mean(xb) / mean(xa) - 1) * 100:+.1f} %" if mean(xa) else "—"
+            sep = _separation(xa, xb)
+            mark = "—" if sep is None else ("**sì**" if sep >= 2 else f"no ({sep:.1f}σ)")
+            out.append(f"| {key} | {pm(xa, fmt)} | {pm(xb, fmt)} | {delta} | {mark} |")
+    return "\n".join(out)
+
+
 BLOCKS = {
     "latenza": table_latency,
     "generatore": table_generator,
@@ -523,6 +685,7 @@ BLOCKS = {
     "davanti": table_davanti,
     "backlog": table_backlog,
     "salto": table_salto,
+    "ab-salto": table_ab_salto,
 }
 
 
