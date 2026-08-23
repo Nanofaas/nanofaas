@@ -1350,8 +1350,8 @@ pubblicata dalla piattaforma ma non richiesta dal catalogo torna vuota senza dir
 
 ## A-bis. Le tabelle sono generate, non scritte
 
-Ogni tabella numerica di §22, §22.2, §22.3 e appendice B sta fra marcatori
-`<!-- tabella:NOME -->` e viene prodotta da
+Ogni tabella numerica di §22, §22.2, §22.3, §28, §32 e appendice B sta fra
+marcatori `<!-- tabella:NOME -->` e viene prodotta da
 [`../experiments/dispatch-bottleneck/build_tables.py`](../experiments/dispatch-bottleneck/build_tables.py)
 leggendo i raw archiviati. Il documento possiede la prosa; fra i marcatori non
 possiede nulla.
@@ -1371,6 +1371,44 @@ Nello script vivono anche le tre scelte metodologiche che i numeri non mostrano,
 accanto al codice che le applica: quali fasi contano come stazionarie, perché i
 punti a 200 rps sono esclusi dal modello di CPU, e perché l'asse dei tassi deve
 essere quello ottenuto e non quello offerto.
+
+### Quale blocco produce quale tabella
+
+| blocco | tabella | dove |
+|---|---|---|
+| `latenza` `generatore` `risorse` `fasi` | matrice 4 build | §22 |
+| `modello-cpu-funzione` | modello di CPU della funzione | appendice B |
+| `jvm-2x2` `jvm-effetti` | fattoriale collettore × JIT | §23 |
+| `fasi-k6` | scomposizione di `http_req_*` | §27 |
+| `davanti` `backlog` | dentro l'handler contro davanti | §28 |
+| `salto` | A/B del salto, una cella per braccio | §32 |
+| **`ab-salto`** | **A/B completo, 32 metriche con dispersione** | **§33** |
+
+### Rifare un esperimento
+
+Gli script che lanciano le celle stanno nel checkout NanoLab, versionati accanto
+al codice che eseguono — non erano su nessun laptop:
+
+| script | cosa lancia |
+|---|---|
+| `run-ab-hop.sh` | A/B del salto: 2 varianti × 3 ripetizioni, 2×, 2 core |
+| `run-load2x-verify.sh` | cella singola 2×, per verificare che le metriche rispondano |
+| `run-load2x-threads.sh` | cella singola 2× con il fix |
+| `sweep-cpu.sh` `sweep-jvm.sh` `sweep-load.sh` | gli sweep di §22, §23, §26 |
+| `teardown.sh` | distrugge VM, NIC, IP, vnet, NSG e **dischi orfani** (tre passate) |
+
+Ognuno gira sotto `caffeinate -dimsu` staccato con doppio fork, perché un
+`Bash` in primo piano muore con la sessione e si porta via `caffeinate`: su macOS
+si verifica con `pmset -g assertions`, mai con `pgrep`.
+
+Prima di leggere una run nuova:
+
+```bash
+python3 docs/experiments/dispatch-bottleneck/check_metrics.py <run-dir>
+```
+
+Distingue tre stati che si confondono in uno: serie **vuota** (nessuno la
+pubblica), serie **a zero** (pubblicata, evento mai accaduto), serie **viva**.
 
 ## B. Osservare le funzioni senza strumentarle
 
