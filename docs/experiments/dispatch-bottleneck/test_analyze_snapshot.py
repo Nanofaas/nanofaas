@@ -19,11 +19,19 @@ class AnalyzeSnapshotTest(unittest.TestCase):
     def series(
         self, first: float, second: float, first_at: float = 0, second_at: float = 10
     ) -> dict[str, object]:
+        midpoint_at = (first_at + second_at) / 2
+        midpoint = (first + second) / 2
         return {
             "points": [
                 {
                     "timestamp": (self.start + timedelta(seconds=first_at)).isoformat(),
                     "value": first,
+                },
+                {
+                    "timestamp": (
+                        self.start + timedelta(seconds=midpoint_at)
+                    ).isoformat(),
+                    "value": midpoint,
                 },
                 {
                     "timestamp": (self.start + timedelta(seconds=second_at)).isoformat(),
@@ -215,6 +223,29 @@ class AnalyzeSnapshotTest(unittest.TestCase):
             {"metrics": {"checks": {"passes": 10, "fails": 0}}},
         )
 
+    def full_validation_inputs(
+        self, end: int = 450, step: int = 5
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        snapshot, k6 = self.valid_validation_inputs()
+        samples = range(0, end + 1, step)
+        values = {
+            "function_dispatch_total": lambda at: at,
+            "scheduler_visit_duration_sum": lambda at: at * 0.20,
+            "scheduler_idle_duration_sum": lambda at: at * 0.79,
+            "process_uptime_seconds": lambda at: 10 + at,
+            "function_scheduler_dispatch_submit_duration_count": lambda at: at,
+            "function_inFlight": lambda _at: 0,
+            "function_dispatch_slot_hold_events_total": lambda at: at,
+            "function_dispatch_slot_hold_seconds_total": lambda at: at / 1_000,
+            "function_dispatch_slot_hold_distribution_series": lambda _at: 0,
+            "function_timeout_total": lambda _at: 0,
+        }
+        snapshot["queries"] = {
+            name: self.sampled_series(*((at, value(at)) for at in samples))
+            for name, value in values.items()
+        }
+        return snapshot, k6
+
     def failed_criteria(
         self, snapshot: dict[str, object], k6: dict[str, object]
     ) -> set[str]:
@@ -403,42 +434,63 @@ class AnalyzeSnapshotTest(unittest.TestCase):
                 self.assertIn("schema", self.failed_criteria(snapshot, k6))
 
     def test_validation_rejects_a_snapshot_truncated_at_405_seconds(self) -> None:
-        snapshot, k6 = self.valid_validation_inputs()
-        times = sorted({0, *(end for _name, _start, end in analyze_snapshot.PHASES if end <= 405)})
-        snapshot["queries"]["function_dispatch_total"] = self.sampled_series(
-            *((at, at) for at in times)
-        )
-        snapshot["queries"]["scheduler_visit_duration_sum"] = self.sampled_series(
-            *((at, at * 0.20) for at in times)
-        )
-        snapshot["queries"]["scheduler_idle_duration_sum"] = self.sampled_series(
-            *((at, at * 0.79) for at in times)
-        )
-        snapshot["queries"]["process_uptime_seconds"] = self.sampled_series(
-            *((at, 10 + at) for at in times)
-        )
-        snapshot["queries"]["function_scheduler_dispatch_submit_duration_count"] = (
-            self.sampled_series(*((at, at) for at in times))
-        )
-        snapshot["queries"]["function_inFlight"] = self.sampled_series(
-            *((at, 0) for at in times)
-        )
-        snapshot["queries"]["function_dispatch_slot_hold_events_total"] = (
-            self.sampled_series(*((at, at) for at in times))
-        )
-        snapshot["queries"]["function_dispatch_slot_hold_seconds_total"] = (
-            self.sampled_series(*((at, at / 1_000) for at in times))
-        )
-        snapshot["queries"]["function_dispatch_slot_hold_distribution_series"] = (
-            self.sampled_series(*((at, 0) for at in times))
-        )
-        snapshot["queries"]["function_timeout_total"] = self.sampled_series(
-            *((at, 0) for at in times)
-        )
+        snapshot, k6 = self.full_validation_inputs(end=405)
 
         results = analyze_snapshot.validation_results(snapshot, k6)
 
         self.assertIn("schema", {name for name, passed, _ in results if not passed})
+
+    def test_validation_accepts_regular_five_second_cadence(self) -> None:
+        snapshot, k6 = self.full_validation_inputs()
+
+        self.assertEqual(
+            {
+                name
+                for name, passed, _detail in analyze_snapshot.validation_results(
+                    snapshot, k6
+                )
+                if not passed
+            },
+            set(),
+        )
+
+    def test_validation_rejects_internal_sampling_gap(self) -> None:
+        snapshot, k6 = self.full_validation_inputs()
+        points = snapshot["queries"]["function_inFlight"]["points"]
+        snapshot["queries"]["function_inFlight"]["points"] = [
+            point
+            for point in points
+            if not 100
+            <= (datetime.fromisoformat(point["timestamp"]) - self.start).total_seconds()
+            <= 200
+        ]
+
+        self.assertIn(
+            "schema",
+            {
+                name
+                for name, passed, _detail in analyze_snapshot.validation_results(
+                    snapshot, k6
+                )
+                if not passed
+            },
+        )
+
+    def test_validation_rejects_series_with_only_endpoints(self) -> None:
+        snapshot, k6 = self.full_validation_inputs()
+        points = snapshot["queries"]["function_inFlight"]["points"]
+        snapshot["queries"]["function_inFlight"]["points"] = [points[0], points[-1]]
+
+        self.assertIn(
+            "schema",
+            {
+                name
+                for name, passed, _detail in analyze_snapshot.validation_results(
+                    snapshot, k6
+                )
+                if not passed
+            },
+        )
 
     def test_validate_mode_rejects_invalid_utf8_without_traceback(self) -> None:
         snapshot, k6 = self.valid_validation_inputs()

@@ -195,6 +195,7 @@ def validation_inputs(
     start_is_aware = start.utcoffset() is not None
     window_start = PHASES[0][1]
     window_end = PHASES[-1][2]
+    series_timestamps: dict[str, list[datetime]] = {}
     for name in VALIDATION_SERIES:
         points = queries[name]["points"]
         if not isinstance(points, list) or len(points) < 2:
@@ -210,16 +211,34 @@ def validation_inputs(
                 raise ValueError(f"{name} timestamps are not strictly increasing")
             previous = timestamp
             timestamps.append(timestamp)
-        sampling_step = median(
+        series_timestamps[name] = timestamps
+
+    sampling_steps = {
+        name: median(
             (current - previous).total_seconds()
             for previous, current in zip(timestamps, timestamps[1:])
         )
+        for name, timestamps in series_timestamps.items()
+    }
+    nominal_cadence = median(sampling_steps.values())
+    maximum_gap = nominal_cadence * 1.5
+    for name, timestamps in series_timestamps.items():
+        sampling_step = sampling_steps[name]
         first = (timestamps[0] - start).total_seconds()
         last = (timestamps[-1] - start).total_seconds()
         if first > window_start + sampling_step or last < window_end - sampling_step:
             raise ValueError(
                 f"{name} covers {first:g}..{last:g}s, required "
                 f"{window_start:g}..{window_end:g}s within {sampling_step:g}s sampling step"
+            )
+        observed_gap = max(
+            (current - previous).total_seconds()
+            for previous, current in zip(timestamps, timestamps[1:])
+        )
+        if observed_gap > maximum_gap:
+            raise ValueError(
+                f"{name} has {observed_gap:g}s sampling gap; nominal cadence "
+                f"{nominal_cadence:g}s permits at most {maximum_gap:g}s"
             )
     finite_number(k6_summary["metrics"]["checks"]["fails"], "k6 checks.fails")
     if run_summary is not None and run_summary["schema_version"] != 1:
