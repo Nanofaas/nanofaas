@@ -226,15 +226,19 @@ class AnalyzeSnapshotTest(unittest.TestCase):
             }
 
     def run_validation_cli(
-        self, snapshot: dict[str, object], k6: dict[str, object]
+        self,
+        snapshot: dict[str, object] | bytes,
+        k6: dict[str, object] | bytes,
     ) -> tuple[int, str]:
         output = io.StringIO()
         with tempfile.TemporaryDirectory() as directory:
             snapshot_path = Path(directory) / "prometheus-snapshot.json"
             k6_path = Path(directory) / "k6-summary.json"
             run_summary_path = Path(directory) / "summary.json"
-            snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
-            k6_path.write_text(json.dumps(k6), encoding="utf-8")
+            snapshot_path.write_bytes(
+                snapshot if isinstance(snapshot, bytes) else json.dumps(snapshot).encode()
+            )
+            k6_path.write_bytes(k6 if isinstance(k6, bytes) else json.dumps(k6).encode())
             run_summary_path.write_text(json.dumps({"schema_version": 1}), encoding="utf-8")
             with (
                 patch.object(analyze_snapshot, "PHASES", (("traffic", 0, 10),)),
@@ -286,6 +290,39 @@ class AnalyzeSnapshotTest(unittest.TestCase):
         snapshot["queries"]["function_dispatch_slot_hold_events_total"] = self.series(0, 9)
 
         self.assertIn("slot hold releases", self.failed_criteria(snapshot, k6))
+
+    def test_release_formula_accounts_for_boundary_inflight(self) -> None:
+        snapshot, k6 = self.valid_validation_inputs()
+        snapshot["queries"]["function_scheduler_dispatch_submit_duration_count"] = (
+            self.series(10, 414)
+        )
+        snapshot["queries"]["function_inFlight"] = self.series(2, 1)
+        snapshot["queries"]["function_dispatch_slot_hold_events_total"] = self.series(0, 405)
+
+        self.assertNotIn("slot hold releases", self.failed_criteria(snapshot, k6))
+
+    def test_release_formula_rejects_wrong_boundary_total(self) -> None:
+        snapshot, k6 = self.valid_validation_inputs()
+        snapshot["queries"]["function_scheduler_dispatch_submit_duration_count"] = (
+            self.series(10, 414)
+        )
+        snapshot["queries"]["function_inFlight"] = self.series(2, 1)
+        snapshot["queries"]["function_dispatch_slot_hold_events_total"] = self.series(0, 404)
+
+        self.assertIn("slot hold releases", self.failed_criteria(snapshot, k6))
+
+    def test_validation_rejects_zero_slot_seconds_when_releases_exist(self) -> None:
+        snapshot, k6 = self.valid_validation_inputs()
+        snapshot["queries"]["function_scheduler_dispatch_submit_duration_count"] = (
+            self.series(10, 414)
+        )
+        snapshot["queries"]["function_inFlight"] = self.series(2, 1)
+        snapshot["queries"]["function_dispatch_slot_hold_events_total"] = self.series(0, 405)
+        snapshot["queries"]["function_dispatch_slot_hold_seconds_total"] = self.series(0, 0)
+
+        failed = self.failed_criteria(snapshot, k6)
+        self.assertNotIn("slot hold releases", failed)
+        self.assertIn("slot hold seconds", failed)
 
     def test_validation_rejects_negative_slot_seconds(self) -> None:
         snapshot, k6 = self.valid_validation_inputs()
@@ -365,6 +402,52 @@ class AnalyzeSnapshotTest(unittest.TestCase):
 
                 self.assertIn("schema", self.failed_criteria(snapshot, k6))
 
+    def test_validation_rejects_a_snapshot_truncated_at_405_seconds(self) -> None:
+        snapshot, k6 = self.valid_validation_inputs()
+        times = sorted({0, *(end for _name, _start, end in analyze_snapshot.PHASES if end <= 405)})
+        snapshot["queries"]["function_dispatch_total"] = self.sampled_series(
+            *((at, at) for at in times)
+        )
+        snapshot["queries"]["scheduler_visit_duration_sum"] = self.sampled_series(
+            *((at, at * 0.20) for at in times)
+        )
+        snapshot["queries"]["scheduler_idle_duration_sum"] = self.sampled_series(
+            *((at, at * 0.79) for at in times)
+        )
+        snapshot["queries"]["process_uptime_seconds"] = self.sampled_series(
+            *((at, 10 + at) for at in times)
+        )
+        snapshot["queries"]["function_scheduler_dispatch_submit_duration_count"] = (
+            self.sampled_series(*((at, at) for at in times))
+        )
+        snapshot["queries"]["function_inFlight"] = self.sampled_series(
+            *((at, 0) for at in times)
+        )
+        snapshot["queries"]["function_dispatch_slot_hold_events_total"] = (
+            self.sampled_series(*((at, at) for at in times))
+        )
+        snapshot["queries"]["function_dispatch_slot_hold_seconds_total"] = (
+            self.sampled_series(*((at, at / 1_000) for at in times))
+        )
+        snapshot["queries"]["function_dispatch_slot_hold_distribution_series"] = (
+            self.sampled_series(*((at, 0) for at in times))
+        )
+        snapshot["queries"]["function_timeout_total"] = self.sampled_series(
+            *((at, 0) for at in times)
+        )
+
+        results = analyze_snapshot.validation_results(snapshot, k6)
+
+        self.assertIn("schema", {name for name, passed, _ in results if not passed})
+
+    def test_validate_mode_rejects_invalid_utf8_without_traceback(self) -> None:
+        snapshot, k6 = self.valid_validation_inputs()
+        for invalid_snapshot, invalid_k6 in ((b"\xff", k6), (snapshot, b"\xff")):
+            with self.subTest(snapshot=isinstance(invalid_snapshot, bytes)):
+                exit_code, output = self.run_validation_cli(invalid_snapshot, invalid_k6)
+                self.assertEqual(exit_code, 1)
+                self.assertIn("schema: FAIL", output)
+
     def test_validation_rejects_an_incomplete_nanolab_cell(self) -> None:
         snapshot, _k6 = self.valid_validation_inputs()
         with tempfile.TemporaryDirectory() as directory:
@@ -383,70 +466,20 @@ class AnalyzeSnapshotTest(unittest.TestCase):
     def test_validate_mode_prints_every_criterion_and_returns_nonzero(self) -> None:
         snapshot, k6 = self.valid_validation_inputs()
         k6["metrics"]["checks"]["fails"] = 1
-        output = io.StringIO()
-        with tempfile.TemporaryDirectory() as directory:
-            snapshot_path = Path(directory) / "prometheus-snapshot.json"
-            k6_path = Path(directory) / "k6-summary.json"
-            run_summary_path = Path(directory) / "summary.json"
-            snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
-            k6_path.write_text(json.dumps(k6), encoding="utf-8")
-            run_summary_path.write_text(json.dumps({"schema_version": 1}), encoding="utf-8")
-            with (
-                patch.object(analyze_snapshot, "PHASES", (("traffic", 0, 10),)),
-                patch.object(
-                    sys,
-                    "argv",
-                    [
-                        "analyze_snapshot.py",
-                        str(snapshot_path),
-                        "--validate",
-                        "--k6-summary",
-                        str(k6_path),
-                        "--run-summary",
-                        str(run_summary_path),
-                    ],
-                ),
-                redirect_stdout(output),
-            ):
-                exit_code = analyze_snapshot.main()
+        exit_code, output = self.run_validation_cli(snapshot, k6)
 
         self.assertEqual(exit_code, 1)
-        self.assertIn("completion markers: PASS", output.getvalue())
-        self.assertIn("wall-clock accounting: PASS", output.getvalue())
-        self.assertIn("k6 checks: FAIL", output.getvalue())
+        self.assertIn("completion markers: PASS", output)
+        self.assertIn("wall-clock accounting: PASS", output)
+        self.assertIn("k6 checks: FAIL", output)
 
     def test_validate_mode_rejects_reversed_timestamps_without_traceback(self) -> None:
         snapshot, k6 = self.valid_validation_inputs()
         snapshot["queries"]["scheduler_visit_duration_sum"]["points"].reverse()
-        output = io.StringIO()
-        with tempfile.TemporaryDirectory() as directory:
-            snapshot_path = Path(directory) / "prometheus-snapshot.json"
-            k6_path = Path(directory) / "k6-summary.json"
-            run_summary_path = Path(directory) / "summary.json"
-            snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
-            k6_path.write_text(json.dumps(k6), encoding="utf-8")
-            run_summary_path.write_text(json.dumps({"schema_version": 1}), encoding="utf-8")
-            with (
-                patch.object(analyze_snapshot, "PHASES", (("traffic", 0, 10),)),
-                patch.object(
-                    sys,
-                    "argv",
-                    [
-                        "analyze_snapshot.py",
-                        str(snapshot_path),
-                        "--validate",
-                        "--k6-summary",
-                        str(k6_path),
-                        "--run-summary",
-                        str(run_summary_path),
-                    ],
-                ),
-                redirect_stdout(output),
-            ):
-                exit_code = analyze_snapshot.main()
+        exit_code, output = self.run_validation_cli(snapshot, k6)
 
         self.assertEqual(exit_code, 1)
-        self.assertIn("schema: FAIL", output.getvalue())
+        self.assertIn("schema: FAIL", output)
 
 
 if __name__ == "__main__":

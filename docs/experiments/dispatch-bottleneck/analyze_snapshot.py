@@ -6,7 +6,7 @@ import sys
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from statistics import mean
+from statistics import mean, median
 
 
 PHASES = (
@@ -193,11 +193,14 @@ def validation_inputs(
         raise TypeError("snapshot.queries must be an object")
     start = datetime.fromisoformat(str(snapshot["start"]))
     start_is_aware = start.utcoffset() is not None
+    window_start = PHASES[0][1]
+    window_end = PHASES[-1][2]
     for name in VALIDATION_SERIES:
         points = queries[name]["points"]
         if not isinstance(points, list) or len(points) < 2:
             raise ValueError(f"{name} needs at least two samples")
         previous: datetime | None = None
+        timestamps: list[datetime] = []
         for point in points:
             timestamp = datetime.fromisoformat(str(point["timestamp"]))
             if (timestamp.utcoffset() is not None) != start_is_aware:
@@ -206,6 +209,18 @@ def validation_inputs(
             if previous is not None and timestamp <= previous:
                 raise ValueError(f"{name} timestamps are not strictly increasing")
             previous = timestamp
+            timestamps.append(timestamp)
+        sampling_step = median(
+            (current - previous).total_seconds()
+            for previous, current in zip(timestamps, timestamps[1:])
+        )
+        first = (timestamps[0] - start).total_seconds()
+        last = (timestamps[-1] - start).total_seconds()
+        if first > window_start + sampling_step or last < window_end - sampling_step:
+            raise ValueError(
+                f"{name} covers {first:g}..{last:g}s, required "
+                f"{window_start:g}..{window_end:g}s within {sampling_step:g}s sampling step"
+            )
     finite_number(k6_summary["metrics"]["checks"]["fails"], "k6 checks.fails")
     if run_summary is not None and run_summary["schema_version"] != 1:
         raise ValueError("summary.json has unsupported schema_version")
@@ -274,7 +289,13 @@ def validation_results(
             raise ValueError("slot hold seconds became negative")
         if any(current < previous for previous, current in zip(values, values[1:])):
             raise ValueError("slot hold seconds decreased")
-        return f"delta={values[-1] - values[0]:g}"
+        total = values[-1] - values[0]
+        events = counter_delta(queries, "function_dispatch_slot_hold_events_total")
+        if events > 0 and total <= 0:
+            raise ValueError(f"{events:g} releases recorded with no positive slot hold time")
+        if events == 0 and total != 0:
+            raise ValueError("slot hold seconds changed without releases")
+        return f"delta={total:g}"
 
     def distribution() -> str:
         values = series_values(
@@ -325,6 +346,11 @@ def validation_results_from_files(
         texts = [path.read_text(encoding="utf-8") for path in paths]
     except OSError as error:
         return [("completion markers", False, str(error))]
+    except UnicodeDecodeError as error:
+        return [
+            ("completion markers", True, "required files present"),
+            ("schema", False, str(error)),
+        ]
     try:
         snapshot, k6_summary, *run_summaries = map(json.loads, texts)
     except json.JSONDecodeError as error:
