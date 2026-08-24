@@ -20,7 +20,9 @@ class QueueManagerGaugeCleanupTest {
             "function_queue_depth_by_path",
             "function_inFlight",
             "function_effective_concurrency",
-            "function_scheduler_dispatch_submit_duration"
+            "function_scheduler_dispatch_submit_duration",
+            "function_dispatch_slot_hold_seconds",
+            "function_dispatch_slot_hold_events"
     );
 
     @Test

@@ -36,10 +36,92 @@ def delta(queries: dict[str, dict[str, object]], name: str, a: float, b: float, 
     return nearest(points, b, start) - nearest(points, a, start)
 
 
+def monotonic_delta(
+    queries: dict[str, dict[str, object]],
+    name: str,
+    a: float,
+    b: float,
+    start: datetime,
+    error_message: str,
+) -> float:
+    points = queries[name]["points"]
+    first = min(
+        range(len(points)),
+        key=lambda index: abs(seconds(str(points[index]["timestamp"]), start) - a),
+    )
+    last = min(
+        range(len(points)),
+        key=lambda index: abs(seconds(str(points[index]["timestamp"]), start) - b),
+    )
+    values = [float(point["value"]) for point in points[first : last + 1]]
+    if any(current < previous for previous, current in zip(values, values[1:])):
+        raise ValueError(error_message)
+    return values[-1] - values[0]
+
+
 def timer_ms(queries: dict[str, dict[str, object]], prefix: str, a: float, b: float, start: datetime) -> float:
     count = delta(queries, f"{prefix}_count", a, b, start)
     total = delta(queries, f"{prefix}_sum", a, b, start)
     return total / count * 1_000 if count else 0.0
+
+
+def optional_delta(
+    queries: dict[str, dict[str, object]], name: str, a: float, b: float, start: datetime
+) -> float | None:
+    return delta(queries, name, a, b, start) if name in queries else None
+
+
+def optional_timer_ms(
+    queries: dict[str, dict[str, object]], prefix: str, a: float, b: float, start: datetime
+) -> float | None:
+    presence = (f"{prefix}_count" in queries, f"{prefix}_sum" in queries)
+    if any(presence) and not all(presence):
+        raise ValueError(f"{prefix} must provide a complete pair")
+    return timer_ms(queries, prefix, a, b, start) if all(presence) else None
+
+
+def slot_hold_ms(
+    queries: dict[str, dict[str, object]], a: float, b: float, start: datetime
+) -> float:
+    seconds_name = "function_dispatch_slot_hold_seconds_total"
+    events_name = "function_dispatch_slot_hold_events_total"
+    historic_sum_name = "function_dispatch_slot_hold_duration_sum"
+    historic_count_name = "function_dispatch_slot_hold_duration_count"
+    counter_presence = (seconds_name in queries, events_name in queries)
+    historic_presence = (historic_sum_name in queries, historic_count_name in queries)
+
+    if any(counter_presence):
+        if not all(counter_presence) or any(historic_presence):
+            raise ValueError("slot hold metrics must provide a complete pair without mixing formats")
+        events = monotonic_delta(
+            queries, events_name, a, b, start, "slot hold counters decreased"
+        )
+        seconds = monotonic_delta(
+            queries, seconds_name, a, b, start, "slot hold counters decreased"
+        )
+        if seconds < 0 or events < 0:
+            raise ValueError("slot hold counters decreased")
+        if not events:
+            if seconds:
+                raise ValueError("slot hold seconds changed without events")
+            return 0.0
+        return seconds / events * 1_000
+
+    if not all(historic_presence):
+        raise ValueError("slot hold metrics must provide a complete pair")
+    count = monotonic_delta(
+        queries, historic_count_name, a, b, start, "historic slot hold timer decreased"
+    )
+    total = monotonic_delta(
+        queries, historic_sum_name, a, b, start, "historic slot hold timer decreased"
+    )
+    if total < 0 or count < 0:
+        raise ValueError("historic slot hold timer decreased")
+    if not count:
+        if total:
+            raise ValueError("historic slot hold sum changed without events")
+        return 0.0
+    return total / count * 1_000
 
 
 def gauge_mean(queries: dict[str, dict[str, object]], name: str, a: float, b: float, start: datetime) -> float:
@@ -85,20 +167,37 @@ def main() -> None:
     print(" | ".join("---" for _ in header))
     for name, a, b in PHASES:
         dispatches = delta(queries, "function_dispatch_total", a, b, start)
-        slot = timer_ms(queries, "function_dispatch_slot_hold_duration", a, b, start)
+        slot = slot_hold_ms(queries, a, b, start)
         latency = timer_ms(queries, "function_latency", a, b, start)
         queue_wait = timer_ms(queries, "function_queue_wait", a, b, start)
-        reacquisition = timer_ms(queries, "function_dispatch_slot_reacquisition_delay", a, b, start)
-        active = timer_ms(queries, "function_dispatch_slot_reacquisition_active_delay", a, b, start)
-        reacquisitions = delta(queries, "function_dispatch_slot_reacquisition_delay_count", a, b, start)
-        reacquisition_sum = delta(queries, "function_dispatch_slot_reacquisition_delay_sum", a, b, start)
+        reacquisition = optional_timer_ms(
+            queries, "function_dispatch_slot_reacquisition_delay", a, b, start
+        )
+        active = optional_timer_ms(
+            queries, "function_dispatch_slot_reacquisition_active_delay", a, b, start
+        )
+        reacquisitions = optional_delta(
+            queries, "function_dispatch_slot_reacquisition_delay_count", a, b, start
+        )
+        reacquisition_sum = optional_delta(
+            queries, "function_dispatch_slot_reacquisition_delay_sum", a, b, start
+        )
         wake = timer_ms(queries, "function_scheduler_wakeup_delay", a, b, start) * 1_000
         wakes = delta(queries, "function_scheduler_wakeup_delay_count", a, b, start)
         rate = dispatches / (b - a)
         concurrency = gauge_mean(queries, "function_effective_concurrency", a, b, start)
         cycle = concurrency / rate * 1_000 if rate else 0.0
         idle = cycle - slot
-        reacquisition_per_dispatch = reacquisition_sum / dispatches * 1_000 if dispatches else 0.0
+        reacquisition_per_dispatch = (
+            reacquisition_sum / dispatches * 1_000
+            if reacquisition_sum is not None and dispatches
+            else None
+        )
+        pre_active = (
+            reacquisition - active
+            if reacquisition is not None and active is not None
+            else None
+        )
         row = (
             name,
             f"{dispatches:.0f}",
@@ -108,12 +207,15 @@ def main() -> None:
             f"{(slot - latency) * 1_000:.1f}",
             f"{rate * slot / concurrency / 10:.1f}" if concurrency else "0.0",
             f"{idle:.3f}",
-            f"{reacquisition:.3f}",
-            f"{reacquisition_per_dispatch:.3f}",
-            "yes" if reacquisition_per_dispatch <= idle else "NO",
-            f"{reacquisition - active:.3f}",
-            f"{active:.3f}",
-            f"{reacquisitions / dispatches:.2f}" if dispatches else "0.00",
+            f"{reacquisition:.3f}" if reacquisition is not None else "N/A",
+            f"{reacquisition_per_dispatch:.3f}"
+            if reacquisition_per_dispatch is not None else "N/A",
+            "N/A" if reacquisition_per_dispatch is None
+            else "yes" if reacquisition_per_dispatch <= idle else "NO",
+            f"{pre_active:.3f}" if pre_active is not None else "N/A",
+            f"{active:.3f}" if active is not None else "N/A",
+            "N/A" if reacquisitions is None
+            else f"{reacquisitions / dispatches:.2f}" if dispatches else "0.00",
             f"{queue_wait:.3f}",
             f"{gauge_mean(queries, 'function_inFlight', a, b, start):.2f}",
             f"{gauge_mean(queries, 'function_queue_depth', a, b, start):.2f}",

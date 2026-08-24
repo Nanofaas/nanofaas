@@ -53,9 +53,13 @@ class QueueManagerTest {
         assertSoftly(softly -> {
             softly.assertThat(oldState.inFlight()).isZero();
             softly.assertThat(newState.inFlight()).isEqualTo(1);
-            softly.assertThat(registry.get("function_dispatch_slot_hold_duration")
+            softly.assertThat(registry.get("function_dispatch_slot_hold_events")
                     .tag("function", "recreated")
-                    .timer()
+                    .counter()
+                    .count()).isZero();
+            softly.assertThat(registry.get("function_dispatch_slot_hold_seconds")
+                    .tag("function", "recreated")
+                    .counter()
                     .count()).isZero();
         });
     }

@@ -110,6 +110,23 @@ class MetricsProfileConfigurationTest {
     }
 
     @Test
+    void basicDropsSlotHoldAggregateCountersAndAdvancedKeepsThem() {
+        SimpleMeterRegistry basic = registryFor(MetricsProfileConfiguration.MetricsProfile.BASIC);
+        SimpleMeterRegistry advanced = registryFor(MetricsProfileConfiguration.MetricsProfile.ADVANCED);
+        String[] names = {
+                "function_dispatch_slot_hold_seconds",
+                "function_dispatch_slot_hold_events",
+        };
+
+        for (String name : names) {
+            Counter.builder(name).tag("function", "echo").register(basic);
+            Counter.builder(name).tag("function", "echo").register(advanced);
+            assertThat(basic.find(name).counter()).describedAs(name + " must not survive basic").isNull();
+            assertThat(advanced.find(name).counter()).describedAs(name + " must survive advanced").isNotNull();
+        }
+    }
+
+    @Test
     void basicKeepsGlobalSyncQueueDepthAndDropsPerFunctionSeries() {
         SimpleMeterRegistry registry = registryFor(MetricsProfileConfiguration.MetricsProfile.BASIC);
 

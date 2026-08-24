@@ -43,10 +43,14 @@ class SchedulerResilienceTest {
                     .atMost(Duration.ofSeconds(2))
                     .untilAsserted(() -> {
                         assertThat(state.inFlight()).isZero();
-                        assertThat(registry.get("function_dispatch_slot_hold_duration")
+                        assertThat(registry.get("function_dispatch_slot_hold_events")
                                 .tag("function", "failed")
-                                .timer()
+                                .counter()
                                 .count()).isEqualTo(1);
+                        assertThat(registry.get("function_dispatch_slot_hold_seconds")
+                                .tag("function", "failed")
+                                .counter()
+                                .count()).isPositive();
                     });
         } finally {
             scheduler.stop();

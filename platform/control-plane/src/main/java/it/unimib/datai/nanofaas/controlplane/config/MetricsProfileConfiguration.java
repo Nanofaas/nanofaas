@@ -88,7 +88,7 @@ class MetricsProfileConfiguration {
             "function_scheduler_",
             "function_queue_offer_duration",
             "function_queue_poll_duration",
-            "function_dispatch_slot_hold_duration",
+            "function_dispatch_slot_hold_",
             "scheduler_visit_duration",
             "scheduler_idle_duration"
     );

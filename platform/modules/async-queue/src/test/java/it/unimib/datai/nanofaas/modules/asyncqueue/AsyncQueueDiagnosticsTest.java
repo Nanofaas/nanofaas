@@ -18,11 +18,32 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 class AsyncQueueDiagnosticsTest {
+
+    @Test
+    void slotHoldMetricPublishesAggregatesWithoutARequestDistribution() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        QueueManager queueManager = new QueueManager(registry);
+        FunctionSpec spec = new FunctionSpec(
+                "echo", "image", null, Map.of(), null,
+                1000, 10, 2, 3, null, ExecutionMode.LOCAL, null, null, null
+        );
+        queueManager.getOrCreate(spec);
+
+        assertSoftly(softly -> {
+            softly.assertThat(registry.find("function_dispatch_slot_hold_duration").timer())
+                    .isNull();
+            softly.assertThat(registry.find("function_dispatch_slot_hold_seconds").counter())
+                    .isNotNull();
+            softly.assertThat(registry.find("function_dispatch_slot_hold_events").counter())
+                    .isNotNull();
+        });
+    }
 
     @Test
     void releasePublishesDispatchSlotHoldDuration() {
@@ -38,10 +59,10 @@ class AsyncQueueDiagnosticsTest {
         queueManager.releaseSlot("echo");
         queueManager.releaseSlot("echo");
 
-        assertThat(registry.get("function_dispatch_slot_hold_duration").tag("function", "echo")
-                .timer().count()).isEqualTo(1);
-        assertThat(registry.get("function_dispatch_slot_hold_duration").tag("function", "echo")
-                .timer().totalTime(java.util.concurrent.TimeUnit.NANOSECONDS)).isPositive();
+        assertThat(registry.get("function_dispatch_slot_hold_events").tag("function", "echo")
+                .counter().count()).isEqualTo(1);
+        assertThat(registry.get("function_dispatch_slot_hold_seconds").tag("function", "echo")
+                .counter().count()).isPositive();
     }
 
     @Test

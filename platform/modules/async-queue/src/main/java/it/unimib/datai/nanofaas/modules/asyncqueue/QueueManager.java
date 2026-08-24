@@ -97,7 +97,11 @@ public class QueueManager {
                 Timer dispatchSubmitDuration = Timer.builder("function_scheduler_dispatch_submit_duration")
                         .tag(FUNCTION_TAG, name)
                         .register(meterRegistry);
-                Timer slotHoldDuration = Timer.builder("function_dispatch_slot_hold_duration")
+                Counter slotHoldSeconds = Counter.builder("function_dispatch_slot_hold_seconds")
+                        .baseUnit("seconds")
+                        .tag(FUNCTION_TAG, name)
+                        .register(meterRegistry);
+                Counter slotHoldEvents = Counter.builder("function_dispatch_slot_hold_events")
                         .tag(FUNCTION_TAG, name)
                         .register(meterRegistry);
                 Counter batchLimit = Counter.builder("function_scheduler_batch_limit")
@@ -116,7 +120,8 @@ public class QueueManager {
                 ids.add(activationBookkeepingDuration.getId());
                 ids.add(signalEnqueueDuration.getId());
                 ids.add(dispatchSubmitDuration.getId());
-                ids.add(slotHoldDuration.getId());
+                ids.add(slotHoldSeconds.getId());
+                ids.add(slotHoldEvents.getId());
                 ids.add(batchLimit.getId());
                 ids.add(slotBlocked.getId());
                 ids.add(signalCoalesced.getId());
@@ -124,7 +129,7 @@ public class QueueManager {
                         name,
                         new DiagnosticMeters(offerDuration, pollDuration, wakeupDelay, pollDelay,
                                 activationBookkeepingDuration, signalEnqueueDuration, dispatchSubmitDuration,
-                                slotHoldDuration, batchLimit, slotBlocked, signalCoalesced)
+                                slotHoldSeconds, slotHoldEvents, batchLimit, slotBlocked, signalCoalesced)
                 );
                 concurrencyMetrics.ensureRegistered(
                         name,
@@ -305,7 +310,7 @@ public class QueueManager {
             }
             DiagnosticMeters meters = diagnosticMeters.get(name);
             if (holdNanos >= 0 && meters != null) {
-                meters.slotHoldDuration().record(holdNanos, TimeUnit.NANOSECONDS);
+                meters.recordSlotHold(holdNanos);
             }
             return current;
         });
@@ -341,9 +346,15 @@ public class QueueManager {
             Timer activationBookkeepingDuration,
             Timer signalEnqueueDuration,
             Timer dispatchSubmitDuration,
-            Timer slotHoldDuration,
+            Counter slotHoldSeconds,
+            Counter slotHoldEvents,
             Counter batchLimit,
             Counter slotBlocked,
             Counter signalCoalesced
-    ) { }
+    ) {
+        void recordSlotHold(long nanos) {
+            slotHoldSeconds.increment(nanos / 1_000_000_000.0);
+            slotHoldEvents.increment();
+        }
+    }
 }

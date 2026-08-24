@@ -6,10 +6,32 @@ import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class FunctionQueueStateTest {
+
+    @Test
+    void fifoPairingPreservesAggregateTotalButNotTheRealPerRequestMaximum() {
+        AtomicLong nanoTime = new AtomicLong();
+        FunctionQueueState state = new FunctionQueueState("fn", 100, 2, nanoTime::get);
+
+        assertThat(state.tryAcquireSlot()).isTrue();
+        nanoTime.set(10);
+        assertThat(state.tryAcquireSlot()).isTrue();
+
+        // B completes at 20 and A at 100: their real holds are 10 and 100.
+        nanoTime.set(20);
+        long firstRecordedHold = state.releaseSlotAndGetHoldNanos();
+        nanoTime.set(100);
+        long secondRecordedHold = state.releaseSlotAndGetHoldNanos();
+
+        assertThat(firstRecordedHold).isEqualTo(20);
+        assertThat(secondRecordedHold).isEqualTo(90);
+        assertThat(firstRecordedHold + secondRecordedHold).isEqualTo(110);
+        assertThat(Math.max(firstRecordedHold, secondRecordedHold)).isEqualTo(90);
+    }
 
     @Test
     void tryAcquireSlot_underLimit_returnsTrue() {

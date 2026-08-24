@@ -9,10 +9,12 @@ import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.LongSupplier;
 
 public class FunctionQueueState {
     private final String functionName;
     private final ArrayBlockingQueue<InvocationTask> queue;
+    private final LongSupplier nanoTime;
     // ponytail: FIFO preserves the aggregate mean; correlate by invocation only for per-request percentiles.
     private final ConcurrentLinkedQueue<Long> slotAcquiredAtNanos = new ConcurrentLinkedQueue<>();
     private final AtomicInteger inFlight;
@@ -24,8 +26,13 @@ public class FunctionQueueState {
     private boolean closed;
 
     public FunctionQueueState(String functionName, int queueSize, int concurrency) {
+        this(functionName, queueSize, concurrency, System::nanoTime);
+    }
+
+    FunctionQueueState(String functionName, int queueSize, int concurrency, LongSupplier nanoTime) {
         this.functionName = functionName;
         this.queue = new ArrayBlockingQueue<>(queueSize);
+        this.nanoTime = nanoTime;
         this.inFlight = new AtomicInteger();
         for (InvocationKind kind : InvocationKind.values()) {
             queuedByKind.put(kind, new AtomicInteger());
@@ -108,7 +115,7 @@ public class FunctionQueueState {
                 return false;
             }
             if (inFlight.compareAndSet(current, current + 1)) {
-                slotAcquiredAtNanos.add(System.nanoTime());
+                slotAcquiredAtNanos.add(nanoTime.getAsLong());
                 return true;
             }
             // CAS failed, another thread modified - retry
@@ -127,7 +134,7 @@ public class FunctionQueueState {
             return -1;
         }
         Long acquiredAt = slotAcquiredAtNanos.poll();
-        return acquiredAt == null ? -1 : System.nanoTime() - acquiredAt;
+        return acquiredAt == null ? -1 : nanoTime.getAsLong() - acquiredAt;
     }
 
     public boolean canDispatch() {
@@ -136,7 +143,7 @@ public class FunctionQueueState {
 
     public void incrementInFlight() {
         inFlight.incrementAndGet();
-        slotAcquiredAtNanos.add(System.nanoTime());
+        slotAcquiredAtNanos.add(nanoTime.getAsLong());
     }
 
     public void decrementInFlight() {

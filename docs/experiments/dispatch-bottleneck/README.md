@@ -38,11 +38,17 @@ dell'operatore verificato prima del run: `79.53.75.238`; l'ambiente usava
 
 ## Sonda slot-hold per fase
 
-Il timer `function_dispatch_slot_hold_duration` parte dopo l'acquisizione CAS
-dello slot e termina nel rilascio comune di `QueueManager`. Il FIFO interno non
-attribuisce una durata a una specifica invocazione quando due completamenti si
-invertono, ma preserva esattamente somma, conteggio e quindi media. Non usare
-questi raw per percentili per-request.
+La misura parte dopo l'acquisizione CAS dello slot e termina nel rilascio comune
+di `QueueManager`. Pubblica soltanto gli aggregati monotoni Prometheus
+`function_dispatch_slot_hold_seconds_total` e
+`function_dispatch_slot_hold_events_total`: per ogni fase l'analisi calcola i
+delta e usa `seconds / events` come media. Il FIFO interno non attribuisce una
+durata a una specifica invocazione quando due completamenti si invertono, ma
+preserva esattamente somma, conteggio e quindi media; non viene più esposta una
+distribuzione che suggerisca percentili per-request. `analyze_snapshot.py`
+mantiene il fallback alle serie Timer storiche
+`function_dispatch_slot_hold_duration_seconds_{sum,count}` per rendere
+riproducibili i raw archiviati.
 
 | fase | dispatch/s | slot ms | latency ms | slot util. | idle/ciclo ms | queue wait ms | coda media | wake µs |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
