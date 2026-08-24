@@ -15,6 +15,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -111,6 +112,41 @@ class AsyncQueueDiagnosticsTest {
                 .timer().count()).isEqualTo(1);
         assertThat(registry.get("function_scheduler_signal_coalesced").tag("function", "echo")
                 .counter().count()).isEqualTo(1);
+    }
+
+    @Test
+    void schedulerVisitIncludesActivationBookkeeping() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        AtomicLong clock = new AtomicLong();
+        QueueManager queueManager = new QueueManager(registry) {
+            @Override
+            void recordSchedulerActivationBookkeepingDuration(String functionName, long durationNanos) {
+                clock.addAndGet(1_000_000);
+                super.recordSchedulerActivationBookkeepingDuration(functionName, durationNanos);
+            }
+        };
+        FunctionSpec spec = new FunctionSpec(
+                "echo", "image", null, Map.of(), null,
+                1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null
+        );
+        queueManager.getOrCreate(spec);
+        assertThat(queueManager.enqueue(task("first", spec))).isTrue();
+
+        Scheduler scheduler = new Scheduler(queueManager, mock(InvocationService.class), clock::get);
+        scheduler.init();
+        scheduler.start();
+        try {
+            scheduler.signalWork("echo");
+            Awaitility.await().atMost(Duration.ofSeconds(2)).untilAsserted(() ->
+                    assertThat(registry.get("scheduler_visit_duration").timer().count())
+                            .isGreaterThanOrEqualTo(1)
+            );
+        } finally {
+            scheduler.stop();
+        }
+
+        assertThat(registry.get("scheduler_visit_duration").timer()
+                .totalTime(TimeUnit.NANOSECONDS)).isGreaterThanOrEqualTo(1_000_000);
     }
 
     @Test

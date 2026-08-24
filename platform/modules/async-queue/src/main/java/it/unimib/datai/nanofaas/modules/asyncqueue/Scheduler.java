@@ -14,6 +14,7 @@ import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.LongSupplier;
 
 public class Scheduler implements SmartLifecycle, WorkSignaler {
     private static final Logger log = LoggerFactory.getLogger(Scheduler.class);
@@ -22,6 +23,7 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
 
     private final QueueManager queueManager;
     private final InvocationService invocationService;
+    private final LongSupplier nanoTime;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final Object lifecycleMonitor = new Object();
     private final AtomicReference<ExecutorService> executor = new AtomicReference<>();
@@ -32,8 +34,15 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
 
     public Scheduler(QueueManager queueManager,
                      InvocationService invocationService) {
+        this(queueManager, invocationService, System::nanoTime);
+    }
+
+    Scheduler(QueueManager queueManager,
+              InvocationService invocationService,
+              LongSupplier nanoTime) {
         this.queueManager = queueManager;
         this.invocationService = invocationService;
+        this.nanoTime = nanoTime;
     }
 
     @PostConstruct
@@ -44,10 +53,10 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
     @Override
     public void signalWork(String functionName) {
         if (enqueuedFunctions.add(functionName)) {
-            signalTimes.put(functionName, System.nanoTime());
-            long enqueueStarted = System.nanoTime();
+            signalTimes.put(functionName, nanoTime.getAsLong());
+            long enqueueStarted = nanoTime.getAsLong();
             activeFunctions.add(functionName);
-            queueManager.recordSchedulerSignalEnqueueDuration(functionName, System.nanoTime() - enqueueStarted);
+            queueManager.recordSchedulerSignalEnqueueDuration(functionName, nanoTime.getAsLong() - enqueueStarted);
         } else {
             queueManager.recordSchedulerSignalCoalesced(functionName);
         }
@@ -104,28 +113,29 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
         log.info("Scheduler loop started");
         while (running.get()) {
             try {
-                long idleStarted = System.nanoTime();
+                long idleStarted = nanoTime.getAsLong();
                 String functionName = activeFunctions.poll(500, TimeUnit.MILLISECONDS);
-                queueManager.recordSchedulerIdleDuration(System.nanoTime() - idleStarted);
+                long polledAt = nanoTime.getAsLong();
+                long visitStarted = polledAt;
+                queueManager.recordSchedulerIdleDuration(polledAt - idleStarted);
                 if (functionName != null) {
-                    long bookkeepingStarted = System.nanoTime();
+                    long bookkeepingStarted = nanoTime.getAsLong();
                     Long signalTime = signalTimes.remove(functionName);
                     enqueuedFunctions.remove(functionName);
                     if (signalTime != null) {
-                        long polledAt = bookkeepingStarted;
                         queueManager.recordSchedulerPollDelay(functionName, polledAt - signalTime);
                         queueManager.recordSchedulerWakeupDelay(
                                 functionName,
-                                System.nanoTime() - signalTime
+                                nanoTime.getAsLong() - signalTime
                         );
                         queueManager.recordSchedulerActivationBookkeepingDuration(
                                 functionName,
-                                System.nanoTime() - bookkeepingStarted
+                                nanoTime.getAsLong() - bookkeepingStarted
                         );
                     }
-                    long visitStarted = System.nanoTime();
                     processFunction(functionName);
-                    queueManager.recordSchedulerVisitDuration(System.nanoTime() - visitStarted);
+                    // Recording the timer itself is intentionally outside the measured visit.
+                    queueManager.recordSchedulerVisitDuration(nanoTime.getAsLong() - visitStarted);
                 }
             } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
@@ -149,18 +159,18 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
                 queueManager.recordSchedulerSlotBlocked(functionName);
                 break;
             }
-            long pollStarted = System.nanoTime();
+            long pollStarted = nanoTime.getAsLong();
             InvocationTask task = state.poll();
             queueManager.recordQueuePollDuration(
                     functionName,
-                    System.nanoTime() - pollStarted
+                    nanoTime.getAsLong() - pollStarted
             );
             if (task == null) {
                 state.releaseSlot();
                 break;
             }
             dispatched++;
-            long dispatchStarted = System.nanoTime();
+            long dispatchStarted = nanoTime.getAsLong();
             SchedulerDispatchSupport.dispatchWithFailureCleanup(
                     task,
                     () -> invocationService.dispatch(task),
@@ -169,7 +179,7 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
             );
             queueManager.recordSchedulerDispatchSubmitDuration(
                     functionName,
-                    System.nanoTime() - dispatchStarted
+                    nanoTime.getAsLong() - dispatchStarted
             );
         }
 
