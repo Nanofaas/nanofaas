@@ -31,6 +31,11 @@ Preregistrato il `2026-08-24T10:10:34Z`, prima della run, su mcFaas
   `metrics/prometheus-snapshot.json`. Entrambi devono essere assenti come eventi,
   cioè il comando deve terminare con zero e i due file devono esistere.
 
+L'exit code 0 di `caffeinate -dimsu ./nanolab.sh compare ...`, osservato solo
+dopo il teardown automatico, è un gate esterno antecedente al validator. Se è
+non-zero il validator non parte e il Task 10 resta bloccato; la presenza dei
+marker o di `summary.json` non sostituisce questo gate.
+
 Il fallimento di un solo criterio blocca la matrice del Task 10 e riporta il
 lavoro al relativo test locale. Questa singola ripetizione valida gli strumenti,
 non autorizza conclusioni prestazionali.
