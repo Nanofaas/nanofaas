@@ -44,6 +44,23 @@ Il fallimento di un solo criterio blocca la matrice del Task 10 e riporta il
 lavoro al relativo test locale. Questa singola ripetizione valida gli strumenti,
 non autorizza conclusioni prestazionali.
 
+### Esito della validazione delle probe
+
+La cella `azure-dispatch-probe-validation-c2` è terminata con exit code 0 e
+teardown completo il 2026-08-24. Il run usa mcFaas
+`d5cae55862da4fc4a6a426d1d8bccbac422c50c4` e NanoLab
+`39e0b95d3984fe8604c0707df920160793b75d06`. Il validator ha verificato:
+
+- accounting delle 12 fasi compreso fra 99,816% e 100,383%;
+- 97 campioni monotoni di `process_uptime_seconds`;
+- 122.395 release slot-hold misurate e 122.395 attese, con 155,932 secondi
+  totali non negativi e zero serie distributive;
+- zero check k6 falliti e zero timeout funzione.
+
+L'inventario Azure dopo il teardown era vuoto. Questa singola replica convalida
+la raccolta e i gate automatici delle probe; non costituisce una misura
+prestazionale né un confronto fra build.
+
 ## Protocollo comune
 
 - Azure `westeurope`: stack `Standard_D8s_v5` (8 vCPU, 32 GiB), load generator
@@ -64,6 +81,7 @@ non autorizza conclusioni prestazionali.
 | `azure-nosync` | 4 build × 3 ripetizioni, 2/20 | mcFaas `9387c60d`; NanoLab `6012bf3` | G1 è la build migliore: 435,1 rps, p95 92,2 ms, p99 147,7 ms, 17,52% scarti, 553,6 MiB RSS. A parità di `-O3`, il serial GC porta il p95 a 695,6 ms. |
 | `azure-conc8-probe` | G1, una ripetizione, 8 slot | NanoLab `ea01127` | 119.892 dispatch contro 115.630 medi a 2 slot (+3,69%, non 4×); p95 121,6 ms e scarti 14,64%. L'ipotesi che un park ogni due dispatch imponesse il tetto è falsa. |
 | `azure-dispatch-instrumentation-c2` | G1, una ripetizione, 2/20 | mcFaas `8af8c314`; NanoLab `553b7a5` | `offer` 365 ns, `poll` 238 ns, wake-up 222 µs medi; p95 93,7 ms, 114.797 dispatch, 18,02% scarti. Lock e park/unpark non spiegano da soli attese di decine di ms. |
+| `azure-dispatch-probe-validation-c2` | G1, una ripetizione, 2/20 | mcFaas `d5cae558`; NanoLab `39e0b95d` | Tutti i gate strumentali PASS; run usata soltanto per validare raccolta e controlli automatici, non per conclusioni prestazionali. |
 | `azure-dispatch-slot-hold-c2` | G1, una ripetizione, 2/20 | mcFaas `df5efda1`; NanoLab `07bbbf7` | slot 1,416 ms e `function_latency` 1,491 ms sull'intera run; p95 92,5 ms, 115.859 dispatch, 17,43% scarti. Nessun callback lag millisecond-level nascosto. |
 | `azure-dispatch-reacquisition-c2` | G1, una ripetizione, 2/20 | mcFaas `50e7d87a`; NanoLab `2b7f01c` | Risultato numerico archiviato, ma sonda invalidata dal capacity-idle bound e da una race nel pairing dei timestamp. |
 | `azure-dispatch-reacquisition-segments-c2` | G1, una ripetizione, 2/20 | mcFaas `3365c590`; NanoLab `8e9674e` | 4,743/4,788 ms pre-active osservati, ma attribuzione invalidata: il timer supera il massimo fisico di 2,081 ms al `peak900`. |
