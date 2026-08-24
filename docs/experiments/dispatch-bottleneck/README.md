@@ -65,6 +65,22 @@ L'inventario Azure dopo il teardown era vuoto. Questa singola replica convalida
 la raccolta e i gate automatici delle probe; non costituisce una misura
 prestazionale né un confronto fra build.
 
+### Emendamento post-run del criterio accounting — 2026-08-24
+
+Il criterio preregistrato per fase, conservato sopra come record storico, è
+risultato non identificabile dalle serie Timer completion-based: il delta a un
+confine può attribuire alla fase un intervallo idle iniziato nella fase
+precedente. Il validator applica quindi il gate 98,0%–100,5% all'accounting
+aggregato sull'intera finestra (`Σ(Δvisit + Δidle) / Σdurata`), dove i confini
+interni si cancellano. Continua a richiedere traffico e contatori monotoni in
+ogni fase e riporta le dodici percentuali per-fase come diagnostica, senza usarle
+come gate indipendenti.
+
+Con questo emendamento sono stati rivalidati i dodici raw della matrice del
+2026-08-24 e il raw di validazione delle probe: tutti i gate risultano PASS.
+L'accounting whole-run è compreso fra 99,979% e 100,094% nella matrice ed è
+100,016% nella cella di validazione delle probe.
+
 ## Protocollo comune
 
 - Azure `westeurope`: stack `Standard_D8s_v5` (8 vCPU, 32 GiB), load generator

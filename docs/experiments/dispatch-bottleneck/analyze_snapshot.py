@@ -23,7 +23,6 @@ PHASES = (
     ("peak900", 375, 405),
     ("drain40", 405, 450),
 )
-MAX_SCHEDULER_IDLE_SECONDS = 0.5
 
 
 def seconds(timestamp: str, start: datetime) -> float:
@@ -268,6 +267,8 @@ def validation_results(
                 "no dispatch traffic in phases: " + ", ".join(missing_traffic)
             )
         checked: list[str] = []
+        accounted_seconds = 0.0
+        window_seconds = 0.0
         for phase, a, b in PHASES:
             visit = monotonic_delta(
                 queries,
@@ -285,13 +286,15 @@ def validation_results(
                 start,
                 "scheduler idle duration decreased",
             )
-            accounted = (visit + idle) / (b - a) * 100
-            upper_bound = 100.5 + MAX_SCHEDULER_IDLE_SECONDS / (b - a) * 100
-            if not 98.0 <= accounted <= upper_bound:
-                raise ValueError(
-                    f"{phase} accounted {accounted:.3f}% outside 98.0..{upper_bound:.3f}"
-                )
+            duration = b - a
+            accounted_seconds += visit + idle
+            window_seconds += duration
+            accounted = (visit + idle) / duration * 100
             checked.append(f"{phase}={accounted:.3f}%")
+        whole_run = accounted_seconds / window_seconds * 100
+        checked.append(f"whole-run={whole_run:.3f}%")
+        if not 98.0 <= whole_run <= 100.5:
+            raise ValueError(f"{', '.join(checked)} outside whole-run 98.0..100.5")
         return ", ".join(checked)
 
     def uptime() -> str:

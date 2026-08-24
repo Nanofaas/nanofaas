@@ -297,18 +297,31 @@ class AnalyzeSnapshotTest(unittest.TestCase):
         self.assertEqual(self.failed_criteria(snapshot, k6), set())
 
     def test_validation_rejects_accounting_below_98_percent(self) -> None:
-        snapshot, k6 = self.valid_validation_inputs()
-        snapshot["queries"]["scheduler_idle_duration_sum"] = self.series(0, 7.7)
-
-        self.assertIn("wall-clock accounting", self.failed_criteria(snapshot, k6))
-
-    def test_validation_rejects_accounting_above_100_5_percent(self) -> None:
-        snapshot, k6 = self.full_validation_inputs(end=30)
+        snapshot, k6 = self.full_validation_inputs(end=60)
         snapshot["queries"]["scheduler_idle_duration_sum"] = self.sampled_series(
-            *((at, at * 24.68 / 30) for at in range(0, 31, 5))
+            *((at, at * 0.77) for at in range(0, 61, 5))
         )
 
-        with patch.object(analyze_snapshot, "PHASES", (("traffic", 0, 30),)):
+        with patch.object(
+            analyze_snapshot, "PHASES", (("first", 0, 30), ("second", 30, 60))
+        ):
+            failures = {
+                name
+                for name, passed, _detail in analyze_snapshot.validation_results(snapshot, k6)
+                if not passed
+            }
+
+        self.assertIn("wall-clock accounting", failures)
+
+    def test_validation_rejects_accounting_above_100_5_percent(self) -> None:
+        snapshot, k6 = self.full_validation_inputs(end=60)
+        snapshot["queries"]["scheduler_idle_duration_sum"] = self.sampled_series(
+            *((at, at * 0.806) for at in range(0, 61, 5))
+        )
+
+        with patch.object(
+            analyze_snapshot, "PHASES", (("first", 0, 30), ("second", 30, 60))
+        ):
             failures = {
                 name
                 for name, passed, _detail in analyze_snapshot.validation_results(snapshot, k6)
@@ -318,19 +331,25 @@ class AnalyzeSnapshotTest(unittest.TestCase):
         self.assertIn("wall-clock accounting", failures)
 
     def test_validation_accepts_one_completion_based_idle_carry_in(self) -> None:
-        snapshot, k6 = self.full_validation_inputs(end=30)
+        snapshot, k6 = self.full_validation_inputs(end=60)
         snapshot["queries"]["scheduler_idle_duration_sum"] = self.sampled_series(
-            *((at, at * 24.497 / 30) for at in range(0, 31, 5))
+            *((at, at * 24.7 / 30) for at in range(0, 31, 5)),
+            *((at, 24.7 + (at - 30) * 23.294 / 30) for at in range(35, 61, 5)),
         )
 
-        with patch.object(analyze_snapshot, "PHASES", (("traffic", 0, 30),)):
-            failures = {
-                name
-                for name, passed, _detail in analyze_snapshot.validation_results(snapshot, k6)
-                if not passed
+        with patch.object(
+            analyze_snapshot, "PHASES", (("first", 0, 30), ("second", 30, 60))
+        ):
+            results = {
+                name: (passed, detail)
+                for name, passed, detail in analyze_snapshot.validation_results(snapshot, k6)
             }
 
-        self.assertNotIn("wall-clock accounting", failures)
+        passed, detail = results["wall-clock accounting"]
+        self.assertTrue(passed)
+        self.assertIn("first=102.333%", detail)
+        self.assertIn("second=97.647%", detail)
+        self.assertIn("whole-run=99.990%", detail)
 
     def test_validation_rejects_an_internal_uptime_decrease(self) -> None:
         snapshot, k6 = self.valid_validation_inputs()
