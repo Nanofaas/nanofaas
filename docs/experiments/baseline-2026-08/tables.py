@@ -102,6 +102,7 @@ def extras(root: Path, labels: dict[str, str], cells_found) -> list[dict]:
         if not reps:
             continue
         alive, gc_fraction, gc_pause, throttled, heap = [], [], [], [], []
+        served = []
         gc_count, broken = [], []
         for repetition in reps:
             queries = _snapshot(root, key, repetition)
@@ -110,6 +111,12 @@ def extras(root: Path, labels: dict[str, str], cells_found) -> list[dict]:
             dispatch = _series(queries, "function_dispatch_total")
             if len(dispatch) > 1:
                 alive.append(all(b >= a for a, b in zip(dispatch, dispatch[1:])))
+            # Il "Throughput (rps)" del report e' il tasso OFFERTO da k6, che a
+            # ciclo aperto e' identico in tutte le celle per costruzione: la
+            # differenza fra le build sta in quanto ne servono. Questa e' quella.
+            window = _window(queries)
+            if window:
+                served.append(_delta(queries, "function_dispatch_total") / window)
             periods = _delta(queries, "container_cpu_periods@control-plane")
             if periods:
                 throttled.append(
@@ -127,7 +134,6 @@ def extras(root: Path, labels: dict[str, str], cells_found) -> list[dict]:
             if collections:
                 gc_pause.append(1000 * seconds / collections)
                 gc_count.append(collections)
-            window = _window(queries)
             if seconds and window:
                 gc_fraction.append(100 * seconds / window)
             # Il gauge che dovrebbe dare la stessa cosa gia' pronta, e che su
@@ -141,6 +147,7 @@ def extras(root: Path, labels: dict[str, str], cells_found) -> list[dict]:
         rows.append(
             {
                 "Build": label,
+                "Servite/s (dispatch)": _fmt(*_spread(served), digits=0),
                 "Vivo a fine cella": "si"
                 if alive and all(alive)
                 else (f"NO: {alive.count(False)}/{len(alive)}" if alive else "—"),
