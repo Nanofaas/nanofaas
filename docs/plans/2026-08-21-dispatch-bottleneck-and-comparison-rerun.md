@@ -2555,3 +2555,250 @@ Tutto il resto — visite e inattività dello scheduler, possesso dello slot, of
 poll della coda, ritardo di risveglio, segnali coalesced, limite di batch — **è
 ancora acceso**, ed è la ragione per cui la §33 ha potuto leggere 75 serie invece
 di riprovare gli esperimenti che le avevano prodotte.
+
+## 35. Il carico misto, e i tre guasti che ha scoperto
+
+L'esperimento chiedeva una cosa modesta: la piattaforma si comporta correttamente
+quando il carico contiene richieste sincrone, asincrone e una piccola quota di
+chiavi di idempotenza? Ha risposto di sì, ma solo dopo aver reso misurabile un
+regime che prima non lo era.
+
+### Cosa non si poteva leggere
+
+`InvocationTask` era un record di otto componenti senza il bit «c'e' un chiamante in
+attesa», e nemmeno `ExecutionRecord` ce l'aveva. Con `sync-queue` spento e
+`async-queue` acceso — la configurazione di ogni confronto —
+`ReactiveInvocationCoordinator.admitLocally` e `InvocationService.invokeAsync`
+fanno la stessa identica chiamata di accodamento, quindi entrambe le porte
+finiscono in un solo `FunctionQueueState`. Ogni metro per funzione riportava una
+miscela, e la domanda «il lavoro asincrono ha spostato un chiamante che
+aspettava?» non aveva risposta nei dati.
+
+Il bit viaggia ora sul task (lo scheduler vede solo cio' che ha estratto), lo
+eredita il retry e lo eredita la copia che spoglia il payload. Quattro serie nuove
+— `function_admitted_total`, `function_refused_total`, `function_replayed_total`,
+`function_queue_depth_by_path` — con nomi nuovi invece di un'etichetta su quelli
+esistenti: cinque metri alimentano anelli di controllo, e le regole del
+prometheus-adapter aggregano con `max()` senza `by`, quindi sdoppiare
+`function_inFlight` avrebbe fatto scalare l'HPA sulla meta' piu' grande.
+
+### Il guasto che ha fermato l'esperimento
+
+A 3x il control plane veniva ucciso da Kubernetes dopo 2-6 minuti, su traffico
+sincrono e misto allo stesso modo:
+
+```
+Liveness probe failed: context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+Killing: Container control-plane failed liveness probe, will be restarted
+```
+
+Exit 143, non OOM: il processo stava servendo richieste. Lo stato e' tutto in
+memoria, quindi il riavvio portava via registro delle funzioni, esecuzioni e
+chiavi; ogni richiesta successiva riceveva un 404 da un control plane vuoto, e
+niente nel run se ne accorgeva.
+
+Ho attribuito la causa **tre volte, sbagliando le prime due**.
+
+1. «Il management condivide le `LoopResources` con il percorso di invocazione».
+   Plausibile — al picco quei loop portavano 863 task in coda — e falso: durante
+   uno stallo del probe i pending per loop erano **zero**.
+2. «Lo strozzamento CFS». Presente (27% dei periodi) ma non e' il meccanismo: non
+   produce stalli da 2,5 secondi.
+3. La misura: `jvm_gc_pause_seconds_max` = **2,851 s** con causa `Allocation
+   Failure`, il 50,6% del tempo in GC, e `Tenured Gen` a **1002/1002 MB**. Una
+   pausa stop-the-world ferma *ogni* thread, dedicato o no — ed e' anche il motivo
+   per cui ne' l'isolamento ne' la priorita' dei thread potevano servire.
+
+La firma decisiva era nella distribuzione, non nel massimo: probe con **mediana
+1,78 ms e p95 1707 ms**. Bimodale. L'accodamento avrebbe alzato tutta la
+distribuzione; una pausa stop-the-world no — o sei fra due GC, o sei dentro uno.
+
+### La causa vera
+
+`ExecutionStore` e' un `ConcurrentHashMap` con un janitor che passa ogni minuto:
+la ritenzione e' dichiarata nel **tempo** e illimitata nello **spazio**, quindi la
+memoria necessaria e' proporzionale al tasso di ammissione. Misurato con un gauge
+aggiunto apposta: **270.000 record** e ~1,05 GB di dati vivi contro un Tenured da
+1002 MB.
+
+Non e' una perdita — il janitor tiene il passo e il conteggio si appiattisce (+8,2
+record/s nell'ultimo terzo contro 740 ammissioni/s). E' un **equilibrio che
+coincide con la capienza**, quindi ogni raccolta lavora al limite. Anche qui avevo
+sbagliato prima di misurare: avevo annunciato «cresce senza limite, muore dopo
+nove minuti a qualunque carico», estrapolando una retta da una finestra in cui il
+regime permanente non era ancora arrivato.
+
+La cura e' la ritenzione per lettore, ed e' venuta da una domanda di Michele
+(«il lavoro finito non puo' essere tolto?»):
+
+| porta | chi puo' ancora leggere | trattenuto |
+|---|---|---|
+| async | l'id e' l'unica presa del chiamante | `ttl` (5 min) |
+| sync + chiave | un ritentativo che rigioca la chiave | `ttl` |
+| sync semplice | nessuno: la risposta e' gia' sulla connessione | `syncTtl` (30 s) |
+
+Trenta secondi e non zero: `X-Execution-Id` torna anche sulle risposte sincrone,
+quindi `GET /v1/executions/{id}` e' una promessa fatta anche a quei chiamanti.
+
+La decisione e' catturata alla costruzione del record e **non** letta dal task
+corrente: `ExecutionCompletionHandler` costruisce il task di retry con la chiave a
+`null` — il retry e' interno e non deve riclaimarla — quindi interrogare il task
+piu' tardi avrebbe declassato esattamente le esecuzioni che avevano avuto
+problemi, e un cliente che rigioca la sua chiave sarebbe stato addebitato due
+volte. `aRetryDoesNotDemoteAKeyedExecution` e' quello scenario.
+
+### L'effetto, stesso scenario a meno di un commit
+
+| | prima | dopo |
+|---|---:|---:|
+| processo vivo a fine run | ucciso 2 volte su 3 | 3 su 3 |
+| probe p95 | 1707 ms | 1,3-8,3 ms |
+| campioni oltre 1 s | 10,2% | 0,0-0,4% |
+| rifiuti | 36,2% | 12,2-13,1% |
+| **p95 del chiamante sync** | **2308 ms** | **36-40 ms** |
+
+Sessanta volte sulla latenza percepita. Non era il dispatch, non era la coda, non
+erano gli event loop: era il collector che fermava il processo, e ogni richiesta
+in volo pagava la pausa.
+
+### La matrice
+
+Dodici celle, quattro bracci per tre ripetizioni, tutte guidate dallo **stesso**
+generatore con il mix passato come parametro — cosi' la differenza fra un braccio
+e l'altro e' la composizione del carico e nient'altro. Due generatori diversi sui
+due lati di un confronto e' il difetto che questa serie ha gia' pagato due volte.
+
+```
+                                          sync-load2x       mixed-load2x        sync-load3x       mixed-load3x
+--------------------------------------------------------------------------------------------------------------
+quota async degli arrivi (%)                0.0 ± 0.0         19.9 ± 0.1          0.0 ± 0.0         19.9 ± 0.0
+rifiuti complessivi (%)                     3.0 ± 0.3          3.7 ± 0.2         12.7 ± 0.4         15.7 ± 0.8
+  porta sync (%)                            3.0 ± 0.3          3.7 ± 0.2         12.7 ± 0.4         15.7 ± 0.8
+  porta async (%)                                   —          3.7 ± 0.2                  —         15.4 ± 1.0
+richieste servite/s                       871.3 ± 0.0        914.8 ± 0.2       1306.3 ± 0.0       1371.3 ± 0.6
+richieste totali                       392074.3 ± 4.0    411692.7 ± 72.5     587854.3 ± 0.6   617084.7 ± 249.2
+p50 chiamante sync (ms)                     1.2 ± 0.0          1.2 ± 0.0          1.3 ± 0.0          1.3 ± 0.0
+p95 chiamante sync (ms)                     9.0 ± 0.8         11.4 ± 2.0         37.8 ± 1.6         48.2 ± 6.0
+p99 chiamante sync (ms)                  152.4 ± 97.0      474.4 ± 121.5      480.1 ± 312.4     1043.3 ± 270.2
+max chiamante sync (ms)                1566.1 ± 218.2     1968.8 ± 229.9     1756.2 ± 258.9     2320.9 ± 127.4
+p95 ack async (ms)                                  —          5.0 ± 0.9                  —        35.1 ± 13.1
+p95 coppia idempotente (ms)                         —          3.4 ± 1.0                  —         33.4 ± 5.7
+servizio lato server (ms)                   0.6 ± 0.0          0.6 ± 0.0          0.7 ± 0.0          0.8 ± 0.0
+dispatch/s                                586.4 ± 1.5        582.9 ± 1.1        791.2 ± 3.9        770.2 ± 7.5
+coda media                                  0.7 ± 0.0          0.5 ± 0.2          2.1 ± 0.4          2.6 ± 0.6
+  quota sync                                0.6 ± 0.2          0.2 ± 0.1          2.2 ± 0.4          2.1 ± 0.5
+  quota async                               0.0 ± 0.0          0.0 ± 0.0          0.0 ± 0.0          0.6 ± 0.1
+record in ExecutionStore (max)      140622.3 ± 6369.5  190689.3 ± 6768.4  162182.3 ± 8323.6  230823.3 ± 3260.3
+crescita heap (MB/s)                        0.4 ± 1.4          0.1 ± 0.2         -0.1 ± 0.6         -0.1 ± 0.7
+heap a fine run (MB)                    846.5 ± 145.8       936.8 ± 83.3     1062.8 ± 189.5      961.4 ± 199.0
+heap al picco (MB)                     1247.2 ± 184.7      1301.3 ± 68.6      1399.8 ± 14.3      1381.7 ± 38.9
+chiavi di idempotenza tenute                0.0 ± 0.0  37426.7 ± 18387.1  37423.0 ± 18312.7  51556.0 ± 25134.8
+coppie idempotenti                                  —     18966.0 ± 74.8                  —    25101.7 ± 267.7
+  stessa esecuzione (%)                             —        100.0 ± 0.0                  —        100.0 ± 0.0
+probe liveness p50 (ms)                     1.3 ± 0.3          0.9 ± 0.1          0.9 ± 0.0          0.8 ± 0.1
+probe liveness p95 (ms)                     2.3 ± 1.4        11.8 ± 18.4          4.4 ± 3.6          9.6 ± 6.3
+probe liveness max (ms)                1079.0 ± 495.2     1006.4 ± 295.5     1259.5 ± 387.1     1491.4 ± 345.3
+  campioni oltre 1000 ms (%)                0.1 ± 0.1          0.1 ± 0.3          0.3 ± 0.3          0.5 ± 0.3
+errori                                      0.0 ± 0.0          0.0 ± 0.0          0.0 ± 0.0          0.0 ± 0.0
+timeout                                     0.0 ± 0.0          0.0 ± 0.0          0.0 ± 0.0          0.0 ± 0.0
+ritentativi                                 0.0 ± 0.0          0.0 ± 0.0          0.0 ± 0.0          0.0 ± 0.0
+check k6 falliti                            0.0 ± 0.0          0.0 ± 0.0          0.0 ± 0.0          0.0 ± 0.0
+tempo in GC (%)                             2.6 ± 0.3          2.7 ± 0.0          3.6 ± 0.2          4.3 ± 0.4
+pausa GC media (ms)                       49.8 ± 36.7         79.6 ± 1.4         76.7 ± 3.2         92.6 ± 9.0
+periodi CFS strozzati (%)                   1.5 ± 0.8          1.1 ± 0.6          9.1 ± 0.6         10.5 ± 0.9
+cpu al picco (core)                         2.5 ± 0.2          2.7 ± 0.3          2.9 ± 0.3          2.8 ± 0.3
+scartati dal generatore                     0.0 ± 0.0          0.0 ± 0.0          0.0 ± 0.0       93.7 ± 162.2
+
+separazione sync-load2x contro mixed-load2x, in deviazioni standard aggregate
+(non e' un valore p: tre celle non reggono l'affermazione che un valore p fa)
+  quota async degli arrivi (%)        285.2σ
+  rifiuti complessivi (%)               3.4σ
+    porta sync (%)                      3.4σ
+  richieste servite/s                 387.8σ
+  richieste totali                    382.3σ
+  p50 chiamante sync (ms)               2.0σ
+  p95 chiamante sync (ms)               1.6σ
+  p99 chiamante sync (ms)               2.9σ
+  max chiamante sync (ms)               1.8σ
+  dispatch/s                            2.6σ
+  coda media                            1.3σ
+    quota sync                          3.1σ
+    quota async                         2.8σ
+  record in ExecutionStore (max)        7.6σ
+  chiavi di idempotenza tenute          2.9σ
+  probe liveness p50 (ms)               1.7σ
+  pausa GC media (ms)                   1.1σ
+
+separazione sync-load3x contro mixed-load3x, in deviazioni standard aggregate
+(non e' un valore p: tre celle non reggono l'affermazione che un valore p fa)
+  quota async degli arrivi (%)        966.0σ
+  rifiuti complessivi (%)               4.4σ
+    porta sync (%)                      4.7σ
+  richieste servite/s                 165.6σ
+  richieste totali                    165.9σ
+  p50 chiamante sync (ms)               1.1σ
+  p95 chiamante sync (ms)               2.4σ
+  p99 chiamante sync (ms)               1.9σ
+  max chiamante sync (ms)               2.8σ
+  servizio lato server (ms)             2.6σ
+  dispatch/s                            3.5σ
+    quota async                         5.8σ
+  record in ExecutionStore (max)       10.9σ
+  probe liveness p50 (ms)               2.5σ
+  probe liveness p95 (ms)               1.0σ
+  tempo in GC (%)                       2.5σ
+  pausa GC media (ms)                   2.4σ
+  periodi CFS strozzati (%)             1.9σ
+```
+
+### Cosa dice
+
+**L'idempotenza regge.** 132.203 coppie in dodici celle, **zero disaccordi**, e
+zero check falliti su oltre cinque milioni di richieste. La ritenzione per lettore
+non l'ha rotta, che era il rischio vero del cambio.
+
+**La coda e' scrupolosamente equa, ed e' il difetto.** A 3x le due porte sono
+rifiutate al 15,7% e al 15,4%: indistinguibili. Il traffico asincrono, che non ha
+nessuno in attesa, prende la stessa priorita' di chi tiene aperta una connessione.
+L'equita' e' la politica sbagliata quando le scadenze sono diverse.
+
+**Il costo del mix e' reale ma modesto.** Aggiungere il 20% di async costa al
+chiamante sincrono +0,7 punti di rifiuti a 2x (3,4 sigma) e +3,0 punti a 3x, con il
+p95 da 37,8 a 48,2 ms. Molto meno del fattore che il primo A/B suggeriva, perche'
+quel confronto era contro una piattaforma che stava soffocando nel GC.
+
+**Il limite della cura.** Il braccio misto tiene 230.823 record contro i 162.182
+del sincronico: le esecuzioni asincrone devono essere trattenute per i cinque
+minuti pieni. Con abbastanza traffico asincrono si torna nello stesso posto — la
+differenza e' che li' la memoria la spendi per qualcosa che qualcuno leggera'
+davvero, ed e' li' che un tetto esplicito diventa difendibile invece di uno
+implicito nella capienza dell'heap.
+
+### Le sonde che sono rimaste
+
+Tre cose che questa notte ha reso strutturali, tutte perche' la loro assenza mi ha
+fatto perdere tempo o mi ha quasi fatto scrivere il falso:
+
+- **`process_uptime_seconds`** (vincolata al control plane). Un riavvio, una volta
+  che i contatori sono ripartiti da zero, e' indistinguibile dalla lentezza: il run
+  morto per 35 minuti sarebbe stato analizzato come «risultato debole».
+- **`execution_store_size`**. Senza, «l'heap sale di 2,79 MB/s» e' un fatto senza
+  colpevole.
+- **`mixed_probe_duration` / `mixed_probe_over_budget`**, misurate dal generatore
+  attraverso il NodePort 30081, cioe' come le misura kubelet. Tutto quello che
+  sapevo dei due kill era dedotto: 863 task in coda, 68,9% di periodi strozzati,
+  una riga di evento a posteriori. Nessuno di quei numeri e' il tempo di risposta
+  del probe. La via migliore — le serie `prober_*` di kubelet — non esiste su k3s.
+
+### Come si rifa'
+
+```bash
+cd ../nanolab && ./run-matrix.sh          # 12 celle, ~2 ore, teardown automatico a 12/12
+python3 docs/experiments/mixed-workload/tables.py \
+    ../nanolab/packages/nanolab/runs/azure-matrix-*   # la tabella qui sopra
+```
+
+`tables.py` stampa una riga rumorosa per ogni cella in cui `process_uptime_seconds`
+e' caduto, e distingue una directory di run da una sua singola variante: puntare a
+un A/B ne media i due bracci e il risultato sembra plausibile.
+

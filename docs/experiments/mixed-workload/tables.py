@@ -75,18 +75,44 @@ def cell(path):
     if heap and window:
         out["heap_crescita_MBs"] = (heap[-1] - heap[0]) / window / 1e6
         out["heap_finale_MB"] = heap[-1] / 1e6
-        # Se i record sono la zavorra, questo si avvicina alla taglia di un record.
-        if store and max(store) > 0:
-            out["byte_per_record"] = (heap[-1] - heap[0]) / max(store)
+        out["heap_picco_MB"] = max(heap) / 1e6
 
     periods, throttled = delta(queries, "container_cpu_periods@control-plane"), delta(queries, "container_cpu_throttled_periods@control-plane")
     out["strozzati_%"] = 100 * throttled / periods if periods else float("nan")
     out["cpu_picco"] = max(_series(queries, "container_cpu_cores@control-plane") or [float("nan")])
+    for name, key in (("function_error_total", "errori"), ("function_timeout_total", "timeout"),
+                      ("function_retry_total", "ritentativi")):
+        out[key] = delta(queries, name)
+    gc_sum, gc_cnt = delta(queries, "jvm_gc_pause_sum"), delta(queries, "jvm_gc_pause_count")
+    if window:
+        out["gc_frazione_%"] = 100 * gc_sum / window
+    if gc_cnt:
+        out["gc_pausa_media_ms"] = 1000 * gc_sum / gc_cnt
+    lat_c, lat_s = delta(queries, "function_latency_count"), delta(queries, "function_latency_sum")
+    if lat_c:
+        out["servizio_ms"] = 1000 * lat_s / lat_c
 
     # k6: il chiamante sincrono ha la sua serie solo nei run misti; altrove e'
     # http_req_duration, che li' contiene solo traffico sincrono ed e' la stessa cosa.
     trend = k6.get("mixed_sync_duration") or k6.get("http_req_duration")
+    out["p50_sync_ms"] = trend.get("med", float("nan"))
     out["p95_sync_ms"] = trend.get("p(95)", float("nan"))
+    out["p99_sync_ms"] = trend.get("p(99)", float("nan"))
+    out["max_sync_ms"] = trend.get("max", float("nan"))
+    ack = k6.get("mixed_async_ack_duration")
+    if ack:
+        out["p95_ack_ms"] = ack.get("p(95)", float("nan"))
+    idem = k6.get("mixed_sync_idem_duration")
+    if idem:
+        out["p95_idem_ms"] = idem.get("p(95)", float("nan"))
+    reqs = k6.get("http_reqs", {})
+    out["richieste_s"] = reqs.get("rate", float("nan"))
+    out["richieste"] = reqs.get("count", float("nan"))
+    checks = k6.get("checks", {})
+    out["check_falliti"] = checks.get("fails", float("nan"))
+    probe = k6.get("mixed_probe_duration")
+    if probe:
+        out["probe_p50_ms"] = probe.get("med", float("nan"))
     out["scartati_gen"] = (k6.get("dropped_iterations") or {}).get("count", 0)
     probe = k6.get("mixed_probe_duration")
     if probe:
@@ -140,7 +166,15 @@ ROWS = [
     ("rifiuti complessivi (%)", "rifiuti_%"),
     ("  porta sync (%)", "rifiuti_sync_%"),
     ("  porta async (%)", "rifiuti_async_%"),
+    ("richieste servite/s", "richieste_s"),
+    ("richieste totali", "richieste"),
+    ("p50 chiamante sync (ms)", "p50_sync_ms"),
     ("p95 chiamante sync (ms)", "p95_sync_ms"),
+    ("p99 chiamante sync (ms)", "p99_sync_ms"),
+    ("max chiamante sync (ms)", "max_sync_ms"),
+    ("p95 ack async (ms)", "p95_ack_ms"),
+    ("p95 coppia idempotente (ms)", "p95_idem_ms"),
+    ("servizio lato server (ms)", "servizio_ms"),
     ("dispatch/s", "dispatch_s"),
     ("coda media", "coda"),
     ("  quota sync", "coda_sync"),
@@ -148,13 +182,20 @@ ROWS = [
     ("record in ExecutionStore (max)", "record_max"),
     ("crescita heap (MB/s)", "heap_crescita_MBs"),
     ("heap a fine run (MB)", "heap_finale_MB"),
-    ("  byte per record archiviato", "byte_per_record"),
+    ("heap al picco (MB)", "heap_picco_MB"),
     ("chiavi di idempotenza tenute", "chiavi_max"),
     ("coppie idempotenti", "coppie_idem"),
     ("  stessa esecuzione (%)", "idem_ok_%"),
+    ("probe liveness p50 (ms)", "probe_p50_ms"),
     ("probe liveness p95 (ms)", "probe_p95_ms"),
     ("probe liveness max (ms)", "probe_max_ms"),
     ("  campioni oltre 1000 ms (%)", "probe_fuori_budget_%"),
+    ("errori", "errori"),
+    ("timeout", "timeout"),
+    ("ritentativi", "ritentativi"),
+    ("check k6 falliti", "check_falliti"),
+    ("tempo in GC (%)", "gc_frazione_%"),
+    ("pausa GC media (ms)", "gc_pausa_media_ms"),
     ("periodi CFS strozzati (%)", "strozzati_%"),
     ("cpu al picco (core)", "cpu_picco"),
     ("scartati dal generatore", "scartati_gen"),
@@ -184,21 +225,29 @@ def main(dirs):
         if dead:
             print(f"!! {root.name}: il control plane e' RIPARTITO nelle celle {dead} — "
                   f"quei numeri non descrivono un solo processo", file=sys.stderr)
-        groups[root.name if root.parent.name == "runs" else f"{root.parent.name}/{root.name}"] = cells
+        label = root.name if root.parent.name == "runs" else f"{root.parent.name}/{root.name}"
+        for noise in ("azure-matrix-", "azure-", "-workload", "-baseline"):
+            label = label.replace(noise, "")
+        label = label.strip("/")
+        groups[label] = cells
 
     names = list(groups)
-    width = max((len(n) for n in names), default=10) + 2
+    cells_wide = max((len(summarise(g, k)) for g in groups.values() for _, k in ROWS), default=10)
+    width = max(max((len(n) for n in names), default=10), cells_wide) + 2
     print(f"{'':34}" + "".join(f"{n:>{width}}" for n in names))
     print("-" * (34 + width * len(names)))
     for label, key in ROWS:
         print(f"{label:34}" + "".join(f"{summarise(groups[n], key):>{width}}" for n in names))
-    if len(names) == 2:
-        print(f"\nseparazione fra {names[0]} e {names[1]}, in deviazioni standard aggregate:")
+    pairs = [(a, b) for i, a in enumerate(names) for b in names[i + 1:]
+             if a.replace("sync", "").replace("mixed", "") == b.replace("sync", "").replace("mixed", "")]
+    for a, b in (pairs or ([(names[0], names[1])] if len(names) == 2 else [])):
+        print(f"\nseparazione {a} contro {b}, in deviazioni standard aggregate")
+        print("(non e' un valore p: tre celle non reggono l'affermazione che un valore p fa)")
         for label, key in ROWS:
-            s = separation([c.get(key, float('nan')) for c in groups[names[0]]],
-                           [c.get(key, float('nan')) for c in groups[names[1]]])
-            if s is not None:
-                print(f"  {label:34} {s:5.1f}σ")
+            sep = separation([c.get(key, float("nan")) for c in groups[a]],
+                             [c.get(key, float("nan")) for c in groups[b]])
+            if sep is not None and sep == sep and sep > 1.0:
+                print(f"  {label:34} {sep:6.1f}σ")
 
 
 if __name__ == "__main__":
