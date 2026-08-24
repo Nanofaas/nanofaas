@@ -58,8 +58,10 @@ def cell(path):
     out["dispatch_s"] = dispatch / window if window else float("nan")
     out["coda"] = mean(queries, "function_queue_depth")
 
+    admitted_total = 0.0
     for door in ("sync", "async"):
         admitted = delta(queries, f"function_admitted_{door}")
+        admitted_total += admitted
         refused = delta(queries, f"function_refused_{door}")
         total = admitted + refused
         out[f"rifiuti_{door}_%"] = 100 * refused / total if total else float("nan")
@@ -68,6 +70,7 @@ def cell(path):
         out[f"replay_{door}"] = delta(queries, f"function_replayed_{door}")
     arrivals = out["arrivi_sync"] + out["arrivi_async"]
     out["quota_async_%"] = 100 * out["arrivi_async"] / arrivals if arrivals else float("nan")
+    out["richieste_accettate_s"] = admitted_total / window if window else float("nan")
     out["chiavi_max"] = max(_series(queries, "idempotency_keys_held") or [float("nan")])
     store = _series(queries, "execution_store_size")
     out["record_max"] = max(store) if store else float("nan")
@@ -106,8 +109,8 @@ def cell(path):
     if idem:
         out["p95_idem_ms"] = idem.get("p(95)", float("nan"))
     reqs = k6.get("http_reqs", {})
-    out["richieste_s"] = reqs.get("rate", float("nan"))
-    out["richieste"] = reqs.get("count", float("nan"))
+    out["richieste_http_offerte_s"] = reqs.get("rate", float("nan"))
+    out["richieste_http_offerte"] = reqs.get("count", float("nan"))
     checks = k6.get("checks", {})
     out["check_falliti"] = checks.get("fails", float("nan"))
     probe = k6.get("mixed_probe_duration")
@@ -166,8 +169,9 @@ ROWS = [
     ("rifiuti complessivi (%)", "rifiuti_%"),
     ("  porta sync (%)", "rifiuti_sync_%"),
     ("  porta async (%)", "rifiuti_async_%"),
-    ("richieste servite/s", "richieste_s"),
-    ("richieste totali", "richieste"),
+    ("richieste accettate/s", "richieste_accettate_s"),
+    ("richieste HTTP offerte/s", "richieste_http_offerte_s"),
+    ("richieste HTTP offerte", "richieste_http_offerte"),
     ("p50 chiamante sync (ms)", "p50_sync_ms"),
     ("p95 chiamante sync (ms)", "p95_sync_ms"),
     ("p99 chiamante sync (ms)", "p99_sync_ms"),
