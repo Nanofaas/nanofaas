@@ -257,10 +257,17 @@ def validation_results(
         return [("schema", False, str(error))]
 
     def accounting() -> str:
+        missing_traffic = [
+            phase
+            for phase, a, b in PHASES
+            if delta(queries, "function_dispatch_total", a, b, start) <= 0
+        ]
+        if missing_traffic:
+            raise ValueError(
+                "no dispatch traffic in phases: " + ", ".join(missing_traffic)
+            )
         checked: list[str] = []
         for phase, a, b in PHASES:
-            if delta(queries, "function_dispatch_total", a, b, start) <= 0:
-                continue
             visit = monotonic_delta(
                 queries,
                 "scheduler_visit_duration_sum",
@@ -281,8 +288,6 @@ def validation_results(
             if not 98.0 <= accounted <= 100.5:
                 raise ValueError(f"{phase} accounted {accounted:.3f}% outside 98.0..100.5")
             checked.append(f"{phase}={accounted:.3f}%")
-        if not checked:
-            raise ValueError("no traffic window found")
         return ", ".join(checked)
 
     def uptime() -> str:

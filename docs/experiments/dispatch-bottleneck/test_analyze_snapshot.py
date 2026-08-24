@@ -454,6 +454,34 @@ class AnalyzeSnapshotTest(unittest.TestCase):
             set(),
         )
 
+    def test_validation_rejects_phases_without_dispatch_traffic(self) -> None:
+        snapshot, k6 = self.full_validation_inputs()
+        for name in (
+            "function_dispatch_total",
+            "scheduler_visit_duration_sum",
+            "scheduler_idle_duration_sum",
+            "function_scheduler_dispatch_submit_duration_count",
+            "function_dispatch_slot_hold_events_total",
+            "function_dispatch_slot_hold_seconds_total",
+        ):
+            for point in snapshot["queries"][name]["points"]:
+                elapsed = (
+                    datetime.fromisoformat(point["timestamp"]) - self.start
+                ).total_seconds()
+                if elapsed > 150:
+                    point["value"] = snapshot["queries"][name]["points"][30]["value"]
+
+        failures = {
+            name: detail
+            for name, passed, detail in analyze_snapshot.validation_results(snapshot, k6)
+            if not passed
+        }
+
+        self.assertIn("wall-clock accounting", failures)
+        for phase, start, _end in analyze_snapshot.PHASES:
+            if start >= 150:
+                self.assertIn(phase, failures["wall-clock accounting"])
+
     def test_validation_rejects_internal_sampling_gap(self) -> None:
         snapshot, k6 = self.full_validation_inputs()
         points = snapshot["queries"]["function_inFlight"]["points"]
