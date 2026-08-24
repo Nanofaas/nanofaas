@@ -116,7 +116,7 @@ idempotenza. Sulla porta sync Java i rifiuti passano da 1,842% a 2,683% a 2×
 e da 9,111% a 11,730% a 3×; i rifiuti sulla porta async Java nei bracci mixed
 sono rispettivamente 2,663 ± 0,171% e 11,351 ± 0,534%, quasi in parità con
 quelli sync e con un
-lieve eccesso async concorde, la cui rilevanza non è stabilita.
+lieve difetto async concorde, la cui rilevanza non è stabilita.
 
 La latenza sync a 2× non è stabilita. A 3× il p95 passa da
 28,38 ± 1,09 ms a 34,94 ± 3,13 ms e il p99 da 218,25 ± 121,49 ms a
