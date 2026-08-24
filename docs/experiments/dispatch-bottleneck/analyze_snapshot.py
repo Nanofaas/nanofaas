@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import math
 import sys
 from collections.abc import Callable
 from datetime import datetime
@@ -175,6 +176,13 @@ def validation_result(name: str, check: Callable[[], str]) -> ValidationResult:
         return name, False, str(error)
 
 
+def finite_number(value: object, name: str) -> float:
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"{name} must be finite")
+    return number
+
+
 def validation_inputs(
     snapshot: dict[str, object],
     k6_summary: dict[str, object],
@@ -184,6 +192,7 @@ def validation_inputs(
     if not isinstance(queries, dict):
         raise TypeError("snapshot.queries must be an object")
     start = datetime.fromisoformat(str(snapshot["start"]))
+    start_is_aware = start.utcoffset() is not None
     for name in VALIDATION_SERIES:
         points = queries[name]["points"]
         if not isinstance(points, list) or len(points) < 2:
@@ -191,11 +200,13 @@ def validation_inputs(
         previous: datetime | None = None
         for point in points:
             timestamp = datetime.fromisoformat(str(point["timestamp"]))
-            float(point["value"])
+            if (timestamp.utcoffset() is not None) != start_is_aware:
+                raise ValueError(f"{name} timestamp timezone does not match snapshot.start")
+            finite_number(point["value"], f"{name} value")
             if previous is not None and timestamp <= previous:
                 raise ValueError(f"{name} timestamps are not strictly increasing")
             previous = timestamp
-    float(k6_summary["metrics"]["checks"]["fails"])
+    finite_number(k6_summary["metrics"]["checks"]["fails"], "k6 checks.fails")
     if run_summary is not None and run_summary["schema_version"] != 1:
         raise ValueError("summary.json has unsupported schema_version")
     return queries, start

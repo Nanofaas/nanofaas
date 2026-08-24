@@ -225,6 +225,37 @@ class AnalyzeSnapshotTest(unittest.TestCase):
                 if not passed
             }
 
+    def run_validation_cli(
+        self, snapshot: dict[str, object], k6: dict[str, object]
+    ) -> tuple[int, str]:
+        output = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot_path = Path(directory) / "prometheus-snapshot.json"
+            k6_path = Path(directory) / "k6-summary.json"
+            run_summary_path = Path(directory) / "summary.json"
+            snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
+            k6_path.write_text(json.dumps(k6), encoding="utf-8")
+            run_summary_path.write_text(json.dumps({"schema_version": 1}), encoding="utf-8")
+            with (
+                patch.object(analyze_snapshot, "PHASES", (("traffic", 0, 10),)),
+                patch.object(
+                    sys,
+                    "argv",
+                    [
+                        "analyze_snapshot.py",
+                        str(snapshot_path),
+                        "--validate",
+                        "--k6-summary",
+                        str(k6_path),
+                        "--run-summary",
+                        str(run_summary_path),
+                    ],
+                ),
+                redirect_stdout(output),
+            ):
+                exit_code = analyze_snapshot.main()
+        return exit_code, output.getvalue()
+
     def test_validation_accepts_a_valid_run(self) -> None:
         snapshot, k6 = self.valid_validation_inputs()
 
@@ -302,6 +333,37 @@ class AnalyzeSnapshotTest(unittest.TestCase):
         del k6["metrics"]["checks"]
 
         self.assertIn("schema", self.failed_criteria(snapshot, k6))
+
+    def test_validate_mode_rejects_mixed_timestamp_awareness_without_traceback(self) -> None:
+        snapshot, k6 = self.valid_validation_inputs()
+        for query in snapshot["queries"].values():
+            for point in query["points"]:
+                point["timestamp"] = datetime.fromisoformat(point["timestamp"]).replace(
+                    tzinfo=None
+                ).isoformat()
+
+        exit_code, output = self.run_validation_cli(snapshot, k6)
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("schema: FAIL", output)
+
+    def test_validation_rejects_non_finite_query_values_as_schema(self) -> None:
+        for value in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(value=value):
+                snapshot, k6 = self.valid_validation_inputs()
+                snapshot["queries"]["function_dispatch_slot_hold_seconds_total"][
+                    "points"
+                ][1]["value"] = value
+
+                self.assertIn("schema", self.failed_criteria(snapshot, k6))
+
+    def test_validation_rejects_non_finite_k6_failures_as_schema(self) -> None:
+        for value in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(value=value):
+                snapshot, k6 = self.valid_validation_inputs()
+                k6["metrics"]["checks"]["fails"] = value
+
+                self.assertIn("schema", self.failed_criteria(snapshot, k6))
 
     def test_validation_rejects_an_incomplete_nanolab_cell(self) -> None:
         snapshot, _k6 = self.valid_validation_inputs()
