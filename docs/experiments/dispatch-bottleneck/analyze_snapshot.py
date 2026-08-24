@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+import argparse
 import json
 import sys
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from statistics import mean
@@ -133,8 +135,163 @@ def gauge_mean(queries: dict[str, dict[str, object]], name: str, a: float, b: fl
     return mean(values) if values else 0.0
 
 
-def main() -> None:
-    snapshot = json.loads(Path(sys.argv[1]).read_text())
+ValidationResult = tuple[str, bool, str]
+
+
+def series_values(queries: dict[str, dict[str, object]], name: str) -> list[float]:
+    points = queries[name]["points"]
+    values = [float(point["value"]) for point in points]
+    if len(values) < 2:
+        raise ValueError(f"{name} needs at least two samples")
+    return values
+
+
+def counter_delta(queries: dict[str, dict[str, object]], name: str) -> float:
+    values = series_values(queries, name)
+    if any(current < previous for previous, current in zip(values, values[1:])):
+        raise ValueError(f"{name} decreased")
+    return values[-1] - values[0]
+
+
+def validation_result(name: str, check: Callable[[], str]) -> ValidationResult:
+    try:
+        detail = check()
+        return name, True, str(detail)
+    except (KeyError, TypeError, ValueError, ZeroDivisionError) as error:
+        return name, False, str(error)
+
+
+def validation_results(
+    snapshot: dict[str, object], k6_summary: dict[str, object]
+) -> list[ValidationResult]:
+    try:
+        queries = snapshot["queries"]
+        start = datetime.fromisoformat(str(snapshot["start"]))
+        if not isinstance(queries, dict):
+            raise TypeError("snapshot.queries must be an object")
+    except (KeyError, TypeError, ValueError) as error:
+        return [("input schema", False, str(error))]
+
+    def accounting() -> str:
+        checked: list[str] = []
+        for phase, a, b in PHASES:
+            if delta(queries, "function_dispatch_total", a, b, start) <= 0:
+                continue
+            visit = monotonic_delta(
+                queries,
+                "scheduler_visit_duration_sum",
+                a,
+                b,
+                start,
+                "scheduler visit duration decreased",
+            )
+            idle = monotonic_delta(
+                queries,
+                "scheduler_idle_duration_sum",
+                a,
+                b,
+                start,
+                "scheduler idle duration decreased",
+            )
+            accounted = (visit + idle) / (b - a) * 100
+            if not 98.0 <= accounted <= 100.5:
+                raise ValueError(f"{phase} accounted {accounted:.3f}% outside 98.0..100.5")
+            checked.append(f"{phase}={accounted:.3f}%")
+        if not checked:
+            raise ValueError("no traffic window found")
+        return ", ".join(checked)
+
+    def uptime() -> str:
+        values = series_values(queries, "process_uptime_seconds")
+        if any(current < previous for previous, current in zip(values, values[1:])):
+            raise ValueError("process_uptime_seconds decreased")
+        return f"{len(values)} samples monotonic"
+
+    def releases() -> str:
+        submitted = counter_delta(
+            queries, "function_scheduler_dispatch_submit_duration_count"
+        )
+        in_flight = series_values(queries, "function_inFlight")
+        expected = submitted + in_flight[0] - in_flight[-1]
+        measured = counter_delta(queries, "function_dispatch_slot_hold_events_total")
+        if measured != expected:
+            raise ValueError(f"measured {measured:g}, expected {expected:g}")
+        return f"measured={measured:g}, expected={expected:g}"
+
+    def slot_seconds() -> str:
+        values = series_values(queries, "function_dispatch_slot_hold_seconds_total")
+        if any(value < 0 for value in values):
+            raise ValueError("slot hold seconds became negative")
+        if any(current < previous for previous, current in zip(values, values[1:])):
+            raise ValueError("slot hold seconds decreased")
+        return f"delta={values[-1] - values[0]:g}"
+
+    def distribution() -> str:
+        values = series_values(
+            queries, "function_dispatch_slot_hold_distribution_series"
+        )
+        if any(value != 0 for value in values):
+            raise ValueError(f"distribution series count is {max(values):g}")
+        return "0 series"
+
+    def k6_checks() -> str:
+        metrics = k6_summary["metrics"]
+        checks = metrics["checks"]
+        failed = float(checks["fails"])
+        if failed != 0:
+            raise ValueError(f"{failed:g} failed checks")
+        return "0 failed checks"
+
+    def function_timeouts() -> str:
+        timed_out = counter_delta(queries, "function_timeout_total")
+        if timed_out != 0:
+            raise ValueError(f"{timed_out:g} function timeouts")
+        return "0 function timeouts"
+
+    checks = (
+        ("wall-clock accounting", accounting),
+        ("process uptime", uptime),
+        ("slot hold releases", releases),
+        ("slot hold seconds", slot_seconds),
+        ("slot hold distribution", distribution),
+        ("k6 checks", k6_checks),
+        ("function timeouts", function_timeouts),
+    )
+    return [validation_result(name, check) for name, check in checks]
+
+
+def validation_results_from_files(
+    snapshot_path: Path, k6_summary_path: Path
+) -> list[ValidationResult]:
+    missing = [str(path) for path in (snapshot_path, k6_summary_path) if not path.is_file()]
+    if missing:
+        return [("completion markers", False, "missing " + ", ".join(missing))]
+    try:
+        snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        k6_summary = json.loads(k6_summary_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return [("completion markers", False, str(error))]
+    return [("completion markers", True, "k6 summary and snapshot present")] + validation_results(
+        snapshot, k6_summary
+    )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("snapshot", type=Path)
+    parser.add_argument("--validate", action="store_true")
+    parser.add_argument("--k6-summary", type=Path)
+    args = parser.parse_args()
+    if args.validate:
+        if args.k6_summary is None:
+            results = [("completion markers", False, "--k6-summary is required")]
+        else:
+            results = validation_results_from_files(args.snapshot, args.k6_summary)
+        for name, passed, detail in results:
+            print(f"{name}: {'PASS' if passed else 'FAIL'} - {detail}")
+        return 1 if any(not passed for _name, passed, _detail in results) else 0
+
+    snapshot = json.loads(args.snapshot.read_text())
     queries = snapshot["queries"]
     start = datetime.fromisoformat(snapshot["start"])
     direct_probes = "function_scheduler_dispatch_submit_duration_count" in queries
@@ -280,7 +437,8 @@ def main() -> None:
                 "yes" if accounted <= 100.0 else "NO",
             )
         print(" | ".join(row))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
