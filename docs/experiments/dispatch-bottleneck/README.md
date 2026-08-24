@@ -13,8 +13,12 @@ Preregistrato il `2026-08-24T10:10:34Z`, prima della run, su mcFaas
 - Una sola cella `native-o3-g1`, ripetizione 1, `concurrency=2`,
   `queueSize=20`, profilo metriche `advanced`; la politica di scheduling resta
   invariata.
-- Nelle finestre con traffico, l'accounting wall-clock deve essere compreso fra
-  98,0% e 100,5%, estremi inclusi.
+- Tutte le 12 fasi del profilo fisso (`warm40`, `climb200`, `hold200`,
+  `ramp600`, `spike600`, `rampDown200`, `recover200`, `climb350`, `hold350`,
+  `ramp900`, `peak900`, `drain40`) devono contenere traffico osservato, cioè
+  `Δfunction_dispatch_total > 0`. Una fase senza dispatch invalida la run di
+  strumentazione e blocca il Task 10. In ciascuna fase l'accounting wall-clock
+  deve essere compreso fra 98,0% e 100,5%, estremi inclusi.
 - Sull'intera run, usando il primo e l'ultimo campione dello snapshot, le release
   attese sono
   `Δfunction_scheduler_dispatch_submit_duration_count + inFlight_iniziale - inFlight_finale`.
