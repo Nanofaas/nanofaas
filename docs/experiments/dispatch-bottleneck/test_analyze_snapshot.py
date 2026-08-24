@@ -288,6 +288,21 @@ class AnalyzeSnapshotTest(unittest.TestCase):
 
         self.assertIn("slot hold distribution", self.failed_criteria(snapshot, k6))
 
+    def test_validation_rejects_reversed_timestamps_as_schema(self) -> None:
+        snapshot, k6 = self.valid_validation_inputs()
+        snapshot["queries"]["scheduler_visit_duration_sum"]["points"].reverse()
+
+        with patch.object(analyze_snapshot, "PHASES", (("traffic", 0, 10),)):
+            results = analyze_snapshot.validation_results(snapshot, k6)
+
+        self.assertIn("schema", {name for name, passed, _ in results if not passed})
+
+    def test_validation_rejects_missing_k6_checks_as_schema(self) -> None:
+        snapshot, k6 = self.valid_validation_inputs()
+        del k6["metrics"]["checks"]
+
+        self.assertIn("schema", self.failed_criteria(snapshot, k6))
+
     def test_validation_rejects_an_incomplete_nanolab_cell(self) -> None:
         snapshot, _k6 = self.valid_validation_inputs()
         with tempfile.TemporaryDirectory() as directory:
@@ -310,8 +325,10 @@ class AnalyzeSnapshotTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             snapshot_path = Path(directory) / "prometheus-snapshot.json"
             k6_path = Path(directory) / "k6-summary.json"
+            run_summary_path = Path(directory) / "summary.json"
             snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
             k6_path.write_text(json.dumps(k6), encoding="utf-8")
+            run_summary_path.write_text(json.dumps({"schema_version": 1}), encoding="utf-8")
             with (
                 patch.object(analyze_snapshot, "PHASES", (("traffic", 0, 10),)),
                 patch.object(
@@ -323,6 +340,8 @@ class AnalyzeSnapshotTest(unittest.TestCase):
                         "--validate",
                         "--k6-summary",
                         str(k6_path),
+                        "--run-summary",
+                        str(run_summary_path),
                     ],
                 ),
                 redirect_stdout(output),
@@ -333,6 +352,39 @@ class AnalyzeSnapshotTest(unittest.TestCase):
         self.assertIn("completion markers: PASS", output.getvalue())
         self.assertIn("wall-clock accounting: PASS", output.getvalue())
         self.assertIn("k6 checks: FAIL", output.getvalue())
+
+    def test_validate_mode_rejects_reversed_timestamps_without_traceback(self) -> None:
+        snapshot, k6 = self.valid_validation_inputs()
+        snapshot["queries"]["scheduler_visit_duration_sum"]["points"].reverse()
+        output = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot_path = Path(directory) / "prometheus-snapshot.json"
+            k6_path = Path(directory) / "k6-summary.json"
+            run_summary_path = Path(directory) / "summary.json"
+            snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
+            k6_path.write_text(json.dumps(k6), encoding="utf-8")
+            run_summary_path.write_text(json.dumps({"schema_version": 1}), encoding="utf-8")
+            with (
+                patch.object(analyze_snapshot, "PHASES", (("traffic", 0, 10),)),
+                patch.object(
+                    sys,
+                    "argv",
+                    [
+                        "analyze_snapshot.py",
+                        str(snapshot_path),
+                        "--validate",
+                        "--k6-summary",
+                        str(k6_path),
+                        "--run-summary",
+                        str(run_summary_path),
+                    ],
+                ),
+                redirect_stdout(output),
+            ):
+                exit_code = analyze_snapshot.main()
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("schema: FAIL", output.getvalue())
 
 
 if __name__ == "__main__":

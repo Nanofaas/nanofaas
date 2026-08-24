@@ -55,6 +55,8 @@ def monotonic_delta(
         range(len(points)),
         key=lambda index: abs(seconds(str(points[index]["timestamp"]), start) - b),
     )
+    if last < first:
+        raise ValueError(f"{name} timestamps are out of order")
     values = [float(point["value"]) for point in points[first : last + 1]]
     if any(current < previous for previous, current in zip(values, values[1:])):
         raise ValueError(error_message)
@@ -136,6 +138,18 @@ def gauge_mean(queries: dict[str, dict[str, object]], name: str, a: float, b: fl
 
 
 ValidationResult = tuple[str, bool, str]
+VALIDATION_SERIES = (
+    "function_dispatch_total",
+    "scheduler_visit_duration_sum",
+    "scheduler_idle_duration_sum",
+    "process_uptime_seconds",
+    "function_scheduler_dispatch_submit_duration_count",
+    "function_inFlight",
+    "function_dispatch_slot_hold_events_total",
+    "function_dispatch_slot_hold_seconds_total",
+    "function_dispatch_slot_hold_distribution_series",
+    "function_timeout_total",
+)
 
 
 def series_values(queries: dict[str, dict[str, object]], name: str) -> list[float]:
@@ -157,20 +171,45 @@ def validation_result(name: str, check: Callable[[], str]) -> ValidationResult:
     try:
         detail = check()
         return name, True, str(detail)
-    except (KeyError, TypeError, ValueError, ZeroDivisionError) as error:
+    except ValueError as error:
         return name, False, str(error)
 
 
+def validation_inputs(
+    snapshot: dict[str, object],
+    k6_summary: dict[str, object],
+    run_summary: dict[str, object] | None,
+) -> tuple[dict[str, dict[str, object]], datetime]:
+    queries = snapshot["queries"]
+    if not isinstance(queries, dict):
+        raise TypeError("snapshot.queries must be an object")
+    start = datetime.fromisoformat(str(snapshot["start"]))
+    for name in VALIDATION_SERIES:
+        points = queries[name]["points"]
+        if not isinstance(points, list) or len(points) < 2:
+            raise ValueError(f"{name} needs at least two samples")
+        previous: datetime | None = None
+        for point in points:
+            timestamp = datetime.fromisoformat(str(point["timestamp"]))
+            float(point["value"])
+            if previous is not None and timestamp <= previous:
+                raise ValueError(f"{name} timestamps are not strictly increasing")
+            previous = timestamp
+    float(k6_summary["metrics"]["checks"]["fails"])
+    if run_summary is not None and run_summary["schema_version"] != 1:
+        raise ValueError("summary.json has unsupported schema_version")
+    return queries, start
+
+
 def validation_results(
-    snapshot: dict[str, object], k6_summary: dict[str, object]
+    snapshot: dict[str, object],
+    k6_summary: dict[str, object],
+    run_summary: dict[str, object] | None = None,
 ) -> list[ValidationResult]:
     try:
-        queries = snapshot["queries"]
-        start = datetime.fromisoformat(str(snapshot["start"]))
-        if not isinstance(queries, dict):
-            raise TypeError("snapshot.queries must be an object")
-    except (KeyError, TypeError, ValueError) as error:
-        return [("input schema", False, str(error))]
+        queries, start = validation_inputs(snapshot, k6_summary, run_summary)
+    except (KeyError, IndexError, TypeError, ValueError) as error:
+        return [("schema", False, str(error))]
 
     def accounting() -> str:
         checked: list[str] = []
@@ -261,18 +300,30 @@ def validation_results(
 
 
 def validation_results_from_files(
-    snapshot_path: Path, k6_summary_path: Path
+    snapshot_path: Path,
+    k6_summary_path: Path,
+    run_summary_path: Path | None = None,
 ) -> list[ValidationResult]:
-    missing = [str(path) for path in (snapshot_path, k6_summary_path) if not path.is_file()]
+    paths = (snapshot_path, k6_summary_path) + (
+        (run_summary_path,) if run_summary_path is not None else ()
+    )
+    missing = [str(path) for path in paths if not path.is_file()]
     if missing:
         return [("completion markers", False, "missing " + ", ".join(missing))]
     try:
-        snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
-        k6_summary = json.loads(k6_summary_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
+        texts = [path.read_text(encoding="utf-8") for path in paths]
+    except OSError as error:
         return [("completion markers", False, str(error))]
-    return [("completion markers", True, "k6 summary and snapshot present")] + validation_results(
-        snapshot, k6_summary
+    try:
+        snapshot, k6_summary, *run_summaries = map(json.loads, texts)
+    except json.JSONDecodeError as error:
+        return [
+            ("completion markers", True, "required files present"),
+            ("schema", False, str(error)),
+        ]
+    run_summary = run_summaries[0] if run_summaries else None
+    return [("completion markers", True, "required files present")] + validation_results(
+        snapshot, k6_summary, run_summary
     )
 
 
@@ -281,12 +332,21 @@ def main() -> int:
     parser.add_argument("snapshot", type=Path)
     parser.add_argument("--validate", action="store_true")
     parser.add_argument("--k6-summary", type=Path)
+    parser.add_argument("--run-summary", type=Path)
     args = parser.parse_args()
     if args.validate:
-        if args.k6_summary is None:
-            results = [("completion markers", False, "--k6-summary is required")]
+        if args.k6_summary is None or args.run_summary is None:
+            results = [
+                (
+                    "completion markers",
+                    False,
+                    "--k6-summary and --run-summary are required",
+                )
+            ]
         else:
-            results = validation_results_from_files(args.snapshot, args.k6_summary)
+            results = validation_results_from_files(
+                args.snapshot, args.k6_summary, args.run_summary
+            )
         for name, passed, detail in results:
             print(f"{name}: {'PASS' if passed else 'FAIL'} - {detail}")
         return 1 if any(not passed for _name, passed, _detail in results) else 0
