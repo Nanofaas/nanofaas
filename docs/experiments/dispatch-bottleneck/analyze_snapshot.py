@@ -23,6 +23,7 @@ PHASES = (
     ("peak900", 375, 405),
     ("drain40", 405, 450),
 )
+MAX_SCHEDULER_IDLE_SECONDS = 0.5
 
 
 def seconds(timestamp: str, start: datetime) -> float:
@@ -285,8 +286,11 @@ def validation_results(
                 "scheduler idle duration decreased",
             )
             accounted = (visit + idle) / (b - a) * 100
-            if not 98.0 <= accounted <= 100.5:
-                raise ValueError(f"{phase} accounted {accounted:.3f}% outside 98.0..100.5")
+            upper_bound = 100.5 + MAX_SCHEDULER_IDLE_SECONDS / (b - a) * 100
+            if not 98.0 <= accounted <= upper_bound:
+                raise ValueError(
+                    f"{phase} accounted {accounted:.3f}% outside 98.0..{upper_bound:.3f}"
+                )
             checked.append(f"{phase}={accounted:.3f}%")
         return ", ".join(checked)
 

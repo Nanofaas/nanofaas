@@ -303,10 +303,34 @@ class AnalyzeSnapshotTest(unittest.TestCase):
         self.assertIn("wall-clock accounting", self.failed_criteria(snapshot, k6))
 
     def test_validation_rejects_accounting_above_100_5_percent(self) -> None:
-        snapshot, k6 = self.valid_validation_inputs()
-        snapshot["queries"]["scheduler_idle_duration_sum"] = self.series(0, 8.06)
+        snapshot, k6 = self.full_validation_inputs(end=30)
+        snapshot["queries"]["scheduler_idle_duration_sum"] = self.sampled_series(
+            *((at, at * 24.68 / 30) for at in range(0, 31, 5))
+        )
 
-        self.assertIn("wall-clock accounting", self.failed_criteria(snapshot, k6))
+        with patch.object(analyze_snapshot, "PHASES", (("traffic", 0, 30),)):
+            failures = {
+                name
+                for name, passed, _detail in analyze_snapshot.validation_results(snapshot, k6)
+                if not passed
+            }
+
+        self.assertIn("wall-clock accounting", failures)
+
+    def test_validation_accepts_one_completion_based_idle_carry_in(self) -> None:
+        snapshot, k6 = self.full_validation_inputs(end=30)
+        snapshot["queries"]["scheduler_idle_duration_sum"] = self.sampled_series(
+            *((at, at * 24.497 / 30) for at in range(0, 31, 5))
+        )
+
+        with patch.object(analyze_snapshot, "PHASES", (("traffic", 0, 30),)):
+            failures = {
+                name
+                for name, passed, _detail in analyze_snapshot.validation_results(snapshot, k6)
+                if not passed
+            }
+
+        self.assertNotIn("wall-clock accounting", failures)
 
     def test_validation_rejects_an_internal_uptime_decrease(self) -> None:
         snapshot, k6 = self.valid_validation_inputs()
