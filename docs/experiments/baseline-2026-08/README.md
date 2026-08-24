@@ -150,7 +150,21 @@ lasciato libero.
 **Risultati.**
 
 <!-- A1:inizio -->
-_Da eseguire._
+| Build | Runs | Throughput (rps) | p50 (ms) | p95 (ms) | p99 (ms) | Shed (%) | Control plane peak (MiB) | Control plane CPU (cores) |
+|---|---|---|---|---|---|---|---|---|
+| JVM (Java 25, JIT) | 3 | 435.1 ± 0.0 | 4.7 ± 0.1 | 182.9 ± 2.0 | 253.3 ± 4.0 | 25.33 ± 0.31 | 1068.4 ± 2.1 | 0.60 ± 0.00 |
+| Native, -Os, serial GC | 3 | 435.1 ± 0.0 | 2.9 ± 0.4 | 175.6 ± 6.4 | 406.3 ± 9.0 | 18.82 ± 0.71 | 242.2 ± 13.5 | 0.52 ± 0.01 |
+| Native, -O3, serial GC | 3 | 435.1 ± 0.0 | 2.9 ± 1.0 | 182.5 ± 27.8 | 422.2 ± 19.3 | 15.79 ± 0.62 | 254.9 ± 18.6 | 0.50 ± 0.01 |
+| Native, -O3, G1 (Oracle GraalVM) | 3 | 435.1 ± 0.0 | 1.7 ± 0.0 | 77.8 ± 2.3 | 137.0 ± 4.9 | 9.17 ± 0.78 | 462.4 ± 9.9 | 0.47 ± 0.00 |
+
+Quello che il report di confronto non guarda:
+
+| Build | Servite/s (dispatch) | Vivo a fine cella | CPU strozzata (%) | Heap picco (MB) | Collezioni GC | Pausa GC media (ms) | Tempo in GC (%) | gauge gc_time_fraction | Compilazione (s) | Immagine (MB) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| JVM (Java 25, JIT) | 210 ± 1 | si | — | 939 ± 3 | 1352 ± 6 | 6.6 ± 0.3 | 1.87 ± 0.08 | NaN | 46.3 | 244 |
+| Native, -Os, serial GC | 235 ± 2 | si | — | 201 ± 2 | 1315 ± 3 | 29.2 ± 1.9 | 7.99 ± 0.50 | ok | 355.4 | 242 |
+| Native, -O3, serial GC | 245 ± 2 | si | — | 216 ± 7 | 1347 ± 34 | 30.7 ± 3.8 | 8.60 ± 0.86 | ok | 271.4 | 278 |
+| Native, -O3, G1 (Oracle GraalVM) | 267 ± 3 | si | — | — | — | — | — | ok | 779.1 | 840 |
 <!-- A1:fine -->
 
 ## A2 — Dove sta il ginocchio della memoria
