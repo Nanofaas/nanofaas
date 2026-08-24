@@ -4,6 +4,37 @@ Questo registro conserva protocollo, risultati e dati grezzi dell'indagine del
 2026-08-21. Il contesto e le ipotesi sono in
 [`../../plans/2026-08-21-dispatch-bottleneck-and-comparison-rerun.md`](../../plans/2026-08-21-dispatch-bottleneck-and-comparison-rerun.md).
 
+## Protocollo preregistrato: validazione delle probe corrette
+
+Preregistrato il `2026-08-24T10:10:34Z`, prima della run, su mcFaas
+`ddf835957dd58ca89199b3013802498f01ca10ef` e NanoLab
+`d59c0bd8a6c5a8962898661c214154dc1aec3748`.
+
+- Una sola cella `native-o3-g1`, ripetizione 1, `concurrency=2`,
+  `queueSize=20`, profilo metriche `advanced`; la politica di scheduling resta
+  invariata.
+- Nelle finestre con traffico, l'accounting wall-clock deve essere compreso fra
+  98,0% e 100,5%, estremi inclusi.
+- Sull'intera run, usando il primo e l'ultimo campione dello snapshot, le release
+  attese sono
+  `Δfunction_scheduler_dispatch_submit_duration_count + inFlight_iniziale - inFlight_finale`.
+  `Δfunction_dispatch_slot_hold_events_total` deve essere uguale a questo valore;
+  `function_dispatch_slot_hold_seconds_total` deve restare monotono e non
+  negativo. La query live dedicata deve inoltre riportare zero serie slot-hold
+  max, bucket o quantile.
+- `process_uptime_seconds` deve essere monotono non decrescente.
+- In `k6-summary.json`, `metrics.checks.fails` deve essere zero; nello snapshot,
+  `Δfunction_timeout_total` deve essere zero. NanoLab non produce un campo o un
+  file di stato per i timeout infrastrutturali: per questo protocollo sono un
+  exit non-zero di `nanolab compare` dovuto a timeout oppure l'assenza di uno dei
+  due marker che NanoLab usa per una cella completa, `k6-summary.json` e
+  `metrics/prometheus-snapshot.json`. Entrambi devono essere assenti come eventi,
+  cioè il comando deve terminare con zero e i due file devono esistere.
+
+Il fallimento di un solo criterio blocca la matrice del Task 10 e riporta il
+lavoro al relativo test locale. Questa singola ripetizione valida gli strumenti,
+non autorizza conclusioni prestazionali.
+
 ## Protocollo comune
 
 - Azure `westeurope`: stack `Standard_D8s_v5` (8 vCPU, 32 GiB), load generator
