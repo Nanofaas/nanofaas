@@ -1,263 +1,222 @@
 #!/usr/bin/env python3
-"""Le tabelle della campagna baseline, calcolate dai grezzi.
+"""La tabella markdown della campagna, per il documento.
 
-Uso:  python3 tables.py <dir-di-run> [--doc README.md]
+Uso:  uv run --project <nanolab> python3 tables.py <dir-di-run> [--doc README.md --marker A1]
 
-<dir-di-run> e' una directory di confronto di NanoLab: un manifest e una cella
-per variante e ripetizione, in <variante>/run-N/.
+Il grosso NON e' calcolato qui. `nanolab compare` produce gia' un report HTML che
+aggrega le celle per variante, porta ogni cifra con il suo spread e - la parte
+che conta - si rifiuta di dichiarare un vincitore quando gli intervalli di due
+build si sovrappongono. Questo script chiama quello stesso codice
+(`read_cell`, `aggregate_table`) e ne rende il risultato in markdown, cosi' la
+tabella del documento e quella del report non possono divergere.
 
-Ogni numero viene da un file di run. Niente e' scritto a mano, perche' questa
-serie ha gia' prodotto due volte cifre giuste calcolate su dati sbagliati.
+Qui vive solo cio' che il report non guarda, e che a questa campagna serve:
 
-Discendente diretto di ../archive/mixed-workload/tables.py: stessi lettori,
-stesse trappole gia' pagate (un campo assente non e' uno zero; una cella morta
-a meta' non e' una cella lenta).
+* se il processo e' sopravvissuto alla cella (una cella morta a meta' si legge
+  come una cella lenta: i contatori ripartono da zero);
+* il collector, che e' l'oggetto del capitolo su footprint e GC;
+* lo strozzamento della CPU, che decide se le build sono state confrontate o
+  solo appoggiate tutte allo stesso muro;
+* costo e dimensione della build, che esistono solo nel log e nel registry
+  della VM e spariscono con il teardown.
 """
 import argparse
 import gzip
 import json
+import re
+import shutil
 import statistics as st
-from datetime import datetime
+import sys
+import tempfile
 from pathlib import Path
 
-# Il control plane pubblica le serie function_* per una sola funzione (la
-# primaria); container_*@<nome> le ha per tutte.
-PRIMARY = "word-stats-java"
+from sonata_tasks.loadtest.comparison_report import (  # noqa: E402
+    _fmt,
+    _spread,
+    aggregate_table,
+    read_cell,
+)
 
 
-def _open(path: Path):
-    raw = gzip.open(path).read() if path.suffix == ".gz" else path.read_bytes()
-    return json.loads(raw)
+def _readable(root: Path) -> tuple[Path, tempfile.TemporaryDirectory | None]:
+    """read_cell vuole snapshot non compressi; l'archivio li tiene in gzip.
+
+    48 MB a cella diventano 2,8 compressi, che e' la differenza fra un archivio
+    che sta nel repository e uno che non ci sta. Scompattare in un temporaneo
+    costa qualche secondo e tiene entrambe le cose.
+    """
+    zipped = list(root.glob("*/run-*/metrics/prometheus-snapshot.json.gz"))
+    if not zipped:
+        return root, None
+    tmp = tempfile.TemporaryDirectory(prefix="baseline-")
+    mirror = Path(tmp.name)
+    for path in root.rglob("*"):
+        target = mirror / path.relative_to(root)
+        if path.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+        elif path.suffix == ".gz":
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.with_suffix("").write_bytes(gzip.open(path).read())
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, target)
+    return mirror, tmp
 
 
-def _snapshot(run: Path) -> Path | None:
-    for name in ("prometheus-snapshot.json", "prometheus-snapshot.json.gz"):
-        candidate = run / "metrics" / name
-        if candidate.exists():
-            return candidate
-    return None
+def variants(root: Path) -> dict[str, str]:
+    manifest = json.loads((root / "comparison-manifest.json").read_text())
+    return {v["key"]: v["label"] for v in manifest["variants"]}
+
+
+def cells(root: Path, labels: dict[str, str]):
+    found = []
+    for key in labels:
+        for repetition in range(1, 21):
+            cell = read_cell(root, key, repetition)
+            if cell is not None:
+                found.append(cell)
+    return found
+
+
+def _snapshot(root: Path, variant: str, repetition: int) -> dict | None:
+    path = root / variant / f"run-{repetition}" / "metrics" / "prometheus-snapshot.json"
+    return json.loads(path.read_text())["queries"] if path.is_file() else None
 
 
 def _series(queries, name):
     entry = queries.get(name)
-    if entry is None:
-        return []
-    return [p["value"] for p in entry["points"] if p["value"] is not None]
+    return [p["value"] for p in entry["points"] if p["value"] is not None] if entry else []
 
 
-def delta(queries, name):
-    """Un contatore cresce solo: la finestra e' max - min."""
+def _delta(queries, name):
     values = _series(queries, name)
     return (max(values) - min(values)) if values else 0.0
 
 
-def mean(queries, name):
-    values = _series(queries, name)
-    return st.mean(values) if values else float("nan")
+def extras(root: Path, labels: dict[str, str], cells_found) -> list[dict]:
+    """Le colonne che il report non ha. Una riga per variante."""
+    build = build_phase(root, labels)
+    rows = []
+    for key, label in labels.items():
+        reps = [c.repetition for c in cells_found if c.variant == key]
+        if not reps:
+            continue
+        alive, gc_fraction, gc_pause, throttled, heap = [], [], [], [], []
+        for repetition in reps:
+            queries = _snapshot(root, key, repetition)
+            if queries is None:
+                continue
+            dispatch = _series(queries, "function_dispatch_total")
+            if len(dispatch) > 1:
+                alive.append(all(b >= a for a, b in zip(dispatch, dispatch[1:])))
+            periods = _delta(queries, "container_cpu_periods@control-plane")
+            if periods:
+                throttled.append(
+                    100 * _delta(queries, "container_cpu_throttled_periods@control-plane") / periods
+                )
+            # Nessuna build nativa pubblica una serie jvm_*: assente vuol dire
+            # "domanda che non si applica", non zero.
+            pauses = _delta(queries, "jvm_gc_pause_count")
+            seconds = _delta(queries, "jvm_gc_pause_sum")
+            if pauses:
+                gc_pause.append(1000 * seconds / pauses)
+            window = _window(queries)
+            if seconds and window:
+                gc_fraction.append(100 * seconds / window)
+            values = _series(queries, "jvm_heap_used_bytes")
+            if values:
+                heap.append(max(values) / 1e6)
+        rows.append(
+            {
+                "Build": label,
+                "Vivo a fine cella": "si"
+                if alive and all(alive)
+                else (f"NO: {alive.count(False)}/{len(alive)}" if alive else "—"),
+                "CPU strozzata (%)": _fmt(*_spread(throttled), digits=1),
+                "Heap picco (MB)": _fmt(*_spread(heap), digits=0),
+                "Pausa GC media (ms)": _fmt(*_spread(gc_pause), digits=1),
+                "Tempo in GC (%)": _fmt(*_spread(gc_fraction), digits=2),
+                "Compilazione (s)": f"{build.get(key, {}).get('build_s', float('nan')):.1f}",
+                "Immagine (MB)": f"{build.get(key, {}).get('immagine_MB', float('nan')):.0f}",
+            }
+        )
+    return rows
 
 
-def peak(queries, name):
-    values = _series(queries, name)
-    return max(values) if values else float("nan")
+def _window(queries):
+    from datetime import datetime
+
+    entry = queries.get("function_dispatch_total")
+    if not entry or len(entry["points"]) < 2:
+        return 0.0
+    first = datetime.fromisoformat(entry["points"][0]["timestamp"])
+    last = datetime.fromisoformat(entry["points"][-1]["timestamp"])
+    return (last - first).total_seconds()
 
 
-def survived(queries):
-    """Se il processo alla fine e' quello dell'inizio.
+def build_phase(root: Path, labels: dict[str, str]) -> dict[str, dict]:
+    """Quanto e' costato produrre ogni build, dal log e dal registry.
 
-    process_uptime_seconds sarebbe il segnale diretto, ma il catalogo di NanoLab
-    su main non lo raccoglie. Un contatore monotono serve allo stesso scopo:
-    function_dispatch_total puo' solo salire, tranne attraverso un riavvio che
-    lo riporta a zero. E lo pubblicano tutte le build, anche quelle native che
-    non hanno nessuna serie jvm_*.
-
-    Senza questo controllo una cella morta a meta' si legge come una cella lenta.
+    Non c'e' altrove: la fase di prepare non scrive un record proprio, e la VM
+    che l'ha eseguita viene distrutta subito dopo.
     """
-    values = _series(queries, "function_dispatch_total")
-    if len(values) < 2:
-        return None
-    return all(b >= a for a, b in zip(values, values[1:]))
-
-
-def _window_seconds(queries):
-    for name in ("function_dispatch_total", "function_queue_depth"):
-        entry = queries.get(name)
-        if entry and len(entry["points"]) > 1:
-            first = datetime.fromisoformat(entry["points"][0]["timestamp"])
-            last = datetime.fromisoformat(entry["points"][-1]["timestamp"])
-            return (last - first).total_seconds()
-    return float("nan")
-
-
-def cell(run: Path) -> dict:
-    snapshot = _snapshot(run)
-    if snapshot is None:
-        raise FileNotFoundError(f"nessuno snapshot Prometheus in {run}")
-    queries = _open(snapshot)["queries"]
-    k6 = json.loads((run / "k6-summary.json").read_text())["metrics"]
-    window = _window_seconds(queries)
-    out = {"vivo": survived(queries), "finestra_s": window}
-
-    dispatch = delta(queries, "function_dispatch_total")
-    rejected = delta(queries, "function_queue_rejected_total")
-    offered = dispatch + rejected
-    out["dispatch_s"] = dispatch / window if window else float("nan")
-    out["rifiuti_%"] = 100 * rejected / offered if offered else float("nan")
-    out["coda"] = mean(queries, "function_queue_depth")
-    for name, key in (("function_error_total", "errori"),
-                      ("function_timeout_total", "timeout"),
-                      ("function_retry_total", "ritentativi")):
-        out[key] = delta(queries, name)
-
-    # Il costo del control plane: cio' che questo esperimento sta confrontando.
-    out["rss_cp_MB"] = peak(queries, "container_memory_bytes@control-plane") / 1e6
-    out["rss_cp_medio_MB"] = mean(queries, "container_memory_bytes@control-plane") / 1e6
-    out["cpu_cp_picco"] = peak(queries, "container_cpu_cores@control-plane")
-    out["cpu_cp_medio"] = mean(queries, "container_cpu_cores@control-plane")
-    periods = delta(queries, "container_cpu_periods@control-plane")
-    throttled = delta(queries, "container_cpu_throttled_periods@control-plane")
-    out["strozzati_%"] = 100 * throttled / periods if periods else float("nan")
-
-    # Le funzioni sono fisse fra le varianti: se si muovono, si e' mosso qualcosa
-    # che non doveva, e il confronto ha due parti mobili invece di una.
-    for function in (PRIMARY, "word-stats-javascript"):
-        short = "java" if function.endswith("java") else "js"
-        out[f"rss_{short}_MB"] = peak(queries, f"container_memory_bytes@{function}") / 1e6
-        out[f"cpu_{short}_picco"] = peak(queries, f"container_cpu_cores@{function}")
-
-    # Nessuna build nativa pubblica una serie jvm_*: assente qui vuol dire
-    # "questa domanda non si applica", non "zero".
-    heap = _series(queries, "jvm_heap_used_bytes")
-    if heap:
-        out["heap_picco_MB"] = max(heap) / 1e6
-    gc_sum, gc_cnt = delta(queries, "jvm_gc_pause_sum"), delta(queries, "jvm_gc_pause_count")
-    if gc_cnt:
-        out["gc_pausa_media_ms"] = 1000 * gc_sum / gc_cnt
-        out["gc_pause"] = gc_cnt
-    if window and gc_sum:
-        out["gc_frazione_%"] = 100 * gc_sum / window
-
-    latency_count = delta(queries, "function_latency_count")
-    if latency_count:
-        out["servizio_ms"] = 1000 * delta(queries, "function_latency_sum") / latency_count
-
-    duration = k6.get("http_req_duration", {})
-    out["p50_ms"] = duration.get("med", float("nan"))
-    out["p95_ms"] = duration.get("p(95)", float("nan"))
-    out["p99_ms"] = duration.get("p(99)", float("nan"))
-    out["max_ms"] = duration.get("max", float("nan"))
-    reqs = k6.get("http_reqs", {})
-    out["offerte_s"] = reqs.get("rate", float("nan"))
-    out["offerte"] = reqs.get("count", float("nan"))
-    # Un campo assente resta assente: 0 sarebbe una misura, e non l'abbiamo fatta.
-    out["scartati_gen"] = (k6.get("dropped_iterations") or {}).get("count", float("nan"))
-    checks = k6.get("checks", {})
-    out["check_falliti"] = checks.get("fails", float("nan"))
-    failed = k6.get("http_req_failed", {})
-    out["http_falliti_%"] = 100 * failed["value"] if "value" in failed else float("nan")
-
-    sizes = run.parent.parent / "image-sizes.json"
+    out: dict[str, dict] = {}
+    sizes = root / "image-sizes.json"
     if sizes.exists():
-        out["immagine_MB"] = json.loads(sizes.read_text()).get(run.parent.name, float("nan"))
+        for key, value in json.loads(sizes.read_text()).items():
+            out.setdefault(key, {})["immagine_MB"] = value
+    log = root / "run.log"
+    if not log.exists():
+        return out
+
+    def slug(label: str) -> str:
+        # Lo stesso appiattimento che il runner applica al summary per farne un
+        # operation id: i separatori ripetuti collassano, cosi' "Native, -Os,
+        # serial GC" diventa native-os-serial-gc e non native--os-serial-gc.
+        return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", label.lower())).strip("-")
+
+    slugs = {slug(label): key for key, label in labels.items()}
+    for line in log.read_text().splitlines():
+        if not line.startswith("[") or "] passed" not in line:
+            continue
+        step, seconds = line.split("]", 1)[0].lstrip("["), line.rsplit(None, 1)[-1]
+        if not seconds.endswith("s") or not any(
+            marker in step for marker in ("compile-native-image", "build-image", "build-boot-jar")
+        ):
+            continue
+        for name, key in slugs.items():
+            if step.endswith(name):
+                entry = out.setdefault(key, {})
+                entry["build_s"] = entry.get("build_s", 0.0) + float(seconds[:-1])
     return out
 
 
-def variants(root: Path) -> list[tuple[str, str]]:
-    manifest = json.loads((root / "comparison-manifest.json").read_text())
-    return [(v["key"], v["label"]) for v in manifest["variants"]]
-
-
-def cells(root: Path, key: str) -> list[dict]:
-    return [cell(run) for run in sorted((root / key).glob("run-*")) if _snapshot(run)]
-
-
-def summarise(values, fmt="%.1f"):
-    values = [v for v in values if v == v]
-    if not values:
-        return "—"
-    if len(values) == 1:
-        return fmt % values[0]
-    return f"{fmt % st.mean(values)} ± {fmt % st.stdev(values)}"
-
-
-def separation(a, b):
-    """Distanza in unita' di deviazione standard aggregata. NON un valore p."""
-    a, b = [x for x in a if x == x], [x for x in b if x == x]
-    if len(a) < 2 or len(b) < 2:
-        return None
-    pooled = ((st.stdev(a) ** 2 + st.stdev(b) ** 2) / 2) ** 0.5
-    if pooled == 0:
-        return float("inf") if st.mean(a) != st.mean(b) else 0.0
-    return abs(st.mean(a) - st.mean(b)) / pooled
-
-
-ROWS = [
-    ("celle", "__n", None),
-    ("processo vivo a fine cella", "__vivo", None),
-    ("dispatch/s", "dispatch_s", "%.0f"),
-    ("richieste offerte/s (k6)", "offerte_s", "%.0f"),
-    ("rifiuti (%)", "rifiuti_%", "%.2f"),
-    ("HTTP falliti (%)", "http_falliti_%", "%.2f"),
-    ("p50 chiamante (ms)", "p50_ms", "%.2f"),
-    ("p95 chiamante (ms)", "p95_ms", "%.1f"),
-    ("p99 chiamante (ms)", "p99_ms", "%.1f"),
-    ("max chiamante (ms)", "max_ms", "%.0f"),
-    ("servizio lato server (ms)", "servizio_ms", "%.2f"),
-    ("coda media", "coda", "%.1f"),
-    ("RSS control plane, picco (MB)", "rss_cp_MB", "%.0f"),
-    ("RSS control plane, medio (MB)", "rss_cp_medio_MB", "%.0f"),
-    ("CPU control plane, picco (core)", "cpu_cp_picco", "%.2f"),
-    ("CPU control plane, media (core)", "cpu_cp_medio", "%.2f"),
-    ("periodi CPU strozzati (%)", "strozzati_%", "%.1f"),
-    ("heap JVM al picco (MB)", "heap_picco_MB", "%.0f"),
-    ("pause GC", "gc_pause", "%.0f"),
-    ("pausa GC media (ms)", "gc_pausa_media_ms", "%.1f"),
-    ("tempo in GC (%)", "gc_frazione_%", "%.2f"),
-    ("immagine (MB)", "immagine_MB", "%.0f"),
-    ("RSS word-stats-java, picco (MB)", "rss_java_MB", "%.0f"),
-    ("RSS word-stats-javascript, picco (MB)", "rss_js_MB", "%.0f"),
-    ("errori", "errori", "%.0f"),
-    ("timeout", "timeout", "%.0f"),
-    ("iterazioni scartate dal generatore", "scartati_gen", "%.0f"),
-    ("check k6 falliti", "check_falliti", "%.0f"),
-]
+def markdown(rows) -> str:
+    if not rows:
+        return "_Nessuna cella con dati._"
+    columns = list(rows[0])
+    lines = ["| " + " | ".join(columns) + " |", "|" + "---|" * len(columns)]
+    for row in rows:
+        lines.append("| " + " | ".join(str(row[c]) for c in columns) + " |")
+    return "\n".join(lines)
 
 
 def render(root: Path) -> str:
-    keys = variants(root)
-    data = {key: cells(root, key) for key, _ in keys}
-    present = [(k, label) for k, label in keys if data[k]]
-    if not present:
-        return "_Nessuna cella con dati._"
-
-    header = "| misura | " + " | ".join(label for _, label in present) + " |"
-    rule = "|---|" + "---|" * len(present)
-    lines = [header, rule]
-    for name, key, fmt in ROWS:
-        values = []
-        for variant, _ in present:
-            group = data[variant]
-            if key == "__n":
-                values.append(str(len(group)))
-            elif key == "__vivo":
-                dead = [c for c in group if c["vivo"] is False]
-                values.append("si, tutte" if not dead else f"**NO: {len(dead)} morte**")
-            else:
-                values.append(summarise([c.get(key, float("nan")) for c in group], fmt))
-        if all(v == "—" for v in values):
-            continue
-        lines.append(f"| {name} | " + " | ".join(values) + " |")
-
-    baseline = present[0][0]
-    notes = []
-    for variant, label in present[1:]:
-        for key, name in (("dispatch_s", "dispatch/s"), ("p95_ms", "p95"), ("rss_cp_MB", "RSS")):
-            gap = separation([c.get(key, float("nan")) for c in data[baseline]],
-                             [c.get(key, float("nan")) for c in data[variant]])
-            if gap is not None and gap >= 2:
-                notes.append(f"- {label} contro {present[0][1]}: {name} separati di {gap:.1f} sd aggregate")
-    if notes:
-        lines += ["", "Separazioni oltre 2 deviazioni standard aggregate (non sono valori p):", *notes]
-    return "\n".join(lines)
+    readable, holder = _readable(root)
+    try:
+        labels = variants(readable)
+        found = cells(readable, labels)
+        if not found:
+            return "_Nessuna cella con dati._"
+        aggregate = aggregate_table(found, labels).to_dict("records")
+        return (
+            markdown(aggregate)
+            + "\n\nQuello che il report di confronto non guarda:\n\n"
+            + markdown(extras(readable, labels, found))
+        )
+    finally:
+        if holder is not None:
+            holder.cleanup()
 
 
 def write_into(doc: Path, marker: str, table: str) -> bool:
@@ -280,9 +239,9 @@ def main() -> None:
     table = render(args.run_dir)
     print(table)
     if args.doc and write_into(args.doc, args.marker, table):
-        print(f"\nscritta in {args.doc} fra i marcatori {args.marker}")
+        print(f"\nscritta in {args.doc} fra i marcatori {args.marker}", file=sys.stderr)
     elif args.doc:
-        print(f"\nmarcatori {args.marker} assenti in {args.doc}: tabella non scritta")
+        print(f"\nmarcatori {args.marker} assenti in {args.doc}", file=sys.stderr)
 
 
 if __name__ == "__main__":
