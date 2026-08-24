@@ -122,6 +122,20 @@ tre ripetizioni, celle interlacciate. Funzioni fisse `word-stats-java` e
 di carico `comparison`: 450 s per cella, due rampe con due picchi
 (30 s warm → base → picco → recupero → alto → picco più duro → drain).
 
+**Il limite di CPU, che nessuno imposta.** Nulla in NanoLab passa un limite di
+CPU per il control plane: `control_plane_helm_values` non lo tocca e il piano di
+confronto nemmeno, quindi vale il default del chart, `limits.cpu: "1"`. È la
+condizione originale — ed è anche quella che la campagna diagnostica ha
+smontato: a 1 CPU il tetto era ~300 dispatch/s con l'85% dei periodi strozzati,
+e a 4 CPU diventava 843/s con lo 0%. Il profilo `comparison` offre fino a
+900+315 rps, cioè molto oltre quel muro.
+
+Conseguenza: se lo strozzamento è alto, le quattro build sono appoggiate allo
+stesso muro e il confronto misura chi rifiuta meglio, non quanto costa ciascuna.
+`tables.py` calcola `periodi CPU strozzati (%)` proprio per rendere la domanda
+decidibile dai dati invece che dall'aspettativa. Se risulta alto serve un secondo
+braccio con un limite che non sia il collo di bottiglia.
+
 **Cosa conta come risposta.** Throughput sostenuto e p50/p95 per variante, RSS
 del container, pause del collector, dimensione dell'immagine, tempo di avvio —
 tutti dallo stesso run, con la dispersione su tre ripetizioni. Separazione in
@@ -133,7 +147,11 @@ dall'OOM killer dopo 9m50s, e sotto un limite di memoria ha impiegato 94 minuti
 senza finire. Da qui la `Standard_D8s_v5` con 32 GB e `--native-build-memory`
 lasciato libero.
 
-**Risultati.** _Da eseguire._
+**Risultati.**
+
+<!-- A1:inizio -->
+_Da eseguire._
+<!-- A1:fine -->
 
 ## A2 — Dove sta il ginocchio della memoria
 
@@ -153,7 +171,11 @@ ha cambiato proprio l'occupazione in regime.
 **Nota.** È l'unico pezzo del capitolo footprint che A1 non copre. Ed è
 l'esperimento in cui lo strumento sta dentro l'oggetto misurato (vedi sopra).
 
-**Risultati.** _Da eseguire._
+**Risultati.**
+
+<!-- A2:inizio -->
+_Da eseguire._
+<!-- A2:fine -->
 
 ## A3 — Le due porte restano distinguibili
 
@@ -174,7 +196,11 @@ smentire**: nell'ultima misura, a 3x le due porte venivano rifiutate al 15,7% e
 al 15,4% — indistinguibili. L'equità è la politica sbagliata quando le scadenze
 sono diverse.
 
-**Risultati.** _Da eseguire._
+**Risultati.**
+
+<!-- A3:inizio -->
+_Da eseguire._
+<!-- A3:fine -->
 
 ---
 
@@ -197,7 +223,11 @@ componente del segnale su cui decide.
 **Cosa conta come risposta.** Concorrenza concessa per finestra, latenza del
 chiamante, tasso di rifiuto. E la taratura ancora aperta delle soglie 0,5 / 0,15.
 
-**Risultati.** _Da eseguire._
+**Risultati.**
+
+<!-- B1:inizio -->
+_Da eseguire._
+<!-- B1:fine -->
 
 ## B2 — Co-tenancy: cross-talk senza contesa
 
@@ -211,7 +241,11 @@ il cross-talk è debole, che la cricchetta è assente e che la sotto-utilizzazio
 è smentita (2818 rps insieme contro 1821 da sola). Serve la stessa misura sullo
 stesso hardware degli altri esperimenti di questa campagna.
 
-**Risultati.** _Da eseguire._
+**Risultati.**
+
+<!-- B2:inizio -->
+_Da eseguire._
+<!-- B2:fine -->
 
 ## B3 — Autoscaler interno contro HPA
 
@@ -228,7 +262,11 @@ metrica che ha smesso di salire.
 **Nota.** Codice non toccato dai tre difetti. Si rifà solo per avere la serie
 sullo stesso hardware, non perché ci si aspetti un risultato diverso.
 
-**Risultati.** _Da eseguire._
+**Risultati.**
+
+<!-- B3:inizio -->
+_Da eseguire._
+<!-- B3:fine -->
 
 ## B4 — Offload edge→cloud sotto pressione
 
@@ -246,7 +284,11 @@ trigger (`EAGER`, `DEPTH`, `EST_WAIT`), comportamento al fallimento remoto
 aperta da A3. Se A3 conferma che le due porte sono indistinguibili, questo
 esperimento misura un trigger che non discrimina.
 
-**Risultati.** _Da eseguire._
+**Risultati.**
+
+<!-- B4:inizio -->
+_Da eseguire._
+<!-- B4:fine -->
 
 ## B5 — I quattro SDK a confronto
 
@@ -264,7 +306,11 @@ compare da nessun'altra parte.
 va verificato che le implementazioni facciano lo stesso lavoro prima di
 attribuire la differenza al linguaggio.
 
-**Risultati.** _Da eseguire._
+**Risultati.**
+
+<!-- B5:inizio -->
+_Da eseguire._
+<!-- B5:fine -->
 
 ## B6 — Cold start
 
@@ -280,7 +326,11 @@ sotto il profilo `advanced`.
 
 **Nota.** Codice non toccato. Ultimo in ordine di priorità.
 
-**Risultati.** _Da eseguire._
+**Risultati.**
+
+<!-- B6:inizio -->
+_Da eseguire._
+<!-- B6:fine -->
 
 ---
 
