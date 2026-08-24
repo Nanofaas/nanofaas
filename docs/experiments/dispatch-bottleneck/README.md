@@ -81,6 +81,54 @@ Con questo emendamento sono stati rivalidati i dodici raw della matrice del
 L'accounting whole-run è compreso fra 99,979% e 100,094% nella matrice ed è
 100,016% nella cella di validazione delle probe.
 
+## Matrice validata: composizione del carico × intensità
+
+La matrice `azure-matrix-20260824T123031Z` è stata eseguita su mcFaas
+`dce961681b58196d1735c2b9753de030b436e3d1` e NanoLab
+`ad275f6fbdda690323d979213b555b239f04f3f5`. L'ordine era fisso e non
+randomizzato: sync 2×, mixed 2×, sync 3×, mixed 3×, con tre repliche
+consecutive per braccio. Il primo tentativo è terminato prima di qualsiasi
+cella per un errore DNS su `api.github.com`; dopo flush della cache DNS e una
+risposta HTTP 200, lo stesso comando e lo stesso matrix ID hanno completato
+12/12 celle sotto `caffeinate -dimsu`, teardown incluso. Il protocollo
+self-contained, il comando esatto e l'inventario Azure finale vuoto sono in
+[`validation-gate.txt`](raw/azure-matrix-20260824T123031Z-protocol/validation-gate.txt).
+
+Tutte le run hanno uptime monotono, zero check falliti e zero timeout funzione;
+`dropped_iterations` non è emesso nei summary, quindi il dato è assente e non
+va interpretato come un contatore osservato a zero. Dopo l'emendamento
+whole-run, l'accounting è 99,979%–100,094% e tutti i validator e gli invarianti
+slot-hold sono PASS. Nel braccio mixed 3×, 5 sonde liveness su 1.352 hanno
+superato un secondo (massimi 1.057–1.074 ms), senza restart: è uno strike sul
+budget/rischio operativo, non un criterio di invalidazione della matrice.
+
+| braccio | accepted workload/s Java+JS | rifiuti Java/s | dispatch Java/s |
+|---|---:|---:|---:|
+| sync 2× | 856,5 ± 0,6 | 1,583 ± 0,065 | 593,2 ± 0,6 |
+| mixed 2× | 893,5 ± 1,5 | 2,228 ± 0,191 | 589,0 ± 1,1 |
+| sync 3× | 1.193,4 ± 4,1 | 8,571 ± 0,316 | 823,9 ± 2,7 |
+| mixed 3× | 1.227,4 ± 7,0 | 10,435 ± 0,548 | 805,5 ± 5,0 |
+
+Il throughput Java+JS è la metrica primaria di carico accettato, ma il mixed
+non è un confronto semantico diretto col sync: comprende ACK async e retry con
+idempotenza. Sul solo percorso Java i rifiuti passano da 1,583 a 2,228/s a 2×
+e da 8,571 a 10,435/s a 3×; i rifiuti async mixed sono rispettivamente
+2,347 ± 0,162/s e 10,637 ± 0,482/s, quasi in parità con quelli sync e con un
+lieve eccesso async concorde, la cui rilevanza non è stabilita.
+
+La latenza sync a 2× non è stabilita. A 3× il p95 passa da
+28,38 ± 1,09 ms a 34,94 ± 3,13 ms e il p99 da 218,25 ± 121,49 ms a
+669,82 ± 169,20 ms: l'associazione è consistente nelle tre repliche, ma `n=3`
+e l'ordine fisso non supportano una conclusione causale forte. Anche il dispatch
+Java, 593,2→589,0/s a 2× e 823,9→805,5/s a 3×, resta descrittivo per gli stessi
+limiti. Le diagnostiche servono a interpretare questi risultati, non sono
+endpoint decisionali; le probe restano conservate per repliche future.
+
+I commit successivi `f5524354` (validator accounting), `c854f836` e `d2177928`
+(tabelle e label) hanno analizzato i raw senza modificare le run. I manifest
+usano il tag mutabile `jvm-c2` e non ne archiviano il digest: il transcript
+conserva gli SHA esatti, ma questa resta una limitazione di riproducibilità.
+
 ## Protocollo comune
 
 - Azure `westeurope`: stack `Standard_D8s_v5` (8 vCPU, 32 GiB), load generator
@@ -102,6 +150,7 @@ L'accounting whole-run è compreso fra 99,979% e 100,094% nella matrice ed è
 | `azure-conc8-probe` | G1, una ripetizione, 8 slot | NanoLab `ea01127` | 119.892 dispatch contro 115.630 medi a 2 slot (+3,69%, non 4×); p95 121,6 ms e scarti 14,64%. L'ipotesi che un park ogni due dispatch imponesse il tetto è falsa. |
 | `azure-dispatch-instrumentation-c2` | G1, una ripetizione, 2/20 | mcFaas `8af8c314`; NanoLab `553b7a5` | `offer` 365 ns, `poll` 238 ns, wake-up 222 µs medi; p95 93,7 ms, 114.797 dispatch, 18,02% scarti. Lock e park/unpark non spiegano da soli attese di decine di ms. |
 | `azure-dispatch-probe-validation-c2` | G1, una ripetizione, 2/20 | mcFaas `d5cae558`; NanoLab `39e0b95d` | Tutti i gate strumentali PASS; run usata soltanto per validare raccolta e controlli automatici, non per conclusioni prestazionali. |
+| `azure-matrix-20260824T123031Z-*` | JVM C2, 4 bracci × 3 ripetizioni, sync/mixed a 2×/3× | mcFaas `dce96168`; NanoLab `ad275f6` | 12/12 valide; lieve eccesso concorde di rifiuti mixed, latenza sync 2× non stabilita e peggioramento 3× associato ma non causalmente identificato. |
 | `azure-dispatch-slot-hold-c2` | G1, una ripetizione, 2/20 | mcFaas `df5efda1`; NanoLab `07bbbf7` | slot 1,416 ms e `function_latency` 1,491 ms sull'intera run; p95 92,5 ms, 115.859 dispatch, 17,43% scarti. Nessun callback lag millisecond-level nascosto. |
 | `azure-dispatch-reacquisition-c2` | G1, una ripetizione, 2/20 | mcFaas `50e7d87a`; NanoLab `2b7f01c` | Risultato numerico archiviato, ma sonda invalidata dal capacity-idle bound e da una race nel pairing dei timestamp. |
 | `azure-dispatch-reacquisition-segments-c2` | G1, una ripetizione, 2/20 | mcFaas `3365c590`; NanoLab `8e9674e` | 4,743/4,788 ms pre-active osservati, ma attribuzione invalidata: il timer supera il massimo fisico di 2,081 ms al `peak900`. |

@@ -1,0 +1,49 @@
+# Il braccio puramente sincrono a 3x, guidato dallo STESSO generatore del misto
+# con le due quote a zero.
+#
+# Uno script solo per tutti e quattro i bracci della matrice: cosi' la differenza
+# fra un braccio e l'altro e' la composizione del carico e nient'altro, e la
+# misura della latenza del probe di liveness - che vive nel generatore misto -
+# esiste anche qui. Con un secondo script sincrono quel confronto avrebbe avuto
+# un generatore diverso su ogni lato, che e' il difetto che questa serie di
+# esperimenti ha gia' pagato due volte.
+#
+# runtime-comparison.js resta intatto e continua a servire il profilo comparison.
+
+# One cell of the control-plane build comparison: the JVM baseline.
+#
+# Every cell is this file with a different `controlPlaneVariant`. The functions
+# are held fixed across all of them — a Java one and a JavaScript one, both doing
+# word statistics — because the question is what the control plane costs, and a
+# function that changed between cells would put a second moving part in every
+# comparison.
+#
+# The image is NOT built by this run: `controlPlaneVariant` names a tag that the
+# matrix compiled into the VM-local registry beforehand, and passing it as a
+# prebuilt image makes `platform.py` skip its own build entirely. That is what
+# stops a cell from quietly rebuilding a different artefact under the same name.
+#
+# No governor and no autoscaler, enforced by the scenario schema: either one
+# would move the concurrency limits underneath the builds being compared.
+workflow: loadtest
+backend: k8s
+loadProfile: mixed
+asyncShare: 0.0
+idemShare: 0.0
+controlPlaneVariant: jvm-c2
+# Declared, not inherited: the chart default is 1 CPU, and every comparison so
+# far ran against it without saying so.
+controlPlaneCpu: "2"
+functions:
+  - word-stats-java
+  - word-stats-javascript
+
+# Scala ogni stadio del profilo. A 1x il control plane usa 0,53 core su 2 e
+# serve tutto: il modello di CPU del 2026-08-23 mette il suo tetto a ~5,7x e il
+# limite di concorrenza (2 slot, 0,526 ms di servizio) a ~4,2x.
+loadScale: 3.0
+
+# Il pool era saturo al 98% e al 100% nei bracci 2x e 3x del 2026-08-23:
+# dichiarato invece che derivato, perche la domanda dipende dalla latenza che
+# il run sta cercando di misurare.
+loadVus: 5000
