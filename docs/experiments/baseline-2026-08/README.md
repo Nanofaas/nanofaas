@@ -334,6 +334,30 @@ _Da eseguire._
 
 ---
 
+## Difetti trovati dalla campagna
+
+Annotati quando emergono, corretti **dopo**: cambiare il codice mentre la
+matrice lo misura invaliderebbe le celle gia' prese.
+
+### `jvm_gc_time_fraction` e' NaN sulla build JVM
+
+Trovato in A1, cella `jvm/run-1`. Il gauge e' NaN in tutti e 97 i punti sulla
+JVM e funziona sulla nativa (0 punti NaN). Cioe' la metrica scritta apposta per
+essere confrontabile fra build — `GcMetricsConfiguration` lo dice nel commento,
+«registrata su entrambe perche' una diagnostica presente in una sola
+configurazione non puo' servire a confrontarle» — e' proprio quella che fallisce
+su una delle due.
+
+Meccanismo quasi certo: `registry.gauge(nome, tag, oggetto, funzione)` tiene un
+riferimento **debole** all'oggetto, e l'oggetto e' la lista fresca restituita da
+`ManagementFactory.getGarbageCollectorMXBeans()`, che nessun altro trattiene. Su
+HotSpot viene raccolta e il gauge riporta NaN; su SubstrateVM sopravvive.
+
+Non blocca la campagna: `jvm_gc_collection_time` e `jvm_gc_collection_count`
+vengono dal polling dell'MXBean, rispondono su entrambe le VM, e sono le serie
+che `tables.py` usa per la frazione di tempo in GC. Correzione: tenere un
+riferimento forte alla lista.
+
 ## Protocollo comune
 
 Invariante fra le celle, perché un confronto con due parti mobili non è un

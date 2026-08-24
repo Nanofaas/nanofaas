@@ -102,6 +102,7 @@ def extras(root: Path, labels: dict[str, str], cells_found) -> list[dict]:
         if not reps:
             continue
         alive, gc_fraction, gc_pause, throttled, heap = [], [], [], [], []
+        gc_count, broken = [], []
         for repetition in reps:
             queries = _snapshot(root, key, repetition)
             if queries is None:
@@ -114,15 +115,26 @@ def extras(root: Path, labels: dict[str, str], cells_found) -> list[dict]:
                 throttled.append(
                     100 * _delta(queries, "container_cpu_throttled_periods@control-plane") / periods
                 )
-            # Nessuna build nativa pubblica una serie jvm_*: assente vuol dire
-            # "domanda che non si applica", non zero.
-            pauses = _delta(queries, "jvm_gc_pause_count")
-            seconds = _delta(queries, "jvm_gc_pause_sum")
-            if pauses:
-                gc_pause.append(1000 * seconds / pauses)
+            # jvm_gc_pause_* viene dal binder di Micrometer, che ascolta le
+            # notifiche di GC: SubstrateVM non ne emette, quindi su una build
+            # nativa quella serie e' vuota. jvm_gc_collection_time e _count
+            # vengono invece dal polling dell'MXBean, che risponde su entrambe
+            # le VM - registrati apposta su tutte e due le build, perche' una
+            # diagnostica presente in una sola configurazione non puo' servire a
+            # confrontarle. Sono quelle le serie da usare qui.
+            collections = _delta(queries, "jvm_gc_collection_count")
+            seconds = _delta(queries, "jvm_gc_collection_time")
+            if collections:
+                gc_pause.append(1000 * seconds / collections)
+                gc_count.append(collections)
             window = _window(queries)
             if seconds and window:
                 gc_fraction.append(100 * seconds / window)
+            # Il gauge che dovrebbe dare la stessa cosa gia' pronta, e che su
+            # HotSpot non la da': va riportato quando mente, non nascosto.
+            fraction = _series(queries, "jvm_gc_time_fraction")
+            if fraction and all(v != v for v in fraction):
+                broken.append(repetition)
             values = _series(queries, "jvm_heap_used_bytes")
             if values:
                 heap.append(max(values) / 1e6)
@@ -134,8 +146,10 @@ def extras(root: Path, labels: dict[str, str], cells_found) -> list[dict]:
                 else (f"NO: {alive.count(False)}/{len(alive)}" if alive else "—"),
                 "CPU strozzata (%)": _fmt(*_spread(throttled), digits=1),
                 "Heap picco (MB)": _fmt(*_spread(heap), digits=0),
+                "Collezioni GC": _fmt(*_spread(gc_count), digits=0),
                 "Pausa GC media (ms)": _fmt(*_spread(gc_pause), digits=1),
                 "Tempo in GC (%)": _fmt(*_spread(gc_fraction), digits=2),
+                "gauge gc_time_fraction": "NaN" if len(broken) == len(reps) else ("ok" if not broken else f"NaN in {len(broken)}/{len(reps)}"),
                 "Compilazione (s)": f"{build.get(key, {}).get('build_s', float('nan')):.1f}",
                 "Immagine (MB)": f"{build.get(key, {}).get('immagine_MB', float('nan')):.0f}",
             }
