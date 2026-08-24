@@ -696,7 +696,7 @@ slot occupato.
 Run: `azure-dispatch-slot-hold-c2`, `native-o3-g1`, una ripetizione, concurrency
 2 e coda 20. Commit mcFaas `df5efda1`; commit NanoLab `07bbbf7`. Raw, protocollo,
 tabella completa per fase e script di analisi sono versionati in
-[`../experiments/dispatch-bottleneck/`](../experiments/dispatch-bottleneck/).
+[`../experiments/archive/dispatch-bottleneck/`](../experiments/archive/dispatch-bottleneck/).
 
 Il timer parte all'acquisizione CAS e termina in `QueueManager.releaseSlot`.
 Sull'intera run misura 164,044 s / 115.859 dispatch = **1,416 ms**, contro
@@ -716,7 +716,7 @@ capacità inattiva; non serve altra strumentazione nel callback.
 Run: `azure-dispatch-reacquisition-c2`, `native-o3-g1`, una ripetizione,
 concurrency 2 e coda 20. Commit mcFaas `50e7d87a`; commit NanoLab `2b7f01c`.
 Raw, tabella per fase e script riproducibile sono in
-[`../experiments/dispatch-bottleneck/`](../experiments/dispatch-bottleneck/).
+[`../experiments/archive/dispatch-bottleneck/`](../experiments/archive/dispatch-bottleneck/).
 Build nativa 891,5 s, push 5,1 s, k6 451,5 s. Le 12 risorse Azure sono state
 distrutte e `caffeinate` è terminato dopo la run.
 
@@ -784,7 +784,7 @@ segnali coalesced. Piano:
 Run del 2026-08-22: `azure-dispatch-scheduler-direct-probes-c2`, commit mcFaas
 `7ed1e010`, commit NanoLab `ce45fae`, una ripetizione, concurrency 2 e coda 20.
 Build nativa 878,9 s, push 5,0 s, k6 451,5 s. Raw e script di analisi sono in
-[`../experiments/dispatch-bottleneck/`](../experiments/dispatch-bottleneck/).
+[`../experiments/archive/dispatch-bottleneck/`](../experiments/archive/dispatch-bottleneck/).
 
 Al `peak900`, 10.405 dispatch Java in 30 s (**346,8/s**) spendono **117,3 µs**
 medi nel submit sincrono. Sulle due funzioni, 16.409 submit totalizzano **2,108 s**,
@@ -820,7 +820,7 @@ al controllo diretto (346,8/s e 31,040 ms), non c'è miglioramento misurabile.
 
 Verdetto: l'ipotesi che il churn di visite non dispatchable sia la causa dominante
 è invalidata. I contatori calano, ma il limite resta. Raw e risultati sono nel
-registro [`dispatch-bottleneck`](../experiments/dispatch-bottleneck/).
+registro [`dispatch-bottleneck`](../experiments/archive/dispatch-bottleneck/).
 
 ## 17. Localizzazione enqueue → scheduler
 
@@ -860,7 +860,7 @@ Risultato complessivo: 115.209 dispatch Java, 435,06 richieste/s, p95 94,24 ms,
 p99 141,11 ms, 17,67% scarti e 29.840 rifiuti Java. `caffeinate` è stato usato
 durante il run e rimosso al termine; teardown NanoLab completato e inventario
 Azure vuoto. Raw, checksum e script sono in
-[`docs/experiments/dispatch-bottleneck/`](../experiments/dispatch-bottleneck/).
+[`docs/experiments/archive/dispatch-bottleneck/`](../experiments/archive/dispatch-bottleneck/).
 
 ## 19. Bilancio del thread scheduler
 
@@ -991,7 +991,7 @@ il peggiore per misurare un risparmio di CPU, perché il quantum CFS domina.
 
 **Regola che ne segue:** un cambiamento da pochi punti percentuali non si misura
 con una cella da 25 minuti su Azure. Si misura in locale, come in
-[`payload-passthrough.md`](../experiments/payload-passthrough.md) — gratis,
+[`payload-passthrough.md`](../experiments/archive/payload-passthrough.md) — gratis,
 ripetibile, e in microsecondi per operazione invece che dentro il rumore. Su Azure
 si portano solo le domande che cambiano il sistema di un fattore, non di un
 margine.
@@ -1352,12 +1352,12 @@ pubblicata dalla piattaforma ma non richiesta dal catalogo torna vuota senza dir
 
 Ogni tabella numerica di §22, §22.2, §22.3, §28, §32 e appendice B sta fra
 marcatori `<!-- tabella:NOME -->` e viene prodotta da
-[`../experiments/dispatch-bottleneck/build_tables.py`](../experiments/dispatch-bottleneck/build_tables.py)
+[`../experiments/archive/dispatch-bottleneck/build_tables.py`](../experiments/archive/dispatch-bottleneck/build_tables.py)
 leggendo i raw archiviati. Il documento possiede la prosa; fra i marcatori non
 possiede nulla.
 
 ```bash
-cd docs/experiments/dispatch-bottleneck
+cd docs/experiments/archive/dispatch-bottleneck
 python3 build_tables.py raw                              # stampa
 python3 build_tables.py raw --update=../../plans/2026-08-21-dispatch-bottleneck-and-comparison-rerun.md
 ```
@@ -1404,7 +1404,7 @@ si verifica con `pmset -g assertions`, mai con `pgrep`.
 Il ciclo completo per una run nuova, tre comandi:
 
 ```bash
-cd docs/experiments/dispatch-bottleneck
+cd docs/experiments/archive/dispatch-bottleneck
 
 # 1. le metriche hanno risposto?
 python3 check_metrics.py <run-dir-di-nanolab>
@@ -2529,7 +2529,7 @@ che erano granularità travestita da dato.
 
 A 2.430 richieste/s su due core, **un timer completo di cronometraggio costa lo
 0,005% del budget**; venti ne costano lo 0,1%. Codice in
-[`../experiments/dispatch-bottleneck/MeterCost.java`](../experiments/dispatch-bottleneck/MeterCost.java).
+[`../experiments/archive/dispatch-bottleneck/MeterCost.java`](../experiments/archive/dispatch-bottleneck/MeterCost.java).
 
 ### La regola, corretta
 
@@ -2794,7 +2794,7 @@ fatto perdere tempo o mi ha quasi fatto scrivere il falso:
 
 ```bash
 cd ../nanolab && ./run-matrix.sh          # 12 celle, ~2 ore, teardown automatico a 12/12
-python3 docs/experiments/mixed-workload/tables.py \
+python3 docs/experiments/archive/mixed-workload/tables.py \
     ../nanolab/packages/nanolab/runs/azure-matrix-*   # la tabella qui sopra
 ```
 

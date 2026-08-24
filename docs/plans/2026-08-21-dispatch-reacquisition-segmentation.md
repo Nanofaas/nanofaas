@@ -112,11 +112,11 @@ git commit -m "Collect reacquisition scheduler segments"
 ### Task 3: Probe, evidence and cleanup
 
 **Files:**
-- Modify: `docs/experiments/dispatch-bottleneck/analyze_snapshot.py`
-- Modify: `docs/experiments/dispatch-bottleneck/README.md`
-- Modify: `docs/experiments/dispatch-bottleneck/SHA256SUMS`
+- Modify: `docs/experiments/archive/dispatch-bottleneck/analyze_snapshot.py`
+- Modify: `docs/experiments/archive/dispatch-bottleneck/README.md`
+- Modify: `docs/experiments/archive/dispatch-bottleneck/SHA256SUMS`
 - Modify: `docs/plans/2026-08-21-dispatch-bottleneck-and-comparison-rerun.md`
-- Create: `docs/experiments/dispatch-bottleneck/raw/azure-dispatch-reacquisition-segments-c2/**`
+- Create: `docs/experiments/archive/dispatch-bottleneck/raw/azure-dispatch-reacquisition-segments-c2/**`
 
 **Steps:**
 

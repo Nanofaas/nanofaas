@@ -567,13 +567,13 @@ versionati: contengono gli stessi JSON embedded e sono rigenerabili da NanoLab.
 Ricalcolo della tabella completa per fase, solo con la standard library Python:
 
 ```bash
-python3 docs/experiments/dispatch-bottleneck/analyze_snapshot.py \
-  docs/experiments/dispatch-bottleneck/raw/azure-dispatch-reacquisition-segments-c2/\
+python3 docs/experiments/archive/dispatch-bottleneck/analyze_snapshot.py \
+  docs/experiments/archive/dispatch-bottleneck/raw/azure-dispatch-reacquisition-segments-c2/\
 native-o3-g1/run-1/metrics/prometheus-snapshot.json
 ```
 
 ```bash
-cd docs/experiments/dispatch-bottleneck
+cd docs/experiments/archive/dispatch-bottleneck
 shasum -a 256 -c SHA256SUMS
 ```
 
