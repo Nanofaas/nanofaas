@@ -46,8 +46,12 @@ non autorizza conclusioni prestazionali.
 
 ### Esito della validazione delle probe
 
-La cella `azure-dispatch-probe-validation-c2` è terminata con exit code 0 e
-teardown completo il 2026-08-24. Il run usa mcFaas
+La cella `azure-dispatch-probe-validation-c2` è terminata con exit code 0 il
+2026-08-24. Poiché `compare` usava `keep=True`, il teardown di loadgen e stack è
+stato eseguito esplicitamente dopo il compare ed entrambi sono terminati con
+exit code 0. Comandi, esiti osservati e inventario finale sono conservati in
+[`validation-gate.txt`](raw/azure-dispatch-probe-validation-c2/validation-gate.txt).
+Il run usa mcFaas
 `d5cae55862da4fc4a6a426d1d8bccbac422c50c4` e NanoLab
 `39e0b95d3984fe8604c0707df920160793b75d06`. Il validator ha verificato:
 

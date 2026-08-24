@@ -1,0 +1,30 @@
+Dispatch probe validation external gates
+
+Working directory for compare, teardown, and inventory:
+/Users/micheleciavotta/Downloads/nanolab/.worktrees/dispatch-instrumentation
+
+Compare command:
+export NANOFAAS_ROOT=/Users/micheleciavotta/Downloads/mcFaas/.worktrees/dispatch-instrumentation
+caffeinate -dimsu ./nanolab.sh compare packages/nanolab/scenarios-v2/runtime-comparison-jvm.yaml --environment packages/nanolab/environments/azure-comparison.yaml --run-dir packages/nanolab/runs/azure-dispatch-probe-validation-c2 --variants native-o3-g1 --repetitions 1
+
+Observed result: process exit 0. Compare used keep=True, so it did not perform teardown.
+
+Validator command:
+python3 "$NANOFAAS_ROOT/docs/experiments/dispatch-bottleneck/analyze_snapshot.py" packages/nanolab/runs/azure-dispatch-probe-validation-c2/native-o3-g1/run-1/metrics/prometheus-snapshot.json --validate --k6-summary packages/nanolab/runs/azure-dispatch-probe-validation-c2/native-o3-g1/run-1/k6-summary.json --run-summary packages/nanolab/runs/azure-dispatch-probe-validation-c2/native-o3-g1/run-1/summary.json
+
+Observed result: all validation criteria PASS; process exit 0.
+
+Explicit teardown command:
+caffeinate -dimsu uv run --locked --package nanolab python -c 'from pathlib import Path; from nanolab.cli.product import _environment; from nanolab.cli.vm_provider import provider_for_environment, vm_request_for_role; env=_environment(Path("packages/nanolab/environments/azure-comparison.yaml")); provider=provider_for_environment(env, Path("/Users/micheleciavotta/Downloads/mcFaas/.worktrees/dispatch-instrumentation")); results=[(role, provider.teardown(vm_request_for_role(env, role, loadtest=True))) for role in ("loadgen", "stack")]; print("\n".join(f"{role}: rc={result.return_code} {result.stderr}" for role, result in results)); raise SystemExit(max(result.return_code for _, result in results))'
+
+Observed output, quoted to preserve the trailing empty-stderr separator:
+"loadgen: rc=0 "
+"stack: rc=0 "
+Observed result: process exit 0.
+
+Inventory command:
+az resource list --resource-group maurinoRicerca-rg --query "[?starts_with(name, 'nanofaas-comparison')].{name:name,type:type}" -o json
+
+Observed output:
+[]
+Observed result: process exit 0.

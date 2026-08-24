@@ -41,6 +41,7 @@ bd0581b2385a7362e57ced6128db805ec8a47272b82170a67b47010f94dc66bb  raw/azure-cpu4
 8c704044ca328ffb763b74557366c62baec2410e55c2c7ae671fdbd1e4cc5fc7  raw/azure-dispatch-probe-validation-c2/native-o3-g1/run-1/k6-summary.json
 edec6e49b33f03f431466a89fe0937e4290d6a123e1c1ab805d7efe076b4813a  raw/azure-dispatch-probe-validation-c2/native-o3-g1/run-1/metrics/prometheus-snapshot.json
 7c212f7d7b5edef87de12f5aa648cedfbdaa8ae52f4bda21c65bd76b284841e8  raw/azure-dispatch-probe-validation-c2/native-o3-g1/run-1/summary.json
+a647b74ef46ee923ce2c576de63984b8d701e7c438c382bfaa2e7e574f3b055c  raw/azure-dispatch-probe-validation-c2/validation-gate.txt
 84bd69bb388832a5de08b08112c2c01465c502a698e3fe486acc501777150acd  raw/azure-dispatch-reacquisition-c2/comparison-manifest.json
 134282d2b64c5108cd87b92cab0d9cb4a7a9883b718cbc9556283443d4b9d324  raw/azure-dispatch-reacquisition-c2/native-o3-g1/run-1/k6-summary.json
 f53ba5f76cea79ff9d33e9ca0b1d0ffe24e4bbf43435d73c9d6ca4d97f711bf7  raw/azure-dispatch-reacquisition-c2/native-o3-g1/run-1/metrics/prometheus-snapshot.json
