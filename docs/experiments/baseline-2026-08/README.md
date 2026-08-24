@@ -358,6 +358,36 @@ vengono dal polling dell'MXBean, rispondono su entrambe le VM, e sono le serie
 che `tables.py` usa per la frazione di tempo in GC. Correzione: tenere un
 riferimento forte alla lista.
 
+### La build G1 nativa non ha nessuna visibilita' sul collector
+
+Trovato in A1, cella `native-o3-g1/run-1`. Su quella build:
+
+| serie | punti | valore |
+|---|---|---|
+| `jvm_heap_used_bytes` | 0 | assente |
+| `jvm_gc_collection_count` | 0 | assente |
+| `jvm_gc_collection_time` | 0 | assente |
+| `jvm_gc_time_fraction` | 97 | **0,0 costante** |
+
+Il gauge risponde e dice che il collector non ha mai girato, mentre il processo
+serviva 435 rps per otto minuti con 471 MiB di working set. Il meccanismo e' in
+`GcMetricsConfiguration.value()`: mappa il `-1` dell'MXBean — che significa
+«questo collector non sa riportare la cifra» — a `0.0`, per impedire che un
+contatore negativo si legga a valle come un reset. Su Oracle GraalVM G1 quel
+guard trasforma «misura non disponibile» in «misura pari a zero».
+
+E' la stessa trappola che il javadoc della classe descrive per il binder a
+notifiche di Micrometer, ma sul percorso a polling, che di quella era la
+soluzione.
+
+Conseguenza per la campagna, da tenere presente leggendo A1: la spiegazione
+ovvia dei risultati di G1 — vince perche' non paga le pause del collector
+seriale — e' proprio quella che questi dati non permettono di verificare.
+L'unica evidenza indiretta e' il p99.
+
+Correzione: distinguere «non disponibile» da zero, cioe' non registrare affatto
+il contatore quando l'MXBean risponde `-1`, invece di pubblicare uno zero.
+
 ## Protocollo comune
 
 Invariante fra le celle, perché un confronto con due parti mobili non è un
