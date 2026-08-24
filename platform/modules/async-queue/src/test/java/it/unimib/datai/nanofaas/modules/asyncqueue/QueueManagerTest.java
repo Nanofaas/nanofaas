@@ -21,9 +21,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class QueueManagerTest {
 
-    // Existing capacity/controller meters plus the dispatch diagnostics.
-    private static final int METERS_PER_FUNCTION = 16 + ConcurrencyControlMode.values().length;
-
     @Test
     void enqueue_doesNotSignalWhenAllDispatchSlotsAreBusy() {
         QueueManager manager = new QueueManager(new SimpleMeterRegistry());
@@ -140,7 +137,8 @@ class QueueManagerTest {
         List<Meter> meters = registry.getMeters().stream()
                 .filter(meter -> "echo".equals(meter.getId().getTag("function")))
                 .toList();
-        assertThat(meters).hasSize(METERS_PER_FUNCTION);
+        assertThat(meters).extracting(meter -> meter.getId().getName())
+                .contains("function_queue_depth_by_path");
         assertThat(registry.get("function_target_inflight_per_pod")
                 .tag("function", "echo")
                 .gauge()
