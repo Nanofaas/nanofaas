@@ -16,6 +16,9 @@ import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -80,7 +83,23 @@ class InvocationServiceEarlyRefusalTest {
         // The old path reached enqueue, which refused; nothing calls it now.
         verify(enqueuer, never()).enqueue(any());
         verify(metrics).queueRejected("full-fn");
-        assertThat(executionStore.get("any")).isEmpty();
+        assertThat(executionStore.size()).isZero();
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", "   ", "\t"})
+    void absentIdempotencyKeysUseTheSameEarlyRefusal(String idempotencyKey) {
+        FunctionSpec spec = spec("full-fn");
+        when(functionService.get("full-fn")).thenReturn(Optional.of(spec));
+        when(enqueuer.isQueueFull("full-fn")).thenReturn(true);
+
+        assertThatThrownBy(() -> invocationService.invokeSyncReactive(
+                "full-fn", new InvocationRequest("payload", Map.of()), idempotencyKey, null, 1_000).block())
+                .isInstanceOf(QueueFullException.class);
+
+        verify(enqueuer, never()).enqueue(any());
+        assertThat(executionStore.size()).isZero();
     }
 
     @Test

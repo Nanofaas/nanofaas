@@ -186,14 +186,15 @@ public class InvocationService {
      * was 590 refusals a second against 299 dispatches, on a control plane the chart
      * caps at one CPU.
      *
-     * <p>Skipped whenever an idempotency key is present: that request may be a replay
-     * whose result is already stored, and a replay must be served however full the
-     * queue is. The check is a hint and `enqueue` remains the authority, so a slot
-     * freed in between costs one refusal the caller was about to receive anyway.
+     * <p>Skipped whenever a non-blank idempotency key is present: that request may be
+     * a replay whose result is already stored, and a replay must be served however
+     * full the queue is. The refusal is conservatively linearized at this pre-check;
+     * new executions that pass the pre-check still reach `enqueue`, which remains
+     * authoritative.
      */
     private void refuseEarlyIfQueueFull(String functionName, FunctionSpec spec, String idempotencyKey,
                                         InvocationKind kind) {
-        if (idempotencyKey != null
+        if (idempotencyKey != null && !idempotencyKey.isBlank()
                 || !reactiveCoordinator.queueFullMeansRefusal(spec)
                 || !enqueuer.isQueueFull(functionName)) {
             return;
