@@ -23,6 +23,37 @@ import static org.mockito.Mockito.*;
 class SchedulerResilienceTest {
 
     @Test
+    void dispatchExceptionRecordsSlotHoldAndReleasesTheAcquiredState() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        QueueManager queueManager = new QueueManager(registry);
+        FunctionSpec spec = functionSpec("failed", 1, 10);
+        FunctionQueueState state = queueManager.getOrCreate(spec);
+        InvocationTask task = task("failed-1", spec);
+        assertThat(queueManager.enqueue(task)).isTrue();
+        InvocationService invocationService = mock(InvocationService.class);
+        doThrow(new RuntimeException("dispatch failed")).when(invocationService).dispatch(task);
+
+        Scheduler scheduler = new Scheduler(queueManager, invocationService);
+        scheduler.init();
+        scheduler.start();
+        try {
+            scheduler.signalWork("failed");
+
+            Awaitility.await()
+                    .atMost(Duration.ofSeconds(2))
+                    .untilAsserted(() -> {
+                        assertThat(state.inFlight()).isZero();
+                        assertThat(registry.get("function_dispatch_slot_hold_duration")
+                                .tag("function", "failed")
+                                .timer()
+                                .count()).isEqualTo(1);
+                    });
+        } finally {
+            scheduler.stop();
+        }
+    }
+
+    @Test
     void dispatchException_doesNotKillSchedulerLoop() {
         QueueManager queueManager = mock(QueueManager.class);
         InvocationService invocationService = mock(InvocationService.class);
@@ -61,7 +92,7 @@ class SchedulerResilienceTest {
             scheduler.stop();
         }
 
-        verify(state, atLeastOnce()).releaseSlot();
+        verify(queueManager, atLeastOnce()).releaseSlot("testFunc", state);
     }
 
     @Test

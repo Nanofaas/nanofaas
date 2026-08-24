@@ -16,10 +16,49 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class QueueManagerTest {
+
+    @Test
+    void cleanupBoundToAcquiredStateMustNotReleaseRecreatedQueueState() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        QueueManager manager = new QueueManager(registry);
+        FunctionSpec spec = new FunctionSpec(
+                "recreated",
+                "image",
+                null,
+                Map.of(),
+                null,
+                1000,
+                1,
+                10,
+                3,
+                null,
+                ExecutionMode.LOCAL,
+                null,
+                null,
+                null
+        );
+        FunctionQueueState oldState = manager.getOrCreate(spec);
+        assertThat(oldState.tryAcquireSlot()).isTrue();
+        manager.remove("recreated");
+        FunctionQueueState newState = manager.getOrCreate(spec);
+        assertThat(newState.tryAcquireSlot()).isTrue();
+
+        manager.releaseSlot("recreated", oldState);
+
+        assertSoftly(softly -> {
+            softly.assertThat(oldState.inFlight()).isZero();
+            softly.assertThat(newState.inFlight()).isEqualTo(1);
+            softly.assertThat(registry.get("function_dispatch_slot_hold_duration")
+                    .tag("function", "recreated")
+                    .timer()
+                    .count()).isZero();
+        });
+    }
 
     @Test
     void enqueue_doesNotSignalWhenAllDispatchSlotsAreBusy() {

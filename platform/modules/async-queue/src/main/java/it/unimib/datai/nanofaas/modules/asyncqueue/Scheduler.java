@@ -174,7 +174,7 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
             SchedulerDispatchSupport.dispatchWithFailureCleanup(
                     task,
                     () -> invocationService.dispatch(task),
-                    state::releaseSlot,
+                    () -> queueManager.releaseSlot(functionName, state),
                     log
             );
             queueManager.recordSchedulerDispatchSubmitDuration(

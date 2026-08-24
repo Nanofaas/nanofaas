@@ -293,14 +293,26 @@ public class QueueManager {
     public void releaseSlot(String functionName) {
         FunctionQueueState state = queues.get(functionName);
         if (state != null) {
-            long holdNanos = state.releaseSlotAndGetHoldNanos();
-            DiagnosticMeters meters = diagnosticMeters.get(functionName);
+            releaseSlot(functionName, state);
+        }
+    }
+
+    void releaseSlot(String functionName, FunctionQueueState expectedState) {
+        long holdNanos = expectedState.releaseSlotAndGetHoldNanos();
+        FunctionQueueState currentState = queues.computeIfPresent(functionName, (name, current) -> {
+            if (current != expectedState) {
+                return current;
+            }
+            DiagnosticMeters meters = diagnosticMeters.get(name);
             if (holdNanos >= 0 && meters != null) {
                 meters.slotHoldDuration().record(holdNanos, TimeUnit.NANOSECONDS);
             }
-            if (state.queued() > 0) {
-                notifyWork(functionName);
-            }
+            return current;
+        });
+        if (currentState == expectedState
+                && expectedState.queued() > 0
+                && queues.get(functionName) == expectedState) {
+            notifyWork(functionName);
         }
     }
 
