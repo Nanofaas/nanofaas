@@ -167,6 +167,29 @@ Quello che il report di confronto non guarda:
 | Native, -O3, G1 (Oracle GraalVM) | 267 ± 3 | si | — | — | — | — | — | ok | 779.1 | 840 |
 <!-- A1:fine -->
 
+## A1b — Le stesse build senza il muro di CPU
+
+**Domanda.** Tolto il limite che le schiaccia tutte contro lo stesso tetto,
+quanto costa davvero ciascuna build?
+
+**Impianto.** `runtime-comparison-cpu2.yaml`: identico a A1 tranne che dichiara
+`limits.cpu: 2`. Due core e non quattro perche' lo sweep archiviato colloca il
+ginocchio fra uno e due — lo shed scende da 24,6% a 11,0% e poi non si muove
+piu' a tre e a quattro. Le celle oltre il ginocchio costano le stesse ore e
+misurano la stessa cosa.
+
+**La predizione da falsificare.** A un core i tre fix hanno spostato tutte e tre
+le build native del 12–16% e la JVM di zero: 210 ± 1 dispatch/s in entrambe le
+campagne. Se quella piattezza e' contesa per l'unico core — thread del JIT e del
+collector contro il lavoro di richiesta — a due core la JVM deve guadagnare. Se
+e' un limite del suo percorso di codice, restera' piatta anche li'.
+
+**Risultati.**
+
+<!-- A1b:inizio -->
+_Da eseguire._
+<!-- A1b:fine -->
+
 ## A2 — Dove sta il ginocchio della memoria
 
 **Domanda.** Sotto quale limite di memoria la risposta di A1 cambia — e quale
@@ -187,9 +210,17 @@ l'esperimento in cui lo strumento sta dentro l'oggetto misurato (vedi sopra).
 
 **Risultati.**
 
-<!-- A2:inizio -->
+A 1024 MiB:
+
+<!-- A2-1024:inizio -->
 _Da eseguire._
-<!-- A2:fine -->
+<!-- A2-1024:fine -->
+
+A 512 MiB:
+
+<!-- A2-512:inizio -->
+_Da eseguire._
+<!-- A2-512:fine -->
 
 ## A3 — Le due porte restano distinguibili
 
