@@ -10,6 +10,7 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadGateway;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
@@ -38,7 +39,9 @@ class ExecutionCompletionHandlerOffloadTest {
         FunctionSpec spec = new FunctionSpec(functionName, "img", List.of(), Map.of(), null,
                 1000, 1, 10, 3, null, ExecutionMode.LOCAL, RuntimeMode.HTTP, null, null, null);
         InvocationTask task = new InvocationTask(executionId, functionName, spec,
-                new InvocationRequest("p", Map.of()), null, null, Instant.now(), 1);
+                new InvocationRequest("p", Map.of()), null, null, Instant.now(), 1,
+                InvocationKind.SYNC
+            );
         ExecutionRecord executionRecord = new ExecutionRecord(executionId, task);
         executionStore.put(executionRecord);
         return executionRecord;

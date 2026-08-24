@@ -23,6 +23,16 @@ def test_prometheus_templates_support_container_metrics_modes():
     assert "eq $containerMetricsMode \"daemonset\"" in prom_cfg
     assert "job_name: kubernetes-cadvisor" in prom_cfg
     assert "job_name: nanofaas-cadvisor" in prom_cfg
+    # Both cadvisor jobs drop everything the keep list does not name, so a metric
+    # absent from it comes back as an empty series - indistinguishable from a
+    # quiet one. Throttling was missing, and a control plane pinned at its cgroup
+    # quota therefore read as a control plane with nothing to do.
+    for metric in (
+        "container_cpu_cfs_periods_total",
+        "container_cpu_cfs_throttled_periods_total",
+        "container_cpu_cfs_throttled_seconds_total",
+    ):
+        assert prom_cfg.count(metric) == 2, metric
 
     assert "$containerMetricsKubeletEnabled" in prom_rbac
     assert "nodes/proxy" in prom_rbac

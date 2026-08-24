@@ -1,14 +1,37 @@
 package it.unimib.datai.nanofaas.modules.asyncqueue;
 
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class FunctionQueueStateTest {
+
+    @Test
+    void fifoPairingPreservesAggregateTotalButNotTheRealPerRequestMaximum() {
+        AtomicLong nanoTime = new AtomicLong();
+        FunctionQueueState state = new FunctionQueueState("fn", 100, 2, nanoTime::get);
+
+        assertThat(state.tryAcquireSlot()).isTrue();
+        nanoTime.set(10);
+        assertThat(state.tryAcquireSlot()).isTrue();
+
+        // B completes at 20 and A at 100: their real holds are 10 and 100.
+        nanoTime.set(20);
+        long firstRecordedHold = state.releaseSlotAndGetHoldNanos();
+        nanoTime.set(100);
+        long secondRecordedHold = state.releaseSlotAndGetHoldNanos();
+
+        assertThat(firstRecordedHold).isEqualTo(20);
+        assertThat(secondRecordedHold).isEqualTo(90);
+        assertThat(firstRecordedHold + secondRecordedHold).isEqualTo(110);
+        assertThat(Math.max(firstRecordedHold, secondRecordedHold)).isEqualTo(90);
+    }
 
     @Test
     void tryAcquireSlot_underLimit_returnsTrue() {
@@ -157,6 +180,10 @@ class FunctionQueueStateTest {
     }
 
     private InvocationTask createTask(String executionId) {
+        return createTask(executionId, InvocationKind.SYNC);
+    }
+
+    private InvocationTask createTask(String executionId, InvocationKind kind) {
         return new InvocationTask(
                 executionId,
                 "testFunc",
@@ -165,7 +192,32 @@ class FunctionQueueStateTest {
                 null,
                 null,
                 null,
-                1
+                1,
+                kind
         );
     }
+
+    @Test
+    void theBacklogSaysHowMuchOfItselfNobodyIsWaitingFor() {
+        FunctionQueueState state = new FunctionQueueState("mixed", 10, 1);
+
+        state.offer(createTask("s1", InvocationKind.SYNC));
+        state.offer(createTask("a1", InvocationKind.ASYNC));
+        state.offer(createTask("a2", InvocationKind.ASYNC));
+
+        assertThat(state.queued()).isEqualTo(3);
+        assertThat(state.queued(InvocationKind.SYNC)).isEqualTo(1);
+        assertThat(state.queued(InvocationKind.ASYNC)).isEqualTo(2);
+
+        state.poll();  // FIFO: the sync one leaves first
+        assertThat(state.queued(InvocationKind.SYNC)).isZero();
+        assertThat(state.queued(InvocationKind.ASYNC)).isEqualTo(2);
+
+        // A deregistration drains the rest; the split has to come back to zero with it,
+        // or a removed function leaves a gauge stuck above zero forever.
+        state.closeAndDrainQueued();
+        assertThat(state.queued(InvocationKind.SYNC)).isZero();
+        assertThat(state.queued(InvocationKind.ASYNC)).isZero();
+    }
+
 }

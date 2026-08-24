@@ -4,6 +4,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
 import org.awaitility.Awaitility;
@@ -20,6 +21,41 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 class SchedulerResilienceTest {
+
+    @Test
+    void dispatchExceptionRecordsSlotHoldAndReleasesTheAcquiredState() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        QueueManager queueManager = new QueueManager(registry);
+        FunctionSpec spec = functionSpec("failed", 1, 10);
+        FunctionQueueState state = queueManager.getOrCreate(spec);
+        InvocationTask task = task("failed-1", spec);
+        assertThat(queueManager.enqueue(task)).isTrue();
+        InvocationService invocationService = mock(InvocationService.class);
+        doThrow(new RuntimeException("dispatch failed")).when(invocationService).dispatch(task);
+
+        Scheduler scheduler = new Scheduler(queueManager, invocationService);
+        scheduler.init();
+        scheduler.start();
+        try {
+            scheduler.signalWork("failed");
+
+            Awaitility.await()
+                    .atMost(Duration.ofSeconds(2))
+                    .untilAsserted(() -> {
+                        assertThat(state.inFlight()).isZero();
+                        assertThat(registry.get("function_dispatch_slot_hold_events")
+                                .tag("function", "failed")
+                                .counter()
+                                .count()).isEqualTo(1);
+                        assertThat(registry.get("function_dispatch_slot_hold_seconds")
+                                .tag("function", "failed")
+                                .counter()
+                                .count()).isPositive();
+                    });
+        } finally {
+            scheduler.stop();
+        }
+    }
 
     @Test
     void dispatchException_doesNotKillSchedulerLoop() {
@@ -60,7 +96,7 @@ class SchedulerResilienceTest {
             scheduler.stop();
         }
 
-        verify(state, atLeastOnce()).releaseSlot();
+        verify(queueManager, atLeastOnce()).releaseSlot("testFunc", state);
     }
 
     @Test
@@ -93,6 +129,7 @@ class SchedulerResilienceTest {
         when(state.tryAcquireSlot()).thenReturn(true, true, true, false);
         when(state.poll()).thenReturn(task1, task2, task3, null);
         when(state.queued()).thenReturn(1, 0);
+        when(state.canDispatch()).thenReturn(true);
 
         List<InvocationTask> dispatched = new CopyOnWriteArrayList<>();
         doAnswer(invocation -> {
@@ -148,8 +185,8 @@ class SchedulerResilienceTest {
                         assertThat(state.queued()).isEqualTo(1);
                         assertThat(state.inFlight()).isEqualTo(1);
                         assertThat(queueManager.getCalls())
-                                .as("scheduler should not spin on a queued function with no free dispatch slot")
-                                .isLessThanOrEqualTo(3);
+                                .as("scheduler should not revisit a queued function with no free dispatch slot")
+                                .isEqualTo(1);
                     });
 
             queueManager.releaseSlot("blocked");
@@ -193,7 +230,9 @@ class SchedulerResilienceTest {
                 null,
                 Instant.now(),
                 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
     }
 
     private static class CountingQueueManager extends QueueManager {

@@ -15,20 +15,29 @@ RUN jar xf app.jar BOOT-INF/lib BOOT-INF/classes && \
       --strip-debug --no-header-files --no-man-pages --compress=zip-9 \
       --output /jre
 
+# The tuning flags live in a @argfile because the final image is distroless: an
+# exec-form ENTRYPOINT does no variable expansion and there is no shell to do it.
+# The default reproduces what was hard-coded here before, so a build that passes
+# nothing is byte-for-byte the build that was measured.
+ARG JVM_TUNING="-XX:+UseSerialGC -XX:TieredStopAtLevel=1"
+RUN printf '%s\n' $JVM_TUNING > /jvm.options
+
 FROM gcr.io/distroless/base-debian13:nonroot
 WORKDIR /app
 COPY --from=jre-builder --chown=nonroot:nonroot /jre /opt/jre
 COPY build/libs/app.jar app.jar
+COPY --from=jre-builder --chown=nonroot:nonroot /jvm.options /app/jvm.options
 EXPOSE 8080 8081
 
-# Optimization flags:
-# - Use SerialGC for lower memory overhead in single-core environments
-# - Disable JMX and other features not needed in a function runtime
-# - Tune RAM usage percentages for container awareness
+# Collector and JIT tiering come from JVM_TUNING (see the builder stage). The
+# defaults were chosen for a single-core deployment - serial GC and C1 only -
+# which is the assumption the CPU sweep of 2026-08-23 showed the chart was
+# quietly making. Everything below is unconditional.
+# - Container-aware RAM ceiling
+# - JMX and other features a function runtime does not need are off
 ENTRYPOINT ["/opt/jre/bin/java", \
-    "-XX:+UseSerialGC", \
+    "@/app/jvm.options", \
     "-XX:MaxRAMPercentage=70", \
-    "-XX:TieredStopAtLevel=1", \
     "-Xss256k", \
     "-Dspring.main.banner-mode=off", \
     "-Dspring.jmx.enabled=false", \

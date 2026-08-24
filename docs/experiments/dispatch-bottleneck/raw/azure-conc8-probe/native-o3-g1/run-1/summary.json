@@ -1,0 +1,279 @@
+{
+  "schema_version": 1,
+  "k6": {
+    "http_reqs": {
+      "count": 195776,
+      "rate": 435.0564950620417
+    },
+    "http_req_failed": {
+      "passes": 28660,
+      "fails": 167116,
+      "value": 0.14639179470415167
+    },
+    "http_req_duration": {
+      "p(90)": 85.713319,
+      "p(95)": 121.58148525,
+      "p(99)": 358.56825525,
+      "avg": 31.07945942039875,
+      "min": 0.357379,
+      "med": 1.8604515,
+      "max": 1836.935491,
+      "p(50)": 1.8604515
+    },
+    "checks": {
+      "passes": 195776,
+      "fails": 0,
+      "value": 1
+    }
+  },
+  "prometheus": {
+    "function_dispatch_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 119892.0,
+      "delta": 119892.0,
+      "min": 0.0,
+      "max": 119892.0
+    },
+    "function_success_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 119892.0,
+      "delta": 119892.0,
+      "min": 0.0,
+      "max": 119892.0
+    },
+    "function_error_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 0.0,
+      "delta": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "function_retry_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 0.0,
+      "delta": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "function_timeout_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 0.0,
+      "delta": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "function_queue_rejected_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 25157.0,
+      "delta": 25157.0,
+      "min": 0.0,
+      "max": 25157.0
+    },
+    "function_cold_start_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 1.0,
+      "delta": 1.0,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "function_warm_start_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 119891.0,
+      "delta": 119891.0,
+      "min": 0.0,
+      "max": 119891.0
+    },
+    "function_latency_count": {
+      "points": 97,
+      "first": 0.0,
+      "last": 119892.0,
+      "delta": 119892.0,
+      "min": 0.0,
+      "max": 119892.0
+    },
+    "function_latency_sum": {
+      "points": 97,
+      "first": 0.0,
+      "last": 442.545,
+      "delta": 442.545,
+      "min": 0.0,
+      "max": 442.545
+    },
+    "function_init_duration_count": {
+      "points": 97,
+      "first": 0.0,
+      "last": 1.0,
+      "delta": 1.0,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "function_init_duration_sum": {
+      "points": 97,
+      "first": 0.0,
+      "last": 27.568,
+      "delta": 27.568,
+      "min": 0.0,
+      "max": 27.568
+    },
+    "function_queue_wait_count": {
+      "points": 97,
+      "first": 0.0,
+      "last": 119892.0,
+      "delta": 119892.0,
+      "min": 0.0,
+      "max": 119892.0
+    },
+    "function_queue_wait_sum": {
+      "points": 97,
+      "first": 0.0,
+      "last": 736.937,
+      "delta": 736.937,
+      "min": 0.0,
+      "max": 736.937
+    },
+    "function_queue_wait_p95_ms": {
+      "points": 97,
+      "first": NaN,
+      "last": NaN,
+      "delta": NaN,
+      "min": NaN,
+      "max": NaN
+    },
+    "function_e2e_latency_p95_ms": {
+      "points": 97,
+      "first": NaN,
+      "last": NaN,
+      "delta": NaN,
+      "min": NaN,
+      "max": NaN
+    },
+    "function_e2e_latency_count": {
+      "points": 97,
+      "first": 0.0,
+      "last": 119892.0,
+      "delta": 119892.0,
+      "min": 0.0,
+      "max": 119892.0
+    },
+    "function_e2e_latency_sum": {
+      "points": 97,
+      "first": 0.0,
+      "last": 1179.482,
+      "delta": 1179.482,
+      "min": 0.0,
+      "max": 1179.482
+    },
+    "process_cpu_usage": {
+      "points": 97,
+      "first": 0.007142857142857143,
+      "last": 0.0,
+      "delta": -0.007142857142857143,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "jvm_heap_used_bytes": {
+      "points": 0
+    },
+    "jvm_gc_collection_count": {
+      "points": 0
+    },
+    "jvm_gc_collection_time": {
+      "points": 0
+    },
+    "jvm_gc_pause_count": {
+      "points": 0
+    },
+    "jvm_gc_pause_sum": {
+      "points": 0
+    },
+    "jvm_gc_time_fraction": {
+      "points": 97,
+      "first": 0.0,
+      "last": 0.0,
+      "delta": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "function_queue_depth": {
+      "points": 97,
+      "first": 0.0,
+      "last": 0.0,
+      "delta": 0.0,
+      "min": 0.0,
+      "max": 20.0
+    },
+    "function_inFlight": {
+      "points": 97,
+      "first": 0.0,
+      "last": 0.0,
+      "delta": 0.0,
+      "min": 0.0,
+      "max": 8.0
+    },
+    "function_effective_concurrency": {
+      "points": 97,
+      "first": 8.0,
+      "last": 8.0,
+      "delta": 0.0,
+      "min": 8.0,
+      "max": 8.0
+    },
+    "container_memory_bytes@control-plane": {
+      "points": 97,
+      "first": 61759488.0,
+      "last": 578138112.0,
+      "delta": 516378624.0,
+      "min": 61759488.0,
+      "max": 583614464.0
+    },
+    "container_cpu_cores@control-plane": {
+      "points": 97,
+      "first": 0.0044063,
+      "last": 0.0013345000000001051,
+      "delta": -0.003071799999999895,
+      "min": 0.0011519000000000002,
+      "max": 1.3614292499999991
+    },
+    "container_memory_bytes@word-stats-java": {
+      "points": 97,
+      "first": 229142528.0,
+      "last": 399011840.0,
+      "delta": 169869312.0,
+      "min": 229142528.0,
+      "max": 399060992.0
+    },
+    "container_cpu_cores@word-stats-java": {
+      "points": 97,
+      "first": 0.32468012560333337,
+      "last": 0.0159726500000005,
+      "delta": -0.3087074756033329,
+      "min": 0.009168200000000048,
+      "max": 0.6960278000000003
+    },
+    "container_memory_bytes@word-stats-javascript": {
+      "points": 97,
+      "first": 1916928.0,
+      "last": 21725184.0,
+      "delta": 19808256.0,
+      "min": 1916928.0,
+      "max": 68632576.0
+    },
+    "container_cpu_cores@word-stats-javascript": {
+      "points": 95,
+      "first": 0.02576175319333333,
+      "last": 0.012608300000000128,
+      "delta": -0.013153453193333203,
+      "min": 0.012608300000000128,
+      "max": 0.5008609
+    }
+  },
+  "autoscaling": null
+}

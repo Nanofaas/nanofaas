@@ -6,6 +6,7 @@ import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncScheduler;
@@ -108,6 +109,8 @@ class SyncQueueThroughputPerfTest {
                 null,
                 Instant.now(),
                 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
     }
 }

@@ -1,5 +1,9 @@
 package it.unimib.datai.nanofaas.controlplane.perf;
 
+import it.unimib.datai.nanofaas.controlplane.service.Metrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
+
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -20,7 +24,7 @@ class InvocationHotPathPerfTest {
 
     private final CountingExecutionStore executionStore = new CountingExecutionStore();
     private final IdempotencyStore idempotencyStore = new IdempotencyStore(Duration.ofMinutes(15));
-    private final InvocationExecutionFactory factory = new InvocationExecutionFactory(executionStore, idempotencyStore);
+    private final InvocationExecutionFactory factory = new InvocationExecutionFactory(executionStore, idempotencyStore, new Metrics(new SimpleMeterRegistry()));
 
     @AfterEach
     void tearDown() {
@@ -33,12 +37,18 @@ class InvocationHotPathPerfTest {
         InvocationRequest request = new InvocationRequest("payload", Map.of());
 
         InvocationExecutionFactory.ExecutionLookup first = factory.createOrReuseExecution(
-                spec.name(), spec, request, "idem-1", "trace-1");
+                spec.name(), spec, request, "idem-1", "trace-1",
+                InvocationKind.SYNC
+            );
         first.publishAdmission();
         InvocationExecutionFactory.ExecutionLookup replayOne = factory.createOrReuseExecution(
-                spec.name(), spec, request, "idem-1", "trace-1");
+                spec.name(), spec, request, "idem-1", "trace-1",
+                InvocationKind.SYNC
+            );
         InvocationExecutionFactory.ExecutionLookup replayTwo = factory.createOrReuseExecution(
-                spec.name(), spec, request, "idem-1", "trace-1");
+                spec.name(), spec, request, "idem-1", "trace-1",
+                InvocationKind.SYNC
+            );
 
         assertThat(first.isNew()).isTrue();
         assertThat(replayOne.isNew()).isFalse();

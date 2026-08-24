@@ -14,6 +14,7 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
@@ -236,7 +237,9 @@ class InvocationServiceDispatchTest {
                 null,
                 Instant.now(),
                 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
 
         invocationService.dispatch(missingTask);
 
@@ -831,7 +834,9 @@ class InvocationServiceDispatchTest {
                 null,
                 Instant.now(),
                 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
     }
 
     private FunctionSpec functionSpec(String functionName, ExecutionMode mode) {

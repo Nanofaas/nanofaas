@@ -8,6 +8,7 @@ import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.controlplane.registry.DeploymentMetadata;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGate;
 import org.junit.jupiter.api.BeforeEach;
@@ -248,7 +249,7 @@ class InternalScalerTest {
                 List.of(new ScalingMetric("in_flight", "2", null)));
         RegisteredFunction function = functionSpec("echo", ExecutionMode.DEPLOYMENT, scaling);
         ManagedDeploymentTarget target = target(function);
-        InvocationTask task = new InvocationTask("execution", "echo", function.spec(), null, null, null, Instant.now(), 1);
+        InvocationTask task = new InvocationTask("execution", "echo", function.spec(), null, null, null, Instant.now(), 1, InvocationKind.SYNC);
         CountDownLatch zeroEntered = new CountDownLatch(1);
         CountDownLatch releaseZero = new CountDownLatch(1);
 

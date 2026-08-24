@@ -126,12 +126,28 @@ public final class ReactiveInvocationCoordinator {
         }
     }
 
+    /**
+     * Whether a full async queue would certainly refuse this invocation, so a caller may
+     * skip building an execution it is about to abandon. False wherever admission can
+     * end somewhere other than that queue: the sync queue owns admission when loaded,
+     * and an eagerly offloaded function never reaches a local queue at all. Pressure
+     * offload is not a case here - it triggers on SyncQueueRejectedException, which the
+     * async queue never throws.
+     */
+    public boolean queueFullMeansRefusal(FunctionSpec spec) {
+        if (syncQueueGateway.enabled() || !enqueuer.enabled()) {
+            return false;
+        }
+        return !offloadGateway.enabled() || !offloadGateway.shouldOffloadEagerly(spec);
+    }
+
     private void admitLocally(ExecutionRecord executionRecord) {
         if (syncQueueGateway.enabled()) {
             syncQueueGateway.enqueueOrThrow(executionRecord.task());
         } else if (enqueuer.enabled()) {
             InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, executionRecord);
         } else {
+            metrics.admitted(executionRecord.task().functionName(), executionRecord.task().kind());
             completionHandler.dispatch(executionRecord.task());
         }
     }

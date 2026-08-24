@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.modules.asyncqueue;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
@@ -66,7 +67,9 @@ class QueueManagerBranchTest {
                 null,
                 Instant.now(),
                 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
     }
 
     private FunctionSpec spec(String name, int concurrency, int queueSize) {

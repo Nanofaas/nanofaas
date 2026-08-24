@@ -7,6 +7,8 @@ import it.unimib.datai.nanofaas.common.model.InvocationResponse;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
+import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionNotFoundException;
@@ -50,7 +52,7 @@ public class InvocationService {
                 rateLimiter,
                 metrics,
                 completionHandler,
-                new InvocationExecutionFactory(executionStore, idempotencyStore),
+                new InvocationExecutionFactory(executionStore, idempotencyStore, metrics),
                 new InvocationResponseMapper(),
                 new ReactiveInvocationCoordinator(enqueuer, metrics, syncQueueGateway, null, completionHandler, new InvocationResponseMapper())
         );
@@ -92,16 +94,28 @@ public class InvocationService {
                                                    Integer timeoutOverrideMs,
                                                    OffloadContext offloadContext) {
         record Prepared(FunctionSpec spec, InvocationExecutionFactory.ExecutionLookup lookup) {}
-        return Mono.fromCallable(() -> {
-                    enforceRateLimit();
-                    FunctionSpec spec = functionService.get(functionName).orElseThrow(FunctionNotFoundException::new);
-                    // createOrReuseExecution may spin briefly on contended idempotency
-                    // claims; it must never run on the Netty event loop.
-                    return new Prepared(spec,
-                            executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId));
-                })
-                .subscribeOn(Schedulers.boundedElastic())
-                .flatMap(prepared -> reactiveCoordinator.invoke(prepared.lookup(), prepared.spec(), timeoutOverrideMs, offloadContext));
+        Mono<Prepared> prepared = Mono.fromCallable(() -> {
+            enforceRateLimit();
+            FunctionSpec spec = functionService.get(functionName).orElseThrow(FunctionNotFoundException::new);
+            refuseEarlyIfQueueFull(functionName, spec, idempotencyKey, InvocationKind.SYNC);
+            return new Prepared(spec,
+                    executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId,
+                            InvocationKind.SYNC));
+        });
+        // Hop only when there is something to hop for. createOrReuseExecution parks
+        // only inside its idempotency loop, and returns on its first branch without
+        // touching a lock when there is no key; the rest of the block is a rate
+        // check, a map lookup and a queue check. So an invocation without a key has
+        // nothing that must leave the event loop, and sending it to boundedElastic
+        // anyway costs a thread handoff per request - 6.1us measured against 0.085us
+        // of work, seventy times the thing it protects.
+        //
+        // Requests that will be refused paid it too, which is the part worth
+        // removing: deciding a 429 should not need a second thread.
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            prepared = prepared.subscribeOn(Schedulers.boundedElastic());
+        }
+        return prepared.flatMap(p -> reactiveCoordinator.invoke(p.lookup(), p.spec(), timeoutOverrideMs, offloadContext));
     }
 
     public InvocationResponse invokeAsync(String functionName,
@@ -114,10 +128,12 @@ public class InvocationService {
         if (!enqueuer.enabled()) {
             throw new AsyncQueueUnavailableException();
         }
+        refuseEarlyIfQueueFull(functionName, spec, idempotencyKey, InvocationKind.ASYNC);
 
 
         InvocationExecutionFactory.ExecutionLookup lookup =
-                executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId);
+                executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId,
+                        InvocationKind.ASYNC);
         ExecutionRecord executionRecord = lookup.executionRecord();
 
         // replay is a component that checks if the execution has already completed and returns the appropriate response if so. 
@@ -161,6 +177,31 @@ public class InvocationService {
 
     public void completeExecution(String executionId, InvocationResult result, Integer completedAttempt) {
         completionHandler.completeExecution(executionId, result, completedAttempt);
+    }
+
+    /**
+     * Under overload most arrivals are refused, and today each one first builds an
+     * execution record, files it in the store and claims an idempotency key, only for
+     * `abandonAdmission` to undo all three. At the peak of the comparison profile that
+     * was 590 refusals a second against 299 dispatches, on a control plane the chart
+     * caps at one CPU.
+     *
+     * <p>Skipped whenever a non-blank idempotency key is present: that request may be
+     * a replay whose result is already stored, and a replay must be served however
+     * full the queue is. The refusal is conservatively linearized at this pre-check;
+     * new executions that pass the pre-check still reach `enqueue`, which remains
+     * authoritative.
+     */
+    private void refuseEarlyIfQueueFull(String functionName, FunctionSpec spec, String idempotencyKey,
+                                        InvocationKind kind) {
+        if (idempotencyKey != null && !idempotencyKey.isBlank()
+                || !reactiveCoordinator.queueFullMeansRefusal(spec)
+                || !enqueuer.isQueueFull(functionName)) {
+            return;
+        }
+        metrics.queueRejected(functionName);
+        metrics.refused(functionName, kind);
+        throw new QueueFullException();
     }
 
     private void enforceRateLimit() {

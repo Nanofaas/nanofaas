@@ -1,0 +1,44 @@
+{
+  "started_at": "2026-08-23T15:01:07.652079+00:00",
+  "functions": [
+    "word-stats-java",
+    "word-stats-javascript"
+  ],
+  "repetitions": 3,
+  "order": [
+    "jvm-c2-hop run 1",
+    "jvm-c2 run 1",
+    "jvm-c2-hop run 2",
+    "jvm-c2 run 2",
+    "jvm-c2-hop run 3",
+    "jvm-c2 run 3"
+  ],
+  "variants": [
+    {
+      "key": "jvm-c2-hop",
+      "label": "JVM (serial GC, full tiering) + salto su boundedElastic",
+      "rationale": "The control for the thread-handoff A/B: same build as jvm-c2, with the diagnostic property that restores the pre-31a0dac8 behaviour of sending every sync invocation to boundedElastic. Same source tree, same image recipe, one extra flag in the argfile - so the pair differ by the thing under test and nothing else. Delete with the scaffolding it drives.",
+      "build_env": {
+        "JVM_TUNING": "-XX:+UseSerialGC -Dnanofaas.experiment.hopOnPrepare=true"
+      },
+      "image": "127.0.0.1:5000/nanofaas/control-plane:jvm-c2-hop"
+    },
+    {
+      "key": "jvm-c2",
+      "label": "JVM (serial GC, full tiering)",
+      "rationale": "Isolates the JIT: C2 restored, collector held at the baseline's serial.",
+      "build_env": {
+        "JVM_TUNING": "-XX:+UseSerialGC"
+      },
+      "image": "127.0.0.1:5000/nanofaas/control-plane:jvm-c2"
+    }
+  ],
+  "regime": {
+    "control_plane_cpu": "2",
+    "load_scale": 2.0,
+    "load_vus": 5000,
+    "load_profile": "comparison",
+    "backend": "k8s",
+    "scenario": "packages/nanolab/scenarios-v2/runtime-comparison-load2x.yaml"
+  }
+}

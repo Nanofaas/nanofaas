@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.controlplane.execution;
 
 import it.unimib.datai.nanofaas.common.model.ErrorInfo;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.junit.jupiter.api.Test;
 
@@ -211,6 +212,6 @@ class ExecutionRecordStateTransitionTest {
     }
 
     private InvocationTask createTask(String executionId) {
-        return new InvocationTask(executionId, "testFunc", null, null, null, null, null, 1);
+        return new InvocationTask(executionId, "testFunc", null, null, null, null, null, 1, InvocationKind.SYNC);
     }
 }

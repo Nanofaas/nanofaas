@@ -1,0 +1,66 @@
+# The control-plane build comparison on Azure: two VMs, nothing else.
+#
+# Why not azure.yaml: that file also declares an `arm-builder` role, and
+# `provisioning.py` creates that VM whenever the role is present — it does not
+# ask what the workflow is. A comparison has no use for an arm64 builder, so
+# using the release environment would provision a third Standard_D8ps_v5 and
+# wait for it, for nothing.
+#
+# The load generator is a role rather than a flag: `dedicated = "loadgen" in
+# environment.roles` is the whole selection. Declaring it here is what moves k6
+# off the machine under test — on multipass it shares four cores with k3s, the
+# control plane, Prometheus and both functions, which is the standing limitation
+# of every number measured there.
+#
+# Pin the image version. Do not replace it with `latest`; resolve a replacement
+# with `az vm image show --urn ... --location westeurope` and pin what it reports.
+provider: azure
+roles:
+  stack:
+    name: nanofaas-comparison
+    # Four control-plane builds, each with its toolchain, plus their images in
+    # the local registry, plus k3s. The multipass run peaked at 16GB of 29 with
+    # only three builds and no Oracle GraalVM, and a matrix that runs out of disk
+    # halfway costs the hours it already spent.
+    disk: 128G
+    user: azureuser
+  loadgen:
+    name: nanofaas-comparison-loadgen
+    disk: 30G
+    user: azureuser
+azure:
+  resource_group: maurinoRicerca-rg
+  location: westeurope
+  # 8 vCPU and 32GB. The size is set by the native builds, not by the load: the
+  # G1 build on Oracle GraalVM was OOM-killed on a 12GB VM, and survived a memory
+  # bound only by spending 94 minutes without finishing. With this much memory
+  # --native-build-memory can be left unset.
+  vm_size: Standard_D8s_v5
+  # The generator only runs k6, and the profile schedules arrivals by the clock:
+  # its cost is holding connections open, not computing. That held at 900 rps and
+  # stops holding above it: at 4x the profile the generator has to issue 3,600
+  # arrivals a second AND hold up to 2,430 VUs if the platform degrades. Two vCPU
+  # was the ceiling waiting to be mistaken for the platform's - and it was: the 2x
+  # and 3x arms of 2026-08-23 consumed 98% and 100% of their pool.
+  #
+  # The reason is arrivals per second, NOT memory. An earlier version of this
+  # comment put a 5,000-VU pool at 6.6-33 GB and used that to justify the size;
+  # measured with this very script, k6 allocates 0.17 MiB per VU, so both
+  # scenarios at 5,000 come to 1.6 GiB. Eight vCPU is the point. The memory is
+  # free, which is the only reason declaring a pool this large costs nothing.
+  loadgen_vm_size: Standard_D8s_v5
+  image_urn: Canonical:ubuntu-24_04-lts:server:24.04.202607140
+  # The operator's own address, as a /32. It is not decoration:
+  # `vm_provider.py` refuses to open the NodePorts at VM creation when a CIDR is
+  # declared, precisely so they are never briefly reachable from 0.0.0.0/0, and
+  # `provisioning.py` then opens them bounded to this CIDR plus the load
+  # generator's own address. Leave it unset and the ports go up open to the
+  # internet — in front of a control plane that has no authentication.
+  # `auto` asks the VM which address this operator arrives from, at every
+  # provisioning. A fixed value is still accepted and is right for a static
+  # address; it was wrong here twice in one afternoon, and a stale rule does not
+  # refuse the operator, it drops the packets — so the run fails with a timeout
+  # that reads as "Prometheus is slow".
+  operator_source_cidr: auto
+  # PUBLIC key path (the matching private key must sit next to it, without .pub).
+  ssh_key_path: /Users/micheleciavotta/.ssh/id_rsa.pub

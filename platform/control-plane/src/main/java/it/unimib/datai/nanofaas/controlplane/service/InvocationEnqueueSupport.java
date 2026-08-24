@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.controlplane.service;
 
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 
 final class InvocationEnqueueSupport {
 
@@ -9,12 +10,15 @@ final class InvocationEnqueueSupport {
     }
 
     static void enqueueOrThrow(InvocationEnqueuer enqueuer, Metrics metrics, ExecutionRecord executionRecord) {
-        boolean enqueued = enqueuer.enqueue(executionRecord.task());
+        InvocationTask task = executionRecord.task();
+        boolean enqueued = enqueuer.enqueue(task);
         if (!enqueued) {
-            metrics.queueRejected(executionRecord.task().functionName());
+            metrics.queueRejected(task.functionName());
+            metrics.refused(task.functionName(), task.kind());
             throw new QueueFullException();
         }
-        metrics.enqueue(executionRecord.task().functionName());
+        metrics.enqueue(task.functionName());
+        metrics.admitted(task.functionName(), task.kind());
     }
 
     /**

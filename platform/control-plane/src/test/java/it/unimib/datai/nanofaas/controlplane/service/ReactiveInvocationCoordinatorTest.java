@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
+
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -20,9 +22,9 @@ class ReactiveInvocationCoordinatorTest {
 
     private final ExecutionStore executionStore = new ExecutionStore();
     private final IdempotencyStore idempotencyStore = new IdempotencyStore();
-    private final InvocationExecutionFactory factory =
-            new InvocationExecutionFactory(executionStore, idempotencyStore);
     private final Metrics metrics = new Metrics(new SimpleMeterRegistry());
+    private final InvocationExecutionFactory factory =
+            new InvocationExecutionFactory(executionStore, idempotencyStore, metrics);
     private final ExecutionCompletionHandler completionHandler = mock(ExecutionCompletionHandler.class);
     private final ReactiveInvocationCoordinator coordinator =
             new ReactiveInvocationCoordinator(null, metrics, null, null, completionHandler, new InvocationResponseMapper());
@@ -31,7 +33,7 @@ class ReactiveInvocationCoordinatorTest {
     void clientTimeoutDoesNotCancelSharedCompletionFuture() {
         FunctionSpec spec = spec("fn-cancel");
         InvocationExecutionFactory.ExecutionLookup lookup =
-                factory.createOrReuseExecution("fn-cancel", spec, new InvocationRequest("payload", Map.of()), null, null);
+                factory.createOrReuseExecution("fn-cancel", spec, new InvocationRequest("payload", Map.of()), null, null, InvocationKind.SYNC);
 
         SyncInvocation invocation = coordinator.invoke(lookup, spec, 50).block();
 
@@ -47,7 +49,7 @@ class ReactiveInvocationCoordinatorTest {
     void exceptionalCompletionYieldsErrorResponseNotTimeout() {
         FunctionSpec spec = spec("fn-boom");
         InvocationExecutionFactory.ExecutionLookup lookup =
-                factory.createOrReuseExecution("fn-boom", spec, new InvocationRequest("p", Map.of()), null, null);
+                factory.createOrReuseExecution("fn-boom", spec, new InvocationRequest("p", Map.of()), null, null, InvocationKind.SYNC);
         lookup.executionRecord().completion().completeExceptionally(new RuntimeException("boom"));
 
         SyncInvocation invocation = coordinator.invoke(lookup, spec, 1000).block();

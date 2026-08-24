@@ -24,8 +24,106 @@ class MetricsProfileConfigurationTest {
         Gauge.builder("function_concurrency_controller_mode", () -> 1).register(registry);
 
         assertThat(registry.find("function_dispatch_total").counter()).isNotNull();
-        assertThat(registry.find("function_cold_start_total").counter()).isNull();
+        // Cold starts moved into basic on 2026-08-23. On a FaaS they are the first
+        // thing anyone asks when latency moves, they fire once per 250,000
+        // dispatches at the rate measured here, and the counter costs 4.86ns. This
+        // line used to assert the opposite.
+        assertThat(registry.find("function_cold_start_total").counter()).isNotNull();
         assertThat(registry.find("function_concurrency_controller_mode").gauge()).isNull();
+    }
+
+    @Test
+    void everyMeterAControlLoopReadsSurvivesBasic() {
+        // Some meters are not observability, they are inputs. Denying one of these
+        // does not make the platform quieter - it makes a control loop steer on
+        // zero, and a NoopTimer answers count() and totalTime() without complaint.
+        //
+        // Until 2026-08-23 basic denied the first two, and basic is the profile a
+        // deployment gets when nobody says otherwise.
+        record ControlInput(String meter, String reader) {}
+        var inputs = new ControlInput[]{
+                // Read inside this JVM.
+                new ControlInput("function_latency_ms", "ConcurrencyGovernor, Vegas signal"),
+                new ControlInput("function_e2e_latency_ms", "ConcurrencyGovernor, Vegas signal"),
+                new ControlInput("function_dispatch_total", "autoscaler, ScalingMetricsReader"),
+                // Read outside it, by Kubernetes. The HPA specs this platform builds
+                // (KubernetesMetricsTranslator) name nanofaas_in_flight,
+                // nanofaas_rps and nanofaas_queue_depth, which prometheus-adapter
+                // maps from these three series - see the rules in
+                // deploy/helm/nanofaas/values.yaml. Deny one and the HPA stops
+                // scaling, with nothing in this process to say why.
+                new ControlInput("function_inFlight", "HPA via nanofaas_in_flight"),
+                new ControlInput("function_queue_depth", "HPA via nanofaas_queue_depth"),
+        };
+
+        SimpleMeterRegistry basic = registryFor(MetricsProfileConfiguration.MetricsProfile.BASIC);
+        for (ControlInput input : inputs) {
+            if (input.meter().endsWith("_total")) {
+                Counter.builder(input.meter()).tag("function", "echo").register(basic);
+            } else if (!input.meter().endsWith("_ms")) {
+                Gauge.builder(input.meter(), () -> 1).tag("function", "echo").register(basic);
+            } else {
+                io.micrometer.core.instrument.Timer.builder(input.meter())
+                        .tag("function", "echo").register(basic);
+            }
+        }
+
+        for (ControlInput input : inputs) {
+            assertThat(basic.find(input.meter()).meter())
+                    .describedAs("%s is read by %s and must survive basic",
+                            input.meter(), input.reader())
+                    .isNotNull();
+        }
+    }
+
+    @Test
+    void basicDropsTheDispatchPathInstrumentationAndAdvancedKeepsIt() {
+        // These fire 15.74 times per dispatch, so leaving them outside this class -
+        // where they were until 2026-08-23 - meant every production deployment on
+        // the default profile paid for probes nobody was reading.
+        String[] diagnostic = {
+                "function_scheduler_wakeup_delay",
+                "function_scheduler_dispatch_submit_duration",
+                "function_queue_offer_duration",
+                "function_queue_poll_duration",
+                "function_dispatch_slot_hold_duration",
+                "scheduler_visit_duration",
+                "scheduler_idle_duration",
+        };
+
+        SimpleMeterRegistry basic = registryFor(MetricsProfileConfiguration.MetricsProfile.BASIC);
+        SimpleMeterRegistry advanced = registryFor(MetricsProfileConfiguration.MetricsProfile.ADVANCED);
+        for (String name : diagnostic) {
+            io.micrometer.core.instrument.Timer.builder(name).tag("function", "echo").register(basic);
+            io.micrometer.core.instrument.Timer.builder(name).tag("function", "echo").register(advanced);
+        }
+
+        for (String name : diagnostic) {
+            assertThat(basic.find(name).timer()).describedAs(name + " must not survive basic").isNull();
+            assertThat(advanced.find(name).timer()).describedAs(name + " must survive advanced").isNotNull();
+        }
+
+        // And the operational counters keep surviving basic, which is what makes
+        // this a narrowing of the profile rather than a second switch beside it.
+        Counter.builder("function_dispatch_total").tag("function", "echo").register(basic);
+        assertThat(basic.find("function_dispatch_total").counter()).isNotNull();
+    }
+
+    @Test
+    void basicDropsSlotHoldAggregateCountersAndAdvancedKeepsThem() {
+        SimpleMeterRegistry basic = registryFor(MetricsProfileConfiguration.MetricsProfile.BASIC);
+        SimpleMeterRegistry advanced = registryFor(MetricsProfileConfiguration.MetricsProfile.ADVANCED);
+        String[] names = {
+                "function_dispatch_slot_hold_seconds",
+                "function_dispatch_slot_hold_events",
+        };
+
+        for (String name : names) {
+            Counter.builder(name).tag("function", "echo").register(basic);
+            Counter.builder(name).tag("function", "echo").register(advanced);
+            assertThat(basic.find(name).counter()).describedAs(name + " must not survive basic").isNull();
+            assertThat(advanced.find(name).counter()).describedAs(name + " must survive advanced").isNotNull();
+        }
     }
 
     @Test

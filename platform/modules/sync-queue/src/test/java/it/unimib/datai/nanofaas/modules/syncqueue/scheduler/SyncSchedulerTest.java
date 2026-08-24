@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.modules.syncqueue.scheduler;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -38,7 +39,7 @@ class SyncSchedulerTest {
         ExecutionStore store = new ExecutionStore();
         SyncQueueService queue = queue(store);
 
-        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
+        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
         store.put(new ExecutionRecord("e1", task));
         queue.enqueueOrThrow(task);
 
@@ -60,7 +61,7 @@ class SyncSchedulerTest {
         ExecutionStore store = new ExecutionStore();
         SyncQueueService queue = queue(store);
 
-        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
+        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
         store.put(new ExecutionRecord("e1", task));
         queue.enqueueOrThrow(task);
 
@@ -88,8 +89,8 @@ class SyncSchedulerTest {
         ExecutionStore store = new ExecutionStore();
         SyncQueueService queue = queue(store, 1);
 
-        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
-        InvocationTask refill = new InvocationTask("e2", "fn", spec, new InvocationRequest("two", Map.of()), null, null, Instant.now(), 1);
+        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
+        InvocationTask refill = new InvocationTask("e2", "fn", spec, new InvocationRequest("two", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
         store.put(new ExecutionRecord("e1", task));
         store.put(new ExecutionRecord("e2", refill));
         queue.enqueueOrThrow(task);
@@ -113,8 +114,8 @@ class SyncSchedulerTest {
         ExecutionStore store = new ExecutionStore();
         SyncQueueService queue = queue(store, 1);
 
-        InvocationTask task = new InvocationTask("e1", "blocked", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
-        InvocationTask refill = new InvocationTask("e2", "blocked", spec, new InvocationRequest("two", Map.of()), null, null, Instant.now(), 1);
+        InvocationTask task = new InvocationTask("e1", "blocked", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
+        InvocationTask refill = new InvocationTask("e2", "blocked", spec, new InvocationRequest("two", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
         store.put(new ExecutionRecord("e1", task));
         store.put(new ExecutionRecord("e2", refill));
         queue.enqueueOrThrow(task);
@@ -140,8 +141,8 @@ class SyncSchedulerTest {
         ExecutionStore store = new ExecutionStore();
         SyncQueueService queue = queue(store);
 
-        InvocationTask blocked = new InvocationTask("e1", "blocked", blockedSpec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
-        InvocationTask ready = new InvocationTask("e2", "ready", readySpec, new InvocationRequest("two", Map.of()), null, null, Instant.now(), 1);
+        InvocationTask blocked = new InvocationTask("e1", "blocked", blockedSpec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
+        InvocationTask ready = new InvocationTask("e2", "ready", readySpec, new InvocationRequest("two", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
         store.put(new ExecutionRecord("e1", blocked));
         store.put(new ExecutionRecord("e2", ready));
         queue.enqueueOrThrow(blocked);
@@ -175,8 +176,8 @@ class SyncSchedulerTest {
         ExecutionStore store = new ExecutionStore();
         SyncQueueService queue = queue(store);
 
-        InvocationTask hot = new InvocationTask("e1", "hot", hotSpec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1);
-        InvocationTask ready = new InvocationTask("e2", "ready", readySpec, new InvocationRequest("two", Map.of()), null, null, Instant.now(), 1);
+        InvocationTask hot = new InvocationTask("e1", "hot", hotSpec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
+        InvocationTask ready = new InvocationTask("e2", "ready", readySpec, new InvocationRequest("two", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
         store.put(new ExecutionRecord("e1", hot));
         store.put(new ExecutionRecord("e2", ready));
         queue.enqueueOrThrow(hot);
@@ -211,11 +212,11 @@ class SyncSchedulerTest {
         ExecutionStore store = new ExecutionStore();
         SyncQueueService queue = queue(store);
         for (int i = 0; i < SyncQueueService.POLL_READY_MATCHING_SCAN_LIMIT; i++) {
-            InvocationTask blocked = new InvocationTask("blocked-" + i, "blocked", blockedSpec, new InvocationRequest("blocked", Map.of()), null, null, Instant.now(), 1);
+            InvocationTask blocked = new InvocationTask("blocked-" + i, "blocked", blockedSpec, new InvocationRequest("blocked", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
             store.put(new ExecutionRecord(blocked.executionId(), blocked));
             queue.enqueueOrThrow(blocked);
         }
-        InvocationTask ready = new InvocationTask("ready", "ready", readySpec, new InvocationRequest("ready", Map.of()), null, null, Instant.now(), 1);
+        InvocationTask ready = new InvocationTask("ready", "ready", readySpec, new InvocationRequest("ready", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
         store.put(new ExecutionRecord(ready.executionId(), ready));
         queue.enqueueOrThrow(ready);
 

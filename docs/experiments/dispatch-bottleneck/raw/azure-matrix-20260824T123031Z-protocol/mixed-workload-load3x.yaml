@@ -1,0 +1,53 @@
+# Il carico misto a 3x: sync, async e una quota di chiavi di idempotenza.
+#
+# Stessa forma, stessi moduli e stessa coppia di funzioni del profilo comparison,
+# perche' i sei run puramente sincroni gia' registrati sono il termine di paragone.
+# L'unica differenza e' il generatore: `mixed-workload.js` invece di
+# `runtime-comparison.js`.
+#
+# Con sync-queue spento e async-queue acceso le due porte finiscono nella STESSA
+# coda per funzione (20 posti, 2 slot). A traffico solo sincrono, col pool di VU
+# a 5.000 dichiarato da e2d06bf, la piattaforma rifiuta gia' il 14,9-15,0% degli
+# arrivi a 2x: quanto di quel budget se lo prende l'async e' la domanda che
+# questo scenario misura.
+#
+# Le cifre del 5,1% e del 20,4% che girano nelle note precedenti vengono dai run
+# delle 11:17 e 11:47 del 2026-08-23, con pool derivato di 1.800 e 2.700 VU e
+# rispettivamente il 3,6% e il 13,0% degli arrivi trattenuti dal generatore. Non
+# sono un termine di paragone per questo scenario.
+
+# One cell of the control-plane build comparison: the JVM baseline.
+#
+# Every cell is this file with a different `controlPlaneVariant`. The functions
+# are held fixed across all of them — a Java one and a JavaScript one, both doing
+# word statistics — because the question is what the control plane costs, and a
+# function that changed between cells would put a second moving part in every
+# comparison.
+#
+# The image is NOT built by this run: `controlPlaneVariant` names a tag that the
+# matrix compiled into the VM-local registry beforehand, and passing it as a
+# prebuilt image makes `platform.py` skip its own build entirely. That is what
+# stops a cell from quietly rebuilding a different artefact under the same name.
+#
+# No governor and no autoscaler, enforced by the scenario schema: either one
+# would move the concurrency limits underneath the builds being compared.
+workflow: loadtest
+backend: k8s
+loadProfile: mixed
+controlPlaneVariant: jvm-c2
+# Declared, not inherited: the chart default is 1 CPU, and every comparison so
+# far ran against it without saying so.
+controlPlaneCpu: "2"
+functions:
+  - word-stats-java
+  - word-stats-javascript
+
+# Scala ogni stadio del profilo. A 1x il control plane usa 0,53 core su 2 e
+# serve tutto: il modello di CPU del 2026-08-23 mette il suo tetto a ~5,7x e il
+# limite di concorrenza (2 slot, 0,526 ms di servizio) a ~4,2x.
+loadScale: 3.0
+
+# Il pool era saturo al 98% e al 100% nei bracci 2x e 3x del 2026-08-23:
+# dichiarato invece che derivato, perche la domanda dipende dalla latenza che
+# il run sta cercando di misurare.
+loadVus: 5000

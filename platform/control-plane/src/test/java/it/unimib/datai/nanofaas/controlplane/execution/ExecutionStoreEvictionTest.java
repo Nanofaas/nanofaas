@@ -6,6 +6,7 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.RuntimeMode;
 import it.unimib.datai.nanofaas.controlplane.config.ExecutionStoreProperties;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.junit.jupiter.api.Test;
 
@@ -22,7 +23,9 @@ class ExecutionStoreEvictionTest {
         FunctionSpec spec = new FunctionSpec("fn", "img", List.of(), Map.of(), null,
                 1000, 1, 10, 0, null, ExecutionMode.LOCAL, RuntimeMode.HTTP, null, null, null);
         InvocationTask task = new InvocationTask(id, "fn", spec,
-                new InvocationRequest("payload", Map.of()), null, null, Instant.now(), 1);
+                new InvocationRequest("payload", Map.of()), null, null, Instant.now(), 1,
+                InvocationKind.SYNC
+            );
         return new ExecutionRecord(id, task);
     }
 
@@ -30,7 +33,7 @@ class ExecutionStoreEvictionTest {
     @Test
     void nonTerminalRecordsAreEvictedAfterMaxLifetime() throws InterruptedException {
         ExecutionStoreProperties props = new ExecutionStoreProperties(
-                Duration.ofMinutes(5), Duration.ofMinutes(2), Duration.ofMillis(50));
+                Duration.ofMinutes(5), Duration.ofMinutes(2), Duration.ofMillis(50), null);
         ExecutionStore store = new ExecutionStore(props);
         try {
             ExecutionRecord stuck = executionRecord("stuck-queued");
@@ -47,7 +50,7 @@ class ExecutionStoreEvictionTest {
 
     @Test
     void freshNonTerminalRecordsSurviveEviction() {
-        ExecutionStore store = new ExecutionStore(new ExecutionStoreProperties(null, null, null));
+        ExecutionStore store = new ExecutionStore(new ExecutionStoreProperties(null, null, null, null));
         try {
             ExecutionRecord running = executionRecord("fresh");
             store.put(running);
@@ -73,7 +76,7 @@ class ExecutionStoreEvictionTest {
     @Test
     void terminalRecordsAreEvictedAfterTtl() throws InterruptedException {
         ExecutionStoreProperties props = new ExecutionStoreProperties(
-                Duration.ofMillis(50), Duration.ofMillis(50), Duration.ofMinutes(10));
+                Duration.ofMillis(50), Duration.ofMillis(50), Duration.ofMinutes(10), null);
 
         ExecutionStore store = new ExecutionStore(props);
         try {
@@ -104,7 +107,7 @@ class ExecutionStoreEvictionTest {
     @Test
     void recentlyFinishedLongRunningRecordIsRetained() throws InterruptedException {
         ExecutionStoreProperties props = new ExecutionStoreProperties(
-                Duration.ofMillis(200), Duration.ofMillis(150), Duration.ofMinutes(10));
+                Duration.ofMillis(200), Duration.ofMillis(150), Duration.ofMinutes(10), null);
 
         ExecutionStore store = new ExecutionStore(props);
         try {
@@ -129,7 +132,7 @@ class ExecutionStoreEvictionTest {
     @Test
     void cleanupFiresBetweenCleanupTtlAndTtl() throws InterruptedException {
         ExecutionStoreProperties props = new ExecutionStoreProperties(
-                Duration.ofMinutes(10), Duration.ofMillis(50), Duration.ofMinutes(10));
+                Duration.ofMinutes(10), Duration.ofMillis(50), Duration.ofMinutes(10), null);
 
         ExecutionStore store = new ExecutionStore(props);
         try {
@@ -153,7 +156,7 @@ class ExecutionStoreEvictionTest {
     @Test
     void agedNonTerminalRecordUnderMaxLifetimeIsRetained() throws InterruptedException {
         ExecutionStoreProperties props = new ExecutionStoreProperties(
-                Duration.ofMillis(50), Duration.ofMillis(50), Duration.ofMinutes(10));
+                Duration.ofMillis(50), Duration.ofMillis(50), Duration.ofMinutes(10), null);
 
         ExecutionStore store = new ExecutionStore(props);
         try {
@@ -171,7 +174,7 @@ class ExecutionStoreEvictionTest {
 
     @Test
     void removeDeletesExecution() {
-        ExecutionStore store = new ExecutionStore(new ExecutionStoreProperties(null, null, null));
+        ExecutionStore store = new ExecutionStore(new ExecutionStoreProperties(null, null, null, null));
         try {
             ExecutionRecord toRemove = executionRecord("to-remove");
             store.put(toRemove);

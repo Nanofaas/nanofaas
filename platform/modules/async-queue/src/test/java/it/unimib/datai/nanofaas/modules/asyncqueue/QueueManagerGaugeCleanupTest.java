@@ -1,25 +1,29 @@
 package it.unimib.datai.nanofaas.modules.asyncqueue;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
-import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 class QueueManagerGaugeCleanupTest {
 
-    // depth, in-flight, effective concurrency, target-in-flight, and one mode gauge per
-    // ConcurrencyControlMode so the active mode is readable as a series. Derived rather than
-    // written out, because adding a mode is not supposed to break unrelated tests.
-    private static final int GAUGES_PER_FUNCTION = 4 + ConcurrencyControlMode.values().length;
-
+    private static final Set<String> CONTRACTUAL_METERS = Set.of(
+            "function_queue_depth",
+            "function_queue_depth_by_path",
+            "function_inFlight",
+            "function_effective_concurrency",
+            "function_scheduler_dispatch_submit_duration",
+            "function_dispatch_slot_hold_seconds",
+            "function_dispatch_slot_hold_events"
+    );
 
     @Test
     void remove_deregistersGaugesFromMeterRegistry() {
@@ -32,22 +36,12 @@ class QueueManagerGaugeCleanupTest {
         );
         queueManager.getOrCreate(spec);
 
-        // Verify gauges were registered
-        List<Meter> gaugesBefore = registry.getMeters().stream()
-                .filter(m -> m.getId().getTag("function") != null
-                        && m.getId().getTag("function").equals("fn1"))
-                .toList();
-        assertThat(gaugesBefore).hasSize(GAUGES_PER_FUNCTION);
+        assertThat(meterNames(registry, "fn1")).containsAll(CONTRACTUAL_METERS);
 
         // Remove function
         queueManager.remove("fn1");
 
-        // Verify gauges are deregistered
-        List<Meter> gaugesAfter = registry.getMeters().stream()
-                .filter(m -> m.getId().getTag("function") != null
-                        && m.getId().getTag("function").equals("fn1"))
-                .toList();
-        assertThat(gaugesAfter).isEmpty();
+        assertThat(meterNames(registry, "fn1")).isEmpty();
     }
 
     @Test
@@ -73,22 +67,27 @@ class QueueManagerGaugeCleanupTest {
         );
         queueManager.getOrCreate(spec1);
         queueManager.getOrCreate(spec2);
+        Set<Meter.Id> fn2MetersBefore = meterIds(registry, "fn2");
 
         // Remove only fn1
         queueManager.remove("fn1");
 
-        // fn2 gauges should still exist
-        List<Meter> fn2Gauges = registry.getMeters().stream()
-                .filter(m -> m.getId().getTag("function") != null
-                        && m.getId().getTag("function").equals("fn2"))
-                .toList();
-        assertThat(fn2Gauges).hasSize(GAUGES_PER_FUNCTION);
+        assertThat(meterIds(registry, "fn2")).isEqualTo(fn2MetersBefore);
+        assertThat(meterNames(registry, "fn2")).containsAll(CONTRACTUAL_METERS);
 
-        // fn1 gauges should be gone
-        List<Meter> fn1Gauges = registry.getMeters().stream()
-                .filter(m -> m.getId().getTag("function") != null
-                        && m.getId().getTag("function").equals("fn1"))
-                .toList();
-        assertThat(fn1Gauges).isEmpty();
+        assertThat(meterNames(registry, "fn1")).isEmpty();
+    }
+
+    private static Set<String> meterNames(SimpleMeterRegistry registry, String functionName) {
+        return meterIds(registry, functionName).stream()
+                .map(Meter.Id::getName)
+                .collect(Collectors.toSet());
+    }
+
+    private static Set<Meter.Id> meterIds(SimpleMeterRegistry registry, String functionName) {
+        return registry.getMeters().stream()
+                .map(Meter::getId)
+                .filter(id -> functionName.equals(id.getTag("function")))
+                .collect(Collectors.toUnmodifiableSet());
     }
 }

@@ -9,6 +9,7 @@ import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionState;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -85,7 +86,9 @@ class ExecutionCompletionHandlerTest {
                 functionSpec("fn", ExecutionMode.LOCAL),
                 new InvocationRequest("payload", Map.of()),
                 null, null, Instant.now(), 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
 
         completionHandler.dispatch(missingTask);
 
@@ -169,7 +172,9 @@ class ExecutionCompletionHandlerTest {
         FunctionSpec deploymentSpec = functionSpec("deployment-fn", ExecutionMode.DEPLOYMENT, 0);
         InvocationTask task = new InvocationTask(
                 "exec-deployment-failure", "deployment-fn", deploymentSpec,
-                new InvocationRequest("payload", Map.of()), null, null, Instant.now(), 1);
+                new InvocationRequest("payload", Map.of()), null, null, Instant.now(), 1,
+                InvocationKind.SYNC
+            );
         ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
         executionStore.put(executionRecord);
         CompletableFuture<Void> failedWakeUp = new CompletableFuture<>();
@@ -282,7 +287,9 @@ class ExecutionCompletionHandlerTest {
                 "exec-idem", "testFunc", testSpec,
                 new InvocationRequest("payload", null),
                 "my-idempotency-key", null, Instant.now(), 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
         ExecutionRecord executionRecord = new ExecutionRecord("exec-idem", taskWithKey);
         executionStore.put(executionRecord);
         when(enqueuer.enqueue(any())).thenReturn(true);
@@ -338,7 +345,9 @@ class ExecutionCompletionHandlerTest {
                 executionId, spec.name(), spec,
                 new InvocationRequest("payload", null),
                 idempotencyKey, null, Instant.now(), 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
         ExecutionRecord executionRecord = new ExecutionRecord(executionId, task);
         executionStore.put(executionRecord);
         return executionRecord;
@@ -349,7 +358,9 @@ class ExecutionCompletionHandlerTest {
                 executionId, functionName, functionSpec(functionName, mode),
                 new InvocationRequest("payload", Map.of()),
                 null, null, Instant.now(), 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
     }
 
     private FunctionSpec functionSpec(String functionName, ExecutionMode mode) {
@@ -368,7 +379,9 @@ class ExecutionCompletionHandlerTest {
                 executionId, spec.name(), spec,
                 new InvocationRequest("payload", null),
                 null, null, Instant.now(), 1
-        );
+        ,
+        InvocationKind.SYNC
+    );
         CountingExecutionRecord executionRecord = new CountingExecutionRecord(executionId, task);
         executionStore.put(executionRecord);
         return executionRecord;

@@ -4,9 +4,11 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.EnumMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,6 +31,39 @@ public class Metrics {
                 Timer.builder("removed_function_queue_wait_ms").register(removedRegistry),
                 Timer.builder("removed_function_e2e_latency_ms").register(removedRegistry)
         );
+    }
+
+    /**
+     * Sync and async share one queue per function, so every meter above reports a
+     * mixture. These three carry the door the invocation came in by, which is the only
+     * way to ask whether async work displaced a caller that was waiting.
+     *
+     * Deliberately new names rather than a tag on the existing meters: five of those
+     * feed control loops - function_latency_ms and function_e2e_latency_ms steer the
+     * concurrency governor, function_dispatch_total the autoscaler, function_inFlight
+     * and function_queue_depth the Kubernetes HPA - and splitting a series a control
+     * loop reads changes what that loop sees.
+     */
+    public void admitted(String function, InvocationKind kind) {
+        pathMeters(function, kind, PathMeters::admitted);
+    }
+
+    /** Refused at admission: a full queue, whether caught early or by `offer`. */
+    public void refused(String function, InvocationKind kind) {
+        pathMeters(function, kind, PathMeters::refused);
+    }
+
+    /** An idempotency key that found an execution already on file. */
+    public void replayed(String function, InvocationKind kind) {
+        pathMeters(function, kind, PathMeters::replayed);
+    }
+
+    private void pathMeters(String function, InvocationKind kind,
+                            java.util.function.Function<PathMeters, Counter> pick) {
+        FunctionMeters metersFor = metersOrNull(function);
+        if (metersFor != null) {
+            pick.apply(metersFor.byPath().get(kind)).increment();
+        }
     }
 
     public void enqueue(String function) {
@@ -158,6 +193,13 @@ public class Metrics {
         Timer initDuration = timer("function_init_duration_ms", function);
         Timer queueWait = timer("function_queue_wait_ms", function);
         Timer e2eLatency = timer("function_e2e_latency_ms", function);
+        Map<InvocationKind, PathMeters> byPath = new EnumMap<>(InvocationKind.class);
+        for (InvocationKind kind : InvocationKind.values()) {
+            byPath.put(kind, new PathMeters(
+                    pathCounter("function_admitted_total", function, kind),
+                    pathCounter("function_refused_total", function, kind),
+                    pathCounter("function_replayed_total", function, kind)));
+        }
         return new FunctionMeters(
                 enqueue,
                 dispatch,
@@ -169,7 +211,8 @@ public class Metrics {
                 coldStart,
                 warmStart,
                 new FunctionTimers(latency, initDuration, queueWait, e2eLatency),
-                List.of(
+                byPath,
+                concat(byPath, List.of(
                         enqueue.getId(),
                         dispatch.getId(),
                         success.getId(),
@@ -183,8 +226,26 @@ public class Metrics {
                         initDuration.getId(),
                         queueWait.getId(),
                         e2eLatency.getId()
-                )
+                ))
         );
+    }
+
+    /** Registered ids travel with the function so a delete removes these too. */
+    private static List<Meter.Id> concat(Map<InvocationKind, PathMeters> byPath, List<Meter.Id> base) {
+        List<Meter.Id> all = new java.util.ArrayList<>(base);
+        byPath.values().forEach(path -> {
+            all.add(path.admitted().getId());
+            all.add(path.refused().getId());
+            all.add(path.replayed().getId());
+        });
+        return List.copyOf(all);
+    }
+
+    private Counter pathCounter(String name, String function, InvocationKind kind) {
+        return Counter.builder(name)
+                .tag("function", function)
+                .tag("path", kind.tag())
+                .register(registry);
     }
 
     private Counter counter(String name, String function) {
@@ -200,7 +261,11 @@ public class Metrics {
     record FunctionMeters(Counter enqueue, Counter dispatch, Counter success, Counter error,
                           Counter retry, Counter timeout, Counter queueRejected,
                           Counter coldStart, Counter warmStart, FunctionTimers timers,
+                          Map<InvocationKind, PathMeters> byPath,
                           List<Meter.Id> meterIds) {
+    }
+
+    record PathMeters(Counter admitted, Counter refused, Counter replayed) {
     }
 
     record FunctionTimers(Timer latency, Timer initDuration, Timer queueWait, Timer e2eLatency) {
