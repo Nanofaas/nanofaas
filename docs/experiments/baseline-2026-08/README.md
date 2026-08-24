@@ -433,6 +433,47 @@ L'unica evidenza indiretta e' il p99.
 Correzione: distinguere «non disponibile» da zero, cioe' non registrare affatto
 il contatore quando l'MXBean risponde `-1`, invece di pubblicare uno zero.
 
+### La variante «JVM» ha il JIT ottimizzante spento
+
+Non e' un difetto del codice ma del disegno del confronto, e va detto prima di
+leggere qualunque tabella della serie A.
+
+`platform/control-plane/Dockerfile` fissa:
+
+```dockerfile
+ARG JVM_TUNING="-XX:+UseSerialGC -XX:TieredStopAtLevel=1"
+```
+
+Verificato sul processo in esecuzione durante A1b, non dedotto: l'attuatore
+riporta `jvm_gc_collection_count_total{gc="Copy"}` e `{gc="MarkSweepCompact"}`,
+cioe' gli MXBean del collector seriale, anche con due core e 2 GiB.
+`TieredStopAtLevel=1` ferma la compilazione a C1.
+
+Il commento del Dockerfile dice perche': quei default furono scelti per un
+deployment a **un core**. A1b toglie quel vincolo e lascia in piedi
+l'assunzione, quindi misura la JVM sotto un'ipotesi che il braccio stesso ha
+appena rimosso.
+
+Quanto costa, dal 2x2 archiviato (`azure-jvm-2x2-cpu1` e `-cpu2`):
+
+| | 1 core | | | 2 core | | |
+|---|---|---|---|---|---|---|
+| | servite/s | shed | p95 | servite/s | shed | p95 |
+| seriale + C1 (default) | 211 | 30,3% | 118 ms | 298 | 1,4% | 21,1 ms |
+| G1 + C1 | 190 | 37,0% | 153 ms | 279 | 7,8% | 46,6 ms |
+| seriale + C2 | 296 | 2,0% | 18 ms | 302 | 0,0% | 2,5 ms |
+| G1 + C2 | 275 | 9,0% | 58 ms | 302 | 0,1% | 3,0 ms |
+
+Il livello di tiering vale da solo il 40% del throughput a un core e un fattore
+sei sul p95. Il collector no: G1 e' *peggio* di seriale finche' il C2 e' spento,
+e lo pareggia solo quando e' acceso.
+
+Conseguenza: «JVM (Java 25, JIT)» contro `native-o3` non e' JIT contro AOT, e'
+AOT ottimizzato contro JIT dimezzato. **La serie A ha bisogno di un braccio
+`jvm-c2`** perche' il confronto sia quello che il capitolo dichiara di fare. La
+variante esiste gia' nel branch `dispatch-instrumentation` di NanoLab, non su
+`main`; aggiungerla e' un cambio di disegno e resta da decidere.
+
 ## Protocollo comune
 
 Invariante fra le celle, perché un confronto con due parti mobili non è un
