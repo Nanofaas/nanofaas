@@ -58,10 +58,8 @@ def cell(path):
     out["dispatch_s"] = dispatch / window if window else float("nan")
     out["coda"] = mean(queries, "function_queue_depth")
 
-    admitted_total = 0.0
     for door in ("sync", "async"):
         admitted = delta(queries, f"function_admitted_{door}")
-        admitted_total += admitted
         refused = delta(queries, f"function_refused_{door}")
         total = admitted + refused
         out[f"rifiuti_{door}_%"] = 100 * refused / total if total else float("nan")
@@ -70,7 +68,6 @@ def cell(path):
         out[f"replay_{door}"] = delta(queries, f"function_replayed_{door}")
     arrivals = out["arrivi_sync"] + out["arrivi_async"]
     out["quota_async_%"] = 100 * out["arrivi_async"] / arrivals if arrivals else float("nan")
-    out["richieste_accettate_s"] = admitted_total / window if window else float("nan")
     out["chiavi_max"] = max(_series(queries, "idempotency_keys_held") or [float("nan")])
     store = _series(queries, "execution_store_size")
     out["record_max"] = max(store) if store else float("nan")
@@ -111,6 +108,15 @@ def cell(path):
     reqs = k6.get("http_reqs", {})
     out["richieste_http_offerte_s"] = reqs.get("rate", float("nan"))
     out["richieste_http_offerte"] = reqs.get("count", float("nan"))
+    refusal_rates = [k6.get("mixed_sync_refused")]
+    if k6.get("mixed_async_ack_duration"):
+        refusal_rates.append(k6.get("mixed_async_refused"))
+    duration = reqs.get("count", 0) / reqs.get("rate", 0) if reqs.get("rate", 0) else 0
+    out["workload_accettato_s"] = (
+        sum(rate["fails"] for rate in refusal_rates) / duration
+        if duration and all(rate is not None and "fails" in rate for rate in refusal_rates)
+        else float("nan")
+    )
     checks = k6.get("checks", {})
     out["check_falliti"] = checks.get("fails", float("nan"))
     probe = k6.get("mixed_probe_duration")
@@ -169,9 +175,9 @@ ROWS = [
     ("rifiuti complessivi (%)", "rifiuti_%"),
     ("  porta sync (%)", "rifiuti_sync_%"),
     ("  porta async (%)", "rifiuti_async_%"),
-    ("richieste accettate/s", "richieste_accettate_s"),
-    ("richieste HTTP offerte/s", "richieste_http_offerte_s"),
-    ("richieste HTTP offerte", "richieste_http_offerte"),
+    ("workload accettato/s (Java+JS; sync completate + ACK async)", "workload_accettato_s"),
+    ("HTTP totali offerti/s (incl. probe management)", "richieste_http_offerte_s"),
+    ("HTTP totali offerti (incl. probe management)", "richieste_http_offerte"),
     ("p50 chiamante sync (ms)", "p50_sync_ms"),
     ("p95 chiamante sync (ms)", "p95_sync_ms"),
     ("p99 chiamante sync (ms)", "p99_sync_ms"),

@@ -13,7 +13,7 @@ MODULE.loader.exec_module(tables)
 
 
 class TablesTest(unittest.TestCase):
-    def test_separates_admitted_rate_from_offered_http_traffic(self) -> None:
+    def _cell(self, *, include_async_rate: bool = True) -> dict[str, float | bool | None]:
         with tempfile.TemporaryDirectory() as tmp:
             run = Path(tmp) / "variant" / "run-1"
             metrics = run / "metrics"
@@ -35,20 +35,43 @@ class TablesTest(unittest.TestCase):
             (metrics / "prometheus-snapshot.json").write_text(json.dumps(snapshot))
             k6 = {
                 "metrics": {
-                    "http_reqs": {"count": 95, "rate": 9.5},
-                    "http_req_duration": {},
+                    "http_reqs": {"count": 120, "rate": 12.0},
+                    "mixed_sync_duration": {"med": 1.0},
+                    "mixed_async_ack_duration": {"med": 1.0},
+                    "mixed_sync_refused": {"passes": 10, "fails": 70},
                 }
             }
+            if include_async_rate:
+                k6["metrics"]["mixed_async_refused"] = {"passes": 10, "fails": 20}
             (run / "k6-summary.json").write_text(json.dumps(k6))
 
-            result = tables.cell(metrics / "prometheus-snapshot.json")
+            return tables.cell(metrics / "prometheus-snapshot.json")
 
-        self.assertEqual(3.0, result["richieste_accettate_s"])
-        self.assertEqual(9.5, result["richieste_http_offerte_s"])
-        self.assertEqual(95, result["richieste_http_offerte"])
-        self.assertIn(("richieste accettate/s", "richieste_accettate_s"), tables.ROWS)
-        self.assertIn(("richieste HTTP offerte/s", "richieste_http_offerte_s"), tables.ROWS)
-        self.assertIn(("richieste HTTP offerte", "richieste_http_offerte"), tables.ROWS)
+    def test_uses_k6_java_and_javascript_workload_acceptance(self) -> None:
+        result = self._cell()
+
+        self.assertEqual(9.0, result["workload_accettato_s"])
+        self.assertEqual(12.0, result["richieste_http_offerte_s"])
+        self.assertEqual(120, result["richieste_http_offerte"])
+        self.assertNotIn("richieste_accettate_s", result)
+        self.assertIn(
+            ("workload accettato/s (Java+JS; sync completate + ACK async)", "workload_accettato_s"),
+            tables.ROWS,
+        )
+        self.assertIn(
+            ("HTTP totali offerti/s (incl. probe management)", "richieste_http_offerte_s"),
+            tables.ROWS,
+        )
+        self.assertIn(
+            ("HTTP totali offerti (incl. probe management)", "richieste_http_offerte"),
+            tables.ROWS,
+        )
+
+    def test_missing_required_custom_rate_is_not_reported_as_zero(self) -> None:
+        result = self._cell(include_async_rate=False)
+
+        value = result["workload_accettato_s"]
+        self.assertNotEqual(value, value)
 
 
 if __name__ == "__main__":
