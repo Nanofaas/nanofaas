@@ -122,7 +122,7 @@ def cell(path):
     probe = k6.get("mixed_probe_duration")
     if probe:
         out["probe_p50_ms"] = probe.get("med", float("nan"))
-    out["scartati_gen"] = (k6.get("dropped_iterations") or {}).get("count", 0)
+    out["scartati_gen"] = (k6.get("dropped_iterations") or {}).get("count", float("nan"))
     probe = k6.get("mixed_probe_duration")
     if probe:
         out["probe_p95_ms"] = probe.get("p(95)", float("nan"))

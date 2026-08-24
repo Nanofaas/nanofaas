@@ -91,7 +91,8 @@ consecutive per braccio. Il primo tentativo è terminato prima di qualsiasi
 cella per un errore DNS su `api.github.com`; dopo flush della cache DNS e una
 risposta HTTP 200, lo stesso comando e lo stesso matrix ID hanno completato
 12/12 celle sotto `caffeinate -dimsu`, teardown incluso. Il protocollo
-self-contained, il comando esatto e l'inventario Azure finale vuoto sono in
+self-contained include anche il `run-matrix.sh` esatto; comando e inventario
+Azure finale vuoto sono in
 [`validation-gate.txt`](raw/azure-matrix-20260824T123031Z-protocol/validation-gate.txt).
 
 Tutte le run hanno uptime monotono, zero check falliti e zero timeout funzione;
@@ -102,18 +103,19 @@ slot-hold sono PASS. Nel braccio mixed 3×, 5 sonde liveness su 1.352 hanno
 superato un secondo (massimi 1.057–1.074 ms), senza restart: è uno strike sul
 budget/rischio operativo, non un criterio di invalidazione della matrice.
 
-| braccio | accepted workload/s Java+JS | rifiuti Java/s | dispatch Java/s |
+| braccio | accepted workload/s Java+JS | rifiuti porta sync Java (%) | dispatch Java/s |
 |---|---:|---:|---:|
-| sync 2× | 856,5 ± 0,6 | 1,583 ± 0,065 | 593,2 ± 0,6 |
-| mixed 2× | 893,5 ± 1,5 | 2,228 ± 0,191 | 589,0 ± 1,1 |
-| sync 3× | 1.193,4 ± 4,1 | 8,571 ± 0,316 | 823,9 ± 2,7 |
-| mixed 3× | 1.227,4 ± 7,0 | 10,435 ± 0,548 | 805,5 ± 5,0 |
+| sync 2× | 856,5 ± 0,6 | 1,842 ± 0,101 | 593,2 ± 0,6 |
+| mixed 2× | 893,5 ± 1,5 | 2,683 ± 0,205 | 589,0 ± 1,1 |
+| sync 3× | 1.193,4 ± 4,1 | 9,111 ± 0,301 | 823,9 ± 2,7 |
+| mixed 3× | 1.227,4 ± 7,0 | 11,730 ± 0,589 | 805,5 ± 5,0 |
 
 Il throughput Java+JS è la metrica primaria di carico accettato, ma il mixed
 non è un confronto semantico diretto col sync: comprende ACK async e retry con
-idempotenza. Sul solo percorso Java i rifiuti passano da 1,583 a 2,228/s a 2×
-e da 8,571 a 10,435/s a 3×; i rifiuti async mixed sono rispettivamente
-2,347 ± 0,162/s e 10,637 ± 0,482/s, quasi in parità con quelli sync e con un
+idempotenza. Sulla porta sync Java i rifiuti passano da 1,842% a 2,683% a 2×
+e da 9,111% a 11,730% a 3×; i rifiuti sulla porta async Java nei bracci mixed
+sono rispettivamente 2,663 ± 0,171% e 11,351 ± 0,534%, quasi in parità con
+quelli sync e con un
 lieve eccesso async concorde, la cui rilevanza non è stabilita.
 
 La latenza sync a 2× non è stabilita. A 3× il p95 passa da

@@ -81,6 +81,12 @@ class TablesTest(unittest.TestCase):
 
         self.assertEqual(7.0, result["workload_accettato_s"])
 
+    def test_missing_dropped_iterations_is_not_reported_as_observed_zero(self) -> None:
+        result = self._cell()
+
+        value = result["scartati_gen"]
+        self.assertNotEqual(value, value)
+
     def test_java_only_prometheus_rows_are_labelled(self) -> None:
         java_only = {
             "quota_async_%",

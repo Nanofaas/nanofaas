@@ -3,7 +3,7 @@ mcFaas: dce961681b58196d1735c2b9753de030b436e3d1
 NanoLab: ad275f6fbdda690323d979213b555b239f04f3f5
 
 Exact command (from the NanoLab dispatch-instrumentation worktree):
-MATRIX_ID=20260824T123031Z caffeinate -dimsu ./run-matrix.sh
+env MATRIX_ID=20260824T123031Z NANOFAAS_ROOT=/Users/micheleciavotta/Downloads/mcFaas/.worktrees/dispatch-instrumentation caffeinate -dimsu ./run-matrix.sh
 
 Fixed, non-randomized order:
 1. sync-baseline-load2x, runs 1-3 consecutively
@@ -18,9 +18,11 @@ Recovery:
 dscacheutil -flushcache
 curl check: HTTP 200 from api.github.com
 
-Retry: the exact same MATRIX_ID and command above exited 0; completed cells:
-12/12. pmset was checked at the beginning and during teardown and showed the
-caffeinate assertions active.
+Retry command:
+env MATRIX_ID=20260824T123031Z NANOFAAS_ROOT=/Users/micheleciavotta/Downloads/mcFaas/.worktrees/dispatch-instrumentation caffeinate -dimsu ./run-matrix.sh
+
+The retry exited 0; completed cells: 12/12. pmset was checked at the beginning
+and during teardown and showed the caffeinate assertions active.
 
 Teardown output:
 2026-08-24 16:59:49 teardown verificato: nessuna risorsa residua
