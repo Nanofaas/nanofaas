@@ -64,13 +64,17 @@ class CoreArchitectureTest {
             @Override
             public void check(JavaClass item, ConditionEvents events) {
                 // ArchUnit 1.4.1 dropped SourceCodeLocation's source-path accessor, so read the
-                // source URI instead; its path points under platform/control-plane/.
-                String path = item.getSource().map(Source::getUri).map(URI::getPath).orElse("");
-                if (!path.contains("/platform/control-plane/")) {
+                // source URI instead; it can point to either a classes directory or a JAR.
+                URI source = item.getSource().map(Source::getUri).orElse(null);
+                if (source == null || !isCoreSource(source)) {
                     events.add(SimpleConditionEvent.violated(item,
-                            item.getDescription() + " does not live in the control-plane module (" + path + ")"));
+                            item.getDescription() + " does not live in the control-plane module (" + source + ")"));
                 }
             }
         };
+    }
+
+    static boolean isCoreSource(URI uri) {
+        return uri.toString().contains("/platform/control-plane/");
     }
 }
