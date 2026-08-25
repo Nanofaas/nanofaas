@@ -12,6 +12,11 @@ control-plane tool provisions VMs and installs the platform.
 - GraalVM with Native Image for native Java builds.
 - Multipass for the local k3s path; SSH and Ansible for an external VM.
 
+Some automated tests require Docker to be installed and available to non-root
+users. Follow the [Linux post-installation steps for Docker
+Engine](https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user)
+to configure Docker correctly.
+
 ## Build the platform
 
 ```bash
