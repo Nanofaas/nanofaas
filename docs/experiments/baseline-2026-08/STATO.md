@@ -121,3 +121,7 @@ archiviate 3 celle in raw/A3-misto-3x  (5.1M)
 SHA256SUMS:      318 file
 2026-08-25 21:16  A3-misto-3x: archiviato
 2026-08-25 21:16  A3-misto-3x: tabelle calcolate e scritte nel documento
+2026-08-25 21:16  A3-misto-3x: committato 7faf03f5
+2026-08-25 21:16  teardown in corso
+2026-08-25 21:19  teardown completo, nessuna risorsa residua
+2026-08-25 21:19  coda esaurita

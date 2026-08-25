@@ -17,6 +17,28 @@ documento cita come prestazioni della piattaforma**.
 - **Stato**: nessuna cella eseguita. Ogni sezione «Risultati» qui sotto è vuota
   di proposito e si riempie man mano.
 
+## La campagna in una schermata
+
+Calcolata da `sintesi.py` su `raw/`. Le tabelle per esperimento stanno piu'
+sotto, con lo spread che qui non ci starebbe.
+
+<!-- sintesi:inizio -->
+| esperimento | condizione | celle | offerte/s | servite/s | HTTP falliti | p95 | tutte vive |
+|---|---|---|---|---|---|---|---|
+| A1-cpu1 | 4 build · 1 core · 2 GiB | 12 | 435 | 239 | 17.3% | 154.7 ms | sì |
+| A1b-cpu2 | 4 build · 2 core · 2 GiB | 12 | 435 | 286 | 4.9% | 120.6 ms | sì |
+| A2-mem1024 | 4 build · 2 core · 1 GiB | 12 | 435 | 284 | 5.5% | 124.4 ms | sì |
+| A2-mem512 | 4 build · 2 core · 512 MiB | 12 | 430 | 242 | 25.6% | 290.0 ms | sì |
+| A1c | jvm vs c2 · 1 core · 2 GiB | 6 | 435 | 262 | 10.8% | 77.7 ms | sì |
+| A1d | jvm vs c2 · 2 core · 2 GiB | 6 | 435 | 301 | 0.3% | 4.0 ms | sì |
+| A2c | jvm vs c2 · 2 core · 1 GiB | 6 | 435 | 302 | 0.1% | 5.8 ms | sì |
+| A2d | jvm vs c2 · 2 core · 512 MiB | 6 | 419 | 197 | 64.7% | 2.7 ms | sì |
+| A3-sync-2x | jvm-c2 · sync · 2x | 3 | 871 | 587 | 1.6% | 4.6 ms | sì |
+| A3-misto-2x | jvm-c2 · misto · 2x | 3 | 914 | 584 | 2.0% | 5.2 ms | sì |
+| A3-sync-3x | jvm-c2 · sync · 3x | 3 | 1306 | 804 | 9.6% | 58.9 ms | sì |
+| A3-misto-3x | jvm-c2 · misto · 3x | 3 | 1371 | 776 | 12.6% | 169.3 ms | sì |
+<!-- sintesi:fine -->
+
 ## Perché rifare
 
 Tre difetti trovati dalla campagna diagnostica hanno cambiato il codice **dopo**
