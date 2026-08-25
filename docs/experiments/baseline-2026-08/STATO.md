@@ -39,3 +39,12 @@ SHA256SUMS:      163 file
 2026-08-25 09:32  teardown in corso
 2026-08-25 09:35  teardown completo, nessuna risorsa residua
 2026-08-25 09:35  coda esaurita
+2026-08-25 09:38  A2-mem512: gia' archiviato, salto
+2026-08-25 09:38  A1c: avvio (runtime-comparison-jvm.yaml, varianti jvm,jvm-c2)
+2026-08-25 11:41  A1c: matrice finita
+dimensioni immagini da 52.136.203.171...
+Warning: Permanently added '52.136.203.171' (ED25519) to the list of known hosts.
+archiviate 6 celle in raw/A1c  (5.0M)
+SHA256SUMS:      187 file
+2026-08-25 11:42  A1c: archiviato
+2026-08-25 11:42  A1c: tabelle calcolate e scritte nel documento
