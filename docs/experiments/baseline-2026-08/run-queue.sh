@@ -87,7 +87,11 @@ done
 # Il ciclo legge da una sostituzione di processo, non da una pipe: una pipe lo
 # metterebbe in una subshell, dove `exit 1` chiude solo quella e la coda
 # stamperebbe "esaurita" subito dopo aver fallito.
-while IFS=$'\t' read -r NAME SCENARIO VARIANTS KEEP MARKER; do
+# La lettura sta su un descrittore suo. Su stdin i comandi del corpo la
+# divorerebbero: ssh legge stdin fino alla fine se nessuno gliela chiude, e con
+# la coda su stdin si e' portato via le quattro righe rimanenti dopo il primo
+# run, che la coda ha quindi dichiarato esaurita.
+while IFS=$'\t' read -r -u 9 NAME SCENARIO VARIANTS KEEP MARKER; do
     MARKER=${MARKER:-$NAME}
     if [ -d "$HERE/raw/$NAME" ] && [ -n "$(ls "$HERE/raw/$NAME" 2>/dev/null)" ]; then
         stato "$NAME: gia' archiviato, salto"
@@ -100,7 +104,7 @@ while IFS=$'\t' read -r NAME SCENARIO VARIANTS KEEP MARKER; do
         --environment packages/nanolab/environments/azure-comparison.yaml \
         --repetitions 3 --variants "$VARIANTS" \
         --run-dir "packages/nanolab/runs/baseline-2026-08/$NAME" \
-        > "$RUNS/$NAME.log" 2>&1)
+        < /dev/null > "$RUNS/$NAME.log" 2>&1)
     if [ $? -ne 0 ]; then
         stato "$NAME: **FALLITO** (vedi $RUNS/$NAME.log)"
         teardown
@@ -111,7 +115,7 @@ while IFS=$'\t' read -r NAME SCENARIO VARIANTS KEEP MARKER; do
 
     IP=$(az vm list-ip-addresses -g "$GROUP" -n nanofaas-comparison \
          --query "[0].virtualMachine.network.publicIpAddresses[0].ipAddress" -o tsv 2>/dev/null)
-    "$HERE/collect.sh" "$RUNS/$NAME" "$NAME" "$IP" >> "$STATO" 2>&1
+    "$HERE/collect.sh" "$RUNS/$NAME" "$NAME" "$IP" < /dev/null >> "$STATO" 2>&1
     cp "$NANOLAB/packages/nanolab/scenarios-v2/$SCENARIO" "$HERE/raw/$NAME/scenario.yaml" 2>/dev/null
     stato "$NAME: archiviato"
 
@@ -128,6 +132,6 @@ while IFS=$'\t' read -r NAME SCENARIO VARIANTS KEEP MARKER; do
     else
         teardown || { stato "coda interrotta sul teardown"; exit 1; }
     fi
-done < <(grep -v '^#' "$HERE/queue.tsv" | grep -v '^[[:space:]]*$')
+done 9< <(grep -v '^#' "$HERE/queue.tsv" | grep -v '^[[:space:]]*$')
 
 stato "coda esaurita"

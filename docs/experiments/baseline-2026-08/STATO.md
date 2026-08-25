@@ -35,3 +35,7 @@ archiviate 12 celle in raw/A2-mem512  (5.2M)
 SHA256SUMS:      163 file
 2026-08-25 09:32  A2-mem512: archiviato
 2026-08-25 09:32  A2-mem512: tabelle calcolate e scritte nel documento
+2026-08-25 09:32  A2-mem512: committato 70f24c65
+2026-08-25 09:32  teardown in corso
+2026-08-25 09:35  teardown completo, nessuna risorsa residua
+2026-08-25 09:35  coda esaurita
