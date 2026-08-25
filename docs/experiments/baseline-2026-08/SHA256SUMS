@@ -273,6 +273,19 @@ e86c3cc665828497eacf60c7033b370e92a2056692c65f7aa7a2fec157ae3c46  raw/A3-misto-2
 19a962001596e39a3e3e5f9b8487f321b4ea9c71c6b31315a955f621ba839e59  raw/A3-misto-2x/run.log
 b8ad6f8b2bee07c1b92fb8ddb2c42c0d30bd0e9a72aa38f85a2e2a06a9d07c5a  raw/A3-misto-2x/scenario.yaml
 2563ebbeecb914ad386003a99e8dd9f19dcb0eb6da8bfd2abf57f3391b9283a4  raw/A3-misto-2x/tabella.md
+c2081924929417931f9267ffd8278f4292eca05381eaa384ce75da83be9b55cc  raw/A3-misto-3x/comparison-manifest.json
+5f13a11c742d32b404e91e270b2c6c34e0c1eb97cbbcc66b255586169d025370  raw/A3-misto-3x/comparison-report.html
+0007715af02111b22cd3b8010430b44369ebefb091e056b5b895d40051af6d4c  raw/A3-misto-3x/image-sizes.json
+96eef42736e337014dce08659432ac84dfe2a7b23c132223523598f6c2c7e9c8  raw/A3-misto-3x/jvm-c2/run-1/k6-summary.json
+2397c79e20b3f63bb808465f3c6f545064476f23870529cffd30fdc806d941ce  raw/A3-misto-3x/jvm-c2/run-1/metrics/prometheus-snapshot.json.gz
+16d3b65b222fa36f9027da0d0e3dfd684726de24add9794c8bb3e6a5a3c28268  raw/A3-misto-3x/jvm-c2/run-1/summary.json
+dc418364dfa22bec38b95db738b425b05bb784ecc8bb757b6d166d14df6e077d  raw/A3-misto-3x/jvm-c2/run-2/k6-summary.json
+f8fcc0a5ebafd829675a40b616080000de1961af06ab315ca2b602f09d7fc045  raw/A3-misto-3x/jvm-c2/run-2/metrics/prometheus-snapshot.json.gz
+72a0a4ef405abbcce1f35c1fd2b9b0178379479128e71429daacffc502e8dbd1  raw/A3-misto-3x/jvm-c2/run-2/summary.json
+41251ffc33a4ab4f7b3d2715713a689441acc4d993ae3cc58f2df2bb16a98ed1  raw/A3-misto-3x/jvm-c2/run-3/k6-summary.json
+160378da60f8c7f014abfa0d614ffc706542c519e36c5f137c6bcd5e975582a6  raw/A3-misto-3x/jvm-c2/run-3/metrics/prometheus-snapshot.json.gz
+1254f68c93a40b66b0e7015487916ca0449a6c1fd2a598148d716174c04fe280  raw/A3-misto-3x/jvm-c2/run-3/summary.json
+d811f3b4ea143382c468e83814466d80088d8a28df4079dcac004f3e262ea60e  raw/A3-misto-3x/run.log
 b1612bf6da81b6760dd35436341b54a33672c1edb272a516468d8a345d91212d  raw/A3-sync-2x/comparison-manifest.json
 fb5744ad0c1eb0529b8c6489be301b8c3a7c616e3c550a0a7cd4e1f3367664dd  raw/A3-sync-2x/comparison-report.html
 0007715af02111b22cd3b8010430b44369ebefb091e056b5b895d40051af6d4c  raw/A3-sync-2x/image-sizes.json
@@ -301,3 +314,5 @@ a335635ca9be69f0c390939efe117c2cda28b020bc2c6b11309a7c149e1d37ad  raw/A3-sync-3x
 077cc873865eca04567b65357c67ab31ac5410e4c70b95babb17a5161f122b49  raw/A3-sync-3x/jvm-c2/run-3/metrics/prometheus-snapshot.json.gz
 047266103224eb7e21a62fcab18e8097e5905bc0fbfc39c4c5df32206e1943f4  raw/A3-sync-3x/jvm-c2/run-3/summary.json
 4e7ba613c30ae8bb39bef7c1b629d79c16b47d0b64983a6608dcbb562073f2c8  raw/A3-sync-3x/run.log
+5379f917965401fb70bfb7333650cd766e876fc88d6194aa170e5d7d8758f0b7  raw/A3-sync-3x/scenario.yaml
+271d42cc327df9054382b81c6a73d6f92bef845a603f65ccc3dac12699e47d29  raw/A3-sync-3x/tabella.md
