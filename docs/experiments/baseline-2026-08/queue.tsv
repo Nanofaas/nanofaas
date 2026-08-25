@@ -1,0 +1,8 @@
+# nome	scenario	varianti	tieni_vm
+# tieni_vm=1 lascia la VM in piedi per il run successivo: i tre tetti di memoria
+# sono lo stesso sweep, e su una macchina sola le immagini confrontate sono
+# letteralmente gli stessi byte a ogni tetto.
+A1c	runtime-comparison-jvm.yaml	jvm,jvm-c2	0
+A1d	runtime-comparison-cpu2.yaml	jvm,jvm-c2	1
+A2c	runtime-comparison-mem1024.yaml	jvm,jvm-c2	1
+A2d	runtime-comparison-mem512.yaml	jvm,jvm-c2	0
