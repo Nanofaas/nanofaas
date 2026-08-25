@@ -659,6 +659,41 @@ AOT ottimizzato contro JIT dimezzato. **La serie A ha bisogno di un braccio
 variante esiste gia' nel branch `dispatch-instrumentation` di NanoLab, non su
 `main`; aggiungerla e' un cambio di disegno e resta da decidere.
 
+### `jvm-c2` dimensiona l'heap in due modi, e la media fra i due non esiste
+
+Non e' un difetto: e' una variabilita' che non costa nulla al chiamante ma
+rende insensata una riga di tabella, quindi va saputa prima di citarla.
+
+Su nove celle, `jvm-c2` cade in uno di **due modi netti**, senza valori
+intermedi, mentre `jvm` con C1 non lo fa mai:
+
+| | collezioni | pausa media | heap di picco |
+|---|---|---|---|
+| `jvm` (C1), tre celle | 1536–1556 | 4,2–4,4 ms | 989–1021 MB |
+| `jvm-c2`, modo comune | 1863–1898 | 3,3–5,3 ms | 1005–1277 MB |
+| `jvm-c2`, modo raro | 83–163 | 32,3–48,8 ms | 1298–1356 MB |
+
+Nel modo raro le collezioni sono ~11 volte meno numerose e ~10 volte piu'
+lunghe, con un tempo totale di GC simile: cambia la forma, non il lavoro. Meno
+collezioni piu' lunghe con piu' heap significa una young generation piu' grande.
+
+**Non si sente sul chiamante.** Throughput identico a tre cifre (301–302 in A1d,
+593 in A3), shed identico, e il massimo di latenza *piu' basso* nel modo raro
+(114 ms contro 743 in A1d; 740–935 contro 1202 in A3). L'aritmetica torna: 160
+collezioni da 48 ms sono 7,7 s di pause su 480, contro 10 s di 1898 collezioni
+da 5,3 ms — e ogni pausa resta un ordine di grandezza sotto il massimo osservato,
+che quindi e' dominato da altro.
+
+**Due conseguenze pratiche.** La riga «pausa GC media» di `jvm-c2` non va citata:
+3,3 ms e 48,8 ms non hanno una media sensata, e riportare 34,2 ± 21,8 fa
+sembrare rumore quello che e' un interruttore. E la minor occupazione di heap di
+`jvm-c2` osservata in A2c non e' un effetto del C2 sulla memoria: e' la lotteria
+del modo, caduta li' dalla parte piccola.
+
+Meccanismo non stabilito. I fatti sono che accade solo con il C2, che il modo
+raro ha sempre l'heap di picco piu' grande, e che in nove celle non esistono
+valori intermedi.
+
 ## Protocollo comune
 
 Invariante fra le celle, perché un confronto con due parti mobili non è un
