@@ -250,6 +250,52 @@ A 512 MiB:
 _Da eseguire._
 <!-- A2-512:fine -->
 
+## A1c–A2d — La JVM con il suo compilatore ottimizzante
+
+**Domanda.** Quanto della distanza fra la JVM e le build native e' AOT contro
+JIT, e quanto e' soltanto `-XX:TieredStopAtLevel=1`?
+
+**Impianto.** Quattro run da sei celle, `--variants jvm,jvm-c2`, ai punti gia'
+misurati dagli altri bracci: 1 core, e poi 2 core ai tre tetti di memoria.
+`jvm` rientra in ogni run come baseline interna, cosi' la coppia confrontata
+sta sempre sulla stessa macchina e nella stessa ora; le celle degli altri
+bracci restano come controllo incrociato fra sessioni diverse.
+
+I tre run a 2 core girano sulla stessa VM senza teardown intermedio: sono lo
+stesso sweep, e le due immagini confrontate sono cosi' letteralmente gli stessi
+byte a tutti e tre i tetti.
+
+Il prepare qui costa due o tre minuti invece di venticinque, perche' nessuna
+delle due varianti e' un'immagine nativa.
+
+**Sono anche i primi run con le serie di GC separate per generazione**, quindi
+dicono quante collezioni sono giovani e quante complete — la domanda rimasta
+aperta su perche' stringere l'heap migliori la JVM.
+
+### A1c — 1 core, 2 GiB
+
+<!-- A1c:inizio -->
+_Da eseguire._
+<!-- A1c:fine -->
+
+### A1d — 2 core, 2 GiB
+
+<!-- A1d:inizio -->
+_Da eseguire._
+<!-- A1d:fine -->
+
+### A2c — 2 core, 1 GiB
+
+<!-- A2c:inizio -->
+_Da eseguire._
+<!-- A2c:fine -->
+
+### A2d — 2 core, 512 MiB
+
+<!-- A2d:inizio -->
+_Da eseguire._
+<!-- A2d:fine -->
+
 ## A3 — Le due porte restano distinguibili
 
 **Domanda.** Con sync e async sulla stessa coda, le metriche separano ancora i
