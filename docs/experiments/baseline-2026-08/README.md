@@ -386,9 +386,9 @@ Solo sync, 2x:
 
 Quello che il report di confronto non guarda:
 
-| Build | Servite/s (dispatch) | Vivo a fine cella | CPU strozzata (%) | Heap picco (MB) | Collezioni GC | Pausa GC media (ms) | Tempo in GC (%) | gauge gc_time_fraction | Compilazione (s) | Immagine (MB) |
-|---|---|---|---|---|---|---|---|---|---|---|
-| JVM (serial GC, full tiering) | 587 ± 0 | si | 0.5 ± 0.4 | 1325 ± 39 | 741 ± 868 | 34.2 ± 21.8 | 1.78 ± 0.23 | NaN | 40.9 | 244 |
+| Build | Servite/s (dispatch) | Vivo a fine cella | CPU strozzata (%) | Heap picco (MB) | Collezioni GC | Pausa GC media (ms) | Tempo in GC (%) | gauge gc_time_fraction | quota async degli arrivi (%) | rifiuti porta sync (%) | rifiuti porta async (%) | coda sync (max) | coda async (max) | replay sync | chiavi idempotenza (max) | Compilazione (s) | Immagine (MB) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| JVM (serial GC, full tiering) | 587 ± 0 | si | 0.5 ± 0.4 | 1325 ± 39 | 741 ± 868 | 34.2 ± 21.8 | 1.78 ± 0.23 | NaN | 0.0 ± 0.0 | 1.61 ± 0.03 | — | 14 ± 7 | — | 0 ± 0 | 0 ± 0 | 40.9 | 244 |
 <!-- A3-sync-2x:fine -->
 
 Misto, 2x:

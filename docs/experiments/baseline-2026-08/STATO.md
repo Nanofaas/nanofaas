@@ -88,3 +88,8 @@ archiviate 3 celle in raw/A3-sync-2x  (5.0M)
 SHA256SUMS:      273 file
 2026-08-25 19:28  A3-sync-2x: archiviato
 2026-08-25 19:28  A3-sync-2x: tabelle calcolate e scritte nel documento
+2026-08-25 19:28  A3-sync-2x: committato be9e7d79
+2026-08-25 19:28  A3-sync-2x: VM tenuta in piedi per il run successivo
+2026-08-25 19:28  disinstallo il rilascio Helm ereditato su 40.114.224.48
+release "nanofaas" uninstalled
+2026-08-25 19:28  A3-misto-2x: avvio (mixed-workload-load2x.yaml, varianti jvm-c2)

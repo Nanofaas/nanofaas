@@ -104,13 +104,23 @@ def extras(root: Path, labels: dict[str, str], cells_found) -> list[dict]:
         alive, gc_fraction, gc_pause, throttled, heap = [], [], [], [], []
         served = []
         gc_count, broken = [], []
+        porte, coda_porta, replay = {}, {}, {}
+        quota_async, keys = [], []
         for repetition in reps:
             queries = _snapshot(root, key, repetition)
             if queries is None:
                 continue
-            dispatch = _series(queries, "function_dispatch_total")
-            if len(dispatch) > 1:
-                alive.append(all(b >= a for a, b in zip(dispatch, dispatch[1:])))
+            # process_uptime_seconds e' il segnale diretto e ora il catalogo lo
+            # raccoglie. Il surrogato sul contatore di dispatch resta per le celle
+            # archiviate prima del merge, ma non distingue un riavvio: dopo, il
+            # contatore riparte da zero e la serie successiva e' comunque monotona.
+            uptime = _series(queries, "process_uptime_seconds")
+            if len(uptime) > 1:
+                alive.append(all(b >= a for a, b in zip(uptime, uptime[1:])))
+            else:
+                dispatch = _series(queries, "function_dispatch_total")
+                if len(dispatch) > 1:
+                    alive.append(all(b >= a for a, b in zip(dispatch, dispatch[1:])))
             # Il "Throughput (rps)" del report e' il tasso OFFERTO da k6, che a
             # ciclo aperto e' identico in tutte le celle per costruzione: la
             # differenza fra le build sta in quanto ne servono. Questa e' quella.
@@ -144,6 +154,33 @@ def extras(root: Path, labels: dict[str, str], cells_found) -> list[dict]:
             values = _series(queries, "jvm_heap_used_bytes")
             if values:
                 heap.append(max(values) / 1e6)
+
+            # Le due porte. Sommate sulle due funzioni perche' il rifiuto e' della
+            # piattaforma e meta' del carico vive sul vicino: contarne una sola
+            # e' il buco che ha reso illeggibile il braccio a 512 MiB.
+            def per_porta(nome: str) -> float:
+                return _delta(queries, nome) + _delta(
+                    queries, f"{nome}@word-stats-javascript"
+                )
+
+            arrivi = {}
+            for porta in ("sync", "async"):
+                ammesse = per_porta(f"function_admitted_{porta}")
+                rifiutate = per_porta(f"function_refused_{porta}")
+                offerte = ammesse + rifiutate
+                arrivi[porta] = offerte
+                if offerte:
+                    porte.setdefault(porta, []).append(100 * rifiutate / offerte)
+                    coda_porta.setdefault(porta, []).append(
+                        max(_series(queries, f"function_queue_depth_{porta}") or [float("nan")])
+                    )
+                    replay.setdefault(porta, []).append(per_porta(f"function_replayed_{porta}"))
+            totale = arrivi["sync"] + arrivi["async"]
+            if totale:
+                quota_async.append(100 * arrivi["async"] / totale)
+            chiavi = _series(queries, "idempotency_keys_held")
+            if chiavi:
+                keys.append(max(chiavi))
         rows.append(
             {
                 "Build": label,
@@ -157,6 +194,13 @@ def extras(root: Path, labels: dict[str, str], cells_found) -> list[dict]:
                 "Pausa GC media (ms)": _fmt(*_spread(gc_pause), digits=1),
                 "Tempo in GC (%)": _fmt(*_spread(gc_fraction), digits=2),
                 "gauge gc_time_fraction": "NaN" if len(broken) == len(reps) else ("ok" if not broken else f"NaN in {len(broken)}/{len(reps)}"),
+                "quota async degli arrivi (%)": _fmt(*_spread(quota_async), digits=1),
+                "rifiuti porta sync (%)": _fmt(*_spread(porte.get("sync", [])), digits=2),
+                "rifiuti porta async (%)": _fmt(*_spread(porte.get("async", [])), digits=2),
+                "coda sync (max)": _fmt(*_spread(coda_porta.get("sync", [])), digits=0),
+                "coda async (max)": _fmt(*_spread(coda_porta.get("async", [])), digits=0),
+                "replay sync": _fmt(*_spread(replay.get("sync", [])), digits=0),
+                "chiavi idempotenza (max)": _fmt(*_spread(keys), digits=0),
                 "Compilazione (s)": f"{build.get(key, {}).get('build_s', float('nan')):.1f}",
                 "Immagine (MB)": f"{build.get(key, {}).get('immagine_MB', float('nan')):.0f}",
             }

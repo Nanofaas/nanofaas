@@ -271,3 +271,5 @@ d28f75d860a3de8d03037940a9b7bd2b8539a6e9938b00e6e1c74ff30b1ef865  raw/A3-sync-2x
 ecbc291da71c816536f286c43a6938d260d174c0771217683df294d7e2972784  raw/A3-sync-2x/jvm-c2/run-3/metrics/prometheus-snapshot.json.gz
 f68b878d9629a6d20b208bf805b23a65620e6de4512677ab100adf2f9ba23e38  raw/A3-sync-2x/jvm-c2/run-3/summary.json
 4c4bc9e61798b78cf954fe9a341cb15aa6128f81b6a5e23da0cbf2dad51dfdc1  raw/A3-sync-2x/run.log
+0fdcd6de6f3bdedd7ba21ac3c715f9a1840d2d4a62f3c3c2acc166d54350f6eb  raw/A3-sync-2x/scenario.yaml
+5b6f0da99f58b14419f1373eec3af6f7cbbcf9c3804a8a076981caaf36c73c7e  raw/A3-sync-2x/tabella.md
