@@ -48,3 +48,14 @@ archiviate 6 celle in raw/A1c  (5.0M)
 SHA256SUMS:      187 file
 2026-08-25 11:42  A1c: archiviato
 2026-08-25 11:42  A1c: tabelle calcolate e scritte nel documento
+2026-08-25 11:42  A1c: committato 4bcbb5bc
+2026-08-25 11:42  teardown in corso
+2026-08-25 11:45  teardown completo, nessuna risorsa residua
+2026-08-25 11:45  A1d: avvio (runtime-comparison-cpu2.yaml, varianti jvm,jvm-c2)
+2026-08-25 15:55  A1d: matrice finita
+dimensioni immagini da 20.160.50.46...
+Warning: Permanently added '20.160.50.46' (ED25519) to the list of known hosts.
+archiviate 6 celle in raw/A1d  (5.1M)
+SHA256SUMS:      211 file
+2026-08-25 15:55  A1d: archiviato
+2026-08-25 15:55  A1d: tabelle calcolate e scritte nel documento
