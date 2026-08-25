@@ -244,7 +244,13 @@ Quello che il report di confronto non guarda:
 | Native, -O3, G1 (Oracle GraalVM) | 293 ± 6 | si | 7.7 ± 2.3 | — | — | — | — | ok | 813.8 | 840 |
 <!-- A2-1024:fine -->
 
-A 512 MiB:
+A 512 MiB. **Da leggere con una riserva**: questo braccio e' partito prima che
+il piano raccogliesse i contatori della seconda funzione, quindi la sua colonna
+«shed» copre solo `word-stats-java`. Nella cella `jvm/run-1` k6 riporta il
+30,4% di richieste fallite contro lo 0,3% di rifiuti visti dalla piattaforma:
+la differenza e' carico rifiutato a `word-stats-javascript`, che nessuna serie
+di quel run registra. A2d rimisura lo stesso tetto con la raccolta completa.
+
 
 <!-- A2-512:inizio -->
 _Da eseguire._
