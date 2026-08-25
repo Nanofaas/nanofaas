@@ -227,7 +227,21 @@ l'esperimento in cui lo strumento sta dentro l'oggetto misurato (vedi sopra).
 A 1024 MiB:
 
 <!-- A2-1024:inizio -->
-_Da eseguire._
+| Build | Runs | Throughput (rps) | p50 (ms) | p95 (ms) | p99 (ms) | Shed (%) | Control plane peak (MiB) | Control plane CPU (cores) |
+|---|---|---|---|---|---|---|---|---|
+| JVM (Java 25, JIT) | 3 | 435.1 ± 0.0 | 1.7 ± 0.0 | 3.3 ± 0.2 | 11.5 ± 0.6 | 0.02 ± 0.00 | 866.0 ± 0.2 | 0.66 ± 0.01 |
+| Native, -Os, serial GC | 3 | 435.1 ± 0.0 | 1.5 ± 0.0 | 224.4 ± 15.2 | 427.0 ± 14.4 | 9.10 ± 0.49 | 279.1 ± 7.7 | 0.58 ± 0.01 |
+| Native, -O3, serial GC | 3 | 435.0 ± 0.1 | 1.5 ± 0.0 | 237.6 ± 20.5 | 419.8 ± 8.2 | 10.10 ± 1.08 | 272.2 ± 14.0 | 0.56 ± 0.00 |
+| Native, -O3, G1 (Oracle GraalVM) | 3 | 435.0 ± 0.0 | 1.3 ± 0.0 | 32.4 ± 21.5 | 268.9 ± 138.8 | 2.69 ± 1.67 | 292.1 ± 0.8 | 0.59 ± 0.02 |
+
+Quello che il report di confronto non guarda:
+
+| Build | Servite/s (dispatch) | Vivo a fine cella | CPU strozzata (%) | Heap picco (MB) | Collezioni GC | Pausa GC media (ms) | Tempo in GC (%) | gauge gc_time_fraction | Compilazione (s) | Immagine (MB) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| JVM (Java 25, JIT) | 302 ± 0 | si | 3.0 ± 1.0 | 665 ± 7 | 846 ± 8 | 5.8 ± 0.1 | 1.03 ± 0.01 | NaN | 43.9 | 244 |
+| Native, -Os, serial GC | 272 ± 2 | si | 1.3 ± 0.2 | 261 ± 2 | 1465 ± 76 | 31.2 ± 1.8 | 9.52 ± 0.31 | ok | 328.3 | 242 |
+| Native, -O3, serial GC | 269 ± 3 | si | 1.1 ± 0.1 | 244 ± 5 | 1482 ± 24 | 33.5 ± 2.7 | 10.33 ± 0.67 | ok | 264.3 | 278 |
+| Native, -O3, G1 (Oracle GraalVM) | 293 ± 6 | si | 7.7 ± 2.3 | — | — | — | — | ok | 813.8 | 840 |
 <!-- A2-1024:fine -->
 
 A 512 MiB:
