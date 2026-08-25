@@ -53,6 +53,24 @@ attendi_azure() {
     return 0
 }
 
+# Un rilascio Helm lasciato in piedi da un run precedente verrebbe RIUSATO. Con
+# un tag mutabile la cella misurerebbe l'immagine precedente; peggio, il pod
+# resterebbe quello di prima, con la sua coda e il suo ExecutionStore dentro -
+# che per un esperimento sulla coda e' contaminazione, non risparmio.
+#
+# Serve solo quando la VM viene ereditata dal run precedente: dopo un teardown
+# non c'e' nulla da disinstallare.
+pulisci_helm() {
+    local ip
+    ip=$(az network public-ip list -g "$GROUP" \
+        --query "[?name == 'nanofaas-comparison-pip'].ipAddress | [0]" -o tsv 2>/dev/null)
+    [ -n "$ip" ] && [ "$ip" != "None" ] || return 0
+    stato "disinstallo il rilascio Helm ereditato su $ip"
+    ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 \
+        "azureuser@$ip" 'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml; sudo -E helm uninstall nanofaas -n nanofaas-e2e --ignore-not-found' \
+        < /dev/null >> "$STATO" 2>&1 || stato "  (disinstallazione non riuscita, proseguo)"
+}
+
 teardown() {
     attendi_azure 120 || { stato "**teardown impossibile: VM ancora accese**"; return 1; }
     stato "teardown in corso"
@@ -107,6 +125,7 @@ while IFS=$'\t' read -r -u 9 NAME SCENARIO VARIANTS KEEP MARKER; do
         continue
     fi
     attendi_azure 60 || exit 1
+    pulisci_helm
     stato "$NAME: avvio ($SCENARIO, varianti $VARIANTS)"
     (cd "$NANOLAB" && NANOFAAS_ROOT="$MCFAAS" ./nanolab.sh compare \
         "packages/nanolab/scenarios-v2/$SCENARIO" \

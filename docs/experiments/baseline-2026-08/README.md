@@ -377,9 +377,29 @@ sono diverse.
 
 **Risultati.**
 
-<!-- A3:inizio -->
+Solo sync, 2x:
+
+<!-- A3-sync-2x:inizio -->
 _Da eseguire._
-<!-- A3:fine -->
+<!-- A3-sync-2x:fine -->
+
+Misto, 2x:
+
+<!-- A3-misto-2x:inizio -->
+_Da eseguire._
+<!-- A3-misto-2x:fine -->
+
+Solo sync, 3x:
+
+<!-- A3-sync-3x:inizio -->
+_Da eseguire._
+<!-- A3-sync-3x:fine -->
+
+Misto, 3x:
+
+<!-- A3-misto-3x:inizio -->
+_Da eseguire._
+<!-- A3-misto-3x:fine -->
 
 ---
 
