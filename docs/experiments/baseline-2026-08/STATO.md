@@ -76,3 +76,7 @@ archiviate 6 celle in raw/A2d  (4.9M)
 SHA256SUMS:      258 file
 2026-08-25 17:57  A2d: archiviato
 2026-08-25 17:57  A2d: tabelle calcolate e scritte nel documento
+2026-08-25 17:57  A2d: committato cac6b9a6
+2026-08-25 17:57  teardown in corso
+2026-08-25 17:58  teardown completo, nessuna risorsa residua
+2026-08-25 17:58  coda esaurita

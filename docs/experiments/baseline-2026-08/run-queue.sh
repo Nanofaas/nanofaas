@@ -68,8 +68,17 @@ teardown() {
             az resource delete --ids "$r" >/dev/null 2>&1
         done
     done
-    local left
-    left=$(az resource list -g "$GROUP" --query "[?contains(name,'nanofaas')].name" -o tsv 2>/dev/null)
+    # La verifica deve distinguere "non c'e' niente" da "non ho potuto chiedere".
+    # Senza questa distinzione un DNS caduto rendeva vuota la lista e il teardown
+    # dichiarava successo lasciando accese due VM: e' successo il 2026-08-25 alle
+    # 17:58, ed e' il modo peggiore di sbagliare, perche' non chiede aiuto.
+    local left rc
+    left=$(az resource list -g "$GROUP" --query "[?contains(name,'nanofaas')].name" -o tsv 2>&1)
+    rc=$?
+    if [ $rc -ne 0 ] || [[ "$left" == *ERROR* ]]; then
+        stato "**TEARDOWN NON VERIFICABILE, VM FORSE ACCESE**: $left"
+        return 1
+    fi
     if [ -n "$left" ]; then
         stato "**RESIDUO AZURE DA CANCELLARE A MANO**: $left"
         return 1
