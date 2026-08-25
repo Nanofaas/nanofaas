@@ -80,3 +80,11 @@ SHA256SUMS:      258 file
 2026-08-25 17:57  teardown in corso
 2026-08-25 17:58  teardown completo, nessuna risorsa residua
 2026-08-25 17:58  coda esaurita
+2026-08-25 18:40  A3-sync-2x: avvio (sync-baseline-load2x.yaml, varianti jvm-c2)
+2026-08-25 19:28  A3-sync-2x: matrice finita
+dimensioni immagini da 40.114.224.48...
+Warning: Permanently added '40.114.224.48' (ED25519) to the list of known hosts.
+archiviate 3 celle in raw/A3-sync-2x  (5.0M)
+SHA256SUMS:      273 file
+2026-08-25 19:28  A3-sync-2x: archiviato
+2026-08-25 19:28  A3-sync-2x: tabelle calcolate e scritte nel documento
