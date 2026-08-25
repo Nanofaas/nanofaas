@@ -15,6 +15,13 @@
 #     sparisce, la coda va avanti lo stesso.
 set -uo pipefail
 
+# Tiene sveglio il Mac per TUTTA la vita della coda, non solo durante le
+# matrici. I buchi sono i momenti peggiori in cui addormentarsi: fra un run e
+# l'altro la coda sta cancellando VM su Azure. `-w $$` lega l'asserzione a
+# questo processo, quindi si spegne da sola quando la coda finisce, e vale
+# anche per chi rilanci lo script senza ricordarsi di avvolgerlo.
+caffeinate -dimsu -w $$ &
+
 HERE=$(cd "$(dirname "$0")" && pwd)
 NANOLAB=/Users/micheleciavotta/Downloads/nanolab
 MCFAAS=/Users/micheleciavotta/Downloads/mcFaas
@@ -66,7 +73,7 @@ while IFS=$'\t' read -r NAME SCENARIO VARIANTS KEEP; do
         continue
     fi
     stato "$NAME: avvio ($SCENARIO, varianti $VARIANTS)"
-    (cd "$NANOLAB" && NANOFAAS_ROOT="$MCFAAS" caffeinate -dimsu ./nanolab.sh compare \
+    (cd "$NANOLAB" && NANOFAAS_ROOT="$MCFAAS" ./nanolab.sh compare \
         "packages/nanolab/scenarios-v2/$SCENARIO" \
         --environment packages/nanolab/environments/azure-comparison.yaml \
         --repetitions 3 --variants "$VARIANTS" \
