@@ -17,6 +17,12 @@ users. Follow the [Linux post-installation steps for Docker
 Engine](https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user)
 to configure Docker correctly.
 
+If you do not have a compatible Java runtime, Gradle downloads one
+automatically. You can use this runtime to run the control plane or the CLI
+manually. You can set `JAVA_HOME` to the directory where Gradle downloads the
+runtime. For example:
+`/home/<user>/.gradle/jdks/eclipse_adoptium-25-amd64-linux.2`. 
+
 ## Build the platform
 
 ```bash
