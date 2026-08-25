@@ -187,7 +187,21 @@ e' un limite del suo percorso di codice, restera' piatta anche li'.
 **Risultati.**
 
 <!-- A1b:inizio -->
-_Da eseguire._
+| Build | Runs | Throughput (rps) | p50 (ms) | p95 (ms) | p99 (ms) | Shed (%) | Control plane peak (MiB) | Control plane CPU (cores) |
+|---|---|---|---|---|---|---|---|---|
+| JVM (Java 25, JIT) | 3 | 435.1 ± 0.0 | 1.9 ± 0.1 | 16.3 ± 11.4 | 25.6 ± 17.1 | 0.39 ± 0.15 | 1571.3 ± 1.2 | 0.69 ± 0.02 |
+| Native, -Os, serial GC | 3 | 435.1 ± 0.0 | 1.7 ± 0.0 | 241.8 ± 13.7 | 431.0 ± 10.6 | 10.09 ± 0.40 | 277.8 ± 17.7 | 0.61 ± 0.01 |
+| Native, -O3, serial GC | 3 | 435.0 ± 0.1 | 1.7 ± 0.0 | 221.3 ± 11.8 | 415.0 ± 6.3 | 9.10 ± 0.61 | 282.5 ± 23.1 | 0.57 ± 0.00 |
+| Native, -O3, G1 (Oracle GraalVM) | 3 | 435.0 ± 0.0 | 1.5 ± 0.0 | 3.1 ± 0.1 | 18.8 ± 1.1 | 0.04 ± 0.02 | 551.5 ± 2.5 | 0.50 ± 0.01 |
+
+Quello che il report di confronto non guarda:
+
+| Build | Servite/s (dispatch) | Vivo a fine cella | CPU strozzata (%) | Heap picco (MB) | Collezioni GC | Pausa GC media (ms) | Tempo in GC (%) | gauge gc_time_fraction | Compilazione (s) | Immagine (MB) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| JVM (Java 25, JIT) | 301 ± 1 | si | 5.4 ± 2.8 | 1005 ± 12 | 1542 ± 2 | 4.5 ± 0.2 | 1.45 ± 0.07 | NaN | 43.1 | 244 |
+| Native, -Os, serial GC | 269 ± 1 | si | 1.6 ± 0.2 | 249 ± 3 | 1494 ± 23 | 32.8 ± 1.7 | 10.20 ± 0.37 | ok | 371.7 | 242 |
+| Native, -O3, serial GC | 272 ± 2 | si | 1.1 ± 0.2 | 254 ± 9 | 1480 ± 8 | 31.8 ± 1.2 | 9.80 ± 0.32 | ok | 281.6 | 278 |
+| Native, -O3, G1 (Oracle GraalVM) | 302 ± 0 | si | 1.7 ± 0.1 | — | — | — | — | ok | 846.4 | 840 |
 <!-- A1b:fine -->
 
 ## A2 — Dove sta il ginocchio della memoria
