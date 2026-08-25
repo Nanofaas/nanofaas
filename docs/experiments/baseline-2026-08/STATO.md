@@ -27,3 +27,11 @@
 2026-08-25 08:03  attendo la matrice gia' in corso
 2026-08-25 08:05  attendo la matrice gia' in corso
 2026-08-25 08:07  attendo la matrice gia' in corso
+2026-08-25 08:10  A2-mem512: avvio (runtime-comparison-mem512.yaml, varianti jvm,native-os,native-o3,native-o3-g1)
+2026-08-25 09:32  A2-mem512: matrice finita
+dimensioni immagini da 20.224.243.8...
+Warning: Permanently added '20.224.243.8' (ED25519) to the list of known hosts.
+archiviate 12 celle in raw/A2-mem512  (5.2M)
+SHA256SUMS:      163 file
+2026-08-25 09:32  A2-mem512: archiviato
+2026-08-25 09:32  A2-mem512: tabelle calcolate e scritte nel documento
