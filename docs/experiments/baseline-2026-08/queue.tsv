@@ -1,8 +1,8 @@
-# nome	scenario	varianti	tieni_vm
-# tieni_vm=1 lascia la VM in piedi per il run successivo: i tre tetti di memoria
-# sono lo stesso sweep, e su una macchina sola le immagini confrontate sono
-# letteralmente gli stessi byte a ogni tetto.
-A1c	runtime-comparison-jvm.yaml	jvm,jvm-c2	0
-A1d	runtime-comparison-cpu2.yaml	jvm,jvm-c2	1
-A2c	runtime-comparison-mem1024.yaml	jvm,jvm-c2	1
-A2d	runtime-comparison-mem512.yaml	jvm,jvm-c2	0
+# nome	scenario	varianti	tieni_vm	marcatore
+# Il nome e' anche la run-dir: riusarlo fa riprendere una matrice interrotta,
+# perche' `compare` salta le celle che hanno gia' prodotto risultati.
+A2-mem512	runtime-comparison-mem512.yaml	jvm,native-os,native-o3,native-o3-g1	0	A2-512
+A1c	runtime-comparison-jvm.yaml	jvm,jvm-c2	0	A1c
+A1d	runtime-comparison-cpu2.yaml	jvm,jvm-c2	1	A1d
+A2c	runtime-comparison-mem1024.yaml	jvm,jvm-c2	1	A2c
+A2d	runtime-comparison-mem512.yaml	jvm,jvm-c2	0	A2d

@@ -34,7 +34,27 @@ stato() {
     echo "[coda] $1"
 }
 
+# La rete di questa macchina perde il DNS a intermittenza: `host` risolve e un
+# minuto dopo `az` non trova management.azure.com. Una matrice ci e' gia' morta
+# dentro dopo sette celle. Aspettare e' quasi sempre giusto, perche' l'attesa
+# costa minuti e la ripartenza costa ore.
+attendi_azure() {
+    local minuti=${1:-60} i=0
+    while ! az account show >/dev/null 2>&1; do
+        i=$((i + 1))
+        if [ "$i" -ge "$minuti" ]; then
+            stato "Azure irraggiungibile da ${minuti} minuti: mi fermo senza lanciare altro"
+            return 1
+        fi
+        [ $((i % 5)) -eq 1 ] && stato "Azure irraggiungibile, attendo (${i}/${minuti} min)"
+        sleep 60
+    done
+    [ "$i" -gt 0 ] && stato "Azure tornato raggiungibile dopo ${i} min"
+    return 0
+}
+
 teardown() {
+    attendi_azure 120 || { stato "**teardown impossibile: VM ancora accese**"; return 1; }
     stato "teardown in corso"
     az vm delete -g "$GROUP" -n nanofaas-comparison --yes --no-wait >/dev/null 2>&1
     az vm delete -g "$GROUP" -n nanofaas-comparison-loadgen --yes --no-wait >/dev/null 2>&1
@@ -67,11 +87,13 @@ done
 # Il ciclo legge da una sostituzione di processo, non da una pipe: una pipe lo
 # metterebbe in una subshell, dove `exit 1` chiude solo quella e la coda
 # stamperebbe "esaurita" subito dopo aver fallito.
-while IFS=$'\t' read -r NAME SCENARIO VARIANTS KEEP; do
+while IFS=$'\t' read -r NAME SCENARIO VARIANTS KEEP MARKER; do
+    MARKER=${MARKER:-$NAME}
     if [ -d "$HERE/raw/$NAME" ] && [ -n "$(ls "$HERE/raw/$NAME" 2>/dev/null)" ]; then
         stato "$NAME: gia' archiviato, salto"
         continue
     fi
+    attendi_azure 60 || exit 1
     stato "$NAME: avvio ($SCENARIO, varianti $VARIANTS)"
     (cd "$NANOLAB" && NANOFAAS_ROOT="$MCFAAS" ./nanolab.sh compare \
         "packages/nanolab/scenarios-v2/$SCENARIO" \
@@ -94,7 +116,7 @@ while IFS=$'\t' read -r NAME SCENARIO VARIANTS KEEP; do
     stato "$NAME: archiviato"
 
     (cd "$NANOLAB" && uv run --project packages/sonata-tasks python3 "$HERE/tables.py" \
-        "$HERE/raw/$NAME" --doc "$HERE/README.md" --marker "$NAME" > "$HERE/raw/$NAME/tabella.md" 2>&1)
+        "$HERE/raw/$NAME" --doc "$HERE/README.md" --marker "$MARKER" > "$HERE/raw/$NAME/tabella.md" 2>&1)
     stato "$NAME: tabelle calcolate e scritte nel documento"
 
     (cd "$MCFAAS" && git add docs/experiments/baseline-2026-08 \
