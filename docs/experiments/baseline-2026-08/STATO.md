@@ -68,3 +68,11 @@ archiviate 6 celle in raw/A2c  (5.0M)
 SHA256SUMS:      235 file
 2026-08-25 16:57  A2c: archiviato
 2026-08-25 16:57  A2c: tabelle calcolate e scritte nel documento
+2026-08-25 16:57  A2c: committato b4281d5b
+2026-08-25 16:57  A2c: VM tenuta in piedi per il run successivo
+2026-08-25 16:57  A2d: avvio (runtime-comparison-mem512.yaml, varianti jvm,jvm-c2)
+2026-08-25 17:57  A2d: matrice finita
+archiviate 6 celle in raw/A2d  (4.9M)
+SHA256SUMS:      258 file
+2026-08-25 17:57  A2d: archiviato
+2026-08-25 17:57  A2d: tabelle calcolate e scritte nel documento
