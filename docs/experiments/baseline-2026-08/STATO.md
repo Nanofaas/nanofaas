@@ -99,3 +99,14 @@ archiviate 3 celle in raw/A3-misto-2x  (5.0M)
 SHA256SUMS:      288 file
 2026-08-25 20:02  A3-misto-2x: archiviato
 2026-08-25 20:02  A3-misto-2x: tabelle calcolate e scritte nel documento
+2026-08-25 20:02  A3-misto-2x: committato f1003572
+2026-08-25 20:02  A3-misto-2x: VM tenuta in piedi per il run successivo
+2026-08-25 20:02  disinstallo il rilascio Helm ereditato su 40.114.224.48
+release "nanofaas" uninstalled
+2026-08-25 20:02  A3-sync-3x: avvio (sync-baseline-load3x.yaml, varianti jvm-c2)
+2026-08-25 20:44  A3-sync-3x: matrice finita
+dimensioni immagini da 40.114.224.48...
+archiviate 3 celle in raw/A3-sync-3x  (5.1M)
+SHA256SUMS:      303 file
+2026-08-25 20:44  A3-sync-3x: archiviato
+2026-08-25 20:44  A3-sync-3x: tabelle calcolate e scritte nel documento
