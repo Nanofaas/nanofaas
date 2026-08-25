@@ -93,3 +93,9 @@ SHA256SUMS:      273 file
 2026-08-25 19:28  disinstallo il rilascio Helm ereditato su 40.114.224.48
 release "nanofaas" uninstalled
 2026-08-25 19:28  A3-misto-2x: avvio (mixed-workload-load2x.yaml, varianti jvm-c2)
+2026-08-25 20:02  A3-misto-2x: matrice finita
+dimensioni immagini da 40.114.224.48...
+archiviate 3 celle in raw/A3-misto-2x  (5.0M)
+SHA256SUMS:      288 file
+2026-08-25 20:02  A3-misto-2x: archiviato
+2026-08-25 20:02  A3-misto-2x: tabelle calcolate e scritte nel documento
