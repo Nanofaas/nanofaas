@@ -572,6 +572,29 @@ Il livello di tiering vale da solo il 40% del throughput a un core e un fattore
 sei sul p95. Il collector no: G1 e' *peggio* di seriale finche' il C2 e' spento,
 e lo pareggia solo quando e' acceso.
 
+**Misurato su questo codice in A1c**, non piu' solo ereditato dall'archivio. A un
+core, stessa immagine e stesso collector, unica differenza il livello di
+compilazione:
+
+| | `jvm` (seriale + C1) | `jvm-c2` (seriale + C2) |
+|---|---|---|
+| servite/s | 225 ± 12 | **300 ± 1** |
+| shed | 20,83 ± 3,31% | **0,72 ± 0,29%** |
+| p95 | 151,1 ± 21,5 ms | **4,3 ± 0,4 ms** |
+| CPU strozzata | 22,0% | **4,6%** |
+| CPU media | 0,56 core | **0,41 core** |
+| memoria | 1098 MiB | 1643 MiB |
+
+Il C2 non costa CPU, ne fa risparmiare: stesso lavoro con meno istruzioni,
+quindi sotto una quota di un core la build viene strozzata un quinto. Paga 545
+MiB di memoria.
+
+**E questo ribalta il risultato di A1.** Le quattro build a un core davano 210,
+235, 245 e 267 servite/s, con la G1 nativa in testa; `jvm-c2` ne fa 300 e le
+batte tutte. La conclusione «a un core il nativo batte la JVM» — il risultato
+dell'esperimento originale — era un artefatto di una riga del Dockerfile scelta
+per un deployment a un core, non una proprieta' della compilazione AOT.
+
 Conseguenza: «JVM (Java 25, JIT)» contro `native-o3` non e' JIT contro AOT, e'
 AOT ottimizzato contro JIT dimezzato. **La serie A ha bisogno di un braccio
 `jvm-c2`** perche' il confronto sia quello che il capitolo dichiara di fare. La
