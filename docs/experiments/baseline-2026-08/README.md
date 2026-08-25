@@ -765,6 +765,19 @@ confronto:
 
 ## Registro delle run
 
-| Run | Esperimento | Data | Celle | Directory in `raw/` | Esito |
-|---|---|---|---|---|---|
-| _(nessuna)_ | | | | | |
+<!-- registro:inizio -->
+| run | condizione | celle | quando | directory |
+|---|---|---|---|---|
+| A1-cpu1 | 4 build · 1 core · 2 GiB | 12 | 2026-08-24 21:47 | `raw/A1-cpu1/` |
+| A1b-cpu2 | 4 build · 2 core · 2 GiB | 12 | 2026-08-25 02:14 | `raw/A1b-cpu2/` |
+| A2-mem1024 | 4 build · 2 core · 1 GiB | 12 | 2026-08-25 05:39 | `raw/A2-mem1024/` |
+| A2-mem512 | 4 build · 2 core · 512 MiB | 12 | 2026-08-25 08:10 | `raw/A2-mem512/` |
+| A1c | jvm vs c2 · 1 core · 2 GiB | 6 | 2026-08-25 09:38 | `raw/A1c/` |
+| A1d | jvm vs c2 · 2 core · 2 GiB | 6 | 2026-08-25 11:45 | `raw/A1d/` |
+| A2c | jvm vs c2 · 2 core · 1 GiB | 6 | 2026-08-25 15:55 | `raw/A2c/` |
+| A2d | jvm vs c2 · 2 core · 512 MiB | 6 | 2026-08-25 16:57 | `raw/A2d/` |
+| A3-sync-2x | jvm-c2 · sync · 2x | 3 | 2026-08-25 18:40 | `raw/A3-sync-2x/` |
+| A3-misto-2x | jvm-c2 · misto · 2x | 3 | 2026-08-25 19:28 | `raw/A3-misto-2x/` |
+| A3-sync-3x | jvm-c2 · sync · 3x | 3 | 2026-08-25 20:02 | `raw/A3-sync-3x/` |
+| A3-misto-3x | jvm-c2 · misto · 3x | 3 | 2026-08-25 20:44 | `raw/A3-misto-3x/` |
+<!-- registro:fine -->

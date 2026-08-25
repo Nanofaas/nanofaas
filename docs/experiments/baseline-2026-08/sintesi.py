@@ -71,15 +71,42 @@ def main() -> None:
                      f"{med('falliti', '%.1f')}% | {med('p95', '%.1f')} ms | "
                      f"{'sì' if not morte else f'**NO: {morte}**'} |")
     tabella = "\n".join(righe)
+
+    # Il registro: quando e' stata eseguita ogni run, letto da STATO.md dove la
+    # coda lo ha scritto passo per passo. Le run precedenti alla coda non ci sono
+    # e prendono la data di modifica del loro archivio.
+    stato = Path(__file__).parent / "STATO.md"
+    quando: dict[str, str] = {}
+    if stato.exists():
+        for riga in stato.read_text().splitlines():
+            if ": avvio" in riga:
+                data, nome = riga[:16], riga.split()[2].rstrip(":")
+                quando.setdefault(nome, data)
+    reg = ["| run | condizione | celle | quando | directory |", "|---|---|---|---|---|"]
+    for nome, condizione in CONDIZIONE.items():
+        base = Path(__file__).parent / "raw" / nome
+        n = sum(1 for v in base.glob("*") if v.is_dir() for r in v.glob("run-*")
+                if (r / "k6-summary.json").exists())
+        if not n:
+            continue
+        data = quando.get(nome)
+        if data is None and base.exists():
+            from datetime import datetime
+            data = datetime.fromtimestamp(base.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+        reg.append(f"| {nome} | {condizione} | {n} | {data} | `raw/{nome}/` |")
+    registro = "\n".join(reg)
     print(tabella)
     print(f"\ncelle totali: {sum(1 for n in CONDIZIONE for v in (Path(__file__).parent / 'raw' / n).glob('*') if v.is_dir() for r in v.glob('run-*') if (r / 'k6-summary.json').exists())}")
     if a.doc:
         t = a.doc.read_text()
         inizio, fine = "<!-- sintesi:inizio -->", "<!-- sintesi:fine -->"
-        if inizio in t and fine in t:
-            testa, resto = t.split(inizio, 1); _, coda = resto.split(fine, 1)
-            a.doc.write_text(f"{testa}{inizio}\n{tabella}\n{fine}{coda}")
-            print(f"scritta in {a.doc}")
+        for marcatore, contenuto in (("sintesi", tabella), ("registro", registro)):
+            inizio, fine = f"<!-- {marcatore}:inizio -->", f"<!-- {marcatore}:fine -->"
+            t = a.doc.read_text()
+            if inizio in t and fine in t:
+                testa, resto = t.split(inizio, 1); _, coda = resto.split(fine, 1)
+                a.doc.write_text(f"{testa}{inizio}\n{contenuto}\n{fine}{coda}")
+                print(f"{marcatore}: scritto in {a.doc}")
 
 if __name__ == "__main__":
     main()
