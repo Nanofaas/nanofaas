@@ -1,0 +1,195 @@
+\chapter{Prestazioni di base}
+\label{cap:23-prestazioni-base}
+
+Questo capitolo riporta le prestazioni della piattaforma sul carico di
+riferimento, attraverso sei release consecutive, sul profilo hardware fissato
+descritto nel \cref{cap:22-metodo-sperimentale}.
+
+\section{La serie}
+
+Tutte le misure che seguono sono mediane di tre esecuzioni sul profilo
+\code{azure-d8s-v5+d2s-v5-amd64-native-loadtest-v1}: control plane compilato
+nativamente per AMD64 su VM \code{Standard\_D8s\_v5}, generatore di carico k6 su
+VM separata \code{Standard\_D2s\_v5}, scenario \code{autoscaling-cycle-k8s}.
+
+\begin{table}[htbp]
+\centering
+\caption{Serie di prestazioni per release. Mediane di tre esecuzioni sullo
+stesso profilo.}
+\label{tab:serie}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+\textbf{Versione} & \textbf{Throughput (req/s)} & \textbf{Tasso errore} &
+\textbf{p95 (ms)} & \textbf{Repliche di picco} \\
+\midrule
+0.17.0  & 241{,}90 & 0{,}000 & 6{,}50  & 3 \\
+0.17.1  & 269{,}07 & 0{,}000 & 5{,}77  & 3 \\
+v0.18.1 & 239{,}13 & 0{,}000 & 6{,}61  & 4 \\
+v0.18.2 & 249{,}34 & 0{,}000 & 5{,}13  & 3 \\
+v0.18.3 & 232{,}41 & 0{,}000 & 5{,}13  & 4 \\
+v0.19.0 & \textbf{300{,}48} & 0{,}000 & \textbf{11{,}26} & 5 \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+\begin{figure}[htbp]
+  \centering
+  \resizebox{0.95\textwidth}{!}{\input{figures/fig-release-series}}
+  \caption{Throughput (barre, asse sinistro) e p95 (linea, asse destro) per
+  release. Dati da \code{docs/performance/history.md}.}
+  \label{fig:serie}
+\end{figure}
+
+\section{Che cosa la serie mostra}
+
+\subsection{Il tasso di errore \`e esattamente zero}
+
+Su tutte e sei le release, su tre esecuzioni ciascuna. Non ``prossimo a zero'':
+zero. \`E il gate rigido del flusso di rilascio, e la sua tenuta \`e il
+risultato pi\`u solido del capitolo --- l'unico che non dipende dalla
+sensibilit\`a del metodo, perch\'e distingue fra zero e non-zero anzich\'e fra
+due valori vicini.
+
+Va ricordato (\cref{cap:21-osservabilita}) che questo contatore esclude le
+risposte non-2xx deliberate delle funzioni, grazie al meccanismo della busta.
+Un gate a zero sarebbe inapplicabile senza quella disambiguazione.
+
+\subsection{Il throughput oscilla in una banda, poi sale}
+
+Le prime cinque release stanno fra 232 e 269 richieste al secondo: una banda del
+$\pm 7\%$ attorno a 250. Con tre esecuzioni per punto, \emph{questa banda non
+\`e distinguibile dal rumore}. Nessuna delle differenze fra 0.17.0, v0.18.1,
+v0.18.2 e v0.18.3 pu\`o essere attribuita a una modifica del codice sulla base
+di questi dati.
+
+La v0.19.0 esce dalla banda: 300{,}5 req/s, ossia $+29\%$ sulla release
+precedente e $+12\%$ sul massimo precedente. Questa differenza \`e maggiore di
+qualunque oscillazione osservata prima, e supera la soglia del gate.
+
+\subsection{Il p95 della v0.19.0 \`e il dato da spiegare}
+
+Nella stessa release il p95 passa da 5{,}13\,ms a 11{,}26\,ms: pi\`u che
+raddoppiato, e ben oltre la soglia di regressione del 15\%. Il numero di
+repliche di picco sale da 4 a 5.
+
+L'interpretazione che i dati sostengono \`e che la v0.19.0 abbia spostato il
+sistema in un punto di lavoro diverso, non che sia peggiorata. Un throughput di
+300 req/s su cinque repliche significa un carico per replica confrontabile con
+quello precedente; il p95 pi\`u alto \`e coerente con un sistema che opera pi\`u
+vicino alla propria capacit\`a. Il record di dettaglio della v0.19.0 lo conferma:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lr@{}}
+\toprule
+\textbf{Grandezza} & \textbf{v0.19.0} \\
+\midrule
+p50 & 4{,}43\,ms \\
+p95 & 11{,}26\,ms \\
+p99 & 21{,}05\,ms \\
+attesa in coda (media) & 0{,}82\,ms \\
+cold start osservati & 5 \\
+CPU di picco del control plane & 0{,}664 core \\
+heap di picco del control plane & 199{,}5\,MB \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Il p50 di 4{,}43\,ms \`e in linea con le release precedenti: il tipico non \`e
+peggiorato, si \`e allungata la coda della distribuzione. L'attesa in coda media
+\`e sotto il millisecondo, quindi la coda non \`e la causa.
+
+\begin{damisurare}
+L'attribuzione del salto di p95 della v0.19.0 non \`e stata condotta. I dati
+disponibili escludono l'attesa in coda come causa dominante e sono coerenti con
+un punto di lavoro pi\`u vicino alla saturazione, ma non lo stabiliscono. Un
+confronto a parit\`a di throughput offerto fra v0.18.3 e v0.19.0 lo
+deciderebbe.
+\todomis{p95 di v0.18.3 e v0.19.0 a parit\`a di carico offerto}
+\end{damisurare}
+
+\subsection{L'osservabilit\`a del control plane}
+
+Due grandezze del record riguardano il control plane e non le funzioni: CPU di
+picco 0{,}664 core e heap di picco 199{,}5\,MB. Sono la risposta quantitativa
+alla domanda del \cref{cap:01-introduzione} su quanto costi un control plane
+minimale: meno di un core e circa 200\,MB di heap per sostenere 300 richieste al
+secondo.
+
+Va sottolineato che si tratta di \emph{heap}, non di memoria residente. Il
+\cref{cap:24-footprint} mostra che per un processo Spring su JVM la memoria
+residente \`e diverse volte l'heap, perch\'e la maggior parte non \`e dati.
+
+\section{Gli SLO indicativi}
+
+Il progetto dichiara obiettivi di lavoro, esplicitamente non contrattuali:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lp{7.6cm}@{}}
+\toprule
+\textbf{Obiettivo} & \textbf{Stato} \\
+\midrule
+Tasso di errore 0\% & Rispettato in tutte e sei le release; \`e un gate rigido. \\
+p95 $\leq$ 10\,ms & Rispettato fino a v0.18.3; \textbf{violato} in v0.19.0
+(11{,}26\,ms). \\
+Throughput $\geq$ 200 req/s & Rispettato in tutte le release. \\
+Cold start & Nessun budget fisso; si traccia la distribuzione. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+La scelta di non fissare un budget per il cold start ma di tracciarne la
+distribuzione \`e coerente con l'analisi del \cref{cap:02-stato-dell-arte}: il
+cold start su \nf{} \`e dominato dal tempo di creazione del pod da parte di
+Kubernetes e dall'avvio del runtime, entrambi fuori dal controllo del control
+plane. Un budget su una grandezza che non si governa \`e un obiettivo che si
+manca senza poter reagire.
+
+\begin{quote}
+\textbf{Nota sulla documentazione.} Il documento \code{docs/slo.md} riporta la
+serie fino a v0.18.3 e non include la v0.19.0, che \`e presente in
+\code{docs/performance/history.md} e nel record di release. La discrepanza \`e
+segnalata qui perch\'e la violazione dell'obiettivo di p95 \`e visibile solo nella
+seconda fonte. \`E un esempio del genere di deriva che colpisce la
+documentazione mantenuta a mano, gi\`a osservato per \code{openapi.yaml} nel
+\cref{cap:05-contratti-dati}.
+\end{quote}
+
+\section{Limiti di questa serie}
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Tre esecuzioni per punto.} Non consentono di stimare una
+  varianza. Le differenze inferiori al 10\% non sono interpretabili.
+
+  \item \textbf{Infrastruttura condivisa.} Due VM Azure dello stesso tipo non
+  hanno necessariamente le stesse prestazioni. Parte dell'oscillazione osservata
+  fra le prime cinque release potrebbe essere questa.
+
+  \item \textbf{Un solo scenario.} Tutta la serie usa
+  \code{autoscaling-cycle-k8s}. Non esistono serie comparabili per altri profili
+  di carico o altre famiglie di funzioni.
+
+  \item \textbf{Il confronto \`e a coppie consecutive.} Il gate confronta con il
+  record precedente, quindi una deriva lenta che resti sotto soglia a ogni passo
+  non viene rilevata. La serie completa nella \cref{tab:serie} \`e il rimedio
+  manuale, ma non \`e automatizzato.
+\end{enumerate}
+
+Il quarto punto merita enfasi perch\'e \`e un difetto strutturale del metodo, non
+dei dati: un gate che confronta solo con l'immediato precedente ammette una
+regressione monotona del 9\% per release indefinitamente.
+
+\begin{damisurare}
+Non esiste una verifica automatica contro un riferimento assoluto o contro la
+migliore release storica. La \cref{tab:serie} rende la deriva visibile a chi la
+legge, e nient'altro.
+\todomis{gate contro un riferimento storico oltre al precedente immediato}
+\end{damisurare}

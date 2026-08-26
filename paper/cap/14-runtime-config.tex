@@ -1,0 +1,229 @@
+\chapter{Il modulo \code{runtime-config}}
+\label{cap:14-runtime-config}
+
+Il modulo \code{runtime-config} consente di modificare a caldo un sottoinsieme
+dei parametri della piattaforma, senza riavviare il processo. Sono 540 righe in
+dieci classi.
+
+Il modulo ha una motivazione strettamente sperimentale. Un esperimento che
+confronta due configurazioni deve, per essere valido, mantenere costante tutto il
+resto: stesso processo, stessa JVM riscaldata, stesse code popolate, stesso stato
+del garbage collector. Riavviare il control plane fra una configurazione e
+l'altra reintroduce esattamente le variabili che l'esperimento intende
+escludere.
+
+\section{Che cosa \`e modificabile a caldo}
+
+Sei parametri, esattamente:
+
+\begin{lstlisting}[language=Java]
+public record RuntimeConfigSnapshot(
+        long revision,
+        int rateMaxPerSecond,
+        boolean syncQueueEnabled,
+        boolean syncQueueAdmissionEnabled,
+        Duration syncQueueMaxEstimatedWait,
+        Duration syncQueueMaxQueueWait,
+        int syncQueueRetryAfterSeconds
+) { ... }
+\end{lstlisting}
+
+Il criterio di inclusione \`e la reversibilit\`a senza effetti sullo stato
+esistente. Il limite di frequenza \`e un intero letto a ogni richiesta:
+cambiarlo ha effetto dalla richiesta successiva e non invalida nulla. Le soglie
+della coda sincrona sono lette a ogni valutazione di ammissione (\cref{cap:10-sync-queue}):
+lo stesso.
+
+Sono invece esclusi \code{max-depth} della coda sincrona --- ridurla
+richiederebbe di decidere che cosa fare degli elementi in eccesso --- e la
+selezione dei moduli, che per costruzione avviene a tempo di build
+(\cref{cap:08-sistema-moduli}).
+
+\section{Il meccanismo: snapshot immutabile e revisione}
+
+Lo stato \`e un unico record immutabile in un \code{AtomicReference}. Ogni
+aggiornamento ne produce uno nuovo con revisione incrementata. I consumatori
+leggono sempre l'ultimo:
+
+\begin{lstlisting}[language=Java]
+@Override
+public Duration syncQueueMaxEstimatedWait() {
+    return current.get().syncQueueMaxEstimatedWait();
+}
+\end{lstlisting}
+
+La propriet\`a che questa costruzione garantisce \`e che una singola valutazione
+di ammissione veda una configurazione \emph{coerente}: legge uno snapshot, e i
+campi di quello snapshot appartengono tutti alla stessa revisione. Con sei
+variabili volatili indipendenti, un aggiornamento concorrente potrebbe far s\`i
+che una valutazione legga la nuova soglia di attesa e il vecchio flag di
+ammissione --- una combinazione che nessuno ha mai richiesto.
+
+\subsection{Il lock ottimistico}
+
+L'aggiornamento richiede al chiamante di dichiarare la revisione che si aspetta:
+
+\begin{lstlisting}[language=Java]
+public RuntimeConfigSnapshot update(long expectedRevision, RuntimeConfigPatch patch) {
+    while (true) {
+        RuntimeConfigSnapshot snapshot = current.get();
+        if (snapshot.revision() != expectedRevision) {
+            throw new RevisionMismatchException(expectedRevision, snapshot.revision());
+        }
+        RuntimeConfigSnapshot candidate = snapshot.applyPatch(patch);
+        if (current.compareAndSet(snapshot, candidate)) {
+            return candidate;
+        }
+        // CAS failed because another thread updated; retry loop will re-check revision
+    }
+}
+\end{lstlisting}
+
+\`E il pattern \emph{compare-and-swap} classico, con il controllo di revisione
+che lo trasforma in un lock ottimistico visibile al chiamante. Un aggiornamento
+basato su uno stato obsoleto riceve \code{409 Conflict} con la revisione
+corrente, anzich\'e sovrascrivere in silenzio una modifica concorrente.
+
+L'aggiornamento \`e un \code{PATCH} con semantica ``i campi nulli restano
+invariati''. La combinazione di patch parziale e revisione attesa \`e ci\`o che
+rende sicure due modifiche concorrenti su campi diversi: la seconda vede il
+conflitto, rilegge, e riapplica.
+
+\section{L'API di amministrazione}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}llp{6.6cm}@{}}
+\toprule
+\textbf{Metodo} & \textbf{Percorso} & \textbf{Semantica} \\
+\midrule
+\code{GET} & \code{/v1/admin/runtime-config} & Snapshot corrente con revisione. \\
+\code{POST} & \code{/v1/admin/runtime-config/validate} & Prova la patch senza
+applicarla. \\
+\code{PATCH} & \code{/v1/admin/runtime-config} & Applica, con
+\code{expectedRevision} obbligatoria. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\subsection{L'endpoint di validazione}
+
+L'esistenza di \code{/validate} merita una nota. Applica la patch a una copia
+dello snapshot corrente, ne verifica la validit\`a e riporta gli errori, senza
+modificare nulla. \`E lo stesso codice che il \code{PATCH} esegue prima di
+applicare.
+
+Il suo valore \`e per gli strumenti automatici: uno script di esperimento pu\`o
+verificare che la propria matrice di configurazioni sia interamente valida prima
+di iniziare, anzich\'e scoprire al terzo punto della matrice che una combinazione
+verr\`a rifiutata --- avendo gi\`a consumato il tempo dei primi due.
+
+\subsection{La sequenza del \code{PATCH}}
+
+L'ordine delle operazioni codifica una scelta di sicurezza:
+
+\begin{enumerate}[leftmargin=*]
+  \item \code{expectedRevision} presente, altrimenti \code{400};
+  \item la patch \`e sintatticamente valida (durate parsabili, ecc.), altrimenti
+  \code{400} con nome del campo e valore offensivo;
+  \item lo snapshot risultante \`e semanticamente valido, altrimenti \code{422};
+  \item la revisione corrisponde, altrimenti \code{409} con la revisione reale;
+  \item lo snapshot viene sostituito atomicamente;
+  \item l'applicatore propaga ai componenti che hanno bisogno di essere
+  informati, con rollback in caso di fallimento (\code{503}).
+\end{enumerate}
+
+La validazione precede la sostituzione: uno snapshot invalido non entra mai nello
+stato. Il rollback al punto 6 copre il caso residuo in cui la propagazione
+fallisca dopo che lo stato \`e cambiato.
+
+\subsection{Il metodo sincronizzato}
+
+\begin{lstlisting}[language=Java]
+@PatchMapping
+public synchronized ResponseEntity<Object> patch(@RequestBody PatchRequest request) { ... }
+\end{lstlisting}
+
+Il metodo del controller \`e \code{synchronized}, il che serializza tutte le
+modifiche di configurazione. \`E ridondante rispetto al CAS del servizio per la
+correttezza dello stato, ma serializza anche la fase di applicazione, che il CAS
+non copre: due patch concorrenti potrebbero altrimenti propagare i propri effetti
+in ordine invertito rispetto a quello in cui hanno vinto il CAS.
+
+\`E anche una violazione del principio non bloccante del
+\cref{cap:03-requisiti-principi}, ed \`e accettabile perch\'e riguarda un
+endpoint amministrativo a bassissima frequenza. Vale la pena notare che il
+codice non lo giustifica, e che il lettore deve dedurre da s\'e che il costo \`e
+confinato.
+
+\section{L'applicatore}
+
+\code{RuntimeConfigApplier} propaga lo snapshot ai componenti mutabili in ordine
+deterministico:
+
+\begin{lstlisting}[language=Java]
+/**
+ * Applies the new snapshot to all mutable runtime components.
+ * Sync queue fields are read directly from {@link RuntimeConfigService} by consumers,
+ * so only components with dedicated setters need explicit application here.
+ */
+public void apply(RuntimeConfigSnapshot snapshot, RuntimeConfigSnapshot previous,
+                  RuntimeConfigService configService) { ... }
+\end{lstlisting}
+
+Il commento rivela che esistono due modalit\`a di propagazione:
+
+\begin{description}[style=nextline, leftmargin=0pt]
+  \item[\textbf{Pull}] --- i consumatori della coda sincrona leggono dallo
+  snapshot a ogni uso. Non c'\`e nulla da propagare; la modifica ha effetto
+  immediatamente e senza coordinamento.
+  \item[\textbf{Push}] --- il limitatore di frequenza possiede una propria
+  variabile interna, e l'applicatore deve chiamarne il setter.
+\end{description}
+
+La modalit\`a pull \`e evidentemente preferibile e il modulo la usa dove
+possibile; la push esiste per un componente del nucleo che \`e antecedente al
+modulo e che il modulo non deve costringere a cambiare struttura. \`E una
+concessione ragionevole al principio di non far dipendere il nucleo dai moduli.
+
+\section{Osservabilit\`a}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Metrica} & \textbf{Tipo} & \textbf{Significato} \\
+\midrule
+\code{controlplane\_runtime\_config\_revision} & gauge & Revisione corrente. \\
+\code{controlplane\_runtime\_config\_updates\_total} & counter &
+Aggiornamenti, con etichetta \code{status}. \\
+\code{controlplane\_runtime\_config\_apply\_duration\_seconds} & timer &
+Durata dell'applicazione. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Il gauge sulla revisione \`e lo strumento pi\`u utile del gruppo in contesto
+sperimentale: esportando la revisione nelle stesse serie temporali delle metriche
+di prestazione, un cambio di configurazione diventa un gradino osservabile sul
+grafico, e l'attribuzione di una variazione di latenza al cambio che l'ha causata
+non richiede di correlare a mano i log con le misure.
+
+\section{Disattivato per default}
+
+\begin{lstlisting}[language=yamlnf]
+nanofaas:
+  admin:
+    runtime-config:
+      enabled: false
+\end{lstlisting}
+
+L'API espone operazioni di scrittura su una piattaforma priva di autenticazione
+(\cref{cap:03-requisiti-principi}). Il default disattivato fa s\`i che
+l'esposizione sia una decisione consapevole dell'operatore anzich\'e una
+propriet\`a ereditata dalla scelta dei moduli. \`E l'unico modulo che, pur essendo
+compilato nel binario, resta inerte finch\'e non viene attivato esplicitamente.

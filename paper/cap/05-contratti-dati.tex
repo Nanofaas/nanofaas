@@ -1,0 +1,283 @@
+\chapter{Contratti e modello dei dati}
+\label{cap:05-contratti-dati}
+
+Il modulo \code{platform/common} contiene i tipi che attraversano ogni confine
+del sistema: quelli che il control plane scambia con i chiamanti, con i runtime
+delle funzioni e con gli SDK nei vari linguaggi. Sono meno di cinquecento righe
+di codice, e la loro stabilit\`a \`e ci\`o che consente ai moduli e agli SDK di
+evolvere indipendentemente. Questo capitolo li descrive e ne discute le scelte
+non ovvie.
+
+\section{\code{FunctionSpec}: la definizione di una funzione}
+
+\code{FunctionSpec} \`e il tipo che il chiamante invia per registrare una
+funzione e che il control plane conserva. \`E un \code{record} Java con sedici
+componenti, raggruppabili in cinque famiglie.
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}llp{6.2cm}@{}}
+\toprule
+\textbf{Famiglia} & \textbf{Campi} & \textbf{Ruolo} \\
+\midrule
+Identit\`a & \code{name}, \code{image} &
+Obbligatori, non vuoti. Il nome \`e la chiave logica. \\
+Esecuzione & \code{command}, \code{env}, \code{runtimeMode},
+\code{runtimeCommand} &
+Come avviare e come parlare con il processo funzione. \\
+Risorse & \code{resources} &
+Richieste e limiti di CPU e memoria, validati come coerenti fra loro. \\
+Politiche & \code{timeoutMs}, \code{concurrency}, \code{queueSize},
+\code{maxRetries} &
+Sovrascrivono i default di piattaforma. \\
+Collocazione & \code{executionMode}, \code{endpointUrl},
+\code{imagePullSecrets}, \code{scalingConfig}, \code{offload} &
+Dove la funzione vive e come viene governata. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Tutti i campi delle ultime tre famiglie sono tipi \emph{boxed}
+(\code{Integer}, non \code{int}). La scelta \`e deliberata e ricorre in tutto il
+modello: il valore \code{null} significa ``non specificato'', ed \`e
+distinguibile da qualunque valore esplicito. Un campo \code{int} con default
+zero renderebbe indistinguibili ``l'utente non ha detto nulla'' e ``l'utente ha
+chiesto zero'', e la risoluzione dei default (\cref{cap:06-nucleo}) non
+potrebbe sapere quando intervenire.
+
+\subsection{Validazione dichiarativa}
+
+I vincoli sono espressi con annotazioni Jakarta Validation applicate direttamente
+ai componenti del record:
+
+\begin{lstlisting}[language=Java]
+public record FunctionSpec(
+        @NotBlank String name,
+        @NotBlank String image,
+        ...
+        @Valid ResourceSpec resources,
+        @Min(1) Integer timeoutMs,
+        @Min(1) Integer concurrency,
+        @Min(1) Integer queueSize,
+        @Min(0) Integer maxRetries,
+        ...
+) { ... }
+\end{lstlisting}
+
+Il vincolo pi\`u interessante \`e quello che le annotazioni sui singoli campi non
+possono esprimere, ossia la coerenza fra richiesta e limite di risorsa. \`E
+codificato come metodo di validazione sul record che lo riguarda:
+
+\begin{lstlisting}[language=Java, caption={Vincolo relazionale in
+\code{ResourceSpec}.}]
+@AssertTrue(message = "resource request must not exceed limit")
+public boolean isRequestWithinLimit() {
+    if (requests == null || limits == null) {
+        return true;
+    }
+    return notGreater(requests.cpu(), limits.cpu())
+            && notGreater(requests.memoryMiB(), limits.memoryMiB());
+}
+\end{lstlisting}
+
+La conseguenza pratica \`e che una specifica incoerente viene respinta con
+\code{400} al momento della registrazione, e non produce un deployment che
+Kubernetes rifiuterebbe pi\`u tardi con un messaggio meno leggibile.
+
+\subsection{Costruttori di compatibilit\`a}
+
+\code{FunctionSpec} espone tre costruttori: quello canonico a sedici componenti
+e due pi\`u corti che delegano al canonico passando \code{null} per i campi
+aggiunti nelle evoluzioni successive (\code{offload} e, prima, \code{scalingConfig}).
+
+\`E una tecnica esplicita di gestione della compatibilit\`a in un progetto che
+usa i \code{record}: un record aggiunge un componente e il costruttore canonico
+cambia firma, il che rompe ogni chiamante --- comprese, in questo progetto,
+diverse centinaia di istanziazioni nei test. I costruttori di compatibilit\`a
+assorbono la rottura. Il prezzo \`e che il tipo porta con s\'e la propria storia
+di versioni, e il beneficio \`e che l'aggiunta di un campo resta un'operazione a
+diff contenuto.
+
+\section{\code{InvocationRequest} e \code{InvocationResponse}}
+
+Il contratto di invocazione \`e volutamente povero.
+
+\begin{lstlisting}[language=Java]
+public record InvocationRequest(
+        @NotNull(message = "Input payload is required") Object input,
+        Map<String, String> metadata,
+        Map<String, String> headers
+) { ... }
+\end{lstlisting}
+
+Il campo \code{input} \`e di tipo \code{Object}: la piattaforma non impone uno
+schema al payload e si limita a trasportarlo. \`E \code{@NotNull} ma pu\`o essere
+qualunque struttura JSON. La distinzione fra \code{metadata} e \code{headers} \`e
+di provenienza: \code{metadata} \`e ci\`o che il chiamante dichiara nel corpo,
+\code{headers} \`e ci\`o che il control plane ha effettivamente osservato sulla
+richiesta HTTP e ricostruisce prima di consegnarla
+(\cref{cap:04-architettura-control-plane}).
+
+La risposta trasporta l'esito e, opzionalmente, una \emph{busta} che la funzione
+pu\`o usare per governare la risposta HTTP:
+
+\begin{lstlisting}[language=Java]
+public record InvocationResponse(
+        String executionId, String status, Object output, ErrorInfo error,
+        Integer statusCode, Map<String, String> headers, String encoding
+) { ... }
+\end{lstlisting}
+
+I tre campi finali sono il meccanismo con cui una funzione pu\`o restituire, per
+esempio, un \code{404} applicativo o un contenuto binario codificato in base64.
+Il control plane li applica alla risposta soltanto se il codice di stato ricade
+nell'intervallo valido, e in tal caso marca la risposta con
+\code{X-NanoFaaS-Function-Status: true} cos\`i che il chiamante possa distinguere
+un errore deciso dalla funzione da un errore deciso dalla piattaforma. \`E una
+distinzione che le piattaforme FaaS spesso non rendono osservabile e la cui
+assenza rende ambigua l'interpretazione di un tasso di errore.
+
+\section{\code{ExecutionStatus} e il ciclo di vita}
+
+\code{ExecutionStatus} \`e la proiezione esterna di un'esecuzione, restituita da
+\code{GET /v1/executions/\{id\}}. Oltre all'esito porta due campi diagnostici
+--- \code{coldStart} e \code{initDurationMs} --- che rendono osservabile per
+singola invocazione se questa ha pagato un'inizializzazione e quanto. Sono la
+sorgente della metrica \code{function\_cold\_start\_ms}
+(\cref{cap:21-osservabilita}).
+
+Lo stato \`e rappresentato come stringa e non come enumerazione, il che \`e una
+scelta discutibile su cui vale la pena essere espliciti: agevola l'evoluzione del
+vocabolario di stato senza rompere i client, ma sposta a runtime un controllo che
+il compilatore avrebbe potuto fare. I valori usati sono \code{queued},
+\code{running}, \code{succeeded}, \code{failed} e \code{timeout}.
+
+\section{\code{InvocationResult}: il contratto verso il runtime}
+
+Mentre \code{InvocationResponse} \`e ci\`o che il control plane restituisce al
+chiamante, \code{InvocationResult} \`e ci\`o che il \emph{runtime della funzione}
+restituisce al control plane --- sia come corpo della risposta HTTP sincrona,
+sia come corpo della callback asincrona verso
+\code{/v1/internal/executions/\{id\}:complete}.
+
+\begin{lstlisting}[language=Java]
+public record InvocationResult(
+        boolean success, Object output, ErrorInfo error,
+        Integer statusCode, Map<String, String> headers, String encoding
+) {
+    public static InvocationResult success(Object output) { ... }
+    public static InvocationResult successWithEnvelope(Object output, Integer statusCode,
+                                                       Map<String, String> headers, String encoding) { ... }
+    public static InvocationResult error(String code, String message) { ... }
+}
+\end{lstlisting}
+
+I metodi factory statici sono l'API che gli SDK usano
+(\cref{cap:18-sdk}); l'esistenza di \code{successWithEnvelope} accanto a
+\code{success} rende esplicito nel codice della funzione quando si sta
+esercitando il controllo sulla risposta HTTP e quando no.
+
+\section{Le enumerazioni di politica}
+
+Cinque enumerazioni definiscono lo spazio delle politiche configurabili. Sono
+elencate qui per completezza; ciascuna \`e trattata nel capitolo del modulo che
+la implementa.
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Enumerazione} & \textbf{Valori} & \textbf{Trattata in} \\
+\midrule
+\code{ExecutionMode} & \code{LOCAL}, \code{EXTERNAL}, \code{DEPLOYMENT} &
+\cref{cap:07-modalita-esecuzione} \\
+\code{RuntimeMode} & \code{HTTP}, \code{STDIO}, \code{FILE} &
+\cref{cap:17-runtime-funzione} \\
+\code{ScalingStrategy} & \code{HPA}, \code{INTERNAL}, \code{NONE} &
+\cref{cap:11-autoscaler} \\
+\code{ConcurrencyControlMode} & \code{FIXED}, \code{STATIC\_PER\_POD},
+\code{ADAPTIVE\_PER\_POD}, \code{BUDGETED}, \code{SOJOURN} &
+\cref{cap:12-concurrency-control} \\
+\code{SyncQueueRejectReason} & \code{DEPTH}, \code{EST\_WAIT}, \code{TIMEOUT} &
+\cref{cap:10-sync-queue} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\section{Il blocco di scaling e la sua composizione}
+
+\code{ScalingConfig} contiene la strategia di scaling, i limiti di repliche, una
+lista di metriche e --- annidato --- il blocco di controllo della concorrenza:
+
+\begin{lstlisting}[language=Java]
+public record ScalingConfig(
+        ScalingStrategy strategy, Integer minReplicas, Integer maxReplicas,
+        List<ScalingMetric> metrics, ConcurrencyControlConfig concurrencyControl
+) { ... }
+\end{lstlisting}
+
+L'annidamento merita una difesa, perch\'e sembra contraddire l'affermazione del
+\cref{cap:02-stato-dell-arte} secondo cui \nf{} separa la decisione sul numero di
+repliche da quella sul limite di concorrenza. La separazione \`e sul piano dei
+\emph{meccanismi} --- due moduli distinti, sostituibili indipendentemente, che
+non si conoscono --- non su quello della configurazione, dove entrambe le
+politiche descrivono come una funzione consuma capacit\`a e conviene che siano
+dichiarate insieme. Il modo \code{STATIC\_PER\_POD} rende evidente perch\'e i due
+piani non possano essere del tutto disgiunti: calcola il limite come
+\emph{repliche pronte $\times$ obiettivo per replica}, e quindi legge una
+grandezza che l'autoscaler determina.
+
+\section{Il punto di estensione dei moduli}
+
+L'interfaccia che definisce un modulo del control plane \`e minima:
+
+\begin{lstlisting}[language=Java]
+public interface ControlPlaneModule {
+    default String name() { return getClass().getSimpleName(); }
+    Set<Class<?>> configurationClasses();
+}
+\end{lstlisting}
+
+Un modulo dichiara soltanto quali classi di configurazione Spring devono essere
+aggiunte al contesto. Non dichiara dipendenze, non dichiara un ordine, non
+espone un ciclo di vita. Tutto ci\`o che gli serve lo ottiene dal contenitore
+attraverso i punti di estensione del nucleo. Il \cref{cap:08-sistema-moduli}
+descrive il meccanismo di caricamento e discute perch\'e questa povert\`a
+dell'interfaccia sia un pregio e non una lacuna.
+
+\section{Il contratto dell'handler}
+
+Infine, il contratto che il codice utente implementa:
+
+\begin{lstlisting}[language=Java]
+public interface FunctionHandler {
+    Object handle(InvocationRequest request);
+}
+\end{lstlisting}
+
+Un solo metodo, un solo argomento, nessuna eccezione dichiarata, nessun contesto
+di esecuzione iniettato. La povert\`a \`e voluta: qualunque cosa l'handler
+riceva come contesto diventerebbe parte del contratto e vincolerebbe gli SDK
+degli altri linguaggi a riprodurla. Ci\`o che l'handler pu\`o restituire \`e
+governato da \code{HandlerResponse} e \code{ResponseHeaderPolicy}, discussi nel
+\cref{cap:17-runtime-funzione}.
+
+\section{L'API come artefatto versionato}
+
+La descrizione formale dell'API vive in \code{openapi.yaml} nella radice del
+repository. \`E mantenuta a mano, e questa scelta ha un costo che il progetto ha
+sperimentato: essendo esterna al codice, pu\`o divergere in silenzio. La verifica
+automatica esistente accerta che il file sia presente, non che sia allineato.
+
+\begin{damisurare}
+Il disallineamento fra \code{openapi.yaml} e il codice \`e stato rilevato e
+corretto manualmente in almeno un'occasione. Una verifica che confronti gli
+endpoint dichiarati nel file con quelli effettivamente esposti dal contesto
+Spring \`e realizzabile con gli strumenti gi\`a presenti nel progetto, ma non \`e
+stata implementata. \todomis{copertura effettiva di \code{openapi.yaml} rispetto
+alle rotte registrate}
+\end{damisurare}

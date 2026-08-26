@@ -1,0 +1,220 @@
+\chapter{Gli SDK multi-linguaggio}
+\label{cap:18-sdk}
+
+\nf{} fornisce SDK per sei ambienti: Java, Java-lite, Python, Go, JavaScript e
+un adattatore per eseguibili generici (\code{exec}/bash). Questo capitolo li
+attraversa e --- pi\`u interessante --- descrive il meccanismo con cui il
+progetto verifica che parlino tutti lo stesso contratto.
+
+\section{Il contratto minimo}
+
+Un SDK di funzione ha tre obblighi: consentire all'autore di dichiarare un
+handler, esporlo secondo uno dei tre protocolli di runtime
+(\cref{cap:17-runtime-funzione}), e tradurre il valore restituito in una
+risposta conforme.
+
+L'interfaccia lato Java \`e un solo metodo:
+
+\begin{lstlisting}[language=Java]
+public interface FunctionHandler {
+    Object handle(InvocationRequest request);
+}
+\end{lstlisting}
+
+Ogni SDK realizza questo contratto con l'idioma del proprio linguaggio.
+
+\section{Java: due SDK, due filosofie}
+
+\subsection{\code{sdks/java}}
+
+L'SDK completo (1\,140 righe) \`e costruito su Spring Boot. La dichiarazione di
+un handler \`e un'annotazione:
+
+\begin{lstlisting}[language=Java]
+/**
+ * Marks a Spring bean as a Nanofaas function handler.
+ *
+ * <p>Spring component scanning, not user code, discovers this annotation and registers the
+ * handler in the application context. The runtime then resolves the single active handler bean
+ * from that context when the control plane calls {@code /invoke}.</p>
+ */
+@Target(ElementType.TYPE) @Retention(RetentionPolicy.RUNTIME) @Documented @Component
+public @interface NanofaasFunction {
+    String value() default "";
+}
+\end{lstlisting}
+
+L'autore della funzione ottiene iniezione delle dipendenze, configurazione, e
+l'intero ecosistema Spring. Paga in impronta di memoria e tempo di avvio.
+
+\subsection{\code{sdks/java-lite}}
+
+L'SDK leggero (687 righe) rinuncia a Spring. Costruisce direttamente sul
+\code{HttpServer} del JDK, con tre gestori --- \code{InvokeHandler},
+\code{HealthHandler}, \code{MetricsHandler} --- e nessun contenitore di
+inversione del controllo.
+
+Il confronto fra i due, misurato sulla stessa funzione
+(\cref{cap:24-footprint}), \`e la giustificazione della loro coesistenza:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & \textbf{\code{word-stats-java}} & \textbf{\code{word-stats-java-lite}} \\
+\midrule
+build & Spring Boot su JVM & binario nativo GraalVM \\
+SDK & \code{sdks/java} & \code{sdks/java-lite} \\
+residente, a riposo & 133\,MiB & 2{,}7\,MiB \\
+residente, a caldo & 160\,MiB & 51{,}6\,MiB \\
+tempo di servizio & 5{,}57\,ms & 2{,}15\,ms \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Il fattore cinquanta a riposo \`e la differenza fra un framework e la sua
+assenza; il fattore tre a caldo mostra che il carico di lavoro effettivo
+riavvicina i due (\cref{cap:24-footprint}).
+
+\begin{quote}
+\textbf{Avvertenza sperimentale.} La documentazione di progetto registra che i
+commenti degli scenari hanno per un certo tempo trattato le due funzioni
+\code{word-stats} come intercambiabili. Non lo sono: differiscono per SDK, per
+tipo di build e per tempo di servizio. \emph{Qualunque esperimento che le tratti
+come equivalenti \`e confuso.} \`E il tipo di errore che una piattaforma con
+molte varianti dello stesso artefatto rende facile commettere, ed \`e riportato
+qui perch\'e la sua scoperta ha invalidato analisi precedenti.
+\end{quote}
+
+\section{Python}
+
+L'SDK Python \`e costruito su FastAPI (circa 1\,450 righe fra runtime e SDK). La
+dichiarazione dell'handler \`e un decoratore:
+
+\begin{lstlisting}[language=Python]
+@nanofaas_function
+def handle(input):
+    return {"echo": input}
+\end{lstlisting}
+
+Il decoratore registra la funzione in una variabile a livello di modulo, con la
+regola che un solo handler pu\`o essere attivo e che una seconda applicazione
+sovrascrive la prima. Sono supportati sia handler sincroni sia \code{async}.
+
+La scelta di una registrazione globale anzich\'e di un registro esplicito \`e la
+forma pi\`u idiomatica in Python e la meno cerimoniosa; ha il difetto di rendere
+l'ordine degli import significativo, che \`e il prezzo abituale di questa
+tecnica.
+
+\section{Go, JavaScript, exec}
+
+L'SDK Go (circa 1\,950 righe) incorpora un runtime HTTP nel binario della
+funzione ed espone un proprio endpoint \code{/metrics} Prometheus, con contatori
+lato runtime per invocazioni, durata dell'handler, cold start e callback
+asincrone scartate. \`E l'unico SDK che strumenta autonomamente il proprio lato
+del confine, il che lo rende lo strumento pi\`u diretto per separare il tempo
+speso dentro l'handler da quello speso nel trasporto.
+
+L'SDK JavaScript espone un runtime HTTP analogo per Node.
+
+L'adattatore \code{exec} non \`e un SDK ma il modo \code{STDIO} del watchdog: un
+eseguibile che legge JSON da stdin e scrive JSON su stdout \`e una funzione
+valida senza libreria alcuna. \`E la via d'accesso per gli script bash e per i
+binari preesistenti.
+
+\section{La parit\`a fra SDK, e come viene verificata}
+
+\subsection{Il problema}
+
+Sei implementazioni indipendenti dello stesso contratto divergono. Non
+divergono in modo spettacolare --- ciascuna \`e testata --- ma nei dettagli:
+come viene serializzato un valore nullo, che cosa accade con un input vuoto, come
+viene rappresentato un errore. Divergenze di questo tipo sono invisibili finch\'e
+qualcuno non confronta due SDK sulla stessa funzione, che \`e esattamente ci\`o
+che un esperimento comparativo fa.
+
+\subsection{La soluzione: fixture condivise}
+
+Il progetto definisce tre \emph{famiglie} di funzioni di riferimento ---
+\code{word-stats}, \code{json-transform}, \code{roman-numeral} --- e per ciascuna
+un file di fixture JSON con input e output attesi. Ogni implementazione consuma
+lo stesso file dalla propria suite di test nativa.
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{SDK} & \textbf{\code{word-stats}} & \textbf{\code{json-transform}} &
+\textbf{\code{roman-numeral}} \\
+\midrule
+Java & s\`i & s\`i & s\`i \\
+Java Lite & s\`i & s\`i & s\`i \\
+Go & s\`i & s\`i & s\`i \\
+Python & s\`i & s\`i & s\`i \\
+JavaScript & s\`i & s\`i & s\`i \\
+exec/bash & s\`i & s\`i & s\`i \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Il cancello completo si esegue con un comando:
+
+\begin{lstlisting}[language=bash]
+./functions/contract-tests/run.sh
+\end{lstlisting}
+
+Diciotto funzioni, sei SDK, tre famiglie. \`E il meccanismo che converte
+un'affermazione di parit\`a in una verifica.
+
+\subsection{Fixture di correttezza e fixture di carico}
+
+Il progetto distingue due tipi di fixture, e la distinzione \`e metodologicamente
+significativa:
+
+\begin{itemize}[leftmargin=*]
+  \item \code{correctness.json} contiene input \emph{e} output attesi. Verifica
+  la semantica.
+  \item \code{performance-*.json} contiene input soltanto, e \emph{omette
+  deliberatamente} gli output attesi.
+\end{itemize}
+
+L'omissione \`e voluta. Una fixture di carico serve a fissare l'input dei
+benchmark cos\`i che due esecuzioni siano confrontabili; verificare l'output
+durante un benchmark aggiungerebbe alla misura il costo del confronto e
+introdurrebbe una variabile nel percorso caldo. Separare i due ruoli evita che
+uno strumento serva a due scopi facendone bene nessuno.
+
+\section{Il catalogo delle funzioni di esempio}
+
+Il repository contiene funzioni di esempio in cinque linguaggi:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lp{8.4cm}@{}}
+\toprule
+\textbf{Linguaggio} & \textbf{Funzioni} \\
+\midrule
+Java & \code{word-stats}, \code{json-transform}, \code{roman-numeral},
+\code{figlet}, \code{qr-code}, \code{handler-envelope},
+\code{binary-envelope}, pi\`u tre varianti \code{-lite} \\
+Python & le stesse tre famiglie, pi\`u \code{qr-code},
+\code{handler-envelope}, \code{mlimage} \\
+Go, JavaScript, bash & le tre famiglie, pi\`u \code{qr-code} e
+\code{handler-envelope} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Le funzioni non sono soltanto dimostrative. Ciascuna copre un aspetto del
+contratto: \code{word-stats} \`e il carico di riferimento delle campagne di
+misura; \code{handler-envelope} esercita la busta di risposta
+(\cref{cap:17-runtime-funzione}); \code{binary-envelope} esercita la codifica
+base64; \code{qr-code} e \code{figlet} producono output non testuali;
+\code{mlimage} \`e l'unica con un tempo di esecuzione sostanziale e un'immagine
+pesante, e serve a esercitare il cold start reale.

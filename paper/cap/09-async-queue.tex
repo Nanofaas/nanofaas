@@ -1,0 +1,305 @@
+\chapter{Il modulo \code{async-queue}}
+\label{cap:09-async-queue}
+
+\code{async-queue} \`e il modulo che rende possibile l'invocazione asincrona, e
+--- meno ovviamente --- \`e anche l'unico che fornisce alla piattaforma
+un'osservazione reale dello stato delle code. Il primo ruolo \`e quello che il
+suo nome dichiara; il secondo \`e ci\`o che lo rende una dipendenza per
+\code{concurrency-control} e una dipendenza parziale per \code{autoscaler}.
+
+Sono 682 righe di codice in nove classi.
+
+\section{Struttura}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lp{9cm}@{}}
+\toprule
+\textbf{Classe} & \textbf{Ruolo} \\
+\midrule
+\code{FunctionQueueState} & Stato di una singola funzione: coda limitata,
+contatore delle richieste in volo, limiti di concorrenza. \\
+\code{QueueManager} & Mappa da nome di funzione a stato, registrazione delle
+metriche, notifica del lavoro disponibile. \\
+\code{Scheduler} & Ciclo a thread singolo che consuma dalle code e dispaccia. \\
+\code{QueueBackedEnqueuer} & Implementazione di \code{InvocationEnqueuer}. \\
+\code{QueueBackedMetricsSource} & Implementazione di \code{ScalingMetricsSource}. \\
+\code{QueueConcurrencyControlMetrics} & Metriche descrittive del controllore
+attivo per funzione. \\
+\code{WorkSignaler} & Interfaccia a un metodo per la notifica. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\section{Lo stato di una funzione}
+
+\code{FunctionQueueState} incapsula quattro grandezze: la coda dei compiti
+(\code{ArrayBlockingQueue} di dimensione fissa), il contatore delle richieste in
+volo, il limite di concorrenza \emph{configurato} e il limite di concorrenza
+\emph{effettivo}.
+
+La distinzione fra i due limiti \`e la chiave dell'intero modulo. Il limite
+configurato \`e ci\`o che l'utente ha dichiarato nella specifica della funzione.
+Il limite effettivo \`e ci\`o che il modulo \code{concurrency-control}, se
+presente, ha deciso di applicare in questo momento. In assenza di quel modulo i
+due coincidono sempre.
+
+\subsection{Acquisizione dello slot}
+
+L'ammissione al dispatch \`e un'operazione atomica di test-e-incremento:
+
+\begin{lstlisting}[language=Java, caption={\code{FunctionQueueState.tryAcquireSlot()}.}]
+/**
+ * Atomically checks if dispatch is allowed and increments inFlight if so.
+ * This prevents race conditions where multiple threads could both pass
+ * canDispatch() check and then both increment, exceeding the concurrency limit.
+ */
+public boolean tryAcquireSlot() {
+    while (true) {
+        int current = inFlight.get();
+        if (current >= effectiveConcurrency) {
+            return false;
+        }
+        if (inFlight.compareAndSet(current, current + 1)) {
+            return true;
+        }
+        // CAS failed, another thread modified - retry
+    }
+}
+\end{lstlisting}
+
+L'alternativa ingenua --- verificare \code{canDispatch()} e poi incrementare ---
+\`e corretta solo con un unico consumatore. Il modulo ne ha uno solo oggi (lo
+scheduler \`e a thread singolo), ma il metodo \`e esposto anche al percorso
+sincrono attraverso \code{InvocationEnqueuer.tryAcquireSlot}, che gira su thread
+arbitrari. La primitiva atomica \`e quindi necessaria, non difensiva.
+
+\subsection{Il rilascio con pavimento a zero}
+
+Il rilascio \`e simmetrico ma con una protezione aggiuntiva:
+
+\begin{lstlisting}[language=Java]
+private void decrementInFlightNonNegative() {
+    while (true) {
+        int current = inFlight.get();
+        if (current == 0) { return; }
+        if (inFlight.compareAndSet(current, current - 1)) { return; }
+    }
+}
+\end{lstlisting}
+
+Un decremento su un contatore gi\`a a zero viene ignorato anzich\'e produrre un
+valore negativo. La condizione non dovrebbe verificarsi --- il
+\cref{cap:06-nucleo} descrive il meccanismo che rende idempotente il rilascio
+per tentativo --- ma se si verificasse, un contatore negativo si propagherebbe
+direttamente nella metrica \code{function\_inFlight}, che \`e la sorgente su cui
+decidono sia l'autoscaler sia il controllore di concorrenza. Un errore di
+contabilit\`a in questo punto non produce un malfunzionamento locale: produce
+decisioni di politica sbagliate a valle, per un tempo indeterminato. Il pavimento
+a zero \`e la contenzione minima di un errore che si propaga.
+
+\subsection{Interazione fra limite configurato ed effettivo}
+
+I due metodi che scrivono i limiti codificano una semantica che vale la pena
+esplicitare:
+
+\begin{lstlisting}[language=Java]
+public void concurrency(int concurrency) {
+    int previousConfigured = this.configuredConcurrency;
+    int normalized = Math.max(1, concurrency);
+    this.configuredConcurrency = normalized;
+    if (effectiveConcurrency == previousConfigured || effectiveConcurrency > normalized) {
+        // Preserve fixed-mode semantics: effective limit tracks configured limit
+        // (and clamps down on shrink).
+        effectiveConcurrency = normalized;
+    }
+}
+
+public void setEffectiveConcurrency(int effectiveConcurrency) {
+    int clamped = Math.max(1, effectiveConcurrency);
+    if (clamped > configuredConcurrency) { clamped = configuredConcurrency; }
+    this.effectiveConcurrency = clamped;
+}
+\end{lstlisting}
+
+Due invarianti emergono. Il primo: \textbf{il limite effettivo non pu\`o mai
+superare quello configurato}. Un controllore adattivo pu\`o restringere ma non
+allargare oltre ci\`o che l'utente ha autorizzato; la specifica della funzione
+resta un tetto. Il secondo: un aggiornamento del limite configurato trascina
+quello effettivo \emph{solo} se questo non era stato scostato da un controllore,
+oppure se il nuovo tetto \`e pi\`u basso. In pratica: cambiare la configurazione
+non cancella una decisione adattiva in corso, ma un abbassamento del tetto la
+vincola immediatamente.
+
+\section{Lo scheduler}
+
+Lo scheduler \`e un ciclo su thread singolo. La sua struttura \`e determinata da
+un requisito: non deve sondare le code inattive.
+
+\begin{lstlisting}[language=Java]
+private void loop() {
+    while (running.get()) {
+        String functionName = activeFunctions.poll(500, TimeUnit.MILLISECONDS);
+        if (functionName != null) {
+            enqueuedFunctions.remove(functionName);
+            processFunction(functionName);
+        }
+        ...
+    }
+}
+\end{lstlisting}
+
+La coda \code{activeFunctions} contiene i nomi delle funzioni che hanno lavoro
+pendente; l'insieme \code{enqueuedFunctions} evita che lo stesso nome vi compaia
+pi\`u volte. Un accodamento notifica lo scheduler solo se il nome non era gi\`a
+segnalato. Il risultato \`e che il costo del ciclo \`e proporzionale al numero di
+funzioni \emph{attive}, non al numero di funzioni registrate: registrare mille
+funzioni inattive non costa nulla.
+
+Il timeout di 500\,ms sulla \code{poll} \`e ci\`o che rende il ciclo terminabile:
+senza di esso l'arresto richiederebbe un'interruzione del thread bloccato.
+
+\subsection{Il batch limitato e l'equit\`a}
+
+\begin{lstlisting}[language=Java]
+private static final int MAX_BATCH_PER_FUNCTION = 2;
+
+private void processFunction(String functionName) {
+    ...
+    int dispatched = 0;
+    while (running.get() && dispatched < MAX_BATCH_PER_FUNCTION && state.tryAcquireSlot()) {
+        InvocationTask task = state.poll();
+        if (task == null) { state.releaseSlot(); break; }
+        dispatched++;
+        SchedulerDispatchSupport.dispatchWithFailureCleanup(
+                task, () -> invocationService.dispatch(task), state::releaseSlot, log);
+    }
+    if (state.queued() > 0 && dispatched > 0) {
+        signalWork(functionName);
+    }
+}
+\end{lstlisting}
+
+Ogni visita a una funzione dispaccia al massimo due compiti, poi la funzione
+viene rimessa in fondo alla coda dei nomi attivi se ha ancora lavoro. \`E un
+round-robin con quanto pari a due.
+
+Il quanto limitato \`e ci\`o che garantisce l'equit\`a fra funzioni. Senza di
+esso, una funzione con mille compiti accodati e slot disponibili terrebbe il
+thread dello scheduler finch\'e non li avesse dispacciati tutti, e una funzione
+con un solo compito accodata subito dopo attenderebbe l'intero drenaggio. Con il
+quanto, la seconda attende al pi\`u due dispatch.
+
+Il valore due, e non uno, riduce il costo di rotazione --- ogni ciclo comporta
+un'operazione su due strutture concorrenti --- senza degradare
+apprezzabilmente l'equit\`a. \`E un compromesso, e il progetto non ne documenta
+una taratura sperimentale.
+
+\begin{damisurare}
+L'effetto di \code{MAX\_BATCH\_PER\_FUNCTION} sull'equit\`a fra funzioni
+co-residenti e sul throughput aggregato non \`e stato misurato. Il
+\cref{cap:25-valutazione-concorrenza} riporta misure di co-tenancy che
+\emph{includono} l'effetto di questo parametro senza isolarlo.
+\todomis{sensibilit\`a del throughput e della latenza al quanto di scheduling}
+\end{damisurare}
+
+\subsection{Pulizia in caso di fallimento del dispatch}
+
+Il dispatch \`e affidato a un helper del nucleo, \code{dispatchWithFailureCleanup},
+a cui viene passato il rilascio dello slot come azione di compensazione. Il
+motivo \`e che lo slot \`e stato acquisito \emph{prima} del dispatch: se il
+dispatch solleva prima di aver stabilito una catena di completamento, nessuno
+rilascer\`a lo slot, e la funzione perderebbe permanentemente una unit\`a di
+concorrenza. Ripetuto, il fenomeno porterebbe il limite effettivo a zero senza
+che alcuna metrica lo segnali come anomalia --- il contatore delle richieste in
+volo apparirebbe semplicemente sempre saturo.
+
+\section{Le tre metriche esportate}
+
+\code{QueueManager} registra tre gauge per ciascuna funzione al momento della
+sua creazione:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Metrica} & \textbf{Sorgente} & \textbf{Consumatore} \\
+\midrule
+\code{function\_queue\_depth} & \code{state::queued} & autoscaler,
+concurrency-control, operatore \\
+\code{function\_inFlight} & \code{state::inFlight} & autoscaler,
+concurrency-control \\
+\code{function\_effective\_concurrency} & \code{state::effectiveConcurrency} &
+osservazione della politica \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+La terza \`e diagnostica e non alimenta alcuna decisione: rende osservabile
+\emph{che cosa il controllore ha deciso}, distinguendolo da ci\`o che l'utente
+aveva configurato. Senza di essa, osservare l'effetto di una politica adattiva
+richiederebbe di dedurlo dal comportamento.
+
+I meter sono rimossi quando la funzione viene rimossa, con la conseguenza gi\`a
+discussa nel \cref{cap:06-nucleo} sugli scenari di verifica che interrogano le
+metriche dopo la cancellazione.
+
+\section{I due punti di estensione implementati}
+
+\subsection{\code{QueueBackedEnqueuer}}
+
+Implementa \code{InvocationEnqueuer} delegando a \code{QueueManager}. La sua
+esistenza \`e ci\`o che fa passare \code{enabled()} da \code{false} a
+\code{true}, e quindi ci\`o che fa rispondere \code{202} anzich\'e \code{501} a
+\code{POST :enqueue}.
+
+\subsection{\code{QueueBackedMetricsSource}}
+
+Implementa \code{ScalingMetricsSource}, ed \`e la classe da cui dipende l'intera
+Parte III di questo documento. Fornisce quattro operazioni: leggere la
+profondit\`a della coda, leggere le richieste in volo, \emph{scrivere} il limite
+di concorrenza effettivo, e registrare il modo del controllore attivo.
+
+La terza \`e quella che conta. Un modulo di controllo della concorrenza calcola
+un limite; \`e la scrittura attraverso questa interfaccia a rendere quel limite
+effettivo, perch\'e da quel momento \code{tryAcquireSlot} lo confronta con il
+contatore delle richieste in volo. \`E letteralmente l'unico punto in cui una
+politica di concorrenza tocca il comportamento del sistema, e questo spiega
+perch\'e \code{concurrency-control} rifiuti di avviarsi senza
+\code{async-queue}: la scrittura verso un'implementazione no-op non fallisce, non
+segnala nulla, e non ha effetto.
+
+Il metodo \code{enabled()} distingue questa implementazione dal no-op del nucleo,
+e nel modulo restituisce costantemente \code{true}.
+
+\section{Il ruolo del modulo nel percorso sincrono}
+
+Un'ultima nota, perch\'e il nome del modulo pu\`o trarre in inganno. La catena di
+ammissione descritta nel \cref{cap:04-architettura-control-plane} usa la coda
+asincrona anche per le invocazioni \emph{sincrone}, quando la coda sincrona non
+\`e presente:
+
+\begin{lstlisting}[language=Java]
+private void admitLocally(ExecutionRecord executionRecord) {
+    if (syncQueueGateway.enabled()) {
+        syncQueueGateway.enqueueOrThrow(executionRecord.task());
+    } else if (enqueuer.enabled()) {
+        InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, executionRecord);
+    } else {
+        completionHandler.dispatch(executionRecord.task());
+    }
+}
+\end{lstlisting}
+
+In quella configurazione una richiesta sincrona viene accodata sulla coda della
+funzione, il chiamante attende il futuro di completamento, e lo scheduler la
+dispaccia quando uno slot si libera. Il risultato \`e che il limite di
+concorrenza per funzione \`e applicato anche al traffico sincrono, il che \`e
+esattamente ci\`o che si desidera. La differenza rispetto alla coda sincrona
+(\cref{cap:10-sync-queue}) \`e che qui non esiste ammissione: una richiesta
+sincrona che trova la coda piena riceve \code{429} da \code{QueueFullException}
+senza che nessuno abbia stimato quanto avrebbe dovuto attendere.

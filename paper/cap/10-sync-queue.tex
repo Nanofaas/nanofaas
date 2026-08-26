@@ -1,0 +1,312 @@
+\chapter{Il modulo \code{sync-queue}}
+\label{cap:10-sync-queue}
+
+Il modulo \code{sync-queue} inserisce sul percorso sincrono una coda esplicita
+con controllo di ammissione. \`E l'applicazione diretta del principio di
+SEDA~\cite{welsh2001seda}: il punto in cui le richieste si accumulano dev'essere
+noto e strumentato, anzich\'e disperso nei buffer del sistema operativo o nella
+lunghezza delle connessioni pendenti.
+
+Il modulo risponde a una domanda che il \code{async-queue} non pone: \emph{questa
+richiesta ha senso accettarla?} Una coda senza ammissione accetta finch\'e ha
+posto e rifiuta quando \`e piena, il che significa che l'ultima richiesta
+accettata prima del riempimento attende quanto l'intera coda impiega a
+drenare. Con l'ammissione, il rifiuto avviene prima, sulla base di una stima.
+
+Sono 905 righe in dieci classi.
+
+\section{Le due domande dell'ammissione}
+
+\code{SyncQueueAdmissionController} \`e la classe pi\`u corta e pi\`u
+significativa del modulo:
+
+\begin{lstlisting}[language=Java]
+public SyncQueueAdmissionResult evaluate(String functionName, int depth, Instant now) {
+    if (depth >= maxDepth) {
+        return SyncQueueAdmissionResult.rejected(SyncQueueRejectReason.DEPTH,
+                                                 Double.POSITIVE_INFINITY);
+    }
+    double estWaitSeconds = estimator.estimateWaitSeconds(functionName, depth, now);
+    long maxWaitSeconds = configSource.syncQueueMaxEstimatedWait().toSeconds();
+    if (configSource.syncQueueAdmissionEnabled()
+            && (maxWaitSeconds == 0 || estWaitSeconds > maxWaitSeconds)) {
+        return SyncQueueAdmissionResult.rejected(SyncQueueRejectReason.EST_WAIT, estWaitSeconds);
+    }
+    return SyncQueueAdmissionResult.accepted(estWaitSeconds);
+}
+\end{lstlisting}
+
+Le due condizioni sono qualitativamente diverse.
+
+\paragraph{\code{DEPTH}} \`e un vincolo di risorsa. La coda ha una capacit\`a
+finita e non pu\`o accettare oltre. Il rifiuto \`e incondizionato e non dipende
+dalla configurazione dell'ammissione: anche disattivando il controllo di
+ammissione la coda continua a rifiutare quando \`e piena.
+
+\paragraph{\code{EST\_WAIT}} \`e un vincolo di qualit\`a del servizio. La coda
+avrebbe posto, ma la richiesta attenderebbe troppo a lungo. Il rifiuto \`e una
+scelta di politica, disattivabile.
+
+La distinzione \`e resa visibile al chiamante attraverso l'header
+\code{X-Queue-Reject-Reason}, ed \`e la stessa distinzione su cui il modulo
+\code{offload} basa la propria attivazione reattiva
+(\cref{cap:13-offload}): entrambe le condizioni sono \emph{pressione}, e
+giustificano una deviazione verso un'istanza remota, mentre un
+\code{TIMEOUT} in coda non lo \`e.
+
+\section{La stima dell'attesa}
+
+\subsection{Il modello}
+
+\code{WaitEstimator} applica la forma pi\`u diretta della legge di
+Little~\cite{little1961proof}. Se il sistema smaltisce $\mu$ richieste al secondo
+e ne ha $Q$ in coda, una richiesta che si accodasse adesso attenderebbe
+approssimativamente
+
+\[
+  W_{\text{stim}} = \frac{Q}{\mu}.
+\]
+
+Il throughput $\mu$ \`e stimato contando i dispatch effettivi in una finestra
+scorrevole:
+
+\begin{lstlisting}[language=Java]
+public double estimateWaitSeconds(String functionName, int queueDepth, Instant now) {
+    if (queueDepth <= 0) { return 0.0; }
+    ThroughputSnapshot perFunction = snapshot(perFunctionEvents.get(functionName), now);
+    if (perFunction.samples() >= perFunctionMinSamples && perFunction.throughput() > 0) {
+        return queueDepth / perFunction.throughput();
+    }
+    ThroughputSnapshot global = snapshot(globalEvents, now);
+    if (global.throughput() <= 0) { return Double.POSITIVE_INFINITY; }
+    return queueDepth / global.throughput();
+}
+\end{lstlisting}
+
+\subsection{Le tre decisioni della stima}
+
+\paragraph{Prima: per funzione, se ci sono abbastanza campioni.} Funzioni diverse
+hanno tempi di servizio diversi, quindi la stima per funzione \`e la sola
+significativa. Ma una stima costruita su pochi campioni \`e rumorosa, e un
+rumore su questa grandezza si traduce direttamente in rifiuti ingiustificati. Il
+parametro \code{perFunctionMinSamples} (default 50) fissa la soglia sotto la
+quale la stima per funzione non \`e considerata affidabile.
+
+\paragraph{Seconda: altrimenti, globale.} Sotto la soglia si ripiega sul
+throughput aggregato della piattaforma. \`E una stima peggiore --- mescola
+funzioni con costi diversi --- ma \`e disponibile prima. Il ripiego \`e una
+scelta pragmatica: preferire una stima grossolana a nessuna stima.
+
+\paragraph{Terza: senza campioni, attesa infinita.} \`E il caso pi\`u
+interessante e ha una conseguenza operativa che il progetto ha appreso per via
+empirica. Con \code{globalThroughput = 0} la stima \`e
+\code{Double.POSITIVE\_INFINITY}, che eccede qualunque soglia, e quindi
+\emph{ogni} richiesta viene rifiutata con \code{429}.
+
+Questo \`e corretto in produzione --- un sistema che non ha ancora dispacciato
+nulla non pu\`o promettere alcun tempo di attesa --- e distruttivo nei test: una
+suite che avvia il control plane e invia la prima richiesta la vede respinta con
+\code{429} senza alcuna congestione reale. La soluzione adottata \`e che i test
+di API disattivano esplicitamente la coda sincrona
+(\code{sync-queue.enabled=false}), il che \`e registrato come vincolo noto
+dell'impianto di test (\cref{cap:26-qualita-verifica}).
+
+\`E anche un esempio del genere di comportamento che una piattaforma di ricerca
+deve documentare: la condizione ``nessuna storia'' non \`e un caso limite raro,
+\`e lo stato in cui il sistema si trova ogni volta che viene avviato.
+
+\subsection{La finestra}
+
+Il default \`e una finestra di 30 secondi. Il calcolo del throughput divide il
+numero di campioni per la durata della finestra, non per l'intervallo effettivo
+fra il primo e l'ultimo campione:
+
+\begin{lstlisting}[language=Java]
+double seconds = Math.max(1.0, window.toSeconds());
+return new ThroughputSnapshot(samples, samples / seconds);
+\end{lstlisting}
+
+Questo \emph{sottostima} il throughput durante i primi 30 secondi di attivit\`a,
+perch\'e divide per una finestra che il sistema non ha ancora riempito. Una
+sottostima del throughput produce una sovrastima dell'attesa, e quindi un
+comportamento pi\`u conservativo --- pi\`u rifiuti --- nella fase iniziale. La
+direzione dell'errore \`e quindi sicura, ed \`e presumibilmente il motivo per cui
+la formulazione \`e stata mantenuta; il progetto non lo documenta esplicitamente.
+
+\section{Lo scheduler sincrono e il forward progress}
+
+Il consumatore della coda \`e \code{SyncScheduler}, e la sua funzione
+\code{tickOnce()} risolve un problema che una coda FIFO ingenua non risolve.
+
+\subsection{Il problema della testa bloccata}
+
+Con una singola coda condivisa da tutte le funzioni, la richiesta in testa
+appartiene a una funzione che potrebbe non avere slot di concorrenza liberi. Un
+consumatore FIFO stretto si bloccherebbe su di essa, e nessuna richiesta di
+nessun'altra funzione verrebbe dispacciata --- \emph{head-of-line blocking}, con
+la variante particolarmente sgradevole che il blocco dura quanto il tempo di
+servizio della funzione bloccante.
+
+\subsection{La soluzione: scansione selettiva}
+
+\begin{lstlisting}[language=Java, caption={Il cuore di \code{tickOnce()}.}]
+SyncQueueItem item = queue.findReadyMatching(now,
+        task -> enqueuer.hasAvailableSlot(task.functionName()));
+if (item == null) {
+    if (queue.peekReady(now) == null) {
+        blockedBackoffMs = tickMs;
+        queue.awaitWork(tickMs);          // coda vuota: attendi lavoro
+    } else {
+        queue.rotateReadyScanWindow(now); // tutti bloccati: ruota e ritenta
+        pause.accept(currentBlockedBackoff());
+    }
+    return;
+}
+String functionName = item.task().functionName();
+if (!enqueuer.tryAcquireSlot(functionName)) {
+    queue.rotateReadyItem(item, now);     // slot perso in corsa: rimetti in fondo
+    pause.accept(currentBlockedBackoff());
+    return;
+}
+...
+\end{lstlisting}
+
+Lo scheduler non prende la testa: \emph{cerca} il primo elemento la cui funzione
+ha uno slot disponibile. La ricerca \`e limitata a una finestra di 64 elementi
+(\code{POLL\_READY\_MATCHING\_SCAN\_LIMIT}), il che mantiene il costo per tick
+limitato indipendentemente dalla profondit\`a della coda.
+
+Se nessun elemento nella finestra \`e servibile, la finestra viene \emph{ruotata}
+--- i suoi elementi vanno in fondo --- cos\`i che il tick successivo esamini
+elementi diversi. La rotazione \`e ci\`o che rende la scansione limitata
+comunque equa: nessun elemento resta indefinitamente fuori dalla finestra
+esaminata.
+
+Il codice tratta anche il caso di corsa: fra il momento in cui un elemento \`e
+selezionato perch\'e la sua funzione aveva uno slot e il momento in cui lo slot
+viene acquisito, un altro consumatore pu\`o averlo preso. In tal caso l'elemento
+viene ruotato anzich\'e scartato.
+
+\subsection{Il backoff}
+
+\begin{lstlisting}[language=Java]
+private volatile long tickMs = 2;
+private volatile long blockedBackoffMs = tickMs;
+
+private long currentBlockedBackoff() {
+    long current = blockedBackoffMs;
+    blockedBackoffMs = Math.min(current * 2, 50);
+    return current;
+}
+\end{lstlisting}
+
+Il tick base \`e di 2\,ms. Quando lo scheduler trova lavoro ma non riesce a
+dispacciarlo --- ossia quando ogni funzione in coda \`e satura --- attende con
+backoff esponenziale fino a un tetto di 50\,ms. Il backoff viene azzerato appena
+un dispatch riesce.
+
+I due valori sono un compromesso esplicito fra reattivit\`a e consumo di CPU. A
+2\,ms il ciclo aggiunge al pi\`u due millisecondi alla latenza di una richiesta
+che attende uno slot appena liberato, il che \`e dello stesso ordine del tempo di
+servizio delle funzioni di riferimento del progetto. Senza backoff, un sistema
+saturo farebbe girare il thread dello scheduler a vuoto 500 volte al secondo.
+
+\begin{damisurare}
+Il contributo del tick di 2\,ms alla latenza end-to-end non \`e stato isolato
+sperimentalmente. Il \cref{cap:25-valutazione-concorrenza} riporta tempi di
+attesa dell'ordine di 40\,ms contro tempi di servizio di 5\,ms, in cui il
+contributo del tick sarebbe minoritario ma non trascurabile.
+\todomis{contributo del periodo di tick alla latenza a bassa concorrenza}
+\end{damisurare}
+
+\section{Timeout in coda}
+
+Un elemento pu\`o scadere mentre attende. La scadenza \`e governata da
+\code{sync-queue.max-queue-wait} (default 2\,s) e viene verificata a ogni
+ispezione della coda: \code{peekReady}, \code{findReadyMatching} e le rotazioni
+rimuovono gli elementi scaduti e li completano con esito \code{QUEUE\_TIMEOUT}.
+
+Il coordinatore reattivo traduce quell'esito in un rifiuto con ragione
+\code{TIMEOUT}:
+
+\begin{lstlisting}[language=Java]
+if (result.error() != null && "QUEUE_TIMEOUT".equals(result.error().code())) {
+    throw new SyncQueueRejectedException(SyncQueueRejectReason.TIMEOUT,
+                                         syncQueueGateway.retryAfterSeconds());
+}
+\end{lstlisting}
+
+Il chiamante riceve quindi \code{429} con \code{X-Queue-Reject-Reason: timeout},
+distinguibile dai due rifiuti di ammissione. La distinzione conta: un rifiuto per
+\code{DEPTH} o \code{EST\_WAIT} avviene \emph{prima} che la richiesta occupi la
+coda, un \code{TIMEOUT} avviene dopo che l'ha occupata per l'intera durata
+consentita. Solo i primi due sono trattati come pressione dal modulo di offload.
+
+\section{Rimozione di una funzione}
+
+Quando una funzione viene cancellata mentre ha richieste in coda, il modulo
+esegue tre azioni: registra il nome in un insieme di funzioni rimosse, drena
+dalla coda tutti gli elementi che le appartengono completandoli con errore
+\code{FUNCTION\_REMOVED}, e cancella lo stato dell'estimatore e delle metriche.
+
+L'insieme delle funzioni rimosse \`e consultato anche in ingresso, due volte: una
+prima del lock sulla coda e una dentro. La doppia verifica gestisce la corsa fra
+una registrazione in corso e una cancellazione, e ha il costo di una lettura su
+un insieme concorrente, trascurabile rispetto alla sezione critica che protegge.
+
+\section{Metriche esportate}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Metrica} & \textbf{Tipo} & \textbf{Significato} \\
+\midrule
+\code{sync\_queue\_depth} & gauge & Profondit\`a, globale (\code{function=""}) e per funzione. \\
+\code{sync\_queue\_wait\_seconds} & gauge & Attesa stimata, globale e per funzione. \\
+\code{sync\_queue\_admitted\_total} & counter & Ammissioni. \\
+\code{sync\_queue\_rejected\_total} & counter & Rifiuti di ammissione. \\
+\code{sync\_queue\_timedout\_total} & counter & Scadenze in coda. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+La documentazione operativa del progetto fornisce una regola di lettura che vale
+la pena riportare perch\'e sintetizza il rapporto fra le due grandezze:
+\emph{``un valore alto di \code{sync\_queue\_rejected\_total\{function\}} con
+profondit\`a bassa indica un rifiuto per attesa stimata, non un esaurimento della
+capacit\`a''}. \`E il modo in cui un operatore distingue una piattaforma che ha
+finito la coda da una che sta proteggendo il proprio SLO.
+
+\section{Configurazione}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}llp{6.4cm}@{}}
+\toprule
+\textbf{Chiave} & \textbf{Default} & \textbf{Effetto} \\
+\midrule
+\code{enabled} & \code{true} & Attiva il modulo. \\
+\code{admission-enabled} & \code{true} & Attiva il rifiuto per \code{EST\_WAIT}
+(quello per \code{DEPTH} resta). \\
+\code{max-depth} & 200 & Capacit\`a della coda. \\
+\code{max-estimated-wait} & 2\,s & Soglia di rifiuto per attesa stimata. \\
+\code{max-queue-wait} & 2\,s & Scadenza in coda. \\
+\code{retry-after-seconds} & 2 & Valore dell'header \code{Retry-After}. \\
+\code{throughput-window} & 30\,s & Finestra della stima di throughput. \\
+\code{per-function-min-samples} & 50 & Campioni per fidarsi della stima per
+funzione. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Tutti questi parametri, tranne \code{max-depth} e i due che governano la stima,
+sono modificabili a caldo attraverso il modulo \code{runtime-config}
+(\cref{cap:14-runtime-config}): la lettura avviene infatti attraverso
+\code{SyncQueueConfigSource} anzich\'e direttamente dalle propriet\`a. \`E il
+motivo per cui \code{evaluate()} interroga il config source a ogni valutazione
+anzich\'e leggere un campo finale.

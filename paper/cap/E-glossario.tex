@@ -1,0 +1,95 @@
+\chapter{Glossario}
+\label{cap:E-glossario}
+
+\begin{description}[style=nextline, leftmargin=0pt, itemsep=2pt]
+
+\item[\textbf{Ammissione}] La decisione se accettare una richiesta in coda. In
+\nf{} \`e presa dal modulo \code{sync-queue} per profondit\`a e per attesa
+stimata (\cref{cap:10-sync-queue}).
+
+\item[\textbf{Attesa} (\emph{queue wait})] Intervallo fra l'ammissione della
+richiesta e la sua consegna al runtime. Metrica
+\code{function\_queue\_wait\_ms}.
+
+\item[\textbf{Budget di concorrenza}] Numero massimo di invocazioni
+contemporaneamente in volo su tutte le funzioni in modo \code{BUDGETED}. \`E una
+dichiarazione di capacit\`a della piattaforma, non una grandezza inferita dal
+carico (\cref{cap:12-concurrency-control}).
+
+\item[\textbf{Ciclo aperto / ciclo chiuso}] Nel primo gli arrivi sono
+programmati dall'orologio; nel secondo ogni utente virtuale attende la risposta
+prima di inviare. Un carico a ciclo chiuso non pu\`o distinguere politiche di
+ammissione (\cref{cap:22-metodo-sperimentale}).
+
+\item[\textbf{Cold start}] Ritardo dovuto all'inizializzazione di un'istanza non
+ancora pronta. Metrica \code{function\_cold\_start\_ms}.
+
+\item[\textbf{Control plane}] Il processo che registra le funzioni, orchestra le
+invocazioni e governa le politiche. In \nf{} \`e uno solo.
+
+\item[\textbf{Degradazione osservabile}] Riduzione di funzionalit\`a che il
+sistema dichiara --- via log, metrica o codice di stato --- anzich\'e
+nascondere. \`E il criterio che distingue le degradazioni accettabili da quelle
+che fanno rifiutare l'avvio (\cref{cap:03-requisiti-principi}).
+
+\item[\textbf{Deriva della baseline}] Meccanismo per cui un estremo storico
+(minimo di latenza, massimo di throughput) viene lentamente riportato verso il
+presente, cos\`i che un intervallo anomalo non lo fissi per sempre
+(\cref{cap:12-concurrency-control}).
+
+\item[\textbf{Dispatch}] La consegna dell'invocazione al runtime della funzione.
+
+\item[\textbf{Equit\`a max-min pesata}] Criterio di ripartizione in cui si
+massimizza l'allocazione minima, chi chiede meno della propria quota la ottiene
+per intero, e l'eccedenza \`e ridistribuita~\cite{bertsekas1992datanetworks}.
+
+\item[\textbf{Finestra di ammissione}] La quantit\`a $C + Q$ --- limite di
+concorrenza pi\`u dimensione della coda --- oltre la quale una funzione rifiuta.
+Il fatto che il limite ne faccia parte \`e il secondo lavoro del limite
+(\cref{cap:12-concurrency-control}).
+
+\item[\textbf{Ginocchio}] Il valore del limite di concorrenza a cui il servizio
+satura e oltre il quale l'aggiunta produce attesa anzich\'e lavoro. Calcolato
+come $\lambda_{\max} S_{\min}$ per la legge di Little.
+
+\item[\textbf{Idempotenza}] Propriet\`a per cui due invocazioni con la stessa
+chiave corrispondono a una sola esecuzione (\cref{cap:06-nucleo}).
+
+\item[\textbf{Legge di Little}] $L = \lambda W$: il numero medio nel sistema
+uguaglia il tasso di arrivo per il tempo medio di permanenza~\cite{little1961proof}.
+
+\item[\textbf{Limite configurato / effettivo}] Il primo \`e ci\`o che l'utente ha
+dichiarato ed \`e un tetto invalicabile; il secondo \`e ci\`o che un controllore
+adattivo applica in questo momento (\cref{cap:09-async-queue}).
+
+\item[\textbf{Modulo}] Unit\`a opzionale del control plane, selezionata a tempo
+di build e caricata via SPI (\cref{cap:08-sistema-moduli}).
+
+\item[\textbf{Offload}] Inoltro trasparente di un'invocazione sincrona a
+un'istanza remota, per politica della funzione o per pressione locale
+(\cref{cap:13-offload}).
+
+\item[\textbf{Provider di deployment}] Backend che realizza l'intento
+\code{DEPLOYMENT}: Kubernetes o runtime container locale
+(\cref{cap:15-deployment-provider}).
+
+\item[\textbf{Replay}] Riproduzione immediata dell'esito di un'esecuzione gi\`a
+terminata, per una richiesta con chiave di idempotenza corrispondente.
+
+\item[\textbf{Servizio} (\emph{service time})] Intervallo fra dispatch e
+completamento, comprensivo del round trip HTTP. Metrica
+\code{function\_latency\_ms}. \emph{Non} include l'attesa in coda.
+
+\item[\textbf{Sojourn}] Attesa pi\`u servizio: ci\`o che il chiamante osserva al
+netto della rete. Metrica \code{function\_e2e\_latency\_ms}. \`E la grandezza da
+cui il modo omonimo decide.
+
+\item[\textbf{SPI} (\emph{Service Provider Interface})] Meccanismo Java di
+scoperta di implementazioni via \code{ServiceLoader}, usato per caricare i
+moduli.
+
+\item[\textbf{Watchdog}] Binario Rust che fa da entrypoint di ogni container di
+funzione gestito e adatta i tre protocolli di runtime a un unico contratto HTTP
+(\cref{cap:17-runtime-funzione}).
+
+\end{description}

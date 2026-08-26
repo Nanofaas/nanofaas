@@ -1,0 +1,40 @@
+% Release performance series, from docs/performance/history.md (medians of 3 runs
+% on profile azure-d8s-v5+d2s-v5-amd64-native-loadtest-v1).
+\documentclass[border=8pt]{standalone}
+\usepackage{nanofaas-figs}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\begin{document}
+\begin{tikzpicture}
+\begin{axis}[
+    width=13cm, height=7cm,
+    axis y line*=left, axis x line*=bottom,
+    xlabel={release}, ylabel={throughput (req/s)},
+    ylabel style={nfblue}, y tick label style={nfblue},
+    symbolic x coords={0.17.0,0.17.1,v0.18.1,v0.18.2,v0.18.3,v0.19.0},
+    xtick=data, ymin=0, ymax=340,
+    font=\sffamily\small, tick label style={font=\sffamily\footnotesize},
+    legend style={draw=none, font=\sffamily\footnotesize, at={(0.02,0.98)}, anchor=north west},
+    ybar, bar width=16pt,
+]
+  \addplot[fill=nfbluebg, draw=nfblue, line width=0.8pt] coordinates {
+    (0.17.0,241.904) (0.17.1,269.069) (v0.18.1,239.130)
+    (v0.18.2,249.341) (v0.18.3,232.407) (v0.19.0,300.483)};
+  \addlegendentry{throughput}
+\end{axis}
+\begin{axis}[
+    width=13cm, height=7cm,
+    axis y line*=right, axis x line=none,
+    ylabel={p95 (ms)}, ylabel style={nfamber}, y tick label style={nfamber},
+    symbolic x coords={0.17.0,0.17.1,v0.18.1,v0.18.2,v0.18.3,v0.19.0},
+    ymin=0, ymax=13, font=\sffamily\small,
+    tick label style={font=\sffamily\footnotesize},
+    legend style={draw=none, font=\sffamily\footnotesize, at={(0.02,0.86)}, anchor=north west},
+]
+  \addplot[nfamber, line width=1.3pt, mark=*, mark size=2.2pt] coordinates {
+    (0.17.0,6.496) (0.17.1,5.772) (v0.18.1,6.607)
+    (v0.18.2,5.125) (v0.18.3,5.131) (v0.19.0,11.256)};
+  \addlegendentry{p95}
+\end{axis}
+\end{tikzpicture}
+\end{document}

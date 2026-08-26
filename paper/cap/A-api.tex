@@ -1,0 +1,195 @@
+\chapter{Riferimento API}
+\label{cap:A-api}
+
+Sintesi dell'API HTTP del control plane, derivata da \code{openapi.yaml} nella
+radice del repository e dai controller. Come osservato nel
+\cref{cap:05-contratti-dati}, il file di specifica \`e mantenuto a mano e la sua
+corrispondenza con le rotte registrate non \`e verificata automaticamente.
+
+\section{Gestione delle funzioni}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}llp{6.4cm}@{}}
+\toprule
+\textbf{Op.} & \textbf{Percorso} & \textbf{Esiti} \\
+\midrule
+\code{GET} & \code{/v1/functions} & \code{200} elenco \\
+\code{POST} & \code{/v1/functions} &
+\code{201} creata; \code{409} nome gi\`a presente; \code{422} specifica non
+valida; \code{424} validazione immagine fallita; \code{503} nessun provider
+disponibile \\
+\code{GET} & \code{/v1/functions/\{name\}} & \code{200}; \code{404} \\
+\code{PATCH} & \code{/v1/functions/\{name\}} &
+\code{200}; \code{400} campo non modificabile o valore invalido; \code{404} \\
+\code{DELETE} & \code{/v1/functions/\{name\}} & \code{204}; \code{404} \\
+\code{GET} & \code{/v1/functions/\{name\}/replicas} &
+\code{200}; \code{400}; \code{404}; \code{503} \\
+\code{PUT} & \code{/v1/functions/\{name\}/replicas} &
+\code{200}; \code{400}; \code{404}; \code{503} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Il corpo della registrazione \`e un \code{FunctionSpec}
+(\cref{cap:05-contratti-dati}). Il corpo del \code{PATCH} \`e un
+\code{FunctionUpdateRequest} e accetta soltanto quattro campi
+(\cref{cap:06-nucleo}); le propriet\`a sconosciute sono rifiutate.
+
+\section{Invocazione}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}llp{6.2cm}@{}}
+\toprule
+\textbf{Op.} & \textbf{Percorso} & \textbf{Esiti} \\
+\midrule
+\code{POST} & \code{/v1/functions/\{name\}:invoke} &
+\code{200} (o il codice deciso dalla funzione); \code{404}; \code{408};
+\code{429}; \code{500}; \code{502}; \code{504} \\
+\code{POST} & \code{/v1/functions/\{name\}:enqueue} &
+\code{202}; \code{404}; \code{429}; \code{500}; \code{501} \\
+\code{GET} & \code{/v1/executions/\{executionId\}} & \code{200}; \code{404} \\
+\code{POST} & \code{/v1/internal/executions/\{id\}:complete} & \code{204} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Codici con semantica specifica:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lp{9cm}@{}}
+\toprule
+\textbf{Codice} & \textbf{Condizione} \\
+\midrule
+\code{429} & Limite di frequenza globale, oppure rifiuto della coda sincrona.
+Distinguibili dagli header (sotto). \\
+\code{501} & Il percorso asincrono richiede il modulo \code{async-queue}, assente
+in questo binario (\cref{cap:16-moduli-diagnostici}). \\
+\code{502} & L'offload verso l'istanza remota \`e fallito
+(\cref{cap:13-offload}). Nessun fallback locale. \\
+\code{504} & L'istanza remota non ha risposto entro il budget. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\section{Header}
+
+\subsection{Richiesta}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lp{8.4cm}@{}}
+\toprule
+\textbf{Header} & \textbf{Significato} \\
+\midrule
+\code{Idempotency-Key} & Deduplica l'invocazione sulla funzione
+(\cref{cap:06-nucleo}). \\
+\code{X-Trace-Id} & Identificatore di traccia propagato fino al runtime. \\
+\code{X-Timeout-Ms} & Sovrascrive il timeout della specifica per questa
+invocazione. \\
+\code{X-NanoFaaS-Offload-Hop} & Marca una richiesta gi\`a inoltrata: vieta un
+secondo salto. \\
+\code{traceparent}, \code{tracestate} & Contesto di traccia W3C, propagato
+sull'offload. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Tutti gli altri header del chiamante, esclusi quelli hop-by-hop, sono resi
+visibili all'handler nel campo \code{headers} della richiesta, che viene
+\emph{sovrascritto} e mai fuso con quanto dichiarato nel corpo
+(\cref{cap:04-architettura-control-plane}).
+
+\subsection{Risposta}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lp{8.2cm}@{}}
+\toprule
+\textbf{Header} & \textbf{Significato} \\
+\midrule
+\code{X-Execution-Id} & Identificatore dell'esecuzione. \\
+\code{X-NanoFaaS-Function-Status} & \code{true} se il codice di stato \`e stato
+deciso dall'handler (\cref{cap:17-runtime-funzione}). \\
+\code{X-NanoFaaS-Encoding} & Codifica dell'output, per esempio \code{base64}. \\
+\code{X-NanoFaaS-Offloaded} & URL dell'istanza remota che ha servito. \\
+\code{Retry-After} & Su \code{429} dalla coda sincrona. \\
+\code{X-Queue-Reject-Reason} & \code{depth}, \code{est\_wait} o \code{timeout}
+(\cref{cap:10-sync-queue}). \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\subsection{Dal runtime al control plane}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Header} & \textbf{Significato} \\
+\midrule
+\code{X-Cold-Start} & L'invocazione ha pagato un'inizializzazione. \\
+\code{X-Init-Duration-Ms} & Durata di quell'inizializzazione. \\
+\code{X-NanoFaaS-Function-Status} & Il codice di stato \`e intenzionale. \\
+\code{X-Dispatch-Attempt} & Numero di tentativo, sulla callback. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\section{API di amministrazione}
+
+Attiva soltanto con \code{nanofaas.admin.runtime-config.enabled=true}; altrimenti
+i percorsi rispondono \code{404} (\cref{cap:14-runtime-config}).
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}llp{6cm}@{}}
+\toprule
+\textbf{Op.} & \textbf{Percorso} & \textbf{Esiti} \\
+\midrule
+\code{GET} & \code{/v1/admin/runtime-config} & \code{200}; \code{404} disattivata \\
+\code{POST} & \code{/v1/admin/runtime-config/validate} & \code{200};
+\code{400}; \code{422} \\
+\code{PATCH} & \code{/v1/admin/runtime-config} & \code{200}; \code{400}
+(\code{expectedRevision} mancante o durata malformata); \code{404}; \code{409}
+revisione non corrispondente; \code{422}; \code{503} applicazione fallita \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Le durate usano il formato ISO-8601 (\code{PT5S}).
+
+\section{Management}
+
+Sulla porta \code{8081}:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\code{GET /actuator/health/liveness} & Sonda di liveness \\
+\code{GET /actuator/health/readiness} & Sonda di readiness \\
+\code{GET /actuator/prometheus} & Metriche (\cref{cap:C-metriche}) \\
+\code{GET /modules/build-metadata} & Identit\`a della build, se il modulo \`e
+compilato \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}

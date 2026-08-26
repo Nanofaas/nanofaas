@@ -1,0 +1,68 @@
+\documentclass[12pt,a4paper,twoside,openright]{book}
+\input{preambolo}
+
+\title{\textbf{\nf}\\[0.4em]\large Un control plane FaaS minimale e modulare:\\ architettura, controllo della concorrenza e valutazione sperimentale}
+\author{Universit\`a degli Studi di Milano--Bicocca\\ Dipartimento di Informatica, Sistemistica e Comunicazione}
+\date{\today}
+
+\begin{document}
+
+\frontmatter
+\maketitle
+\input{cap/00-sommario}
+\tableofcontents
+
+\mainmatter
+
+\part{Contesto, motivazione, metodo}
+\input{cap/01-introduzione}
+\input{cap/02-stato-dell-arte}
+\input{cap/03-requisiti-principi}
+
+\part{Architettura}
+\input{cap/04-architettura-control-plane}
+\input{cap/05-contratti-dati}
+\input{cap/06-nucleo}
+\input{cap/07-modalita-esecuzione}
+\input{cap/08-sistema-moduli}
+
+\part{I moduli}
+\input{cap/09-async-queue}
+\input{cap/10-sync-queue}
+\input{cap/11-autoscaler}
+\input{cap/12-concurrency-control}
+\input{cap/13-offload}
+\input{cap/14-runtime-config}
+\input{cap/15-deployment-provider}
+\input{cap/16-moduli-diagnostici}
+
+\part{Runtime, SDK, strumenti}
+\input{cap/17-runtime-funzione}
+\input{cap/18-sdk}
+\input{cap/19-cli-scaffolding}
+\input{cap/20-build-packaging}
+
+\part{Osservabilit\`a e valutazione sperimentale}
+\input{cap/21-osservabilita}
+\input{cap/22-metodo-sperimentale}
+\input{cap/23-prestazioni-base}
+\input{cap/24-footprint}
+\input{cap/25-valutazione-concorrenza}
+
+\part{Qualit\`a, discussione, chiusura}
+\input{cap/26-qualita-verifica}
+\input{cap/27-discussione}
+\input{cap/28-lavori-futuri}
+\input{cap/29-conclusioni}
+
+\appendix
+\input{cap/A-api}
+\input{cap/B-configurazione}
+\input{cap/C-metriche}
+\input{cap/D-record-sperimentali}
+\input{cap/E-glossario}
+
+\bibliographystyle{plain}
+\bibliography{bibliografia}
+
+\end{document}

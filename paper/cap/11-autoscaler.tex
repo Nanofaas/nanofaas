@@ -1,0 +1,298 @@
+\chapter{Il modulo \code{autoscaler}}
+\label{cap:11-autoscaler}
+
+Il modulo \code{autoscaler} decide \emph{quante repliche} deve avere una
+funzione gestita. \`E la controparte, e la controfigura, del modulo trattato nel
+capitolo successivo: entrambi regolano la capacit\`a offerta a una funzione, ma
+agiscono su leve diverse e --- questo \`e il punto architetturale di \nf{} ---
+sono sostituibili indipendentemente.
+
+Sono 754 righe in undici classi.
+
+\section{Il posto dell'autoscaler nel sistema}
+
+Il campo \code{ScalingStrategy} nella specifica di una funzione ammette tre
+valori, e definisce chi possiede la decisione:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lp{9.4cm}@{}}
+\toprule
+\textbf{Strategia} & \textbf{Chi decide} \\
+\midrule
+\code{INTERNAL} & Questo modulo. Il control plane campiona le proprie metriche e
+comanda il numero di repliche al provider di deployment. \\
+\code{HPA} & Kubernetes. Il control plane crea le risorse e si astiene; la
+decisione \`e dell'Horizontal Pod Autoscaler~\cite{k8shpa}. \\
+\code{NONE} & Nessuno. Il numero di repliche resta quello impostato
+manualmente. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Il default per una funzione in modalit\`a \code{DEPLOYMENT} \`e \code{INTERNAL}
+(\cref{cap:06-nucleo}). La strategia \code{NONE} non \`e una lacuna ma uno
+strumento sperimentale: consente di fissare il numero di repliche mentre si
+studia il comportamento del controllore di concorrenza, isolando le due
+dinamiche che altrimenti interagirebbero.
+
+\section{La decisione}
+
+\subsection{La formula}
+
+\code{ScalingDecisionCalculator} implementa la stessa formula dell'HPA di
+Kubernetes: il rapporto fra valore osservato e valore obiettivo, moltiplicato
+per il numero corrente di repliche.
+
+\[
+  R_{\text{racc}} = \left\lceil \max_{m \in M}
+    \frac{v_m}{t_m} \cdot R_{\text{corr}} \right\rceil,
+  \qquad
+  R_{\text{des}} = \operatorname{clamp}(R_{\text{racc}}, R_{\min}, R_{\max})
+\]
+
+dove $M$ \`e l'insieme delle metriche configurate, $v_m$ il valore osservato e
+$t_m$ l'obiettivo. Con pi\`u metriche vince la pi\`u esigente: il massimo dei
+rapporti, non la media. \`E la scelta corretta per un insieme di vincoli che
+devono valere tutti.
+
+\subsection{Una separazione che sembra ridondante}
+
+\begin{lstlisting}[language=Java]
+// Kept apart on purpose: the clamp used to overwrite the recommendation in
+// place, so a decision pinned at maxReplicas was indistinguishable from a
+// metric that had stopped rising.
+int recommendedReplicas = (int) Math.ceil(maxRatio * normalizedCurrentReplicas);
+int desiredReplicas =
+        Math.clamp(recommendedReplicas, scaling.minReplicas(), scaling.maxReplicas());
+\end{lstlisting}
+
+Il valore raccomandato e quello desiderato sono conservati entrambi nel record
+di decisione, anche se solo il secondo viene applicato. La ragione \`e
+diagnostica: una funzione ferma a dieci repliche pu\`o esserlo perch\'e la
+domanda si \`e stabilizzata oppure perch\'e la domanda continua a crescere ma il
+tetto \`e stato raggiunto. Sono due situazioni che richiedono azioni opposte
+dall'operatore, e sovrascrivendo la raccomandazione con il valore limitato
+diventano indistinguibili.
+
+\`E un esempio del principio ricorrente in questo progetto: \emph{conservare la
+distinzione fra ci\`o che il sistema voleva e ci\`o che ha potuto}. Lo stesso
+principio governa i due limiti di concorrenza del \cref{cap:09-async-queue} e i
+due campi \code{requested}/\code{effective} della modalit\`a di esecuzione nel
+\cref{cap:07-modalita-esecuzione}.
+
+\section{Le tre metriche}
+
+\subsection{\code{queue\_depth} e \code{in\_flight}}
+
+Entrambe sono lette da \code{ScalingMetricsSource}, quindi provengono dal modulo
+\code{async-queue}. Sono metriche di \emph{stato}: descrivono la situazione
+istantanea del sistema.
+
+\subsection{\code{rps}: un caso a parte}
+
+La terza metrica non viene dalla sorgente ma da un contatore Micrometer, ed \`e
+calcolata come derivata:
+
+\begin{lstlisting}[language=Java]
+private double readRps(String functionName) {
+    Counter counter = dispatchCounters.computeIfAbsent(functionName, fn ->
+            Counter.builder("function_dispatch_total").tag("function", fn).register(meterRegistry));
+    CounterSample current = new CounterSample(counter.count(), System.currentTimeMillis());
+    CounterSample previous = lastDispatchSamples.put(functionName, current);
+    if (previous == null) { return 0.0; }
+    double deltaCount = current.count() - previous.count();
+    long deltaMs = current.epochMs() - previous.epochMs();
+    if (deltaCount <= 0.0 || deltaMs <= 0L) { return 0.0; }
+    return deltaCount / (deltaMs / 1000.0);
+}
+\end{lstlisting}
+
+Il contatore \code{function\_dispatch\_total} \`e cumulativo, e usarne il valore
+grezzo come carico sarebbe un errore --- un sistema attivo da un'ora avrebbe un
+``carico'' enorme e crescente. La lettura ne calcola quindi la differenza fra
+campioni successivi divisa per il tempo trascorso. Il primo campione restituisce
+zero, perch\'e non esiste un precedente con cui differenziare.
+
+La documentazione operativa del progetto lo enuncia esplicitamente: \emph{``The
+raw cumulative counter value is not used directly as load.''} \`E un'avvertenza
+che vale la pena avere scritta, perch\'e l'errore \`e comune e le sue
+conseguenze --- scale-up monotono e irreversibile --- sono spettacolari.
+
+\subsection{La degradazione senza \code{async-queue}}
+
+\begin{lstlisting}[language=Java]
+/**
+ * The autoscaler is useful without a queue module — {@code rps} is read from a meter here,
+ * not from the source — so a missing source is not fatal. It is fatal to {@code queue_depth}
+ * and {@code in_flight}, which the no-op answers with 0 forever: the function looks idle and
+ * never scales. Warn once rather than on every tick; the condition is fixed at startup.
+ */
+private void warnOnceIfSourceIsBlind(String functionName) { ... }
+\end{lstlisting}
+
+Questo commento \`e la giustificazione, gi\`a citata nel
+\cref{cap:08-sistema-moduli}, del trattamento asimmetrico fra questo modulo e
+\code{concurrency-control}. Qui la degradazione \`e parziale --- una delle tre
+metriche continua a funzionare --- e viene segnalata. L\`a sarebbe totale e
+silenziosa, e quindi il modulo rifiuta di avviarsi.
+
+Vale la pena notare il dettaglio: l'avviso \`e emesso \emph{una sola volta},
+tramite un \code{AtomicBoolean}. La condizione \`e fissata all'avvio e non pu\`o
+cambiare; ripeterla a ogni tick significherebbe riempire il log senza aggiungere
+informazione, e --- peggio --- rendere l'avviso invisibile.
+
+\section{Isteresi: i cooldown}
+
+Un controllore reattivo che agisce a ogni campione oscilla. \`E il fenomeno che
+in teoria del controllo si chiama \emph{hunting}: la correzione modifica la
+grandezza osservata, che genera la correzione opposta.
+
+Il modulo lo previene con due cooldown asimmetrici:
+
+\begin{lstlisting}[language=Java]
+private static final long SCALE_UP_COOLDOWN_MS = 30_000;
+private static final long SCALE_DOWN_COOLDOWN_MS = 60_000;
+\end{lstlisting}
+
+L'asimmetria \`e il punto. Scalare in su \`e un'operazione a basso rischio: si
+paga capacit\`a inutilizzata per qualche minuto. Scalare in gi\`u \`e ad alto
+rischio: se la domanda ritorna, le richieste pagano un cold start. Quindi il
+sistema sale rapidamente e scende con riluttanza --- lo stesso principio che
+governa le finestre di stabilizzazione dell'HPA di Kubernetes, dove il default di
+scale-down \`e di cinque minuti.
+
+I valori 30\,s e 60\,s sono costanti nel codice, non configurabili. \`E una
+scelta di semplicit\`a che il progetto potrebbe voler rivedere: sono i due
+parametri che pi\`u probabilmente un esperimento vorrebbe variare.
+
+\begin{damisurare}
+L'effetto dei due cooldown sulla stabilit\`a del numero di repliche e sul costo
+in capacit\`a inutilizzata non \`e stato caratterizzato. Le campagne del
+\cref{cap:23-prestazioni-base} riportano il numero di repliche di picco per
+release ma non la traiettoria temporale.
+\todomis{traiettoria del numero di repliche sotto carico a gradino, al variare
+dei cooldown}
+\end{damisurare}
+
+\section{Inferenza del cold start}
+
+\code{ColdStartTracker} risolve un problema di osservabilit\`a: un runtime
+vecchio, o scritto in un linguaggio il cui SDK non implementa la convenzione,
+non emette l'header \code{X-Cold-Start}, e il control plane non saprebbe che
+un'invocazione ha pagato un'inizializzazione.
+
+Il tracker ricorda gli eventi di scale-up recenti e ne inferisce il cold start:
+
+\begin{lstlisting}[language=Java]
+/**
+ * Returns true if the function recently scaled up from 0 replicas
+ * (within the expiry window), indicating a likely cold start.
+ */
+public boolean isPotentialColdStart(String functionName) {
+    ScaleUpEvent event = recentScaleUps.get(functionName);
+    if (event == null) { return false; }
+    long ageMs = Instant.now().toEpochMilli() - event.timestamp().toEpochMilli();
+    if (ageMs > EXPIRY_MS) { recentScaleUps.remove(functionName); return false; }
+    return event.fromReplicas() == 0;
+}
+\end{lstlisting}
+
+\`E un'euristica, e il codice non lo nasconde --- il metodo si chiama
+\code{isPotentialColdStart}, non \code{isColdStart}. La finestra di 30 secondi \`e
+generosa, e il criterio \code{fromReplicas() == 0} \`e conservativo: uno scale-up
+da una a due repliche non \`e considerato, anche se la seconda replica sar\`a
+fredda.
+
+L'euristica pu\`o sbagliare in entrambe le direzioni: attribuisce cold start a
+richieste servite da una replica gi\`a calda entro trenta secondi da un
+risveglio, e non lo attribuisce a richieste servite da una replica nuova
+aggiunta a un insieme non vuoto. \`E accettabile per il ruolo che ha --- un
+ripiego per runtime che non collaborano --- e diventa problematica se qualcuno
+ne usasse i risultati come dato sperimentale.
+
+\begin{damisurare}
+Il tasso di errore dell'inferenza rispetto all'header \code{X-Cold-Start}
+riportato dai runtime che lo implementano \`e misurabile confrontando le due
+sorgenti sulla stessa esecuzione, e non \`e stato misurato.
+\todomis{accordo fra cold start inferito e cold start dichiarato}
+\end{damisurare}
+
+\section{Il ciclo di scaling}
+
+\code{InternalScaler} \`e un \code{SmartLifecycle} con un esecutore schedulato a
+periodo fisso (default 5\,s). A ogni tick scandisce le funzioni registrate, e per
+ciascuna con strategia \code{INTERNAL} e deployment gestito calcola la decisione,
+verifica il cooldown pertinente, e comanda il nuovo numero di repliche al
+coordinatore di deployment.
+
+Il modulo si disattiva completamente in assenza di un coordinatore di deployment:
+
+\begin{lstlisting}[language=Java]
+if (deploymentCoordinator == null) {
+    log.info("InternalScaler disabled: no ManagedDeploymentCoordinator available");
+    return;
+}
+\end{lstlisting}
+
+\`E la degradazione corretta: senza un backend di deployment non esistono
+repliche da scalare, e un ciclo che gira senza poter agire sarebbe puro consumo.
+Anche qui la condizione \`e dichiarata nel log all'avvio anzich\'e lasciata
+dedurre.
+
+Il periodo di 5\,s \`e sostanzialmente pi\`u lungo del tick da 2\,ms dello
+scheduler sincrono, e la differenza \`e istruttiva: l'ammissione deve reagire in
+millisecondi perch\'e governa singole richieste, lo scaling reagisce in secondi
+perch\'e la sua azione --- creare un pod --- richiede secondi. Un autoscaler che
+campionasse a 2\,ms produrrebbe decisioni su uno stato che non ha ancora
+recepito l'azione precedente.
+
+\section{Metriche di decisione}
+
+\code{ScalingDecisionMetrics} esporta la decisione stessa: repliche correnti,
+raccomandate, desiderate, e il rapporto massimo che le ha determinate. Rende
+possibile ricostruire \emph{a posteriori} perch\'e il sistema abbia scelto un
+certo numero di repliche, senza dover correlare i log con le metriche di stato.
+
+La documentazione operativa fornisce la lettura combinata: \emph{``Internal
+autoscaling for \code{rps} uses the delta between successive
+\code{function\_dispatch\_total} samples divided by elapsed sample time''}, ed \`e
+la stessa quantit\`a che l'operatore ricalcolerebbe da PromQL. Esportare la
+grandezza su cui il sistema ha effettivamente deciso, anzich\'e lasciarla
+ricostruire, evita la classe di errori in cui l'analisi post-mortem calcola
+qualcosa di leggermente diverso da ci\`o che il controllore aveva visto.
+
+\section{Rapporto con il controllo della concorrenza}
+
+I due moduli agiscono su leve diverse:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lll@{}}
+\toprule
+ & \textbf{\code{autoscaler}} & \textbf{\code{concurrency-control}} \\
+\midrule
+Leva & numero di repliche & limite di concorrenza per funzione \\
+Latenza dell'azione & secondi (creazione pod) & immediata (variabile in memoria) \\
+Periodo di decisione & 5\,s & \multicolumn{1}{l}{\`e nel \cref{cap:12-concurrency-control}} \\
+Costo dell'errore & capacit\`a sprecata o cold start & attesa o sotto-utilizzazione \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Il modo \code{STATIC\_PER\_POD} del controllore di concorrenza \`e l'unico punto
+in cui i due si toccano: calcola il limite come \emph{repliche pronte $\times$
+obiettivo per replica}, e quindi il suo risultato si muove quando l'autoscaler
+agisce. \`E un accoppiamento voluto e unidirezionale --- il controllore di
+concorrenza legge lo stato delle repliche, l'autoscaler non legge i limiti di
+concorrenza.
+
+Che i due possano essere selezionati indipendentemente \`e il fatto
+architettonico che rende possibili gli esperimenti del
+\cref{cap:25-valutazione-concorrenza}: fissando la strategia di scaling a
+\code{NONE} si ottiene un sistema in cui l'unica variabile \`e il limite di
+concorrenza, e le due dinamiche non si confondono.

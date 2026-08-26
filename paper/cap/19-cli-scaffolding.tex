@@ -1,0 +1,164 @@
+\chapter{CLI e scaffolding}
+\label{cap:19-cli-scaffolding}
+
+Due strumenti stanno fra l'utente e la piattaforma: la CLI \code{nanofaas}, che
+parla con un control plane, e \code{fn-init}, che genera lo scheletro di una
+nuova funzione. Un terzo strumento --- quello che provvisiona l'infrastruttura
+--- vive in un repository separato ed \`e trattato nel
+\cref{cap:22-metodo-sperimentale}.
+
+\section{Il confine fra gli strumenti}
+
+La documentazione del progetto enuncia la divisione senza ambiguit\`a:
+
+\begin{quote}\itshape
+\code{nanofaas} \`e un client HTTP neutro rispetto al backend per un control
+plane NanoFaaS. Non provvisiona infrastruttura, non chiama Helm o \code{kubectl},
+e non ispeziona risorse specifiche del provider.
+\end{quote}
+
+La separazione ha una conseguenza di progetto: la CLI non ha alcuna dipendenza
+da Kubernetes, da Docker o da qualunque backend, e la sua unica dipendenza
+esterna \`e HTTP. \`E per questo che pu\`o essere compilata in un binario nativo
+di dimensioni contenute.
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lp{8.2cm}@{}}
+\toprule
+\textbf{Obiettivo} & \textbf{Strumento} \\
+\midrule
+Costruire, registrare, invocare o ispezionare una funzione & CLI
+\code{nanofaas} \\
+Provvisionare una VM, installare k3s/Helm, distribuire immagini, eseguire E2E &
+strumento di provisioning esterno \\
+Eseguire il control plane in sviluppo & Gradle / Spring Boot \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\section{La CLI}
+
+Circa 1\,460 righe, costruita su Picocli. La struttura dei comandi:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Comando} & \textbf{Ruolo} \\
+\midrule
+\code{fn apply} & Registra o aggiorna una funzione da un manifesto YAML. \\
+\code{fn list} / \code{fn get} / \code{fn delete} & Ciclo di vita. \\
+\code{fn test} & Invoca con un input di prova e confronta. \\
+\code{invoke} & Invocazione sincrona. \\
+\code{enqueue} & Invocazione asincrona. \\
+\code{exec get} & Stato di un'esecuzione. \\
+\code{deploy} & Costruisce l'immagine e registra in un passo. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+La configurazione risolve in ordine: opzione da riga di comando, variabile
+d'ambiente, file di configurazione (\code{\textasciitilde/.config/nanofaas/config.yaml}).
+\`E la precedenza convenzionale, e l'assenza di sorprese \`e essa stessa una
+propriet\`a desiderabile in uno strumento che compare dentro script di
+esperimento.
+
+\subsection{Due build, due scopi}
+
+\begin{lstlisting}[language=bash]
+./gradlew :nanofaas-cli:installDist      # distribuzione JVM
+./gradlew :nanofaas-cli:nativeCompile    # eseguibile nativo GraalVM
+\end{lstlisting}
+
+La build JVM \`e quella di sviluppo. Quella nativa esiste perch\'e la CLI \`e
+invocata dentro cicli: uno scenario di validazione la chiama decine di volte, e
+il tempo di avvio della JVM --- dell'ordine del secondo --- si somma a ogni
+chiamata. Un eseguibile nativo parte in decine di millisecondi.
+
+\`E lo stesso argomento che il \cref{cap:20-build-packaging} applica al control
+plane, ma con una differenza: per un processo di lunga durata il tempo di avvio
+\`e ammortizzato e ci\`o che conta \`e il throughput a regime; per uno strumento a
+riga di comando il tempo di avvio \emph{\`e} il tempo di esecuzione.
+
+\subsection{Lo smoke test nativo}
+
+\begin{lstlisting}[language=bash]
+./gradlew :nanofaas-cli:nativeSmoke
+\end{lstlisting}
+
+Verifica help, versione e un comando HTTP contro uno stub locale. \`E una
+verifica breve con uno scopo preciso: la compilazione nativa pu\`o riuscire e
+produrre un binario che fallisce a runtime per una configurazione di riflessione
+mancante --- l'errore caratteristico di GraalVM
+(\cref{cap:20-build-packaging}). Un test che esercita almeno un percorso di
+serializzazione reale \`e ci\`o che distingue ``ha compilato'' da ``funziona''.
+
+\section{\code{fn-init}}
+
+Genera lo scheletro di una nuova funzione: struttura di directory, file di
+build, handler di esempio, Dockerfile, manifesto. \`E scritto in Python e vive
+sotto \code{tools/}.
+
+Il progetto ha registrato su questo strumento una regressione istruttiva: la
+generazione dello scaffold JavaScript aveva perso la capacit\`a di incorporare
+l'SDK, e la perdita non era stata rilevata perch\'e il test corrispondente era
+rimasto orfano --- verificava una funzionalit\`a che non veniva pi\`u esercitata.
+\`E il modo caratteristico in cui uno strumento di scaffolding degrada: il codice
+generato continua a esistere e a sembrare corretto, e solo chi lo usa scopre che
+manca qualcosa.
+
+\begin{damisurare}
+Non esiste una verifica che il codice generato da \code{fn-init} sia
+effettivamente costruibile e registrabile per ogni linguaggio supportato. Un
+cancello di questo tipo --- generare, costruire, registrare, invocare, per
+ciascun template --- \`e realizzabile con gli strumenti gi\`a presenti.
+\todomis{costruibilit\`a e invocabilit\`a degli scaffold generati, per linguaggio}
+\end{damisurare}
+
+\section{Il manifesto di funzione}
+
+Il formato che \code{fn apply} consuma \`e la serializzazione YAML di
+\code{FunctionSpec} (\cref{cap:05-contratti-dati}). Un esempio con le politiche
+discusse nella Parte III:
+
+\begin{lstlisting}[language=yamlnf, caption={Manifesto con controllo di
+concorrenza a budget e offload reattivo.}]
+name: word-stats
+image: nanofaas/word-stats:1.0
+executionMode: DEPLOYMENT
+runtimeMode: HTTP
+timeoutMs: 5000
+concurrency: 8
+queueSize: 100
+resources:
+  requests: { cpu: 0.5, memoryMiB: 256 }
+  limits:   { cpu: 2.0, memoryMiB: 512 }
+scalingConfig:
+  strategy: INTERNAL
+  minReplicas: 1
+  maxReplicas: 6
+  metrics:
+    - { type: queue_depth, target: "5" }
+  concurrencyControl:
+    mode: BUDGETED
+    targetLatencyMs: 10
+    weight: 2.0
+    minTargetInFlightPerPod: 1
+    maxTargetInFlightPerPod: 8
+offload:
+  mode: pressure
+  targetUrl: http://cloud-host:8080
+\end{lstlisting}
+
+Il manifesto \`e il punto in cui tutte le politiche descritte nella Parte III si
+incontrano, ed \`e utile leggerlo come indice: \code{scalingConfig.strategy}
+seleziona l'autoscaler (\cref{cap:11-autoscaler}),
+\code{concurrencyControl.mode} il controllore di concorrenza
+(\cref{cap:12-concurrency-control}), \code{offload} la politica di deviazione
+(\cref{cap:13-offload}), e \code{queueSize} dimensiona la coda che l'ammissione
+protegge (\cref{cap:10-sync-queue}).

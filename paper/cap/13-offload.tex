@@ -1,0 +1,272 @@
+\chapter{Il modulo \code{offload}}
+\label{cap:13-offload}
+
+Il modulo \code{offload} consente a un'istanza di \nf{} di inoltrare
+un'invocazione sincrona a un'altra istanza remota anzich\'e eseguirla localmente.
+Lo scenario di riferimento \`e edge$\to$cloud: un nodo periferico con capacit\`a
+limitata che, quando non riesce ad ammettere una richiesta, la delega a
+un'istanza pi\`u capiente~\cite{satya2017edge, shi2016edge}.
+
+\`E il modulo pi\`u piccolo che faccia qualcosa di sostanziale: 230 righe in
+quattro classi. La brevit\`a \`e conseguenza diretta di due rinunce, entrambe
+deliberate, che il capitolo argomenta.
+
+\begin{figure}[htbp]
+  \centering
+  \resizebox{0.95\textwidth}{!}{\input{figures/fig-offload}}
+  \caption{Offload trasparente edge$\to$cloud: attivazione eager per politica di
+  funzione oppure reattiva su rifiuto della coda sincrona; salto singolo, nessun
+  fallback locale.}
+  \label{fig:offload}
+\end{figure}
+
+\section{Quando si scarica}
+
+L'attivazione \`e decisa in \code{ReactiveInvocationCoordinator}, sul percorso di
+ammissione (\cref{cap:04-architettura-control-plane}), e ha due innesti.
+
+\subsection{Eager: la politica della funzione}
+
+\begin{lstlisting}[language=Java]
+@Override
+public boolean shouldOffloadEagerly(FunctionSpec spec) {
+    OffloadPolicy policy = spec.offload();
+    return policy != null
+            && !Boolean.FALSE.equals(policy.enabled())
+            && OffloadPolicy.MODE_ALWAYS.equalsIgnoreCase(policy.mode())
+            && targetUrl(spec) != null;
+}
+\end{lstlisting}
+
+Una funzione con \code{offload.mode = "always"} viene sempre inoltrata, senza
+tentare l'esecuzione locale. \`E la dichiarazione, da parte dell'operatore, che
+quella funzione non ha senso al bordo --- per esempio perch\'e richiede risorse
+che il nodo periferico non ha.
+
+\subsection{Pressure: il rifiuto come segnale}
+
+\begin{lstlisting}[language=Java]
+try {
+    admitLocally(executionRecord);
+} catch (SyncQueueRejectedException ex) {
+    OffloadTrigger trigger = pressureTrigger(ex.reason());
+    if (offloadable && trigger != null && offloadGateway.shouldOffloadOnPressure(spec)) {
+        startOffload(executionRecord, spec, trigger, context, timeoutMs, offloadedTarget);
+        return;
+    }
+    throw ex;
+}
+
+private static OffloadTrigger pressureTrigger(SyncQueueRejectReason reason) {
+    return switch (reason) {
+        case DEPTH -> OffloadTrigger.DEPTH;
+        case EST_WAIT -> OffloadTrigger.EST_WAIT;
+        case TIMEOUT -> null;
+    };
+}
+\end{lstlisting}
+
+Questa \`e la parte concettualmente interessante. La decisione di scaricare
+\emph{non} \`e presa da un modello di costo che confronti la latenza locale
+attesa con quella remota, come nella formulazione classica del problema di
+offloading. \`E presa dal \emph{rifiuto} della coda di ammissione locale.
+
+Il vantaggio \`e che non richiede alcuna calibrazione preventiva: la coda
+sincrona sa gi\`a stimare l'attesa e sa gi\`a decidere che \`e eccessiva
+(\cref{cap:10-sync-queue}); l'offload riusa quella decisione anzich\'e
+ripeterla con parametri propri. Il costo \`e che la decisione \`e binaria e
+tardiva: non c'\`e modo di scaricare \emph{preventivamente} una frazione del
+traffico per evitare la congestione, e non c'\`e alcuna stima della latenza
+remota nella decisione.
+
+\subsection{Perch\'e \code{TIMEOUT} non \`e pressione}
+
+Il \code{switch} mappa esplicitamente \code{TIMEOUT} a \code{null}. Le prime due
+ragioni di rifiuto avvengono \emph{prima} che la richiesta occupi la coda: la
+piattaforma dichiara di non poterla accettare, e inoltrarla altrove \`e una
+risposta sensata. \code{TIMEOUT} avviene \emph{dopo} che la richiesta ha
+occupato la coda per l'intera durata concessa: il budget temporale \`e gi\`a
+esaurito, e iniziare adesso una chiamata remota consumerebbe altro tempo per
+consegnare comunque una risposta tardiva.
+
+\section{Le due rinunce}
+
+\subsection{Salto singolo}
+
+Ogni richiesta inoltrata porta l'header \code{X-NanoFaaS-Offload-Hop: 1}, e il
+control plane ricevente lo interpreta come divieto di ulteriore inoltro:
+
+\begin{lstlisting}[language=Java]
+boolean offloadable = !context.offloadedHop() && offloadGateway.enabled();
+\end{lstlisting}
+
+La ragione \`e la terminazione. Con $n$ istanze configurate in catena o in ciclo,
+una richiesta potrebbe rimbalzare indefinitamente, e ogni rimbalzo consuma parte
+del budget temporale del chiamante originale senza avvicinarsi a un'esecuzione.
+Un contatore di salti con limite $k > 1$ sarebbe pi\`u generale e richiederebbe
+di decidere $k$; il valore 1 \`e l'unica scelta che non richiede una decisione.
+
+\subsection{Nessun fallback locale}
+
+Se la chiamata remota fallisce, l'esecuzione fallisce. Il chiamante riceve
+\code{502 Bad Gateway} o \code{504 Gateway Timeout}. Non viene ritentata
+localmente.
+
+Il commento nel codice del nucleo motiva la scelta sul piano meccanico:
+
+\begin{lstlisting}[language=Java]
+// Bypasses the local queue entirely: no local concurrency slots are consumed,
+// so completion goes through the offload-specific path (no slot release, no retry).
+\end{lstlisting}
+
+Una richiesta inoltrata non ha mai acquisito uno slot locale. Un fallback la
+farebbe rientrare nella coda locale --- la stessa che l'aveva rifiutata, e che
+nel frattempo non si \`e svuotata --- riproducendo il rifiuto con il budget
+temporale ormai consumato. Il fallback trasformerebbe un \code{502} rapido in un
+\code{429} tardivo, che \`e strettamente peggiore.
+
+C'\`e anche una ragione di onest\`a diagnostica: con il fallback, un'istanza
+remota irraggiungibile si manifesterebbe come un aumento di latenza locale
+anzich\'e come un errore, e la configurazione errata resterebbe invisibile.
+
+\section{La semantica degli errori}
+
+La distinzione fra ``la funzione remota ha fallito'' e ``l'inoltro ha fallito''
+\`e centrale, ed \`e implementata con cura:
+
+\begin{lstlisting}[language=Java]
+// A marked response is the function's own answer, whatever its status —
+// read it down the same body-parsing path as a plain 2xx, before any
+// status-based branching (a marker-bearing 404 is a function decision,
+// not "unregistered function").
+if (functionDecided || response.statusCode().is2xxSuccessful()) {
+    return response.bodyToMono(InvocationResponse.class)
+            .map(this::toResult)
+            .switchIfEmpty(Mono.error(new OffloadFailedException(target, false,
+                    "empty response body from remote " + target)));
+}
+if (response.statusCode().value() == 404) {
+    return response.releaseBody().then(Mono.error(new OffloadFailedException(target, false,
+            "function '" + task.functionName() + "' not registered on remote " + target)));
+}
+\end{lstlisting}
+
+Il caso critico \`e il \code{404}. Un \code{404} \emph{senza} marcatore significa
+che la funzione non \`e registrata sull'istanza remota: \`e un errore di
+configurazione della piattaforma, e va segnalato come fallimento di offload
+(\code{502}), non propagato al chiamante come se la sua richiesta fosse
+malformata. Un \code{404} \emph{con} marcatore \code{X-NanoFaaS-Function-Status}
+\`e invece la risposta deliberata della funzione remota, e va propagato tale e
+quale.
+
+L'ordine dei rami \`e quindi essenziale: il marcatore viene consultato prima di
+qualunque diramazione sul codice di stato.
+
+\subsection{Il margine di timeout}
+
+\begin{lstlisting}[language=Java]
+// ponytail: fixed margin so the gateway's remote budget expires before the
+// coordinator's local wait, making 504 (not a local "timeout") deterministic
+private static final long TIMEOUT_MARGIN_MS = 50;
+...
+long timeoutMs = Math.max(1, timeoutBudgetMs - TIMEOUT_MARGIN_MS);
+\end{lstlisting}
+
+Due timeout corrono in parallelo: quello locale del coordinatore, che attende il
+futuro di completamento, e quello della chiamata remota. Se scadessero
+contemporaneamente, l'esito dipenderebbe da una corsa e il chiamante riceverebbe
+talvolta \code{504} e talvolta una risposta di timeout locale. Il margine fisso
+di 50\,ms garantisce che il timeout remoto scatti per primo, e quindi che la
+diagnosi sia deterministica.
+
+\`E un dettaglio piccolo con una propriet\`a importante: rende \emph{riproducibile}
+un comportamento in condizioni di errore, che \`e la classe di comportamenti pi\`u
+difficile da testare e la pi\`u facile da rendere non deterministica per
+distrazione.
+
+\section{Osservabilit\`a}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Segnale} & \textbf{Tipo} & \textbf{Etichette} \\
+\midrule
+\code{nanofaas.offload} & counter & \code{function}, \code{trigger}
+(\code{eager} / \code{depth} / \code{est\_wait}) \\
+\code{nanofaas.offload.failure} & counter & \code{function} \\
+\code{X-NanoFaaS-Offloaded} & header & URL dell'istanza remota \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+L'header di risposta \`e ci\`o che rende l'offload \emph{trasparente ma non
+invisibile}: il chiamante non deve fare nulla di diverso, ma se lo desidera pu\`o
+sapere che la sua richiesta \`e stata servita altrove e da chi. \`E la stessa
+distinzione fra trasparenza e opacit\`a che il \cref{cap:07-modalita-esecuzione}
+applica alla degradazione da \code{DEPLOYMENT} a \code{EXTERNAL}.
+
+L'etichetta \code{trigger} sul contatore consente di distinguere le tre cause di
+attivazione, il che \`e necessario per interpretare il dato: un'alta frequenza di
+\code{eager} \`e una politica che funziona, un'alta frequenza di \code{depth} \`e
+un nodo periferico sotto-dimensionato.
+
+\section{Configurazione}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}llp{6.6cm}@{}}
+\toprule
+\textbf{Chiave} & \textbf{Default} & \textbf{Effetto} \\
+\midrule
+\code{nanofaas.offload.enabled} & \code{true} & Interruttore generale; il gateway
+resta comunque inerte senza un target. \\
+\code{nanofaas.offload.target-url} & --- & URL base dell'istanza remota. \\
+\code{nanofaas.offload.pressure-enabled} & \code{true} & Attiva l'offload
+reattivo; quello eager per funzione resta comunque. \\
+\midrule
+\multicolumn{3}{@{}l@{}}{\emph{Per funzione, nel blocco \code{offload}:}} \\
+\code{enabled} & --- & \code{false} esclude la funzione. \\
+\code{targetUrl} & --- & Sovrascrive il target globale; la sua sola presenza
+attiva l'offload per quella funzione. \\
+\code{mode} & \code{pressure} & \code{always} per l'offload eager. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Il default \code{enabled = true} in assenza di un target \`e apparentemente
+incoerente ed \`e invece corretto: il modulo \`e attivo ma non ha dove inoltrare,
+quindi non fa nulla. Configurare un target \`e l'unico atto necessario, e non
+occorre ricordarsi anche di attivare l'interruttore. Il commento nel codice lo
+enuncia: \emph{``even when true the gateway stays inert until a target URL is
+configured''}.
+
+\section{Ci\`o che il modulo non fa}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Non modella il costo.} La formulazione classica del problema di
+  offloading valuta se il trasferimento convenga, dati il costo di rete e il
+  guadagno di esecuzione. Qui la decisione \`e binaria e derivata dal rifiuto
+  locale.
+
+  \item \textbf{Non sceglie fra pi\`u destinazioni.} Il target \`e uno, globale
+  o per funzione. Non esiste bilanciamento fra istanze remote.
+
+  \item \textbf{Non scarica il percorso asincrono.} Solo \code{:invoke} \`e
+  soggetto a offload. L'invocazione asincrona ha gi\`a una coda che assorbe la
+  pressione, e il chiamante non sta attendendo.
+\end{itemize}
+
+\begin{damisurare}
+Il beneficio dell'offload sotto pressione non \`e stato caratterizzato
+sperimentalmente: non esiste una campagna che confronti latenza end-to-end e
+tasso di rifiuto di un nodo periferico con e senza offload attivo, al variare
+della latenza di rete verso il target. \`E l'esperimento naturale per questo
+modulo e non \`e stato eseguito.
+\todomis{p95 end-to-end e tasso di rifiuto con e senza offload, al variare del
+RTT verso l'istanza remota}
+\end{damisurare}

@@ -1,0 +1,80 @@
+% ---------------------------------------------------------------------------
+% Preambolo condiviso della monografia NanoFaaS.
+% Compilazione: latexmk -pdf nanofaas.tex   (pdfLaTeX, TeX Live 2026+)
+% ---------------------------------------------------------------------------
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[italian]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+
+\usepackage{geometry}
+\geometry{a4paper, top=3cm, bottom=3cm, inner=3cm, outer=2.5cm}
+
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{tabularx}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{adjustbox}
+
+% Figure TikZ: le sorgenti in figures/ sono documenti `standalone`.
+% Caricando il pacchetto `standalone` qui, \input{figures/fig-x} le include
+% ignorandone il \documentclass e riusando questo preambolo.
+\usepackage{figures/nanofaas-figs}
+\usepackage{standalone}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+\usepackage{listings}
+\usepackage{xcolor}
+
+\usepackage[hidelinks]{hyperref}
+\usepackage[nameinlink,italian]{cleveref}
+
+% ---- stile dei listati -----------------------------------------------------
+\lstdefinestyle{nf}{
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{nfblue}\bfseries,
+  commentstyle=\color{nfslate}\itshape,
+  stringstyle=\color{nfgreen},
+  numbers=left, numberstyle=\tiny\color{nfslate}, numbersep=7pt,
+  frame=leftline, framerule=1pt, rulecolor=\color{nfslate!40},
+  xleftmargin=10pt, breaklines=true, breakatwhitespace=false,
+  postbreak=\mbox{\textcolor{nfslate}{$\hookrightarrow$}\space}, columns=flexible,
+  showstringspaces=false, tabsize=2, captionpos=b,
+  literate={à}{{\`a}}1 {è}{{\`e}}1 {é}{{\'e}}1 {ì}{{\`i}}1 {ò}{{\`o}}1 {ù}{{\`u}}1
+           {—}{{---}}1 {–}{{--}}1 {’}{{'}}1 {‘}{{'}}1 {“}{{"}}1 {”}{{"}}1 {≥}{{$\geq$}}1 {≤}{{$\leq$}}1 {×}{{$\times$}}1 {λ}{{$\lambda$}}1 {μ}{{$\mu$}}1,
+}
+\lstset{style=nf}
+\lstdefinelanguage{yamlnf}{
+  keywords={true,false,null,enabled,mode,strategy,metric},
+  sensitive=false, comment=[l]{\#}, morestring=[b]',morestring=[b]"
+}
+
+% ---- elementi ricorrenti ---------------------------------------------------
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\nf}{NanoFaaS}
+
+% Riquadro "da misurare": marca un dato non ancora rilevato.
+\usepackage[most]{tcolorbox}
+\newtcolorbox{damisurare}[1][]{
+  colback=nfamberbg, colframe=nfamber, boxrule=0.6pt, arc=2pt,
+  fonttitle=\bfseries\sffamily\small, title={Da misurare}, #1}
+\newcommand{\todomis}[1]{\textcolor{nfamber}{\textbf{[da misurare: #1]}}}
+
+% Numerazione profonda ma indice compatto.
+% Tolleranza extra: il testo italiano con molti \code{...} non spezzabili
+% produrrebbe altrimenti righe che escono dal margine.
+\setlength{\emergencystretch}{6em}
+\hyphenpenalty=1000
+\tolerance=3000
+
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{1}

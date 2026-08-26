@@ -1,0 +1,284 @@
+\chapter{Qualit\`a del software e verifica}
+\label{cap:26-qualita-verifica}
+
+In un progetto che si propone come strumento di misura, la verifica non \`e
+igiene ma parte del contributo: un risultato ottenuto su una piattaforma di cui
+non si conosce lo stato non \`e un risultato. Questo capitolo descrive
+l'apparato di verifica di \nf{}, dalle unit\`a alle regole architetturali.
+
+\section{Le proporzioni}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lr@{}}
+\toprule
+\textbf{Grandezza} & \textbf{Valore} \\
+\midrule
+Righe di codice di produzione (Java) & 16\,487 \\
+Righe di codice di test (Java) & 31\,664 \\
+Rapporto test / produzione & $\approx 1{,}9$ \\
+Classi di test & 235 \\
+Soglia minima di copertura (JaCoCo) & 85\,\% \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Quasi due righe di test per ogni riga di produzione. Il rapporto \`e alto ma non
+sorprendente per un progetto la cui superficie \`e piccola e le cui interazioni
+--- fra moduli, fra code, fra politiche --- sono numerose: il codice combinatorio
+\`e nei test, non nella produzione.
+
+\section{I livelli}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lp{8.4cm}@{}}
+\toprule
+\textbf{Livello} & \textbf{Caratteristiche} \\
+\midrule
+Unit\`a & JUnit 5, classi \code{*Test.java}, nessuna infrastruttura. \\
+Integrazione & Contesto Spring completo con \code{WebTestClient}; server mock
+Fabric8 per Kubernetes. \\
+Container & Testcontainers~\cite{testcontainers}: richiede Docker. \\
+Kubernetes & Richiede \code{KUBECONFIG}. \\
+Contratto multi-SDK & \code{functions/contract-tests/run.sh}
+(\cref{cap:18-sdk}). \\
+Watchdog & Test unitari Rust pi\`u integrazione locale per HTTP, STDIO, FILE,
+callback, metriche e ciclo di vita warm. \\
+E2E di scenario & Di propriet\`a dello strumento esterno
+(\cref{cap:22-metodo-sperimentale}). \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Va notato che i test del watchdog non richiedono n\'e Docker n\'e una VM: bastano
+Rust, Python 3 e alcune utilit\`a a riga di comando. \`E una scelta che mantiene
+verificabile in locale il componente presente in ogni container di funzione.
+
+\section{Le due invocazioni della suite}
+
+Come discusso nel \cref{cap:16-moduli-diagnostici}, la selezione modulare \`e
+risolta a tempo di configurazione di Gradle e non pu\`o variare all'interno di
+una build. La verifica completa richiede quindi due invocazioni:
+
+\begin{lstlisting}[language=bash]
+./gradlew test                              # default: tutti i moduli
+./gradlew test -PcontrolPlaneModules=none   # la configurazione minima
+\end{lstlisting}
+
+\section{Le regole architetturali}
+
+Il progetto codifica sei regole con ArchUnit~\cite{archunit}. Cinque riguardano
+il nucleo e una i moduli.
+
+\subsection{Le regole del nucleo}
+
+\begin{description}[style=nextline, leftmargin=0pt]
+  \item[\textbf{R1 --- Assenza di cicli.}] I package di primo livello del nucleo
+  non devono formare cicli fra loro.
+\begin{lstlisting}[language=Java]
+slices().matching("..controlplane.(*)..").should().beFreeOfCycles();
+\end{lstlisting}
+
+  \item[\textbf{R2 --- \code{api} \`e l'unico punto di ingresso.}] Nessuna classe
+  fuori dal package \code{api} deve dipendere da esso. La direzione \`e
+  unidirezionale: l'API conosce il servizio, il servizio non conosce l'API.
+
+  \item[\textbf{R3 --- Il nucleo non dipende dai moduli.}]
+\begin{lstlisting}[language=Java]
+noClasses().that().resideInAPackage("..controlplane..")
+        .should().dependOnClassesThat().resideInAPackage("..modules..")
+        .as("the core must work without optional modules (SPI)");
+\end{lstlisting}
+  \`E la regola che rende \emph{verificata} la promessa del
+  \cref{cap:03-requisiti-principi}. Senza di essa, l'affermazione ``il nucleo
+  funziona senza moduli'' sarebbe un'intenzione; con essa \`e una propriet\`a che
+  la build accerta.
+
+  \item[\textbf{R4 --- La direzione dei livelli.}] I package \code{dispatch},
+  \code{execution} e \code{deployment} non devono dipendere da \code{service}. La
+  gerarchia \`e \code{api} $\to$ \code{service} $\to$ \code{dispatch}, e i livelli
+  bassi non risalgono.
+
+  \item[\textbf{R6 --- Il namespace appartiene al nucleo.}] Ogni classe nel
+  package \code{it.unimib.datai.nanofaas.controlplane} deve avere il proprio
+  file di classe sotto \code{platform/control-plane/}.
+\end{description}
+
+L'ultima \`e la pi\`u insolita e vale la pena soffermarcisi. Verifica non una
+dipendenza ma una \emph{corrispondenza fra nome logico e collocazione fisica}:
+impedisce che un modulo dichiari una classe dentro il namespace del nucleo per
+aggirare le altre regole. Senza di essa, R3 sarebbe eludibile spostando il
+package anzich\'e la dipendenza.
+
+L'implementazione ha dovuto adattarsi a un cambiamento della libreria:
+
+\begin{lstlisting}[language=Java]
+// ArchUnit 1.4.1 dropped SourceCodeLocation's source-path accessor, so read the
+// source URI instead; its path points under platform/control-plane/.
+String path = item.getSource().map(Source::getUri).map(URI::getPath).orElse("");
+\end{lstlisting}
+
+\subsection{La regola dei moduli}
+
+Ciascuno dei nove moduli porta la propria classe di verifica, con la stessa
+regola:
+
+\begin{lstlisting}[language=Java]
+// R5': isolamento SPI. Un'estensione tra moduli è una decisione esplicita:
+// aggiungere una riga not(resideInAPackage(...)) con commento per ogni coppia sanzionata
+// (ArchUnit 1.4 ha rimosso ignoreDependency dal fluent API di base).
+@ArchTest
+static final ArchRule does_not_depend_on_other_modules =
+        noClasses()
+                .that().resideInAPackage("..modules.offload..")
+                .should().dependOnClassesThat(
+                        resideInAPackage("..modules..")
+                                .and(DescribedPredicate.not(resideInAPackage("..modules.offload.."))))
+                .as("module must not depend on other modules (SPI isolation)");
+\end{lstlisting}
+
+Il divieto \`e sulle dipendenze \emph{laterali}. Dipendere dalle interfacce del
+nucleo \`e il meccanismo previsto e resta libero: \`e cos\`i che i provider di
+deployment implementano \code{ImageValidator} e che
+\code{concurrency-control} scrive attraverso \code{ScalingMetricsSource}.
+
+Il commento prescrive anche la procedura in caso di deroga: aggiungere una riga
+esplicita con la propria giustificazione, cos\`i che ogni eccezione sia visibile
+nel codice della regola. Al momento della stesura nessuna deroga \`e stata
+aggiunta.
+
+\subsection{Che cosa questo apparato compra}
+
+Le sei regole insieme rendono \emph{eseguibile} l'architettura descritta nella
+Parte II. Il \cref{cap:08-sistema-moduli} ha osservato che il compilatore \`e gi\`a
+un esecutore parziale --- i moduli entrano come dipendenze
+\code{runtimeOnly}, quindi il nucleo non pu\`o compilare contro di essi. Le
+regole ArchUnit coprono ci\`o che il compilatore non vede: i cicli, la direzione
+dei livelli, e la corrispondenza fra namespace e modulo fisico.
+
+\section{Analisi statica}
+
+\subsection{SonarQube}
+
+L'analisi \`e su richiesta, non in integrazione continua:
+\code{scripts/sonar.sh} avvia un container SonarQube effimero, analizza Java,
+Python e Rust, e stampa il conteggio dei problemi aperti per linguaggio.
+
+La rinuncia al \emph{quality gate} \`e argomentata esplicitamente:
+
+\begin{quote}\itshape
+Il server \`e effimero (nessun volume, nessuna storia), quindi SonarQube tratta
+l'intera base di codice come ``nuovo codice'' a ogni esecuzione. Il gate di
+default fallisce ogni volta che esiste un problema preesistente, il che
+significa che un verdetto del gate sarebbe un FAIL costante e privo di
+informazione.
+\end{quote}
+
+\`E la stessa logica che governa le soglie del gate di regressione
+(\cref{cap:22-metodo-sperimentale}): un controllo che fallisce sempre viene
+disattivato, e un controllo disattivato non controlla nulla. Meglio riportare un
+numero che un verdetto inutile.
+
+La conseguenza operativa \`e che la linea di base \`e zero problemi aperti, e
+quindi \emph{qualunque} problema rilevato \`e nuovo. \`E un criterio pi\`u
+severo di un gate sul nuovo codice, e sostenibile solo perch\'e la base di
+codice \`e piccola.
+
+\subsection{Analisi delle dipendenze}
+
+Il progetto applica il plugin \code{dependency-analysis} a livello di settings,
+che segnala dipendenze dichiarate e non usate, usate e non dichiarate, e
+dipendenze che potrebbero cambiare configurazione.
+
+Due osservazioni dall'esperienza registrata dal progetto: cinque dipendenze di
+test sono state effettivamente rimosse a seguito dell'analisi, e gli starter di
+Spring producono sistematicamente falsi positivi --- uno starter \`e per
+costruzione una dipendenza che non si usa direttamente.
+
+L'esclusione di \code{netty-codec-http3} descritta nel
+\cref{cap:20-build-packaging} \`e il risultato pi\`u tangibile di questa linea di
+lavoro: sei archivi rimossi, di cui cinque con codice nativo per piattaforma.
+
+\subsection{Copertura}
+
+JaCoCo su ogni sottoprogetto, con soglia minima all'85\%. I report XML
+alimentano anche l'analisi SonarQube.
+
+\section{Test di regressione strutturali}
+
+La posizione del progetto sui test di prestazione \`e stata riportata nel
+\cref{cap:21-osservabilita} e vale la pena richiamarla qui perch\'e appartiene a
+questo capitolo: il repository contiene test \emph{strutturali} sul percorso
+caldo anzich\'e microbenchmark assoluti. Asseriscono il riuso del replay, il
+forward progress della coda sincrona dietro una testa bloccata, e l'equit\`a
+asincrona fra funzioni calde e fredde.
+
+\begin{quote}\itshape
+Le temporizzazioni assolute sono sensibili all'ambiente, le garanzie di equit\`a
+e riuso non lo sono.
+\end{quote}
+
+Ciascuno dei tre corrisponde a una propriet\`a discussa nella Parte III: il
+replay al meccanismo di idempotenza (\cref{cap:06-nucleo}), il forward progress
+alla scansione selettiva dello scheduler sincrono (\cref{cap:10-sync-queue}),
+l'equit\`a al quanto di scheduling del modulo asincrono
+(\cref{cap:09-async-queue}). Sono, in sostanza, i tre invarianti che i capitoli
+precedenti hanno argomentato, resi eseguibili.
+
+\section{Trappole note dell'impianto di test}
+
+Il progetto ha accumulato alcune conoscenze operative che vale la pena
+registrare, perch\'e ciascuna corrisponde a una propriet\`a reale del sistema.
+
+\begin{description}[style=nextline, leftmargin=0pt]
+  \item[\textbf{La coda sincrona respinge la prima richiesta.}] Senza storia di
+  throughput la stima dell'attesa \`e infinita, e ogni richiesta viene respinta
+  con \code{429} (\cref{cap:10-sync-queue}). I test di API devono quindi
+  disattivare esplicitamente la coda sincrona. Non \`e un difetto: \`e il
+  comportamento corretto in produzione che si manifesta in modo scomodo in
+  laboratorio.
+
+  \item[\textbf{Le metriche spariscono con la funzione.}] I meter per funzione
+  sono rimossi alla cancellazione (\cref{cap:06-nucleo}), quindi una verifica
+  che interroghi le metriche dopo aver cancellato la funzione non trova nulla.
+  Gli scenari di validazione sono stati corretti mantenendo viva l'ultima
+  funzione fino a dopo il controllo.
+
+  \item[\textbf{Aggiungere un componente a un \code{record} rompe i test.}] Il
+  costruttore canonico cambia firma e ogni istanziazione va aggiornata. \`E la
+  ragione dei costruttori di compatibilit\`a descritti nel
+  \cref{cap:05-contratti-dati}.
+
+  \item[\textbf{Modificare i contratti condivisi richiede la suite intera.}] Una
+  modifica a \code{platform/common} o a un SDK si propaga oltre il control plane;
+  eseguire soltanto \code{:control-plane:test} non basta.
+\end{description}
+
+\section{Limiti dell'apparato}
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Lo spazio delle configurazioni modulari \`e coperto ai soli
+  estremi} (\cref{cap:16-moduli-diagnostici}): \code{all} e \code{none}. Le
+  configurazioni intermedie non hanno copertura dedicata.
+
+  \item \textbf{L'analisi statica non \`e in integrazione continua.} \`E su
+  richiesta, quindi la sua efficacia dipende dalla disciplina di chi sviluppa.
+
+  \item \textbf{\code{openapi.yaml} \`e verificato solo per esistenza}
+  (\cref{cap:05-contratti-dati}). La sua corrispondenza con le rotte
+  effettivamente esposte non \`e accertata.
+
+  \item \textbf{Gli scaffold generati non sono verificati end-to-end}
+  (\cref{cap:19-cli-scaffolding}).
+\end{enumerate}
+
+I quattro limiti hanno una struttura comune: riguardano tutti \emph{artefatti
+generati o dichiarati} --- una configurazione di build, un file di
+specifica, uno scaffold --- anzich\'e codice eseguito. \`E la categoria che
+l'apparato di test copre peggio, ed \`e una lacuna riconoscibile e colmabile con
+gli strumenti gi\`a presenti.

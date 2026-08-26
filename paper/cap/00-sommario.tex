@@ -1,0 +1,39 @@
+\chapter*{Sommario}
+\addcontentsline{toc}{chapter}{Sommario}
+
+\nf{} \`e un control plane Function-as-a-Service progettato attorno a un vincolo
+insolito: essere deliberatamente pi\`u piccolo delle piattaforme con cui
+condivide il dominio. Non offre alta disponibilit\`a, non persiste il proprio
+stato, non autentica i chiamanti e gira in un solo processo. Questa monografia
+sostiene che tali rinunce non sono un debito da colmare ma il metodo che rende
+la piattaforma utilizzabile come \emph{strumento di misura}: un sistema in cui
+il percorso critico di un'invocazione \`e abbastanza corto da essere letto per
+intero, e abbastanza governabile da permettere di attribuire una variazione di
+latenza alla politica che l'ha causata anzich\'e all'infrastruttura che la
+circonda.
+
+Il documento descrive l'architettura del control plane --- un nucleo minimale
+reattivo attorno a cui si innestano moduli opzionali selezionati a tempo di
+build attraverso un SPI --- e dedica un capitolo a ciascun modulo: le code
+asincrone e sincrone, l'autoscaler di repliche, il governo della concorrenza per
+funzione, l'offload trasparente verso un'istanza remota, la riconfigurazione a
+caldo e i provider di deployment su Kubernetes e su runtime container locale.
+
+Il contributo pi\`u sostanziale riguarda il controllo della concorrenza. Il
+modulo \code{concurrency-control} implementa cinque politiche, di cui tre
+adattive, e la loro valutazione sperimentale ha prodotto due risultati negativi
+utili quanto quelli positivi: un controllore che minimizza il \emph{tempo di
+servizio} non ha ottimo interno e cammina verso il proprio limite inferiore, e
+un carico a ciclo chiuso non \`e in grado di porre al sistema la domanda a cui
+il controllore dovrebbe rispondere. Da qui la formulazione di una politica che
+decide dal \emph{tempo di sojourn} --- attesa pi\`u servizio --- che l'ottimo
+interno ce l'ha, e di una politica a budget di piattaforma con equit\`a max-min
+pesata che separa quanto una funzione \emph{chiede} da quanto la piattaforma
+\emph{pu\`o dare}.
+
+La valutazione sperimentale copre prestazioni di base (throughput, latenza,
+cold start) attraverso una serie di release su profilo hardware fissato,
+l'impronta di memoria del control plane su JVM e in immagine nativa GraalVM, il
+comportamento del garbage collector sotto limiti di memoria, e il confronto fra
+i controllori di concorrenza. Un capitolo finale enumera esplicitamente ci\`o
+che i dati raccolti \emph{non} stabiliscono.

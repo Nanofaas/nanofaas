@@ -1,0 +1,407 @@
+\chapter{Footprint: JVM, nativo, memoria, GC}
+\label{cap:24-footprint}
+
+Questo capitolo risponde alla quarta domanda di ricerca del
+\cref{cap:01-introduzione}: qual \`e il costo reale di un control plane, e come
+cambia al variare della catena di build. \`E il capitolo con la maggiore densit\`a
+di risultati negativi e di ipotesi rigettate, ed \`e riportato con quelle
+incluse.
+
+\section{Dove va la memoria di una JVM Spring}
+
+Il punto di partenza \`e una funzione, non il control plane: \code{word-stats}
+Java su Spring Boot, a 190\,MiB di memoria residente.
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+\textbf{Area} & \textbf{Dimensione} & \textbf{Quota} \\
+\midrule
+\textbf{heap in uso} & \textbf{22{,}4\,MB} & \textbf{12\,\%} \\
+Metaspace (9\,375 classi caricate) & 53{,}0\,MB & 28\,\% \\
+Compressed class space & 6{,}6\,MB & 3\,\% \\
+CodeHeap (codice compilato JIT) & 13{,}5\,MB & 7\,\% \\
+23 stack di thread & $\sim$23\,MB & 12\,\% \\
+\emph{resto} (buffer diretti, GC, nativo) & $\sim$71\,MB & 37\,\% \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\begin{quote}
+Lo heap --- i \emph{dati} --- \`e il 12\% del totale. Il resto \`e il runtime che
+descrive se stesso: metadati delle classi, codice compilato, e i profili
+conservati per ricompilarlo. Spring \`e costoso in memoria perch\'e carica
+migliaia di classi e perch\'e una JVM porta con s\'e un compilatore, non perch\'e
+allochi molto.
+\end{quote}
+
+Questa osservazione ha una conseguenza pratica immediata: ridurre l'uso di
+memoria di un'applicazione Spring ottimizzando le allocazioni agisce sul 12\% del
+problema. Le leve efficaci sono altre --- caricare meno classi, compilare in
+anticipo, ridurre gli stack.
+
+\`E anche la giustificazione quantitativa dei flag JVM del
+\cref{cap:20-build-packaging}: \code{-Xss256k} agisce sui 23\,MB degli stack,
+\code{TieredStopAtLevel=1} sui 13{,}5\,MB della CodeHeap.
+
+\section{Compilare nativamente}
+
+\subsection{Sulla funzione}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & \textbf{JVM} & \textbf{nativo} \\
+\midrule
+residente a riposo & 133\,MiB & \textbf{25{,}6\,MiB} \\
+avvio & 1{,}046\,s & \textbf{0{,}066\,s} \\
+residente sotto carico & 160\,MiB & 56\,MiB \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Il fattore cinque a riposo e il fattore sedici sull'avvio sono quanto ci si
+aspetta dalla compilazione anticipata: sparisce il compilatore, spariscono i
+metadati delle classi caricate dinamicamente.
+
+Il dato interessante \`e l'ultimo. Sotto carico, la funzione Spring compilata
+nativamente (56\,MiB) e la funzione \emph{lite} nativa (51{,}6\,MiB) quasi
+convergono, pur differendo di un fattore dieci a riposo (25{,}6 contro
+2{,}7\,MiB). L'interpretazione: \emph{il working set a caldo \`e dominato
+dall'allocazione per richiesta, non dal framework}.
+
+\`E un risultato che ridimensiona un'intuizione comune. La scelta di un framework
+leggero fa una differenza enorme sull'impronta a riposo --- che conta per una
+piattaforma che tiene molte funzioni idle --- e una differenza modesta
+sull'impronta sotto carico.
+
+\subsection{Sul control plane: il primo risultato \`e sbagliato}
+
+La prima misura sembr\`o mostrare che il control plane nativo dimezzava sia
+memoria sia CPU. Aveva dimezzato il \emph{lavoro}: 415\,184 richieste contro
+865\,692, con p99 a 1\,696\,ms.
+
+\`E l'errore di misura pi\`u istruttivo del progetto: il consumo di risorse per
+unit\`a di tempo non \`e una metrica di efficienza se il sistema non sta
+consegnando lo stesso lavoro.
+
+\section{Il garbage collector dell'immagine nativa}
+
+\subsection{La misura in isolamento}
+
+Stesso backend, stesso carico, unica differenza la build del control plane:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+ & \textbf{JVM} & \textbf{nativo (serial)} & \textbf{nativo (G1)} \\
+\midrule
+throughput & 8\,205 rps & 4\,983 rps & \textbf{8\,085 rps} \\
+mediana & 5{,}98\,ms & \textbf{4{,}71\,ms} & 6{,}08\,ms \\
+p95 & 16{,}06\,ms & 27{,}95\,ms & 16{,}51\,ms \\
+\textbf{massimo} & 92\,ms & \textbf{1{,}77\,s} & 123\,ms \\
+avvio & 1{,}585\,s & 0{,}192\,s & \textbf{0{,}072\,s} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Due osservazioni.
+
+La \textbf{mediana della build nativa \`e migliore di quella della JVM}. Fra una
+pausa e l'altra il codice compilato in anticipo \`e veloce; la perdita \`e
+interamente sulla coda.
+
+Il \textbf{massimo della build seriale \`e 1{,}77 secondi}, venti volte il
+massimo della JVM. \`E la firma di un sistema che si ferma, non di uno che \`e
+lento.
+
+Il costo di CPU per richiesta era 1{,}62\,ms contro 1{,}32 --- la penalizzazione
+ordinaria della compilazione anticipata, il 23\%, ben lontana dallo spiegare un
+dimezzamento. E il sistema usava il 265\% di un 1\,100\% disponibile mentre
+consegnava met\`a del lavoro: \emph{nulla era saturo, qualcosa si fermava}.
+
+\subsection{La causa}
+
+Corretto un difetto nel binder delle metriche del collector --- \code{JvmGcMetrics}
+richiede notifiche che SubstrateVM non emette, e riportava uno zero costante ---
+la causa \`e risultata diretta:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & \textbf{JVM} & \textbf{nativo (serial)} \\
+\midrule
+raccolte complete & 2, $\sim$50\,ms ciascuna & \textbf{25, 883\,ms ciascuna} \\
+tempo totale di raccolta & 6{,}6\,s & \textbf{22{,}1\,s su 60} \\
+quota del tempo di parete & \textbf{0{,}9\,\%} & \textbf{31{,}8\,\%} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Quasi un terzo del tempo speso a raccogliere.
+
+\subsection{Tre ipotesi rigettate}
+
+Il progetto ha testato e scartato tre spiegazioni alternative, e le riporta:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Limitare lo heap.} \code{-Xmx512m} ha peggiorato molto la
+  situazione: 1\,543 rps e timeout a 30\,s.
+  \item \textbf{Promozione prematura.} Ingrandire la generazione giovane non ha
+  cambiato nulla. \emph{Il primo tentativo di questo test non era valido}:
+  \code{-XX:MaxNewSize} \`e limitato da
+  \code{-XX:MaximumYoungGenerationSizePercent}, il cui default \`e 10, quindi il
+  flag non faceva nulla.
+  \item \textbf{Buffer heap di Netty.} Entrambe le build preferiscono buffer
+  diretti, entrambe usano l'allocatore adattivo, a nessuna delle due \`e
+  disponibile \code{Unsafe}. Identiche.
+\end{itemize}
+
+Il secondo caso \`e riportato con la propria invalidazione. \`E buona pratica
+sperimentale e vale la pena notarla: un test che non fa ci\`o che crede di fare
+produce un risultato ``nessun effetto'' indistinguibile da quello vero.
+
+\subsection{Il meccanismo}
+
+La pausa scala con la \emph{dimensione} dello heap, non con i dati vivi:
+563\,ms per uno heap di 512\,MB contro un insieme vivo di decine di megabyte. \`E
+il comportamento di un collector che percorre l'intero spazio --- che \`e ci\`o
+che fa l'unico collector utilizzabile di GraalVM Community: \code{--gc} accetta
+\code{serial} ed \code{epsilon}, e nient'altro.
+
+G1, disponibile in Oracle GraalVM, elimina il problema: 98{,}5\% del throughput
+della JVM, coda a 123\,ms, avvio in 0{,}07\,s. Poich\'e Oracle GraalVM ha licenza
+GFTC anzich\'e GPL, la build resta opt-in tramite \code{NATIVE\_GC=G1}.
+
+\begin{damisurare}
+\emph{Perch\'e} una raccolta completa costi 883\,ms con un insieme vivo piccolo
+non \`e stato confermato. La pausa traccia la dimensione dello heap anzich\'e i
+dati vivi, ma il meccanismo non \`e stato stabilito.
+\todomis{meccanismo della pausa del collector seriale di SubstrateVM}
+\end{damisurare}
+
+\section{Osservare il collector: un problema di strumento}
+
+Sotto G1 l'immagine nativa non registra alcun \code{GarbageCollectorMXBean},
+quindi n\'e Micrometer n\'e il binder a polling riportano nulla --- sulla build
+che si comporta meglio. \code{--enable-monitoring=jfr,jvmstat,jmxserver} non li
+riporta in vita; \`e stato provato e non funziona.
+
+JFR funziona, per una via indiretta. I tipi di evento specifici del collector
+(\code{jdk.G1GarbageCollection}, \code{jdk.GCHeapSummary}, la famiglia
+\code{GCPhase*}) sono dichiarati nella registrazione ed emettono zero eventi. Le
+pause sono registrate come \textbf{operazioni della VM}, ciascuna con la propria
+durata. Da una registrazione di 90\,s sotto carico:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+\textbf{Operazione} & \textbf{Conteggio} & \textbf{Totale} & \textbf{Media} &
+\textbf{Massimo} \\
+\midrule
+\code{G1 wrapper} & 43 & 835{,}1\,ms & 19{,}4\,ms & 97{,}6\,ms \\
+\code{Collect for allocation} & 31 & 651{,}1\,ms & 21{,}0\,ms & 94{,}5\,ms \\
+\code{Try init concurrent mark} & 2 & 37{,}3\,ms & 18{,}6\,ms & 22{,}5\,ms \\
+\midrule
+\textbf{totale} & \textbf{76} & \textbf{1\,524\,ms su 90\,s} & &
+\textbf{1{,}69\,\%} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Il risultato conferma la sezione precedente per una via indipendente ---
+1{,}69\% del tempo di parete contro il 31{,}8\% del collector seriale --- e
+fornisce pi\`u di quanto gli MXBean potrebbero: una durata per singola pausa, e
+quindi il massimo, che i contatori interrogati periodicamente non danno neppure
+dove funzionano.
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Build} & \textbf{Conteggi e tempo totale} & \textbf{Pausa massima} \\
+\midrule
+JVM & Micrometer, nativamente & s\`i, dalle notifiche \\
+nativo, serial & il binder a polling & no \\
+nativo, G1 & \textbf{solo JFR} & \textbf{s\`i, per pausa} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+La conclusione \`e precisa: \emph{G1 non \`e inosservabile, \`e inosservabile
+attraverso Prometheus}. Il dato richiede una registrazione estratta e analizzata
+fuori banda anzich\'e un gauge da raccogliere. Adeguato per un'indagine, non per
+un allarme.
+
+\`E anche un limite reale dell'apparato sperimentale di questo progetto, che
+altrove poggia interamente su Prometheus.
+
+\section{Il livello di ottimizzazione}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & \textbf{\code{-Os}} & \textbf{\code{-O3}} \\
+\midrule
+throughput & 8\,398 rps & \textbf{9\,251 rps} $(+10{,}2\%)$ \\
+p95 & 15{,}64\,ms & 14{,}79\,ms \\
+massimo & 148{,}7\,ms & 127{,}2\,ms \\
+avvio & 0{,}173\,s & \textbf{0{,}068\,s} \\
+residente a riposo & 120{,}6\,MiB & \textbf{39{,}3\,MiB} \\
+dimensione immagine & 195\,MB & 397\,MB \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+A \code{-O3} la build nativa non si limita a eguagliare la JVM: la supera ---
+9\,251 contro 8\,205 richieste al secondo, con un avvio ventitr\'e volte pi\`u
+rapido.
+
+\subsection{Perch\'e l'immagine cresce}
+
+Dal rapporto di build: l'area di codice triplica, da 47{,}78\,MB a 166{,}59\,MB,
+a partire da \emph{meno} unit\`a di compilazione --- 84\,694 contro 105\,256.
+
+Quell'accoppiamento \`e la firma dell'inlining. I metodi vengono copiati nei
+chiamanti anzich\'e chiamati, quindi le unit\`a spariscono mentre ogni
+sopravvissuta porta copie di ci\`o che ha assorbito; lo srotolamento dei cicli
+aggiunge il resto. Stesso programma, pi\`u codice macchina --- che \`e anche
+perch\'e \`e pi\`u veloce: nessun costo di chiamata, e ogni copia specializzata
+per il proprio sito.
+
+\subsection{Dove cade il costo, e dove non cade il guadagno}
+
+Due qualificazioni, entrambe misurate.
+
+Con un tetto di heap fissato, entrambi i livelli hanno raggiunto lo stesso picco
+di 744\,MiB residenti, perch\'e il codice \`e mappato dal file anzich\'e copiato
+nello heap: i 200\,MB in pi\`u sono un costo per il registry e per il disco, non
+per il nodo.
+
+Il guadagno di throughput \`e \emph{condizionale}: sotto un limite di 1\,GB le
+due build sono risultate identiche a circa 3\,490 richieste al secondo, perch\'e
+l\`i il collo di bottiglia \`e la raccolta e non la qualit\`a del codice.
+\code{-O3} compra velocit\`a solo dove la memoria non \`e gi\`a il vincolo.
+
+\subsection{Un avvertimento su PGO}
+
+Il log di build riporta \code{PGO: off} a \code{-Os} e
+\code{PGO: ML-inferred} a \code{-O3}: Oracle GraalVM applica profili inferiti da
+modello quando ottimizza per velocit\`a. Parte del guadagno \`e quindi gi\`a una
+forma di guida per profilo. Un eventuale PGO esplicito va misurato contro
+\code{-O3}, non contro \code{-Os}, o gli verr\`a accreditato ci\`o che
+\code{-O3} ha gi\`a raccolto.
+
+\section{I limiti di memoria cambiano la risposta}
+
+Tutte le cifre precedenti sono senza limite di memoria del container, dove ogni
+build cresce finch\'e il suo collector non vede ragione di fermarsi.
+
+\begin{table}[htbp]
+\centering
+\caption{Throughput e latenza sotto limite di memoria del container.}
+\label{tab:memlimit}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}llrrrr@{}}
+\toprule
+\textbf{Limite} & \textbf{Build} & \textbf{Throughput} & \textbf{p95} &
+\textbf{Max} & \textbf{Memoria usata} \\
+\midrule
+500\,MB & JVM & 1\,515 rps & 324\,ms & 1{,}99\,s & 455 / 500 \\
+        & nativo serial & 1\,370 rps & 32\,ms & 30{,}0\,s & 489 / 500 \\
+        & \textbf{nativo G1, default} & \textbf{520 rps} & 61\,ms & 30{,}0\,s &
+        \textbf{145 / 500} \\
+        & nativo G1, \code{-Xmx350m} & 1\,445 rps & 96\,ms & 30{,}0\,s & 378 / 500 \\
+\midrule
+1\,GB & JVM & 2\,450 rps & 46\,ms & 1{,}34\,s & 805 / 1024 \\
+      & \textbf{nativo G1, \code{-Xmx700m}} & \textbf{3\,089 rps} & 44\,ms &
+      \textbf{135\,ms} & 736 / 1024 \\
+\midrule
+2\,GB & JVM & 2\,712 rps & 47{,}5\,ms & 451\,ms & 727 / 2048 \\
+      & nativo G1, \code{-Xmx1400m} & 3\,400 rps & 39{,}5\,ms & 151\,ms & 1\,201 / 2048 \\
+\midrule
+nessuno & JVM & 8\,205 rps & 16{,}1\,ms & 92\,ms & 1{,}8\,GiB \\
+        & nativo G1 & 8\,085 rps & 16{,}5\,ms & 123\,ms & 2{,}7\,GiB \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+\subsection{G1 sotto un limite piccolo \`e una trappola}
+
+Il tetto di default di G1 \`e il 25\% della RAM visibile. Rispetta il cgroup ---
+il che \`e corretto --- ma poi si confina a 125\,MB di un container da 500\,MB,
+lascia inutilizzato il 71\% della memoria, e crolla a 520 rps. Fissare
+esplicitamente \code{-Xmx} quasi lo triplica.
+
+\begin{quote}
+\textbf{Con un limite di memoria, una build nativa G1 deve ricevere uno heap
+esplicito.}
+\end{quote}
+
+\subsection{A 500\,MB non ci sta nulla}
+
+Tutte le build perdono da cinque a sei volte il throughput senza vincolo, e
+quelle native iniziano ad andare in timeout. Il rimedio non \`e un collector
+migliore ma meno concorrenza offerta.
+
+\subsection{Il ginocchio}
+
+Il ginocchio della curva \`e fra 1 e 2\,GB. A 1\,GB con G1 e
+\code{-Xmx700m} si ottengono 3\,089 rps con una coda di 135\,ms e nessun
+fallimento, in un terzo della memoria che l'esecuzione senza vincoli aveva
+occupato.
+
+\subsection{Una configurazione da correggere}
+
+Il control plane distribuito via Docker Compose fissa
+\code{-XX:MaxRAMPercentage=70} senza \code{mem\_limit}, il che su un host da
+12{,}5\,GB autorizza uno heap da 8{,}77\,GB. Fino a che non venga fissato un
+limite, ogni cifra di memoria proveniente da quel percorso descrive
+\emph{appetito}, non fabbisogno.
+
+\`E la conclusione generale del capitolo, ed \`e metodologica prima che tecnica:
+\textbf{misure di memoria senza un limite descrivono quanto un runtime \`e
+disposto a prendere, non quanto gli serve.}
+
+\section{Sintesi}
+
+\begin{table}[htbp]
+\centering
+\caption{Quando conviene ciascuna build.}
+\label{tab:build-scelta}
+\small
+\begin{tabularx}{\textwidth}{@{}lXX@{}}
+\toprule
+\textbf{Build} & \textbf{Conviene quando} & \textbf{Da evitare quando} \\
+\midrule
+JVM & memoria abbondante; si vuole osservabilit\`a del collector via Prometheus &
+il tempo di avvio conta \\
+nativo, serial & si tollerano pause al secondo & sotto carico sostenuto: 32\% del
+tempo speso a raccogliere \\
+nativo, G1, \code{-O3} & throughput e avvio contano; si accetta la licenza
+Oracle & sotto limiti di memoria stretti senza \code{-Xmx} esplicito \\
+\bottomrule
+\end{tabularx}
+\end{table}

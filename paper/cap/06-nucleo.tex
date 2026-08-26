@@ -1,0 +1,374 @@
+\chapter{Il nucleo del control plane}
+\label{cap:06-nucleo}
+
+Il nucleo \`e ci\`o che resta quando si compila \nf{} senza alcun modulo: circa
+5\,000 righe di codice che implementano i quattro obblighi di una piattaforma
+FaaS enunciati nel \cref{cap:02-stato-dell-arte}. Questo capitolo lo attraversa
+componente per componente, soffermandosi sulle decisioni che il codice motiva
+esplicitamente.
+
+\section{Registro e risoluzione della specifica}
+
+\subsection{\code{FunctionRegistry} e \code{FunctionService}}
+
+Il registro \`e una \code{ConcurrentHashMap} da nome a \code{RegisteredFunction},
+dove quest'ultimo accoppia la specifica risolta con i metadati del deployment
+gestito, se esiste. Sopra il registro, \code{FunctionService} orchestra le
+operazioni che la registrazione comporta oltre alla memorizzazione: la
+risoluzione dei default, la validazione dell'immagine attraverso il validatore
+del backend attivo, e la richiesta di provisioning al provider di deployment.
+
+La registrazione non \`e idempotente: registrare un nome gi\`a presente
+restituisce \code{409 Conflict}. La modifica avviene invece per
+\code{PATCH}, con una regola dichiarata nel tipo della richiesta:
+
+\begin{lstlisting}[language=Java, caption={\code{FunctionUpdateRequest}: il
+commento nel sorgente enuncia la regola.}]
+/**
+ * Partial update of a registered function. Only fields that the control plane can apply without
+ * touching the deployment are accepted; a null field leaves the current value alone.
+ *
+ * <p>Unknown properties are rejected rather than ignored, so patching an immutable field such as
+ * {@code image} or {@code executionMode} fails loudly instead of appearing to succeed.</p>
+ */
+@JsonIgnoreProperties(ignoreUnknown = false)
+public record FunctionUpdateRequest(
+        @Min(1) Integer concurrency, @Min(1) Integer timeoutMs,
+        @Min(0) Integer maxRetries, ConcurrencyControlConfig concurrencyControl
+) { ... }
+\end{lstlisting}
+
+La superficie modificabile a caldo \`e quindi esattamente quattro campi, e sono
+i quattro che governano il comportamento del control plane senza toccare il
+deployment sottostante. Il rifiuto delle propriet\`a sconosciute \`e la parte
+importante: senza di esso, un \code{PATCH} che tentasse di cambiare
+\code{image} riceverebbe \code{200} e non cambierebbe nulla, che \`e il modo
+peggiore di fallire.
+
+Una nota sulla semantica del blocco annidato: \code{concurrencyControl} viene
+sostituito \emph{in blocco}, non fuso campo per campo. La ragione \`e che i campi
+di quel blocco hanno significati diversi a seconda del modo
+(\cref{cap:12-concurrency-control}), e una fusione parziale produrrebbe
+configurazioni ibride prive di senso --- per esempio una soglia di carico
+ereditata da \code{ADAPTIVE\_PER\_POD} sopravvissuta al passaggio a
+\code{BUDGETED}.
+
+\subsection{\code{FunctionSpecResolver}: dove i default diventano valori}
+
+La risoluzione trasforma una specifica parzialmente compilata in una completa.
+\`E il punto in cui il modello ``\code{null} significa non specificato''
+(\cref{cap:05-contratti-dati}) viene consumato:
+
+\begin{lstlisting}[language=Java]
+Optional.ofNullable(spec.timeoutMs()).orElse(defaults.timeoutMs()),
+Optional.ofNullable(spec.concurrency()).orElse(defaults.concurrency()),
+Optional.ofNullable(spec.queueSize()).orElse(defaults.queueSize()),
+Optional.ofNullable(spec.maxRetries()).orElse(defaults.maxRetries()),
+\end{lstlisting}
+
+Il resolver \`e anche il luogo in cui vivono i default delle politiche di
+concorrenza, e due di essi sono commentati in modo che vale la pena riportare
+perch\'e esprimono principi, non valori.
+
+\paragraph{Le soglie del controllore adattivo.}
+\begin{lstlisting}[language=Java]
+// Fractions of latency degradation over the function's best observed service time:
+// back off above 2x, grow again below ~1.18x. See the concurrency-control module.
+private static final double DEFAULT_HIGH_LOAD_THRESHOLD = 0.5;
+private static final double DEFAULT_LOW_LOAD_THRESHOLD = 0.15;
+\end{lstlisting}
+
+Le soglie sono espresse come frazioni di degradazione rispetto al \emph{miglior}
+tempo di servizio osservato per quella funzione, non come valori assoluti. \`E
+la stessa costruzione di TCP Vegas~\cite{brakmo1995vegas}: il riferimento \`e il
+minimo storico, assunto come stima del costo di servizio irriducibile, e il
+segnale \`e lo scostamento da esso. Il \cref{cap:12-concurrency-control} discute
+perch\'e questa costruzione, corretta nel contesto originale, si riveli
+insufficiente qui.
+
+\paragraph{L'SLO di default.}
+\begin{lstlisting}[language=Java]
+// A generic service-time SLO for a function that did not state one. Deliberately not
+// derived from anything the platform measures: a target the controller inferred from
+// observed latency would move whenever the function got slower, which is the one thing
+// an SLO must not do.
+private static final long DEFAULT_TARGET_LATENCY_MS = 250L;
+\end{lstlisting}
+
+L'osservazione \`e sottile e generale: un obiettivo derivato dall'osservazione
+non \`e un obiettivo. Se il sistema stimasse l'SLO dalla latenza misurata, un
+degrado prestazionale sposterebbe automaticamente l'asticella, e il controllore
+si dichiarerebbe conforme mentre peggiora. Il default \`e quindi un numero
+arbitrario e dichiarato tale.
+
+\paragraph{Default dipendenti dalla modalit\`a.} La risoluzione del blocco di
+scaling avviene solo per le funzioni in modalit\`a \code{DEPLOYMENT}: per
+\code{LOCAL} e \code{EXTERNAL} il blocco resta come fornito, perch\'e il control
+plane non gestisce repliche che non ha creato. Per \code{DEPLOYMENT} senza blocco
+esplicito il default \`e strategia \code{INTERNAL}, da una a dieci repliche,
+metrica \code{queue\_depth} con obiettivo 5.
+
+Le metriche ammesse per la strategia interna sono validate contro un insieme
+chiuso (\code{queue\_depth}, \code{in\_flight}, \code{rps}): una metrica
+sconosciuta fa fallire la registrazione con \code{400} anzich\'e produrre un
+autoscaler che non scala e non lo dice.
+
+\section{Il ciclo di vita di un'esecuzione}
+
+\subsection{\code{ExecutionRecord}}
+
+\code{ExecutionRecord} \`e l'unica struttura mutabile significativa del nucleo.
+Contiene lo stato, i timestamp, l'esito, i flag di cold start, la busta di
+risposta, e --- centralmente --- il \code{CompletableFuture} su cui i chiamanti
+sincroni attendono.
+
+La mutabilit\`a \`e governata da due invarianti dichiarati nel codice.
+
+Il primo \`e che ogni transizione avviene sotto il monitor dell'oggetto e che gli
+stati terminali sono definitivi:
+
+\begin{lstlisting}[language=Java]
+/**
+ * Terminal states (SUCCESS, ERROR, TIMEOUT) are final; every transition between
+ * non-terminal states (including RUNNING -> QUEUED for retries) is allowed.
+ */
+\end{lstlisting}
+
+La permissivit\`a sulle transizioni non terminali \`e ci\`o che rende possibile
+la riprova: un'esecuzione fallita torna in coda e ripercorre il ciclo. La
+rigidit\`a su quelle terminali \`e ci\`o che rende sicuro il completamento
+concorrente: se il dispatcher e la callback arrivano entrambi --- il che accade
+quando la funzione risponde \emph{e} invia la callback --- il secondo viene
+scartato invece di sovrascrivere l'esito.
+
+Il secondo invariante \`e che il futuro non viene mai completato tenendo il lock:
+
+\begin{lstlisting}[language=Java]
+// Future published outside the record monitor (same invariant as
+// publishFinalCompletion): synchronous waiters must not run under the lock.
+executionRecord.completion().complete(result);
+\end{lstlisting}
+
+Completare un \code{CompletableFuture} esegue in linea le continuazioni dei
+sottoscrittori. Farlo sotto il monitor del record significherebbe eseguire codice
+applicativo arbitrario --- la mappatura della risposta, la scrittura sulla socket
+--- mentre si tiene un lock su cui il completamento concorrente contende.
+L'invariante \`e riportato in commento in ciascuno dei punti in cui vale, il che
+\`e la forma pi\`u pratica di documentazione per un requisito che una modifica
+distratta violerebbe.
+
+\subsection{\code{ExecutionStore}: tre orizzonti di dimenticanza}
+
+Lo store \`e una mappa concorrente con un thread janitor che ogni minuto elimina
+le voci scadute. La logica di eviction distingue tre casi:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Orizzonte} & \textbf{Si applica a} & \textbf{Effetto} \\
+\midrule
+\code{ttl} & esecuzioni terminate & Rimozione completa dalla mappa. \\
+\code{cleanupTtl} & esecuzioni terminate & \code{cleanup()}: libera il payload,
+mantiene i metadati. \\
+\code{maxLifetime} & esecuzioni \emph{non} terminate & Rimozione forzata. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Il terzo orizzonte esiste per una condizione precisa, dichiarata nel codice:
+\emph{``Stuck executions (lost dispatch, missing callback) must not leak
+forever.''} Un'esecuzione la cui callback non arriva mai non raggiunge uno stato
+terminale, quindi i primi due orizzonti --- ancorati all'istante di
+completamento --- non la toccherebbero mai. In un sistema con stato in memoria
+questa \`e la differenza fra un consumo limitato e una perdita monotona.
+
+Il secondo orizzonte \`e un compromesso che vale la pena notare: dopo
+\code{cleanupTtl} il record viene alleggerito ma non rimosso, cos\`i che una
+richiesta di stato tardiva riceva ancora ``\code{succeeded}'' senza il payload,
+anzich\'e \code{404}. La distinzione fra ``non \`e mai esistito'' e ``\`e
+esistito e l'ho dimenticato'' \`e mantenuta per una finestra pi\`u lunga di
+quella in cui il risultato \`e conservato.
+
+\section{Idempotenza}
+
+L'idempotenza \`e attivata dall'header \code{Idempotency-Key} e implementata da
+\code{IdempotencyStore}, una cache Caffeine con scadenza a cinque minuti dalla
+scrittura. Il problema che risolve non \`e la deduplicazione a posteriori ma la
+\emph{corsa}: due richieste con la stessa chiave che arrivano
+contemporaneamente devono produrre una sola esecuzione.
+
+Il meccanismo \`e una rivendicazione in due fasi. Una voce nella cache pu\`o
+essere \emph{pending} --- rivendicata da un chiamante che sta creando
+l'esecuzione, con un token che lo identifica --- oppure \emph{published},
+associata a un identificatore di esecuzione reale.
+
+\begin{lstlisting}[language=Java, caption={Il ciclo di rivendicazione.}]
+public AcquireResult acquireOrGet(String functionName, String key) {
+    String composed = compose(functionName, key);
+    while (true) {
+        StoredKey existing = keys.get(composed);
+        if (existing == null) {
+            String token = pendingToken();
+            StoredKey pending = StoredKey.pending(token, Instant.now());
+            if (keys.putIfAbsent(composed, pending) == null) {
+                return AcquireResult.claimed(token);
+            }
+            continue;                       // qualcun altro ha rivendicato: rileggi
+        }
+        if (existing.pending()) { return AcquireResult.pending(); }
+        return AcquireResult.existing(existing.executionId());
+    }
+}
+\end{lstlisting}
+
+I quattro esiti possibili --- \code{CLAIMED}, \code{PENDING}, \code{EXISTING},
+\code{MISSING} --- corrispondono a quattro reazioni distinte del chiamante:
+procedere alla creazione, attendere, riusare l'esecuzione esistente, ricominciare.
+La pubblicazione (\code{publishClaim}) e l'abbandono (\code{abandonClaim}) sono
+condizionati al possesso del token, cos\`i che un chiamante non possa pubblicare
+o cancellare la rivendicazione di un altro.
+
+\`E il ciclo \code{while(true)} di questo codice che motiva il confinamento
+sullo scheduler elastico descritto nel
+\cref{cap:04-architettura-control-plane}. Nel caso non contesto termina alla
+prima iterazione; l'esistenza del ciclo \`e sufficiente a escluderne l'esecuzione
+sull'event loop.
+
+\section{Dispatch}
+
+\subsection{Il router}
+
+\code{DispatcherRouter} \`e volutamente banale: due metodi che delegano a
+\code{LocalDispatcher} o a \code{ExternalDispatcher}. La modalit\`a
+\code{DEPLOYMENT} non ha un dispatcher proprio --- una volta che il deployment
+esiste, invocarlo \`e la stessa operazione che invocare un endpoint esterno, e
+la differenza sta nel \emph{chi} ha creato l'endpoint
+(\cref{cap:07-modalita-esecuzione}).
+
+\subsection{\code{ExternalDispatcher} e il contratto sul filo}
+
+Il dispatcher esterno effettua una \code{POST} verso l'endpoint della funzione,
+allegando quattro header di contesto: identificatore di esecuzione, numero di
+tentativo, trace id e chiave di idempotenza. Il timeout \`e applicato come
+\code{responseTimeout} sulla richiesta Reactor Netty sottostante, non come
+timeout del \code{Mono}: la differenza \`e che il primo interrompe effettivamente
+la connessione anzich\'e limitarsi ad abbandonare l'attesa.
+
+Nella direzione di ritorno, il dispatcher interpreta tre header prodotti dal
+runtime:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Header} & \textbf{Significato} \\
+\midrule
+\code{X-Cold-Start} & La richiesta ha pagato un'inizializzazione. \\
+\code{X-Init-Duration-Ms} & Durata di tale inizializzazione. \\
+\code{X-NanoFaaS-Function-Status} & Il codice di stato HTTP \`e deciso
+dall'handler. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Il terzo \`e il pi\`u delicato, e il codice lo tratta con diffidenza esplicita:
+
+\begin{lstlisting}[language=Java]
+// An out-of-range status on a marker-bearing response is not spec-legal
+// ([200,599] only). Fall through to the platform-error path rather than
+// trusting it: EXTERNAL/DEPLOYMENT endpoints are arbitrary unauthenticated
+// URLs, and HTTP's status-line grammar is 3DIGIT, so a misbehaving upstream
+// can emit one.
+\end{lstlisting}
+
+L'endpoint di una funzione \`e un URL arbitrario e non autenticato: il control
+plane non pu\`o assumere che rispetti il contratto. Un marcatore che dichiara
+``il mio codice di stato \`e intenzionale'' accompagnato da un codice fuori
+intervallo viene trattato come errore di piattaforma, non propagato.
+
+\section{Riprova}
+
+La riprova \`e gestita in \code{ExecutionCompletionHandler}. La regola \`e
+semplice --- si riprova finch\'e il numero di tentativo non supera
+\code{maxRetries} --- ma tre dettagli meritano nota.
+
+Primo, il tentativo di riprova viene costruito come un \code{InvocationTask}
+nuovo, con la chiave di idempotenza \emph{azzerata}:
+
+\begin{lstlisting}[language=Java]
+InvocationTask retryTask = new InvocationTask(
+        ..., null,  // No idempotency key for retry - retry is internal
+        ..., currentTask.attempt() + 1);
+\end{lstlisting}
+
+La riprova \`e un'operazione interna sulla \emph{stessa} esecuzione: conservare
+la chiave farebbe s\`i che la riprova si riconosca come duplicato di se stessa e
+riproduca l'esito fallito.
+
+Secondo, il rilascio dello slot di concorrenza \`e reso idempotente per numero di
+tentativo (\code{markDispatchSlotReleased(attempt)}, con un insieme dei tentativi
+gi\`a rilasciati nel record). Senza questa protezione, un esito che arriva due
+volte --- risposta HTTP \emph{e} callback --- rilascerebbe due slot avendone
+occupato uno, e il contatore delle richieste in volo scenderebbe sotto il valore
+reale, con effetti diretti sull'autoscaler e sul controllore di concorrenza che
+leggono quel contatore.
+
+Terzo, la riprova pu\`o fallire per coda piena, e in tal caso l'esecuzione viene
+completata con l'errore originale anzich\'e con un errore di coda: il chiamante
+riceve la ragione per cui la funzione \`e fallita, non la ragione per cui la
+piattaforma ha rinunciato a riprovare.
+
+\section{Limitazione di frequenza}
+
+Il limitatore \`e una finestra fissa di un secondo su due contatori atomici:
+
+\begin{lstlisting}[language=Java]
+public boolean allow() {
+    long now = Instant.now().getEpochSecond();
+    long currentWindow = windowStartSecond.get();
+    if (now > currentWindow && windowStartSecond.compareAndSet(currentWindow, now)) {
+        windowCount.set(0);
+    }
+    return windowCount.incrementAndGet() <= maxPerSecond;
+}
+\end{lstlisting}
+
+\`E l'algoritmo pi\`u semplice possibile e ha il difetto noto della finestra
+fissa: a cavallo del secondo pu\`o ammettere fino al doppio del limite. Un token
+bucket lo eviterebbe. La scelta \`e coerente con il ruolo che il limitatore ha
+in questo sistema --- una protezione presente sul percorso ma neutra per default
+(\cref{cap:03-requisiti-principi}) --- e la sua imprecisione \`e irrilevante a
+un milione di richieste al secondo. \`E, per\`o, un punto su cui il progetto ha
+scelto la semplicit\`a sapendo di sbagliare, e vale la pena dirlo.
+
+\section{Metriche}
+
+\code{Metrics} incapsula la registrazione Micrometer. La struttura ha una
+propriet\`a che sorprende alla prima lettura: i contatori per funzione sono
+creati alla registrazione della funzione e \emph{rimossi} alla sua
+cancellazione, e ogni metodo di incremento verifica prima che i contatori
+esistano ancora.
+
+\begin{lstlisting}[language=Java]
+public void success(String function) {
+    FunctionMeters metersFor = metersOrNull(function);
+    if (metersFor != null) { metersFor.success().increment(); }
+}
+\end{lstlisting}
+
+La rimozione dei contatori alla cancellazione della funzione evita che il
+registro Prometheus cresca indefinitamente in un sistema in cui le funzioni sono
+create e distrutte da script di test. Ha per\`o una conseguenza sperimentale che
+il progetto ha imparato per via empirica: una verifica che interroghi le
+metriche \emph{dopo} aver cancellato la funzione non trova nulla. Il
+\cref{cap:22-metodo-sperimentale} riporta come gli scenari di validazione sono
+stati corretti di conseguenza.
+
+Le esecuzioni relative a funzioni gi\`a rimosse vengono contabilizzate su un
+registro separato e non esportato (\code{removed\_function\_*}), cos\`i che la
+loro esistenza non produca n\'e serie orfane n\'e eccezioni.

@@ -1,0 +1,264 @@
+\chapter{Build, packaging, immagini}
+\label{cap:20-build-packaging}
+
+Un control plane che si vuole misurabile deve essere anche \emph{producibile in
+varianti confrontabili}. Questo capitolo descrive la catena di build di \nf{},
+gli assi lungo cui un binario pu\`o variare, e le decisioni di packaging che il
+progetto motiva con misure.
+
+\section{Gli assi di variazione}
+
+Un artefatto di \nf{} \`e determinato da cinque scelte indipendenti:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lp{8.2cm}@{}}
+\toprule
+\textbf{Asse} & \textbf{Valori} \\
+\midrule
+Selezione dei moduli & \code{none}, \code{all}, o una lista
+(\cref{cap:08-sistema-moduli}) \\
+Tipo di build & JVM (Spring Boot fat jar) oppure immagine nativa GraalVM \\
+Livello di ottimizzazione nativa & \code{-Os} (dimensione) o \code{-O3}
+(velocit\`a, default) \\
+Garbage collector nativo & \code{serial} (default Community) o \code{G1}
+(Oracle GraalVM) \\
+Limite di memoria del container & assente o fissato \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Il \cref{cap:24-footprint} misura l'effetto degli ultimi quattro. Che il
+progetto li abbia resi tutti selezionabili da riga di comando \`e la condizione
+che rende quella misura possibile.
+
+\section{La build JVM}
+
+Java 25, Spring Boot 4.1, Gradle con toolchain risolta automaticamente.
+L'immagine OCI \`e costruita su Distroless con una tecnica che vale la pena
+descrivere: il runtime Java non \`e un JRE standard ma uno costruito su misura
+con \code{jlink}.
+
+\begin{lstlisting}[language=bash, caption={Estratto dal \code{Dockerfile} del
+control plane.}]
+RUN jar xf app.jar BOOT-INF/lib BOOT-INF/classes && \
+    jdeps --ignore-missing-deps --multi-release 25 --recursive \
+      --print-module-deps --class-path 'BOOT-INF/lib/*' \
+      BOOT-INF/classes app.jar > modules.txt && \
+    jlink --add-modules "$(cat modules.txt),jdk.unsupported,jdk.crypto.ec,jdk.httpserver" \
+      --strip-debug --no-header-files --no-man-pages --compress=zip-9 \
+      --output /jre
+\end{lstlisting}
+
+\code{jdeps} determina i moduli JDK effettivamente raggiunti dall'applicazione,
+e \code{jlink} ne assembla un runtime minimale. Tre moduli sono aggiunti a mano,
+e il commento spiega perch\'e: \code{jdk.unsupported} (Netty usa
+\code{sun.misc.Unsafe}), \code{jdk.crypto.ec} (le suite TLS a curve ellittiche
+sono caricate via \code{ServiceLoader}) e \code{jdk.httpserver} (il proxy del
+provider container). Sono tre casi in cui l'analisi statica di \code{jdeps} non
+vede una dipendenza reale, perch\'e la dipendenza \`e risolta a runtime.
+
+\`E lo stesso problema che la compilazione nativa affronta su scala molto
+maggiore, e la sua comparsa gi\`a qui, in forma ridotta, \`e istruttiva.
+
+\subsection{I flag della JVM}
+
+\begin{lstlisting}[language=bash]
+"-XX:+UseSerialGC", "-XX:MaxRAMPercentage=70", "-XX:TieredStopAtLevel=1",
+"-Xss256k", "-Dspring.jmx.enabled=false", ...
+\end{lstlisting}
+
+Ciascuno rinuncia a qualcosa in cambio di impronta. \code{TieredStopAtLevel=1}
+ferma la compilazione JIT al primo livello: il codice risultante \`e pi\`u lento
+ma il compilatore lavora meno e la CodeHeap resta piccola. \code{-Xss256k}
+riduce lo stack per thread da 1\,MB al quarto --- con ventitr\'e thread, come
+misurato nel \cref{cap:24-footprint}, sono 17\,MB risparmiati.
+
+Va detto che questa configurazione \`e ottimizzata per l'impronta e non per il
+throughput di picco, e che le misure di throughput riportate nel
+\cref{cap:24-footprint} sono state raccolte su una configurazione diversa. \`E
+un'incoerenza da tenere presente nel leggerle.
+
+\begin{damisurare}
+Il costo in throughput di \code{TieredStopAtLevel=1} sul control plane non \`e
+stato misurato. \`E l'unico flag della lista il cui effetto potrebbe essere
+sostanziale sul percorso caldo.
+\todomis{throughput con compilazione JIT completa contro C1 soltanto}
+\end{damisurare}
+
+\section{La build nativa}
+
+\subsection{Perch\'e}
+
+Tre motivi, in ordine di importanza per questo progetto.
+
+\emph{Il tempo di avvio.} Da 1{,}585\,s a 0{,}072\,s misurati sul control plane
+(\cref{cap:24-footprint}). Per un processo di lunga durata \`e ininfluente; per
+la CLI \`e la differenza fra usabile e no; per un esperimento che avvia e ferma
+il control plane decine di volte \`e tempo di ciclo.
+
+\emph{L'impronta a riposo.} Da 133\,MiB a 25{,}6\,MiB su una funzione Spring.
+
+\emph{L'eliminazione della fase di riscaldamento.} Un'immagine nativa \`e
+compilata in anticipo e non ha una curva di riscaldamento JIT. Per un esperimento
+questo elimina una variabile: non c'\`e da decidere quanto carico scartare prima
+di iniziare a misurare.
+
+\subsection{Il prezzo: la riflessione}
+
+La compilazione anticipata richiede di conoscere staticamente ci\`o che verr\`a
+caricato. Ogni uso della riflessione, ogni proxy dinamico, ogni risorsa caricata
+per nome deve essere dichiarato. Il progetto lo fa con classi di \emph{runtime
+hints} dedicate:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Classe} & \textbf{Copre} \\
+\midrule
+\code{CaffeineRuntimeHints} & La cache di idempotenza. \\
+\code{VertxRuntimeHints} & Vert.x, trascinato dal client Fabric8. \\
+\code{DockerJavaRuntimeHints} & Il client Docker Java. \\
+\code{GcMetricsConfiguration} & I binder di metriche del collector. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\`E significativo che tre delle quattro riguardino dipendenze dei \emph{moduli}
+e non del nucleo. La compilabilit\`a nativa \`e un vincolo che si propaga alle
+dipendenze transitive, ed \`e uno degli argomenti a favore della selezione
+modulare a tempo di build (\cref{cap:08-sistema-moduli}): un binario che non
+include il provider Kubernetes non ha bisogno degli hint di Vert.x.
+
+Il rischio caratteristico \`e che un hint mancante non fa fallire la
+compilazione: produce un binario che fallisce a runtime, sul primo percorso che
+usa quella riflessione. \`E la ragione per cui esiste lo smoke test nativo della
+CLI (\cref{cap:19-cli-scaffolding}).
+
+\subsection{Il livello di ottimizzazione}
+
+Il progetto usa \code{-O3} per default, e il commento nel file di build riporta
+la misura che ha motivato il cambio da \code{-Os}:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & \textbf{\code{-Os}} & \textbf{\code{-O3}} \\
+\midrule
+throughput & 8\,398 rps & \textbf{9\,251 rps} $(+10{,}2\%)$ \\
+p95 & 15{,}64\,ms & 14{,}79\,ms \\
+massimo & 148{,}7\,ms & 127{,}2\,ms \\
+avvio & 0{,}173\,s & \textbf{0{,}068\,s} \\
+residente a riposo & 120{,}6\,MiB & \textbf{39{,}3\,MiB} \\
+dimensione immagine & 195\,MB & 397\,MB \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Il risultato \`e controintuitivo: il livello che ottimizza per la \emph{velocit\`a}
+produce anche un'impronta a riposo tre volte pi\`u piccola, a fronte di
+un'immagine doppia. Il \cref{cap:24-footprint} discute il meccanismo ---
+l'inlining --- e la condizione sotto cui il guadagno svanisce.
+
+Il commento nel build file chiude con l'avvertenza corretta: \emph{``The gain is
+conditional [\ldots] under a 1GB limit the two were identical at $\sim$3\,490
+requests per second, because there the bottleneck is collection rather than code
+quality.''}
+
+\subsection{Il garbage collector}
+
+\begin{lstlisting}[language=Java]
+// -PnativeGc=G1 needs Oracle GraalVM on Linux; Community offers only
+// 'serial' and 'epsilon', and rejects anything else at build time.
+// Measured motivation: the serial collector spent 32% of wall-clock
+// time collecting under sustained load, with pauses reaching 1.9s.
+if (project.hasProperty('nativeGc')) {
+    binary.buildArgs.add("--gc=${project.property('nativeGc')}")
+}
+\end{lstlisting}
+
+\`E la decisione di packaging pi\`u consequenziale del progetto, ed \`e trattata
+in dettaglio nel \cref{cap:24-footprint}. In sintesi: GraalVM Community offre
+solo un collector seriale, che su questo carico spende il 32\% del tempo di
+parete a raccogliere; G1, disponibile in Oracle GraalVM, elimina il problema. La
+selezione resta opt-in (\code{NATIVE\_GC=G1}) perch\'e Oracle GraalVM ha una
+licenza diversa.
+
+\subsection{Il budget di memoria del compilatore}
+
+\begin{lstlisting}[language=Java]
+// -PnativeBuildMemory=6g bounds the BUILDER's heap, not the built
+// image's. native-image sizes its own heap from the memory it can
+// see, which is the whole machine even when most of it is already
+// spoken for: on a 12GB VM also running k3s, a control plane and
+// Prometheus, it was SIGKILLed by the OOM killer after 9m50s of
+// work. A build that dies that way wastes the ten minutes and says
+// "exit 137"; one that is told its budget either fits or fails fast.
+\end{lstlisting}
+
+L'osservazione riguarda una classe generale di problemi: uno strumento che
+dimensiona le proprie risorse dalla memoria \emph{visibile} anzich\'e da quella
+\emph{disponibile} si comporta male su una macchina condivisa. Il parametro di
+parallelismo esiste per lo stesso motivo, con il compromesso opposto: meno
+lavoratori costano tempo di parete e risparmiano memoria di picco.
+
+Entrambi sono decisioni che riguardano una macchina su cui la build compete con
+il carico contro cui verr\`a poi misurata --- una situazione specifica di un
+progetto sperimentale, e non affrontata dalla documentazione degli strumenti.
+
+\section{Una dipendenza esclusa}
+
+\begin{lstlisting}[language=Java]
+configurations.all {
+    // HTTP/3/QUIC support that reactor-netty pulls in automatically; nothing in this
+    // codebase enables HTTP/3. Drops netty-codec-http3 plus its 5 platform-native quic jars.
+    exclude group: 'io.netty', module: 'netty-codec-http3'
+}
+\end{lstlisting}
+
+Sei archivi rimossi, di cui cinque contenenti codice nativo per piattaforma
+specifica. Nel contesto della compilazione nativa e delle immagini Distroless,
+una dipendenza inutilizzata che porta librerie native non \`e soltanto peso: \`e
+superficie su cui gli hint di runtime potrebbero servire e non ci sono.
+
+Il progetto utilizza il plugin \code{dependency-analysis} per individuare
+sistematicamente dipendenze non usate o non dichiarate
+(\cref{cap:26-qualita-verifica}).
+
+\section{La matrice degli artefatti}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Artefatto} & \textbf{Build JVM} & \textbf{Build nativa} \\
+\midrule
+control plane & \code{Dockerfile} + Distroless & \code{native-java-image.sh control-plane} \\
+\code{warm-echo} & \code{Dockerfile} + Distroless & \code{native-java-image.sh warm-echo} \\
+funzioni Java & per funzione & \code{native-java-image.sh <nome>} \\
+CLI & \code{installDist} & \code{nativeCompile} \\
+watchdog & --- & Rust statico musl, \code{FROM scratch} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Un unico comando costruisce e verifica l'intera matrice nativa:
+
+\begin{lstlisting}[language=bash]
+scripts/native-build.sh
+\end{lstlisting}
+
+Le immagini native non usano i buildpack di Spring Boot ma un
+\code{Dockerfile} che copia il binario su Distroless. La scelta \`e coerente con
+il resto: un buildpack decide da s\'e i flag di compilazione, e questo progetto
+ha bisogno che quei flag siano una variabile sperimentale esplicita.

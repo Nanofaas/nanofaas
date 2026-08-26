@@ -1,0 +1,165 @@
+\chapter{Lavori futuri}
+\label{cap:28-lavori-futuri}
+
+Le direzioni che seguono sono ordinate per rapporto fra valore atteso e costo,
+e ciascuna \`e legata a un vincolo del \cref{cap:03-requisiti-principi} o a una
+questione lasciata aperta dal \cref{cap:27-discussione}.
+
+\section{Chiudere le questioni aperte}
+
+Sono gli esperimenti che il progetto pu\`o eseguire con l'apparato che gi\`a
+possiede, e che risolverebbero affermazioni oggi non stabilite.
+
+\begin{description}[style=nextline, leftmargin=0pt]
+  \item[\textbf{F1. Ripetere il confronto \code{SOJOURN}.}] Una sola esecuzione
+  per modo non stabilisce una differenza del 10--15\%. Con cinque esecuzioni per
+  modo la differenza diventerebbe difendibile o svanirebbe. \`E l'intervento a
+  costo pi\`u basso e valore pi\`u alto dell'elenco.
+
+  \item[\textbf{F2. Osservare \code{SOJOURN} fuori dal sovraccarico.}] Il modo
+  \`e progettato per trovare un ginocchio, e ogni sua esecuzione \`e stata a
+  capacit\`a o oltre, dove il ginocchio non esiste. Un carico a ciclo aperto con
+  picco sotto la capacit\`a misurata direbbe se il modello sceglie limiti sensati
+  quando ha margine.
+
+  \item[\textbf{F3. Esercitare i pesi di \code{BUDGETED}.}] Due funzioni con SLO
+  e pesi diversi, e la verifica che i limiti concessi seguano i pesi quando il
+  budget \`e scarso e li ignorino quando \`e abbondante. \`E la validazione del
+  contributo dichiarato che oggi manca del tutto.
+
+  \item[\textbf{F4. Tarare la soglia di guardia al 70\%.}] \`E stata scelta, non
+  misurata, e sul profilo a ciclo chiuso ha scavalcato completamente il modello.
+  Una scansione su alcuni valori sotto arrivi aperti mostrerebbe se il valore
+  conta.
+
+  \item[\textbf{F5. Isolare il meccanismo del cross-talk.}] Il
+  \cref{cap:25-valutazione-concorrenza} ha escluso la contesa di CPU e ha
+  indicato il control plane condiviso. I candidati --- thread dello scheduler,
+  event loop, strutture concorrenti delle code --- sono distinguibili per
+  profilazione.
+\end{description}
+
+\section{Rimuovere il vincolo che non ha pagato}
+
+Il \cref{cap:27-discussione} ha concluso che l'assenza di autenticazione \`e la
+sola delle tre rinunce fondamentali il cui beneficio sperimentale sia
+trascurabile, e la sola che impedisca l'uso fuori da un laboratorio.
+
+Introdurre un'autenticazione a token sull'API, con verifica sul percorso prima
+della risoluzione del nome, \`e un intervento contenuto. Il costo che va misurato
+--- e che va misurato \emph{prima} di dichiarare l'intervento innocuo --- \`e il
+suo contributo alla latenza sul percorso caldo. \`E esattamente il tipo di
+domanda che questa piattaforma \`e attrezzata a rispondere.
+
+\section{Estendere il controllo della concorrenza}
+
+\subsection{Un ambito globale per \code{SOJOURN}}
+
+Le due innovazioni della Parte III sono oggi disgiunte: \code{BUDGETED} decide
+globalmente ma dal tempo di servizio; \code{SOJOURN} decide dal sojourn ma per
+funzione. La combinazione naturale --- fabbisogno stimato dal sojourn, allocato
+da un budget di piattaforma con equit\`a max-min --- non esiste, e sarebbe la
+sintesi dei due risultati.
+
+Il \cref{cap:12-concurrency-control} ha osservato che l'interfaccia dei
+controllori non \`e uniforme proprio perch\'e un modo ad ambito globale non si
+riconduce alla firma di uno per funzione. Quella asimmetria \`e il primo
+ostacolo da rimuovere.
+
+\subsection{Il tetto al ginocchio per \code{SOJOURN}}
+
+Il commento nel codice registra la scelta e la sua condizione di revisione:
+\emph{``no explicit knee cap --- the Little term already asks for no more than
+the load needs, and the configured ceiling bounds the rest. Add one if a
+function is seen climbing while its throughput stays flat.''} \`E un'osservazione
+che F2 potrebbe produrre.
+
+\subsection{Un minimo su finestra al posto delle derive}
+
+Tre componenti mantengono estremi storici con un decadimento forfettario:
+la baseline del modo adattivo (0{,}2\% per tick), e i due estremi dello
+stimatore a budget (1\% per tick). Ciascuno \`e commentato come ``la versione
+economica'' di un minimo su finestra con scadenza, che \`e la costruzione che
+BBR e CoDel~\cite{nichols2012codel} usano.
+
+\section{Copertura della combinatoria modulare}
+
+Lo spazio delle configurazioni ha $2^9$ punti e la suite ne verifica due
+(\cref{cap:16-moduli-diagnostici}). Una verifica di costruibilit\`a e
+avviabilit\`a su tutte le combinazioni valide \`e realizzabile con gli strumenti
+presenti, e coprirebbe la classe di difetti che il sistema modulare rende
+possibile: una combinazione che compila e non si avvia.
+
+Nella stessa direzione va la verifica di corrispondenza fra \code{openapi.yaml} e
+le rotte effettivamente registrate (\cref{cap:05-contratti-dati}), e il cancello
+end-to-end sugli scaffold generati (\cref{cap:19-cli-scaffolding}). I tre
+interventi condividono la stessa forma: verificare artefatti dichiarati anzich\'e
+soltanto codice eseguito.
+
+\section{Offload: da segnale a modello}
+
+Il modulo \code{offload} decide dal rifiuto della coda locale, senza alcun
+modello del costo di trasferimento (\cref{cap:13-offload}). \`E una scelta
+difendibile perch\'e non richiede calibrazione, e lascia sul tavolo tutto ci\`o
+che la letteratura sull'offloading edge--cloud ha prodotto.
+
+Due estensioni sono a portata:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Includere la latenza remota nella decisione.} Il gateway pu\`o
+  misurare il round trip verso il target; confrontarlo con l'attesa stimata
+  localmente trasformerebbe la decisione binaria in un confronto.
+  \item \textbf{Offload preventivo.} Oggi si scarica solo dopo un rifiuto. Una
+  frazione del traffico deviata \emph{prima} della congestione eviterebbe di
+  raggiungerla.
+\end{itemize}
+
+Entrambe richiedono la campagna sperimentale che il
+\cref{cap:13-offload} segnala come mancante: p95 end-to-end e tasso di rifiuto
+con e senza offload, al variare del RTT verso il target.
+
+\section{Alta disponibilit\`a: il vincolo da non rimuovere per primo}
+
+\`E la direzione pi\`u ovvia e quella che raccomanderei per ultima.
+
+Replicare il control plane richiede di replicare il registro, lo store delle
+esecuzioni, le chiavi di idempotenza e le code, e di riconciliare le decisioni di
+controllori che osservano stati parzialmente sovrapposti. Il
+\cref{cap:03-requisiti-principi} ha argomentato che le oscillazioni cos\`i
+introdotte sono un fenomeno \emph{diverso} da quelli studiati qui, e
+indistinguibili da essi.
+
+Il valore di una versione ad alta disponibilit\`a \`e in un'altra direzione: il
+coordinamento fra controllori replicati \`e un problema interessante di per s\'e,
+e questa piattaforma sarebbe un buon banco per studiarlo. Ma sarebbe una
+piattaforma diversa, e il \cref{cap:29-conclusioni} sostiene che la sua
+utilit\`a attuale \`e proporzionale a ci\`o che non fa.
+
+\section{Sintesi}
+
+\begin{table}[htbp]
+\centering
+\caption{Direzioni future, per rapporto valore/costo.}
+\label{tab:futuro}
+\small
+\begin{tabularx}{\textwidth}{@{}lXll@{}}
+\toprule
+\textbf{Id} & \textbf{Intervento} & \textbf{Costo} & \textbf{Valore} \\
+\midrule
+F1 & Ripetere il confronto \code{SOJOURN} & basso & alto \\
+F3 & Esercitare i pesi di \code{BUDGETED} & basso & alto \\
+F2 & \code{SOJOURN} fuori dal sovraccarico & basso & medio \\
+F5 & Isolare il meccanismo del cross-talk & medio & alto \\
+--- & Autenticazione a token & basso & alto (uso) \\
+--- & \code{SOJOURN} ad ambito globale & alto & alto \\
+--- & Combinatoria modulare verificata & medio & medio \\
+--- & Offload con modello di costo & medio & medio \\
+--- & Alta disponibilit\`a & molto alto & basso per gli obiettivi attuali \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Le prime quattro righe hanno una propriet\`a comune: non richiedono codice nuovo.
+Sono esperimenti da eseguire su ci\`o che esiste gi\`a, e la loro presenza in cima
+alla lista \`e coerente con la tesi del documento --- che il valore di questa
+piattaforma stia in ci\`o che consente di misurare.
