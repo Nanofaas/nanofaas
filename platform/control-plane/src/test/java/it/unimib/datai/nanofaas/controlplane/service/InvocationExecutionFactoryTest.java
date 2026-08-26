@@ -61,7 +61,6 @@ class InvocationExecutionFactoryTest {
         } finally {
             executionStore.allowFirstPutToComplete();
             executor.shutdownNow();
-            executionStore.shutdown();
         }
     }
 
@@ -103,7 +102,6 @@ InvocationKind.SYNC
             assertThat(Thread.currentThread().isInterrupted()).isTrue();
         } finally {
             Thread.interrupted();
-            executionStore.shutdown();
         }
     }
 

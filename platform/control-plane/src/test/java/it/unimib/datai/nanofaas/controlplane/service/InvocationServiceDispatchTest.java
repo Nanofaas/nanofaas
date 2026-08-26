@@ -657,7 +657,6 @@ class InvocationServiceDispatchTest {
             ))).hasSize(1);
         } finally {
             executor.shutdownNow();
-            blockedStore.shutdown();
         }
     }
 

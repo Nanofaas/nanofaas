@@ -28,7 +28,6 @@ class InvocationHotPathPerfTest {
 
     @AfterEach
     void tearDown() {
-        executionStore.shutdown();
     }
 
     @Test

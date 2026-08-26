@@ -24,7 +24,6 @@ class AsyncQueueConfigurationTest {
 
     @AfterEach
     void tearDown() {
-        executionStore.shutdown();
     }
 
     @Test

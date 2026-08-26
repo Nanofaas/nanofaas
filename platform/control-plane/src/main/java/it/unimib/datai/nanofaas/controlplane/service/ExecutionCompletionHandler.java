@@ -95,6 +95,7 @@ public class ExecutionCompletionHandler {
         // Future published outside the record monitor (same invariant as
         // publishFinalCompletion): synchronous waiters must not run under the lock.
         executionRecord.completion().complete(result);
+        executionStore.settle(executionRecord);
     }
 
     /**
@@ -118,6 +119,7 @@ public class ExecutionCompletionHandler {
         }
         metrics.error(executionRecord.task().functionName());
         executionRecord.completion().completeExceptionally(failure);
+        executionStore.settle(executionRecord);
     }
 
     public void dispatch(InvocationTask task) {
@@ -226,10 +228,36 @@ public class ExecutionCompletionHandler {
     @SuppressWarnings("java:S2445")
     private void completeExecution(ExecutionRecord executionRecord, DispatchResult dispatchResult, Integer completedAttempt) {
         FinalCompletion completion;
+        boolean lateResultForTerminalRecord;
         synchronized (executionRecord) {
             completion = completeUnderLock(executionRecord, dispatchResult, completedAttempt);
+            // Il record era gia' terminale e questo risultato riguarda comunque il
+            // tentativo in corso: non c'e' nessuna FinalCompletion da pubblicare, ma
+            // la future condivisa e' ancora pendente e qualcuno potrebbe starci sopra.
+            // Il ramo di retry non entra qui - resetForRetry riporta a QUEUED - e un
+            // risultato arrivato per un tentativo vecchio nemmeno.
+            lateResultForTerminalRecord = completion == null
+                    && executionRecord.isTerminal()
+                    && (completedAttempt == null || executionRecord.task().attempt() == completedAttempt);
         }
         publishFinalCompletion(executionRecord, completion);
+        if (lateResultForTerminalRecord) {
+            // Un timeout sincrono ha reso terminale il record mentre il dispatch era
+            // in volo. Lo stato registrato resta TIMEOUT - e' un invariante voluto e
+            // gia' coperto da un test - ma chi e' ancora in attesa sulla future
+            // condivisa, tipicamente un secondo chiamante con la stessa chiave di
+            // idempotenza che ha un budget suo, deve ricevere la risposta vera invece
+            // di aspettare invano fino al proprio timeout. complete() su una future
+            // gia' completata non fa nulla, quindi non puo' sovrascrivere niente.
+            executionRecord.completion().complete(dispatchResult.result());
+        }
+        // Ultimo, e fuori dal monitor: completeUnderLock rilascia lo slot di dispatch
+        // anche quando trova il record gia' terminale (un timeout sincrono che ha
+        // marcato il record mentre il dispatch era ancora in volo), e archiviarlo
+        // prima lo renderebbe irreperibile proprio a quel passaggio - lo slot
+        // resterebbe preso per sempre. settle() ignora i record non terminali,
+        // quindi il ramo di retry resta intatto.
+        executionStore.settle(executionRecord);
     }
 
     /**

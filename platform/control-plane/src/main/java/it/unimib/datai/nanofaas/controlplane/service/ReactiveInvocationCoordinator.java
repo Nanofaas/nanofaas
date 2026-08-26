@@ -4,6 +4,8 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationResponse;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
+import it.unimib.datai.nanofaas.controlplane.execution.Outcome;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadContext;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadGateway;
@@ -30,19 +32,22 @@ public final class ReactiveInvocationCoordinator {
     private final OffloadGateway offloadGateway;
     private final ExecutionCompletionHandler completionHandler;
     private final InvocationResponseMapper responseMapper;
+    private final ExecutionStore executionStore;
 
     public ReactiveInvocationCoordinator(@Nullable InvocationEnqueuer enqueuer,
                                          Metrics metrics,
                                          @Nullable SyncQueueGateway syncQueueGateway,
                                          @Nullable OffloadGateway offloadGateway,
                                          ExecutionCompletionHandler completionHandler,
-                                         InvocationResponseMapper responseMapper) {
+                                         InvocationResponseMapper responseMapper,
+                                         ExecutionStore executionStore) {
         this.enqueuer = enqueuer == null ? InvocationEnqueuer.noOp() : enqueuer;
         this.metrics = metrics;
         this.syncQueueGateway = syncQueueGateway == null ? SyncQueueGateway.noOp() : syncQueueGateway;
         this.offloadGateway = offloadGateway == null ? OffloadGateway.noOp() : offloadGateway;
         this.completionHandler = completionHandler;
         this.responseMapper = responseMapper;
+        this.executionStore = executionStore;
     }
 
     public Mono<SyncInvocation> invoke(InvocationExecutionFactory.ExecutionLookup lookup,
@@ -55,6 +60,15 @@ public final class ReactiveInvocationCoordinator {
                                        FunctionSpec spec,
                                        Integer timeoutOverrideMs,
                                        OffloadContext offloadContext) {
+        // La chiave ha trovato un'esecuzione gia' finita: il record mutabile non
+        // esiste piu', ma l'esito che serve al replay si'. Trattenerlo e' il motivo
+        // per cui ExecutionRecord.toOutcome() conserva il payload per le esecuzioni con chiave.
+        Outcome settled = lookup.settledOutcome();
+        if (settled != null) {
+            return Mono.just(SyncInvocation.local(
+                    responseMapper.terminalResponse(lookup.settledExecutionId(), settled)));
+        }
+
         ExecutionRecord executionRecord = lookup.executionRecord();
         InvocationResponse replay = responseMapper.terminalResponse(executionRecord);
         if (replay != null) {
@@ -86,6 +100,12 @@ public final class ReactiveInvocationCoordinator {
                 })
                 .onErrorResume(java.util.concurrent.TimeoutException.class, ex -> {
                     executionRecord.markTimeout();
+                    // Marcato ma NON archiviato: il dispatch e' ancora in volo e
+                    // tiene uno slot di concorrenza. Archiviarlo adesso lo toglierebbe
+                    // dai vivi, e il completamento che arriva dopo non lo troverebbe
+                    // piu' per restituire quello slot. Archivia quel completamento,
+                    // che passa comunque di li'; se non arrivasse mai, ci pensa
+                    // maxLifetime.
                     metrics.timeout(executionRecord.task().functionName());
                     return Mono.just(new SyncInvocation(responseMapper.timeoutResponse(executionRecord), offloadedTarget.get()));
                 })
@@ -93,6 +113,7 @@ public final class ReactiveInvocationCoordinator {
                     log.warn("Execution {} completed exceptionally", executionRecord.executionId(), ex);
                     String message = ex.getMessage() != null ? ex.getMessage() : ex.toString();
                     InvocationResult failure = InvocationResult.error("EXECUTION_FAILED", message);
+                    // Stessa ragione del timeout qui sopra: lo slot prima dell'archivio.
                     executionRecord.markError(failure.error());
                     metrics.error(executionRecord.task().functionName());
                     return Mono.just(new SyncInvocation(responseMapper.toResponse(executionRecord, failure), offloadedTarget.get()));

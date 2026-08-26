@@ -53,7 +53,6 @@ public class ExecutionRecord {
     private Integer statusCode;
     private Map<String, String> headers;
     private String encoding;
-    private boolean cleaned;
     private final Set<Integer> releasedDispatchAttempts = new HashSet<>();
 
     public ExecutionRecord(String executionId, InvocationTask task) {
@@ -97,6 +96,42 @@ public class ExecutionRecord {
                 statusCode,
                 headers,
                 encoding
+        );
+    }
+
+    /**
+     * L'esito da archiviare, applicando la regola del lettore.
+     *
+     * <p>Se qualcuno puo' ancora chiedere il risultato - un chiamante ASYNC, che
+     * dell'esecuzione ha solo l'id, o un retry che replica una chiave di
+     * idempotenza - l'esito e' completo: {@code ReactiveInvocationCoordinator}
+     * legge {@code output} per servire quel replay, e servirlo vuoto sarebbe la
+     * doppia esecuzione che la chiave esiste per impedire.
+     *
+     * <p>Altrimenti il payload non viene trattenuto affatto. Un chiamante sincrono
+     * senza chiave l'ha gia' ricevuto nel corpo della risposta di {@code :invoke}:
+     * tenerne una seconda copia costa 4.916 byte per record con una risposta da
+     * 4 KB, contro i 116 di questo esito. L'errore resta sempre - due stringhe -
+     * perche' e' l'unica cosa che ha senso rileggere se la connessione e' caduta
+     * prima del corpo.
+     *
+     * <p>Legge i campi direttamente invece di passare da {@link #snapshot()}: il
+     * percorso di completamento non alloca uno Snapshot, e non e' il caso di
+     * cominciare adesso per poi buttarlo via subito dopo.
+     */
+    public synchronized Outcome toOutcome() {
+        return new Outcome(
+                state,
+                Outcome.epochMilli(startedAt),
+                Outcome.epochMilli(finishedAt),
+                readableAfterFinishing ? output : null,
+                lastError,
+                readableAfterFinishing ? headers : null,
+                readableAfterFinishing ? encoding : null,
+                statusCode == null ? Outcome.NO_STATUS : statusCode,
+                initDurationMs == null ? Outcome.NO_INIT : initDurationMs,
+                coldStart,
+                readableAfterFinishing
         );
     }
 
@@ -194,33 +229,6 @@ public class ExecutionRecord {
     }
 
     /**
-     * Releases heavy payloads (request input and response output) to save memory.
-     * Should be called after the result has been consumed or is no longer needed.
-     */
-    public synchronized void cleanup() {
-        if (this.cleaned) {
-            return;
-        }
-        this.cleaned = true;
-        this.output = null;
-        this.headers = null;
-        if (this.task != null) {
-            // Replace task with one that has no request payload
-            this.task = new InvocationTask(
-                    task.executionId(),
-                    task.functionName(),
-                    task.functionSpec(),
-                    null, // Clear request
-                    task.idempotencyKey(),
-                    task.traceId(),
-                    task.enqueuedAt(),
-                    task.attempt(),
-                    task.kind()
-            );
-        }
-    }
-
-    /**
      * Resets the execution for a retry attempt.
      */
     public synchronized void resetForRetry(InvocationTask retryTask) {
@@ -245,7 +253,6 @@ public class ExecutionRecord {
         this.statusCode = null;
         this.headers = null;
         this.encoding = null;
-        this.cleaned = false;
     }
 
     /**

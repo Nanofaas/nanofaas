@@ -34,7 +34,6 @@ class SyncQueueThroughputPerfTest {
 
     @AfterEach
     void tearDown() {
-        executionStore.shutdown();
     }
 
     @Test
