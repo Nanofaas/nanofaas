@@ -62,7 +62,7 @@ public final class ReactiveInvocationCoordinator {
                                        OffloadContext offloadContext) {
         // La chiave ha trovato un'esecuzione gia' finita: il record mutabile non
         // esiste piu', ma l'esito che serve al replay si'. Trattenerlo e' il motivo
-        // per cui Outcome.of() conserva il payload per le esecuzioni con chiave.
+        // per cui ExecutionRecord.toOutcome() conserva il payload per le esecuzioni con chiave.
         Outcome settled = lookup.settledOutcome();
         if (settled != null) {
             return Mono.just(SyncInvocation.local(
