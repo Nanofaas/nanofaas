@@ -301,6 +301,7 @@ public class SyncQueueService implements SyncQueueGateway {
                 executionRecord.completion().complete(result);
             }
         }
+        executionStore.settle(executionRecord);
         if (wasQueued) {
             metrics.dequeued(functionName);
         }
@@ -320,6 +321,7 @@ public class SyncQueueService implements SyncQueueGateway {
                     executionRecord.completion().complete(InvocationResult.error("QUEUE_TIMEOUT", "Queue wait exceeded"));
                 }
             }
+            executionStore.settle(executionRecord);
         }
         metrics.dequeued(item.task().functionName());
         metrics.timedOut(item.task().functionName());

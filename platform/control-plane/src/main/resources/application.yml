@@ -40,6 +40,19 @@ nanofaas:
   deployment:
     # Optional backend id to prefer when multiple managed deployment providers are available.
     default-backend: ""
+  execution-store:
+    # Ritenzione di un esito che qualcuno puo' ancora leggere: un chiamante ASYNC,
+    # che dell'esecuzione ha solo l'id, o un retry che replica una chiave.
+    ttl: 5m
+    # Ritenzione dell'esito di una sincrona senza chiave, la cui risposta e' gia'
+    # tornata sulla connessione del chiamante.
+    sync-ttl: 30s
+    # Tetto assoluto per un'esecuzione incastrata (dispatch perso, callback mai arrivata).
+    max-lifetime: 30m
+    # Il limite in NUMERO, non solo nel tempo. Senza, la memoria resta proporzionale
+    # al tasso di arrivo: il 2026-08-23 erano 1,05 GB e il 50,6% del tempo in GC.
+    # Un esito compatto misura 116 byte, quindi questo tetto costa circa 12 MB.
+    max-outcomes: 100000
   defaults:
     timeoutMs: 30000
     concurrency: 4

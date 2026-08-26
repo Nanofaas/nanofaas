@@ -765,7 +765,14 @@ components:
           type: string
           format: date-time
         output:
-          description: JSON output (present on success)
+          description: |
+            JSON output. Present on success for asynchronous and idempotency-keyed
+            executions, whose caller has only the execution id and for whom this is
+            the only way to the result.
+
+            Null for a plain synchronous execution: its output was already returned
+            in the body of the `:invoke` response, on the connection the caller was
+            holding, and a second copy is not retained.
           oneOf:
             - type: object
             - type: array
@@ -775,6 +782,27 @@ components:
             - type: 'null'
         error:
           $ref: '#/components/schemas/ErrorInfo'
+        coldStart:
+          type: boolean
+          description: Whether this execution paid a runtime cold start.
+        initDurationMs:
+          type: integer
+          format: int64
+          description: Runtime initialisation time, present only on a cold start.
+        statusCode:
+          type: integer
+          description: HTTP status the handler chose for its response.
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+          description: |
+            Response headers the handler set. Retained under the same rule as
+            `output`, and null for a plain synchronous execution.
+        encoding:
+          type: string
+          description: |
+            Encoding of `output`. Retained under the same rule as `output`.
     ErrorInfo:
       type: object
       properties:
