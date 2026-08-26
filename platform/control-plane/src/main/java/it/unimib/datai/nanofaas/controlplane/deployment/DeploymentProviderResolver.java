@@ -17,7 +17,7 @@ public class DeploymentProviderResolver {
     public DeploymentProviderResolver(@Autowired(required = false) List<ManagedDeploymentProvider> providers,
                                       DeploymentProperties properties) {
         this.providers = providers == null ? List.of() : List.copyOf(providers);
-        this.properties = properties == null ? new DeploymentProperties() : properties;
+        this.properties = properties;
     }
 
     public ManagedDeploymentProvider resolve(FunctionSpec spec, String backendHint) {

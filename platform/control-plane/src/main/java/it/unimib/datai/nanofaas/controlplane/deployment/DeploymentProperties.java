@@ -6,7 +6,4 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record DeploymentProperties(
         String defaultBackend
 ) {
-    public DeploymentProperties() {
-        this(null);
-    }
 }
