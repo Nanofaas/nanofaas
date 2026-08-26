@@ -288,33 +288,41 @@ neither Micrometer nor the polling binder reports anything — and
 `--enable-monitoring=jfr,jvmstat,jmxserver` does not bring them back. That was
 tested and does not work.
 
-JFR does, by an indirect route. The GC-specific event types
+JFR does expose an indirect diagnostic route. The GC-specific event types
 (`jdk.G1GarbageCollection`, `jdk.GCHeapSummary`, the `GCPhase*` family) are
 declared in the recording and emit zero events; stopping there would suggest JFR
-is useless here. The pauses are recorded as **VM operations** instead, with a
-duration each. From a 90s recording under load:
+is useless here. The pauses appear as **VM operations**, with a duration each.
+They cannot be summed as GC time: a controlled 2026-08-25 G1 recording on
+Oracle GraalVM 25.0.4 showed `G1 wrapper` intervals overlapping `Collect for
+allocation` and the related `Pause remark`/`Pause cleanup` operations. The
+events are useful per-operation observations, but are not a one-to-one,
+non-overlapping GC collection counter.
+
+From a 90s recording under load:
 
 | operation | count | total | mean | max |
 |---|---|---|---|---|
 | `G1 wrapper` | 43 | 835.1 ms | 19.4 ms | 97.6 ms |
 | `Collect for allocation` | 31 | 651.1 ms | 21.0 ms | 94.5 ms |
 | `Try init concurrent mark` | 2 | 37.3 ms | 18.6 ms | 22.5 ms |
-| **total** | **76** | **1,524 ms of 90 s** | | **1.69%** |
+Do not total those rows or divide their durations by wall-clock time: nested VM
+operations would double-count the same pause. Prometheus exposes them under
+`nanofaas_jfr_vm_operation_*`, not as `jvm_gc_*` collection metrics.
 
-That independently confirms §6 by a different route — 1.69% of wall clock against
-the serial collector's 31.8% — and yields more than the MXBeans ever could: a
-duration per pause, and therefore the maximum, which the polled counters cannot
-give even where they work.
+Native acceptance on 2026-08-26 (Oracle GraalVM 25.0.4, G1) confirmed the
+runtime path: after 5,000 local metric scrapes the process exposed
+`nanofaas_gc_metrics_source{source="unavailable"} 1`, plus seven
+`Collect for allocation` and seven `G1 wrapper` events with non-zero durations.
+No `jvm_gc_collection_*` series was published.
 
 | build | counts and total time | maximum pause |
 |---|---|---|
 | JVM | Micrometer, natively | yes, from notifications |
 | native, serial | the polling binder | no |
-| native, G1 | **JFR only** | **yes, per pause** |
+| native, G1 | unavailable from the runtime | JFR VM-operation observations only |
 
-So G1 is not unobservable, it is unobservable **through Prometheus**: the data
-needs a recording pulled and analysed out of band rather than a gauge to scrape.
-Adequate for an investigation, not for an alert.
+So G1 does not provide a truthful GC collection counter through Prometheus. It
+does provide JFR VM-operation observations for investigation and alert context.
 
 ### Optimisation level
 
