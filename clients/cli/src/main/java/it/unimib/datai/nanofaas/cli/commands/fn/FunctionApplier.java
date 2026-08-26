@@ -32,7 +32,18 @@ public final class FunctionApplier {
     }
 
     private static RuntimeException mapError(ControlPlaneHttpException exception) {
-        String code = ControlPlaneError.fromBody(exception.getBody()).code();
+        var code = ControlPlaneError.fromBody(exception.getBody()).code();
+
+        // The HTTP response may not be parseable as a ControlPlaneError. As
+        // example, it may returns a non-JSON response with the following
+        // content: "Control-plane HTTP 503 during register function
+        // (http://localhost:8080/v1/functions): Ambiguous managed deployment
+        // provider selection for function 'qr-code-go': [container-local,
+        // k8s]".
+        if (code == null) {
+            return exception;
+        }
+
         return switch (code) {
             case "IMAGE_NOT_FOUND" -> new IllegalArgumentException(
                     "Image not found in registry. Check image name/tag and retry.");
