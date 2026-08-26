@@ -149,6 +149,42 @@ cosa restituiscono le funzioni.
 
 `./gradlew build` verde, 397 test.
 
+## Prova locale su Docker Desktop, 2026-08-26
+
+A/B sulla stessa macchina, stesso carico, immagini `jvm-c2` (`-XX:+UseSerialGC`,
+tiering 4, verificato leggendo `/app/jvm.options` dentro l'immagine). Control plane
+con `--memory=1g --cpus=2`, `word-stats-java` in modo EXTERNAL, 800 richieste/s
+per 6 minuti. Statistiche sulla meta' finale della corsa, cioe' a regime.
+
+| | main | branch |
+|---|---|---|
+| `execution_store_size` medio | 48.205 | **24.440** |
+| escursione max-min (il dente di sega) | 47.450 | **816** |
+| heap usato medio / max (MB) | 154,4 / 490,3 | **38,9 / 126,4** |
+| promozione (MB/s) | 2,64 | **0,26** |
+| raccolte young | 853 | 1.952 |
+| pausa young media (ms) | 4,41 | **1,78** |
+| raccolte **full** | 2 (512 ms l'una) | **0** |
+| live set dopo full GC (MB) | 250,7 | mai misurato: nessuna full GC |
+| RSS del container (limite 1 GiB) | **904,6 MiB** | **356,7 MiB** |
+| successi / errori / timeout | 284.179 / 0 / 0 | 284.517 / 0 / 0 |
+| k6 p50 / p95 | 0,8 / 2,5 ms | 0,8 / **1,9** ms |
+
+Tre conferme che contano piu' dei numeri assoluti:
+
+1. **Il dente di sega e' sparito.** Su `main` lo store oscilla fra 24.103 e 71.553:
+   e' il janitor che ogni 60 secondi fa rispettare un TTL di 30. Sul branch resta
+   piatto a 24.440, cioe' esattamente `800/s x 30 s` - lo stato stazionario che la
+   teoria prevede quando lo sfratto non ha ritardo.
+2. **La promozione scende di 10x** (2,64 -> 0,26 MB/s). I 2,64 MB/s coincidono con
+   i 2,79 MB/s annotati il 2026-08-23 nel commento di `ExecutionStore`.
+3. **Il branch raccoglie piu' spesso e paga meno** (1.952 raccolte contro 853, ma
+   1,78 ms contro 4,41, e tempo totale in young quasi uguale: 3,47 contro 3,77 s).
+   E' la firma del collettore a copia: il costo sta nei sopravvissuti, non nelle
+   raccolte.
+
+Zero errori e zero timeout su entrambi, throughput identico, coda p95 migliore.
+
 ## Verifica ancora da fare
 
 Rilanciare `A3-sync-3x` e confrontare con i tre run di baseline.
