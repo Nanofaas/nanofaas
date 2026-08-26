@@ -59,13 +59,15 @@ subprojects {
                 if (project.hasProperty('nativeGc')) {
                     binary.buildArgs.add("--gc=${project.property('nativeGc')}")
                 }
-                // -PnativeMonitoring=jfr,jvmstat exists because a native image is
-                // otherwise blind where it matters most: under G1 no
-                // GarbageCollectorMXBean is registered at all, so neither Micrometer
-                // nor a polling binder can report collection counts, collection time
-                // or heap usage — on the build that performs best.
-                if (project.hasProperty('nativeMonitoring')) {
-                    binary.buildArgs.add("--enable-monitoring=${project.property('nativeMonitoring')}")
+                // G1 has no usable GC MXBeans, so JFR is mandatory for its observability.
+                def nativeMonitoring = (project.findProperty('nativeMonitoring') ?: '')
+                        .split(',')
+                        .findAll { !it.isBlank() }
+                if (project.findProperty('nativeGc') == 'G1' && !nativeMonitoring.contains('jfr')) {
+                    nativeMonitoring += 'jfr'
+                }
+                if (!nativeMonitoring.isEmpty()) {
+                    binary.buildArgs.add("--enable-monitoring=${nativeMonitoring.join(',')}")
                 }
                 // -PnativeBuildMemory=6g bounds the BUILDER's heap, not the built
                 // image's. native-image sizes its own heap from the memory it can

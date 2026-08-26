@@ -1,0 +1,279 @@
+{
+  "schema_version": 1,
+  "k6": {
+    "http_reqs": {
+      "count": 195776,
+      "rate": 435.05581110605004
+    },
+    "http_req_failed": {
+      "passes": 15952,
+      "fails": 179824,
+      "value": 0.08148087610330174
+    },
+    "http_req_duration": {
+      "max": 822.017718,
+      "p(50)": 1.7294345,
+      "p(90)": 51.982572000000005,
+      "p(95)": 74.833219,
+      "p(99)": 130.7090995,
+      "avg": 15.865269555834017,
+      "min": 0.416356,
+      "med": 1.7294345
+    },
+    "checks": {
+      "passes": 195776,
+      "fails": 0,
+      "value": 1
+    }
+  },
+  "prometheus": {
+    "function_dispatch_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 129895.0,
+      "delta": 129895.0,
+      "min": 0.0,
+      "max": 129895.0
+    },
+    "function_success_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 129895.0,
+      "delta": 129895.0,
+      "min": 0.0,
+      "max": 129895.0
+    },
+    "function_error_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 0.0,
+      "delta": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "function_retry_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 0.0,
+      "delta": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "function_timeout_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 0.0,
+      "delta": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "function_queue_rejected_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 15154.0,
+      "delta": 15154.0,
+      "min": 0.0,
+      "max": 15154.0
+    },
+    "function_cold_start_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 1.0,
+      "delta": 1.0,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "function_warm_start_total": {
+      "points": 97,
+      "first": 0.0,
+      "last": 129894.0,
+      "delta": 129894.0,
+      "min": 0.0,
+      "max": 129894.0
+    },
+    "function_latency_count": {
+      "points": 97,
+      "first": 0.0,
+      "last": 129895.0,
+      "delta": 129895.0,
+      "min": 0.0,
+      "max": 129895.0
+    },
+    "function_latency_sum": {
+      "points": 97,
+      "first": 0.0,
+      "last": 358.338,
+      "delta": 358.338,
+      "min": 0.0,
+      "max": 358.338
+    },
+    "function_init_duration_count": {
+      "points": 97,
+      "first": 0.0,
+      "last": 1.0,
+      "delta": 1.0,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "function_init_duration_sum": {
+      "points": 97,
+      "first": 0.0,
+      "last": 14.454,
+      "delta": 14.454,
+      "min": 0.0,
+      "max": 14.454
+    },
+    "function_queue_wait_count": {
+      "points": 97,
+      "first": 0.0,
+      "last": 129895.0,
+      "delta": 129895.0,
+      "min": 0.0,
+      "max": 129895.0
+    },
+    "function_queue_wait_sum": {
+      "points": 97,
+      "first": 0.0,
+      "last": 517.511,
+      "delta": 517.511,
+      "min": 0.0,
+      "max": 517.511
+    },
+    "function_queue_wait_p95_ms": {
+      "points": 97,
+      "first": NaN,
+      "last": NaN,
+      "delta": NaN,
+      "min": NaN,
+      "max": NaN
+    },
+    "function_e2e_latency_p95_ms": {
+      "points": 97,
+      "first": NaN,
+      "last": NaN,
+      "delta": NaN,
+      "min": NaN,
+      "max": NaN
+    },
+    "function_e2e_latency_count": {
+      "points": 97,
+      "first": 0.0,
+      "last": 129895.0,
+      "delta": 129895.0,
+      "min": 0.0,
+      "max": 129895.0
+    },
+    "function_e2e_latency_sum": {
+      "points": 97,
+      "first": 0.0,
+      "last": 875.849,
+      "delta": 875.849,
+      "min": 0.0,
+      "max": 875.849
+    },
+    "process_cpu_usage": {
+      "points": 97,
+      "first": 0.00909090909090909,
+      "last": 0.02,
+      "delta": 0.01090909090909091,
+      "min": 0.007142857142857143,
+      "max": 1.0
+    },
+    "jvm_heap_used_bytes": {
+      "points": 0
+    },
+    "jvm_gc_collection_count": {
+      "points": 0
+    },
+    "jvm_gc_collection_time": {
+      "points": 0
+    },
+    "jvm_gc_pause_count": {
+      "points": 0
+    },
+    "jvm_gc_pause_sum": {
+      "points": 0
+    },
+    "jvm_gc_time_fraction": {
+      "points": 97,
+      "first": 0.0,
+      "last": 0.0,
+      "delta": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "function_queue_depth": {
+      "points": 97,
+      "first": 0.0,
+      "last": 0.0,
+      "delta": 0.0,
+      "min": 0.0,
+      "max": 18.0
+    },
+    "function_inFlight": {
+      "points": 97,
+      "first": 0.0,
+      "last": 0.0,
+      "delta": 0.0,
+      "min": 0.0,
+      "max": 8.0
+    },
+    "function_effective_concurrency": {
+      "points": 97,
+      "first": 8.0,
+      "last": 8.0,
+      "delta": 0.0,
+      "min": 8.0,
+      "max": 8.0
+    },
+    "container_memory_bytes@control-plane": {
+      "points": 97,
+      "first": 9863168.0,
+      "last": 480858112.0,
+      "delta": 470994944.0,
+      "min": 9863168.0,
+      "max": 486825984.0
+    },
+    "container_cpu_cores@control-plane": {
+      "points": 97,
+      "first": 0.0,
+      "last": 0.09130685000000086,
+      "delta": 0.09130685000000086,
+      "min": 0.0,
+      "max": 1.53451995
+    },
+    "container_memory_bytes@word-stats-java": {
+      "points": 97,
+      "first": 12169216.0,
+      "last": 363814912.0,
+      "delta": 351645696.0,
+      "min": 12169216.0,
+      "max": 363814912.0
+    },
+    "container_cpu_cores@word-stats-java": {
+      "points": 97,
+      "first": 0.0,
+      "last": 0.026792949999999396,
+      "delta": 0.026792949999999396,
+      "min": 0.0,
+      "max": 0.8540051499999998
+    },
+    "container_memory_bytes@word-stats-javascript": {
+      "points": 97,
+      "first": 10817536.0,
+      "last": 20766720.0,
+      "delta": 9949184.0,
+      "min": 10817536.0,
+      "max": 69533696.0
+    },
+    "container_cpu_cores@word-stats-javascript": {
+      "points": 95,
+      "first": 0.0,
+      "last": 0.009400049999999993,
+      "delta": 0.009400049999999993,
+      "min": 0.0,
+      "max": 0.4606611999999999
+    }
+  },
+  "autoscaling": null
+}
