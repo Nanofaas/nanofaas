@@ -39,8 +39,8 @@ class IdempotencyOutlivesExecutionTest {
     void aKeyShorterThanTheRecordDuplicatesTheExecution() throws InterruptedException {
         // Records held for thirty minutes; the key, built the way production no
         // longer can, for a tenth of a second.
-        ExecutionStore executions = new ExecutionStore(new ExecutionStoreProperties(
-                Duration.ofMinutes(30), Duration.ofMinutes(20), Duration.ofHours(1), null),
+        ExecutionStore executions = new ExecutionStore(ExecutionStoreProperties.of(
+                Duration.ofMinutes(30), Duration.ofHours(1), null),
                 new SimpleMeterRegistry());
         IdempotencyStore keys = new IdempotencyStore(Duration.ofMillis(100));
         InvocationExecutionFactory factory = new InvocationExecutionFactory(executions, keys, new Metrics(new SimpleMeterRegistry()));

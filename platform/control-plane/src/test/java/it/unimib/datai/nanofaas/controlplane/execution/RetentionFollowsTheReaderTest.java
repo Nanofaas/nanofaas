@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.execution;
 
+import com.github.benmanes.caffeine.cache.Ticker;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -13,99 +14,161 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * What the store keeps, and for whom.
+ * Cosa lo store conserva, e per chi.
  *
- * At steady state the store holds `retention x admission rate`, and one clock for
- * every execution made that 270,000 records and 1.05 GB of live data against a
- * 1,002 MB tenured generation on 2026-08-23 - the collector permanently at its
- * limit, 50.6% of wall time in GC, pauses of 2.851 s, and the container killed by
- * a liveness probe it could no longer answer. All of it held for readers that,
- * for plain synchronous traffic, do not exist: the answer went back on the
- * connection the caller was holding.
+ * <p>Allo stato stazionario lo store tiene `ritenzione x tasso di ammissione`, e
+ * un solo orologio per ogni esecuzione fece 270.000 record e 1,05 GB di dati vivi
+ * contro una tenured da 1.002 MB il 2026-08-23: il collettore permanentemente al
+ * limite, il 50,6% del tempo in GC, pause da 2,851 s, e il container ucciso da un
+ * probe di liveness a cui non riusciva piu' a rispondere. Tutto trattenuto per
+ * lettori che, per il traffico sincrono semplice, non esistono: la risposta e'
+ * tornata sulla connessione che il chiamante aveva in mano.
+ *
+ * <p>Da qui la seconda regola, misurata il 2026-08-26: chi non ha lettori non si
+ * porta dietro nemmeno il payload. Un esito completo pesa 4.916 byte con una
+ * risposta da 4 KB; senza payload ne pesa 116, quale che sia la risposta.
  */
 class RetentionFollowsTheReaderTest {
 
-    private static final Duration SYNC_TTL = Duration.ofMillis(50);
-    private static final ExecutionStoreProperties PROPS = new ExecutionStoreProperties(
-            Duration.ofMinutes(5), Duration.ofMinutes(2), Duration.ofMinutes(30), SYNC_TTL);
+    private static final Duration SYNC_TTL = Duration.ofSeconds(30);
+    private static final Duration TTL = Duration.ofMinutes(5);
+    private static final ExecutionStoreProperties PROPS =
+            ExecutionStoreProperties.of(TTL, Duration.ofMinutes(30), SYNC_TTL);
 
-    @SuppressWarnings("java:S2925")
-    @Test
-    void aDeliveredSynchronousAnswerIsNotKept() throws InterruptedException {
-        ExecutionStore store = new ExecutionStore(PROPS);
-        try {
-            store.put(finished("plain", InvocationKind.SYNC, null));
-            Thread.sleep(120);
-            store.evictExpired();
+    private final AtomicLong clock = new AtomicLong();
+    private final Ticker ticker = clock::get;
 
-            assertThat(store.getOrNull("plain")).isNull();
-        } finally {
-            store.shutdown();
-        }
+    private ExecutionStore store() {
+        return new ExecutionStore(PROPS, ticker);
     }
 
-    @SuppressWarnings("java:S2925")
-    @Test
-    void anAsynchronousCallerHasNothingButTheId() throws InterruptedException {
-        ExecutionStore store = new ExecutionStore(PROPS);
-        try {
-            store.put(finished("queued-work", InvocationKind.ASYNC, null));
-            Thread.sleep(120);
-            store.evictExpired();
-
-            // GET /v1/executions/{id} is its only way of learning the outcome.
-            assertThat(store.getOrNull("queued-work")).isNotNull();
-        } finally {
-            store.shutdown();
-        }
+    private void advance(Duration duration) {
+        clock.addAndGet(duration.toNanos());
     }
 
-    @SuppressWarnings("java:S2925")
-    @Test
-    void aKeyedExecutionOutlivesTheAnswerItHandedBack() throws InterruptedException {
-        ExecutionStore store = new ExecutionStore(PROPS);
-        try {
-            store.put(finished("keyed", InvocationKind.SYNC, "order-8821"));
-            Thread.sleep(120);
-            store.evictExpired();
+    // --- chi sopravvive ---------------------------------------------------
 
-            assertThat(store.getOrNull("keyed")).isNotNull();
-        } finally {
-            store.shutdown();
-        }
+    @Test
+    void aDeliveredSynchronousAnswerIsNotKept() {
+        ExecutionStore store = store();
+        store.settle(settled(store, "plain", InvocationKind.SYNC, null));
+
+        advance(SYNC_TTL.plusSeconds(1));
+
+        assertThat(store.outcomeOf("plain")).isNull();
     }
 
-    @SuppressWarnings("java:S2925")
     @Test
-    void aRetryDoesNotDemoteAKeyedExecution() throws InterruptedException {
-        ExecutionStore store = new ExecutionStore(PROPS);
-        try {
-            ExecutionRecord record = finished("retried", InvocationKind.SYNC, "order-8821");
-            store.put(record);
+    void anAsynchronousCallerHasNothingButTheId() {
+        ExecutionStore store = store();
+        store.settle(settled(store, "queued-work", InvocationKind.ASYNC, null));
 
-            // ExecutionCompletionHandler builds the retry task WITHOUT the key - the
-            // retry is internal and must not claim it again. Read from the current
-            // task, retention would demote exactly the executions that had trouble,
-            // and a client replaying its key would find nothing and be charged twice.
-            record.resetForRetry(task("retried", InvocationKind.SYNC, null, 2));
-            record.markSuccess("done");
+        advance(SYNC_TTL.plusSeconds(1));
 
-            Thread.sleep(120);
-            store.evictExpired();
+        // GET /v1/executions/{id} e' la sua unica strada verso il risultato.
+        assertThat(store.outcomeOf("queued-work")).isNotNull();
 
-            assertThat(store.getOrNull("retried")).isNotNull();
-        } finally {
-            store.shutdown();
-        }
+        advance(TTL);
+        assertThat(store.outcomeOf("queued-work")).isNull();
     }
 
-    private static ExecutionRecord finished(String id, InvocationKind kind, String key) {
-        ExecutionRecord record = new ExecutionRecord(id, task(id, kind, key, 1));
+    @Test
+    void aKeyedExecutionOutlivesTheAnswerItHandedBack() {
+        ExecutionStore store = store();
+        store.settle(settled(store, "keyed", InvocationKind.SYNC, "order-8821"));
+
+        advance(SYNC_TTL.plusSeconds(1));
+
+        assertThat(store.outcomeOf("keyed")).isNotNull();
+    }
+
+    @Test
+    void aRetryDoesNotDemoteAKeyedExecution() {
+        ExecutionStore store = store();
+        ExecutionRecord record = new ExecutionRecord("retried", task("retried", InvocationKind.SYNC, "order-8821", 1));
+        store.put(record);
+
+        // ExecutionCompletionHandler costruisce il task di retry SENZA la chiave -
+        // il retry e' interno e non deve rivendicarla di nuovo. Letta dal task
+        // corrente, la ritenzione declasserebbe proprio le esecuzioni che hanno
+        // avuto problemi, e un client che replica la sua chiave non troverebbe
+        // nulla e verrebbe addebitato due volte.
+        record.resetForRetry(task("retried", InvocationKind.SYNC, null, 2));
         record.markSuccess("done");
+        store.settle(record);
+
+        advance(SYNC_TTL.plusSeconds(1));
+
+        assertThat(store.outcomeOf("retried")).isNotNull();
+        assertThat(store.outcomeOf("retried").output()).isEqualTo("done");
+    }
+
+    // --- cosa si portano dietro -------------------------------------------
+
+    @Test
+    void aPlainSynchronousOutcomeDropsThePayloadItAlreadyDelivered() {
+        ExecutionStore store = store();
+        store.settle(settled(store, "plain", InvocationKind.SYNC, null));
+
+        Outcome outcome = store.outcomeOf("plain");
+        assertThat(outcome).isNotNull();
+        assertThat(outcome.readable()).isFalse();
+        assertThat(outcome.output()).isNull();
+        assertThat(outcome.headers()).isNull();
+        assertThat(outcome.encoding()).isNull();
+    }
+
+    @Test
+    void anAsynchronousOutcomeKeepsThePayloadNobodyElseHas() {
+        ExecutionStore store = store();
+        store.settle(settled(store, "queued-work", InvocationKind.ASYNC, null));
+
+        Outcome outcome = store.outcomeOf("queued-work");
+        assertThat(outcome.readable()).isTrue();
+        assertThat(outcome.output()).isEqualTo("done");
+        assertThat(outcome.headers()).containsExactly(Map.entry("Content-Type", "application/json"));
+        assertThat(outcome.encoding()).isEqualTo("json");
+    }
+
+    @Test
+    void aKeyedOutcomeKeepsThePayloadItsReplayMustReturn() {
+        ExecutionStore store = store();
+        store.settle(settled(store, "keyed", InvocationKind.SYNC, "order-8821"));
+
+        // Servire un replay vuoto sarebbe la doppia esecuzione che la chiave
+        // esiste per impedire, non una degradazione.
+        assertThat(store.outcomeOf("keyed").output()).isEqualTo("done");
+    }
+
+    @Test
+    void everyOutcomeKeepsItsErrorAndItsTimings() {
+        ExecutionStore store = store();
+        ExecutionRecord record = new ExecutionRecord("failed", task("failed", InvocationKind.SYNC, null, 1));
+        record.markRunning();
+        record.markError(new it.unimib.datai.nanofaas.common.model.ErrorInfo("BOOM", "esploso"));
+        store.put(record);
+        store.settle(record);
+
+        Outcome outcome = store.outcomeOf("failed");
+        // Due stringhe: l'unica cosa che ha senso rileggere se la connessione e'
+        // caduta prima del corpo della risposta.
+        assertThat(outcome.error().code()).isEqualTo("BOOM");
+        assertThat(outcome.startedAt()).isNotNull();
+        assertThat(outcome.finishedAt()).isNotNull();
+    }
+
+    // --- fixture -----------------------------------------------------------
+
+    private static ExecutionRecord settled(ExecutionStore store, String id, InvocationKind kind, String key) {
+        ExecutionRecord record = new ExecutionRecord(id, task(id, kind, key, 1));
+        store.put(record);
+        record.markRunning();
+        record.markSuccess("done", 200, Map.of("Content-Type", "application/json"), "json");
         return record;
     }
 

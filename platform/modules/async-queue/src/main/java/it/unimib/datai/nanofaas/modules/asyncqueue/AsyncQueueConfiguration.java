@@ -76,5 +76,6 @@ public class AsyncQueueConfiguration {
             executionRecord.markError(error);
             executionRecord.completion().complete(result);
         }
+        executionStore.settle(executionRecord);
     }
 }

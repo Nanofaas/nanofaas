@@ -27,7 +27,7 @@ class ReactiveInvocationCoordinatorTest {
             new InvocationExecutionFactory(executionStore, idempotencyStore, metrics);
     private final ExecutionCompletionHandler completionHandler = mock(ExecutionCompletionHandler.class);
     private final ReactiveInvocationCoordinator coordinator =
-            new ReactiveInvocationCoordinator(null, metrics, null, null, completionHandler, new InvocationResponseMapper());
+            new ReactiveInvocationCoordinator(null, metrics, null, null, completionHandler, new InvocationResponseMapper(), executionStore);
 
     @Test
     void clientTimeoutDoesNotCancelSharedCompletionFuture() {
@@ -43,6 +43,22 @@ class ReactiveInvocationCoordinatorTest {
         // The shared future must survive a single client's timeout: other idempotent
         // waiters and the completion callback still depend on it.
         assertThat(lookup.executionRecord().completion().isCancelled()).isFalse();
+    }
+
+    @Test
+    void aClientTimeoutDoesNotSettleTheRecordWhileItsDispatchIsStillInFlight() {
+        FunctionSpec spec = spec("fn-slot");
+        InvocationExecutionFactory.ExecutionLookup lookup =
+                factory.createOrReuseExecution("fn-slot", spec, new InvocationRequest("p", Map.of()), null, null, InvocationKind.SYNC);
+        String executionId = lookup.executionRecord().executionId();
+
+        coordinator.invoke(lookup, spec, 50).block();
+
+        // Il dispatch tiene ancora uno slot di concorrenza, e chi lo restituisce e'
+        // il completamento, che cerca il record fra i vivi. Archiviarlo qui lo
+        // renderebbe irreperibile e lo slot resterebbe preso per sempre.
+        assertThat(executionStore.getOrNull(executionId)).isNotNull();
+        assertThat(executionStore.outcomeOf(executionId)).isNull();
     }
 
     @Test

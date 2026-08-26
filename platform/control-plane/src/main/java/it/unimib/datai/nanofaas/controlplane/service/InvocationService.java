@@ -11,6 +11,7 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
+import it.unimib.datai.nanofaas.controlplane.execution.Outcome;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionNotFoundException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadContext;
@@ -54,7 +55,7 @@ public class InvocationService {
                 completionHandler,
                 new InvocationExecutionFactory(executionStore, idempotencyStore, metrics),
                 new InvocationResponseMapper(),
-                new ReactiveInvocationCoordinator(enqueuer, metrics, syncQueueGateway, null, completionHandler, new InvocationResponseMapper())
+                new ReactiveInvocationCoordinator(enqueuer, metrics, syncQueueGateway, null, completionHandler, new InvocationResponseMapper(), executionStore)
         );
     }
 
@@ -156,7 +157,15 @@ public class InvocationService {
     }
 
     public Optional<ExecutionStatus> getStatus(String executionId) {
-        return executionStore.get(executionId).map(responseMapper::toStatus);
+        ExecutionRecord live = executionStore.getOrNull(executionId);
+        if (live != null) {
+            return Optional.of(responseMapper.toStatus(live));
+        }
+        // Finita: il record mutabile non c'e' piu', l'esito si'.
+        Outcome outcome = executionStore.outcomeOf(executionId);
+        return outcome == null
+                ? Optional.empty()
+                : Optional.of(responseMapper.toStatus(executionId, outcome));
     }
 
     public void dispatch(InvocationTask task) {

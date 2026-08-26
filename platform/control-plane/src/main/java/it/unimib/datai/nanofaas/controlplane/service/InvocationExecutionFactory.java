@@ -6,6 +6,7 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore.AcquireResult;
+import it.unimib.datai.nanofaas.controlplane.execution.Outcome;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.springframework.stereotype.Service;
@@ -66,6 +67,15 @@ public final class InvocationExecutionFactory {
                 // wait on its result instead of running the function again.
                 metrics.replayed(functionName, kind);
                 return ExecutionLookup.existing(existing);
+            }
+
+            // Finita e archiviata. Guardare solo fra i vivi la farebbe passare per una
+            // rivendicazione stantia, e la funzione girerebbe una seconda volta in
+            // silenzio: esattamente il fallimento che la chiave esiste per impedire.
+            Outcome settledOutcome = executionStore.outcomeOf(existingExecutionId);
+            if (settledOutcome != null) {
+                metrics.replayed(functionName, kind);
+                return ExecutionLookup.settled(existingExecutionId, settledOutcome);
             }
 
             AcquireResult staleClaim = idempotencyStore.claimIfMatches(functionName, idempotencyKey, existingExecutionId);
@@ -160,6 +170,8 @@ public final class InvocationExecutionFactory {
         private final String functionName;
         private final String idempotencyKey;
         private final String claimToken;
+        private final Outcome settledOutcome;
+        private final String settledExecutionId;
         private boolean claimPublished;
 
         private ExecutionLookup(ExecutionRecord executionRecord,
@@ -169,6 +181,19 @@ public final class InvocationExecutionFactory {
                                 String functionName,
                                 String idempotencyKey,
                                 String claimToken) {
+            this(executionRecord, isNew, executionStore, idempotencyStore, functionName,
+                    idempotencyKey, claimToken, null, null);
+        }
+
+        private ExecutionLookup(ExecutionRecord executionRecord,
+                                boolean isNew,
+                                ExecutionStore executionStore,
+                                IdempotencyStore idempotencyStore,
+                                String functionName,
+                                String idempotencyKey,
+                                String claimToken,
+                                Outcome settledOutcome,
+                                String settledExecutionId) {
             this.executionRecord = executionRecord;
             this.isNew = isNew;
             this.executionStore = executionStore;
@@ -176,10 +201,17 @@ public final class InvocationExecutionFactory {
             this.functionName = functionName;
             this.idempotencyKey = idempotencyKey;
             this.claimToken = claimToken;
+            this.settledOutcome = settledOutcome;
+            this.settledExecutionId = settledExecutionId;
         }
 
         private static ExecutionLookup existing(ExecutionRecord executionRecord) {
             return new ExecutionLookup(executionRecord, false, null, null, null, null, null);
+        }
+
+        /** Un'esecuzione con chiave gia' finita: c'e' solo l'esito da riconsegnare. */
+        private static ExecutionLookup settled(String executionId, Outcome outcome) {
+            return new ExecutionLookup(null, false, null, null, null, null, null, outcome, executionId);
         }
 
         private static ExecutionLookup newUnclaimed(ExecutionRecord executionRecord, ExecutionStore executionStore) {
@@ -197,6 +229,15 @@ public final class InvocationExecutionFactory {
 
         public ExecutionRecord executionRecord() {
             return executionRecord;
+        }
+
+        /** Non null solo quando la chiave ha trovato un'esecuzione gia' archiviata. */
+        public Outcome settledOutcome() {
+            return settledOutcome;
+        }
+
+        public String settledExecutionId() {
+            return settledExecutionId;
         }
 
         public boolean isNew() {

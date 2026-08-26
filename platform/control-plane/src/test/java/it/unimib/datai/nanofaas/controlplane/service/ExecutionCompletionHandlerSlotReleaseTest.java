@@ -46,7 +46,6 @@ class ExecutionCompletionHandlerSlotReleaseTest {
         handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.success("late-duplicate")));
 
         assertThat(enqueuer.releases()).isEqualTo(1);
-        store.shutdown();
     }
 
     @Test
@@ -69,7 +68,6 @@ class ExecutionCompletionHandlerSlotReleaseTest {
         handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.success("ok")));
 
         assertThat(enqueuer.releases()).isEqualTo(2);
-        store.shutdown();
     }
 
     @Test
@@ -111,7 +109,6 @@ class ExecutionCompletionHandlerSlotReleaseTest {
 
         assertThat(enqueuer.releases()).isEqualTo(2);
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
-        store.shutdown();
     }
 
     @Test
@@ -145,7 +142,6 @@ class ExecutionCompletionHandlerSlotReleaseTest {
         assertThat(enqueuer.releases()).isEqualTo(2);
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
         assertThat(executionRecord.completion()).isDone();
-        store.shutdown();
     }
 
     @Test
@@ -170,7 +166,6 @@ class ExecutionCompletionHandlerSlotReleaseTest {
         assertThat(executionRecord.task().attempt()).isEqualTo(2);
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
         assertThat(executionRecord.completion()).isDone();
-        store.shutdown();
     }
 
     private static void completeExecution(ExecutionCompletionHandler handler,
@@ -215,6 +210,73 @@ class ExecutionCompletionHandlerSlotReleaseTest {
         ,
         InvocationKind.SYNC
     );
+    }
+
+    @Test
+    void completeExecution_afterASyncTimeout_releasesTheSlotAndOnlyThenSettles() {
+        ExecutionStore store = new ExecutionStore();
+        CountingEnqueuer enqueuer = new CountingEnqueuer();
+        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
+                store, enqueuer, mock(DispatcherRouter.class), new Metrics(new SimpleMeterRegistry()));
+        InvocationTask task = task("exec-timeout", "fn");
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        store.put(executionRecord);
+        executionRecord.markRunning();
+
+        // Il percorso sincrono esaurisce il suo budget mentre il dispatch e' ancora
+        // in volo: marca il record e basta. Archiviarlo qui lo toglierebbe dai vivi,
+        // e il completamento che arriva dopo non lo troverebbe piu' per restituire
+        // lo slot di concorrenza che quel dispatch sta ancora tenendo.
+        executionRecord.markTimeout();
+        assertThat(store.getOrNull("exec-timeout")).isNotNull();
+
+        handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.success("tardi")));
+
+        assertThat(enqueuer.releases()).isEqualTo(1);
+        // E solo adesso, a slot restituito, l'esito prende il posto del record.
+        assertThat(store.getOrNull("exec-timeout")).isNull();
+        assertThat(store.outcomeOf("exec-timeout")).isNotNull();
+    }
+
+    @Test
+    void completeExecution_afterATimeout_stillAnswersWhoeverIsWaitingOnTheSharedFuture() {
+        ExecutionStore store = new ExecutionStore();
+        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
+                store, new CountingEnqueuer(), mock(DispatcherRouter.class), new Metrics(new SimpleMeterRegistry()));
+        InvocationTask task = task("exec-shared", "fn");
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        store.put(executionRecord);
+        executionRecord.markRunning();
+
+        // Il chiamante A esaurisce il suo budget. Il chiamante B - stessa chiave di
+        // idempotenza, stesso record, budget piu' largo - e' ancora sulla future.
+        executionRecord.markTimeout();
+
+        handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.success("risposta vera")));
+
+        assertThat(executionRecord.completion().isDone())
+                .as("B aspetterebbe invano fino al proprio timeout")
+                .isTrue();
+        assertThat(executionRecord.completion().join().output()).isEqualTo("risposta vera");
+        // Lo stato registrato non viene riscritto: e' l'invariante di sempre.
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.TIMEOUT);
+    }
+
+    @Test
+    void completeExecution_whileRetryingDoesNotCompleteTheFutureEarly() {
+        ExecutionStore store = new ExecutionStore();
+        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
+                store, new CountingEnqueuer(), mock(DispatcherRouter.class), new Metrics(new SimpleMeterRegistry()));
+        InvocationTask task = task("exec-retry", "fn");  // maxRetries = 2 nella fixture
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        store.put(executionRecord);
+        executionRecord.markRunning();
+
+        handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.error("ERR", "primo tentativo")));
+
+        // Il record e' tornato in coda: la future non deve essere stata toccata.
+        assertThat(executionRecord.completion().isDone()).isFalse();
+        assertThat(store.getOrNull("exec-retry")).isNotNull();
     }
 
     private static final class CountingEnqueuer implements InvocationEnqueuer {

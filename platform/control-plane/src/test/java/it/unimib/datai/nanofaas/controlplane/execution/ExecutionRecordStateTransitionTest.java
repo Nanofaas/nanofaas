@@ -195,18 +195,6 @@ class ExecutionRecordStateTransitionTest {
         assertThat(snapshot.encoding()).isEqualTo("base64");
     }
 
-    @Test
-    void cleanup_clearsHeaders() {
-        ExecutionRecord executionRecord = createRecord("exec-1");
-        executionRecord.markSuccess("body", 200, Map.of("Location", "/x"), "base64");
-
-        executionRecord.cleanup();
-
-        ExecutionRecord.Snapshot snapshot = executionRecord.snapshot();
-        assertThat(snapshot.headers()).isNull();
-        assertThat(snapshot.output()).isNull();
-    }
-
     private ExecutionRecord createRecord(String executionId) {
         return new ExecutionRecord(executionId, createTask(executionId));
     }
