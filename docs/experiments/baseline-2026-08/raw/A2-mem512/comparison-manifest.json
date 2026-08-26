@@ -1,0 +1,59 @@
+{
+  "started_at": "2026-08-25T06:10:13.271592+00:00",
+  "functions": [
+    "word-stats-java",
+    "word-stats-javascript"
+  ],
+  "repetitions": 3,
+  "order": [
+    "jvm run 1",
+    "native-os run 1",
+    "native-o3 run 1",
+    "native-o3-g1 run 1",
+    "jvm run 2",
+    "native-os run 2",
+    "native-o3 run 2",
+    "native-o3-g1 run 2",
+    "jvm run 3",
+    "native-os run 3",
+    "native-o3 run 3",
+    "native-o3-g1 run 3"
+  ],
+  "variants": [
+    {
+      "key": "jvm",
+      "label": "JVM (Java 25, JIT)",
+      "rationale": "The baseline everything else is compared against, and the only build that JIT-compiles from a profile gathered during the run itself.",
+      "build_env": {},
+      "image": "127.0.0.1:5000/nanofaas/control-plane:jvm"
+    },
+    {
+      "key": "native-os",
+      "label": "Native, -Os, serial GC",
+      "rationale": "Optimised for image size. Halves the binary against -O3 and was the default until measurement showed the size is paid on the registry rather than on the node.",
+      "build_env": {
+        "NATIVE_OPTIMIZATION": "s"
+      },
+      "image": "127.0.0.1:5000/nanofaas/control-plane:native-os"
+    },
+    {
+      "key": "native-o3",
+      "label": "Native, -O3, serial GC",
+      "rationale": "The current default. Faster than -Os where memory is not the constraint, and identical to it where it is \u2014 the serial collector becomes the bottleneck before the code quality does.",
+      "build_env": {
+        "NATIVE_OPTIMIZATION": "3"
+      },
+      "image": "127.0.0.1:5000/nanofaas/control-plane:native-o3"
+    },
+    {
+      "key": "native-o3-g1",
+      "label": "Native, -O3, G1 (Oracle GraalVM)",
+      "rationale": "The variant that tests whether the collector was the limit: under sustained load the serial collector spent 32% of wall-clock time collecting, with pauses reaching 1.9s.",
+      "build_env": {
+        "NATIVE_OPTIMIZATION": "3",
+        "NATIVE_GC": "G1"
+      },
+      "image": "127.0.0.1:5000/nanofaas/control-plane:native-o3-g1"
+    }
+  ]
+}
