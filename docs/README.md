@@ -6,6 +6,7 @@
 | --- | --- |
 | [Quickstart](quickstart.md) | Build the platform and CLI, provision and validate a platform |
 | [Tutorial: writing a function](tutorial-function.md) | End-to-end walkthrough: scaffold, handler, tests, deploy, invoke, contract tests (Java / Python / JavaScript) |
+| [Local development](local.md) | How to run and develop the control plane, nanofaas-cli, and functions locally |
 
 ## Guides
 
