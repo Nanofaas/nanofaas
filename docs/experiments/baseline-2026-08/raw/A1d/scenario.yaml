@@ -1,0 +1,24 @@
+# The build comparison with the CPU limit off the critical path.
+#
+# Same cell as runtime-comparison-jvm.yaml in every other respect. The one
+# difference is that this one says what the control plane may use, instead of
+# inheriting the chart default of a single core — which the archived sweep
+# showed is the steep part of the curve: shed falls from 24.6% at one core to
+# 11.0% at two, and then does not move at three or four.
+#
+# Two cores rather than four for that reason. Cells beyond the knee cost the
+# same hours and measure the same thing.
+workflow: loadtest
+backend: k8s
+loadProfile: comparison
+controlPlaneVariant: jvm
+functions:
+  - word-stats-java
+  - word-stats-javascript
+resources:
+  control-plane:
+    limits:
+      cpu: 2
+      # The chart default, stated rather than inherited: a run record that does
+      # not say what the limit was cannot be compared with one that does.
+      memoryMiB: 2048

@@ -1,0 +1,9 @@
+# nome	scenario	varianti	tieni_vm	marcatore
+# A3: la build sta ferma e varia il CARICO. Quattro bracci — solo sync e misto,
+# a 2x e 3x — su una VM sola, con il rilascio Helm disinstallato fra uno e
+# l'altro: e' lo stesso impianto, e ricrearlo quattro volte aggiungerebbe una
+# variabile invece di toglierne.
+A3-sync-2x	sync-baseline-load2x.yaml	jvm-c2	1	A3-sync-2x
+A3-misto-2x	mixed-workload-load2x.yaml	jvm-c2	1	A3-misto-2x
+A3-sync-3x	sync-baseline-load3x.yaml	jvm-c2	1	A3-sync-3x
+A3-misto-3x	mixed-workload-load3x.yaml	jvm-c2	0	A3-misto-3x

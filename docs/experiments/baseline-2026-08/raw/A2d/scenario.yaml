@@ -1,0 +1,27 @@
+# Il confronto fra build sotto un tetto di memoria di 512 MiB.
+#
+# La CPU resta a 2 core, cioe' oltre il ginocchio che l'archivio colloca fra 1 e
+# 2: variare due risorse insieme renderebbe inattribuibile qualunque differenza.
+# L'unica cosa che cambia rispetto a runtime-comparison-cpu2.yaml e' il tetto.
+#
+# Attesa da smentire, non da confermare: nella campagna a 2 GiB il working set
+# della JVM ha toccato 1068 MiB e quello delle native seriali 242-255. Sotto
+# questo tetto la JVM potrebbe non stare in piedi affatto - il che e' un
+# risultato, purche' misurato invece che assunto.
+workflow: loadtest
+backend: k8s
+loadProfile: comparison
+controlPlaneVariant: jvm
+functions:
+  - word-stats-java
+  - word-stats-javascript
+resources:
+  control-plane:
+    limits:
+      cpu: 2
+      memoryMiB: 512
+    requests:
+      cpu: 0.25
+      # La richiesta non puo' superare il limite, e il default del chart e'
+      # 512Mi: a questo tetto lo eguaglia, sotto no.
+      memoryMiB: 512
