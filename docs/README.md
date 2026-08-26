@@ -21,8 +21,7 @@
 
 | Doc | What it covers |
 | --- | --- |
-| [Control-plane operation](control-plane.md) | Control-plane deployment overview |
-| [Control-plane modules](control-plane-modules.md) | Optional module system and module list |
+| [Control-plane](control-plane.md) | Control-plane overview |
 | [Function pod architecture](function-pod-architecture.md) | Watchdog, runtimes, and managed deployment model |
 | [Kubernetes deployment](k8s.md) | k8s backend: resources, HPA, labels, secrets |
 | [Observability](observability.md) | Metrics, PromQL queries, health, logging, tracing |
