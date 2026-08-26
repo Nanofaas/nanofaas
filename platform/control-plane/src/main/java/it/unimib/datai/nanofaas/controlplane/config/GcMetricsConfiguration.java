@@ -24,11 +24,9 @@ import java.util.List;
  * silence is the opposite of the truth it is reporting: a native build measured here lost half its
  * throughput to collection pauses reaching 1.94 seconds, while its metrics said the GC was idle.</p>
  *
- * <p>The MXBeans themselves are present and answer {@code getCollectionCount()} and
- * {@code getCollectionTime()} on both HotSpot and SubstrateVM, so polling them works everywhere.
- * That yields how often collection happened and how long it took in total — enough for a GC
- * overhead ratio and a mean pause. It does not yield the maximum pause, which needs the
- * notifications; the tail still has to be read from the latency histogram, where callers feel it.</p>
+ * <p>Where usable MXBeans exist, polling their count and time yields collection totals without
+ * notifications. Native G1 exposes no usable collector MXBean, so its JFR VM operations are
+ * reported separately rather than fabricated as GC collection counters.</p>
  *
  * <p>Registered on both builds rather than only the native one: a diagnostic that exists in one
  * configuration and not the other cannot be used to compare them, which is the whole reason this
@@ -100,7 +98,7 @@ class GcMetricsConfiguration {
     @Bean
     MeterBinder jfrVmOperationMetrics() {
         return registry -> {
-            if (!usableCollectors().isEmpty()) {
+            if (!usableCollectors().isEmpty() || jfrStream != null) {
                 return;
             }
             try {

@@ -24,12 +24,12 @@ final class JfrGcMetrics {
 
     private Operation register(String operationName) {
         Operation operation = new Operation();
-        FunctionCounter.builder("nanofaas_jfr_gc_vm_operation_count", operation, value -> value.count.get())
+        FunctionCounter.builder("nanofaas_jfr_vm_operation_count", operation, value -> value.count.get())
                 .tag("operation", operationName)
                 .description("JFR VM operations; these are not GC collection counters")
                 .register(registry);
         FunctionCounter.builder(
-                        "nanofaas_jfr_gc_vm_operation_time",
+                        "nanofaas_jfr_vm_operation_time",
                         operation,
                         value -> value.totalNanos.get() / 1_000_000_000.0)
                 .tag("operation", operationName)

@@ -4,7 +4,9 @@ import io.micrometer.core.instrument.FunctionCounter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.binder.MeterBinder;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import jdk.jfr.consumer.RecordingStream;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 
 import java.lang.management.GarbageCollectorMXBean;
@@ -14,7 +16,10 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class GcMetricsConfigurationTest {
@@ -87,17 +92,24 @@ class GcMetricsConfigurationTest {
     }
 
     @Test
-    void startsAndClosesTheJfrFallbackWhenMxBeansAreAbsent() {
+    void startsAndClosesOneJfrFallbackWhenMxBeansAreAbsent() {
         GcMetricsConfiguration configuration;
         try (MockedStatic<ManagementFactory> managementFactory = mockStatic(ManagementFactory.class)) {
             managementFactory.when(ManagementFactory::getGarbageCollectorMXBeans).thenReturn(List.of());
             configuration = new GcMetricsConfiguration();
         }
 
-        configuration.jfrVmOperationMetrics().bindTo(registry);
-        configuration.closeJfrStream();
+        try (MockedConstruction<RecordingStream> streams = mockConstruction(RecordingStream.class)) {
+            MeterBinder binder = configuration.jfrVmOperationMetrics();
+            binder.bindTo(registry);
+            binder.bindTo(registry);
+            configuration.closeJfrStream();
 
-        assertThat(registry.find("jvm_gc_collection_count").functionCounters()).isEmpty();
+            assertThat(streams.constructed()).singleElement().satisfies(stream -> {
+                verify(stream, times(1)).startAsync();
+                verify(stream, times(1)).close();
+            });
+        }
     }
 
     @Test

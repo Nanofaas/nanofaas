@@ -307,7 +307,7 @@ From a 90s recording under load:
 | `Try init concurrent mark` | 2 | 37.3 ms | 18.6 ms | 22.5 ms |
 Do not total those rows or divide their durations by wall-clock time: nested VM
 operations would double-count the same pause. Prometheus exposes them under
-`nanofaas_jfr_gc_vm_operation_*`, not as `jvm_gc_*` collection metrics.
+`nanofaas_jfr_vm_operation_*`, not as `jvm_gc_*` collection metrics.
 
 Native acceptance on 2026-08-26 (Oracle GraalVM 25.0.4, G1) confirmed the
 runtime path: after 5,000 local metric scrapes the process exposed

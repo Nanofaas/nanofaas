@@ -24,9 +24,8 @@ Do not add a `source` tag to those metrics. Publish the active source separately
 
 For JFR, the existing `jvm_gc_*` metrics may be emitted only if Task 3 proves that the selected events represent non-overlapping GC collections with durations matching the pauses. If that proof fails, publish only truthful observations:
 
-- `nanofaas_jfr_gc_vm_operation_count{operation=...}`;
-- `nanofaas_jfr_gc_vm_operation_time{operation=...}` in seconds;
-- `nanofaas_jfr_gc_vm_operation_time_fraction` over the JFR observation window.
+- `nanofaas_jfr_vm_operation_count{operation=...}`;
+- `nanofaas_jfr_vm_operation_time{operation=...}` in seconds.
 
 In that case set `nanofaas_gc_metrics_source{source="unavailable"} 1`; do not claim that the JVM GC collection counters are available.
 
@@ -136,7 +135,7 @@ The mapping passes only if the evidence shows all of the following:
 **Step 3: Choose the metric path from evidence**
 
 - If the gate passes, document the exact accepted operation set and permit Task 5 to populate `jvm_gc_*{gc="G1"}`.
-- If the gate fails, do not map these events to `jvm_gc_collection_*`; Task 5 must use the separate `nanofaas_jfr_gc_vm_operation_*` metrics.
+- If the gate fails, do not map these events to `jvm_gc_collection_*`; Task 5 must use the separate `nanofaas_jfr_vm_operation_*` metrics.
 
 This decision is part of the test result, not an implementation assumption.
 
@@ -196,9 +195,9 @@ Create one asynchronous `RecordingStream`, enable only `jdk.ExecuteVMOperation`,
 **Step 3: Publish metrics according to Task 3**
 
 - Passed gate: publish the existing `jvm_gc_*{gc="G1"}` metrics from JFR state.
-- Failed gate: publish only `nanofaas_jfr_gc_vm_operation_*` and mark the GC collection source unavailable.
+- Failed gate: publish only `nanofaas_jfr_vm_operation_*` and mark the GC collection source unavailable.
 
-For either path, calculate fractions from JFR total duration divided by monotonic elapsed time since the stream started.
+Only calculate a JFR fraction if the accepted event set is non-overlapping; the failed gate forbids summing nested VM-operation durations.
 
 **Step 4: Run configuration and aggregator tests**
 
