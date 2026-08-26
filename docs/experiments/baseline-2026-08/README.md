@@ -39,6 +39,115 @@ sotto, con lo spread che qui non ci starebbe.
 | A3-misto-3x | jvm-c2 · misto · 3x | 3 | 1371 | 776 | 12.6% | 169.3 ms | sì |
 <!-- sintesi:fine -->
 
+## Le due matrici
+
+I dodici run sono due esperimenti, non dodici. Le tabelle per run restano piu'
+sotto — sono il dato, con il loro spread — ma non sono il modo di leggerlo: «tre
+tetti, tre vincitori» resta invisibile finche' ogni tetto sta in una tabella
+diversa. Calcolate da `matrice.py`.
+
+### Prima matrice: 5 build × 4 condizioni di risorse
+
+Le celle aggregano tutte le ripetizioni di quella build in quella condizione,
+anche da run diversi. E' legittimo perche' la riproducibilita' fra sessioni e'
+misurata piu' sotto, non assunta.
+
+**Invocazioni servite al secondo** — il carico offerto e' identico in ogni cella
+(435 rps), quindi qui si legge quanto ne assorbe ciascuna build:
+
+<!-- matrice-servite:inizio -->
+| build | 1 core / 2 GiB | 2 core / 2 GiB | 2 core / 1 GiB | 2 core / 512 MiB |
+|---|---|---|---|---|
+| JVM (seriale, C1) | 217 ± 11 | 301 ± 0 | 302 ± 0 | 223 ± 52 |
+| JVM (seriale, C2) | 300 ± 1 | 301 ± 0 | 302 ± 0 | 160 ± 4 |
+| Native −Os, seriale | 235 ± 2 | 269 ± 1 | 272 ± 2 | 273 ± 9 |
+| Native −O3, seriale | 245 ± 2 | 272 ± 2 | 269 ± 4 | 272 ± 6 |
+| Native −O3, G1 | 267 ± 3 | 302 ± 0 | 293 ± 6 | 211 ± 2 |
+<!-- matrice-servite:fine -->
+
+**Carico rifiutato (%)**:
+
+<!-- matrice-shed:inizio -->
+| build | 1 core / 2 GiB | 2 core / 2 GiB | 2 core / 1 GiB | 2 core / 512 MiB |
+|---|---|---|---|---|
+| JVM (seriale, C1) | 23.08 ± 3.26 | 0.36 ± 0.12 | 0.05 ± 0.08 | 53.20 ± 28.63 |
+| JVM (seriale, C2) | 0.72 ± 0.29 | 0.23 ± 0.17 | 0.02 ± 0.00 | 79.34 ± 0.02 |
+| Native −Os, seriale | 18.82 ± 0.71 | 10.09 ± 0.41 | 9.10 ± 0.51 | 8.83 ± 2.73 |
+| Native −O3, seriale | 15.79 ± 0.62 | 9.10 ± 0.68 | 10.10 ± 1.14 | 9.09 ± 1.90 |
+| Native −O3, G1 | 9.17 ± 0.88 | 0.04 ± 0.02 | 2.69 ± 1.69 | 28.25 ± 0.63 |
+<!-- matrice-shed:fine -->
+
+**p95 del chiamante (ms)**:
+
+<!-- matrice-p95:inizio -->
+| build | 1 core / 2 GiB | 2 core / 2 GiB | 2 core / 1 GiB | 2 core / 512 MiB |
+|---|---|---|---|---|
+| JVM (seriale, C1) | 167.0 ± 22.4 | 11.2 ± 9.8 | 6.3 ± 7.7 | 3.6 ± 1.2 |
+| JVM (seriale, C2) | 4.3 ± 0.4 | 2.0 ± 0.5 | 2.3 ± 0.6 | 1.9 ± 0.1 |
+| Native −Os, seriale | 175.6 ± 6.4 | 241.8 ± 14.3 | 224.4 ± 16.8 | 194.0 ± 62.7 |
+| Native −O3, seriale | 182.5 ± 30.1 | 221.3 ± 12.2 | 237.6 ± 21.3 | 210.8 ± 47.9 |
+| Native −O3, G1 | 77.8 ± 2.5 | 3.1 ± 0.1 | 32.4 ± 21.6 | 751.4 ± 4.5 |
+<!-- matrice-p95:fine -->
+
+**Memoria del control plane al picco (MiB)**:
+
+<!-- matrice-memoria:inizio -->
+| build | 1 core / 2 GiB | 2 core / 2 GiB | 2 core / 1 GiB | 2 core / 512 MiB |
+|---|---|---|---|---|
+| JVM (seriale, C1) | 1083 ± 20 | 1572 ± 1 | 867 ± 2 | 497 ± 22 |
+| JVM (seriale, C2) | 1643 ± 6 | 1649 ± 11 | 952 ± 5 | 456 ± 13 |
+| Native −Os, seriale | 242 ± 14 | 278 ± 18 | 279 ± 8 | 349 ± 120 |
+| Native −O3, seriale | 255 ± 19 | 282 ± 26 | 272 ± 15 | 299 ± 41 |
+| Native −O3, G1 | 462 ± 10 | 551 ± 3 | 292 ± 1 | 165 ± 2 |
+<!-- matrice-memoria:fine -->
+
+**Tempo passato a raccogliere (%)** — vuoto dove il collector non si lascia
+osservare, che e' un difetto annotato piu' sotto e non uno zero:
+
+<!-- matrice-gc:inizio -->
+| build | 1 core / 2 GiB | 2 core / 2 GiB | 2 core / 1 GiB | 2 core / 512 MiB |
+|---|---|---|---|---|
+| JVM (seriale, C1) | 1.74 ± 0.16 | 1.42 ± 0.06 | 1.03 ± 0.05 | 1.00 ± 0.15 |
+| JVM (seriale, C2) | 1.40 ± 0.03 | 1.06 ± 0.44 | 0.96 ± 0.04 | 0.80 ± 0.02 |
+| Native −Os, seriale | 7.99 ± 0.55 | 10.20 ± 0.37 | 9.52 ± 0.33 | 8.17 ± 2.11 |
+| Native −O3, seriale | 8.60 ± 0.92 | 9.80 ± 0.34 | 10.33 ± 0.68 | 9.40 ± 1.43 |
+<!-- matrice-gc:fine -->
+
+### Riproducibilita' fra sessioni
+
+Non era pianificata. `jvm` e' rientrata come baseline interna in ognuno dei run
+di `jvm-c2`, quindi ogni condizione e' stata misurata **due volte, in sessioni
+diverse e su VM diverse**. La distanza e' in deviazioni standard aggregate.
+
+<!-- riproducibilita:inizio -->
+| condizione | prima sessione | seconda sessione | distanza |
+|---|---|---|---|
+| 1 core / 2 GiB | 210 ± 1 | 225 ± 12 | 1.65 sd |
+| 2 core / 2 GiB | 301 ± 1 | 301 ± 0 | 0.52 sd |
+| 2 core / 1 GiB | 302 ± 0 | 302 ± 0 | 0.80 sd |
+| 2 core / 512 MiB | 212 ± 41 | 235 ± 69 | 0.39 sd |
+<!-- riproducibilita:fine -->
+
+A due core le due sessioni concordano entro una deviazione standard, quindi
+confrontare celle prese in run diversi e' lecito. A un core no — ed e' lo stesso
+regime in cui il control plane e' strozzato al 22%: sotto strozzamento la
+macchina sotto conta.
+
+### Seconda matrice: composizione × intensita' (A3)
+
+Build fissa (`jvm-c2`, 2 core), varia il carico.
+
+<!-- matrice-a3:inizio -->
+| misura | sync 2× | misto 2× | sync 3× | misto 3× |
+|---|---|---|---|---|
+| servite/s | 587 ± 0 | 584 ± 1 | 804 ± 3 | 776 ± 4 |
+| rifiuti porta sync (%) | 1.61 ± 0.03 | 2.10 ± 0.14 | 9.62 ± 0.25 | 13.27 ± 0.44 |
+| rifiuti porta async (%) | — | 2.08 ± 0.19 | — | 12.87 ± 0.36 |
+| p95 (ms) | 4.6 ± 0.5 | 5.2 ± 0.5 | 58.9 ± 31.2 | 169.3 ± 96.0 |
+| p99 (ms) | 51 ± 12 | 103 ± 17 | 541 ± 91 | 815 ± 110 |
+| memoria (MiB) | 1705 ± 17 | 1720 ± 8 | 1707 ± 4 | 1717 ± 6 |
+<!-- matrice-a3:fine -->
+
 ## Perché rifare
 
 Tre difetti trovati dalla campagna diagnostica hanno cambiato il codice **dopo**
