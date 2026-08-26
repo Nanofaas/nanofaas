@@ -58,5 +58,3 @@ for run in "$SRC"/*/run-*; do
 done
 
 echo "archiviate $n celle in raw/$NAME  ($(du -sh "$DEST" | cut -f1))"
-cd "$HERE" && find raw -type f ! -name SHA256SUMS | sort | xargs shasum -a 256 > SHA256SUMS
-echo "SHA256SUMS: $(wc -l < SHA256SUMS) file"

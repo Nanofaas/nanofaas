@@ -88,6 +88,15 @@ def _series(queries, name):
     return [p["value"] for p in entry["points"] if p["value"] is not None] if entry else []
 
 
+def _platform_series(queries, name):
+    totals = {}
+    for metric in (name, f"{name}@word-stats-javascript"):
+        for point in queries.get(metric, {}).get("points", []):
+            if point["value"] is not None:
+                totals[point["timestamp"]] = totals.get(point["timestamp"], 0) + point["value"]
+    return list(totals.values())
+
+
 def _delta(queries, name):
     values = _series(queries, name)
     return (max(values) - min(values)) if values else 0.0
@@ -172,7 +181,7 @@ def extras(root: Path, labels: dict[str, str], cells_found) -> list[dict]:
                 if offerte:
                     porte.setdefault(porta, []).append(100 * rifiutate / offerte)
                     coda_porta.setdefault(porta, []).append(
-                        max(_series(queries, f"function_queue_depth_{porta}") or [float("nan")])
+                        max(_platform_series(queries, f"function_queue_depth_{porta}") or [float("nan")])
                     )
                     replay.setdefault(porta, []).append(per_porta(f"function_replayed_{porta}"))
             totale = arrivi["sync"] + arrivi["async"]

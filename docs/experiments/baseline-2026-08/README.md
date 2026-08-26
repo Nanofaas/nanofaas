@@ -533,7 +533,7 @@ Quello che il report di confronto non guarda:
 
 | Build | Servite/s (dispatch) | Vivo a fine cella | CPU strozzata (%) | Heap picco (MB) | Collezioni GC | Pausa GC media (ms) | Tempo in GC (%) | gauge gc_time_fraction | quota async degli arrivi (%) | rifiuti porta sync (%) | rifiuti porta async (%) | coda sync (max) | coda async (max) | replay sync | chiavi idempotenza (max) | Compilazione (s) | Immagine (MB) |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| JVM (serial GC, full tiering) | 584 ± 1 | si | 0.8 ± 0.4 | 1331 ± 54 | 756 ± 887 | 38.6 ± 24.8 | 1.99 ± 0.17 | NaN | 19.9 ± 0.0 | 2.10 ± 0.13 | 2.08 ± 0.19 | 11 ± 8 | 3 ± 2 | 19081 ± 102 | 37786 ± 18414 | 14.8 | 244 |
+| JVM (serial GC, full tiering) | 584 ± 1 | si | 0.8 ± 0.4 | 1331 ± 54 | 756 ± 887 | 38.6 ± 24.8 | 1.99 ± 0.17 | NaN | 19.9 ± 0.0 | 2.10 ± 0.13 | 2.08 ± 0.19 | 16 ± 13 | 4 ± 2 | 19081 ± 102 | 37786 ± 18414 | 14.8 | 244 |
 <!-- A3-misto-2x:fine -->
 
 Solo sync, 3x:
@@ -561,7 +561,7 @@ Quello che il report di confronto non guarda:
 
 | Build | Servite/s (dispatch) | Vivo a fine cella | CPU strozzata (%) | Heap picco (MB) | Collezioni GC | Pausa GC media (ms) | Tempo in GC (%) | gauge gc_time_fraction | quota async degli arrivi (%) | rifiuti porta sync (%) | rifiuti porta async (%) | coda sync (max) | coda async (max) | replay sync | chiavi idempotenza (max) | Compilazione (s) | Immagine (MB) |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| JVM (serial GC, full tiering) | 776 ± 4 | si | 11.3 ± 1.9 | 1366 ± 32 | 812 ± 876 | 47.6 ± 30.3 | 3.36 ± 0.40 | NaN | 19.9 ± 0.0 | 13.27 ± 0.44 | 12.87 ± 0.33 | 18 ± 0 | 8 ± 2 | 25599 ± 172 | 52578 ± 25818 | 14.1 | 244 |
+| JVM (serial GC, full tiering) | 776 ± 4 | si | 11.3 ± 1.9 | 1366 ± 32 | 812 ± 876 | 47.6 ± 30.3 | 3.36 ± 0.40 | NaN | 19.9 ± 0.0 | 13.27 ± 0.44 | 12.87 ± 0.33 | 34 ± 2 | 12 ± 2 | 25599 ± 172 | 52578 ± 25818 | 14.1 | 244 |
 <!-- A3-misto-3x:fine -->
 
 ---
@@ -877,16 +877,16 @@ confronto:
 <!-- registro:inizio -->
 | run | condizione | celle | quando | directory |
 |---|---|---|---|---|
-| A1-cpu1 | 4 build · 1 core · 2 GiB | 12 | 2026-08-24 21:47 | `raw/A1-cpu1/` |
-| A1b-cpu2 | 4 build · 2 core · 2 GiB | 12 | 2026-08-25 02:14 | `raw/A1b-cpu2/` |
-| A2-mem1024 | 4 build · 2 core · 1 GiB | 12 | 2026-08-25 05:39 | `raw/A2-mem1024/` |
-| A2-mem512 | 4 build · 2 core · 512 MiB | 12 | 2026-08-25 08:10 | `raw/A2-mem512/` |
-| A1c | jvm vs c2 · 1 core · 2 GiB | 6 | 2026-08-25 09:38 | `raw/A1c/` |
-| A1d | jvm vs c2 · 2 core · 2 GiB | 6 | 2026-08-25 11:45 | `raw/A1d/` |
-| A2c | jvm vs c2 · 2 core · 1 GiB | 6 | 2026-08-25 15:55 | `raw/A2c/` |
-| A2d | jvm vs c2 · 2 core · 512 MiB | 6 | 2026-08-25 16:57 | `raw/A2d/` |
-| A3-sync-2x | jvm-c2 · sync · 2x | 3 | 2026-08-25 18:40 | `raw/A3-sync-2x/` |
-| A3-misto-2x | jvm-c2 · misto · 2x | 3 | 2026-08-25 19:28 | `raw/A3-misto-2x/` |
-| A3-sync-3x | jvm-c2 · sync · 3x | 3 | 2026-08-25 20:02 | `raw/A3-sync-3x/` |
-| A3-misto-3x | jvm-c2 · misto · 3x | 3 | 2026-08-25 20:44 | `raw/A3-misto-3x/` |
+| A1-cpu1 | 4 build · 1 core · 2 GiB | 12 | 2026-08-24 16:23 | `raw/A1-cpu1/` |
+| A1b-cpu2 | 4 build · 2 core · 2 GiB | 12 | 2026-08-24 20:49 | `raw/A1b-cpu2/` |
+| A2-mem1024 | 4 build · 2 core · 1 GiB | 12 | 2026-08-25 00:16 | `raw/A2-mem1024/` |
+| A2-mem512 | 4 build · 2 core · 512 MiB | 12 | 2026-08-25 06:10 | `raw/A2-mem512/` |
+| A1c | jvm vs c2 · 1 core · 2 GiB | 6 | 2026-08-25 07:38 | `raw/A1c/` |
+| A1d | jvm vs c2 · 2 core · 2 GiB | 6 | 2026-08-25 09:45 | `raw/A1d/` |
+| A2c | jvm vs c2 · 2 core · 1 GiB | 6 | 2026-08-25 13:55 | `raw/A2c/` |
+| A2d | jvm vs c2 · 2 core · 512 MiB | 6 | 2026-08-25 14:57 | `raw/A2d/` |
+| A3-sync-2x | jvm-c2 · sync · 2x | 3 | 2026-08-25 16:40 | `raw/A3-sync-2x/` |
+| A3-misto-2x | jvm-c2 · misto · 2x | 3 | 2026-08-25 17:28 | `raw/A3-misto-2x/` |
+| A3-sync-3x | jvm-c2 · sync · 3x | 3 | 2026-08-25 18:02 | `raw/A3-sync-3x/` |
+| A3-misto-3x | jvm-c2 · misto · 3x | 3 | 2026-08-25 18:44 | `raw/A3-misto-3x/` |
 <!-- registro:fine -->

@@ -53,6 +53,13 @@ def cella(run):
         "vivo": vivo,
     }
 
+def _started_at(base: Path) -> str:
+    manifest = base / "comparison-manifest.json"
+    if not manifest.exists():
+        return "—"
+    started_at = json.loads(manifest.read_text()).get("started_at")
+    return datetime.fromisoformat(started_at).strftime("%Y-%m-%d %H:%M") if started_at else "—"
+
 def main() -> None:
     ap = argparse.ArgumentParser(); ap.add_argument("--doc", type=Path); a = ap.parse_args()
     righe = ["| esperimento | condizione | celle | offerte/s | servite/s | HTTP falliti | p95 | tutte vive |",
@@ -72,16 +79,8 @@ def main() -> None:
                      f"{'sì' if not morte else f'**NO: {morte}**'} |")
     tabella = "\n".join(righe)
 
-    # Il registro: quando e' stata eseguita ogni run, letto da STATO.md dove la
-    # coda lo ha scritto passo per passo. Le run precedenti alla coda non ci sono
-    # e prendono la data di modifica del loro archivio.
-    stato = Path(__file__).parent / "STATO.md"
-    quando: dict[str, str] = {}
-    if stato.exists():
-        for riga in stato.read_text().splitlines():
-            if ": avvio" in riga:
-                data, nome = riga[:16], riga.split()[2].rstrip(":")
-                quando.setdefault(nome, data)
+    # Il manifest e' archiviato e versionato; mtime e STATO.md non lo sono per
+    # tutte le run e renderebbero il registro dipendente dal checkout.
     reg = ["| run | condizione | celle | quando | directory |", "|---|---|---|---|---|"]
     for nome, condizione in CONDIZIONE.items():
         base = Path(__file__).parent / "raw" / nome
@@ -89,10 +88,7 @@ def main() -> None:
                 if (r / "k6-summary.json").exists())
         if not n:
             continue
-        data = quando.get(nome)
-        if data is None and base.exists():
-            from datetime import datetime
-            data = datetime.fromtimestamp(base.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+        data = _started_at(base)
         reg.append(f"| {nome} | {condizione} | {n} | {data} | `raw/{nome}/` |")
     registro = "\n".join(reg)
     print(tabella)

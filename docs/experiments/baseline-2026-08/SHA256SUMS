@@ -272,7 +272,7 @@ e86c3cc665828497eacf60c7033b370e92a2056692c65f7aa7a2fec157ae3c46  raw/A3-misto-2
 939064426735d43f2ca92b17cbc787cbc164867dc6a44f6d266db231afb92c27  raw/A3-misto-2x/jvm-c2/run-3/summary.json
 19a962001596e39a3e3e5f9b8487f321b4ea9c71c6b31315a955f621ba839e59  raw/A3-misto-2x/run.log
 b8ad6f8b2bee07c1b92fb8ddb2c42c0d30bd0e9a72aa38f85a2e2a06a9d07c5a  raw/A3-misto-2x/scenario.yaml
-2563ebbeecb914ad386003a99e8dd9f19dcb0eb6da8bfd2abf57f3391b9283a4  raw/A3-misto-2x/tabella.md
+f4aa1d63a9b124fea7955ab8ddf39198bacfd14022f25198424440ef76487d99  raw/A3-misto-2x/tabella.md
 c2081924929417931f9267ffd8278f4292eca05381eaa384ce75da83be9b55cc  raw/A3-misto-3x/comparison-manifest.json
 5f13a11c742d32b404e91e270b2c6c34e0c1eb97cbbcc66b255586169d025370  raw/A3-misto-3x/comparison-report.html
 0007715af02111b22cd3b8010430b44369ebefb091e056b5b895d40051af6d4c  raw/A3-misto-3x/image-sizes.json
@@ -286,6 +286,8 @@ f8fcc0a5ebafd829675a40b616080000de1961af06ab315ca2b602f09d7fc045  raw/A3-misto-3
 160378da60f8c7f014abfa0d614ffc706542c519e36c5f137c6bcd5e975582a6  raw/A3-misto-3x/jvm-c2/run-3/metrics/prometheus-snapshot.json.gz
 1254f68c93a40b66b0e7015487916ca0449a6c1fd2a598148d716174c04fe280  raw/A3-misto-3x/jvm-c2/run-3/summary.json
 d811f3b4ea143382c468e83814466d80088d8a28df4079dcac004f3e262ea60e  raw/A3-misto-3x/run.log
+2c54c27000c50b8f49dce6070ae9d9f338249d1f59f76b29b4a11db1a3913879  raw/A3-misto-3x/scenario.yaml
+aee49318d738657c13a6ed1be1c3d890ad0963a0bbaef94b42e8e91d13f6bef1  raw/A3-misto-3x/tabella.md
 b1612bf6da81b6760dd35436341b54a33672c1edb272a516468d8a345d91212d  raw/A3-sync-2x/comparison-manifest.json
 fb5744ad0c1eb0529b8c6489be301b8c3a7c616e3c550a0a7cd4e1f3367664dd  raw/A3-sync-2x/comparison-report.html
 0007715af02111b22cd3b8010430b44369ebefb091e056b5b895d40051af6d4c  raw/A3-sync-2x/image-sizes.json

@@ -68,7 +68,10 @@ pulisci_helm() {
     stato "disinstallo il rilascio Helm ereditato su $ip"
     ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 \
         "azureuser@$ip" 'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml; sudo -E helm uninstall nanofaas -n nanofaas-e2e --ignore-not-found' \
-        < /dev/null >> "$STATO" 2>&1 || stato "  (disinstallazione non riuscita, proseguo)"
+        < /dev/null >> "$STATO" 2>&1 || {
+            stato "**disinstallazione Helm non riuscita: mi fermo**"
+            return 1
+        }
 }
 
 teardown() {
@@ -120,12 +123,16 @@ done
 # run, che la coda ha quindi dichiarato esaurita.
 while IFS=$'\t' read -r -u 9 NAME SCENARIO VARIANTS KEEP MARKER; do
     MARKER=${MARKER:-$NAME}
-    if [ -d "$HERE/raw/$NAME" ] && [ -n "$(ls "$HERE/raw/$NAME" 2>/dev/null)" ]; then
+    if [ -f "$HERE/raw/$NAME/.complete" ]; then
         stato "$NAME: gia' archiviato, salto"
         continue
     fi
+    if [ -d "$HERE/raw/$NAME" ]; then
+        stato "$NAME: elimino l'archivio parziale prima di ripartire"
+        rm -rf "$HERE/raw/$NAME" || { stato "$NAME: **ARCHIVIO PARZIALE NON ELIMINABILE**"; exit 1; }
+    fi
     attendi_azure 60 || exit 1
-    pulisci_helm
+    pulisci_helm || { stato "coda interrotta sulla pulizia Helm"; exit 1; }
     stato "$NAME: avvio ($SCENARIO, varianti $VARIANTS)"
     (cd "$NANOLAB" && NANOFAAS_ROOT="$MCFAAS" ./nanolab.sh compare \
         "packages/nanolab/scenarios-v2/$SCENARIO" \
@@ -143,13 +150,34 @@ while IFS=$'\t' read -r -u 9 NAME SCENARIO VARIANTS KEEP MARKER; do
 
     IP=$(az vm list-ip-addresses -g "$GROUP" -n nanofaas-comparison \
          --query "[0].virtualMachine.network.publicIpAddresses[0].ipAddress" -o tsv 2>/dev/null)
-    "$HERE/collect.sh" "$RUNS/$NAME" "$NAME" "$IP" < /dev/null >> "$STATO" 2>&1
-    cp "$NANOLAB/packages/nanolab/scenarios-v2/$SCENARIO" "$HERE/raw/$NAME/scenario.yaml" 2>/dev/null
-    stato "$NAME: archiviato"
+    if ! "$HERE/collect.sh" "$RUNS/$NAME" "$NAME" "$IP" < /dev/null >> "$STATO" 2>&1; then
+        stato "$NAME: **ARCHIVIAZIONE FALLITA**"
+        teardown
+        stato "coda interrotta"
+        exit 1
+    fi
+    if ! cp "$NANOLAB/packages/nanolab/scenarios-v2/$SCENARIO" "$HERE/raw/$NAME/scenario.yaml"; then
+        stato "$NAME: **COPIA DELLO SCENARIO FALLITA**"
+        teardown
+        exit 1
+    fi
 
-    (cd "$NANOLAB" && uv run --project packages/sonata-tasks python3 "$HERE/tables.py" \
-        "$HERE/raw/$NAME" --doc "$HERE/README.md" --marker "$MARKER" > "$HERE/raw/$NAME/tabella.md" 2>&1)
+    if ! (cd "$NANOLAB" && uv run --project packages/sonata-tasks python3 "$HERE/tables.py" \
+        "$HERE/raw/$NAME" --doc "$HERE/README.md" --marker "$MARKER" > "$HERE/raw/$NAME/tabella.md" 2>&1); then
+        stato "$NAME: **CALCOLO DELLE TABELLE FALLITO**"
+        teardown
+        exit 1
+    fi
     stato "$NAME: tabelle calcolate e scritte nel documento"
+
+    if ! (cd "$HERE" && find raw -type f ! -name SHA256SUMS ! -name .complete \
+        | sort | xargs shasum -a 256 > SHA256SUMS); then
+        stato "$NAME: **CALCOLO DEI CHECKSUM FALLITO**"
+        teardown
+        exit 1
+    fi
+    touch "$HERE/raw/$NAME/.complete" || { stato "$NAME: **MARKER DI COMPLETAMENTO FALLITO**"; teardown; exit 1; }
+    stato "$NAME: archiviato e verificabile"
 
     (cd "$MCFAAS" && git add docs/experiments/baseline-2026-08 \
         && git commit -q -m "experiment: $NAME ($SCENARIO, $VARIANTS)" \
