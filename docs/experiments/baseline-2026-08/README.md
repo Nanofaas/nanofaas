@@ -539,11 +539,13 @@ Trovato in A1, cella `native-o3-g1/run-1`. Su quella build:
 | `jvm_gc_time_fraction` | 97 | **0,0 costante** |
 
 Il gauge risponde e dice che il collector non ha mai girato, mentre il processo
-serviva 435 rps per otto minuti con 471 MiB di working set. Il meccanismo e' in
-`GcMetricsConfiguration.value()`: mappa il `-1` dell'MXBean — che significa
-«questo collector non sa riportare la cifra» — a `0.0`, per impedire che un
-contatore negativo si legga a valle come un reset. Su Oracle GraalVM G1 quel
-guard trasforma «misura non disponibile» in «misura pari a zero».
+serviva 435 rps per otto minuti con 471 MiB di working set. Il meccanismo
+originariamente sospettato era in `GcMetricsConfiguration.value()`: mappava il
+`-1` dell'MXBean — che significa «questo collector non sa riportare la cifra» —
+a `0.0`, per impedire che un contatore negativo si legga a valle come un reset.
+La verifica diretta del 2026-08-25 su Oracle GraalVM 25.0.4 G1 ha invece trovato
+una lista MXBean vuota; in entrambi i casi il risultato corretto e' non
+pubblicare un falso zero.
 
 E' la stessa trappola che il javadoc della classe descrive per il binder a
 notifiche di Micrometer, ma sul percorso a polling, che di quella era la
