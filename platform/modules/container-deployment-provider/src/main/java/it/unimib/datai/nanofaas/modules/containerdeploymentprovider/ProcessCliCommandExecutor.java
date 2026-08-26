@@ -1,5 +1,8 @@
 package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -7,6 +10,8 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 final class ProcessCliCommandExecutor implements CliCommandExecutor {
+
+    private static final Logger log = LoggerFactory.getLogger(ProcessCliCommandExecutor.class);
 
     private final Duration timeout;
 
@@ -22,6 +27,8 @@ final class ProcessCliCommandExecutor implements CliCommandExecutor {
 
     @Override
     public ExecutionResult run(List<String> command) {
+        log.debug("Executing CLI command: {}", String.join(" ", command));
+
         ProcessBuilder processBuilder = new ProcessBuilder(command);
         processBuilder.redirectErrorStream(true);
         try {
