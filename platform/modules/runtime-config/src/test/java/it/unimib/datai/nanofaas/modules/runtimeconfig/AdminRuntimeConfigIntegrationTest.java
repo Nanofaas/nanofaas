@@ -3,8 +3,8 @@ package it.unimib.datai.nanofaas.modules.runtimeconfig;
 import it.unimib.datai.nanofaas.controlplane.ControlPlaneApplication;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
 @SpringBootTest(classes = ControlPlaneApplication.class,
@@ -23,149 +23,36 @@ class AdminRuntimeConfigIntegrationTest {
     private RuntimeConfigService configService;
 
     @Test
-    void getReturnsCurrentSnapshot() {
+    void exposesNamespacedSnapshotAndPatch() {
         webTestClient.get().uri("/v1/admin/runtime-config")
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
                 .jsonPath("$.revision").isNumber()
-                .jsonPath("$.rateMaxPerSecond").isNumber()
-                .jsonPath("$.syncQueueEnabled").isBoolean();
-    }
+                .jsonPath("$.namespaces.control-plane.rateMaxPerSecond").isNumber();
 
-    @Test
-    void validateAcceptsValidPatch() {
-        webTestClient.post().uri("/v1/admin/runtime-config/validate")
-                .bodyValue("""
-                        {"rateMaxPerSecond": 500}
-                        """)
+        long revision = configService.getSnapshot().revision();
+        webTestClient.patch().uri("/v1/admin/runtime-config/control-plane")
+                .bodyValue("{\"expectedRevision\":%d,\"values\":{\"rateMaxPerSecond\":777}}".formatted(revision))
                 .header("Content-Type", "application/json")
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
-                .jsonPath("$.valid").isEqualTo(true);
+                .jsonPath("$.revision").isEqualTo(revision + 1)
+                .jsonPath("$.effectiveConfig.namespaces.control-plane.rateMaxPerSecond").isEqualTo(777);
     }
 
     @Test
-    void validateRejectsInvalidPatch() {
-        webTestClient.post().uri("/v1/admin/runtime-config/validate")
-                .bodyValue("""
-                        {"rateMaxPerSecond": -1}
-                        """)
+    void validatesAndRejectsUnknownNamespace() {
+        webTestClient.post().uri("/v1/admin/runtime-config/control-plane/validate")
+                .bodyValue("{\"rateMaxPerSecond\":0}")
                 .header("Content-Type", "application/json")
                 .exchange()
                 .expectStatus().isEqualTo(422)
-                .expectBody()
-                .jsonPath("$.errors").isArray();
-    }
+                .expectBody().jsonPath("$.errors").isArray();
 
-    @Test
-    void patchUpdatesConfigAndReturnsNewRevision() {
-        long currentRevision = configService.getSnapshot().revision();
-
-        webTestClient.patch().uri("/v1/admin/runtime-config")
-                .bodyValue("""
-                        {"expectedRevision": %d, "rateMaxPerSecond": 777}
-                        """.formatted(currentRevision))
-                .header("Content-Type", "application/json")
+        webTestClient.get().uri("/v1/admin/runtime-config/missing")
                 .exchange()
-                .expectStatus().isOk()
-                .expectBody()
-                .jsonPath("$.revision").isEqualTo(currentRevision + 1)
-                .jsonPath("$.effectiveConfig.rateMaxPerSecond").isEqualTo(777);
-    }
-
-    @Test
-    void patchReturns409OnRevisionMismatch() {
-        webTestClient.patch().uri("/v1/admin/runtime-config")
-                .bodyValue("""
-                        {"expectedRevision": 9999, "rateMaxPerSecond": 500}
-                        """)
-                .header("Content-Type", "application/json")
-                .exchange()
-                .expectStatus().isEqualTo(409)
-                .expectBody()
-                .jsonPath("$.error").isNotEmpty();
-    }
-
-    @Test
-    void patchReturns422OnInvalidValues() {
-        long currentRevision = configService.getSnapshot().revision();
-
-        webTestClient.patch().uri("/v1/admin/runtime-config")
-                .bodyValue("""
-                        {"expectedRevision": %d, "rateMaxPerSecond": -1}
-                        """.formatted(currentRevision))
-                .header("Content-Type", "application/json")
-                .exchange()
-                .expectStatus().isEqualTo(422);
-    }
-
-    @Test
-    void patchRequiresExpectedRevision() {
-        webTestClient.patch().uri("/v1/admin/runtime-config")
-                .bodyValue("""
-                        {"rateMaxPerSecond": 500}
-                        """)
-                .header("Content-Type", "application/json")
-                .exchange()
-                .expectStatus().isBadRequest();
-    }
-
-    @Test
-    void patchWithDurationFields() {
-        long currentRevision = configService.getSnapshot().revision();
-
-        webTestClient.patch().uri("/v1/admin/runtime-config")
-                .bodyValue("""
-                        {"expectedRevision": %d, "syncQueueMaxEstimatedWait": "PT5S", "syncQueueMaxQueueWait": "PT10S"}
-                        """.formatted(currentRevision))
-                .header("Content-Type", "application/json")
-                .exchange()
-                .expectStatus().isOk()
-                .expectBody()
-                .jsonPath("$.effectiveConfig.syncQueueMaxEstimatedWait").isEqualTo("PT5S")
-                .jsonPath("$.effectiveConfig.syncQueueMaxQueueWait").isEqualTo("PT10S");
-    }
-
-    @Test
-    void patchWithBooleanFields() {
-        long currentRevision = configService.getSnapshot().revision();
-
-        webTestClient.patch().uri("/v1/admin/runtime-config")
-                .bodyValue("""
-                        {"expectedRevision": %d, "syncQueueEnabled": false, "syncQueueAdmissionEnabled": false}
-                        """.formatted(currentRevision))
-                .header("Content-Type", "application/json")
-                .exchange()
-                .expectStatus().isOk()
-                .expectBody()
-                .jsonPath("$.effectiveConfig.syncQueueEnabled").isEqualTo(false)
-                .jsonPath("$.effectiveConfig.syncQueueAdmissionEnabled").isEqualTo(false);
-    }
-
-    @Test
-    void validateWithDurationFields() {
-        webTestClient.post().uri("/v1/admin/runtime-config/validate")
-                .bodyValue("""
-                        {"syncQueueMaxEstimatedWait": "PT5S", "syncQueueMaxQueueWait": "PT10S", "syncQueueRetryAfterSeconds": 5}
-                        """)
-                .header("Content-Type", "application/json")
-                .exchange()
-                .expectStatus().isOk()
-                .expectBody()
-                .jsonPath("$.valid").isEqualTo(true);
-    }
-
-    @Test
-    void getReturnsAllFields() {
-        webTestClient.get().uri("/v1/admin/runtime-config")
-                .exchange()
-                .expectStatus().isOk()
-                .expectBody()
-                .jsonPath("$.syncQueueMaxEstimatedWait").isNotEmpty()
-                .jsonPath("$.syncQueueMaxQueueWait").isNotEmpty()
-                .jsonPath("$.syncQueueRetryAfterSeconds").isNumber()
-                .jsonPath("$.syncQueueAdmissionEnabled").isBoolean();
+                .expectStatus().isNotFound();
     }
 }

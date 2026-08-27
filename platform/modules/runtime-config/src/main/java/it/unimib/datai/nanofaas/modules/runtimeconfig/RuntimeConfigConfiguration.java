@@ -1,41 +1,33 @@
 package it.unimib.datai.nanofaas.modules.runtimeconfig;
 
-import it.unimib.datai.nanofaas.controlplane.config.SyncQueueRuntimeDefaults;
 import it.unimib.datai.nanofaas.controlplane.service.RateLimiter;
 import io.micrometer.core.instrument.MeterRegistry;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 
 @AutoConfiguration
-@ConditionalOnBean(RateLimiter.class)
 public class RuntimeConfigConfiguration {
 
     @Bean
-    RuntimeConfigService runtimeConfigService(RateLimiter rateLimiter, SyncQueueRuntimeDefaults syncQueueDefaults) {
-        return new RuntimeConfigService(rateLimiter, syncQueueDefaults);
+    RuntimeConfigExtension controlPlaneRuntimeConfigExtension(RateLimiter rateLimiter) {
+        return new ControlPlaneRuntimeConfigExtension(rateLimiter);
     }
 
     @Bean
-    RuntimeConfigValidator runtimeConfigValidator() {
-        return new RuntimeConfigValidator();
+    RuntimeConfigRegistry runtimeConfigRegistry(java.util.List<RuntimeConfigExtension> extensions) {
+        return new RuntimeConfigRegistry(extensions);
     }
 
     @Bean
-    RuntimeConfigApplier runtimeConfigApplier(
-            RateLimiter rateLimiter,
-            MeterRegistry meterRegistry,
-            SyncQueueRuntimeDefaults syncQueueDefaults) {
-        return new RuntimeConfigApplier(rateLimiter, meterRegistry);
+    RuntimeConfigService runtimeConfigService(RuntimeConfigRegistry registry,
+                                               MeterRegistry meterRegistry) {
+        return new RuntimeConfigService(registry, meterRegistry);
     }
 
     @Bean
     @ConditionalOnProperty(name = "nanofaas.admin.runtime-config.enabled", havingValue = "true")
-    AdminRuntimeConfigController adminRuntimeConfigController(
-            RuntimeConfigService configService,
-            RuntimeConfigValidator validator,
-            RuntimeConfigApplier applier) {
-        return new AdminRuntimeConfigController(configService, validator, applier);
+    AdminRuntimeConfigController adminRuntimeConfigController(RuntimeConfigService configService) {
+        return new AdminRuntimeConfigController(configService);
     }
 }

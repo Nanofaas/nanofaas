@@ -1,126 +1,72 @@
 package it.unimib.datai.nanofaas.modules.runtimeconfig;
 
-import it.unimib.datai.nanofaas.controlplane.config.SyncQueueRuntimeDefaults;
-import it.unimib.datai.nanofaas.controlplane.service.RateLimiter;
-import org.junit.jupiter.api.BeforeEach;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
-import java.time.Duration;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.List;
+import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RuntimeConfigServiceTest {
+    @Test
+    void updatesOneNamespaceAndIncrementsRevision() {
+        TestExtension extension = new TestExtension("queue", 1);
+        RuntimeConfigService service = service(extension);
 
-    private RuntimeConfigService service;
+        RuntimeConfigSnapshot updated = service.update(0, "queue", Map.of("value", 2));
 
-    @BeforeEach
-    void setUp() {
-        RateLimiter rateLimiter = new RateLimiter();
-        rateLimiter.setMaxPerSecond(1000);
-        SyncQueueRuntimeDefaults defaults = new SyncQueueRuntimeDefaults(
-                true, true, Duration.ofSeconds(5), Duration.ofSeconds(2), 2
-        );
-        service = new RuntimeConfigService(rateLimiter, defaults);
+        assertThat(updated.revision()).isOne();
+        assertThat(updated.namespaces().get("queue")).containsEntry("value", 2);
     }
 
     @Test
-    void initialSnapshotSeededFromProperties() {
-        RuntimeConfigSnapshot snapshot = service.getSnapshot();
-        assertEquals(0, snapshot.revision());
-        assertEquals(1000, snapshot.rateMaxPerSecond());
-        assertTrue(snapshot.syncQueueEnabled());
-        assertTrue(snapshot.syncQueueAdmissionEnabled());
-        assertEquals(Duration.ofSeconds(5), snapshot.syncQueueMaxEstimatedWait());
-        assertEquals(Duration.ofSeconds(2), snapshot.syncQueueMaxQueueWait());
-        assertEquals(2, snapshot.syncQueueRetryAfterSeconds());
+    void staleAndUnknownUpdatesHaveNoSideEffects() {
+        TestExtension extension = new TestExtension("queue", 1);
+        RuntimeConfigService service = service(extension);
+
+        assertThatThrownBy(() -> service.update(1, "queue", Map.of("value", 2)))
+                .isInstanceOf(RevisionMismatchException.class);
+        assertThatThrownBy(() -> service.update(0, "missing", Map.of("value", 2)))
+                .isInstanceOf(UnknownRuntimeConfigNamespaceException.class);
+        assertThat(extension.value).isEqualTo(1);
+        assertThat(service.getSnapshot().revision()).isZero();
     }
 
     @Test
-    void updateIncrementsRevision() {
-        RuntimeConfigPatch patch = new RuntimeConfigPatch(500, null, null, null, null, null);
-        RuntimeConfigSnapshot updated = service.update(0, patch);
-        assertEquals(1, updated.revision());
-        assertEquals(500, updated.rateMaxPerSecond());
-        // unchanged fields preserved
-        assertTrue(updated.syncQueueEnabled());
+    void failedApplyRestoresPreviousStateAndRevision() {
+        TestExtension extension = new TestExtension("queue", 1);
+        extension.fail = true;
+        RuntimeConfigService service = service(extension);
+
+        assertThatThrownBy(() -> service.update(0, "queue", Map.of("value", 2)))
+                .isInstanceOf(RuntimeConfigApplyException.class);
+        assertThat(extension.value).isEqualTo(1);
+        assertThat(service.getSnapshot().revision()).isZero();
     }
 
-    @Test
-    void updateRejectsRevisionMismatch() {
-        RuntimeConfigPatch patch = new RuntimeConfigPatch(500, null, null, null, null, null);
-        RevisionMismatchException ex = assertThrows(
-                RevisionMismatchException.class,
-                () -> service.update(99, patch)
-        );
-        assertEquals(99, ex.getExpected());
-        assertEquals(0, ex.getActual());
+    private static RuntimeConfigService service(TestExtension extension) {
+        return new RuntimeConfigService(new RuntimeConfigRegistry(List.of(extension)), new SimpleMeterRegistry());
     }
 
-    @Test
-    void patchMergesPartialFields() {
-        service.update(0, new RuntimeConfigPatch(null, null, false, null, null, null));
-        RuntimeConfigSnapshot s = service.getSnapshot();
-        assertEquals(1000, s.rateMaxPerSecond()); // unchanged
-        assertFalse(s.syncQueueAdmissionEnabled()); // changed
-    }
+    private static final class TestExtension implements RuntimeConfigExtension {
+        private final String namespace;
+        private int value;
+        private boolean fail;
 
-    @Test
-    void concurrentUpdatesOnlyOneSucceeds() throws Exception {
-        int threads = 10;
-        CountDownLatch start = new CountDownLatch(1);
-        CountDownLatch done = new CountDownLatch(threads);
-        AtomicInteger successes = new AtomicInteger();
-        AtomicInteger mismatches = new AtomicInteger();
-
-        for (int i = 0; i < threads; i++) {
-            final int rate = 100 + i;
-            new Thread(() -> {
-                try {
-                    start.await();
-                    service.update(0, new RuntimeConfigPatch(rate, null, null, null, null, null));
-                    successes.incrementAndGet();
-                } catch (RevisionMismatchException _) {
-                    mismatches.incrementAndGet();
-                } catch (InterruptedException _) {
-                    // ignore: worker-thread interruption is not expected here; the success/mismatch counts are the real assertions
-                } finally {
-                    done.countDown();
-                }
-            }).start();
+        private TestExtension(String namespace, int value) {
+            this.namespace = namespace;
+            this.value = value;
         }
 
-        start.countDown();
-        done.await();
-
-        assertEquals(1, successes.get());
-        assertEquals(threads - 1, mismatches.get());
-        assertEquals(1, service.getSnapshot().revision());
-    }
-
-    @Test
-    void restoreRevertsSnapshot() {
-        RuntimeConfigSnapshot original = service.getSnapshot();
-        service.update(0, new RuntimeConfigPatch(500, null, null, null, null, null));
-        assertEquals(1, service.getSnapshot().revision());
-
-        service.restore(original);
-        assertEquals(0, service.getSnapshot().revision());
-        assertEquals(1000, service.getSnapshot().rateMaxPerSecond());
-    }
-
-    @Test
-    void patchAppliesAllFieldsWhenAllProvided() {
-        RuntimeConfigPatch fullPatch = new RuntimeConfigPatch(
-                2000, false, false, Duration.ofSeconds(10), Duration.ofSeconds(5), 3
-        );
-        RuntimeConfigSnapshot updated = service.update(0, fullPatch);
-        assertEquals(2000, updated.rateMaxPerSecond());
-        assertFalse(updated.syncQueueEnabled());
-        assertFalse(updated.syncQueueAdmissionEnabled());
-        assertEquals(Duration.ofSeconds(10), updated.syncQueueMaxEstimatedWait());
-        assertEquals(Duration.ofSeconds(5), updated.syncQueueMaxQueueWait());
-        assertEquals(3, updated.syncQueueRetryAfterSeconds());
+        @Override public String namespace() { return namespace; }
+        @Override public Map<String, Object> snapshot() { return Map.of("value", value); }
+        @Override public List<String> validate(Map<String, Object> patch) { return List.of(); }
+        @Override public void apply(Map<String, Object> patch) {
+            value = ((Number) patch.get("value")).intValue();
+            if (fail) throw new IllegalStateException("boom");
+        }
+        @Override public void restore(Map<String, Object> snapshot) { value = ((Number) snapshot.get("value")).intValue(); }
     }
 }

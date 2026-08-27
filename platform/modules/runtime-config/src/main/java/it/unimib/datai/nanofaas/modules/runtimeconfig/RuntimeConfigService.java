@@ -1,88 +1,58 @@
 package it.unimib.datai.nanofaas.modules.runtimeconfig;
 
-import it.unimib.datai.nanofaas.controlplane.config.SyncQueueRuntimeDefaults;
-import it.unimib.datai.nanofaas.controlplane.service.RateLimiter;
-import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
-import org.springframework.stereotype.Service;
+import io.micrometer.core.instrument.MeterRegistry;
 
-import java.time.Duration;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.List;
+import java.util.Map;
 
-/**
- * Holds the current runtime configuration snapshot and handles
- * compare-and-set updates with revision-based optimistic locking.
- */
-@Service
-public class RuntimeConfigService implements SyncQueueConfigSource {
+public class RuntimeConfigService {
+    private final RuntimeConfigRegistry registry;
+    private final MeterRegistry meterRegistry;
+    private long revision;
 
-    private final AtomicReference<RuntimeConfigSnapshot> current;
-
-    public RuntimeConfigService(RateLimiter rateLimiter, SyncQueueRuntimeDefaults syncQueueDefaults) {
-        RuntimeConfigSnapshot initial = new RuntimeConfigSnapshot(
-                0L,
-                rateLimiter.getMaxPerSecond(),
-                syncQueueDefaults.enabled(),
-                syncQueueDefaults.admissionEnabled(),
-                syncQueueDefaults.maxEstimatedWait(),
-                syncQueueDefaults.maxQueueWait(),
-                syncQueueDefaults.retryAfterSeconds()
-        );
-        this.current = new AtomicReference<>(initial);
+    public RuntimeConfigService(RuntimeConfigRegistry registry, MeterRegistry meterRegistry) {
+        this.registry = registry;
+        this.meterRegistry = meterRegistry;
     }
 
-    public RuntimeConfigSnapshot getSnapshot() {
-        return current.get();
+    public synchronized RuntimeConfigSnapshot getSnapshot() {
+        return new RuntimeConfigSnapshot(revision, registry.snapshot());
     }
 
-    @Override
-    public boolean syncQueueEnabled() {
-        return current.get().syncQueueEnabled();
+    public List<String> validate(String namespace, Map<String, Object> patch) {
+        return extension(namespace).validate(Map.copyOf(patch));
     }
 
-    @Override
-    public boolean syncQueueAdmissionEnabled() {
-        return current.get().syncQueueAdmissionEnabled();
-    }
-
-    @Override
-    public Duration syncQueueMaxEstimatedWait() {
-        return current.get().syncQueueMaxEstimatedWait();
-    }
-
-    @Override
-    public Duration syncQueueMaxQueueWait() {
-        return current.get().syncQueueMaxQueueWait();
-    }
-
-    @Override
-    public int syncQueueRetryAfterSeconds() {
-        return current.get().syncQueueRetryAfterSeconds();
-    }
-
-    /**
-     * Atomically applies a patch if the current revision matches {@code expectedRevision}.
-     *
-     * @return the new snapshot after successful update
-     * @throws RevisionMismatchException if current revision != expectedRevision
-     */
-    public RuntimeConfigSnapshot update(long expectedRevision, RuntimeConfigPatch patch) {
-        while (true) {
-            RuntimeConfigSnapshot snapshot = current.get();
-            if (snapshot.revision() != expectedRevision) {
-                throw new RevisionMismatchException(expectedRevision, snapshot.revision());
+    public synchronized RuntimeConfigSnapshot update(long expectedRevision,
+                                                      String namespace,
+                                                      Map<String, Object> patch) {
+        if (revision != expectedRevision) {
+            throw new RevisionMismatchException(expectedRevision, revision);
+        }
+        RuntimeConfigExtension extension = extension(namespace);
+        Map<String, Object> previous = Map.copyOf(extension.snapshot());
+        List<String> errors = extension.validate(Map.copyOf(patch));
+        if (!errors.isEmpty()) {
+            throw new RuntimeConfigValidationException(errors);
+        }
+        try {
+            extension.apply(Map.copyOf(patch));
+            revision++;
+            meterRegistry.counter("controlplane_runtime_config_updates_total", "status", "success", "namespace", namespace).increment();
+            return getSnapshot();
+        } catch (Exception applyFailure) {
+            try {
+                extension.restore(previous);
+            } catch (Exception restoreFailure) {
+                applyFailure.addSuppressed(restoreFailure);
             }
-            RuntimeConfigSnapshot candidate = snapshot.applyPatch(patch);
-            if (current.compareAndSet(snapshot, candidate)) {
-                return candidate;
-            }
-            // CAS failed because another thread updated; retry loop will re-check revision
+            meterRegistry.counter("controlplane_runtime_config_updates_total", "status", "failure", "namespace", namespace).increment();
+            throw new RuntimeConfigApplyException("Failed to apply runtime config", applyFailure);
         }
     }
 
-    /**
-     * Restores a previous snapshot (used for rollback on apply failure).
-     */
-    void restore(RuntimeConfigSnapshot previous) {
-        current.set(previous);
+    private RuntimeConfigExtension extension(String namespace) {
+        return registry.extension(namespace)
+                .orElseThrow(() -> new UnknownRuntimeConfigNamespaceException(namespace));
     }
 }

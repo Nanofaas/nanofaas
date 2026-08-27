@@ -1,1 +1,2 @@
 it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueConfiguration
+it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueRuntimeConfigAutoConfiguration

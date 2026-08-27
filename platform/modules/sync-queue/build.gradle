@@ -12,6 +12,7 @@ dependencyManagement {
 dependencies {
     implementation project(':common')
     implementation project(':control-plane')
+    compileOnly project(':control-plane-modules:runtime-config')
 
     implementation 'org.springframework.boot:spring-boot-starter'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'

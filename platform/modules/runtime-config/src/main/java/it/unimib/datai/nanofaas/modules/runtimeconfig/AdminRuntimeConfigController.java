@@ -3,11 +3,15 @@ package it.unimib.datai.nanofaas.modules.runtimeconfig;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.time.Duration;
 import java.time.Instant;
-import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -16,172 +20,63 @@ import java.util.UUID;
 @RequestMapping("/v1/admin/runtime-config")
 @ConditionalOnProperty(name = "nanofaas.admin.runtime-config.enabled", havingValue = "true")
 public class AdminRuntimeConfigController {
+    private final RuntimeConfigService service;
 
-    private static final String ERROR_KEY = "error";
-
-    private final RuntimeConfigService configService;
-    private final RuntimeConfigValidator validator;
-    private final RuntimeConfigApplier applier;
-
-    public AdminRuntimeConfigController(RuntimeConfigService configService,
-                                         RuntimeConfigValidator validator,
-                                         RuntimeConfigApplier applier) {
-        this.configService = configService;
-        this.validator = validator;
-        this.applier = applier;
+    public AdminRuntimeConfigController(RuntimeConfigService service) {
+        this.service = service;
     }
 
     @GetMapping
-    public ResponseEntity<ConfigSnapshotResponse> get() {
-        return ResponseEntity.ok(ConfigSnapshotResponse.from(configService.getSnapshot()));
+    public RuntimeConfigSnapshot get() {
+        return service.getSnapshot();
     }
 
-    @PostMapping("/validate")
-    public ResponseEntity<Object> validate(@RequestBody PatchRequest request) {
-        RuntimeConfigPatch patch;
-        try {
-            patch = request.toPatch();
-        } catch (InvalidPatchRequestException e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    ERROR_KEY, e.getMessage(),
-                    "field", e.fieldName(),
-                    "value", e.value()
-            ));
-        }
-        List<String> errors = validator.validate(configService.getSnapshot().applyPatch(patch));
-        if (!errors.isEmpty()) {
-            return ResponseEntity.unprocessableEntity().body(Map.of("errors", errors));
-        }
-        return ResponseEntity.ok(Map.of("valid", true));
+    @GetMapping("/{namespace}")
+    public ResponseEntity<?> getNamespace(@PathVariable("namespace") String namespace) {
+        RuntimeConfigSnapshot snapshot = service.getSnapshot();
+        return snapshot.namespaces().containsKey(namespace)
+                ? ResponseEntity.ok(snapshot.namespaces().get(namespace))
+                : ResponseEntity.notFound().build();
     }
 
-    @PatchMapping
-    public synchronized ResponseEntity<Object> patch(@RequestBody PatchRequest request) {
-        if (request.expectedRevision() == null) {
-            return ResponseEntity.badRequest().body(Map.of(ERROR_KEY, "expectedRevision is required"));
-        }
-
-        RuntimeConfigPatch patch;
+    @PostMapping("/{namespace}/validate")
+    public ResponseEntity<?> validate(@PathVariable("namespace") String namespace, @RequestBody Map<String, Object> values) {
         try {
-            patch = request.toPatch();
-        } catch (InvalidPatchRequestException e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    ERROR_KEY, e.getMessage(),
-                    "field", e.fieldName(),
-                    "value", e.value()
-            ));
+            List<String> errors = service.validate(namespace, values);
+            return errors.isEmpty()
+                    ? ResponseEntity.ok(Map.of("valid", true))
+                    : ResponseEntity.unprocessableEntity().body(Map.of("errors", errors));
+        } catch (UnknownRuntimeConfigNamespaceException e) {
+            return ResponseEntity.notFound().build();
         }
-        List<String> errors = validator.validate(configService.getSnapshot().applyPatch(patch));
-        if (!errors.isEmpty()) {
-            return ResponseEntity.unprocessableEntity().body(Map.of("errors", errors));
-        }
+    }
 
-        RuntimeConfigSnapshot previous = configService.getSnapshot();
-        RuntimeConfigSnapshot updated;
+    @PatchMapping("/{namespace}")
+    public ResponseEntity<?> patch(@PathVariable("namespace") String namespace, @RequestBody PatchRequest request) {
+        if (request.expectedRevision() == null || request.values() == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "expectedRevision and values are required"));
+        }
         try {
-            updated = configService.update(request.expectedRevision(), patch);
+            RuntimeConfigSnapshot updated = service.update(request.expectedRevision(), namespace, request.values());
+            return ResponseEntity.ok(new PatchResponse(updated.revision(), updated, Instant.now().toString(),
+                    UUID.randomUUID().toString(), List.of()));
+        } catch (UnknownRuntimeConfigNamespaceException e) {
+            return ResponseEntity.notFound().build();
         } catch (RevisionMismatchException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(Map.of(ERROR_KEY, e.getMessage(), "currentRevision", e.getActual()));
-        }
-
-        try {
-            applier.apply(updated, previous, configService);
+                    .body(Map.of("error", e.getMessage(), "currentRevision", e.getActual()));
+        } catch (RuntimeConfigValidationException e) {
+            return ResponseEntity.unprocessableEntity().body(Map.of("errors", e.errors()));
         } catch (RuntimeConfigApplyException e) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .body(Map.of(ERROR_KEY, "Apply failed, rolled back", "detail", e.getMessage()));
-        }
-
-        return ResponseEntity.ok(new PatchResponse(
-                updated.revision(),
-                ConfigSnapshotResponse.from(updated),
-                Instant.now().toString(),
-                UUID.randomUUID().toString(),
-                List.of()
-        ));
-    }
-
-    // --- DTOs ---
-
-    public record PatchRequest(
-            Long expectedRevision,
-            Integer rateMaxPerSecond,
-            Boolean syncQueueEnabled,
-            Boolean syncQueueAdmissionEnabled,
-            String syncQueueMaxEstimatedWait,
-            String syncQueueMaxQueueWait,
-            Integer syncQueueRetryAfterSeconds
-    ) {
-        RuntimeConfigPatch toPatch() {
-            return new RuntimeConfigPatch(
-                    rateMaxPerSecond,
-                    syncQueueEnabled,
-                    syncQueueAdmissionEnabled,
-                    parseDuration(syncQueueMaxEstimatedWait, "syncQueueMaxEstimatedWait"),
-                    parseDuration(syncQueueMaxQueueWait, "syncQueueMaxQueueWait"),
-                    syncQueueRetryAfterSeconds
-            );
-        }
-
-        private static Duration parseDuration(String rawValue, String fieldName) {
-            if (rawValue == null) {
-                return null;
-            }
-            try {
-                return Duration.parse(rawValue);
-            } catch (DateTimeParseException _) {
-                throw new InvalidPatchRequestException(fieldName, rawValue);
-            }
+                    .body(Map.of("error", "Apply failed, rolled back", "detail", e.getMessage()));
         }
     }
 
-    public record ConfigSnapshotResponse(
-            long revision,
-            int rateMaxPerSecond,
-            boolean syncQueueEnabled,
-            boolean syncQueueAdmissionEnabled,
-            String syncQueueMaxEstimatedWait,
-            String syncQueueMaxQueueWait,
-            int syncQueueRetryAfterSeconds
-    ) {
-        static ConfigSnapshotResponse from(RuntimeConfigSnapshot s) {
-            return new ConfigSnapshotResponse(
-                    s.revision(),
-                    s.rateMaxPerSecond(),
-                    s.syncQueueEnabled(),
-                    s.syncQueueAdmissionEnabled(),
-                    s.syncQueueMaxEstimatedWait().toString(),
-                    s.syncQueueMaxQueueWait().toString(),
-                    s.syncQueueRetryAfterSeconds()
-            );
-        }
+    public record PatchRequest(Long expectedRevision, Map<String, Object> values) {
     }
 
-    public record PatchResponse(
-            long revision,
-            ConfigSnapshotResponse effectiveConfig,
-            String appliedAt,
-            String changeId,
-            List<String> warnings
-    ) {
-    }
-
-    private static final class InvalidPatchRequestException extends RuntimeException {
-        private final String fieldName;
-        private final String value;
-
-        private InvalidPatchRequestException(String fieldName, String value) {
-            super("Invalid duration for " + fieldName);
-            this.fieldName = fieldName;
-            this.value = value;
-        }
-
-        private String fieldName() {
-            return fieldName;
-        }
-
-        private String value() {
-            return value;
-        }
+    public record PatchResponse(long revision, RuntimeConfigSnapshot effectiveConfig, String appliedAt,
+                                String changeId, List<String> warnings) {
     }
 }

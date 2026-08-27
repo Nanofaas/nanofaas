@@ -252,10 +252,23 @@ paths:
                 $ref: '#/components/schemas/RuntimeConfigSnapshot'
         '404':
           description: Admin runtime-config API is disabled
+  /v1/admin/runtime-config/{namespace}:
+    parameters:
+      - $ref: '#/components/parameters/RuntimeConfigNamespace'
+    get:
+      summary: Get one runtime configuration namespace
+      responses:
+        '200':
+          description: Current namespace configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '404':
+          description: Namespace or admin runtime-config API not found
     patch:
-      summary: Patch runtime configuration
-      description: Available only when `nanofaas.admin.runtime-config.enabled=true`.
-      operationId: patchRuntimeConfig
+      summary: Patch one runtime configuration namespace
       requestBody:
         required: true
         content:
@@ -269,49 +282,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RuntimeConfigPatchResponse'
-        '400':
-          description: Malformed request. Duration fields must use ISO-8601 format such as `PT5S`.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RuntimeConfigParseError'
         '404':
-          description: Admin runtime-config API is disabled
+          description: Namespace or admin runtime-config API not found
         '409':
           description: Revision mismatch
         '422':
-          description: Validation failed for the effective runtime configuration after applying the patch.
+          description: Validation failed
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ValidationErrors'
         '503':
-          description: Configuration update was rolled back because applying it to live components failed
-
-  /v1/admin/runtime-config/validate:
+          description: Configuration update was rolled back because applying it failed
+  /v1/admin/runtime-config/{namespace}/validate:
+    parameters:
+      - $ref: '#/components/parameters/RuntimeConfigNamespace'
     post:
-      summary: Validate a runtime configuration patch
-      description: Available only when `nanofaas.admin.runtime-config.enabled=true`.
-      operationId: validateRuntimeConfigPatch
+      summary: Validate a runtime configuration namespace patch
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RuntimeConfigPatchRequest'
+              type: object
+              additionalProperties: true
       responses:
         '200':
-          description: Patch is valid against the current effective configuration
-        '400':
-          description: Malformed request. Duration fields must use ISO-8601 format such as `PT5S`.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RuntimeConfigParseError'
+          description: Patch is valid
         '404':
-          description: Admin runtime-config API is disabled
+          description: Namespace or admin runtime-config API not found
         '422':
-          description: Validation failed for the effective runtime configuration after applying the patch.
+          description: Validation failed
           content:
             application/json:
               schema:
@@ -319,6 +320,12 @@ paths:
 
 components:
   parameters:
+    RuntimeConfigNamespace:
+      name: namespace
+      in: path
+      required: true
+      schema:
+        type: string
     FunctionName:
       name: name
       in: path
@@ -812,50 +819,26 @@ components:
           type: string
     RuntimeConfigPatchRequest:
       type: object
+      required: [expectedRevision, values]
       properties:
         expectedRevision:
           type: integer
           format: int64
-          description: Required for `PATCH`; omitted for `/validate`.
-        rateMaxPerSecond:
-          type: integer
-          minimum: 1
-        syncQueueEnabled:
-          type: boolean
-        syncQueueAdmissionEnabled:
-          type: boolean
-        syncQueueMaxEstimatedWait:
-          type: string
-          format: duration
-          description: ISO-8601 duration string. Must be positive and must not exceed `syncQueueMaxQueueWait` in the effective configuration.
-        syncQueueMaxQueueWait:
-          type: string
-          format: duration
-          description: ISO-8601 duration string. Must be positive and must be greater than or equal to `syncQueueMaxEstimatedWait` in the effective configuration.
-        syncQueueRetryAfterSeconds:
-          type: integer
-          minimum: 1
+        values:
+          type: object
+          additionalProperties: true
     RuntimeConfigSnapshot:
       type: object
-      required: [revision, rateMaxPerSecond, syncQueueEnabled, syncQueueAdmissionEnabled, syncQueueMaxEstimatedWait, syncQueueMaxQueueWait, syncQueueRetryAfterSeconds]
+      required: [revision, namespaces]
       properties:
         revision:
           type: integer
           format: int64
-        rateMaxPerSecond:
-          type: integer
-        syncQueueEnabled:
-          type: boolean
-        syncQueueAdmissionEnabled:
-          type: boolean
-        syncQueueMaxEstimatedWait:
-          type: string
-          format: duration
-        syncQueueMaxQueueWait:
-          type: string
-          format: duration
-        syncQueueRetryAfterSeconds:
-          type: integer
+        namespaces:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: true
     RuntimeConfigPatchResponse:
       type: object
       required: [revision, effectiveConfig, appliedAt, changeId, warnings]
@@ -882,13 +865,3 @@ components:
           type: array
           items:
             type: string
-    RuntimeConfigParseError:
-      type: object
-      required: [error, field, value]
-      properties:
-        error:
-          type: string
-        field:
-          type: string
-        value:
-          type: string

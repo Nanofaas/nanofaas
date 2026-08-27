@@ -5,15 +5,12 @@ admin HTTP API — change selected control-plane settings without a restart.
 
 ## Provides
 
-- `RuntimeConfigService` — versioned snapshots (`RuntimeConfigSnapshot`) with
-  optimistic concurrency: each patch carries the expected revision, a stale
-  revision raises `RevisionMismatchException`.
-- `AdminRuntimeConfigController` — `/v1/admin/runtime-config` (GET snapshot,
-  PATCH with `RuntimeConfigPatch`), active only when
-  `nanofaas.admin.runtime-config.enabled=true`.
-- `RuntimeConfigValidator` / `RuntimeConfigApplier` — validate then apply
-  patches to the live components (invalid patches fail with
-  `RuntimeConfigApplyException`, nothing is partially applied).
+- `RuntimeConfigExtension` / `RuntimeConfigRegistry` — modules contribute
+  immutable, namespaced snapshots and own validation/application/rollback.
+- `RuntimeConfigService` — versioned snapshots with optimistic concurrency;
+  stale revisions raise `RevisionMismatchException`.
+- `AdminRuntimeConfigController` — namespaced GET, validate and PATCH endpoints,
+  active only when `nanofaas.admin.runtime-config.enabled=true`.
 
 ## Configuration
 
@@ -33,22 +30,22 @@ and patch it with optimistic concurrency:
 # 1. Read the current snapshot (note the revision)
 curl http://localhost:8080/v1/admin/runtime-config
 
-# 2. Validate a patch without applying it
-curl -X POST http://localhost:8080/v1/admin/runtime-config/validate \
+# 2. Validate the control-plane namespace without applying it
+curl -X POST http://localhost:8080/v1/admin/runtime-config/control-plane/validate \
   -H 'Content-Type: application/json' \
   -d '{"rateMaxPerSecond": 500}'
 
 # 3. Apply it — expectedRevision must match the current revision
-curl -X PATCH http://localhost:8080/v1/admin/runtime-config \
+curl -X PATCH http://localhost:8080/v1/admin/runtime-config/control-plane \
   -H 'Content-Type: application/json' \
   -d '{
     "expectedRevision": 3,
-    "rateMaxPerSecond": 500,
-    "syncQueueMaxEstimatedWait": "PT1S"
+    "values": {"rateMaxPerSecond": 500}
   }'
 ```
 
-- Null fields are left unchanged; durations are ISO-8601 (`PT1S` = 1 second).
+- Each module owns one namespace and its patch format; the control-plane
+  namespace currently exposes `rateMaxPerSecond`.
 - A stale `expectedRevision` returns `409` with the current revision in
   `currentRevision` — re-read, then retry.
 - Invalid patches return `422` with an `errors` list; an apply failure rolls

@@ -57,7 +57,8 @@ Current modules:
 - `concurrency-control` — per-function concurrency governor (`FIXED`,
   `STATIC_PER_POD`, `ADAPTIVE_PER_POD`, `BUDGETED`, `SOJOURN`); **requires
   `async-queue`**
-- `runtime-config` — hot runtime config service and admin API
+- `runtime-config` — hot runtime config service and namespaced admin API; modules
+  contribute their editable parameters through the runtime-config extension SPI
 - `build-metadata` — `/modules/build-metadata` diagnostics endpoint
 - `k8s-deployment-provider` — Kubernetes managed deployment backend
 - `container-deployment-provider` — local Docker-compatible deployment backend

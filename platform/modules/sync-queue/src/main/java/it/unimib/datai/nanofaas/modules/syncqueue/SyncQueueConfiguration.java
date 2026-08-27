@@ -36,6 +36,12 @@ public class SyncQueueConfiguration {
         return new SyncQueueService(props, executionStore, metrics, configSource);
     }
 
+    @Bean("mutableSyncQueueConfigSource")
+    @Primary
+    MutableSyncQueueConfigSource syncQueueConfigSource(SyncQueueProperties props) {
+        return new MutableSyncQueueConfigSource(props);
+    }
+
     @Bean
     @ConditionalOnProperty(prefix = "sync-queue", name = "enabled", havingValue = "true")
     SyncScheduler syncScheduler(InvocationEnqueuer enqueuer,
