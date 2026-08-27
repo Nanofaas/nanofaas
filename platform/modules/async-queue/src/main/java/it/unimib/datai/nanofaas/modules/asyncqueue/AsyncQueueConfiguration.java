@@ -12,10 +12,10 @@ import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
 import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.context.annotation.Primary;
 
-@Configuration
+@AutoConfiguration
 @ConditionalOnBean({MeterRegistry.class, InvocationService.class})
 public class AsyncQueueConfiguration {
     private static final String FUNCTION_REMOVED = "FUNCTION_REMOVED";
