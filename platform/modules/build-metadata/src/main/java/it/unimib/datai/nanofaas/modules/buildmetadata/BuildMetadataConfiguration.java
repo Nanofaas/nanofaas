@@ -1,9 +1,9 @@
 package it.unimib.datai.nanofaas.modules.buildmetadata;
 
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 
-@Configuration
+@AutoConfiguration
 public class BuildMetadataConfiguration {
 
     @Bean

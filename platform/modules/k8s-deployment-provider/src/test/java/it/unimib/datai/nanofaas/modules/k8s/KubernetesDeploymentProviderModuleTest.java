@@ -1,39 +1,20 @@
 package it.unimib.datai.nanofaas.modules.k8s;
 
-import it.unimib.datai.nanofaas.common.controlplane.ControlPlaneModule;
 import org.junit.jupiter.api.Test;
-
-import java.util.List;
-import java.util.ServiceLoader;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.context.annotation.ImportCandidates;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class KubernetesDeploymentProviderModuleTest {
 
-    private static final String MODULE_CLASS = "it.unimib.datai.nanofaas.modules.k8s.KubernetesDeploymentProviderModule";
+    private static final String CONFIGURATION_CLASS = KubernetesDeploymentProviderConfiguration.class.getName();
 
     @Test
-    void serviceLoaderDiscoversKubernetesDeploymentProviderModule() {
-        List<String> modules = ServiceLoader.load(ControlPlaneModule.class)
-                .stream()
-                .map(provider -> provider.type().getName())
-                .toList();
-
-        assertThat(modules).contains(MODULE_CLASS);
+    void autoConfigurationImportDiscoversKubernetesDeploymentProvider() {
+        assertThat(ImportCandidates.load(AutoConfiguration.class,
+                Thread.currentThread().getContextClassLoader()).getCandidates())
+                .contains(CONFIGURATION_CLASS);
     }
 
-    @Test
-    void moduleConfigurationClassesStayWithinK8sModulePackages() {
-        ControlPlaneModule module = ServiceLoader.load(ControlPlaneModule.class)
-                .stream()
-                .filter(provider -> MODULE_CLASS.equals(provider.type().getName()))
-                .findFirst()
-                .orElseThrow()
-                .get();
-
-        assertThat(module.configurationClasses())
-                .isNotEmpty()
-                .allSatisfy(configurationClass ->
-                        assertThat(configurationClass.getName()).startsWith("it.unimib.datai.nanofaas.modules.k8s."));
-    }
 }

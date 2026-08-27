@@ -8,12 +8,14 @@ import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListen
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 
 @AutoConfiguration
+@AutoConfigureAfter(name = "it.unimib.datai.nanofaas.modules.asyncqueue.AsyncQueueConfiguration")
 @ConditionalOnBean({ScalingMetricsSource.class, MeterRegistry.class, FunctionRegistry.class})
 @EnableConfigurationProperties(ScalingProperties.class)
 public class AutoscalerConfiguration {

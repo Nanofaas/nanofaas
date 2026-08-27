@@ -5,7 +5,7 @@ WORKDIR /tmp/build
 COPY build/libs/app.jar app.jar
 # jlink a runtime with only the modules this jar actually touches, instead of shipping the
 # full stock JRE. jdk.unsupported (Netty's sun.misc.Unsafe) and jdk.crypto.ec (TLS EC cipher
-# suites, loaded via ServiceLoader), and jdk.httpserver (the container proxy) aren't visible to
+# suites, loaded reflectively), and jdk.httpserver (the container proxy) aren't visible to
 # jdeps' static analysis, so add them explicitly.
 RUN jar xf app.jar BOOT-INF/lib BOOT-INF/classes && \
     jdeps --ignore-missing-deps --multi-release 25 --recursive \

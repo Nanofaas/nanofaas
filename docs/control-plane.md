@@ -29,8 +29,8 @@ VM provisioning remains an explicit Ansible/provider concern.
 ## Control-plane modules
 
 The control plane has a minimal core and optional modules under
-`platform/modules`. Modules implement `ControlPlaneModule` and expose Spring
-configuration through `ServiceLoader`.
+`platform/modules`. Each module publishes its entry-point configuration through
+Spring Boot's `AutoConfiguration.imports` convention.
 
 Select modules at build time with Gradle:
 
