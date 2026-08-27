@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.modules.runtimeconfig;
 
 import it.unimib.datai.nanofaas.controlplane.service.RateLimiter;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -29,11 +30,21 @@ final class ControlPlaneRuntimeConfigExtension implements RuntimeConfigExtension
             return List.of("control-plane supports only rateMaxPerSecond");
         }
         Object value = patch.get("rateMaxPerSecond");
-        if (!(value instanceof Number number) || number.longValue() != number.doubleValue()
-                || number.longValue() <= 0) {
+        if (!isPositiveInt(value)) {
             return List.of("rateMaxPerSecond must be a positive integer");
         }
         return List.of();
+    }
+
+    private boolean isPositiveInt(Object value) {
+        if (!(value instanceof Number number)) {
+            return false;
+        }
+        try {
+            return new BigDecimal(number.toString()).intValueExact() > 0;
+        } catch (ArithmeticException | NumberFormatException e) {
+            return false;
+        }
     }
 
     @Override

@@ -19,4 +19,17 @@ class ControlPlaneRuntimeConfigExtensionTest {
         assertThat(limiter.getMaxPerSecond()).isEqualTo(500);
         assertThat(extension.validate(Map.of("rateMaxPerSecond", 0))).isNotEmpty();
     }
+
+    @Test
+    void acceptsOnlyPositiveIntRateLimits() {
+        ControlPlaneRuntimeConfigExtension extension =
+                new ControlPlaneRuntimeConfigExtension(new RateLimiter());
+
+        for (Number value : new Number[]{0, -1, 1.5, 2147483648L}) {
+            assertThat(extension.validate(Map.of("rateMaxPerSecond", value)))
+                    .as("value %s", value)
+                    .isNotEmpty();
+        }
+        assertThat(extension.validate(Map.of("rateMaxPerSecond", Integer.MAX_VALUE))).isEmpty();
+    }
 }

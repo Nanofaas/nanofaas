@@ -6,6 +6,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Bean;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -32,8 +33,7 @@ public class SyncQueueRuntimeConfigAutoConfiguration {
                             || !(candidate.get("admissionEnabled") instanceof Boolean)
                             || !(candidate.get("maxEstimatedWait") instanceof String)
                             || !(candidate.get("maxQueueWait") instanceof String)
-                            || !(candidate.get("retryAfterSeconds") instanceof Number number)
-                            || number.intValue() < 1
+                            || !isPositiveInt(candidate.get("retryAfterSeconds"))
                             || !java.time.Duration.parse((String) candidate.get("maxEstimatedWait")).isPositive()
                             || !java.time.Duration.parse((String) candidate.get("maxQueueWait")).isPositive()
                             || java.time.Duration.parse((String) candidate.get("maxEstimatedWait"))
@@ -48,5 +48,16 @@ public class SyncQueueRuntimeConfigAutoConfiguration {
             @Override public void apply(Map<String, Object> patch) { source.apply(patch); }
             @Override public void restore(Map<String, Object> snapshot) { source.restore(snapshot); }
         };
+    }
+
+    private boolean isPositiveInt(Object value) {
+        if (!(value instanceof Number number)) {
+            return false;
+        }
+        try {
+            return new BigDecimal(number.toString()).intValueExact() > 0;
+        } catch (ArithmeticException | NumberFormatException e) {
+            return false;
+        }
     }
 }
