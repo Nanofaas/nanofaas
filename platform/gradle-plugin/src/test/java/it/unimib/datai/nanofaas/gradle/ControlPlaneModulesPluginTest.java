@@ -9,7 +9,9 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.gradle.testkit.runner.TaskOutcome.SUCCESS;
@@ -24,7 +26,8 @@ class ControlPlaneModulesPluginTest {
         Files.writeString(projectDir.resolve("settings.gradle"),
                 "plugins { id 'it.unimib.datai.nanofaas.control-plane-modules' }\n");
         Files.writeString(projectDir.resolve("build.gradle"),
-                "tasks.register('printSelection') { doLast { println gradle.ext.nanofaasSelectedControlPlaneModules } }\n");
+                "tasks.register('printSelection') { doLast { println gradle.ext.nanofaasSelectedControlPlaneModules } }\n"
+                        + "tasks.register('mutateSelection') { doLast { gradle.ext.nanofaasSelectedControlPlaneModules.add('unexpected') } }\n");
     }
 
     @Test
@@ -36,6 +39,44 @@ class ControlPlaneModulesPluginTest {
 
         assertThat(result.task(":printSelection").getOutcome()).isEqualTo(SUCCESS);
         assertThat(result.getOutput()).contains("[alpha]");
+    }
+
+    @Test
+    void projectPropertyTakesPrecedenceOverEnvironment() throws IOException {
+        writeModule("alpha", false);
+        writeModule("beta", false);
+
+        assertThat(runWithEnvironment(Map.of("NANOFAAS_CONTROL_PLANE_MODULES", "beta"),
+                "printSelection", "-PcontrolPlaneModules=alpha").getOutput())
+                .contains("[alpha]");
+    }
+
+    @Test
+    void usesEnvironmentWhenProjectPropertyIsAbsent() throws IOException {
+        writeModule("alpha", false);
+        writeModule("beta", false);
+
+        assertThat(runWithEnvironment(Map.of("NANOFAAS_CONTROL_PLANE_MODULES", "beta"),
+                "printSelection").getOutput())
+                .contains("[beta]");
+    }
+
+    @Test
+    void allSelectsEveryCompatibleModuleInSortedOrder() throws IOException {
+        writeModule("beta", false);
+        writeModule("alpha", false);
+
+        assertThat(run("printSelection", "-PcontrolPlaneModules=all").getOutput())
+                .contains("[alpha, beta]");
+    }
+
+    @Test
+    void publishesSelectionAsImmutableExtraProperty() throws IOException {
+        writeModule("alpha", false);
+
+        BuildResult result = runner("mutateSelection", "-PcontrolPlaneModules=alpha").buildAndFail();
+
+        assertThat(result.getOutput()).contains("UnsupportedOperationException");
     }
 
     @Test
@@ -123,12 +164,21 @@ class ControlPlaneModulesPluginTest {
     }
 
     private BuildResult run(String... arguments) {
+        return runner(arguments).build();
+    }
+
+    private BuildResult runWithEnvironment(Map<String, String> environment, String... arguments) {
+        Map<String, String> testEnvironment = new HashMap<>(System.getenv());
+        testEnvironment.putAll(environment);
+        return runner(arguments).withEnvironment(testEnvironment).build();
+    }
+
+    private GradleRunner runner(String... arguments) {
         return GradleRunner.create()
                 .withProjectDir(projectDir.toFile())
                 .withArguments(arguments)
                 .withPluginClasspath()
-                .forwardOutput()
-                .build();
+                .forwardOutput();
     }
 
     private void failsWith(String selector, String message) {
@@ -138,6 +188,13 @@ class ControlPlaneModulesPluginTest {
                 .withPluginClasspath()
                 .buildAndFail();
         assertThat(result.getOutput()).contains(message);
+    }
+
+    @Test
+    void rejectsDuplicateSelectedModules() throws IOException {
+        writeModule("alpha", false);
+
+        failsWith("-PcontrolPlaneModules=alpha,alpha", "Duplicate control-plane module 'alpha'");
     }
 
     private void writeModule(String id, boolean defaultEnabled) throws IOException {
