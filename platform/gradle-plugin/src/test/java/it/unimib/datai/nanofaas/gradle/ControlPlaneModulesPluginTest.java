@@ -9,7 +9,6 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -31,7 +30,7 @@ class ControlPlaneModulesPluginTest {
     }
 
     @Test
-    void selectsDefaultEnabledModules() throws IOException {
+    void usesDefaultEnabledWhenSelectorEnvironmentIsAbsent() throws IOException {
         writeModule("alpha", true);
         writeModule("beta", false);
 
@@ -168,9 +167,7 @@ class ControlPlaneModulesPluginTest {
     }
 
     private BuildResult runWithEnvironment(Map<String, String> environment, String... arguments) {
-        Map<String, String> testEnvironment = new HashMap<>(System.getenv());
-        testEnvironment.putAll(environment);
-        return runner(arguments).withEnvironment(testEnvironment).build();
+        return runner(arguments).withEnvironment(environment).build();
     }
 
     private GradleRunner runner(String... arguments) {
@@ -178,15 +175,12 @@ class ControlPlaneModulesPluginTest {
                 .withProjectDir(projectDir.toFile())
                 .withArguments(arguments)
                 .withPluginClasspath()
+                .withEnvironment(Map.of())
                 .forwardOutput();
     }
 
     private void failsWith(String selector, String message) {
-        BuildResult result = GradleRunner.create()
-                .withProjectDir(projectDir.toFile())
-                .withArguments("tasks", selector)
-                .withPluginClasspath()
-                .buildAndFail();
+        BuildResult result = runner("tasks", selector).buildAndFail();
         assertThat(result.getOutput()).contains(message);
     }
 
