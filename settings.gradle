@@ -1,4 +1,5 @@
 pluginManagement {
+    includeBuild('platform/gradle-plugin')
     resolutionStrategy {
         eachPlugin {
             if (requested.id.id == 'org.graalvm.buildtools.native' && requested.version != null) {
@@ -17,6 +18,8 @@ plugins {
     id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
     // Build health / dependency analysis for all projects (settings plugin since 2.0).
     id 'com.autonomousapps.build-health' version '3.18.0'
+    // Applied in Task 3 after module.properties descriptors are added.
+    id 'it.unimib.datai.nanofaas.control-plane-modules' apply false
 }
 
 rootProject.name = 'nanofaas'
