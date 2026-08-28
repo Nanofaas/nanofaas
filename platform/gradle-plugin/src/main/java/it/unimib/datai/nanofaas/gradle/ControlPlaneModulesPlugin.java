@@ -22,6 +22,11 @@ public final class ControlPlaneModulesPlugin implements Plugin<Settings> {
         List<ModuleDescriptor> descriptors = discover(settings, modulesRoot);
         List<String> selected = select(settings, descriptors);
         new ModuleConstraintResolver().validate(descriptors, selected);
+        settings.getGradle().beforeProject(project -> {
+            if (project.getPath().startsWith(":control-plane-modules:")) {
+                project.getPluginManager().apply(ControlPlaneModuleProjectPlugin.class);
+            }
+        });
         settings.getGradle().getExtensions().getExtraProperties()
                 .set(SELECTED_EXTRA_PROPERTY, List.copyOf(selected));
     }
