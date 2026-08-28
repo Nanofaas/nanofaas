@@ -27,7 +27,7 @@ class ModuleDescriptorTest {
                 .hasMessageContaining("itself");
         assertThatThrownBy(() -> descriptor(1, "module", List.of(), List.of("module"), List.of(), List.of()))
                 .hasMessageContaining("itself");
-        assertThatThrownBy(() -> descriptor(1, "module", List.of(), List.of(), List.of("module"), List.of()))
+        assertThatThrownBy(() -> descriptor(1, "module", List.of(), List.of(), List.of(), List.of("module")))
                 .hasMessageContaining("itself");
         assertThatThrownBy(() -> descriptor(1, "module", List.of(), List.of(), List.of("module"), List.of()))
                 .hasMessageContaining("itself");
