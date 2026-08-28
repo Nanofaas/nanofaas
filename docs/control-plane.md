@@ -39,6 +39,10 @@ Select modules at build time with Gradle:
 ./gradlew :control-plane:bootJar -PcontrolPlaneModules=async-queue
 ./gradlew :control-plane:bootJar -PcontrolPlaneModules=sync-queue,runtime-config
 ./gradlew :control-plane:bootJar -PcontrolPlaneModules=all
+./gradlew :control-plane:bootJar -PcontrolPlaneModules=k8s-deployment-provider
+./gradlew :control-plane:bootJar -PcontrolPlaneModules=container-deployment-provider
+# Invalid: the deployment providers are mutually exclusive.
+./gradlew :control-plane:bootJar -PcontrolPlaneModules=k8s-deployment-provider,container-deployment-provider
 ```
 
 The settings plugin `it.unimib.datai.nanofaas.control-plane-modules` discovers
@@ -52,6 +56,12 @@ between modules with equal `defaultEnabled` values are ambiguous and fail the
 build. Unknown names and other constraint violations also fail the build. The
 default selects only descriptors whose `defaultEnabled=true`; this keeps
 `async-queue` enabled and `sync-queue` disabled.
+
+`k8s-deployment-provider` and `container-deployment-provider` are mutually
+exclusive. Kubernetes is default-enabled, so `all` selects
+`k8s-deployment-provider` and excludes the local container provider. Select
+`container-deployment-provider` explicitly for local Docker workflows; selecting
+both providers explicitly fails the build.
 
 Each descriptor uses this format:
 
@@ -85,8 +95,10 @@ Current modules:
 - `runtime-config` — hot runtime config service and namespaced admin API; modules
   contribute their editable parameters through the runtime-config extension SPI
 - `build-metadata` — `/modules/build-metadata` diagnostics endpoint
-- `k8s-deployment-provider` — Kubernetes managed deployment backend
-- `container-deployment-provider` — local Docker-compatible deployment backend
+- `k8s-deployment-provider` — default-enabled Kubernetes managed deployment
+  backend; mutually exclusive with `container-deployment-provider`
+- `container-deployment-provider` — local Docker-compatible deployment backend;
+  mutually exclusive with `k8s-deployment-provider`
 - `offload` — conditional transparent proxy of sync invocations to a remote
   instance
 

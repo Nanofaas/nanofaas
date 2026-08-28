@@ -40,7 +40,7 @@ Start the control plane with the local Docker backend:
 
 ```bash
 $ ./gradlew :control-plane:bootRun \
-    -PcontrolPlaneModules=all \
+    -PcontrolPlaneModules=container-deployment-provider \
     --args='--logging.level.root=DEBUG --nanofaas.deployment.default-backend=container-local --spring.output.ansi.enabled=ALWAYS --logging.level.java.lang.ProcessBuilder=INFO'
 ```
 
