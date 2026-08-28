@@ -51,6 +51,20 @@ class RepositoryModuleDescriptorsTest {
         }
     }
 
+    @Test
+    void deploymentProvidersHaveComplementaryDefaultsAndMutualConflicts() throws IOException {
+        Path modulesRoot = repositoryRoot().resolve("platform/modules");
+        ModuleDescriptor k8s = new ModuleDescriptorReader()
+                .read(modulesRoot.resolve("k8s-deployment-provider/module.properties"));
+        ModuleDescriptor container = new ModuleDescriptorReader()
+                .read(modulesRoot.resolve("container-deployment-provider/module.properties"));
+
+        assertThat(k8s.defaultEnabled()).isTrue();
+        assertThat(container.defaultEnabled()).isFalse();
+        assertThat(k8s.conflicts()).containsExactly("container-deployment-provider");
+        assertThat(container.conflicts()).containsExactly("k8s-deployment-provider");
+    }
+
     private boolean isGradleProject(Path path) {
         return Files.isRegularFile(path.resolve("build.gradle"))
                 || Files.isRegularFile(path.resolve("build.gradle.kts"));
