@@ -21,9 +21,9 @@ class ControlPlaneModuleProjectPluginTest {
         Files.writeString(projectDir.resolve("settings.gradle"),
                 "plugins { id 'it.unimib.datai.nanofaas.control-plane-modules' }\n");
         Files.writeString(projectDir.resolve("build.gradle"), "");
-        writeModule("strong", "false", "", "", "");
-        writeModule("weak", "false", "", "", "");
-        writeModule("consumer", "true", "strong", "weak", "", "strong");
+        writeModule("strong", "false", "", "", "", "");
+        writeModule("weak", "false", "", "", "", "");
+        writeModule("consumer", "true", "strong", "weak", "strong", "");
         Files.writeString(projectDir.resolve("platform/modules/consumer/build.gradle"), """
                 plugins { id 'java-library' }
                 tasks.register('printModuleDependencies') {
@@ -49,12 +49,7 @@ class ControlPlaneModuleProjectPluginTest {
     }
 
     private void writeModule(String id, String defaultEnabled, String strong,
-                             String weak, String conflicts) throws IOException {
-        writeModule(id, defaultEnabled, strong, weak, conflicts, "");
-    }
-
-    private void writeModule(String id, String defaultEnabled, String strong,
-                             String weak, String conflicts, String oneOf) throws IOException {
+                             String weak, String oneOf, String conflicts) throws IOException {
         Path module = projectDir.resolve("platform/modules").resolve(id);
         Files.createDirectories(module);
         Files.writeString(module.resolve("build.gradle"), "");

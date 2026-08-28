@@ -31,8 +31,8 @@ class ControlPlaneModulesPluginTest {
 
     @Test
     void usesDefaultEnabledWhenSelectorEnvironmentIsAbsent() throws IOException {
-        writeModule("alpha", true);
-        writeModule("beta", false);
+        writeModule("alpha", true, "", "", "", "");
+        writeModule("beta", false, "", "", "", "");
 
         BuildResult result = run("printSelection");
 
@@ -42,8 +42,8 @@ class ControlPlaneModulesPluginTest {
 
     @Test
     void projectPropertyTakesPrecedenceOverEnvironment() throws IOException {
-        writeModule("alpha", false);
-        writeModule("beta", false);
+        writeModule("alpha", false, "", "", "", "");
+        writeModule("beta", false, "", "", "", "");
 
         assertThat(runWithEnvironment(Map.of("NANOFAAS_CONTROL_PLANE_MODULES", "beta"),
                 "printSelection", "-PcontrolPlaneModules=alpha").getOutput())
@@ -52,8 +52,8 @@ class ControlPlaneModulesPluginTest {
 
     @Test
     void usesEnvironmentWhenProjectPropertyIsAbsent() throws IOException {
-        writeModule("alpha", false);
-        writeModule("beta", false);
+        writeModule("alpha", false, "", "", "", "");
+        writeModule("beta", false, "", "", "", "");
 
         assertThat(runWithEnvironment(Map.of("NANOFAAS_CONTROL_PLANE_MODULES", "beta"),
                 "printSelection").getOutput())
@@ -62,8 +62,8 @@ class ControlPlaneModulesPluginTest {
 
     @Test
     void allSelectsEveryCompatibleModuleInSortedOrder() throws IOException {
-        writeModule("beta", false);
-        writeModule("alpha", false);
+        writeModule("beta", false, "", "", "", "");
+        writeModule("alpha", false, "", "", "", "");
 
         assertThat(run("printSelection", "-PcontrolPlaneModules=all").getOutput())
                 .contains("[alpha, beta]");
@@ -71,8 +71,8 @@ class ControlPlaneModulesPluginTest {
 
     @Test
     void allPrefersDefaultEnabledModuleOnConflict() throws IOException {
-        writeModule("async-queue", true, "", "", "sync-queue");
-        writeModule("sync-queue", false, "", "", "async-queue");
+        writeModule("async-queue", true, "", "", "", "sync-queue");
+        writeModule("sync-queue", false, "", "", "", "async-queue");
 
         assertThat(run("printSelection", "-PcontrolPlaneModules=all").getOutput())
                 .contains("[async-queue]")
@@ -81,15 +81,15 @@ class ControlPlaneModulesPluginTest {
 
     @Test
     void allRejectsConflictBetweenNonDefaultModules() throws IOException {
-        writeModule("async-queue", false, "", "", "sync-queue");
-        writeModule("sync-queue", false, "", "", "async-queue");
+        writeModule("async-queue", false, "", "", "", "sync-queue");
+        writeModule("sync-queue", false, "", "", "", "async-queue");
 
         failsWith("-PcontrolPlaneModules=all", "conflict");
     }
 
     @Test
     void publishesSelectionAsImmutableExtraProperty() throws IOException {
-        writeModule("alpha", false);
+        writeModule("alpha", false, "", "", "", "");
 
         BuildResult result = runner("mutateSelection", "-PcontrolPlaneModules=alpha").buildAndFail();
 
@@ -98,7 +98,7 @@ class ControlPlaneModulesPluginTest {
 
     @Test
     void selectsNoModules() throws IOException {
-        writeModule("alpha", true);
+        writeModule("alpha", true, "", "", "", "");
 
         assertThat(run("printSelection", "-PcontrolPlaneModules=none").getOutput())
                 .contains("[]");
@@ -106,15 +106,15 @@ class ControlPlaneModulesPluginTest {
 
     @Test
     void rejectsNoneCombinedWithModule() throws IOException {
-        writeModule("alpha", true);
+        writeModule("alpha", true, "", "", "", "");
 
         failsWith("-PcontrolPlaneModules=none,alpha", "cannot be combined");
     }
 
     @Test
     void selectsAValidSingleModule() throws IOException {
-        writeModule("alpha", false);
-        writeModule("beta", false);
+        writeModule("alpha", false, "", "", "", "");
+        writeModule("beta", false, "", "", "", "");
 
         assertThat(run("printSelection", "-PcontrolPlaneModules=beta").getOutput())
                 .contains("[beta]");
@@ -122,16 +122,16 @@ class ControlPlaneModulesPluginTest {
 
     @Test
     void doesNotAutoSelectOneOfProvider() throws IOException {
-        writeModule("consumer", false, "", "", "", "provider");
-        writeModule("provider", false);
+        writeModule("consumer", false, "", "", "provider", "");
+        writeModule("provider", false, "", "", "", "");
 
         failsWith("-PcontrolPlaneModules=consumer", "requires at least one oneOf module");
     }
 
     @Test
     void doesNotAddOneOfProviderAsGradleDependency() throws IOException {
-        writeModule("provider", false);
-        writeModule("consumer", false, "", "", "", "provider");
+        writeModule("provider", false, "", "", "", "");
+        writeModule("consumer", false, "", "", "provider", "");
         Files.writeString(projectDir.resolve("platform/modules/consumer/build.gradle"), """
                 plugins { id 'java-library' }
                 tasks.register('printModuleDependencies') {
@@ -153,8 +153,8 @@ class ControlPlaneModulesPluginTest {
 
     @Test
     void allowsMissingWeakModuleWhenItIsNotSelected() throws IOException {
-        writeModule("optional", false, "", "base", "");
-        writeModule("base", false);
+        writeModule("optional", false, "", "base", "", "");
+        writeModule("base", false, "", "", "", "");
 
         assertThat(run("printSelection", "-PcontrolPlaneModules=optional").getOutput())
                 .contains("[optional]");
@@ -162,38 +162,38 @@ class ControlPlaneModulesPluginTest {
 
     @Test
     void rejectsMissingStrongModuleWhenItIsNotSelected() throws IOException {
-        writeModule("required", false, "base", "", "");
-        writeModule("base", false);
+        writeModule("required", false, "base", "", "", "");
+        writeModule("base", false, "", "", "", "");
 
         failsWith("-PcontrolPlaneModules=required", "requires strong module 'base'");
     }
 
     @Test
     void rejectsConflictingModules() throws IOException {
-        writeModule("async-queue", false, "", "", "sync-queue");
-        writeModule("sync-queue", false, "", "", "async-queue");
+        writeModule("async-queue", false, "", "", "", "sync-queue");
+        writeModule("sync-queue", false, "", "", "", "async-queue");
 
         failsWith("-PcontrolPlaneModules=async-queue,sync-queue", "conflict");
     }
 
     @Test
     void rejectsConflictExpandedByAll() throws IOException {
-        writeModule("async-queue", true, "", "", "sync-queue");
-        writeModule("sync-queue", true, "", "", "async-queue");
+        writeModule("async-queue", true, "", "", "", "sync-queue");
+        writeModule("sync-queue", true, "", "", "", "async-queue");
 
         failsWith("-PcontrolPlaneModules=all", "conflict");
     }
 
     @Test
     void rejectsUnknownModule() throws IOException {
-        writeModule("alpha", false);
+        writeModule("alpha", false, "", "", "", "");
 
         failsWith("-PcontrolPlaneModules=unknown", "Unknown control-plane module");
     }
 
     @Test
     void rejectsMissingDescriptor() throws IOException {
-        writeModule("alpha", false);
+        writeModule("alpha", false, "", "", "", "");
         Files.createDirectories(projectDir.resolve("platform/modules/missing"));
         Files.writeString(projectDir.resolve("platform/modules/missing/build.gradle"), "");
 
@@ -202,11 +202,11 @@ class ControlPlaneModulesPluginTest {
 
     @Test
     void rejectsDescriptorIdMismatch() throws IOException {
-        writeModule("alpha", false);
+        writeModule("alpha", false, "", "", "", "");
         Path module = projectDir.resolve("platform/modules/actual");
         Files.createDirectories(module);
         Files.writeString(module.resolve("build.gradle"), "");
-        Files.writeString(module.resolve("module.properties"), descriptor("declared", false, "", "", ""));
+        Files.writeString(module.resolve("module.properties"), descriptor("declared", false, "", "", "", ""));
 
         failsWith("-PcontrolPlaneModules=none", "directory name 'actual' does not match descriptor id 'declared'");
     }
@@ -235,32 +235,18 @@ class ControlPlaneModulesPluginTest {
 
     @Test
     void rejectsDuplicateSelectedModules() throws IOException {
-        writeModule("alpha", false);
+        writeModule("alpha", false, "", "", "", "");
 
         failsWith("-PcontrolPlaneModules=alpha,alpha", "Duplicate control-plane module 'alpha'");
     }
 
-    private void writeModule(String id, boolean defaultEnabled) throws IOException {
-        writeModule(id, defaultEnabled, "", "", "");
-    }
-
     private void writeModule(String id, boolean defaultEnabled, String strong,
-                             String weak, String conflicts) throws IOException {
-        writeModule(id, defaultEnabled, strong, weak, conflicts, "");
-    }
-
-    private void writeModule(String id, boolean defaultEnabled, String strong,
-                             String weak, String conflicts, String oneOf) throws IOException {
+                             String weak, String oneOf, String conflicts) throws IOException {
         Path module = projectDir.resolve("platform/modules").resolve(id);
         Files.createDirectories(module);
         Files.writeString(module.resolve("build.gradle"), "");
         Files.writeString(module.resolve("module.properties"),
                 descriptor(id, defaultEnabled, strong, weak, oneOf, conflicts));
-    }
-
-    private String descriptor(String id, boolean defaultEnabled, String strong,
-                              String weak, String conflicts) {
-        return descriptor(id, defaultEnabled, strong, weak, "", conflicts);
     }
 
     private String descriptor(String id, boolean defaultEnabled, String strong,
