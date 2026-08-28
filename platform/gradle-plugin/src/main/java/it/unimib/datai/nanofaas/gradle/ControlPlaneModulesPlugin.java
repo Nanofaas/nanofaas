@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.gradle;
 import org.gradle.api.GradleException;
 import org.gradle.api.Plugin;
 import org.gradle.api.initialization.Settings;
+import org.gradle.api.logging.Logging;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -102,8 +103,8 @@ public final class ControlPlaneModulesPlugin implements Plugin<Settings> {
                 if (requested.size() != 1) {
                     throw failure("Module selector 'all' cannot be combined with other values");
                 }
-                requested.addAll(available);
-                requested.remove("all");
+                requested.clear();
+                requested.addAll(selectAll(descriptors));
             }
         }
 
@@ -112,6 +113,41 @@ public final class ControlPlaneModulesPlugin implements Plugin<Settings> {
             throw failure("Unknown control-plane module(s): " + unknown);
         }
         return requested.stream().sorted().toList();
+    }
+
+    private static List<String> selectAll(List<ModuleDescriptor> descriptors) {
+        // ponytail: module counts are tiny; replace the pair scan only if that changes materially.
+        for (int leftIndex = 0; leftIndex < descriptors.size(); leftIndex++) {
+            ModuleDescriptor left = descriptors.get(leftIndex);
+            for (int rightIndex = leftIndex + 1; rightIndex < descriptors.size(); rightIndex++) {
+                ModuleDescriptor right = descriptors.get(rightIndex);
+                if (left.defaultEnabled() == right.defaultEnabled() && conflicts(left, right)) {
+                    throw failure("Invalid module constraints: modules '" + left.id()
+                            + "' and '" + right.id() + "' conflict with equal defaultEnabled priority");
+                }
+            }
+        }
+
+        List<ModuleDescriptor> defaults = descriptors.stream().filter(ModuleDescriptor::defaultEnabled).toList();
+        List<String> selected = new ArrayList<>();
+        for (ModuleDescriptor descriptor : descriptors) {
+            ModuleDescriptor conflictingDefault = defaults.stream()
+                    .filter(candidate -> conflicts(descriptor, candidate))
+                    .findFirst()
+                    .orElse(null);
+            if (!descriptor.defaultEnabled() && conflictingDefault != null) {
+                Logging.getLogger(ControlPlaneModulesPlugin.class).lifecycle("Skipping control-plane module '{}': "
+                                + "conflicts with default-enabled module '{}'",
+                        descriptor.id(), conflictingDefault.id());
+            } else {
+                selected.add(descriptor.id());
+            }
+        }
+        return selected;
+    }
+
+    private static boolean conflicts(ModuleDescriptor left, ModuleDescriptor right) {
+        return left.conflicts().contains(right.id()) || right.conflicts().contains(left.id());
     }
 
     private static GradleException failure(String message) {

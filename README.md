@@ -76,10 +76,12 @@ Control-plane modules are selected during Gradle settings configuration by the
 its `defaultEnabled`, `requires.strong`, `requires.weak`, and `conflicts` in a
 required `platform/modules/<id>/module.properties` descriptor. Use
 `-PcontrolPlaneModules=none`, a comma-separated selection, or `all`; the
-`NANOFAAS_CONTROL_PLANE_MODULES` environment variable is the fallback. Strong
-requirements and conflicts fail before tasks run, while weak requirements are
-optional. See [control-plane operation](docs/control-plane.md#control-plane-modules)
-for the complete module list and examples.
+`NANOFAAS_CONTROL_PLANE_MODULES` environment variable is the fallback. `all`
+prefers default-enabled modules when resolving conflicts; equal-priority
+conflicts fail. Strong requirements and conflicts fail before tasks run, while
+weak requirements are optional. See
+[control-plane operation](docs/control-plane.md#control-plane-modules) for the
+complete module list and examples.
 
 ## Test
 

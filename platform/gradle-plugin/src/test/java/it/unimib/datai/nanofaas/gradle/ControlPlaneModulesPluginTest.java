@@ -70,6 +70,24 @@ class ControlPlaneModulesPluginTest {
     }
 
     @Test
+    void allPrefersDefaultEnabledModuleOnConflict() throws IOException {
+        writeModule("async-queue", true, "", "", "sync-queue");
+        writeModule("sync-queue", false, "", "", "async-queue");
+
+        assertThat(run("printSelection", "-PcontrolPlaneModules=all").getOutput())
+                .contains("[async-queue]")
+                .contains("Skipping control-plane module 'sync-queue': conflicts with default-enabled module 'async-queue'");
+    }
+
+    @Test
+    void allRejectsConflictBetweenNonDefaultModules() throws IOException {
+        writeModule("async-queue", false, "", "", "sync-queue");
+        writeModule("sync-queue", false, "", "", "async-queue");
+
+        failsWith("-PcontrolPlaneModules=all", "conflict");
+    }
+
+    @Test
     void publishesSelectionAsImmutableExtraProperty() throws IOException {
         writeModule("alpha", false);
 

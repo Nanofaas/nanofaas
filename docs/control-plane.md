@@ -46,10 +46,12 @@ the immediate Gradle projects under `platform/modules`, reads the required
 `module.properties` descriptor, and validates selection before any task runs.
 The equivalent environment selector is `NANOFAAS_CONTROL_PLANE_MODULES`;
 the project property `-PcontrolPlaneModules=...` has precedence. `none` cannot
-be combined with other values, `all` selects every module, and unknown names or
-constraint violations fail the build. The default selects descriptors whose
-`defaultEnabled=true`; this keeps `async-queue` enabled and `sync-queue`
-disabled.
+be combined with other values. `all` selects every compatible module, preferring
+`defaultEnabled=true` when a default and a non-default module conflict; conflicts
+between modules with equal `defaultEnabled` values are ambiguous and fail the
+build. Unknown names and other constraint violations also fail the build. The
+default selects only descriptors whose `defaultEnabled=true`; this keeps
+`async-queue` enabled and `sync-queue` disabled.
 
 Each descriptor uses this format:
 
