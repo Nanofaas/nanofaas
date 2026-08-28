@@ -23,7 +23,7 @@ class ControlPlaneModuleProjectPluginTest {
         Files.writeString(projectDir.resolve("build.gradle"), "");
         writeModule("strong", "false", "", "", "");
         writeModule("weak", "false", "", "", "");
-        writeModule("consumer", "true", "strong", "weak", "");
+        writeModule("consumer", "true", "strong", "weak", "", "strong");
         Files.writeString(projectDir.resolve("platform/modules/consumer/build.gradle"), """
                 plugins { id 'java-library' }
                 tasks.register('printModuleDependencies') {
@@ -50,14 +50,26 @@ class ControlPlaneModuleProjectPluginTest {
 
     private void writeModule(String id, String defaultEnabled, String strong,
                              String weak, String conflicts) throws IOException {
+        writeModule(id, defaultEnabled, strong, weak, conflicts, "");
+    }
+
+    private void writeModule(String id, String defaultEnabled, String strong,
+                             String weak, String conflicts, String oneOf) throws IOException {
         Path module = projectDir.resolve("platform/modules").resolve(id);
         Files.createDirectories(module);
         Files.writeString(module.resolve("build.gradle"), "");
-        Files.writeString(module.resolve("module.properties"), "schemaVersion=1\n"
+        Files.writeString(module.resolve("module.properties"), descriptor(id, defaultEnabled, strong, weak, oneOf,
+                conflicts));
+    }
+
+    private String descriptor(String id, String defaultEnabled, String strong,
+                              String weak, String oneOf, String conflicts) {
+        return "schemaVersion=1\n"
                 + "id=" + id + "\n"
                 + "defaultEnabled=" + defaultEnabled + "\n"
                 + "requires.strong=" + strong + "\n"
                 + "requires.weak=" + weak + "\n"
-                + "conflicts=" + conflicts + "\n");
+                + "requires.oneOf=" + oneOf + "\n"
+                + "conflicts=" + conflicts + "\n";
     }
 }
