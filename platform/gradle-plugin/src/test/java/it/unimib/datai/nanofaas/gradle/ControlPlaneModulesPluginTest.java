@@ -121,6 +121,37 @@ class ControlPlaneModulesPluginTest {
     }
 
     @Test
+    void doesNotAutoSelectOneOfProvider() throws IOException {
+        writeModule("consumer", false, "", "", "", "provider");
+        writeModule("provider", false);
+
+        failsWith("-PcontrolPlaneModules=consumer", "requires at least one oneOf module");
+    }
+
+    @Test
+    void doesNotAddOneOfProviderAsGradleDependency() throws IOException {
+        writeModule("provider", false);
+        writeModule("consumer", false, "", "", "", "provider");
+        Files.writeString(projectDir.resolve("platform/modules/consumer/build.gradle"), """
+                plugins { id 'java-library' }
+                tasks.register('printModuleDependencies') {
+                    doLast {
+                        ['implementation', 'compileOnly', 'testImplementation'].each { name ->
+                            println name + '=' + configurations.named(name).get().dependencies.collect { it.name }
+                        }
+                    }
+                }
+                """);
+
+        BuildResult result = run(":control-plane-modules:consumer:printModuleDependencies",
+                "-PcontrolPlaneModules=consumer,provider");
+
+        assertThat(result.getOutput()).contains("implementation=[]")
+                .contains("compileOnly=[]")
+                .contains("testImplementation=[]");
+    }
+
+    @Test
     void allowsMissingWeakModuleWhenItIsNotSelected() throws IOException {
         writeModule("optional", false, "", "base", "");
         writeModule("base", false);
@@ -215,19 +246,31 @@ class ControlPlaneModulesPluginTest {
 
     private void writeModule(String id, boolean defaultEnabled, String strong,
                              String weak, String conflicts) throws IOException {
+        writeModule(id, defaultEnabled, strong, weak, conflicts, "");
+    }
+
+    private void writeModule(String id, boolean defaultEnabled, String strong,
+                             String weak, String conflicts, String oneOf) throws IOException {
         Path module = projectDir.resolve("platform/modules").resolve(id);
         Files.createDirectories(module);
         Files.writeString(module.resolve("build.gradle"), "");
-        Files.writeString(module.resolve("module.properties"), descriptor(id, defaultEnabled, strong, weak, conflicts));
+        Files.writeString(module.resolve("module.properties"),
+                descriptor(id, defaultEnabled, strong, weak, oneOf, conflicts));
     }
 
     private String descriptor(String id, boolean defaultEnabled, String strong,
                               String weak, String conflicts) {
+        return descriptor(id, defaultEnabled, strong, weak, "", conflicts);
+    }
+
+    private String descriptor(String id, boolean defaultEnabled, String strong,
+                              String weak, String oneOf, String conflicts) {
         return "schemaVersion=1\n"
                 + "id=" + id + "\n"
                 + "defaultEnabled=" + defaultEnabled + "\n"
                 + "requires.strong=" + strong + "\n"
                 + "requires.weak=" + weak + "\n"
+                + "requires.oneOf=" + oneOf + "\n"
                 + "conflicts=" + conflicts + "\n";
     }
 }
