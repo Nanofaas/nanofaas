@@ -71,6 +71,16 @@ It checks help, version, and a retained HTTP command against a local stub. See
 [the quickstart](docs/quickstart.md#build-the-cli) for prerequisites and the
 complete sequence.
 
+Control-plane modules are selected during Gradle settings configuration by the
+`it.unimib.datai.nanofaas.control-plane-modules` plugin. Each module declares
+its `defaultEnabled`, `requires.strong`, `requires.weak`, and `conflicts` in a
+required `platform/modules/<id>/module.properties` descriptor. Use
+`-PcontrolPlaneModules=none`, a comma-separated selection, or `all`; the
+`NANOFAAS_CONTROL_PLANE_MODULES` environment variable is the fallback. Strong
+requirements and conflicts fail before tasks run, while weak requirements are
+optional. See [control-plane operation](docs/control-plane.md#control-plane-modules)
+for the complete module list and examples.
+
 ## Test
 
 ```bash

@@ -4,7 +4,7 @@ The Java control plane is built directly with Gradle and deployed to Kubernetes
 with Helm:
 
 ```bash
-./gradlew :control-plane:bootJar -PcontrolPlaneModules=all
+./gradlew :control-plane:bootJar
 helm upgrade --install nanofaas deploy/helm/nanofaas
 ```
 
@@ -36,23 +36,46 @@ Select modules at build time with Gradle:
 
 ```bash
 ./gradlew :control-plane:bootJar -PcontrolPlaneModules=none
-./gradlew :control-plane:bootJar -PcontrolPlaneModules=async-queue,sync-queue
+./gradlew :control-plane:bootJar -PcontrolPlaneModules=async-queue
+./gradlew :control-plane:bootJar -PcontrolPlaneModules=sync-queue,runtime-config
 ./gradlew :control-plane:bootJar -PcontrolPlaneModules=all
 ```
 
-The equivalent environment selector is `NANOFAAS_CONTROL_PLANE_MODULES`. `none`
-cannot be combined with other values and unknown names fail the build.
+The settings plugin `it.unimib.datai.nanofaas.control-plane-modules` discovers
+the immediate Gradle projects under `platform/modules`, reads the required
+`module.properties` descriptor, and validates selection before any task runs.
+The equivalent environment selector is `NANOFAAS_CONTROL_PLANE_MODULES`;
+the project property `-PcontrolPlaneModules=...` has precedence. `none` cannot
+be combined with other values, `all` selects every module, and unknown names or
+constraint violations fail the build. The default selects descriptors whose
+`defaultEnabled=true`; this keeps `async-queue` enabled and `sync-queue`
+disabled.
 
-Every invocation defaults to `all`, tests included, so the suite exercises the
-configuration that ships. `CoreOnlyApiTest` asserts the opposite — no-op
-enqueuer, `501` on `:enqueue` — and self-skips when the modules are present, so
-it gets its own invocation (`-PcontrolPlaneModules=none`); module selection is
-resolved at configuration time and cannot vary within one build.
+Each descriptor uses this format:
+
+```properties
+schemaVersion=1
+id=sync-queue
+defaultEnabled=false
+requires.strong=
+requires.weak=runtime-config
+conflicts=async-queue
+```
+
+`requires.strong` must be selected (including transitively), while
+`requires.weak` is optional. `conflicts` rejects a selected incompatible pair.
+Selections are exposed to project builds as the immutable sorted Gradle extra
+property `nanofaasSelectedControlPlaneModules`.
+
+Every invocation uses the descriptor defaults unless a selector is supplied;
+module selection is resolved at settings configuration time and cannot vary
+within one build.
 
 Current modules:
 
 - `async-queue` — per-function queues + scheduler for the async path
 - `sync-queue` — sync admission/backpressure queue
+- `async-queue` conflicts with `sync-queue`; select only one of them
 - `autoscaler` — internal replica scaler and scaling metrics integration
 - `concurrency-control` — per-function concurrency governor (`FIXED`,
   `STATIC_PER_POD`, `ADAPTIVE_PER_POD`, `BUDGETED`, `SOJOURN`); **requires

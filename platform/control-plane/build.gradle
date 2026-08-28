@@ -4,43 +4,9 @@ plugins {
     id 'org.graalvm.buildtools.native'
 }
 
-def parseCsvModules = { String raw ->
-    if (raw == null || raw.trim().isEmpty()) {
-        return [] as List<String>
-    }
-    return raw.split(',')
-            .collect { it.trim() }
-            .findAll { !it.isEmpty() }
-}
-
-def availableOptionalControlPlaneModuleProjects = rootProject.subprojects
-        .findAll { it.path.startsWith(':control-plane-modules:') }
-def availableOptionalControlPlaneModuleNames = availableOptionalControlPlaneModuleProjects.collect { it.name }
-
-// Every invocation gets every module unless one is named explicitly. The default
-// used to depend on the task: 'all' for bootJar/build, core-only for test. That
-// meant the suite exercised a configuration nothing ever shipped, and the module
-// code shipped in the jar was covered only by its own project's tests.
-def requestedModulesRaw = (project.findProperty('controlPlaneModules') ?: System.getenv('NANOFAAS_CONTROL_PLANE_MODULES'))?.toString()
-if (requestedModulesRaw == null || requestedModulesRaw.trim().isEmpty()) {
-    requestedModulesRaw = 'all'
-}
-def requestedControlPlaneModuleNames = new LinkedHashSet<String>(parseCsvModules(requestedModulesRaw))
-if (requestedControlPlaneModuleNames.contains('none')) {
-    if (requestedControlPlaneModuleNames.size() > 1) {
-        throw new GradleException("Module selector 'none' cannot be combined with other values: ${requestedControlPlaneModuleNames}")
-    }
-    requestedControlPlaneModuleNames.clear()
-}
-if (requestedControlPlaneModuleNames.contains('all')) {
-    requestedControlPlaneModuleNames = new LinkedHashSet<String>(availableOptionalControlPlaneModuleNames)
-}
-def unknownControlPlaneModules = requestedControlPlaneModuleNames.findAll { !availableOptionalControlPlaneModuleNames.contains(it) }
-if (!unknownControlPlaneModules.isEmpty()) {
-    throw new GradleException("Unknown control-plane modules: ${unknownControlPlaneModules}. Available: ${availableOptionalControlPlaneModuleNames}")
-}
-def selectedOptionalControlPlaneModuleProjects = availableOptionalControlPlaneModuleProjects
-        .findAll { requestedControlPlaneModuleNames.contains(it.name) }
+def selectedOptionalControlPlaneModuleNames = gradle.ext.nanofaasSelectedControlPlaneModules
+def selectedOptionalControlPlaneModuleProjects = rootProject.subprojects
+        .findAll { selectedOptionalControlPlaneModuleNames.contains(it.name) }
 
 dependencies {
     implementation project(':common')
@@ -69,7 +35,7 @@ tasks.register('printSelectedControlPlaneModules') {
     group = 'help'
     description = 'Print the control-plane modules included in this build.'
     doLast {
-        def names = selectedOptionalControlPlaneModuleProjects.collect { it.name }.sort()
+        def names = selectedOptionalControlPlaneModuleNames
         if (names.isEmpty()) {
             println 'No optional control-plane modules selected.'
         } else {
