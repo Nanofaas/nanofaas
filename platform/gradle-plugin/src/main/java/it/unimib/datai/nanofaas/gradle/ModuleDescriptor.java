@@ -1,7 +1,8 @@
 package it.unimib.datai.nanofaas.gradle;
 
 import java.util.List;
-import java.util.Objects;
+import java.util.HashSet;
+import java.util.Set;
 
 public record ModuleDescriptor(
         int schemaVersion,
@@ -12,9 +13,37 @@ public record ModuleDescriptor(
         List<String> conflicts) {
 
     public ModuleDescriptor {
-        id = Objects.requireNonNull(id, "id");
-        strongRequirements = List.copyOf(Objects.requireNonNull(strongRequirements, "strongRequirements"));
-        weakRequirements = List.copyOf(Objects.requireNonNull(weakRequirements, "weakRequirements"));
-        conflicts = List.copyOf(Objects.requireNonNull(conflicts, "conflicts"));
+        if (schemaVersion <= 0) {
+            throw invalid("schemaVersion must be positive");
+        }
+        if (id == null || id.isBlank()) {
+            throw invalid("id must not be blank");
+        }
+        strongRequirements = validateList(strongRequirements, "strongRequirements", id);
+        weakRequirements = validateList(weakRequirements, "weakRequirements", id);
+        conflicts = validateList(conflicts, "conflicts", id);
+    }
+
+    private static List<String> validateList(List<String> values, String name, String id) {
+        if (values == null) {
+            throw invalid(name + " must not be null");
+        }
+        Set<String> seen = new HashSet<>();
+        for (String value : values) {
+            if (value == null || value.isBlank()) {
+                throw invalid(name + " contains a blank reference");
+            }
+            if (!seen.add(value)) {
+                throw invalid("duplicate reference '" + value + "' in " + name);
+            }
+            if (value.equals(id)) {
+                throw invalid("module '" + id + "' cannot reference itself");
+            }
+        }
+        return List.copyOf(values);
+    }
+
+    private static IllegalArgumentException invalid(String message) {
+        return new IllegalArgumentException("Invalid module descriptor: " + message);
     }
 }

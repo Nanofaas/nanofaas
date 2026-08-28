@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.gradle;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -10,11 +11,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ModuleDescriptorReaderTest {
 
+    @TempDir
+    Path tempDir;
+
     private final ModuleDescriptorReader reader = new ModuleDescriptorReader();
 
     @Test
     void readsAndTrimsDescriptorProperties() throws Exception {
-        Path descriptor = Files.createTempFile("module", ".properties");
+        Path descriptor = Files.createTempFile(tempDir, "module", ".properties");
         Files.writeString(descriptor, """
                 schemaVersion=1
                 id= sync-queue
@@ -36,9 +40,9 @@ class ModuleDescriptorReaderTest {
 
     @Test
     void rejectsMissingAndUnsupportedSchema() throws Exception {
-        Path missing = Files.createTempFile("module", ".properties");
+        Path missing = Files.createTempFile(tempDir, "module", ".properties");
         Files.writeString(missing, "id=sync-queue\n");
-        Path unsupported = Files.createTempFile("module", ".properties");
+        Path unsupported = Files.createTempFile(tempDir, "module", ".properties");
         Files.writeString(unsupported, "schemaVersion=2\nid=sync-queue\n");
 
         assertThatThrownBy(() -> reader.read(missing))
@@ -58,7 +62,7 @@ class ModuleDescriptorReaderTest {
     }
 
     private void assertInvalid(String content, String message) throws Exception {
-        Path descriptor = Files.createTempFile("module", ".properties");
+        Path descriptor = Files.createTempFile(tempDir, "module", ".properties");
         Files.writeString(descriptor, content);
 
         assertThatThrownBy(() -> reader.read(descriptor))

@@ -1,6 +1,8 @@
 package it.unimib.datai.nanofaas.gradle;
 
 import java.util.Collection;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -32,13 +34,10 @@ public final class ModuleConstraintResolver {
             validateReferences(descriptor, descriptor.conflicts(), "conflict", byId);
         }
 
+        validateStrongRequirements(byId, selected);
+
         for (String selectedId : selected) {
             ModuleDescriptor descriptor = byId.get(selectedId);
-            for (String requirement : descriptor.strongRequirements()) {
-                if (!selected.contains(requirement)) {
-                    throw invalid("module '" + selectedId + "' requires strong module '" + requirement + "'");
-                }
-            }
             for (String conflict : descriptor.conflicts()) {
                 if (selected.contains(conflict)) {
                     throw invalid("modules '" + selectedId + "' and '" + conflict + "' conflict");
@@ -48,6 +47,22 @@ public final class ModuleConstraintResolver {
                 ModuleDescriptor other = byId.get(otherId);
                 if (other.conflicts().contains(selectedId)) {
                     throw invalid("modules '" + selectedId + "' and '" + otherId + "' conflict");
+                }
+            }
+        }
+    }
+
+    private static void validateStrongRequirements(Map<String, ModuleDescriptor> byId, Set<String> selected) {
+        for (String rootId : selected) {
+            Deque<String> pending = new ArrayDeque<>(byId.get(rootId).strongRequirements());
+            Set<String> visited = new HashSet<>();
+            while (!pending.isEmpty()) {
+                String requirement = pending.removeFirst();
+                if (!selected.contains(requirement)) {
+                    throw invalid("module '" + rootId + "' requires strong module '" + requirement + "'");
+                }
+                if (visited.add(requirement)) {
+                    pending.addAll(byId.get(requirement).strongRequirements());
                 }
             }
         }

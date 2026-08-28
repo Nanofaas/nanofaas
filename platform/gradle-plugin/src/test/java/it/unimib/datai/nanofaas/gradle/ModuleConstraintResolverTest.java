@@ -48,6 +48,20 @@ class ModuleConstraintResolverTest {
         org.assertj.core.api.Assertions.assertThat(selected).containsExactly("module");
     }
 
+    @Test
+    void enforcesTransitiveStrongRequirementsAndTerminatesOnCycles() {
+        ModuleDescriptor a = descriptor("a", true, List.of("b"), List.of(), List.of());
+        ModuleDescriptor b = descriptor("b", true, List.of("c"), List.of(), List.of());
+        ModuleDescriptor c = descriptor("c", true, List.of(), List.of(), List.of());
+
+        assertThatThrownBy(() -> resolver.validate(List.of(a, b, c), List.of("a", "b")))
+                .hasMessageContaining("module 'a'").hasMessageContaining("c");
+
+        ModuleDescriptor cycleA = descriptor("cycle-a", true, List.of("cycle-b"), List.of(), List.of());
+        ModuleDescriptor cycleB = descriptor("cycle-b", true, List.of("cycle-a"), List.of(), List.of());
+        resolver.validate(List.of(cycleA, cycleB), List.of("cycle-a", "cycle-b"));
+    }
+
     private ModuleDescriptor descriptor(String id, boolean enabled, List<String> strong,
                                        List<String> weak, List<String> conflicts) {
         return new ModuleDescriptor(1, id, enabled, strong, weak, conflicts);
