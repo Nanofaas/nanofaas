@@ -1,8 +1,6 @@
 package it.unimib.datai.nanofaas.gradle;
 
 import java.util.Collection;
-import java.util.ArrayDeque;
-import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -53,19 +51,32 @@ public final class ModuleConstraintResolver {
     }
 
     private static void validateStrongRequirements(Map<String, ModuleDescriptor> byId, Set<String> selected) {
+        Set<String> active = new HashSet<>();
+        Set<String> validated = new HashSet<>();
         for (String rootId : selected) {
-            Deque<String> pending = new ArrayDeque<>(byId.get(rootId).strongRequirements());
-            Set<String> visited = new HashSet<>();
-            while (!pending.isEmpty()) {
-                String requirement = pending.removeFirst();
-                if (!selected.contains(requirement)) {
-                    throw invalid("module '" + rootId + "' requires strong module '" + requirement + "'");
-                }
-                if (visited.add(requirement)) {
-                    pending.addAll(byId.get(requirement).strongRequirements());
-                }
-            }
+            validateStrongRequirements(rootId, rootId, byId, selected, active, validated);
         }
+    }
+
+    private static void validateStrongRequirements(String rootId, String moduleId,
+                                                   Map<String, ModuleDescriptor> byId, Set<String> selected,
+                                                   Set<String> active, Set<String> validated) {
+        if (validated.contains(moduleId)) {
+            return;
+        }
+        active.add(moduleId);
+        for (String requirement : byId.get(moduleId).strongRequirements()) {
+            if (!selected.contains(requirement)) {
+                throw invalid("module '" + rootId + "' requires strong module '" + requirement + "'");
+            }
+            if (active.contains(requirement)) {
+                throw invalid("strong requirement cycle: module '" + moduleId
+                        + "' requires active module '" + requirement + "'");
+            }
+            validateStrongRequirements(rootId, requirement, byId, selected, active, validated);
+        }
+        active.remove(moduleId);
+        validated.add(moduleId);
     }
 
     private static void validateReferences(ModuleDescriptor descriptor, Collection<String> references,

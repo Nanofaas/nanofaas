@@ -49,7 +49,7 @@ class ModuleConstraintResolverTest {
     }
 
     @Test
-    void enforcesTransitiveStrongRequirementsAndTerminatesOnCycles() {
+    void enforcesTransitiveStrongRequirementsAndRejectsCycles() {
         ModuleDescriptor a = descriptor("a", true, List.of("b"), List.of(), List.of());
         ModuleDescriptor b = descriptor("b", true, List.of("c"), List.of(), List.of());
         ModuleDescriptor c = descriptor("c", true, List.of(), List.of(), List.of());
@@ -59,7 +59,11 @@ class ModuleConstraintResolverTest {
 
         ModuleDescriptor cycleA = descriptor("cycle-a", true, List.of("cycle-b"), List.of(), List.of());
         ModuleDescriptor cycleB = descriptor("cycle-b", true, List.of("cycle-a"), List.of(), List.of());
-        resolver.validate(List.of(cycleA, cycleB), List.of("cycle-a", "cycle-b"));
+
+        assertThatThrownBy(() -> resolver.validate(List.of(cycleA, cycleB), List.of("cycle-a", "cycle-b")))
+                .hasMessageContaining("cycle")
+                .hasMessageContaining("cycle-a")
+                .hasMessageContaining("cycle-b");
     }
 
     private ModuleDescriptor descriptor(String id, boolean enabled, List<String> strong,
