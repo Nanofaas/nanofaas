@@ -10,6 +10,7 @@ public record ModuleDescriptor(
         boolean defaultEnabled,
         List<String> strongRequirements,
         List<String> weakRequirements,
+        List<String> oneOfRequirements,
         List<String> conflicts) {
 
     public ModuleDescriptor {
@@ -21,6 +22,7 @@ public record ModuleDescriptor(
         }
         strongRequirements = validateList(strongRequirements, "strongRequirements", id);
         weakRequirements = validateList(weakRequirements, "weakRequirements", id);
+        oneOfRequirements = validateList(oneOfRequirements, "oneOfRequirements", id);
         conflicts = validateList(conflicts, "conflicts", id);
     }
 

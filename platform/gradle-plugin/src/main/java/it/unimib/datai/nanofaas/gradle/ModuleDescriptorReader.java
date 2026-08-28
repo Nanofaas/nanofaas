@@ -13,7 +13,8 @@ import java.util.Set;
 public final class ModuleDescriptorReader {
 
     private static final Set<String> KNOWN_PROPERTIES = Set.of(
-            "schemaVersion", "id", "defaultEnabled", "requires.strong", "requires.weak", "conflicts");
+            "schemaVersion", "id", "defaultEnabled", "requires.strong", "requires.weak",
+            "requires.oneOf", "conflicts");
 
     public ModuleDescriptor read(Path path) {
         Properties properties = new Properties();
@@ -42,6 +43,7 @@ public final class ModuleDescriptorReader {
                 defaultEnabled,
                 csv(properties.getProperty("requires.strong", ""), "requires.strong"),
                 csv(properties.getProperty("requires.weak", ""), "requires.weak"),
+                csv(properties.getProperty("requires.oneOf", ""), "requires.oneOf"),
                 csv(properties.getProperty("conflicts", ""), "conflicts"));
     }
 

@@ -21,20 +21,22 @@ class ModuleDescriptorReaderTest {
         Path descriptor = Files.createTempFile(tempDir, "module", ".properties");
         Files.writeString(descriptor, """
                 schemaVersion=1
-                id= sync-queue
+                id= autoscaler
                 defaultEnabled= true
                 requires.strong= runtime-config, common
                 requires.weak= metrics,
+                requires.oneOf= async-queue, sync-queue,
                 conflicts= async-queue
                 """);
 
         ModuleDescriptor result = reader.read(descriptor);
 
         assertThat(result.schemaVersion()).isEqualTo(1);
-        assertThat(result.id()).isEqualTo("sync-queue");
+        assertThat(result.id()).isEqualTo("autoscaler");
         assertThat(result.defaultEnabled()).isTrue();
         assertThat(result.strongRequirements()).containsExactly("runtime-config", "common");
         assertThat(result.weakRequirements()).containsExactly("metrics");
+        assertThat(result.oneOfRequirements()).containsExactly("async-queue", "sync-queue");
         assertThat(result.conflicts()).containsExactly("async-queue");
     }
 
@@ -58,6 +60,7 @@ class ModuleDescriptorReaderTest {
         assertInvalid("schemaVersion=1\nid= \ndefaultEnabled=true\n", "id");
         assertInvalid("schemaVersion=1\nid=sync\ndefaultEnabled=maybe\n", "defaultEnabled");
         assertInvalid("schemaVersion=1\nid=sync\ndefaultEnabled=true\nrequires.strong=a,a\n", "duplicate");
+        assertInvalid("schemaVersion=1\nid=sync\ndefaultEnabled=true\nrequires.oneOf=a,a\n", "duplicate");
         assertInvalid("schemaVersion=1\nid=sync\ndefaultEnabled=true\nunknown=value\n", "unknown");
     }
 

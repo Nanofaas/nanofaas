@@ -22,6 +22,41 @@ class ModuleConstraintResolverTest {
     }
 
     @Test
+    void requiresAtLeastOneSelectedOneOfProvider() {
+        ModuleDescriptor consumer = descriptor("consumer", false, List.of(), List.of(), List.of(),
+                List.of("async", "sync"));
+        ModuleDescriptor async = descriptor("async", false, List.of(), List.of(), List.of(), List.of());
+        ModuleDescriptor sync = descriptor("sync", false, List.of(), List.of(), List.of(), List.of());
+
+        assertThatThrownBy(() -> resolver.validate(List.of(consumer, async, sync), List.of("consumer")))
+                .hasMessageContaining("consumer").hasMessageContaining("oneOf");
+        assertThatCode(() -> resolver.validate(List.of(consumer, async, sync), List.of("consumer", "async")))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> resolver.validate(List.of(consumer, async, sync), List.of("consumer", "sync")))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void oneOfDoesNotAutoSelectOrCreateStrongCycles() {
+        ModuleDescriptor consumer = descriptor("consumer", false, List.of(), List.of(), List.of(), List.of("provider"));
+        ModuleDescriptor provider = descriptor("provider", false, List.of("consumer"), List.of(), List.of(), List.of());
+
+        assertThatThrownBy(() -> resolver.validate(List.of(consumer, provider), List.of("consumer")))
+                .hasMessageContaining("oneOf");
+        assertThatCode(() -> resolver.validate(List.of(consumer, provider), List.of("consumer", "provider")))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void validatesOneOfReferencesEvenForUnselectedDeclaringModules() {
+        ModuleDescriptor unselected = descriptor("unselected", false, List.of(), List.of(), List.of(),
+                List.of("missing"));
+
+        assertThatThrownBy(() -> resolver.validate(List.of(unselected), List.of()))
+                .hasMessageContaining("unselected").hasMessageContaining("unknown");
+    }
+
+    @Test
     void rejectsDuplicatesUnknownReferencesMissingStrongAndConflicts() {
         ModuleDescriptor first = descriptor("first", true, List.of("missing"), List.of(), List.of("second"));
         ModuleDescriptor second = descriptor("second", true, List.of(), List.of(), List.of());
@@ -68,6 +103,11 @@ class ModuleConstraintResolverTest {
 
     private ModuleDescriptor descriptor(String id, boolean enabled, List<String> strong,
                                        List<String> weak, List<String> conflicts) {
-        return new ModuleDescriptor(1, id, enabled, strong, weak, conflicts);
+        return descriptor(id, enabled, strong, weak, conflicts, List.of());
+    }
+
+    private ModuleDescriptor descriptor(String id, boolean enabled, List<String> strong,
+                                       List<String> weak, List<String> conflicts, List<String> oneOf) {
+        return new ModuleDescriptor(1, id, enabled, strong, weak, oneOf, conflicts);
     }
 }

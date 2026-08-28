@@ -28,10 +28,17 @@ class ModuleDescriptorTest {
                 .hasMessageContaining("itself");
         assertThatThrownBy(() -> descriptor(1, "module", List.of(), List.of(), List.of("module")))
                 .hasMessageContaining("itself");
+        assertThatThrownBy(() -> descriptor(1, "module", List.of(), List.of(), List.of(), List.of("module")))
+                .hasMessageContaining("itself");
     }
 
     private ModuleDescriptor descriptor(int schemaVersion, String id, List<String> strong,
                                        List<String> weak, List<String> conflicts) {
-        return new ModuleDescriptor(schemaVersion, id, true, strong, weak, conflicts);
+        return descriptor(schemaVersion, id, strong, weak, conflicts, List.of());
+    }
+
+    private ModuleDescriptor descriptor(int schemaVersion, String id, List<String> strong,
+                                       List<String> weak, List<String> conflicts, List<String> oneOf) {
+        return new ModuleDescriptor(schemaVersion, id, true, strong, weak, oneOf, conflicts);
     }
 }

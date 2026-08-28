@@ -29,6 +29,7 @@ public final class ModuleConstraintResolver {
         for (ModuleDescriptor descriptor : descriptors) {
             validateReferences(descriptor, descriptor.strongRequirements(), "strong requirement", byId);
             validateReferences(descriptor, descriptor.weakRequirements(), "weak requirement", byId);
+            validateReferences(descriptor, descriptor.oneOfRequirements(), "oneOf requirement", byId);
             validateReferences(descriptor, descriptor.conflicts(), "conflict", byId);
         }
 
@@ -36,6 +37,11 @@ public final class ModuleConstraintResolver {
 
         for (String selectedId : selected) {
             ModuleDescriptor descriptor = byId.get(selectedId);
+            if (!descriptor.oneOfRequirements().isEmpty()
+                    && descriptor.oneOfRequirements().stream().noneMatch(selected::contains)) {
+                throw invalid("module '" + selectedId + "' requires at least one oneOf module: "
+                        + descriptor.oneOfRequirements());
+            }
             for (String conflict : descriptor.conflicts()) {
                 if (selected.contains(conflict)) {
                     throw invalid("modules '" + selectedId + "' and '" + conflict + "' conflict");
