@@ -19,11 +19,11 @@ export NANOFAAS_ROOT="$(pwd)"   # nanolab commands below read nanoFaaS source fr
 
 # E2E scenarios (run from NanoLab checkout)
 # Container validation (requires Docker)
-(cd ../nanolab && ./nanolab.sh run packages/nanolab/scenarios-v2/validate-container.yaml --environment packages/nanolab/environments/local.yaml)
+(cd ../nanolab && ./nanolab.sh run packages/nanolab/scenarios-v2/deployment-lifecycle-container.yaml --environment packages/nanolab/environments/local.yaml)
 # Kubernetes validation (requires Multipass; provisions k3s VM, deploys Helm, validates via HTTP + K8s assertions)
-(cd ../nanolab && ./nanolab.sh run packages/nanolab/scenarios-v2/validate-k8s.yaml --environment packages/nanolab/environments/multipass.yaml)
+(cd ../nanolab && ./nanolab.sh run packages/nanolab/scenarios-v2/deployment-lifecycle-k8s.yaml --environment packages/nanolab/environments/multipass.yaml)
 # Plan (dry-run) to preview the workflow without executing
-(cd ../nanolab && ./nanolab.sh plan packages/nanolab/scenarios-v2/validate-k8s.yaml --environment packages/nanolab/environments/local.yaml)
+(cd ../nanolab && ./nanolab.sh plan packages/nanolab/scenarios-v2/deployment-lifecycle-k8s.yaml --environment packages/nanolab/environments/local.yaml)
 
 # Build JVM OCI images on Distroless Java 25
 docker build -f platform/control-plane/Dockerfile -t nanofaas/control-plane .
