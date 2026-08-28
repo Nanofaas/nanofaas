@@ -62,7 +62,7 @@ echo "Building control-plane..."
 
 # ─── Start control-plane ─────────────────────────────────────────────────────
 echo "Starting control-plane on ports ${API_PORT}/${MGMT_PORT}..."
-BOOT_JAR=$(ls "${PROJECT_ROOT}/control-plane/build/libs"/*.jar | grep -v plain | sort -V | tail -1)
+BOOT_JAR=$(ls "${PROJECT_ROOT}/platform/control-plane/build/libs"/*.jar | grep -v plain | sort -V | tail -1)
 
 java -jar "${BOOT_JAR}" \
     --server.port="${API_PORT}" \
