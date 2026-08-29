@@ -368,8 +368,13 @@ public class SyncQueueService implements SyncQueueGateway {
         LifecycleLock lifecycleLock = acquireLifecycleLock(functionName);
         try {
             synchronized (lifecycleLock) {
-            capacityRegistry.register(functionName, concurrency);
+            // Mirror of removeFunctionState, which raises the flag first: enqueueOrThrow reads
+            // removedFunctions without this lock, so anything that runs while the flag is still
+            // up terminates a live invocation as FUNCTION_REMOVED. Clear it before the register,
+            // which takes the registry entry lock and can reactivate a draining generation. A
+            // task queued in between simply waits for a slot.
             removedFunctions.remove(functionName);
+            capacityRegistry.register(functionName, concurrency);
             metrics.registerFunction(functionName);
             }
         } finally {
