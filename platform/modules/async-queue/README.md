@@ -13,10 +13,10 @@ without this module `POST /v1/functions/{name}:enqueue` returns
 - `Scheduler` — background loop that pulls tasks from `QueueManager` and
   dispatches them while respecting per-function concurrency
   (`FunctionQueueState.tryAcquireSlot`, CAS-based).
-- `WorkloadMetricsSource` (`AsyncQueueWorkloadMetricsSource`) — queue depth,
-  in-flight, effective concurrency, and dispatchable backlog signals consumed
-  by the autoscaler module. RPS is derived by `ScalingMetricsReader` from the
-  `function_dispatch_total` counter.
+- `WorkloadMetricsSource` (`AsyncQueueWorkloadMetricsSource`) — exposes queue
+  depth, in-flight, effective concurrency, and dispatchable backlog. The
+  autoscaler currently consumes queue depth and in-flight; RPS is derived by
+  `ScalingMetricsReader` from the `function_dispatch_total` counter.
 
 ## Configuration
 
