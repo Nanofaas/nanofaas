@@ -4,9 +4,14 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
+import it.unimib.datai.nanofaas.common.model.InvocationResult;
+import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.controlplane.service.ExecutionCompletionHandler;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
+import it.unimib.datai.nanofaas.controlplane.service.Metrics;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
@@ -67,7 +72,8 @@ class SyncQueueWorkloadMetricsTest {
         SyncQueueWorkloadMetricsSource source = new SyncQueueWorkloadMetricsSource(service, capacity);
         WorkloadMetricsBinder binder = new WorkloadMetricsBinder(registry, source);
         SyncQueueConfiguration configuration = new SyncQueueConfiguration();
-        var listener = configuration.syncQueueLifecycleListener(service, binder);
+        var listener = configuration.syncQueueLifecycleListener(service, binder,
+                new it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics(registry));
 
         listener.onRegister(spec("fn", 2));
         assertNotNull(registry.find("function_queue_depth").tag("function", "fn").gauge());
@@ -91,6 +97,60 @@ class SyncQueueWorkloadMetricsTest {
         assertEquals(0, capacity.effectiveConcurrency("fn"));
         assertFalse(capacity.tryAcquireSlot("fn"));
     }
+
+    @Test
+    void realCompletionPathReleasesAcquiredSlot() {
+        Fixture fixture = fixture();
+        InvocationTask task = task("e1", "fn");
+        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
+        fixture.store.put(record);
+        assertTrue(fixture.enqueuer.tryAcquireSlot("fn"));
+
+        new ExecutionCompletionHandler(fixture.store, fixture.enqueuer,
+                mock(DispatcherRouter.class), new Metrics(new SimpleMeterRegistry()))
+                .completeExecution("e1", InvocationResult.success("ok"));
+
+        assertEquals(0, fixture.capacity.inFlight("fn"));
+    }
+
+    @Test
+    void realTimeoutCompletionPathReleasesAcquiredSlot() {
+        Fixture fixture = fixture();
+        InvocationTask task = task("e1", "fn");
+        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
+        fixture.store.put(record);
+        assertTrue(fixture.enqueuer.tryAcquireSlot("fn"));
+        record.markTimeout();
+
+        new ExecutionCompletionHandler(fixture.store, fixture.enqueuer,
+                mock(DispatcherRouter.class), new Metrics(new SimpleMeterRegistry()))
+                .completeExecution("e1", InvocationResult.success("late"));
+
+        assertEquals(0, fixture.capacity.inFlight("fn"));
+    }
+
+    private static Fixture fixture() {
+        FunctionCapacityRegistry capacity = new FunctionCapacityRegistry();
+        SyncQueueMetrics metrics = new SyncQueueMetrics(new SimpleMeterRegistry());
+        SyncQueueService service = service(metrics, capacity);
+        WorkloadMetricsBinder binder = new WorkloadMetricsBinder(new SimpleMeterRegistry(),
+                new SyncQueueWorkloadMetricsSource(service, capacity));
+        new SyncQueueConfiguration().syncQueueLifecycleListener(service, binder,
+                new it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics(new SimpleMeterRegistry()))
+                .onRegister(spec("fn", 1));
+        return new Fixture(new ExecutionStore(), service,
+                new SyncQueueInvocationEnqueuer(capacity), capacity);
+    }
+
+    private static InvocationTask task(String executionId, String functionName) {
+        return new InvocationTask(executionId, functionName, spec(functionName, 1),
+                new InvocationRequest("payload", Map.of()), null, null, Instant.now(), 1,
+                InvocationKind.SYNC);
+    }
+
+    private record Fixture(ExecutionStore store, SyncQueueService queue,
+                           SyncQueueInvocationEnqueuer enqueuer,
+                           FunctionCapacityRegistry capacity) {}
 
     private static SyncQueueService service(SyncQueueMetrics metrics, FunctionCapacityRegistry capacity) {
         SyncQueueProperties props = new SyncQueueProperties(

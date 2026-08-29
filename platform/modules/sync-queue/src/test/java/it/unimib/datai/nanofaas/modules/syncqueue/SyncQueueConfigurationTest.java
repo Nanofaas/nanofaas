@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.modules.syncqueue;
 
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
 import org.junit.jupiter.api.Test;
 
@@ -13,8 +14,9 @@ class SyncQueueConfigurationTest {
     void syncQueueLifecycleListener_removesFunctionState() {
         SyncQueueService syncQueueService = mock(SyncQueueService.class);
         SyncQueueConfiguration configuration = new SyncQueueConfiguration();
+        WorkloadDiagnostics diagnostics = mock(WorkloadDiagnostics.class);
         FunctionRegistrationListener listener = configuration.syncQueueLifecycleListener(
-                syncQueueService, mock(WorkloadMetricsBinder.class));
+                syncQueueService, mock(WorkloadMetricsBinder.class), diagnostics);
 
         listener.onRegister(new it.unimib.datai.nanofaas.common.model.FunctionSpec(
                 "echo", "image", null, java.util.Map.of(), null, 1000, 1, 1, 3, null,
@@ -24,5 +26,7 @@ class SyncQueueConfigurationTest {
 
         verify(syncQueueService).registerFunction("echo", 1);
         verify(syncQueueService).removeFunctionState("echo");
+        verify(diagnostics).registerFunction("echo");
+        verify(diagnostics).removeFunction("echo");
     }
 }

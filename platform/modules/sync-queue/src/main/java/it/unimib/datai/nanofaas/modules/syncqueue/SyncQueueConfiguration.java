@@ -100,18 +100,21 @@ public class SyncQueueConfiguration {
 
     @Bean
     FunctionRegistrationListener syncQueueLifecycleListener(SyncQueueService syncQueueService,
-                                                             WorkloadMetricsBinder binder) {
+                                                             WorkloadMetricsBinder binder,
+                                                             WorkloadDiagnostics diagnostics) {
         return new FunctionRegistrationListener() {
             @Override
             public void onRegister(FunctionSpec spec) {
                 syncQueueService.registerFunction(spec.name(), spec.concurrency());
                 binder.registerFunction(spec.name());
+                diagnostics.registerFunction(spec.name());
             }
 
             @Override
             public void onRemove(String functionName) {
                 syncQueueService.removeFunctionState(functionName);
                 binder.removeFunction(functionName);
+                diagnostics.removeFunction(functionName);
             }
         };
     }
