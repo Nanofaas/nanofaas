@@ -35,14 +35,17 @@ class QueueBackedEnqueuerTest {
         FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null,
                 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
 
-        assertThat(queueManager.getOrCreate(spec).tryAcquireSlot()).isTrue();
+        FunctionQueueState oldState = queueManager.getOrCreate(spec);
+        assertThat(oldState.tryAcquireSlot()).isTrue();
         queueManager.remove("fn");
         assertThatThrownBy(() -> queueManager.getOrCreate(spec))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("active slots");
 
         enqueuer.releaseDispatchSlot("fn");
-        assertThat(queueManager.getOrCreate(spec).tryAcquireSlot()).isTrue();
-        assertThat(capacity.inFlight("fn")).isEqualTo(1);
+        FunctionQueueState newState = queueManager.getOrCreate(spec);
+        assertThat(newState.tryAcquireSlot()).isTrue();
+        enqueuer.releaseDispatchSlot("fn");
+        assertThat(newState.inFlight()).isZero();
     }
 }

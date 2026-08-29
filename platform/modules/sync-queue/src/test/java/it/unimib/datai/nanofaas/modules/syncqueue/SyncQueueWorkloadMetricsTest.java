@@ -48,17 +48,27 @@ class SyncQueueWorkloadMetricsTest {
 
     @Test
     void releaseAfterRemovalDrainsRetiredGenerationBeforeReregistration() {
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
+        );
         FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        SyncQueueService service = new SyncQueueService(
+                props, new ExecutionStore(), new it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimator(
+                        Duration.ofSeconds(30), 3), new SyncQueueMetrics(new SimpleMeterRegistry()),
+                java.time.Clock.systemUTC(), SyncQueueConfigSource.fixed(props.runtimeDefaults()), registry, null);
         SyncQueueInvocationEnqueuer enqueuer = new SyncQueueInvocationEnqueuer(registry);
-        registry.register("fn", 1);
+        service.registerFunction("fn", 1);
 
         assertTrue(enqueuer.tryAcquireSlot("fn"));
-        registry.remove("fn");
-        assertThrows(IllegalStateException.class, () -> registry.register("fn", 1));
+        service.removeFunctionState("fn");
+        assertThrows(IllegalStateException.class, () -> service.registerFunction("fn", 1));
 
         enqueuer.releaseDispatchSlot("fn");
-        assertTrue(registry.register("fn", 1).tryAcquireSlot());
-        assertEquals(1, registry.inFlight("fn"));
+        service.registerFunction("fn", 1);
+        var newState = registry.state("fn");
+        assertTrue(newState.tryAcquireSlot());
+        enqueuer.releaseDispatchSlot("fn");
+        assertEquals(0, newState.inFlight());
     }
 
     @Test

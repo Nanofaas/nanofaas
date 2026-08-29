@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -36,23 +37,30 @@ class QueueManagerTest {
         FunctionQueueState oldState = manager.getOrCreate(spec);
         assertThat(oldState.tryAcquireSlot()).isTrue();
 
-        CountDownLatch started = new CountDownLatch(1);
-        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
-            var remove = executor.submit(() -> {
-                started.countDown();
-                manager.remove("race");
-                return null;
+        AtomicReference<Throwable> removeFailure = new AtomicReference<>();
+        Thread remove;
+        java.util.concurrent.Future<FunctionQueueState> register;
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        synchronized (oldState) {
+            remove = new Thread(() -> {
+                try {
+                    manager.remove("race");
+                } catch (Throwable failure) {
+                    removeFailure.set(failure);
+                }
             });
-            assertThat(started.await(1, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
-            await().atMost(1, java.util.concurrent.TimeUnit.SECONDS).until(() -> manager.get("race") == null);
+            remove.start();
+            await().atMost(1, java.util.concurrent.TimeUnit.SECONDS)
+                    .until(() -> remove.getState() == Thread.State.BLOCKED);
+            register = executor.submit(() -> manager.getOrCreate(spec));
+            assertThat(register.isDone()).isFalse();
             manager.releaseSlot("race", oldState);
-            await().atMost(1, java.util.concurrent.TimeUnit.SECONDS).until(() -> !oldState.canDispatch());
-            var register = executor.submit(() -> manager.getOrCreate(spec));
-            assertThatCode(() -> {
-                remove.get();
-                register.get();
-            }).doesNotThrowAnyException();
         }
+        remove.join(1000);
+        assertThat(remove.isAlive()).isFalse();
+        assertThat(removeFailure.get()).isNull();
+        assertThatCode(register::get).doesNotThrowAnyException();
+        executor.shutdownNow();
 
         FunctionQueueState newState = manager.get("race");
         assertThat(newState).isNotNull();

@@ -31,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class SyncQueueServiceTest {
 
@@ -40,30 +41,69 @@ class SyncQueueServiceTest {
                 true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
         );
         FunctionCapacityRegistry capacity = new FunctionCapacityRegistry();
+        CountDownLatch removalBlocked = new CountDownLatch(1);
+        CountDownLatch allowRemoval = new CountDownLatch(1);
+        ExecutionStore store = new ExecutionStore() {
+            @Override
+            public ExecutionRecord getOrNull(String executionId) {
+                removalBlocked.countDown();
+                try {
+                    allowRemoval.await(1, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return null;
+            }
+        };
         SyncQueueService service = new SyncQueueService(
-                props, new ExecutionStore(), new WaitEstimator(Duration.ofSeconds(30), 3),
+                props, store, new WaitEstimator(Duration.ofSeconds(30), 3),
                 new SyncQueueMetrics(new SimpleMeterRegistry()), Clock.systemUTC(),
                 SyncQueueConfigSource.fixed(props.runtimeDefaults()), capacity, null);
         capacity.register("fn", 1);
         assertTrue(capacity.tryAcquireSlot("fn"));
 
         var oldState = capacity.state("fn");
-        CountDownLatch started = new CountDownLatch(1);
+        service.enqueueOrThrow(task("fn", "queued"));
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
-            var remove = executor.submit(() -> {
-                started.countDown();
-                service.removeFunctionState("fn");
-                return null;
-            });
-            assertTrue(started.await(1, TimeUnit.SECONDS));
-            await().atMost(1, TimeUnit.SECONDS).until(() -> !oldState.isActive());
-            assertTrue(capacity.releaseSlotAndGetHoldNanos("fn") >= 0);
+            var remove = executor.submit(() -> service.removeFunctionState("fn"));
+            assertTrue(removalBlocked.await(1, TimeUnit.SECONDS));
             var register = executor.submit(() -> service.registerFunction("fn", 1));
+            assertTrue(capacity.releaseSlotAndGetHoldNanos("fn") >= 0);
+            allowRemoval.countDown();
             assertTrue(remove.get() == null);
             assertTrue(register.get() == null);
         }
 
         assertTrue(capacity.tryAcquireSlot("fn"));
+    }
+
+    @Test
+    void failedRegistrationDoesNotReactivateRemovedFunctionState() {
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
+        );
+        SimpleMeterRegistry meters = new SimpleMeterRegistry();
+        FunctionCapacityRegistry capacity = new FunctionCapacityRegistry();
+        SyncQueueService service = new SyncQueueService(
+                props, new ExecutionStore(), new WaitEstimator(Duration.ofSeconds(30), 3),
+                new SyncQueueMetrics(meters), Clock.systemUTC(),
+                SyncQueueConfigSource.fixed(props.runtimeDefaults()), capacity, null);
+
+        service.registerFunction("fn", 1);
+        assertTrue(capacity.tryAcquireSlot("fn"));
+        service.removeFunctionState("fn");
+
+        assertThrows(IllegalStateException.class, () -> service.registerFunction("fn", 1));
+
+        assertFalse(meters.find("sync_queue_depth").tag("function", "fn").gauge() != null);
+        assertThrows(SyncQueueRejectedException.class, () -> service.enqueueOrThrow(task("fn", "e1")));
+    }
+
+    private static InvocationTask task(String functionName, String executionId) {
+        FunctionSpec spec = new FunctionSpec(functionName, "image", null, Map.of(), null,
+                1000, 1, 10, 3, null, ExecutionMode.LOCAL, null, null, null);
+        return new InvocationTask(executionId, functionName, spec,
+                new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
     }
 
     private static SyncQueueService createService(SyncQueueProperties props, ExecutionStore store,

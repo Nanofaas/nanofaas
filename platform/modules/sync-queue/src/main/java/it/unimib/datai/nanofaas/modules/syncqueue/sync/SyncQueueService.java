@@ -322,9 +322,9 @@ public class SyncQueueService implements SyncQueueGateway {
 
     public void registerFunction(String functionName, int concurrency) {
         synchronized (lifecycleLocks.computeIfAbsent(functionName, ignored -> new Object())) {
+            capacityRegistry.register(functionName, concurrency);
             removedFunctions.remove(functionName);
             metrics.registerFunction(functionName);
-            capacityRegistry.register(functionName, concurrency);
         }
     }
 
