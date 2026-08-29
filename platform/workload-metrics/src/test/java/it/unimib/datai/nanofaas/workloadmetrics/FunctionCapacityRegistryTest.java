@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class FunctionCapacityRegistryTest {
     @Test
@@ -47,6 +48,34 @@ class FunctionCapacityRegistryTest {
         registry.remove("echo");
         assertThat(registry.inFlight("echo")).isZero();
         assertThat(registry.tryAcquireSlot("echo")).isFalse();
+    }
+
+    @Test
+    void lateReleaseCannotAffectReRegisteredGeneration() {
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        registry.register("echo", 1);
+        assertThat(registry.tryAcquireSlot("echo")).isTrue();
+
+        registry.remove("echo");
+        assertThatThrownBy(() -> registry.register("echo", 1))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("active slots");
+
+        assertThat(registry.releaseSlotAndGetHoldNanos("echo")).isGreaterThanOrEqualTo(0);
+        registry.register("echo", 1);
+        assertThat(registry.tryAcquireSlot("echo")).isTrue();
+    }
+
+    @Test
+    void removalWithoutActiveSlotsAllowsImmediateReRegistration() {
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        registry.register("echo", 2);
+        registry.remove("echo");
+
+        registry.register("echo", 3);
+
+        assertThat(registry.configuredConcurrency("echo")).isEqualTo(3);
+        assertThat(registry.inFlight("echo")).isZero();
     }
 
     @Test
