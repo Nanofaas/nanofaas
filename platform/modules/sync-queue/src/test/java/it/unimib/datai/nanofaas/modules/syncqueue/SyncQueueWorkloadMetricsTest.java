@@ -47,6 +47,21 @@ class SyncQueueWorkloadMetricsTest {
     }
 
     @Test
+    void releaseAfterRemovalDrainsRetiredGenerationBeforeReregistration() {
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        SyncQueueInvocationEnqueuer enqueuer = new SyncQueueInvocationEnqueuer(registry);
+        registry.register("fn", 1);
+
+        assertTrue(enqueuer.tryAcquireSlot("fn"));
+        registry.remove("fn");
+        assertThrows(IllegalStateException.class, () -> registry.register("fn", 1));
+
+        enqueuer.releaseDispatchSlot("fn");
+        assertTrue(registry.register("fn", 1).tryAcquireSlot());
+        assertEquals(1, registry.inFlight("fn"));
+    }
+
+    @Test
     void sourceReportsPendingFunctionDepthAndSyncDispatchableBacklog() {
         SyncQueueService service = mock(SyncQueueService.class);
         FunctionCapacityRegistry registry = new FunctionCapacityRegistry();

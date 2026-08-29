@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -62,6 +63,10 @@ class QueueManagerTest {
         FunctionQueueState oldState = manager.getOrCreate(spec);
         assertThat(oldState.tryAcquireSlot()).isTrue();
         manager.remove("recreated");
+        assertThatThrownBy(() -> manager.getOrCreate(spec))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("active slots");
+        manager.releaseSlot("recreated", oldState);
         FunctionQueueState newState = manager.getOrCreate(spec);
         assertThat(newState.tryAcquireSlot()).isTrue();
 

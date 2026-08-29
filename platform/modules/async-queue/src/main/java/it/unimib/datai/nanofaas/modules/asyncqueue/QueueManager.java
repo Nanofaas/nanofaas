@@ -66,7 +66,7 @@ public class QueueManager {
                 FunctionQueueState state = new FunctionQueueState(
                         name,
                         spec.queueSize(),
-                        capacityRegistry.register(name, spec.concurrency(), true)
+                        capacityRegistry.register(name, spec.concurrency())
                 );
                 List<Meter.Id> ids = new ArrayList<>();
                 for (it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind kind :
@@ -115,7 +115,7 @@ public class QueueManager {
                 meterIds.put(name, ids);
                 return state;
             }
-            capacityRegistry.register(name, spec.concurrency(), true);
+            capacityRegistry.register(name, spec.concurrency());
             return existing;
         });
     }
@@ -260,9 +260,13 @@ public class QueueManager {
     }
 
     public void releaseSlot(String functionName) {
+        long holdNanos = capacityRegistry.releaseSlotAndGetHoldNanos(functionName);
+        if (holdNanos >= 0) {
+            workloadDiagnostics.recordDispatchSlotHold(functionName, holdNanos);
+        }
         FunctionQueueState state = queues.get(functionName);
-        if (state != null) {
-            releaseSlot(functionName, state);
+        if (state != null && state.queued() > 0 && state.canDispatch()) {
+            notifyWork(functionName);
         }
     }
 

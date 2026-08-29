@@ -320,7 +320,7 @@ public class SyncQueueService implements SyncQueueGateway {
     public void registerFunction(String functionName, int concurrency) {
         removedFunctions.remove(functionName);
         metrics.registerFunction(functionName);
-        capacityRegistry.register(functionName, concurrency, true);
+        capacityRegistry.register(functionName, concurrency);
     }
 
     private void drainRemovedFunction(String functionName) {
