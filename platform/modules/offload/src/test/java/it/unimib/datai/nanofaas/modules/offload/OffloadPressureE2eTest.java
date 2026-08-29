@@ -64,6 +64,11 @@ class OffloadPressureE2eTest {
         cloud = new SpringApplicationBuilder(ControlPlaneApplication.class).run(
                 "--server.port=0",
                 "--management.server.port=0",
+                "--spring.autoconfigure.exclude="
+                        + "it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueConfiguration,"
+                        + "it.unimib.datai.nanofaas.modules.syncqueue."
+                        + "SyncQueueRuntimeConfigAutoConfiguration,"
+                        + "it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigConfiguration",
                 // no admission throughput history exists in a fresh instance:
                 // est-wait would falsely 429 the offloads
                 "--sync-queue.enabled=false");
@@ -72,6 +77,8 @@ class OffloadPressureE2eTest {
         edge = new SpringApplicationBuilder(ControlPlaneApplication.class).run(
                 "--server.port=0",
                 "--management.server.port=0",
+                "--spring.autoconfigure.exclude="
+                        + "it.unimib.datai.nanofaas.modules.asyncqueue.AsyncQueueConfiguration",
                 "--nanofaas.offload.target-url=" + cloudUrl,
                 "--sync-queue.enabled=true",
                 // deterministic DEPTH trigger: tiny queue, no est-wait
