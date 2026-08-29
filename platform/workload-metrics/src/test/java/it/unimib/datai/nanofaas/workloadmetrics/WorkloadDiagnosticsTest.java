@@ -88,11 +88,12 @@ class WorkloadDiagnosticsTest {
             workers.shutdown();
             assertThat(workers.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
             assertThat(failure).hasValue(null);
+            diagnostics.removeFunction("echo");
+            assertThat(meters.getMeters()).hasSize(2);
         } finally {
             workers.shutdownNow();
             diagnostics.removeFunction("echo");
         }
-        assertThat(meters.getMeters()).hasSize(2);
     }
 
     private static void runRecordingRace(WorkloadDiagnostics diagnostics, CyclicBarrier phase,

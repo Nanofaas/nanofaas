@@ -74,11 +74,12 @@ class WorkloadMetricsBinderTest {
             workers.shutdown();
             assertThat(workers.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
             assertThat(failure).hasValue(null);
+            binder.removeFunction("echo");
+            assertThat(meters.getMeters()).isEmpty();
         } finally {
             workers.shutdownNow();
             binder.removeFunction("echo");
         }
-        assertThat(meters.getMeters()).isEmpty();
     }
 
     private static void runRegisterRace(WorkloadMetricsBinder binder, CyclicBarrier phase,
