@@ -69,6 +69,10 @@ public final class FunctionCapacityRegistry implements WorkloadCapacityControlle
         }
     }
 
+    public boolean hasGeneration(String functionName) {
+        return entries.containsKey(functionName);
+    }
+
     public boolean tryAcquireSlot(String functionName) {
         Entry entry = entries.get(functionName);
         if (entry == null) return false;

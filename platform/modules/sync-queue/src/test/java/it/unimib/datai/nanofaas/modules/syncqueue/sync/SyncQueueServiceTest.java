@@ -32,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueInvocationEnqueuer;
 
 class SyncQueueServiceTest {
 
@@ -47,6 +48,29 @@ class SyncQueueServiceTest {
             service.registerFunction("cleanup", 1);
             service.removeFunctionState("cleanup");
         }
+        assertEquals(0, service.lifecycleLockCount());
+    }
+
+    @Test
+    void lateReleaseCleansUpRetiredFunctionLifecycleLock() {
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
+        );
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        SyncQueueService service = new SyncQueueService(
+                props, new ExecutionStore(), new WaitEstimator(Duration.ofSeconds(30), 3),
+                new SyncQueueMetrics(new SimpleMeterRegistry()), Clock.systemUTC(),
+                SyncQueueConfigSource.fixed(props.runtimeDefaults()), registry, null);
+        SyncQueueInvocationEnqueuer enqueuer = new SyncQueueInvocationEnqueuer(
+                registry, null, service::onDispatchSlotReleased);
+        service.registerFunction("fn", 1);
+
+        assertTrue(enqueuer.tryAcquireSlot("fn"));
+        service.removeFunctionState("fn");
+        assertEquals(1, service.lifecycleLockCount());
+
+        enqueuer.releaseDispatchSlot("fn");
+
         assertEquals(0, service.lifecycleLockCount());
     }
 

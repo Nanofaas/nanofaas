@@ -107,10 +107,28 @@ public class SyncQueueService implements SyncQueueGateway {
     }
 
     private void releaseLifecycleLock(String functionName, LifecycleLock lock) {
+        boolean unused;
         synchronized (lifecycleLocks) {
-            if (--lock.users == 0 && capacityRegistry.state(functionName) == null) {
-                lifecycleLocks.remove(functionName, lock);
-            }
+            unused = --lock.users == 0;
+        }
+        if (unused) {
+            cleanupLifecycleLock(functionName, lock);
+        }
+    }
+
+    public void onDispatchSlotReleased(String functionName) {
+        LifecycleLock lock;
+        synchronized (lifecycleLocks) {
+            lock = lifecycleLocks.get(functionName);
+            if (lock == null || lock.users != 0) return;
+        }
+        cleanupLifecycleLock(functionName, lock);
+    }
+
+    private void cleanupLifecycleLock(String functionName, LifecycleLock lock) {
+        if (capacityRegistry.hasGeneration(functionName)) return;
+        synchronized (lifecycleLocks) {
+            if (lock.users == 0) lifecycleLocks.remove(functionName, lock);
         }
     }
 
