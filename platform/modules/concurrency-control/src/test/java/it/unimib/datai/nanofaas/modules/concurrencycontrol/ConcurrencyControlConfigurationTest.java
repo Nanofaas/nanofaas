@@ -13,9 +13,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ConcurrencyControlConfigurationTest {
 
     @Test
-    void doesNotImposeAnOrderingOnOneQueueProvider() {
-        assertThat(ConcurrencyControlConfiguration.class.getAnnotation(AutoConfigureAfter.class))
-                .isNull();
+    void configurationRunsAfterEitherQueueProvider() {
+        assertThat(ConcurrencyControlConfiguration.class.getAnnotation(AutoConfigureAfter.class).name())
+                .containsExactlyInAnyOrder(
+                        "it.unimib.datai.nanofaas.modules.asyncqueue.AsyncQueueConfiguration",
+                        "it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueConfiguration"
+                );
     }
 
     @Test

@@ -8,12 +8,17 @@ import it.unimib.datai.nanofaas.controlplane.service.Metrics;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 
 @AutoConfiguration
+@AutoConfigureAfter(name = {
+        "it.unimib.datai.nanofaas.modules.asyncqueue.AsyncQueueConfiguration",
+        "it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueConfiguration"
+})
 @ConditionalOnBean({WorkloadMetricsSource.class, WorkloadCapacityController.class, FunctionRegistry.class, Metrics.class})
 @EnableConfigurationProperties(ConcurrencyControlProperties.class)
 public class ConcurrencyControlConfiguration {

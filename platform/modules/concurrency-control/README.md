@@ -122,8 +122,8 @@ rejected with 400 rather than silently ignored.
   many replicas exist, so functions with `ScalingStrategy.NONE` or an external
   HPA are governed too.
 - Needs an enforcing queue: either `async-queue` or `sync-queue` supplies the workload state and
-  applies the computed capacity.
-  no queue provider receives the decision and nothing is limited.
+  applies the computed capacity. Selecting this module without either provider fails Gradle module
+  resolution (`requires.oneOf=async-queue,sync-queue`).
 - `function_effective_concurrency`, `function_target_inflight_per_pod` and
   `function_concurrency_controller_mode` are only exported under
   `nanofaas.metrics.profile=advanced`.
