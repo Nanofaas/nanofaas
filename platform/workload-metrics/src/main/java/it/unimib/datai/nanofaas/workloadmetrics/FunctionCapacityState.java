@@ -1,13 +1,13 @@
 package it.unimib.datai.nanofaas.workloadmetrics;
 
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.function.LongSupplier;
 
 public final class FunctionCapacityState {
     private final LongSupplier nanoTime;
-    private final AtomicInteger inFlight = new AtomicInteger();
-    private final ConcurrentLinkedQueue<Long> acquiredAt = new ConcurrentLinkedQueue<>();
+    private volatile int inFlight;
+    private final Deque<Long> acquiredAt = new ArrayDeque<>();
     private volatile int configuredConcurrency;
     private volatile int effectiveConcurrency;
 
@@ -21,20 +21,17 @@ public final class FunctionCapacityState {
         effectiveConcurrency = configuredConcurrency;
     }
 
-    public boolean tryAcquireSlot() {
-        while (true) {
-            int current = inFlight.get();
-            if (current >= effectiveConcurrency) return false;
-            if (inFlight.compareAndSet(current, current + 1)) {
-                acquiredAt.add(nanoTime.getAsLong());
-                return true;
-            }
-        }
+    public synchronized boolean tryAcquireSlot() {
+        if (inFlight >= effectiveConcurrency) return false;
+        inFlight++;
+        acquiredAt.addLast(nanoTime.getAsLong());
+        return true;
     }
 
-    public long releaseSlotAndGetHoldNanos() {
-        if (!decrementInFlight()) return -1;
-        Long started = acquiredAt.poll();
+    public synchronized long releaseSlotAndGetHoldNanos() {
+        if (inFlight == 0) return -1;
+        inFlight--;
+        Long started = acquiredAt.removeFirst();
         return started == null ? -1 : nanoTime.getAsLong() - started;
     }
 
@@ -57,14 +54,6 @@ public final class FunctionCapacityState {
 
     public int configuredConcurrency() { return configuredConcurrency; }
     public int effectiveConcurrency() { return effectiveConcurrency; }
-    public int inFlight() { return inFlight.get(); }
-    public boolean canDispatch() { return inFlight.get() < effectiveConcurrency; }
-
-    private boolean decrementInFlight() {
-        while (true) {
-            int current = inFlight.get();
-            if (current == 0) return false;
-            if (inFlight.compareAndSet(current, current - 1)) return true;
-        }
-    }
+    public int inFlight() { return inFlight; }
+    public boolean canDispatch() { return inFlight < effectiveConcurrency; }
 }

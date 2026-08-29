@@ -2,6 +2,10 @@ package it.unimib.datai.nanofaas.workloadmetrics;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -40,5 +44,38 @@ class FunctionCapacityRegistryTest {
         registry.remove("echo");
         assertThat(registry.inFlight("echo")).isZero();
         assertThat(registry.tryAcquireSlot("echo")).isFalse();
+    }
+
+    @Test
+    void acquisitionAndReleaseKeepSlotTimestampTogether() throws Exception {
+        CountDownLatch timestampEntered = new CountDownLatch(1);
+        CountDownLatch allowTimestamp = new CountDownLatch(1);
+        AtomicBoolean firstRead = new AtomicBoolean(true);
+        FunctionCapacityState state = new FunctionCapacityState(1, () -> {
+            if (firstRead.getAndSet(false)) {
+                timestampEntered.countDown();
+                await(allowTimestamp);
+            }
+            return 10;
+        });
+
+        CompletableFuture<Boolean> acquire = CompletableFuture.supplyAsync(state::tryAcquireSlot);
+        assertThat(timestampEntered.await(1, TimeUnit.SECONDS)).isTrue();
+        CompletableFuture<Long> release = CompletableFuture.supplyAsync(state::releaseSlotAndGetHoldNanos);
+        Thread.sleep(50);
+        allowTimestamp.countDown();
+
+        assertThat(acquire.get(1, TimeUnit.SECONDS)).isTrue();
+        assertThat(release.get(1, TimeUnit.SECONDS)).isEqualTo(0);
+        assertThat(state.inFlight()).isZero();
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(e);
+        }
     }
 }
