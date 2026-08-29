@@ -21,6 +21,7 @@ import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
 public class QueueManager {
     private static final String FUNCTION_TAG = "function";
     private final Map<String, FunctionQueueState> queues = new ConcurrentHashMap<>();
+    private final Map<String, Object> lifecycleLocks = new ConcurrentHashMap<>();
     private final Map<String, List<Meter.Id>> meterIds = new ConcurrentHashMap<>();
     private final Map<String, DiagnosticMeters> diagnosticMeters = new ConcurrentHashMap<>();
     private final MeterRegistry meterRegistry;
@@ -61,7 +62,8 @@ public class QueueManager {
     }
 
     public FunctionQueueState getOrCreate(FunctionSpec spec) {
-        return queues.compute(spec.name(), (name, existing) -> {
+        synchronized (lifecycleLocks.computeIfAbsent(spec.name(), ignored -> new Object())) {
+            return queues.compute(spec.name(), (name, existing) -> {
             if (existing == null) {
                 FunctionQueueState state = new FunctionQueueState(
                         name,
@@ -117,7 +119,8 @@ public class QueueManager {
             }
             capacityRegistry.register(name, spec.concurrency());
             return existing;
-        });
+            });
+        }
     }
 
     public FunctionQueueState get(String functionName) {
@@ -125,17 +128,19 @@ public class QueueManager {
     }
 
     public List<InvocationTask> remove(String name) {
-        FunctionQueueState removed = queues.remove(name);
-        concurrencyMetrics.remove(name);
-        diagnosticMeters.remove(name);
-        capacityRegistry.remove(name);
-        workloadDiagnostics.removeFunction(name);
-        workloadMetricsBinder.removeFunction(name);
-        List<Meter.Id> ids = meterIds.remove(name);
-        if (ids != null) {
-            ids.forEach(meterRegistry::remove);
+        synchronized (lifecycleLocks.computeIfAbsent(name, ignored -> new Object())) {
+            FunctionQueueState removed = queues.remove(name);
+            concurrencyMetrics.remove(name);
+            diagnosticMeters.remove(name);
+            capacityRegistry.remove(name);
+            workloadDiagnostics.removeFunction(name);
+            workloadMetricsBinder.removeFunction(name);
+            List<Meter.Id> ids = meterIds.remove(name);
+            if (ids != null) {
+                ids.forEach(meterRegistry::remove);
+            }
+            return removed == null ? List.of() : removed.closeAndDrainQueued();
         }
-        return removed == null ? List.of() : removed.closeAndDrainQueued();
     }
 
     public void forEachQueue(java.util.function.Consumer<FunctionQueueState> action) {

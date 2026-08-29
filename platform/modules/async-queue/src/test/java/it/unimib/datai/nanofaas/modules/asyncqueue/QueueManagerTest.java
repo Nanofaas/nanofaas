@@ -15,14 +15,50 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class QueueManagerTest {
+
+    @Test
+    void concurrentRemoveAndRegisterLeavesNewGenerationUsableAndOldSlotSafe() throws Exception {
+        QueueManager manager = new QueueManager(new SimpleMeterRegistry());
+        FunctionSpec spec = spec("race", 1);
+        FunctionQueueState oldState = manager.getOrCreate(spec);
+        assertThat(oldState.tryAcquireSlot()).isTrue();
+
+        CountDownLatch started = new CountDownLatch(1);
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            var remove = executor.submit(() -> {
+                started.countDown();
+                manager.remove("race");
+                return null;
+            });
+            assertThat(started.await(1, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            await().atMost(1, java.util.concurrent.TimeUnit.SECONDS).until(() -> manager.get("race") == null);
+            manager.releaseSlot("race", oldState);
+            await().atMost(1, java.util.concurrent.TimeUnit.SECONDS).until(() -> !oldState.canDispatch());
+            var register = executor.submit(() -> manager.getOrCreate(spec));
+            assertThatCode(() -> {
+                remove.get();
+                register.get();
+            }).doesNotThrowAnyException();
+        }
+
+        FunctionQueueState newState = manager.get("race");
+        assertThat(newState).isNotNull();
+        assertThat(oldState.inFlight()).isZero();
+        assertThat(newState.tryAcquireSlot()).isTrue();
+    }
 
     @Test
     void setEffectiveConcurrency_updatesTheSharedCapacityRegistry() {

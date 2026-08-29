@@ -11,6 +11,7 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
+import it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
@@ -21,6 +22,8 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static org.awaitility.Awaitility.await;
@@ -30,6 +33,38 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SyncQueueServiceTest {
+
+    @Test
+    void concurrentRemoveAndRegisterLeavesNewGenerationUsableAndOldSlotSafe() throws Exception {
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
+        );
+        FunctionCapacityRegistry capacity = new FunctionCapacityRegistry();
+        SyncQueueService service = new SyncQueueService(
+                props, new ExecutionStore(), new WaitEstimator(Duration.ofSeconds(30), 3),
+                new SyncQueueMetrics(new SimpleMeterRegistry()), Clock.systemUTC(),
+                SyncQueueConfigSource.fixed(props.runtimeDefaults()), capacity, null);
+        capacity.register("fn", 1);
+        assertTrue(capacity.tryAcquireSlot("fn"));
+
+        var oldState = capacity.state("fn");
+        CountDownLatch started = new CountDownLatch(1);
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            var remove = executor.submit(() -> {
+                started.countDown();
+                service.removeFunctionState("fn");
+                return null;
+            });
+            assertTrue(started.await(1, TimeUnit.SECONDS));
+            await().atMost(1, TimeUnit.SECONDS).until(() -> !oldState.isActive());
+            assertTrue(capacity.releaseSlotAndGetHoldNanos("fn") >= 0);
+            var register = executor.submit(() -> service.registerFunction("fn", 1));
+            assertTrue(remove.get() == null);
+            assertTrue(register.get() == null);
+        }
+
+        assertTrue(capacity.tryAcquireSlot("fn"));
+    }
 
     private static SyncQueueService createService(SyncQueueProperties props, ExecutionStore store,
                                                    WaitEstimator estimator, SyncQueueMetrics metrics, Clock clock) {

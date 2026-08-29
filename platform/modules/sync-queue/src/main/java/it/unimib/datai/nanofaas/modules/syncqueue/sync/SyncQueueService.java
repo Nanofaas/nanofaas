@@ -39,6 +39,7 @@ public class SyncQueueService implements SyncQueueGateway {
     private final Object workSignal = new Object();
     private final SyncQueueAdmissionController admissionController;
     private final Set<String> removedFunctions = ConcurrentHashMap.newKeySet();
+    private final ConcurrentHashMap<String, Object> lifecycleLocks = new ConcurrentHashMap<>();
     private final FunctionCapacityRegistry capacityRegistry;
     private final WorkloadDiagnostics diagnostics;
 
@@ -306,11 +307,13 @@ public class SyncQueueService implements SyncQueueGateway {
     }
 
     public void removeFunctionState(String functionName) {
-        removedFunctions.add(functionName);
-        drainRemovedFunction(functionName);
-        estimator.removeFunctionState(functionName);
-        metrics.removeFunctionState(functionName);
-        capacityRegistry.remove(functionName);
+        synchronized (lifecycleLocks.computeIfAbsent(functionName, ignored -> new Object())) {
+            removedFunctions.add(functionName);
+            drainRemovedFunction(functionName);
+            estimator.removeFunctionState(functionName);
+            metrics.removeFunctionState(functionName);
+            capacityRegistry.remove(functionName);
+        }
     }
 
     public void registerFunction(String functionName) {
@@ -318,9 +321,11 @@ public class SyncQueueService implements SyncQueueGateway {
     }
 
     public void registerFunction(String functionName, int concurrency) {
-        removedFunctions.remove(functionName);
-        metrics.registerFunction(functionName);
-        capacityRegistry.register(functionName, concurrency);
+        synchronized (lifecycleLocks.computeIfAbsent(functionName, ignored -> new Object())) {
+            removedFunctions.remove(functionName);
+            metrics.registerFunction(functionName);
+            capacityRegistry.register(functionName, concurrency);
+        }
     }
 
     private void drainRemovedFunction(String functionName) {
