@@ -2,6 +2,8 @@ package it.unimib.datai.nanofaas.modules.syncqueue;
 
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
 import it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics;
 
@@ -11,6 +13,7 @@ public final class SyncQueueInvocationEnqueuer implements InvocationEnqueuer {
     private final FunctionCapacityRegistry capacityRegistry;
     private final WorkloadDiagnostics diagnostics;
     private final Consumer<String> slotReleaseListener;
+    private final SyncQueueGateway gateway;
 
     public SyncQueueInvocationEnqueuer(FunctionCapacityRegistry capacityRegistry) {
         this(capacityRegistry, null, ignored -> { });
@@ -24,16 +27,35 @@ public final class SyncQueueInvocationEnqueuer implements InvocationEnqueuer {
     public SyncQueueInvocationEnqueuer(FunctionCapacityRegistry capacityRegistry,
                                        WorkloadDiagnostics diagnostics,
                                        Consumer<String> slotReleaseListener) {
+        this(capacityRegistry, diagnostics, slotReleaseListener, SyncQueueGateway.noOp());
+    }
+
+    public SyncQueueInvocationEnqueuer(FunctionCapacityRegistry capacityRegistry,
+                                       WorkloadDiagnostics diagnostics,
+                                       Consumer<String> slotReleaseListener,
+                                       SyncQueueGateway gateway) {
         this.capacityRegistry = capacityRegistry;
         this.diagnostics = diagnostics;
         this.slotReleaseListener = slotReleaseListener;
+        this.gateway = gateway;
     }
 
     @Override
     public boolean enqueue(InvocationTask task) {
-        return false;
+        try {
+            gateway.enqueueOrThrow(task);
+            return true;
+        } catch (SyncQueueRejectedException _) {
+            return false;
+        }
     }
 
+    /**
+     * False on purpose, and not the inverse of {@link #enqueue}: the async {@code :enqueue}
+     * endpoint must keep answering 501 under this provider. The one caller of {@code enqueue}
+     * that does not consult this flag is the retry path in {@code ExecutionCompletionHandler};
+     * both admission sites are gated on it.
+     */
     @Override
     public boolean enabled() {
         return false;

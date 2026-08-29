@@ -59,7 +59,7 @@ public class SyncQueueConfiguration {
                                                              WorkloadDiagnostics diagnostics,
                                                              SyncQueueService syncQueueService) {
         return new SyncQueueInvocationEnqueuer(capacityRegistry, diagnostics,
-                syncQueueService::onDispatchSlotReleased);
+                syncQueueService::onDispatchSlotReleased, syncQueueService);
     }
 
     @Bean

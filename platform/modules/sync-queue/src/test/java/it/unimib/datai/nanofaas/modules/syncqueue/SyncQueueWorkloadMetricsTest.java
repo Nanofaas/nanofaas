@@ -37,8 +37,9 @@ class SyncQueueWorkloadMetricsTest {
         registry.register("fn", 1);
         SyncQueueInvocationEnqueuer enqueuer = new SyncQueueInvocationEnqueuer(registry);
 
+        // enqueue() is the gateway seam and is covered by SyncQueueInvocationEnqueuerTest;
+        // what this test pins is that the async endpoint stays disabled.
         assertFalse(enqueuer.enabled());
-        assertFalse(enqueuer.enqueue(null));
         assertTrue(enqueuer.hasAvailableSlot("fn"));
         assertTrue(enqueuer.tryAcquireSlot("fn"));
         assertFalse(enqueuer.hasAvailableSlot("fn"));
