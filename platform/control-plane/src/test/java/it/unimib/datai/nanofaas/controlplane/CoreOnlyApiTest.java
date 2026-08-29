@@ -61,7 +61,7 @@ class CoreOnlyApiTest {
     }
 
     @Test
-    void coreProfileInjectsDisabledNoOpInvocationEnqueuer() {
+    void coreProfileLeavesInvocationEnqueuerUnavailable() {
         Assumptions.assumeFalse(invocationEnqueuer.enabled());
         assertThat(invocationEnqueuer).isSameAs(InvocationEnqueuer.noOp());
         assertThat(invocationEnqueuer.enabled()).isFalse();
