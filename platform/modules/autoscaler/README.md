@@ -6,7 +6,7 @@ deployments. Per-function concurrency lives in the `concurrency-control` module.
 ## Provides
 
 - `InternalScaler` — polls a `WorkloadMetricsSource` (queue depth, in-flight,
-  rps; provided by the async-queue module) and computes replica targets via
+  rps; provided by either the async-queue or sync-queue module) and computes replica targets via
   `ScalingDecisionCalculator`, bounded by the function's `ScalingConfig`
   min/max and rate-limited by `ScalingCooldownTracker` (upscale/downscale
   cooldowns).
@@ -29,7 +29,7 @@ nanofaas:
 
 ## Notes
 
-- Needs a metrics source: without the async-queue module the core no-op
-  no queue provider provides no signal and the scaler stays idle.
+- Requires either the async-queue or sync-queue module, which provides the
+  workload metrics source used by the scaler.
 - Replica changes are applied through the active managed deployment provider
   (k8s or container-local).
