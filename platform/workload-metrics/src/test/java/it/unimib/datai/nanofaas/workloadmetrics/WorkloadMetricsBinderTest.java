@@ -4,10 +4,11 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -65,22 +66,45 @@ class WorkloadMetricsBinderTest {
         };
         WorkloadMetricsBinder binder = new WorkloadMetricsBinder(meters, source);
         ExecutorService workers = Executors.newFixedThreadPool(2);
-        CountDownLatch start = new CountDownLatch(1);
-        workers.submit(() -> { await(start); binder.registerFunction("echo"); });
-        workers.submit(() -> { await(start); binder.removeFunction("echo"); });
-        start.countDown();
-        workers.shutdown();
-        assertThat(workers.awaitTermination(1, TimeUnit.SECONDS)).isTrue();
-        binder.removeFunction("echo");
+        CyclicBarrier phase = new CyclicBarrier(2);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        try {
+            workers.submit(() -> runRegisterRace(binder, phase, failure));
+            workers.submit(() -> runRemoveRace(binder, phase, failure));
+            workers.shutdown();
+            assertThat(workers.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(failure).hasValue(null);
+        } finally {
+            workers.shutdownNow();
+            binder.removeFunction("echo");
+        }
         assertThat(meters.getMeters()).isEmpty();
     }
 
-    private static void await(CountDownLatch latch) {
+    private static void runRegisterRace(WorkloadMetricsBinder binder, CyclicBarrier phase,
+                                        AtomicReference<Throwable> failure) {
         try {
-            latch.await();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new AssertionError(e);
+            for (int i = 0; i < 1_000; i++) {
+                phase.await();
+                binder.registerFunction("echo");
+                phase.await();
+            }
+        } catch (Throwable t) {
+            failure.compareAndSet(null, t);
         }
     }
+
+    private static void runRemoveRace(WorkloadMetricsBinder binder, CyclicBarrier phase,
+                                      AtomicReference<Throwable> failure) {
+        try {
+            for (int i = 0; i < 1_000; i++) {
+                phase.await();
+                binder.removeFunction("echo");
+                phase.await();
+            }
+        } catch (Throwable t) {
+            failure.compareAndSet(null, t);
+        }
+    }
+
 }

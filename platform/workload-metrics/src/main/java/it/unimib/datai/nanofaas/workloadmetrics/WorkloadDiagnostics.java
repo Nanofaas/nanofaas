@@ -6,6 +6,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 
 import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -14,7 +15,7 @@ public final class WorkloadDiagnostics {
     private final MeterRegistry registry;
     private final Timer schedulerVisitDuration;
     private final Timer schedulerIdleDuration;
-    private final Map<String, List<Meter.Id>> meters = new ConcurrentHashMap<>();
+    private final Map<String, List<Meter.Id>> meters = new HashMap<>();
     private final Map<String, FunctionMeters> functions = new ConcurrentHashMap<>();
     private final Object lifecycleLock = new Object();
 
@@ -50,9 +51,9 @@ public final class WorkloadDiagnostics {
 
     public void recordSchedulerVisitDuration(long nanos) { schedulerVisitDuration.record(nanos, TimeUnit.NANOSECONDS); }
     public void recordSchedulerIdleDuration(long nanos) { schedulerIdleDuration.record(nanos, TimeUnit.NANOSECONDS); }
-    public void recordQueueOfferDuration(String functionName, long nanos) { if (function(functionName) != null) function(functionName).offer.record(nanos, TimeUnit.NANOSECONDS); }
-    public void recordQueuePollDuration(String functionName, long nanos) { if (function(functionName) != null) function(functionName).poll.record(nanos, TimeUnit.NANOSECONDS); }
-    public void recordDispatchSubmitDuration(String functionName, long nanos) { if (function(functionName) != null) function(functionName).submit.record(nanos, TimeUnit.NANOSECONDS); }
+    public void recordQueueOfferDuration(String functionName, long nanos) { FunctionMeters meters = function(functionName); if (meters != null) meters.offer.record(nanos, TimeUnit.NANOSECONDS); }
+    public void recordQueuePollDuration(String functionName, long nanos) { FunctionMeters meters = function(functionName); if (meters != null) meters.poll.record(nanos, TimeUnit.NANOSECONDS); }
+    public void recordDispatchSubmitDuration(String functionName, long nanos) { FunctionMeters meters = function(functionName); if (meters != null) meters.submit.record(nanos, TimeUnit.NANOSECONDS); }
     public void recordSchedulerDispatchSubmitDuration(String functionName, long nanos) { recordDispatchSubmitDuration(functionName, nanos); }
     public void recordDispatchSlotHold(String functionName, long nanos) {
         FunctionMeters meters = function(functionName);
@@ -62,7 +63,7 @@ public final class WorkloadDiagnostics {
             meters.holdEvents.increment();
         }
     }
-    public void recordSchedulerSlotBlocked(String functionName) { if (function(functionName) != null) function(functionName).blocked.increment(); }
+    public void recordSchedulerSlotBlocked(String functionName) { FunctionMeters meters = function(functionName); if (meters != null) meters.blocked.increment(); }
     public void recordDispatchSlotBlocked(String functionName) { recordSchedulerSlotBlocked(functionName); }
 
     private FunctionMeters function(String name) {

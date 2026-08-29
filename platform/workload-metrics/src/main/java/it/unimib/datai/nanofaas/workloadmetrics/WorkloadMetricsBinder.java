@@ -4,15 +4,15 @@ import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 public final class WorkloadMetricsBinder {
     private static final String FUNCTION_TAG = "function";
     private final MeterRegistry registry;
     private final WorkloadMetricsSource source;
-    private final Map<String, List<Meter.Id>> meters = new ConcurrentHashMap<>();
+    private final Map<String, List<Meter.Id>> meters = new HashMap<>();
     private final Object lifecycleLock = new Object();
 
     public WorkloadMetricsBinder(MeterRegistry registry, WorkloadMetricsSource source) {
