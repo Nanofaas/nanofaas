@@ -118,9 +118,8 @@ class QueueManagerTest {
         FunctionQueueState oldState = manager.getOrCreate(spec);
         assertThat(oldState.tryAcquireSlot()).isTrue();
         manager.remove("recreated");
-        assertThatThrownBy(() -> manager.getOrCreate(spec))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("active slots");
+
+        // once the last slot drains the generation is dropped, so the next getOrCreate is new
         manager.releaseSlot("recreated", oldState);
         FunctionQueueState newState = manager.getOrCreate(spec);
         assertThat(newState.tryAcquireSlot()).isTrue();

@@ -405,7 +405,7 @@ class SyncQueueServiceTest {
         store.put(new ExecutionRecord("e1", task));
 
         service.removeFunctionState("fn");
-        service.registerFunction("fn");
+        service.registerFunction("fn", 1);
 
         SyncQueueRejectedException ex = assertThrows(SyncQueueRejectedException.class, () -> service.enqueueOrThrow(task));
 

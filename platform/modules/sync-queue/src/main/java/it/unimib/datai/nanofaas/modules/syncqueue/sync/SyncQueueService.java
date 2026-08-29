@@ -117,6 +117,9 @@ public class SyncQueueService implements SyncQueueGateway {
     }
 
     public void onDispatchSlotReleased(String functionName) {
+        // Fires on every completed execution. Only a drained generation needs cleaning up,
+        // and that is exactly when the registry stops carrying the function.
+        if (capacityRegistry.hasGeneration(functionName)) return;
         LifecycleLock lock;
         synchronized (lifecycleLocks) {
             lock = lifecycleLocks.get(functionName);
@@ -208,6 +211,8 @@ public class SyncQueueService implements SyncQueueGateway {
         }
     }
 
+    // ponytail: O(depth) scan under the queue monitor, bounded by max-depth (200).
+    // Per-function counter maintained at the deque mutation sites if scrape cost shows up.
     public int queuedItems(String functionName) {
         synchronized (queue) {
             int count = 0;
@@ -357,10 +362,6 @@ public class SyncQueueService implements SyncQueueGateway {
         } finally {
             releaseLifecycleLock(functionName, lifecycleLock);
         }
-    }
-
-    public void registerFunction(String functionName) {
-        registerFunction(functionName, 1);
     }
 
     public void registerFunction(String functionName, int concurrency) {

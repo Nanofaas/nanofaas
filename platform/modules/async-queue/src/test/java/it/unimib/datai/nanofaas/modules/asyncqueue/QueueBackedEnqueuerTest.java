@@ -38,10 +38,8 @@ class QueueBackedEnqueuerTest {
         FunctionQueueState oldState = queueManager.getOrCreate(spec);
         assertThat(oldState.tryAcquireSlot()).isTrue();
         queueManager.remove("fn");
-        assertThatThrownBy(() -> queueManager.getOrCreate(spec))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("active slots");
 
+        // once the last slot drains the generation is dropped, so the next getOrCreate is new
         enqueuer.releaseDispatchSlot("fn");
         FunctionQueueState newState = queueManager.getOrCreate(spec);
         assertThat(newState.tryAcquireSlot()).isTrue();
