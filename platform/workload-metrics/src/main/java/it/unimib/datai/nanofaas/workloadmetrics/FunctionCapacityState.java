@@ -39,7 +39,7 @@ public final class FunctionCapacityState {
         releaseSlotAndGetHoldNanos();
     }
 
-    public void concurrency(int concurrency) {
+    public synchronized void concurrency(int concurrency) {
         int previous = configuredConcurrency;
         int normalized = Math.max(1, concurrency);
         configuredConcurrency = normalized;
@@ -48,7 +48,7 @@ public final class FunctionCapacityState {
         }
     }
 
-    public void setEffectiveConcurrency(int concurrency) {
+    public synchronized void setEffectiveConcurrency(int concurrency) {
         effectiveConcurrency = Math.min(configuredConcurrency, Math.max(1, concurrency));
     }
 

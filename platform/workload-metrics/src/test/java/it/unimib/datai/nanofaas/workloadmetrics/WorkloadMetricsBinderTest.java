@@ -25,8 +25,17 @@ class WorkloadMetricsBinderTest {
         binder.registerFunction("echo");
         assertThat(meters.getMeters()).hasSize(4);
         assertThat(meters.get("function_queue_depth").tag("function", "echo").gauge().value()).isEqualTo(1);
+        assertThat(meters.get("function_inFlight").tag("function", "echo").gauge().value()).isEqualTo(2);
+        assertThat(meters.get("function_effective_concurrency").tag("function", "echo").gauge().value()).isEqualTo(3);
+        assertThat(meters.get("function_dispatchable_backlog").tag("function", "echo").gauge().value()).isEqualTo(4);
         values.get("echo")[0] = 9;
+        values.get("echo")[1] = 8;
+        values.get("echo")[2] = 7;
+        values.get("echo")[3] = 6;
         assertThat(meters.get("function_queue_depth").tag("function", "echo").gauge().value()).isEqualTo(9);
+        assertThat(meters.get("function_inFlight").tag("function", "echo").gauge().value()).isEqualTo(8);
+        assertThat(meters.get("function_effective_concurrency").tag("function", "echo").gauge().value()).isEqualTo(7);
+        assertThat(meters.get("function_dispatchable_backlog").tag("function", "echo").gauge().value()).isEqualTo(6);
 
         binder.removeFunction("echo");
         assertThat(meters.getMeters()).isEmpty();

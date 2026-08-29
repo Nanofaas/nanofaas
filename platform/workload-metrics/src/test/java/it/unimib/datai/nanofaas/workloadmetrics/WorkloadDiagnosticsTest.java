@@ -49,7 +49,10 @@ class WorkloadDiagnosticsTest {
 
         diagnostics.removeFunction("echo");
         assertThat(meters.find("function_queue_offer_duration").tag("function", "echo").timer()).isNull();
+        assertThat(meters.find("function_queue_poll_duration").tag("function", "echo").timer()).isNull();
+        assertThat(meters.find("function_scheduler_dispatch_submit_duration").tag("function", "echo").timer()).isNull();
         assertThat(meters.find("function_dispatch_slot_hold_seconds").tag("function", "echo").counter()).isNull();
+        assertThat(meters.find("function_dispatch_slot_hold_events").tag("function", "echo").counter()).isNull();
         assertThat(meters.find("function_scheduler_slot_blocked").tag("function", "echo").counter()).isNull();
         assertThat(meters.find("scheduler_visit_duration").timer()).isNotNull();
         assertThat(meters.find("scheduler_idle_duration").timer()).isNotNull();

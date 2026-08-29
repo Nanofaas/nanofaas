@@ -4,9 +4,12 @@ import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -68,6 +71,44 @@ class FunctionCapacityRegistryTest {
         assertThat(acquire.get(1, TimeUnit.SECONDS)).isTrue();
         assertThat(release.get(1, TimeUnit.SECONDS)).isEqualTo(0);
         assertThat(state.inFlight()).isZero();
+    }
+
+    @Test
+    void concurrentAcquisitionNeverExceedsConfiguredBound() throws Exception {
+        FunctionCapacityState state = new FunctionCapacityState(8);
+        ExecutorService workers = Executors.newFixedThreadPool(32);
+        CountDownLatch ready = new CountDownLatch(32);
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch acquired = new CountDownLatch(8);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicInteger maxInFlight = new AtomicInteger();
+
+        try {
+            for (int i = 0; i < 32; i++) {
+                workers.submit(() -> {
+                    ready.countDown();
+                    await(start);
+                    if (state.tryAcquireSlot()) {
+                        maxInFlight.accumulateAndGet(state.inFlight(), Math::max);
+                        acquired.countDown();
+                        await(release);
+                        state.releaseSlot();
+                    }
+                });
+            }
+            assertThat(ready.await(1, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            assertThat(acquired.await(1, TimeUnit.SECONDS)).isTrue();
+            release.countDown();
+            workers.shutdown();
+            assertThat(workers.awaitTermination(1, TimeUnit.SECONDS)).isTrue();
+        } finally {
+            workers.shutdownNow();
+        }
+
+        assertThat(maxInFlight).hasValue(8);
+        assertThat(state.inFlight()).isLessThanOrEqualTo(state.effectiveConcurrency());
+        assertThat(state.inFlight()).isLessThanOrEqualTo(state.configuredConcurrency());
     }
 
     private static void await(CountDownLatch latch) {
