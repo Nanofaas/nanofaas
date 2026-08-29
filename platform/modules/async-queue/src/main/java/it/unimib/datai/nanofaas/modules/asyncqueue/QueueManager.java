@@ -21,7 +21,7 @@ import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
 public class QueueManager {
     private static final String FUNCTION_TAG = "function";
     private final Map<String, FunctionQueueState> queues = new ConcurrentHashMap<>();
-    private final Map<String, Object> lifecycleLocks = new ConcurrentHashMap<>();
+    private final Map<String, LifecycleLock> lifecycleLocks = new ConcurrentHashMap<>();
     private final Map<String, List<Meter.Id>> meterIds = new ConcurrentHashMap<>();
     private final Map<String, DiagnosticMeters> diagnosticMeters = new ConcurrentHashMap<>();
     private final MeterRegistry meterRegistry;
@@ -61,8 +61,30 @@ public class QueueManager {
         }
     }
 
+    private LifecycleLock acquireLifecycleLock(String functionName) {
+        synchronized (lifecycleLocks) {
+            LifecycleLock lock = lifecycleLocks.computeIfAbsent(functionName, ignored -> new LifecycleLock());
+            lock.users++;
+            return lock;
+        }
+    }
+
+    private void releaseLifecycleLock(String functionName, LifecycleLock lock) {
+        synchronized (lifecycleLocks) {
+            if (--lock.users == 0 && !queues.containsKey(functionName)) {
+                lifecycleLocks.remove(functionName, lock);
+            }
+        }
+    }
+
+    int lifecycleLockCount() {
+        return lifecycleLocks.size();
+    }
+
     public FunctionQueueState getOrCreate(FunctionSpec spec) {
-        synchronized (lifecycleLocks.computeIfAbsent(spec.name(), ignored -> new Object())) {
+        LifecycleLock lifecycleLock = acquireLifecycleLock(spec.name());
+        try {
+            synchronized (lifecycleLock) {
             return queues.compute(spec.name(), (name, existing) -> {
             if (existing == null) {
                 FunctionQueueState state = new FunctionQueueState(
@@ -120,6 +142,9 @@ public class QueueManager {
             capacityRegistry.register(name, spec.concurrency());
             return existing;
             });
+            }
+        } finally {
+            releaseLifecycleLock(spec.name(), lifecycleLock);
         }
     }
 
@@ -128,7 +153,9 @@ public class QueueManager {
     }
 
     public List<InvocationTask> remove(String name) {
-        synchronized (lifecycleLocks.computeIfAbsent(name, ignored -> new Object())) {
+        LifecycleLock lifecycleLock = acquireLifecycleLock(name);
+        try {
+            synchronized (lifecycleLock) {
             FunctionQueueState removed = queues.remove(name);
             concurrencyMetrics.remove(name);
             diagnosticMeters.remove(name);
@@ -140,7 +167,14 @@ public class QueueManager {
                 ids.forEach(meterRegistry::remove);
             }
             return removed == null ? List.of() : removed.closeAndDrainQueued();
+            }
+        } finally {
+            releaseLifecycleLock(name, lifecycleLock);
         }
+    }
+
+    private static final class LifecycleLock {
+        private int users;
     }
 
     public void forEachQueue(java.util.function.Consumer<FunctionQueueState> action) {

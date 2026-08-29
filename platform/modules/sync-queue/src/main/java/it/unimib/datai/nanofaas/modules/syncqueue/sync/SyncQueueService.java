@@ -39,7 +39,7 @@ public class SyncQueueService implements SyncQueueGateway {
     private final Object workSignal = new Object();
     private final SyncQueueAdmissionController admissionController;
     private final Set<String> removedFunctions = ConcurrentHashMap.newKeySet();
-    private final ConcurrentHashMap<String, Object> lifecycleLocks = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, LifecycleLock> lifecycleLocks = new ConcurrentHashMap<>();
     private final FunctionCapacityRegistry capacityRegistry;
     private final WorkloadDiagnostics diagnostics;
 
@@ -96,6 +96,26 @@ public class SyncQueueService implements SyncQueueGateway {
         this.admissionController = new SyncQueueAdmissionController(configSource, props.maxDepth(), estimator);
         this.capacityRegistry = capacityRegistry;
         this.diagnostics = diagnostics;
+    }
+
+    private LifecycleLock acquireLifecycleLock(String functionName) {
+        synchronized (lifecycleLocks) {
+            LifecycleLock lock = lifecycleLocks.computeIfAbsent(functionName, ignored -> new LifecycleLock());
+            lock.users++;
+            return lock;
+        }
+    }
+
+    private void releaseLifecycleLock(String functionName, LifecycleLock lock) {
+        synchronized (lifecycleLocks) {
+            if (--lock.users == 0 && capacityRegistry.state(functionName) == null) {
+                lifecycleLocks.remove(functionName, lock);
+            }
+        }
+    }
+
+    int lifecycleLockCount() {
+        return lifecycleLocks.size();
     }
 
     public boolean enabled() {
@@ -307,12 +327,17 @@ public class SyncQueueService implements SyncQueueGateway {
     }
 
     public void removeFunctionState(String functionName) {
-        synchronized (lifecycleLocks.computeIfAbsent(functionName, ignored -> new Object())) {
+        LifecycleLock lifecycleLock = acquireLifecycleLock(functionName);
+        try {
+            synchronized (lifecycleLock) {
             removedFunctions.add(functionName);
             drainRemovedFunction(functionName);
             estimator.removeFunctionState(functionName);
             metrics.removeFunctionState(functionName);
             capacityRegistry.remove(functionName);
+            }
+        } finally {
+            releaseLifecycleLock(functionName, lifecycleLock);
         }
     }
 
@@ -321,11 +346,20 @@ public class SyncQueueService implements SyncQueueGateway {
     }
 
     public void registerFunction(String functionName, int concurrency) {
-        synchronized (lifecycleLocks.computeIfAbsent(functionName, ignored -> new Object())) {
+        LifecycleLock lifecycleLock = acquireLifecycleLock(functionName);
+        try {
+            synchronized (lifecycleLock) {
             capacityRegistry.register(functionName, concurrency);
             removedFunctions.remove(functionName);
             metrics.registerFunction(functionName);
+            }
+        } finally {
+            releaseLifecycleLock(functionName, lifecycleLock);
         }
+    }
+
+    private static final class LifecycleLock {
+        private int users;
     }
 
     private void drainRemovedFunction(String functionName) {

@@ -31,6 +31,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class QueueManagerTest {
 
     @Test
+    void lifecycleLocksAreRemovedAfterRepeatedFunctionRemoval() {
+        QueueManager manager = new QueueManager(new SimpleMeterRegistry());
+        FunctionSpec spec = spec("cleanup", 1);
+        for (int i = 0; i < 20; i++) {
+            manager.getOrCreate(spec);
+            manager.remove(spec.name());
+        }
+        assertThat(manager.lifecycleLockCount()).isZero();
+    }
+
+    @Test
     void concurrentRemoveAndRegisterLeavesNewGenerationUsableAndOldSlotSafe() throws Exception {
         QueueManager manager = new QueueManager(new SimpleMeterRegistry());
         FunctionSpec spec = spec("race", 1);

@@ -36,6 +36,21 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 class SyncQueueServiceTest {
 
     @Test
+    void lifecycleLocksAreRemovedAfterRepeatedFunctionRemoval() {
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
+        );
+        SyncQueueService service = createService(props, new ExecutionStore(),
+                new WaitEstimator(Duration.ofSeconds(30), 3),
+                new SyncQueueMetrics(new SimpleMeterRegistry()), Clock.systemUTC());
+        for (int i = 0; i < 20; i++) {
+            service.registerFunction("cleanup", 1);
+            service.removeFunctionState("cleanup");
+        }
+        assertEquals(0, service.lifecycleLockCount());
+    }
+
+    @Test
     void concurrentRemoveAndRegisterLeavesNewGenerationUsableAndOldSlotSafe() throws Exception {
         SyncQueueProperties props = new SyncQueueProperties(
                 true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
