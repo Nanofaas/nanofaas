@@ -54,6 +54,7 @@ class FunctionCapacityRegistryTest {
     void lateReleaseCannotAffectReRegisteredGeneration() {
         FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
         registry.register("echo", 1);
+        FunctionCapacityState oldState = registry.state("echo");
         assertThat(registry.tryAcquireSlot("echo")).isTrue();
 
         registry.remove("echo");
@@ -61,9 +62,36 @@ class FunctionCapacityRegistryTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("active slots");
 
+        assertThat(oldState.tryAcquireSlot()).isFalse();
         assertThat(registry.releaseSlotAndGetHoldNanos("echo")).isGreaterThanOrEqualTo(0);
         registry.register("echo", 1);
         assertThat(registry.tryAcquireSlot("echo")).isTrue();
+        assertThat(oldState.releaseSlotAndGetHoldNanos()).isEqualTo(-1);
+        assertThat(registry.inFlight("echo")).isEqualTo(1);
+    }
+
+    @Test
+    void differentFunctionsDoNotShareLifecycleLock() throws Exception {
+        CountDownLatch firstTimestampEntered = new CountDownLatch(1);
+        CountDownLatch allowFirstTimestamp = new CountDownLatch(1);
+        AtomicBoolean firstRead = new AtomicBoolean(true);
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry(() -> {
+            if (firstRead.getAndSet(false)) {
+                firstTimestampEntered.countDown();
+                await(allowFirstTimestamp);
+            }
+            return 10;
+        });
+        registry.register("first", 1);
+        registry.register("second", 1);
+
+        CompletableFuture<Boolean> first = CompletableFuture.supplyAsync(() -> registry.tryAcquireSlot("first"));
+        assertThat(firstTimestampEntered.await(1, TimeUnit.SECONDS)).isTrue();
+        CompletableFuture<Boolean> second = CompletableFuture.supplyAsync(() -> registry.tryAcquireSlot("second"));
+
+        assertThat(second.get(1, TimeUnit.SECONDS)).isTrue();
+        allowFirstTimestamp.countDown();
+        assertThat(first.get(1, TimeUnit.SECONDS)).isTrue();
     }
 
     @Test

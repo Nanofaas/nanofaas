@@ -4,14 +4,15 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.function.LongSupplier;
 
-public final class FunctionCapacityState {
+final class FunctionCapacityState {
     private final LongSupplier nanoTime;
     private volatile int inFlight;
     private final Deque<Long> acquiredAt = new ArrayDeque<>();
     private volatile int configuredConcurrency;
     private volatile int effectiveConcurrency;
+    private volatile boolean active = true;
 
-    public FunctionCapacityState(int concurrency) {
+    FunctionCapacityState(int concurrency) {
         this(concurrency, System::nanoTime);
     }
 
@@ -21,25 +22,25 @@ public final class FunctionCapacityState {
         effectiveConcurrency = configuredConcurrency;
     }
 
-    public synchronized boolean tryAcquireSlot() {
-        if (inFlight >= effectiveConcurrency) return false;
+    synchronized boolean tryAcquireSlot() {
+        if (!active || inFlight >= effectiveConcurrency) return false;
         inFlight++;
         acquiredAt.addLast(nanoTime.getAsLong());
         return true;
     }
 
-    public synchronized long releaseSlotAndGetHoldNanos() {
+    synchronized long releaseSlotAndGetHoldNanos() {
         if (inFlight == 0) return -1;
         inFlight--;
         Long started = acquiredAt.removeFirst();
         return started == null ? -1 : nanoTime.getAsLong() - started;
     }
 
-    public void releaseSlot() {
+    void releaseSlot() {
         releaseSlotAndGetHoldNanos();
     }
 
-    public synchronized void concurrency(int concurrency) {
+    synchronized void concurrency(int concurrency) {
         int previous = configuredConcurrency;
         int normalized = Math.max(1, concurrency);
         configuredConcurrency = normalized;
@@ -48,12 +49,13 @@ public final class FunctionCapacityState {
         }
     }
 
-    public synchronized void setEffectiveConcurrency(int concurrency) {
+    synchronized void setEffectiveConcurrency(int concurrency) {
         effectiveConcurrency = Math.min(configuredConcurrency, Math.max(1, concurrency));
     }
 
-    public int configuredConcurrency() { return configuredConcurrency; }
-    public int effectiveConcurrency() { return effectiveConcurrency; }
-    public int inFlight() { return inFlight; }
-    public boolean canDispatch() { return inFlight < effectiveConcurrency; }
+    int configuredConcurrency() { return configuredConcurrency; }
+    int effectiveConcurrency() { return effectiveConcurrency; }
+    int inFlight() { return inFlight; }
+    boolean canDispatch() { return active && inFlight < effectiveConcurrency; }
+    void deactivate() { active = false; }
 }

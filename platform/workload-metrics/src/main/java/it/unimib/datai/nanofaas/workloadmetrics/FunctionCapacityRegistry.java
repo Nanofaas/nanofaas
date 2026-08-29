@@ -1,73 +1,109 @@
 package it.unimib.datai.nanofaas.workloadmetrics;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.LongSupplier;
 
 public final class FunctionCapacityRegistry implements WorkloadCapacityController {
     private final LongSupplier nanoTime;
-    private final Map<String, FunctionCapacityState> states = new HashMap<>();
-    private final Map<String, FunctionCapacityState> retiredStates = new HashMap<>();
+    private final ConcurrentHashMap<String, FunctionCapacityState> states = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, FunctionCapacityState> retiredStates = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, ReentrantLock> lifecycleLocks = new ConcurrentHashMap<>();
 
     public FunctionCapacityRegistry() { this(System::nanoTime); }
 
     FunctionCapacityRegistry(LongSupplier nanoTime) { this.nanoTime = nanoTime; }
 
-    public synchronized FunctionCapacityState register(String functionName, int configuredConcurrency) {
-        FunctionCapacityState retired = retiredStates.get(functionName);
-        if (retired != null) {
-            throw new IllegalStateException("Cannot re-register function with active slots: " + functionName);
-        }
-        FunctionCapacityState state = states.get(functionName);
-        if (state == null) {
-            state = new FunctionCapacityState(configuredConcurrency, nanoTime);
-            states.put(functionName, state);
-        } else {
-            state.concurrency(configuredConcurrency);
-        }
-        return state;
+    public void register(String functionName, int configuredConcurrency) {
+        withLock(functionName, () -> {
+            FunctionCapacityState retired = retiredStates.get(functionName);
+            if (retired != null) {
+                if (retired.inFlight() > 0) {
+                    throw new IllegalStateException("Cannot re-register function with active slots: " + functionName);
+                }
+                retiredStates.remove(functionName, retired);
+            }
+            FunctionCapacityState state = states.get(functionName);
+            if (state == null) {
+                states.put(functionName, new FunctionCapacityState(configuredConcurrency, nanoTime));
+            } else {
+                state.concurrency(configuredConcurrency);
+            }
+            return null;
+        });
     }
 
-    public synchronized void remove(String functionName) {
-        FunctionCapacityState state = states.remove(functionName);
-        if (state != null && state.inFlight() > 0) retiredStates.put(functionName, state);
+    public void remove(String functionName) {
+        withLock(functionName, () -> {
+            FunctionCapacityState state = states.remove(functionName);
+            if (state != null) {
+                state.deactivate();
+                if (state.inFlight() > 0) retiredStates.put(functionName, state);
+            }
+            return null;
+        });
     }
 
-    public synchronized FunctionCapacityState state(String functionName) { return states.get(functionName); }
-
-    public synchronized boolean tryAcquireSlot(String functionName) {
-        FunctionCapacityState state = states.get(functionName);
-        return state != null && state.tryAcquireSlot();
+    FunctionCapacityState state(String functionName) {
+        return withLock(functionName, () -> states.get(functionName));
     }
 
-    public synchronized long releaseSlotAndGetHoldNanos(String functionName) {
-        FunctionCapacityState state = states.get(functionName);
-        if (state != null) return state.releaseSlotAndGetHoldNanos();
-        state = retiredStates.get(functionName);
-        if (state == null) return -1;
-        long holdNanos = state.releaseSlotAndGetHoldNanos();
-        if (state.inFlight() == 0) retiredStates.remove(functionName);
-        return holdNanos;
+    public boolean tryAcquireSlot(String functionName) {
+        return withLock(functionName, () -> {
+            FunctionCapacityState state = states.get(functionName);
+            return state != null && state.tryAcquireSlot();
+        });
     }
 
-    public synchronized int configuredConcurrency(String functionName) {
-        FunctionCapacityState state = states.get(functionName);
-        return state == null ? 0 : state.configuredConcurrency();
+    public long releaseSlotAndGetHoldNanos(String functionName) {
+        return withLock(functionName, () -> {
+            FunctionCapacityState state = states.get(functionName);
+            if (state != null) return state.releaseSlotAndGetHoldNanos();
+            state = retiredStates.get(functionName);
+            if (state == null) return -1L;
+            long holdNanos = state.releaseSlotAndGetHoldNanos();
+            if (state.inFlight() == 0) retiredStates.remove(functionName, state);
+            return holdNanos;
+        });
     }
 
-    public synchronized int effectiveConcurrency(String functionName) {
-        FunctionCapacityState state = states.get(functionName);
-        return state == null ? 0 : state.effectiveConcurrency();
+    public int configuredConcurrency(String functionName) {
+        return withLock(functionName, () -> {
+            FunctionCapacityState state = states.get(functionName);
+            return state == null ? 0 : state.configuredConcurrency();
+        });
     }
 
-    public synchronized int inFlight(String functionName) {
-        FunctionCapacityState state = states.get(functionName);
-        return state == null ? 0 : state.inFlight();
+    public int effectiveConcurrency(String functionName) {
+        return withLock(functionName, () -> {
+            FunctionCapacityState state = states.get(functionName);
+            return state == null ? 0 : state.effectiveConcurrency();
+        });
+    }
+
+    public int inFlight(String functionName) {
+        return withLock(functionName, () -> {
+            FunctionCapacityState state = states.get(functionName);
+            return state == null ? 0 : state.inFlight();
+        });
     }
 
     @Override
-    public synchronized void setEffectiveConcurrency(String functionName, int concurrency) {
-        FunctionCapacityState state = states.get(functionName);
-        if (state != null) state.setEffectiveConcurrency(concurrency);
+    public void setEffectiveConcurrency(String functionName, int concurrency) {
+        withLock(functionName, () -> {
+            FunctionCapacityState state = states.get(functionName);
+            if (state != null) state.setEffectiveConcurrency(concurrency);
+            return null;
+        });
+    }
+
+    private <T> T withLock(String functionName, java.util.function.Supplier<T> operation) {
+        ReentrantLock lock = lifecycleLocks.computeIfAbsent(functionName, ignored -> new ReentrantLock());
+        lock.lock();
+        try {
+            return operation.get();
+        } finally {
+            lock.unlock();
+        }
     }
 }
