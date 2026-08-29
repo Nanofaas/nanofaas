@@ -5,7 +5,8 @@ import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentCoordin
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.service.Metrics;
-import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -15,7 +16,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 
 @AutoConfiguration
 @AutoConfigureAfter(name = "it.unimib.datai.nanofaas.modules.asyncqueue.AsyncQueueConfiguration")
-@ConditionalOnBean({ScalingMetricsSource.class, FunctionRegistry.class, Metrics.class})
+@ConditionalOnBean({WorkloadMetricsSource.class, WorkloadCapacityController.class, FunctionRegistry.class, Metrics.class})
 @EnableConfigurationProperties(ConcurrencyControlProperties.class)
 public class ConcurrencyControlConfiguration {
 
@@ -28,15 +29,6 @@ public class ConcurrencyControlConfiguration {
      * computed would be written into that same no-op and enforced by nobody. The module would be
      * entirely inert while its metrics claimed otherwise.
      */
-    public ConcurrencyControlConfiguration(ScalingMetricsSource metricsSource) {
-        if (!metricsSource.enabled()) {
-            throw new IllegalStateException(
-                    "concurrency-control needs a module that supplies queue state (async-queue); "
-                            + "without one the governor reads zeroes and the limits it computes "
-                            + "are enforced by nothing. Add async-queue to the module selection.");
-        }
-    }
-
     @Bean
     StaticPerPodConcurrencyController staticPerPodConcurrencyController() {
         return new StaticPerPodConcurrencyController();
@@ -48,11 +40,19 @@ public class ConcurrencyControlConfiguration {
     }
 
     @Bean
-    ConcurrencyControlCoordinator concurrencyControlCoordinator(ScalingMetricsSource metricsSource,
+    ConcurrencyControlMetrics concurrencyControlMetrics(io.micrometer.core.instrument.MeterRegistry registry) {
+        return new ConcurrencyControlMetrics(registry);
+    }
+
+    @Bean
+    ConcurrencyControlCoordinator concurrencyControlCoordinator(WorkloadMetricsSource metricsSource,
+                                                                WorkloadCapacityController capacityController,
+                                                                ConcurrencyControlMetrics concurrencyMetrics,
                                                                 ConcurrencyControlProperties properties,
                                                                 StaticPerPodConcurrencyController staticController,
                                                                 AdaptivePerPodConcurrencyController adaptiveController) {
-        return new ConcurrencyControlCoordinator(metricsSource, properties, staticController, adaptiveController);
+        return new ConcurrencyControlCoordinator(metricsSource, capacityController, concurrencyMetrics,
+                properties, staticController, adaptiveController);
     }
 
     @Bean
@@ -60,10 +60,13 @@ public class ConcurrencyControlConfiguration {
                                             Metrics metrics,
                                             ConcurrencyControlCoordinator coordinator,
                                             ConcurrencyControlProperties properties,
-                                            ScalingMetricsSource metricsSource,
+                                            WorkloadMetricsSource metricsSource,
+                                            WorkloadCapacityController capacityController,
+                                            ConcurrencyControlMetrics concurrencyMetrics,
                                             ObjectProvider<ManagedDeploymentCoordinator> deploymentCoordinatorProvider) {
         return new ConcurrencyGovernor(registry, metrics, coordinator, properties,
-                deploymentCoordinatorProvider.getIfAvailable(), metricsSource);
+                deploymentCoordinatorProvider.getIfAvailable(), metricsSource, capacityController,
+                concurrencyMetrics);
     }
 
     @Bean

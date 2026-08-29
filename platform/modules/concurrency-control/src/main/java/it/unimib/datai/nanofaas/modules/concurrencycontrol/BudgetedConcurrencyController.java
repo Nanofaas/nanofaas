@@ -2,7 +2,7 @@ package it.unimib.datai.nanofaas.modules.concurrencycontrol;
 
 import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
-import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,6 +19,15 @@ import java.util.Map;
  * do not have to discover each other through interference.</p>
  */
 public class BudgetedConcurrencyController {
+
+    @Deprecated
+    public Map<String, Integer> apply(List<FunctionObservation> observations, int budget,
+                                      it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource source,
+                                      long nowEpochMs) {
+        WorkloadCapacityController capacity = (WorkloadCapacityController) source;
+        return apply(observations, budget, capacity,
+                new ConcurrencyControlMetrics(new io.micrometer.core.instrument.simple.SimpleMeterRegistry(), source), nowEpochMs);
+    }
 
     private final SloDemandEstimator estimator;
     private final ConcurrencyBudgetAllocator allocator;
@@ -45,7 +54,8 @@ public class BudgetedConcurrencyController {
     public Map<String, Integer> apply(
             List<FunctionObservation> observations,
             int budget,
-            ScalingMetricsSource metricsSource,
+            WorkloadCapacityController capacityController,
+            ConcurrencyControlMetrics concurrencyMetrics,
             long nowEpochMs
     ) {
         List<ConcurrencyDemand> demands = new ArrayList<>(observations.size());
@@ -61,8 +71,8 @@ public class BudgetedConcurrencyController {
         for (ConcurrencyDemand demand : demands) {
             int limit = granted.getOrDefault(demand.functionName(), demand.floor());
             estimator.recordGrant(demand.functionName(), limit);
-            metricsSource.setEffectiveConcurrency(demand.functionName(), limit);
-            metricsSource.updateConcurrencyController(
+            capacityController.setEffectiveConcurrency(demand.functionName(), limit);
+            concurrencyMetrics.update(
                     demand.functionName(), ConcurrencyControlMode.BUDGETED, limit);
         }
         return granted;

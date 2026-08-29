@@ -2,7 +2,8 @@ package it.unimib.datai.nanofaas.modules.concurrencycontrol;
 
 import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
-import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
+import it.unimib.datai.nanofaas.controlplane.service.RecordingWorkloadMetricsSource;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
@@ -16,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class BudgetedConcurrencyControllerTest {
 
     private final RecordingMetricsSource metricsSource = new RecordingMetricsSource();
+    private final ConcurrencyControlMetrics concurrencyMetrics = new ConcurrencyControlMetrics(new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
     private final BudgetedConcurrencyController controller = new BudgetedConcurrencyController();
 
     // Ticks have to advance: throughput is completions per unit of time, so a controller handed
@@ -118,7 +120,7 @@ class BudgetedConcurrencyControllerTest {
         assertThat(metricsSource.effective.get("b")).isGreaterThanOrEqualTo(bBefore);
     }
 
-    private static final class RecordingMetricsSource implements ScalingMetricsSource {
+    private static final class RecordingMetricsSource implements RecordingWorkloadMetricsSource {
         private final Map<String, Integer> effective = new HashMap<>();
         private final Map<String, ConcurrencyControlMode> modes = new HashMap<>();
 

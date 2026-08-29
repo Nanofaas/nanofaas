@@ -4,7 +4,7 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ScalingMetric;
-import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,7 +21,7 @@ import static org.mockito.Mockito.*;
 class ScalingMetricsReaderTest {
 
     @Mock
-    private ScalingMetricsSource scalingMetricsSource;
+    private WorkloadMetricsSource scalingMetricsSource;
 
     @Mock
     private MeterRegistry meterRegistry;
@@ -68,7 +68,12 @@ class ScalingMetricsReaderTest {
         // Deliberate asymmetry with concurrency-control, which refuses to start against the no-op:
         // rps is read from a meter here, not from the source, so the autoscaler stays useful.
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        ScalingMetricsReader r = new ScalingMetricsReader(ScalingMetricsSource.noOp(), registry);
+        ScalingMetricsReader r = new ScalingMetricsReader(new WorkloadMetricsSource() {
+            public int queueDepth(String functionName) { return 0; }
+            public int inFlight(String functionName) { return 0; }
+            public int effectiveConcurrency(String functionName) { return 0; }
+            public int dispatchableBacklog(String functionName) { return 0; }
+        }, registry);
 
         assertEquals(0.0, r.readMetric("echo", new ScalingMetric("rps", "1", null)));
         assertEquals(0.0, r.readMetric("echo", new ScalingMetric("queue_depth", "5", null)));

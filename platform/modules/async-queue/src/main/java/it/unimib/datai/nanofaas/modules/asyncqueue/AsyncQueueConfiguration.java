@@ -9,7 +9,7 @@ import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListen
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
-import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
+import it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -20,8 +20,13 @@ public class AsyncQueueConfiguration {
     private static final String FUNCTION_REMOVED = "FUNCTION_REMOVED";
 
     @Bean
-    QueueManager queueManager(MeterRegistry meterRegistry) {
-        return new QueueManager(meterRegistry);
+    FunctionCapacityRegistry asyncQueueCapacityRegistry() {
+        return new FunctionCapacityRegistry();
+    }
+
+    @Bean
+    QueueManager queueManager(MeterRegistry meterRegistry, FunctionCapacityRegistry capacityRegistry) {
+        return new QueueManager(meterRegistry, capacityRegistry);
     }
 
     @Bean
@@ -45,11 +50,6 @@ public class AsyncQueueConfiguration {
         return new QueueBackedEnqueuer(queueManager);
     }
 
-    @Bean
-    @Primary
-    ScalingMetricsSource asyncQueueScalingMetricsSource(AsyncQueueWorkloadMetricsSource source) {
-        return source;
-    }
 
     @Bean
     FunctionRegistrationListener queueLifecycleListener(QueueManager queueManager, ExecutionStore executionStore) {

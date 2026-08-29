@@ -16,7 +16,7 @@ import static org.awaitility.Awaitility.await;
 
 /**
  * Closes the loop the unit tests cannot: the governor's decision has to travel through the
- * {@code ScalingMetricsSource} into the queue module and land on the state that actually gates
+ * {@code WorkloadCapacityController} into the queue module and land on the state that actually gates
  * dispatch. The {@code function_effective_concurrency} gauge is bound to that state, so reading it
  * back proves the whole chain without this module referencing the queue module.
  */

@@ -6,7 +6,7 @@ import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentCoordin
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinator;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
-import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -16,12 +16,12 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 
 @AutoConfiguration
 @AutoConfigureAfter(name = "it.unimib.datai.nanofaas.modules.asyncqueue.AsyncQueueConfiguration")
-@ConditionalOnBean({ScalingMetricsSource.class, MeterRegistry.class, FunctionRegistry.class})
+@ConditionalOnBean({WorkloadMetricsSource.class, MeterRegistry.class, FunctionRegistry.class})
 @EnableConfigurationProperties(ScalingProperties.class)
 public class AutoscalerConfiguration {
 
     @Bean
-    ScalingMetricsReader scalingMetricsReader(ScalingMetricsSource scalingMetricsSource, MeterRegistry meterRegistry) {
+    ScalingMetricsReader scalingMetricsReader(WorkloadMetricsSource scalingMetricsSource, MeterRegistry meterRegistry) {
         return new ScalingMetricsReader(scalingMetricsSource, meterRegistry);
     }
 

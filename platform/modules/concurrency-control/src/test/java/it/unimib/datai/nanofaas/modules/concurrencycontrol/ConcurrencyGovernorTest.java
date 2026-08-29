@@ -10,7 +10,7 @@ import it.unimib.datai.nanofaas.controlplane.registry.DeploymentMetadata;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import it.unimib.datai.nanofaas.controlplane.service.Metrics;
-import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
+import it.unimib.datai.nanofaas.controlplane.service.RecordingWorkloadMetricsSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -248,7 +248,7 @@ class ConcurrencyGovernorTest {
         );
     }
 
-    private static final class RecordingMetricsSource implements ScalingMetricsSource {
+    private static final class RecordingMetricsSource implements RecordingWorkloadMetricsSource {
         private final Map<String, Integer> effectiveConcurrency = new HashMap<>();
         private final Map<String, ConcurrencyControlMode> modes = new HashMap<>();
         private final Map<String, Integer> targets = new HashMap<>();

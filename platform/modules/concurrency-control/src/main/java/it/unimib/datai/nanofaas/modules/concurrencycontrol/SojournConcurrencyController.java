@@ -3,7 +3,8 @@ package it.unimib.datai.nanofaas.modules.concurrencycontrol;
 import it.unimib.datai.nanofaas.common.model.ConcurrencyControlConfig;
 import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
-import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 
 /**
  * Computes the limit a function needs, from what the caller experiences rather than from service
@@ -50,6 +51,14 @@ import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
  * its throughput stays flat.</p>
  */
 public class SojournConcurrencyController {
+
+    @Deprecated
+    public int apply(FunctionObservation observation,
+                     it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource source,
+                     long nowEpochMs) {
+        return apply(observation, source, (it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController) source,
+                new ConcurrencyControlMetrics(new io.micrometer.core.instrument.simple.SimpleMeterRegistry(), source), nowEpochMs);
+    }
 
     /**
      * The share of the queue that counts as pressure. Below it the buffer is doing its job of
@@ -100,7 +109,9 @@ public class SojournConcurrencyController {
      * @return the limit granted, so a caller can log or assert on it without reading it back
      */
     public int apply(
-            FunctionObservation observation, ScalingMetricsSource metricsSource, long nowEpochMs) {
+            FunctionObservation observation, WorkloadMetricsSource metricsSource,
+            WorkloadCapacityController capacityController, ConcurrencyControlMetrics concurrencyMetrics,
+            long nowEpochMs) {
         FunctionSpec spec = observation.spec();
         Bounds bounds = Bounds.of(spec);
         String name = spec.name();
@@ -114,8 +125,8 @@ public class SojournConcurrencyController {
         int limit = decide(bounds, service, sojourn.meanLatencyMs(), queueDepth,
                 observation.inFlight());
 
-        metricsSource.setEffectiveConcurrency(name, limit);
-        metricsSource.updateConcurrencyController(name, ConcurrencyControlMode.SOJOURN, limit);
+        capacityController.setEffectiveConcurrency(name, limit);
+        concurrencyMetrics.update(name, ConcurrencyControlMode.SOJOURN, limit);
         return limit;
     }
 

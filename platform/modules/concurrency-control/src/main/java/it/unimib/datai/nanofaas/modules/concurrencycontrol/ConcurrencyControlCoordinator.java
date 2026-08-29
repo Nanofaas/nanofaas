@@ -4,23 +4,39 @@ import it.unimib.datai.nanofaas.common.model.ConcurrencyControlConfig;
 import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
-import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 
 /**
  * Decides the effective concurrency of one function and publishes it through the
- * {@link ScalingMetricsSource}, which is where the enforcing queue picks it up.
+ * {@link WorkloadCapacityController}, which is where the enforcing queue picks it up.
  */
 public final class ConcurrencyControlCoordinator {
-    private final ScalingMetricsSource metricsSource;
+    @Deprecated
+    public ConcurrencyControlCoordinator(WorkloadMetricsSource metricsSource,
+                                         ConcurrencyControlProperties properties,
+                                         StaticPerPodConcurrencyController staticController,
+                                         AdaptivePerPodConcurrencyController adaptiveController) {
+        this(metricsSource, (WorkloadCapacityController) metricsSource,
+                new ConcurrencyControlMetrics(new io.micrometer.core.instrument.simple.SimpleMeterRegistry(), metricsSource),
+                properties, staticController, adaptiveController);
+    }
+    private final WorkloadMetricsSource metricsSource;
+    private final WorkloadCapacityController capacityController;
+    private final ConcurrencyControlMetrics concurrencyMetrics;
     private final ConcurrencyControlProperties properties;
     private final StaticPerPodConcurrencyController staticConcurrencyController;
     private final AdaptivePerPodConcurrencyController adaptiveConcurrencyController;
 
-    public ConcurrencyControlCoordinator(ScalingMetricsSource metricsSource,
+    public ConcurrencyControlCoordinator(WorkloadMetricsSource metricsSource,
+                                         WorkloadCapacityController capacityController,
+                                         ConcurrencyControlMetrics concurrencyMetrics,
                                          ConcurrencyControlProperties properties,
                                          StaticPerPodConcurrencyController staticConcurrencyController,
                                          AdaptivePerPodConcurrencyController adaptiveConcurrencyController) {
         this.metricsSource = metricsSource;
+        this.capacityController = capacityController;
+        this.concurrencyMetrics = concurrencyMetrics;
         this.properties = properties;
         this.staticConcurrencyController = staticConcurrencyController;
         this.adaptiveConcurrencyController = adaptiveConcurrencyController;
@@ -59,8 +75,8 @@ public final class ConcurrencyControlCoordinator {
             );
         }
 
-        metricsSource.setEffectiveConcurrency(functionName, effectiveConcurrency);
-        metricsSource.updateConcurrencyController(functionName, controllerMode, targetInFlightPerPod);
+        capacityController.setEffectiveConcurrency(functionName, effectiveConcurrency);
+        concurrencyMetrics.update(functionName, controllerMode, targetInFlightPerPod);
     }
 
     public void removeFunctionState(String functionName) {

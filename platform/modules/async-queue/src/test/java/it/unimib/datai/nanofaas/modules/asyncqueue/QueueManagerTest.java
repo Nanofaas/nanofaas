@@ -238,7 +238,7 @@ class QueueManagerTest {
     }
 
     @Test
-    void getOrCreate_registersConcurrencyControllerGaugesWithFixedDefaults() {
+    void getOrCreate_registersProviderGauges() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         QueueManager manager = new QueueManager(registry);
         FunctionSpec spec = new FunctionSpec(
@@ -265,52 +265,6 @@ class QueueManagerTest {
                 .toList();
         assertThat(meters).extracting(meter -> meter.getId().getName())
                 .contains("function_queue_depth_by_path");
-        assertThat(registry.get("function_target_inflight_per_pod")
-                .tag("function", "echo")
-                .gauge()
-                .value()).isEqualTo(0.0);
-        assertThat(registry.get("function_concurrency_controller_mode")
-                .tags("function", "echo", "mode", ConcurrencyControlMode.FIXED.name())
-                .gauge()
-                .value()).isEqualTo(1.0);
-    }
-
-    @Test
-    void updateConcurrencyController_updatesModeAndTargetGauges() {
-        SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        QueueManager manager = new QueueManager(registry);
-        FunctionSpec spec = new FunctionSpec(
-                "echo",
-                "image",
-                null,
-                Map.of(),
-                null,
-                1000,
-                12,
-                10,
-                3,
-                null,
-                ExecutionMode.DEPLOYMENT,
-                null,
-                null,
-                null
-        );
-        manager.getOrCreate(spec);
-
-        manager.updateConcurrencyController("echo", ConcurrencyControlMode.STATIC_PER_POD, 3);
-
-        assertThat(registry.get("function_target_inflight_per_pod")
-                .tag("function", "echo")
-                .gauge()
-                .value()).isEqualTo(3.0);
-        assertThat(registry.get("function_concurrency_controller_mode")
-                .tags("function", "echo", "mode", ConcurrencyControlMode.STATIC_PER_POD.name())
-                .gauge()
-                .value()).isEqualTo(1.0);
-        assertThat(registry.get("function_concurrency_controller_mode")
-                .tags("function", "echo", "mode", ConcurrencyControlMode.FIXED.name())
-                .gauge()
-                .value()).isEqualTo(0.0);
     }
 
     @Test

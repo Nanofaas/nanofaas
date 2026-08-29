@@ -1,6 +1,5 @@
 package it.unimib.datai.nanofaas.modules.asyncqueue;
 
-import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import io.micrometer.core.instrument.Counter;
@@ -25,7 +24,6 @@ public class QueueManager {
     private final Map<String, List<Meter.Id>> meterIds = new ConcurrentHashMap<>();
     private final Map<String, DiagnosticMeters> diagnosticMeters = new ConcurrentHashMap<>();
     private final MeterRegistry meterRegistry;
-    private final QueueConcurrencyControlMetrics concurrencyMetrics;
     private final FunctionCapacityRegistry capacityRegistry;
     private final WorkloadDiagnostics workloadDiagnostics;
     private final WorkloadMetricsBinder workloadMetricsBinder;
@@ -42,11 +40,14 @@ public class QueueManager {
     QueueManager(MeterRegistry meterRegistry, WorkloadDiagnostics workloadDiagnostics,
                  FunctionCapacityRegistry capacityRegistry) {
         this.meterRegistry = meterRegistry;
-        this.concurrencyMetrics = new QueueConcurrencyControlMetrics(meterRegistry);
         this.workloadDiagnostics = workloadDiagnostics;
         this.capacityRegistry = capacityRegistry;
         this.workloadMetricsBinder = new WorkloadMetricsBinder(
                 meterRegistry, new AsyncQueueWorkloadMetricsSource(this));
+    }
+
+    QueueManager(MeterRegistry meterRegistry, FunctionCapacityRegistry capacityRegistry) {
+        this(meterRegistry, new WorkloadDiagnostics(meterRegistry), capacityRegistry);
     }
 
     WorkloadMetricsBinder workloadMetricsBinder() { return workloadMetricsBinder; }
@@ -131,11 +132,6 @@ public class QueueManager {
                         new DiagnosticMeters(wakeupDelay, pollDelay, activationBookkeepingDuration,
                                 signalEnqueueDuration, batchLimit, signalCoalesced)
                 );
-                concurrencyMetrics.ensureRegistered(
-                        name,
-                        resolveMode(spec),
-                        resolveTargetInFlightPerPod(spec)
-                );
                 meterIds.put(name, ids);
                 return state;
             }
@@ -157,7 +153,6 @@ public class QueueManager {
         try {
             synchronized (lifecycleLock) {
             FunctionQueueState removed = queues.remove(name);
-            concurrencyMetrics.remove(name);
             diagnosticMeters.remove(name);
             capacityRegistry.remove(name);
             workloadDiagnostics.removeFunction(name);
@@ -291,12 +286,6 @@ public class QueueManager {
         capacityRegistry.setEffectiveConcurrency(functionName, effectiveConcurrency);
     }
 
-    public void updateConcurrencyController(String functionName,
-                                            ConcurrencyControlMode mode,
-                                            int targetInFlightPerPod) {
-        concurrencyMetrics.ensureRegistered(functionName, mode, targetInFlightPerPod);
-        concurrencyMetrics.update(functionName, mode, targetInFlightPerPod);
-    }
 
     public void releaseSlot(String functionName) {
         long holdNanos = capacityRegistry.releaseSlotAndGetHoldNanos(functionName);
@@ -323,23 +312,6 @@ public class QueueManager {
                 && queues.get(functionName) == expectedState) {
             notifyWork(functionName);
         }
-    }
-
-    private static ConcurrencyControlMode resolveMode(FunctionSpec spec) {
-        if (spec.scalingConfig() == null
-                || spec.scalingConfig().concurrencyControl() == null
-                || spec.scalingConfig().concurrencyControl().mode() == null) {
-            return ConcurrencyControlMode.FIXED;
-        }
-        return spec.scalingConfig().concurrencyControl().mode();
-    }
-
-    private static int resolveTargetInFlightPerPod(FunctionSpec spec) {
-        if (spec.scalingConfig() == null || spec.scalingConfig().concurrencyControl() == null) {
-            return 0;
-        }
-        Integer target = spec.scalingConfig().concurrencyControl().targetInFlightPerPod();
-        return target == null ? 0 : Math.max(0, target);
     }
 
     private record DiagnosticMeters(

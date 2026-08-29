@@ -2,7 +2,7 @@ package it.unimib.datai.nanofaas.modules.concurrencycontrol;
 
 import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
-import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
+import it.unimib.datai.nanofaas.controlplane.service.RecordingWorkloadMetricsSource;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -175,7 +175,7 @@ class SojournConcurrencyControllerTest {
         assertThat(reopened).isEqualTo(1);
     }
 
-    private static final class RecordingMetricsSource implements ScalingMetricsSource {
+    private static final class RecordingMetricsSource implements RecordingWorkloadMetricsSource {
         private final Map<String, Integer> effective = new HashMap<>();
         private final Map<String, ConcurrencyControlMode> modes = new HashMap<>();
         private final Map<String, Integer> queueDepths = new HashMap<>();

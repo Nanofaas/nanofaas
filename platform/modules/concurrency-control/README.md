@@ -12,7 +12,7 @@ the queue module's hot path.
   service-time timer, then hands both to the coordinator.
 - `ConcurrencyControlCoordinator` — picks the controller for the function's
   `concurrencyControl.mode` and publishes the result through
-  `ScalingMetricsSource.setEffectiveConcurrency` / `updateConcurrencyController`.
+  `WorkloadCapacityController` and `ConcurrencyControlMetrics`.
 - `StaticPerPodConcurrencyController` — `min(readyReplicas × targetInFlightPerPod, concurrency)`.
 - `AdaptivePerPodConcurrencyController` — latency-gradient (TCP-Vegas style)
   hill climber over the per-replica target.
@@ -122,7 +122,7 @@ rejected with 400 rather than silently ignored.
   many replicas exist, so functions with `ScalingStrategy.NONE` or an external
   HPA are governed too.
 - Needs an enforcing queue: without the async-queue module the core no-op
-  `ScalingMetricsSource` swallows the decision and nothing is limited.
+  no queue provider receives the decision and nothing is limited.
 - `function_effective_concurrency`, `function_target_inflight_per_pod` and
   `function_concurrency_controller_mode` are only exported under
   `nanofaas.metrics.profile=advanced`.

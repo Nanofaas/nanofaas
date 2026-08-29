@@ -8,7 +8,8 @@ import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerLifecycleSupport;
 import it.unimib.datai.nanofaas.controlplane.service.Metrics;
-import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.SmartLifecycle;
@@ -30,6 +31,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * external HPA) still gets a governed concurrency limit.</p>
  */
 public class ConcurrencyGovernor implements SmartLifecycle {
+    @Deprecated
+    public ConcurrencyGovernor(FunctionRegistry registry, Metrics metrics, ConcurrencyControllers controllers,
+                               ConcurrencyControlProperties properties, ManagedDeploymentCoordinator deployment,
+                               WorkloadMetricsSource source, InstantSource clock) {
+        this(registry, metrics, controllers, properties, deployment, source,
+                (WorkloadCapacityController) source,
+                new ConcurrencyControlMetrics(new io.micrometer.core.instrument.simple.SimpleMeterRegistry(), source), clock);
+    }
     private static final Logger log = LoggerFactory.getLogger(ConcurrencyGovernor.class);
 
     private final FunctionRegistry registry;
@@ -37,7 +46,9 @@ public class ConcurrencyGovernor implements SmartLifecycle {
     private final ConcurrencyControlCoordinator coordinator;
     private final ConcurrencyControlProperties properties;
     private final ManagedDeploymentCoordinator deploymentCoordinator;
-    private final ScalingMetricsSource metricsSource;
+    private final WorkloadMetricsSource metricsSource;
+    private final WorkloadCapacityController capacityController;
+    private final ConcurrencyControlMetrics concurrencyMetrics;
     private final BudgetedConcurrencyController budgetedController;
     private final SojournConcurrencyController sojournController;
     private final InstantSource clock;
@@ -49,10 +60,13 @@ public class ConcurrencyGovernor implements SmartLifecycle {
                                ConcurrencyControlCoordinator coordinator,
                                ConcurrencyControlProperties properties,
                                ManagedDeploymentCoordinator deploymentCoordinator,
-                               ScalingMetricsSource metricsSource) {
+                               WorkloadMetricsSource metricsSource,
+                               WorkloadCapacityController capacityController,
+                               ConcurrencyControlMetrics concurrencyMetrics) {
         this(registry, metrics,
                 new ConcurrencyControllers(coordinator, new BudgetedConcurrencyController()),
-                properties, deploymentCoordinator, metricsSource, InstantSource.system());
+                properties, deploymentCoordinator, metricsSource, capacityController, concurrencyMetrics,
+                InstantSource.system());
     }
 
     /**
@@ -76,7 +90,9 @@ public class ConcurrencyGovernor implements SmartLifecycle {
                                ConcurrencyControllers controllers,
                                ConcurrencyControlProperties properties,
                                ManagedDeploymentCoordinator deploymentCoordinator,
-                               ScalingMetricsSource metricsSource,
+                               WorkloadMetricsSource metricsSource,
+                               WorkloadCapacityController capacityController,
+                               ConcurrencyControlMetrics concurrencyMetrics,
                                InstantSource clock) {
         this.registry = registry;
         this.metrics = metrics;
@@ -86,6 +102,8 @@ public class ConcurrencyGovernor implements SmartLifecycle {
         this.properties = properties;
         this.deploymentCoordinator = deploymentCoordinator;
         this.metricsSource = metricsSource;
+        this.capacityController = capacityController;
+        this.concurrencyMetrics = concurrencyMetrics;
         this.clock = clock;
     }
 
@@ -144,7 +162,7 @@ public class ConcurrencyGovernor implements SmartLifecycle {
             // respected by a decision taken one function at a time.
             if (!budgeted.isEmpty()) {
                 budgetedController.apply(
-                        budgeted, properties.totalBudgetOrDefault(), metricsSource, now);
+                        budgeted, properties.totalBudgetOrDefault(), capacityController, concurrencyMetrics, now);
             }
         } catch (Exception ex) {
             log.error("Error in concurrency governor loop", ex);
@@ -171,7 +189,7 @@ public class ConcurrencyGovernor implements SmartLifecycle {
                             e2e.totalTime(TimeUnit.MILLISECONDS),
                             service.count(),
                             service.totalTime(TimeUnit.MILLISECONDS)),
-                    metricsSource,
+                    metricsSource, capacityController, concurrencyMetrics,
                     nowEpochMs);
         } catch (Exception ex) {
             log.error("Error governing sojourn concurrency for function {}",

@@ -15,12 +15,6 @@ class ServiceDefaultsConfiguration {
     }
 
     @Bean
-    @ConditionalOnMissingBean(ScalingMetricsSource.class)
-    ScalingMetricsSource scalingMetricsSource() {
-        return ScalingMetricsSource.noOp();
-    }
-
-    @Bean
     FunctionRegistrationListener metricsLifecycleListener(Metrics metrics) {
         return new FunctionRegistrationListener() {
             @Override
