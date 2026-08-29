@@ -45,7 +45,8 @@ class RepositoryModuleDescriptorsTest {
 
         for (ModuleDescriptor descriptor : descriptors) {
             java.util.stream.Stream.of(
-                            descriptor.strongRequirements(), descriptor.weakRequirements(), descriptor.conflicts())
+                            descriptor.strongRequirements(), descriptor.oneOfRequirements(),
+                            descriptor.weakRequirements(), descriptor.conflicts())
                     .flatMap(java.util.Collection::stream)
                     .forEach(reference -> assertThat(moduleIds).contains(reference));
         }

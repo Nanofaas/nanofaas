@@ -38,7 +38,8 @@ sync-queue:
 
 ## Notes
 
-- Depends on the async-queue module's classes (shared queue/slot machinery).
+- Publishes the same common workload metrics as `async-queue` through the
+  shared `workload-metrics` library; the two queue modules are alternatives.
 - Test tip: `ControlPlaneApiTest`-style tests need `sync-queue.enabled=false` —
   with no throughput history the admission controller rejects with `est_wait`,
   causing false 429s.

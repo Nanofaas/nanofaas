@@ -3,6 +3,9 @@
 ## Metrics (Prometheus)
 
 - function_queue_depth{function}
+- function_inFlight{function}
+- function_effective_concurrency{function}
+- function_dispatchable_backlog{function}
 - function_enqueue_total{function}
 - function_dispatch_total{function}
 - function_success_total{function}
@@ -12,6 +15,10 @@
 - function_cold_start_ms{function}
 - scheduler_tick_ms
 - dispatcher_k8s_latency_ms
+
+`async-queue` and `sync-queue` are alternative providers of the four common
+per-function workload gauges above. Dashboards, HPA rules, and autoscaling
+should use those names independently of the selected queue module.
 
 ### Sync Queue Metrics
 
@@ -26,7 +33,7 @@
 - Rising `sync_queue_depth{function}` together with flat `function_dispatch_total{function}` usually means admission is succeeding faster than dispatch slots reopen.
 - A high `sync_queue_rejected_total{function}` with low depth points to estimated-wait rejection, not raw queue-capacity exhaustion.
 - If `function_dispatch_total{function}` keeps growing but `function_success_total{function}` and `function_error_total{function}` lag, look at completion latency rather than scheduler fairness.
-- For async queue workloads, compare queue depth against `function_inFlight{function}` and `function_effective_concurrency{function}`. Persistent depth with low in-flight implies the function is under-provisioned or slot-limited; persistent depth with high in-flight implies the runtime itself is slow.
+- Compare queue depth against `function_inFlight{function}` and `function_effective_concurrency{function}` for either queue provider. Persistent depth with low in-flight implies the function is under-provisioned or slot-limited; persistent depth with high in-flight implies the runtime itself is slow.
 - After the fairness changes, short bursts from colder functions should still show dispatch growth even while one hot function maintains backlog. If one function's dispatch counter starves completely while others are active, that is now a regression signal.
 
 ### Autoscaler Interpretation

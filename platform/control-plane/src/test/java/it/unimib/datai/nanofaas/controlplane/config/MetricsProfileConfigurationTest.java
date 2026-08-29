@@ -86,7 +86,6 @@ class MetricsProfileConfigurationTest {
                 "function_scheduler_dispatch_submit_duration",
                 "function_queue_offer_duration",
                 "function_queue_poll_duration",
-                "function_dispatch_slot_hold_duration",
                 "scheduler_visit_duration",
                 "scheduler_idle_duration",
         };
@@ -110,12 +109,13 @@ class MetricsProfileConfigurationTest {
     }
 
     @Test
-    void basicDropsSlotHoldAggregateCountersAndAdvancedKeepsThem() {
+    void basicDropsSharedDiagnosticCountersAndAdvancedKeepsThem() {
         SimpleMeterRegistry basic = registryFor(MetricsProfileConfiguration.MetricsProfile.BASIC);
         SimpleMeterRegistry advanced = registryFor(MetricsProfileConfiguration.MetricsProfile.ADVANCED);
         String[] names = {
                 "function_dispatch_slot_hold_seconds",
                 "function_dispatch_slot_hold_events",
+                "function_scheduler_slot_blocked",
         };
 
         for (String name : names) {
