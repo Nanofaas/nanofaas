@@ -13,16 +13,11 @@ public final class FunctionCapacityRegistry implements WorkloadCapacityControlle
     FunctionCapacityRegistry(LongSupplier nanoTime) { this.nanoTime = nanoTime; }
 
     public FunctionCapacityState register(String functionName, int configuredConcurrency) {
-        return register(functionName, configuredConcurrency, false);
-    }
-
-    public FunctionCapacityState register(String functionName, int configuredConcurrency,
-                                          boolean replaceRetiredGeneration) {
         Entry entry = entries.computeIfAbsent(functionName, ignored -> new Entry());
         entry.lock.lock();
         try {
             if (entries.get(functionName) != entry) {
-                return register(functionName, configuredConcurrency, replaceRetiredGeneration);
+                return register(functionName, configuredConcurrency);
             }
             FunctionCapacityState state = entry.state;
             if (state == null || !state.isActive()) {
