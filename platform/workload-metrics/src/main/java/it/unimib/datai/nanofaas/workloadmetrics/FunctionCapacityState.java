@@ -4,43 +4,52 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.function.LongSupplier;
 
-final class FunctionCapacityState {
+public final class FunctionCapacityState {
     private final LongSupplier nanoTime;
+    private final Runnable onDrained;
     private volatile int inFlight;
     private final Deque<Long> acquiredAt = new ArrayDeque<>();
     private volatile int configuredConcurrency;
     private volatile int effectiveConcurrency;
     private volatile boolean active = true;
 
-    FunctionCapacityState(int concurrency) {
-        this(concurrency, System::nanoTime);
+    public FunctionCapacityState(int concurrency) { this(concurrency, System::nanoTime, null); }
+
+    public FunctionCapacityState(int concurrency, LongSupplier nanoTime) {
+        this(concurrency, nanoTime, null);
     }
 
-    FunctionCapacityState(int concurrency, LongSupplier nanoTime) {
+    FunctionCapacityState(int concurrency, LongSupplier nanoTime, Runnable onDrained) {
         this.nanoTime = nanoTime;
+        this.onDrained = onDrained;
         configuredConcurrency = Math.max(1, concurrency);
         effectiveConcurrency = configuredConcurrency;
     }
 
-    synchronized boolean tryAcquireSlot() {
+    public synchronized boolean tryAcquireSlot() {
         if (!active || inFlight >= effectiveConcurrency) return false;
         inFlight++;
         acquiredAt.addLast(nanoTime.getAsLong());
         return true;
     }
 
-    synchronized long releaseSlotAndGetHoldNanos() {
-        if (inFlight == 0) return -1;
-        inFlight--;
-        Long started = acquiredAt.removeFirst();
-        return started == null ? -1 : nanoTime.getAsLong() - started;
+    public long releaseSlotAndGetHoldNanos() {
+        long holdNanos;
+        boolean drained;
+        synchronized (this) {
+            if (inFlight == 0) return -1;
+            inFlight--;
+            Long started = acquiredAt.removeFirst();
+            holdNanos = started == null ? -1 : nanoTime.getAsLong() - started;
+            drained = !active && inFlight == 0;
+        }
+        if (drained && onDrained != null) onDrained.run();
+        return holdNanos;
     }
 
-    void releaseSlot() {
-        releaseSlotAndGetHoldNanos();
-    }
+    public void releaseSlot() { releaseSlotAndGetHoldNanos(); }
 
-    synchronized void concurrency(int concurrency) {
+    public synchronized void concurrency(int concurrency) {
         int previous = configuredConcurrency;
         int normalized = Math.max(1, concurrency);
         configuredConcurrency = normalized;
@@ -49,13 +58,14 @@ final class FunctionCapacityState {
         }
     }
 
-    synchronized void setEffectiveConcurrency(int concurrency) {
+    public synchronized void setEffectiveConcurrency(int concurrency) {
         effectiveConcurrency = Math.min(configuredConcurrency, Math.max(1, concurrency));
     }
 
-    int configuredConcurrency() { return configuredConcurrency; }
-    int effectiveConcurrency() { return effectiveConcurrency; }
-    int inFlight() { return inFlight; }
-    boolean canDispatch() { return active && inFlight < effectiveConcurrency; }
-    void deactivate() { active = false; }
+    public int configuredConcurrency() { return configuredConcurrency; }
+    public int effectiveConcurrency() { return effectiveConcurrency; }
+    public int inFlight() { return inFlight; }
+    public boolean canDispatch() { return active && inFlight < effectiveConcurrency; }
+    public boolean isActive() { return active; }
+    public synchronized void deactivate() { active = false; }
 }

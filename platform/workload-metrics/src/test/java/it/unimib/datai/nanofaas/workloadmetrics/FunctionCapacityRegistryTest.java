@@ -19,8 +19,9 @@ class FunctionCapacityRegistryTest {
     void capacityIsBoundedAndReleaseReturnsHoldDuration() {
         AtomicLong clock = new AtomicLong(10);
         FunctionCapacityRegistry registry = new FunctionCapacityRegistry(clock::get);
-        registry.register("echo", 2);
+        FunctionCapacityState returned = registry.register("echo", 2);
 
+        assertThat(returned).isSameAs(registry.state("echo"));
         assertThat(registry.configuredConcurrency("echo")).isEqualTo(2);
         assertThat(registry.inFlight("echo")).isZero();
         assertThat(registry.tryAcquireSlot("echo")).isTrue();
@@ -53,8 +54,7 @@ class FunctionCapacityRegistryTest {
     @Test
     void lateReleaseCannotAffectReRegisteredGeneration() {
         FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
-        registry.register("echo", 1);
-        FunctionCapacityState oldState = registry.state("echo");
+        FunctionCapacityState oldState = registry.register("echo", 1);
         assertThat(registry.tryAcquireSlot("echo")).isTrue();
 
         registry.remove("echo");
@@ -63,11 +63,43 @@ class FunctionCapacityRegistryTest {
                 .hasMessageContaining("active slots");
 
         assertThat(oldState.tryAcquireSlot()).isFalse();
-        assertThat(registry.releaseSlotAndGetHoldNanos("echo")).isGreaterThanOrEqualTo(0);
+        assertThat(oldState.releaseSlotAndGetHoldNanos()).isGreaterThanOrEqualTo(0);
         registry.register("echo", 1);
         assertThat(registry.tryAcquireSlot("echo")).isTrue();
         assertThat(oldState.releaseSlotAndGetHoldNanos()).isEqualTo(-1);
         assertThat(registry.inFlight("echo")).isEqualTo(1);
+    }
+
+    @Test
+    void removedReturnedStateCannotAcquireAndLateDirectReleaseDoesNotTouchNewGeneration() {
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        FunctionCapacityState oldState = registry.register("echo", 1);
+        assertThat(oldState.tryAcquireSlot()).isTrue();
+
+        registry.remove("echo");
+        assertThat(oldState.tryAcquireSlot()).isFalse();
+
+        assertThatThrownBy(() -> registry.register("echo", 1)).isInstanceOf(IllegalStateException.class);
+        assertThat(oldState.releaseSlotAndGetHoldNanos()).isGreaterThanOrEqualTo(0);
+
+        FunctionCapacityState newState = registry.register("echo", 1);
+        assertThat(newState).isNotSameAs(oldState);
+        assertThat(newState.tryAcquireSlot()).isTrue();
+        assertThat(oldState.releaseSlotAndGetHoldNanos()).isEqualTo(-1);
+        assertThat(registry.inFlight("echo")).isEqualTo(1);
+    }
+
+    @Test
+    void uniqueRemovedFunctionsDoNotRetainLifecycleEntries() {
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+
+        for (int i = 0; i < 1_000; i++) {
+            String functionName = "function-" + i;
+            registry.register(functionName, 1);
+            registry.remove(functionName);
+        }
+
+        assertThat(registry.entryCount()).isZero();
     }
 
     @Test
