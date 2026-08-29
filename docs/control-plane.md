@@ -111,9 +111,9 @@ concurrency. The module declares `requires.oneOf=async-queue,sync-queue`, so
 exactly one provider must be selected; it **refuses to start** when neither is
 present.
 
-`autoscaler` reads the same source but is not fatal without it: the `rps` metric
-comes from a meter, not from the source, so only `queue_depth` and `in_flight`
-scaling go blind. Those log a warning on first use.
+`autoscaler` requires one of `async-queue` or `sync-queue`; its workload metrics
+source is supplied by the selected provider. The Gradle module selector rejects
+an autoscaler selection without a queue provider.
 
 Image validation is **not** a standalone module: each deployment provider owns
 its validator (`KubernetesImageValidator`, `DockerImageValidator`) and

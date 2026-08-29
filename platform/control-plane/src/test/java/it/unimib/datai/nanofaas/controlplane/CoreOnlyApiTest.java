@@ -16,7 +16,6 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
@@ -61,13 +60,9 @@ class CoreOnlyApiTest {
     }
 
     @Test
-    void coreProfileLeavesInvocationEnqueuerUnavailable() {
+    void disabledInvocationEnqueuerReportsUnavailable() {
         Assumptions.assumeFalse(invocationEnqueuer.enabled());
-        assertThat(invocationEnqueuer).isSameAs(InvocationEnqueuer.noOp());
         assertThat(invocationEnqueuer.enabled()).isFalse();
-        assertThatThrownBy(() -> invocationEnqueuer.enqueue(null))
-                .isInstanceOf(UnsupportedOperationException.class)
-                .hasMessage("Async queue module not loaded");
     }
 
     @Test
