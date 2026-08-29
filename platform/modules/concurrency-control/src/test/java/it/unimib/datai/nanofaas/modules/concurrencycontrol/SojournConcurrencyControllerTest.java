@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.modules.concurrencycontrol;
 import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.service.RecordingWorkloadMetricsSource;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -17,6 +18,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SojournConcurrencyControllerTest {
 
     private final RecordingMetricsSource metricsSource = new RecordingMetricsSource();
+    private final ConcurrencyControlMetrics concurrencyMetrics =
+            new ConcurrencyControlMetrics(new SimpleMeterRegistry(), metricsSource);
     private final SojournConcurrencyController controller = new SojournConcurrencyController();
 
     // Cumulative timers, so ticks advance and totals accumulate: handed the same instant twice the
@@ -40,7 +43,7 @@ class SojournConcurrencyControllerTest {
         return controller.apply(
                 new SojournConcurrencyController.FunctionObservation(
                         spec, inFlight, served, e2eTotalMs, served, serviceTotalMs),
-                metricsSource,
+                metricsSource, metricsSource, concurrencyMetrics,
                 tickAt);
     }
 

@@ -17,7 +17,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class BudgetedConcurrencyControllerTest {
 
     private final RecordingMetricsSource metricsSource = new RecordingMetricsSource();
-    private final ConcurrencyControlMetrics concurrencyMetrics = new ConcurrencyControlMetrics(new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
+    private final ConcurrencyControlMetrics concurrencyMetrics =
+            new ConcurrencyControlMetrics(new io.micrometer.core.instrument.simple.SimpleMeterRegistry(), metricsSource);
     private final BudgetedConcurrencyController controller = new BudgetedConcurrencyController();
 
     // Ticks have to advance: throughput is completions per unit of time, so a controller handed
@@ -41,7 +42,7 @@ class BudgetedConcurrencyControllerTest {
         List<BudgetedConcurrencyController.FunctionObservation> first = List.of(
                 observation(a, 8, 0, 0), observation(b, 8, 0, 0));
 
-        controller.apply(first, 20, metricsSource, nextTick());
+        controller.apply(first, 20, metricsSource, concurrencyMetrics, nextTick());
         // Both inside their SLO and both busy enough for the knee to be well above the budget,
         // so the budget is what binds rather than the knee.
         for (int round = 0; round < 5; round++) {
@@ -49,7 +50,7 @@ class BudgetedConcurrencyControllerTest {
             controller.apply(
                     List.of(observation(a, 8, served, served * 5), observation(b, 8, served, served * 5)),
                     20,
-                    metricsSource, nextTick());
+                    metricsSource, concurrencyMetrics, nextTick());
         }
 
         assertThat(metricsSource.effective.values().stream().mapToInt(Integer::intValue).sum())
@@ -60,7 +61,8 @@ class BudgetedConcurrencyControllerTest {
     void a_stricter_slo_is_served_before_a_looser_one_when_the_budget_is_short() {
         FunctionSpec gold = spec("gold", 64, budgetedControl(50, 4));
         FunctionSpec bulk = spec("bulk", 64, budgetedControl(50, 1));
-        controller.apply(List.of(observation(gold, 8, 0, 0), observation(bulk, 8, 0, 0)), 16, metricsSource, nextTick());
+        controller.apply(List.of(observation(gold, 8, 0, 0), observation(bulk, 8, 0, 0)), 16,
+                metricsSource, concurrencyMetrics, nextTick());
 
         // Both want far more than 16 between them, so the weights are what decides.
         for (int round = 0; round < 5; round++) {
@@ -70,7 +72,7 @@ class BudgetedConcurrencyControllerTest {
                             observation(gold, 8, served, served * 5),
                             observation(bulk, 8, served, served * 5)),
                     16,
-                    metricsSource, nextTick());
+                    metricsSource, concurrencyMetrics, nextTick());
         }
 
         assertThat(metricsSource.effective.get("gold"))
@@ -82,7 +84,8 @@ class BudgetedConcurrencyControllerTest {
         FunctionSpec a = spec("a", 64, budgetedControl(100, 1));
         FunctionSpec b = spec("b", 64, budgetedControl(100, 50));
 
-        controller.apply(List.of(observation(a, 1, 0, 0), observation(b, 1, 0, 0)), 4, metricsSource, nextTick());
+        controller.apply(List.of(observation(a, 1, 0, 0), observation(b, 1, 0, 0)), 4,
+                metricsSource, concurrencyMetrics, nextTick());
 
         assertThat(metricsSource.effective.values()).allSatisfy(
                 limit -> assertThat(limit).isGreaterThanOrEqualTo(1));
@@ -92,7 +95,8 @@ class BudgetedConcurrencyControllerTest {
     void publishes_the_mode_so_the_limit_can_be_attributed() {
         FunctionSpec a = spec("a", 64, budgetedControl(100, 1));
 
-        controller.apply(List.of(observation(a, 2, 0, 0)), 32, metricsSource, nextTick());
+        controller.apply(List.of(observation(a, 2, 0, 0)), 32,
+                metricsSource, concurrencyMetrics, nextTick());
 
         assertThat(metricsSource.modes).containsEntry("a", ConcurrencyControlMode.BUDGETED);
     }
@@ -103,18 +107,19 @@ class BudgetedConcurrencyControllerTest {
         // decided in one place instead of discovered through interference.
         FunctionSpec a = spec("a", 64, budgetedControl(100, 1));
         FunctionSpec b = spec("b", 64, budgetedControl(100, 1));
-        controller.apply(List.of(observation(a, 8, 0, 0), observation(b, 8, 0, 0)), 24, metricsSource, nextTick());
+        controller.apply(List.of(observation(a, 8, 0, 0), observation(b, 8, 0, 0)), 24,
+                metricsSource, concurrencyMetrics, nextTick());
         controller.apply(
                 List.of(observation(a, 8, 1000, 20_000), observation(b, 8, 1000, 20_000)),
                 24,
-                metricsSource, nextTick());
+                metricsSource, concurrencyMetrics, nextTick());
         int bBefore = metricsSource.effective.get("b");
 
         // `a` is now far outside its SLO while `b` is well inside it.
         controller.apply(
                 List.of(observation(a, 8, 2000, 620_000), observation(b, 8, 2000, 40_000)),
                 24,
-                metricsSource, nextTick());
+                metricsSource, concurrencyMetrics, nextTick());
 
         assertThat(metricsSource.effective.get("a")).isLessThan(metricsSource.effective.get("b"));
         assertThat(metricsSource.effective.get("b")).isGreaterThanOrEqualTo(bBefore);

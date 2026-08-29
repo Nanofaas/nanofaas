@@ -52,14 +52,6 @@ import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
  */
 public class SojournConcurrencyController {
 
-    @Deprecated
-    public int apply(FunctionObservation observation,
-                     it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource source,
-                     long nowEpochMs) {
-        return apply(observation, source, (it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController) source,
-                new ConcurrencyControlMetrics(new io.micrometer.core.instrument.simple.SimpleMeterRegistry(), source), nowEpochMs);
-    }
-
     /**
      * The share of the queue that counts as pressure. Below it the buffer is doing its job of
      * absorbing bursts; above it the next burst is refused, and the limit is the only lever left.

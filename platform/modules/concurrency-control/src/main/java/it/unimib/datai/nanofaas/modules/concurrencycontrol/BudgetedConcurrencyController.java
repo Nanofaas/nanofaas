@@ -20,15 +20,6 @@ import java.util.Map;
  */
 public class BudgetedConcurrencyController {
 
-    @Deprecated
-    public Map<String, Integer> apply(List<FunctionObservation> observations, int budget,
-                                      it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource source,
-                                      long nowEpochMs) {
-        WorkloadCapacityController capacity = (WorkloadCapacityController) source;
-        return apply(observations, budget, capacity,
-                new ConcurrencyControlMetrics(new io.micrometer.core.instrument.simple.SimpleMeterRegistry(), source), nowEpochMs);
-    }
-
     private final SloDemandEstimator estimator;
     private final ConcurrencyBudgetAllocator allocator;
     private final LatencyIntervals intervals;
