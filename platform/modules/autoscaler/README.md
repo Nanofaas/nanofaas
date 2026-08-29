@@ -6,10 +6,13 @@ deployments. Per-function concurrency lives in the `concurrency-control` module.
 ## Provides
 
 - `InternalScaler` — polls a `WorkloadMetricsSource` (queue depth, in-flight,
-  rps; provided by either the async-queue or sync-queue module) and computes replica targets via
+  effective concurrency, dispatchable backlog; provided by either the async-queue
+  or sync-queue module) and computes replica targets via
   `ScalingDecisionCalculator`, bounded by the function's `ScalingConfig`
   min/max and rate-limited by `ScalingCooldownTracker` (upscale/downscale
   cooldowns).
+- RPS is derived by `ScalingMetricsReader` from the `function_dispatch_total`
+  counter.
 - Cold-start accounting (`ColdStartTracker`) and scaling metrics
   (`TargetLoadMetrics`, `ScalingDecisionMetrics`).
 
