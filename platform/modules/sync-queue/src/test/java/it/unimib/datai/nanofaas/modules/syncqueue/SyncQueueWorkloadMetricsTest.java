@@ -62,7 +62,6 @@ class SyncQueueWorkloadMetricsTest {
 
         assertTrue(enqueuer.tryAcquireSlot("fn"));
         service.removeFunctionState("fn");
-        assertThrows(IllegalStateException.class, () -> service.registerFunction("fn", 1));
 
         enqueuer.releaseDispatchSlot("fn");
         service.registerFunction("fn", 1);

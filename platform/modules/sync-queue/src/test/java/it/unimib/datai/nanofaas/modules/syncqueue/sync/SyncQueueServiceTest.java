@@ -30,6 +30,8 @@ import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueInvocationEnqueuer;
@@ -117,7 +119,7 @@ class SyncQueueServiceTest {
     }
 
     @Test
-    void failedRegistrationDoesNotReactivateRemovedFunctionState() {
+    void reRegistrationWhileDrainingReactivatesFunction() {
         SyncQueueProperties props = new SyncQueueProperties(
                 true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
         );
@@ -132,10 +134,18 @@ class SyncQueueServiceTest {
         assertTrue(capacity.tryAcquireSlot("fn"));
         service.removeFunctionState("fn");
 
-        assertThrows(IllegalStateException.class, () -> service.registerFunction("fn", 1));
+        // A redeploy while the previous invocation is still in flight is an ordinary
+        // delete-and-recreate; it used to reach the HTTP layer as a 500.
+        try {
+            service.registerFunction("fn", 4);
 
-        assertFalse(meters.find("sync_queue_depth").tag("function", "fn").gauge() != null);
-        assertThrows(SyncQueueRejectedException.class, () -> service.enqueueOrThrow(task("fn", "e1")));
+            assertNotNull(capacity.state("fn"));
+            assertEquals(4, capacity.configuredConcurrency("fn"));
+            assertEquals(4, capacity.effectiveConcurrency("fn"));
+            assertDoesNotThrow(() -> service.enqueueOrThrow(task("fn", "replacement")));
+        } finally {
+            capacity.releaseSlotAndGetHoldNanos("fn");
+        }
     }
 
     private static InvocationTask task(String functionName, String executionId) {

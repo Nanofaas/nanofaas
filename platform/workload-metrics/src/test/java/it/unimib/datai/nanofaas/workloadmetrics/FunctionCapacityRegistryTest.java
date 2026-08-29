@@ -58,10 +58,6 @@ class FunctionCapacityRegistryTest {
         assertThat(registry.tryAcquireSlot("echo")).isTrue();
 
         registry.remove("echo");
-        assertThatThrownBy(() -> registry.register("echo", 1))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("active slots");
-
         assertThat(oldState.tryAcquireSlot()).isFalse();
         assertThat(oldState.releaseSlotAndGetHoldNanos()).isGreaterThanOrEqualTo(0);
         registry.register("echo", 1);
@@ -79,7 +75,7 @@ class FunctionCapacityRegistryTest {
         registry.remove("echo");
         assertThat(oldState.tryAcquireSlot()).isFalse();
 
-        assertThatThrownBy(() -> registry.register("echo", 1)).isInstanceOf(IllegalStateException.class);
+        // once the last slot drains the generation is dropped, so the next registration is new
         assertThat(oldState.releaseSlotAndGetHoldNanos()).isGreaterThanOrEqualTo(0);
 
         FunctionCapacityState newState = registry.register("echo", 1);
@@ -258,4 +254,20 @@ class FunctionCapacityRegistryTest {
             throw new AssertionError(e);
         }
     }
+    @Test
+    void reRegistersWhileRemovedFunctionStillDrains() {
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        registry.register("fn", 2);
+        assertThat(registry.tryAcquireSlot("fn")).isTrue();
+        registry.remove("fn");
+
+        FunctionCapacityState state = registry.register("fn", 4);
+
+        assertThat(state.isActive()).isTrue();
+        assertThat(state.configuredConcurrency()).isEqualTo(4);
+        assertThat(state.effectiveConcurrency()).isEqualTo(4);
+        assertThat(registry.releaseSlotAndGetHoldNanos("fn")).isGreaterThanOrEqualTo(0L);
+        assertThat(registry.inFlight("fn")).isZero();
+    }
+
 }

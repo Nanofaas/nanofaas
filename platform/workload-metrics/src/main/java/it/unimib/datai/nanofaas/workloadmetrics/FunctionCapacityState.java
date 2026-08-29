@@ -64,6 +64,18 @@ public final class FunctionCapacityState {
         }
     }
 
+    /**
+     * Put a retired state back in service for a re-registration that arrives while it still
+     * drains. Both limits are reset: {@link #concurrency(int)} deliberately preserves a lower
+     * adaptive limit, but that limit belonged to the removed registration.
+     */
+    synchronized void reactivate(int concurrency) {
+        int normalized = Math.max(1, concurrency);
+        configuredConcurrency = normalized;
+        effectiveConcurrency = normalized;
+        active = true;
+    }
+
     public synchronized void setEffectiveConcurrency(int concurrency) {
         effectiveConcurrency = Math.min(configuredConcurrency, Math.max(1, concurrency));
     }

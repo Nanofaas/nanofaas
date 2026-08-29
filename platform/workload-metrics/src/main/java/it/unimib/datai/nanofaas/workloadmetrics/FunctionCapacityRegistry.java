@@ -22,7 +22,11 @@ public final class FunctionCapacityRegistry implements WorkloadCapacityControlle
             FunctionCapacityState state = entry.state;
             if (state == null || !state.isActive()) {
                 if (state != null && state.inFlight() > 0) {
-                    throw new IllegalStateException("Cannot re-register function with active slots: " + functionName);
+                    // Delete-then-recreate under load: the old slots are still held by this
+                    // function, and releases are keyed by name only, so they have to land on
+                    // the same state. Reuse it rather than refusing the registration.
+                    state.reactivate(configuredConcurrency);
+                    return state;
                 }
                 state = new FunctionCapacityState(configuredConcurrency, nanoTime,
                         () -> removeDrained(functionName, entry));
