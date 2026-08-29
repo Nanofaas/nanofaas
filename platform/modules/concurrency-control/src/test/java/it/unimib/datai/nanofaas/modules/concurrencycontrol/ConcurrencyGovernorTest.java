@@ -37,6 +37,9 @@ class ConcurrencyGovernorTest {
     private final ManagedDeploymentCoordinator deploymentCoordinator = mock(ManagedDeploymentCoordinator.class);
     private final ConcurrencyControlProperties properties =
             new ConcurrencyControlProperties(5000L, 2, 64);
+    private final SimpleMeterRegistry concurrencyRegistry = new SimpleMeterRegistry();
+    private final ConcurrencyControlMetrics concurrencyMetrics =
+            new ConcurrencyControlMetrics(concurrencyRegistry);
     private Metrics metrics;
     private ConcurrencyControlCoordinator coordinator;
 
@@ -46,7 +49,7 @@ class ConcurrencyGovernorTest {
         coordinator = new ConcurrencyControlCoordinator(
                 metricsSource,
                 metricsSource,
-                new ConcurrencyControlMetrics(new SimpleMeterRegistry(), metricsSource),
+                concurrencyMetrics,
                 properties,
                 new StaticPerPodConcurrencyController(),
                 new AdaptivePerPodConcurrencyController()
@@ -62,7 +65,7 @@ class ConcurrencyGovernorTest {
         governor(deploymentCoordinator, 10_000).governLoop();
 
         assertThat(metricsSource.effectiveConcurrency).containsEntry("echo", 6);
-        assertThat(metricsSource.modes).containsEntry("echo", ConcurrencyControlMode.STATIC_PER_POD);
+        assertMode("echo", ConcurrencyControlMode.STATIC_PER_POD);
     }
 
     @Test
@@ -94,13 +97,13 @@ class ConcurrencyGovernorTest {
 
         recordInvocations(10, Duration.ofMillis(10));
         governor.governLoop();
-        assertThat(metricsSource.targets).containsEntry("echo", 3);
+        assertThat(target("echo")).isEqualTo(3);
 
         // ten slower invocations against the freshly learnt baseline -> back off
         recordInvocations(10, Duration.ofMillis(30));
         governor(null, 12_500).governLoop();
 
-        assertThat(metricsSource.targets).containsEntry("echo", 2);
+        assertThat(target("echo")).isEqualTo(2);
     }
 
     @Test
@@ -141,7 +144,7 @@ class ConcurrencyGovernorTest {
 
         assertThat(metricsSource.effectiveConcurrency.values().stream()
                 .mapToInt(Integer::intValue).sum()).isLessThanOrEqualTo(12);
-        assertThat(metricsSource.modes).containsEntry("a", ConcurrencyControlMode.BUDGETED);
+        assertMode("a", ConcurrencyControlMode.BUDGETED);
     }
 
     @Test
@@ -153,7 +156,7 @@ class ConcurrencyGovernorTest {
 
         // Static per-pod still computes replicas x target and ignores the budget entirely.
         assertThat(metricsSource.effectiveConcurrency).containsEntry("legacy", 2);
-        assertThat(metricsSource.modes).containsEntry("legacy", ConcurrencyControlMode.STATIC_PER_POD);
+        assertMode("legacy", ConcurrencyControlMode.STATIC_PER_POD);
     }
 
     private ConcurrencyGovernor budgetGovernor(int budget) {
@@ -166,7 +169,7 @@ class ConcurrencyGovernorTest {
                 null,
                 metricsSource,
                 metricsSource,
-                new ConcurrencyControlMetrics(new SimpleMeterRegistry(), metricsSource),
+                concurrencyMetrics,
                 InstantSource.fixed(Instant.ofEpochMilli(10_000))
         );
     }
@@ -203,7 +206,7 @@ class ConcurrencyGovernorTest {
                 null,
                 metricsSource,
                 metricsSource,
-                new ConcurrencyControlMetrics(new SimpleMeterRegistry(), metricsSource),
+                concurrencyMetrics,
                 () -> Instant.ofEpochMilli(clock.getAndAdd(5_000))
         );
 
@@ -224,7 +227,7 @@ class ConcurrencyGovernorTest {
         }
         governor.governLoop();
 
-        assertThat(metricsSource.modes).containsEntry("echo", ConcurrencyControlMode.SOJOURN);
+        assertMode("echo", ConcurrencyControlMode.SOJOURN);
         assertThat(metricsSource.effectiveConcurrency.get("echo")).isGreaterThan(withinPromise);
     }
 
@@ -244,9 +247,19 @@ class ConcurrencyGovernorTest {
                 coordinatorOrNull,
                 metricsSource,
                 metricsSource,
-                new ConcurrencyControlMetrics(new SimpleMeterRegistry(), metricsSource),
+                concurrencyMetrics,
                 InstantSource.fixed(Instant.ofEpochMilli(nowEpochMs))
         );
+    }
+
+    private void assertMode(String functionName, ConcurrencyControlMode mode) {
+        assertThat(concurrencyRegistry.get("function_concurrency_controller_mode")
+                .tags("function", functionName, "mode", mode.name()).gauge().value()).isEqualTo(1.0);
+    }
+
+    private int target(String functionName) {
+        return (int) concurrencyRegistry.get("function_target_inflight_per_pod")
+                .tag("function", functionName).gauge().value();
     }
 
     private static RegisteredFunction managed(FunctionSpec spec) {
@@ -258,8 +271,6 @@ class ConcurrencyGovernorTest {
 
     private static final class RecordingMetricsSource implements RecordingWorkloadMetricsSource {
         private final Map<String, Integer> effectiveConcurrency = new HashMap<>();
-        private final Map<String, ConcurrencyControlMode> modes = new HashMap<>();
-        private final Map<String, Integer> targets = new HashMap<>();
         private int queueDepth;
 
         @Override
@@ -275,12 +286,6 @@ class ConcurrencyGovernorTest {
         @Override
         public void setEffectiveConcurrency(String functionName, int value) {
             effectiveConcurrency.put(functionName, value);
-        }
-
-        @Override
-        public void updateConcurrencyController(String functionName, ConcurrencyControlMode mode, int target) {
-            modes.put(functionName, mode);
-            targets.put(functionName, target);
         }
     }
 }

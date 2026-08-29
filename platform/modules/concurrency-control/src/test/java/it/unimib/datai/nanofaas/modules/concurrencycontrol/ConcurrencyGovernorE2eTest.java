@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.modules.concurrencycontrol;
 
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import it.unimib.datai.nanofaas.controlplane.ControlPlaneApplication;
 import org.junit.jupiter.api.Test;
@@ -51,6 +52,26 @@ class ConcurrencyGovernorE2eTest {
 
         await().atMost(Duration.ofSeconds(10))
                 .untilAsserted(() -> assertThat(effectiveConcurrency("governed")).isEqualTo(2.0));
+
+        // The two gauges the dashboard reads are owned by this module, not by the queue.
+        Gauge targetGauge = meterRegistry.find("function_target_inflight_per_pod")
+                .tag("function", "governed").gauge();
+        Gauge modeGauge = meterRegistry.find("function_concurrency_controller_mode")
+                .tags("function", "governed", "mode", "STATIC_PER_POD").gauge();
+        assertThat(targetGauge).isNotNull();
+        assertThat(modeGauge).isNotNull();
+        assertThat(modeGauge.value()).isEqualTo(1.0);
+
+        webTestClient.delete().uri("/v1/functions/governed")
+                .exchange()
+                .expectStatus().isNoContent();
+
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            assertThat(meterRegistry.find("function_target_inflight_per_pod")
+                    .tag("function", "governed").gauge()).isNull();
+            assertThat(meterRegistry.find("function_concurrency_controller_mode")
+                    .tags("function", "governed", "mode", "STATIC_PER_POD").gauge()).isNull();
+        });
     }
 
     @Test

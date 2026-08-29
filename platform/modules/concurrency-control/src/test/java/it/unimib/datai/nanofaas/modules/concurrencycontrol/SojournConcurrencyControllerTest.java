@@ -18,8 +18,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SojournConcurrencyControllerTest {
 
     private final RecordingMetricsSource metricsSource = new RecordingMetricsSource();
+    private final SimpleMeterRegistry concurrencyRegistry = new SimpleMeterRegistry();
     private final ConcurrencyControlMetrics concurrencyMetrics =
-            new ConcurrencyControlMetrics(new SimpleMeterRegistry(), metricsSource);
+            new ConcurrencyControlMetrics(concurrencyRegistry);
     private final SojournConcurrencyController controller = new SojournConcurrencyController();
 
     // Cumulative timers, so ticks advance and totals accumulate: handed the same instant twice the
@@ -160,7 +161,9 @@ class SojournConcurrencyControllerTest {
 
         tick(fn, 4, 10, 100, 2.0, 20);
 
-        assertThat(metricsSource.modes).containsEntry("fn", ConcurrencyControlMode.SOJOURN);
+        assertThat(concurrencyRegistry.get("function_concurrency_controller_mode")
+                .tags("function", "fn", "mode", ConcurrencyControlMode.SOJOURN.name())
+                .gauge().value()).isEqualTo(1.0);
         assertThat(metricsSource.effective).containsKey("fn");
     }
 
@@ -180,7 +183,6 @@ class SojournConcurrencyControllerTest {
 
     private static final class RecordingMetricsSource implements RecordingWorkloadMetricsSource {
         private final Map<String, Integer> effective = new HashMap<>();
-        private final Map<String, ConcurrencyControlMode> modes = new HashMap<>();
         private final Map<String, Integer> queueDepths = new HashMap<>();
 
         @Override
@@ -196,12 +198,6 @@ class SojournConcurrencyControllerTest {
         @Override
         public void setEffectiveConcurrency(String functionName, int value) {
             effective.put(functionName, value);
-        }
-
-        @Override
-        public void updateConcurrencyController(
-                String functionName, ConcurrencyControlMode mode, int target) {
-            modes.put(functionName, mode);
         }
     }
 }

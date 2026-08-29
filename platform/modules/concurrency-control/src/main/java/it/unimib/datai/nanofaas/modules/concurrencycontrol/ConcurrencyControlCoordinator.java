@@ -72,5 +72,6 @@ public final class ConcurrencyControlCoordinator {
 
     public void removeFunctionState(String functionName) {
         adaptiveConcurrencyController.removeFunctionState(functionName);
+        concurrencyMetrics.remove(functionName);
     }
 }

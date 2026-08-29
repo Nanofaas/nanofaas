@@ -17,8 +17,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 class BudgetedConcurrencyControllerTest {
 
     private final RecordingMetricsSource metricsSource = new RecordingMetricsSource();
+    private final io.micrometer.core.instrument.simple.SimpleMeterRegistry concurrencyRegistry =
+            new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
     private final ConcurrencyControlMetrics concurrencyMetrics =
-            new ConcurrencyControlMetrics(new io.micrometer.core.instrument.simple.SimpleMeterRegistry(), metricsSource);
+            new ConcurrencyControlMetrics(concurrencyRegistry);
     private final BudgetedConcurrencyController controller = new BudgetedConcurrencyController();
 
     // Ticks have to advance: throughput is completions per unit of time, so a controller handed
@@ -98,7 +100,9 @@ class BudgetedConcurrencyControllerTest {
         controller.apply(List.of(observation(a, 2, 0, 0)), 32,
                 metricsSource, concurrencyMetrics, nextTick());
 
-        assertThat(metricsSource.modes).containsEntry("a", ConcurrencyControlMode.BUDGETED);
+        assertThat(concurrencyRegistry.get("function_concurrency_controller_mode")
+                .tags("function", "a", "mode", ConcurrencyControlMode.BUDGETED.name())
+                .gauge().value()).isEqualTo(1.0);
     }
 
     @Test
@@ -127,7 +131,6 @@ class BudgetedConcurrencyControllerTest {
 
     private static final class RecordingMetricsSource implements RecordingWorkloadMetricsSource {
         private final Map<String, Integer> effective = new HashMap<>();
-        private final Map<String, ConcurrencyControlMode> modes = new HashMap<>();
 
         @Override
         public int queueDepth(String functionName) {
@@ -142,12 +145,6 @@ class BudgetedConcurrencyControllerTest {
         @Override
         public void setEffectiveConcurrency(String functionName, int value) {
             effective.put(functionName, value);
-        }
-
-        @Override
-        public void updateConcurrencyController(
-                String functionName, ConcurrencyControlMode mode, int target) {
-            modes.put(functionName, mode);
         }
     }
 }

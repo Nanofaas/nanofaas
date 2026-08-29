@@ -12,80 +12,57 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * Publishes what the concurrency controller decided: the per-replica target it is aiming at, and
+ * which mode produced it.
+ *
+ * <p>Registration happens on the first {@link #update} for a function rather than through a
+ * separate priming call. A priming call is a call somebody has to remember to make, and the one
+ * this class used to have was left behind by a refactor: the gauges stopped reaching the registry
+ * while every controller kept reporting into it.
+ */
 final class ConcurrencyControlMetrics {
     private final MeterRegistry registry;
-    private final Object legacySink;
-    private final Map<String, AtomicInteger> targetValues = new ConcurrentHashMap<>();
-    private final Map<String, Map<ConcurrencyControlMode, AtomicInteger>> modeValues = new ConcurrentHashMap<>();
-    private final Map<String, List<Meter.Id>> meterIds = new ConcurrentHashMap<>();
+    private final Map<String, Values> byFunction = new ConcurrentHashMap<>();
 
     ConcurrencyControlMetrics(MeterRegistry registry) {
-        this(registry, null);
-    }
-
-    ConcurrencyControlMetrics(MeterRegistry registry, Object legacySink) {
         this.registry = registry;
-        this.legacySink = legacySink;
     }
 
-    void ensureRegistered(String functionName, ConcurrencyControlMode mode, int targetInFlightPerPod) {
-        if (meterIds.containsKey(functionName)) {
-            update(functionName, mode, targetInFlightPerPod);
-            return;
-        }
+    /** Record a decision, registering the function's gauges on first sight. */
+    void update(String functionName, ConcurrencyControlMode mode, int targetInFlightPerPod) {
+        Values values = byFunction.computeIfAbsent(functionName, this::register);
+        values.target().set(Math.max(0, targetInFlightPerPod));
+        values.byMode().forEach((candidate, flag) -> flag.set(candidate == mode ? 1 : 0));
+    }
 
+    void remove(String functionName) {
+        Values values = byFunction.remove(functionName);
+        if (values != null) {
+            values.meterIds().forEach(registry::remove);
+        }
+    }
+
+    private Values register(String functionName) {
         List<Meter.Id> ids = new ArrayList<>();
-        AtomicInteger target = new AtomicInteger(Math.max(0, targetInFlightPerPod));
-        targetValues.put(functionName, target);
+        AtomicInteger target = new AtomicInteger();
         ids.add(Gauge.builder("function_target_inflight_per_pod", target, AtomicInteger::get)
                 .tag("function", functionName)
                 .register(registry).getId());
 
         Map<ConcurrencyControlMode, AtomicInteger> byMode = new EnumMap<>(ConcurrencyControlMode.class);
         for (ConcurrencyControlMode candidate : ConcurrencyControlMode.values()) {
-            AtomicInteger flag = new AtomicInteger(candidate == mode ? 1 : 0);
+            AtomicInteger flag = new AtomicInteger();
             byMode.put(candidate, flag);
             ids.add(Gauge.builder("function_concurrency_controller_mode", flag, AtomicInteger::get)
                     .tag("function", functionName)
                     .tag("mode", candidate.name())
                     .register(registry).getId());
         }
-        modeValues.put(functionName, byMode);
-        meterIds.put(functionName, ids);
+        return new Values(target, byMode, ids);
     }
 
-    void update(String functionName, ConcurrencyControlMode mode, int targetInFlightPerPod) {
-        targetValues.computeIfAbsent(functionName, ignored -> new AtomicInteger(0))
-                .set(Math.max(0, targetInFlightPerPod));
-        Map<ConcurrencyControlMode, AtomicInteger> byMode = modeValues.get(functionName);
-        if (byMode == null) {
-            notifyLegacySink(functionName, mode, targetInFlightPerPod);
-            return;
-        }
-        for (Map.Entry<ConcurrencyControlMode, AtomicInteger> entry : byMode.entrySet()) {
-            entry.getValue().set(entry.getKey() == mode ? 1 : 0);
-        }
-        notifyLegacySink(functionName, mode, targetInFlightPerPod);
-    }
-
-    private void notifyLegacySink(String functionName, ConcurrencyControlMode mode, int target) {
-        if (legacySink == null) return;
-        try {
-            var method = legacySink.getClass().getDeclaredMethod(
-                    "updateConcurrencyController", String.class, ConcurrencyControlMode.class, int.class);
-            method.setAccessible(true);
-            method.invoke(legacySink, functionName, mode, target);
-        } catch (ReflectiveOperationException ignored) {
-            // Compatibility sink exists only in pre-migration tests.
-        }
-    }
-
-    void remove(String functionName) {
-        targetValues.remove(functionName);
-        modeValues.remove(functionName);
-        List<Meter.Id> ids = meterIds.remove(functionName);
-        if (ids != null) {
-            ids.forEach(registry::remove);
-        }
-    }
+    private record Values(AtomicInteger target,
+                          Map<ConcurrencyControlMode, AtomicInteger> byMode,
+                          List<Meter.Id> meterIds) { }
 }
