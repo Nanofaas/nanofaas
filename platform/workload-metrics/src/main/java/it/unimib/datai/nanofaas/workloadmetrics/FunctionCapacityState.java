@@ -33,6 +33,12 @@ public final class FunctionCapacityState {
         return true;
     }
 
+    public synchronized void incrementInFlight() {
+        if (!active) return;
+        inFlight++;
+        acquiredAt.addLast(nanoTime.getAsLong());
+    }
+
     public long releaseSlotAndGetHoldNanos() {
         long holdNanos;
         boolean drained;

@@ -2,7 +2,6 @@ package it.unimib.datai.nanofaas.modules.asyncqueue;
 
 import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
-import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
@@ -15,6 +14,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
 
 public class QueueManager {
     private static final String FUNCTION_TAG = "function";
@@ -23,20 +25,24 @@ public class QueueManager {
     private final Map<String, DiagnosticMeters> diagnosticMeters = new ConcurrentHashMap<>();
     private final MeterRegistry meterRegistry;
     private final QueueConcurrencyControlMetrics concurrencyMetrics;
-    // The scheduler is a single thread shared by every function, so its own time
-    // carries no function tag: these two must sum to the loop's wall clock.
-    private final Timer schedulerVisitDuration;
-    private final Timer schedulerIdleDuration;
+    private final Map<String, FunctionCapacityRegistry> capacityRegistries = new ConcurrentHashMap<>();
+    private final WorkloadDiagnostics workloadDiagnostics;
+    private WorkloadMetricsBinder workloadMetricsBinder;
     private WorkSignaler workSignaler;
 
     public QueueManager(MeterRegistry meterRegistry) {
+        this(meterRegistry, new WorkloadDiagnostics(meterRegistry));
+    }
+
+    QueueManager(MeterRegistry meterRegistry, WorkloadDiagnostics workloadDiagnostics) {
         this.meterRegistry = meterRegistry;
         this.concurrencyMetrics = new QueueConcurrencyControlMetrics(meterRegistry);
-        this.schedulerVisitDuration = Timer.builder("scheduler_visit_duration")
-                .register(meterRegistry);
-        this.schedulerIdleDuration = Timer.builder("scheduler_idle_duration")
-                .register(meterRegistry);
+        this.workloadDiagnostics = workloadDiagnostics;
+        this.workloadMetricsBinder = new WorkloadMetricsBinder(
+                meterRegistry, new AsyncQueueWorkloadMetricsSource(this));
     }
+
+    void setWorkloadMetricsBinder(WorkloadMetricsBinder binder) { this.workloadMetricsBinder = binder; }
 
     public void setWorkSignaler(WorkSignaler workSignaler) {
         this.workSignaler = workSignaler;
@@ -54,33 +60,16 @@ public class QueueManager {
                 FunctionQueueState state = new FunctionQueueState(
                         name,
                         spec.queueSize(),
-                        spec.concurrency()
+                        capacityRegistries.computeIfAbsent(name, ignored -> new FunctionCapacityRegistry())
+                                .register(name, spec.concurrency())
                 );
                 List<Meter.Id> ids = new ArrayList<>();
-                ids.add(Gauge.builder("function_queue_depth", state::queued)
-                        .tag(FUNCTION_TAG, name)
-                        .register(meterRegistry).getId());
-                ids.add(Gauge.builder("function_inFlight", state::inFlight)
-                        .tag(FUNCTION_TAG, name)
-                        .register(meterRegistry).getId());
-                for (InvocationKind kind : InvocationKind.values()) {
+                for (it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind kind :
+                        it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind.values()) {
                     ids.add(Gauge.builder("function_queue_depth_by_path", () -> state.queued(kind))
-                            .tag(FUNCTION_TAG, name)
-                            .tag("path", kind.tag())
+                            .tag(FUNCTION_TAG, name).tag("path", kind.tag())
                             .register(meterRegistry).getId());
                 }
-                ids.add(Gauge.builder("function_effective_concurrency", state::effectiveConcurrency)
-                        .tag(FUNCTION_TAG, name)
-                        .register(meterRegistry).getId());
-                ids.add(Gauge.builder("function_dispatchable_backlog", state::dispatchableBacklog)
-                        .tag(FUNCTION_TAG, name)
-                        .register(meterRegistry).getId());
-                Timer offerDuration = Timer.builder("function_queue_offer_duration")
-                        .tag(FUNCTION_TAG, name)
-                        .register(meterRegistry);
-                Timer pollDuration = Timer.builder("function_queue_poll_duration")
-                        .tag(FUNCTION_TAG, name)
-                        .register(meterRegistry);
                 Timer wakeupDelay = Timer.builder("function_scheduler_wakeup_delay")
                         .tag(FUNCTION_TAG, name)
                         .register(meterRegistry);
@@ -94,42 +83,24 @@ public class QueueManager {
                 Timer signalEnqueueDuration = Timer.builder("function_scheduler_signal_enqueue_duration")
                         .tag(FUNCTION_TAG, name)
                         .register(meterRegistry);
-                Timer dispatchSubmitDuration = Timer.builder("function_scheduler_dispatch_submit_duration")
-                        .tag(FUNCTION_TAG, name)
-                        .register(meterRegistry);
-                Counter slotHoldSeconds = Counter.builder("function_dispatch_slot_hold_seconds")
-                        .baseUnit("seconds")
-                        .tag(FUNCTION_TAG, name)
-                        .register(meterRegistry);
-                Counter slotHoldEvents = Counter.builder("function_dispatch_slot_hold_events")
-                        .tag(FUNCTION_TAG, name)
-                        .register(meterRegistry);
                 Counter batchLimit = Counter.builder("function_scheduler_batch_limit")
-                        .tag(FUNCTION_TAG, name)
-                        .register(meterRegistry);
-                Counter slotBlocked = Counter.builder("function_scheduler_slot_blocked")
                         .tag(FUNCTION_TAG, name)
                         .register(meterRegistry);
                 Counter signalCoalesced = Counter.builder("function_scheduler_signal_coalesced")
                         .tag(FUNCTION_TAG, name)
                         .register(meterRegistry);
-                ids.add(offerDuration.getId());
-                ids.add(pollDuration.getId());
                 ids.add(wakeupDelay.getId());
                 ids.add(pollDelay.getId());
                 ids.add(activationBookkeepingDuration.getId());
                 ids.add(signalEnqueueDuration.getId());
-                ids.add(dispatchSubmitDuration.getId());
-                ids.add(slotHoldSeconds.getId());
-                ids.add(slotHoldEvents.getId());
                 ids.add(batchLimit.getId());
-                ids.add(slotBlocked.getId());
                 ids.add(signalCoalesced.getId());
+                workloadDiagnostics.registerFunction(name);
+                workloadMetricsBinder.registerFunction(name);
                 diagnosticMeters.put(
                         name,
-                        new DiagnosticMeters(offerDuration, pollDuration, wakeupDelay, pollDelay,
-                                activationBookkeepingDuration, signalEnqueueDuration, dispatchSubmitDuration,
-                                slotHoldSeconds, slotHoldEvents, batchLimit, slotBlocked, signalCoalesced)
+                        new DiagnosticMeters(wakeupDelay, pollDelay, activationBookkeepingDuration,
+                                signalEnqueueDuration, batchLimit, signalCoalesced)
                 );
                 concurrencyMetrics.ensureRegistered(
                         name,
@@ -152,6 +123,10 @@ public class QueueManager {
         FunctionQueueState removed = queues.remove(name);
         concurrencyMetrics.remove(name);
         diagnosticMeters.remove(name);
+        FunctionCapacityRegistry capacityRegistry = capacityRegistries.remove(name);
+        if (capacityRegistry != null) capacityRegistry.remove(name);
+        workloadDiagnostics.removeFunction(name);
+        workloadMetricsBinder.removeFunction(name);
         List<Meter.Id> ids = meterIds.remove(name);
         if (ids != null) {
             ids.forEach(meterRegistry::remove);
@@ -168,12 +143,9 @@ public class QueueManager {
         if (state == null) {
             return false;
         }
-        DiagnosticMeters meters = diagnosticMeters.get(task.functionName());
         long started = System.nanoTime();
         boolean success = state.offer(task);
-        if (meters != null) {
-            meters.offerDuration().record(System.nanoTime() - started, TimeUnit.NANOSECONDS);
-        }
+        workloadDiagnostics.recordQueueOfferDuration(task.functionName(), System.nanoTime() - started);
         if (success && state.canDispatch()) {
             notifyWork(task.functionName());
         }
@@ -181,10 +153,7 @@ public class QueueManager {
     }
 
     void recordQueuePollDuration(String functionName, long durationNanos) {
-        DiagnosticMeters meters = diagnosticMeters.get(functionName);
-        if (meters != null) {
-            meters.pollDuration().record(durationNanos, TimeUnit.NANOSECONDS);
-        }
+        workloadDiagnostics.recordQueuePollDuration(functionName, durationNanos);
     }
 
     void recordSchedulerWakeupDelay(String functionName, long delayNanos) {
@@ -223,25 +192,19 @@ public class QueueManager {
     }
 
     void recordSchedulerDispatchSubmitDuration(String functionName, long durationNanos) {
-        DiagnosticMeters meters = diagnosticMeters.get(functionName);
-        if (meters != null) {
-            meters.dispatchSubmitDuration().record(durationNanos, TimeUnit.NANOSECONDS);
-        }
+        workloadDiagnostics.recordDispatchSubmitDuration(functionName, durationNanos);
     }
 
     void recordSchedulerVisitDuration(long durationNanos) {
-        schedulerVisitDuration.record(durationNanos, TimeUnit.NANOSECONDS);
+        workloadDiagnostics.recordSchedulerVisitDuration(durationNanos);
     }
 
     void recordSchedulerIdleDuration(long durationNanos) {
-        schedulerIdleDuration.record(durationNanos, TimeUnit.NANOSECONDS);
+        workloadDiagnostics.recordSchedulerIdleDuration(durationNanos);
     }
 
     void recordSchedulerSlotBlocked(String functionName) {
-        DiagnosticMeters meters = diagnosticMeters.get(functionName);
-        if (meters != null) {
-            meters.slotBlocked().increment();
-        }
+        workloadDiagnostics.recordSchedulerSlotBlocked(functionName);
     }
 
     void recordSchedulerSignalCoalesced(String functionName) {
@@ -278,7 +241,7 @@ public class QueueManager {
 
     public boolean hasAvailableSlot(String functionName) {
         FunctionQueueState state = queues.get(functionName);
-        return state != null && state.inFlight() < state.effectiveConcurrency();
+        return state != null && state.canDispatch();
     }
 
     public void setEffectiveConcurrency(String functionName, int effectiveConcurrency) {
@@ -308,10 +271,7 @@ public class QueueManager {
             if (current != expectedState) {
                 return current;
             }
-            DiagnosticMeters meters = diagnosticMeters.get(name);
-            if (holdNanos >= 0 && meters != null) {
-                meters.recordSlotHold(holdNanos);
-            }
+            if (holdNanos >= 0) workloadDiagnostics.recordDispatchSlotHold(name, holdNanos);
             return current;
         });
         if (currentState == expectedState
@@ -339,22 +299,11 @@ public class QueueManager {
     }
 
     private record DiagnosticMeters(
-            Timer offerDuration,
-            Timer pollDuration,
             Timer wakeupDelay,
             Timer pollDelay,
             Timer activationBookkeepingDuration,
             Timer signalEnqueueDuration,
-            Timer dispatchSubmitDuration,
-            Counter slotHoldSeconds,
-            Counter slotHoldEvents,
             Counter batchLimit,
-            Counter slotBlocked,
             Counter signalCoalesced
-    ) {
-        void recordSlotHold(long nanos) {
-            slotHoldSeconds.increment(nanos / 1_000_000_000.0);
-            slotHoldEvents.increment();
-        }
-    }
+    ) {}
 }
