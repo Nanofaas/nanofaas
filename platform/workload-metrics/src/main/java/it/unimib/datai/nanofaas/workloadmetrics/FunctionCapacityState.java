@@ -67,5 +67,12 @@ public final class FunctionCapacityState {
     public int inFlight() { return inFlight; }
     public boolean canDispatch() { return active && inFlight < effectiveConcurrency; }
     public boolean isActive() { return active; }
-    public synchronized void deactivate() { active = false; }
+    public void deactivate() {
+        boolean drained;
+        synchronized (this) {
+            active = false;
+            drained = inFlight == 0;
+        }
+        if (drained && onDrained != null) onDrained.run();
+    }
 }

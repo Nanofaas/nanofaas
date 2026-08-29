@@ -139,6 +139,17 @@ class FunctionCapacityRegistryTest {
     }
 
     @Test
+    void directDeactivationOfIdleReturnedStateRemovesRegistryEntry() {
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        FunctionCapacityState state = registry.register("echo", 1);
+
+        state.deactivate();
+
+        assertThat(registry.state("echo")).isNull();
+        assertThat(registry.entryCount()).isZero();
+    }
+
+    @Test
     void acquisitionAndReleaseKeepSlotTimestampTogether() throws Exception {
         CountDownLatch timestampEntered = new CountDownLatch(1);
         CountDownLatch allowTimestamp = new CountDownLatch(1);
