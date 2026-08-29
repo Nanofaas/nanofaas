@@ -11,7 +11,6 @@ import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
 import it.unimib.datai.nanofaas.controlplane.service.ScalingMetricsSource;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
-import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.context.annotation.Primary;
@@ -31,11 +30,8 @@ public class AsyncQueueConfiguration {
     }
 
     @Bean
-    WorkloadMetricsBinder asyncQueueWorkloadMetricsBinder(
-            QueueManager queueManager, MeterRegistry meterRegistry, WorkloadMetricsSource source) {
-        WorkloadMetricsBinder binder = new WorkloadMetricsBinder(meterRegistry, source);
-        queueManager.setWorkloadMetricsBinder(binder);
-        return binder;
+    WorkloadMetricsBinder asyncQueueWorkloadMetricsBinder(QueueManager queueManager) {
+        return queueManager.workloadMetricsBinder();
     }
 
     @Bean

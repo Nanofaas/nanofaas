@@ -6,6 +6,7 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityRegistry;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
@@ -21,6 +22,22 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class QueueManagerTest {
+
+    @Test
+    void setEffectiveConcurrency_updatesTheSharedCapacityRegistry() {
+        SimpleMeterRegistry meters = new SimpleMeterRegistry();
+        FunctionCapacityRegistry capacityRegistry = new FunctionCapacityRegistry();
+        QueueManager manager = new QueueManager(
+                meters,
+                new it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics(meters),
+                capacityRegistry
+        );
+        manager.getOrCreate(spec("shared", 4));
+
+        manager.setEffectiveConcurrency("shared", 2);
+
+        assertThat(capacityRegistry.effectiveConcurrency("shared")).isEqualTo(2);
+    }
 
     @Test
     void cleanupBoundToAcquiredStateMustNotReleaseRecreatedQueueState() {
@@ -62,6 +79,12 @@ class QueueManagerTest {
                     .counter()
                     .count()).isZero();
         });
+    }
+
+    private static FunctionSpec spec(String name, int concurrency) {
+        return new FunctionSpec(
+                name, "image", null, Map.of(), null, 1000, concurrency, 10, 3,
+                null, ExecutionMode.LOCAL, null, null, null);
     }
 
     @Test

@@ -11,6 +11,7 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -48,6 +49,18 @@ class AsyncQueueConfigurationTest {
         InvocationResult result = executionRecord.completion().join();
         assertThat(result.success()).isFalse();
         assertThat(result.error().code()).isEqualTo("FUNCTION_REMOVED");
+    }
+
+    @Test
+    void asyncQueueWorkloadMetricsBinder_reusesQueueManagerBinder() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        QueueManager queueManager = new QueueManager(registry);
+        AsyncQueueConfiguration configuration = new AsyncQueueConfiguration();
+
+        WorkloadMetricsBinder first = configuration.asyncQueueWorkloadMetricsBinder(queueManager);
+        WorkloadMetricsBinder second = configuration.asyncQueueWorkloadMetricsBinder(queueManager);
+
+        assertThat(second).isSameAs(first);
     }
 
     private static FunctionSpec spec(String name) {

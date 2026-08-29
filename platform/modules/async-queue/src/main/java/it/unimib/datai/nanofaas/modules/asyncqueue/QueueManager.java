@@ -25,9 +25,9 @@ public class QueueManager {
     private final Map<String, DiagnosticMeters> diagnosticMeters = new ConcurrentHashMap<>();
     private final MeterRegistry meterRegistry;
     private final QueueConcurrencyControlMetrics concurrencyMetrics;
-    private final Map<String, FunctionCapacityRegistry> capacityRegistries = new ConcurrentHashMap<>();
+    private final FunctionCapacityRegistry capacityRegistry;
     private final WorkloadDiagnostics workloadDiagnostics;
-    private WorkloadMetricsBinder workloadMetricsBinder;
+    private final WorkloadMetricsBinder workloadMetricsBinder;
     private WorkSignaler workSignaler;
 
     public QueueManager(MeterRegistry meterRegistry) {
@@ -35,14 +35,20 @@ public class QueueManager {
     }
 
     QueueManager(MeterRegistry meterRegistry, WorkloadDiagnostics workloadDiagnostics) {
+        this(meterRegistry, workloadDiagnostics, new FunctionCapacityRegistry());
+    }
+
+    QueueManager(MeterRegistry meterRegistry, WorkloadDiagnostics workloadDiagnostics,
+                 FunctionCapacityRegistry capacityRegistry) {
         this.meterRegistry = meterRegistry;
         this.concurrencyMetrics = new QueueConcurrencyControlMetrics(meterRegistry);
         this.workloadDiagnostics = workloadDiagnostics;
+        this.capacityRegistry = capacityRegistry;
         this.workloadMetricsBinder = new WorkloadMetricsBinder(
                 meterRegistry, new AsyncQueueWorkloadMetricsSource(this));
     }
 
-    void setWorkloadMetricsBinder(WorkloadMetricsBinder binder) { this.workloadMetricsBinder = binder; }
+    WorkloadMetricsBinder workloadMetricsBinder() { return workloadMetricsBinder; }
 
     public void setWorkSignaler(WorkSignaler workSignaler) {
         this.workSignaler = workSignaler;
@@ -60,8 +66,7 @@ public class QueueManager {
                 FunctionQueueState state = new FunctionQueueState(
                         name,
                         spec.queueSize(),
-                        capacityRegistries.computeIfAbsent(name, ignored -> new FunctionCapacityRegistry())
-                                .register(name, spec.concurrency())
+                        capacityRegistry.register(name, spec.concurrency(), true)
                 );
                 List<Meter.Id> ids = new ArrayList<>();
                 for (it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind kind :
@@ -110,7 +115,7 @@ public class QueueManager {
                 meterIds.put(name, ids);
                 return state;
             }
-            existing.concurrency(spec.concurrency());
+            capacityRegistry.register(name, spec.concurrency(), true);
             return existing;
         });
     }
@@ -123,8 +128,7 @@ public class QueueManager {
         FunctionQueueState removed = queues.remove(name);
         concurrencyMetrics.remove(name);
         diagnosticMeters.remove(name);
-        FunctionCapacityRegistry capacityRegistry = capacityRegistries.remove(name);
-        if (capacityRegistry != null) capacityRegistry.remove(name);
+        capacityRegistry.remove(name);
         workloadDiagnostics.removeFunction(name);
         workloadMetricsBinder.removeFunction(name);
         List<Meter.Id> ids = meterIds.remove(name);
@@ -245,10 +249,7 @@ public class QueueManager {
     }
 
     public void setEffectiveConcurrency(String functionName, int effectiveConcurrency) {
-        FunctionQueueState state = queues.get(functionName);
-        if (state != null) {
-            state.setEffectiveConcurrency(effectiveConcurrency);
-        }
+        capacityRegistry.setEffectiveConcurrency(functionName, effectiveConcurrency);
     }
 
     public void updateConcurrencyController(String functionName,

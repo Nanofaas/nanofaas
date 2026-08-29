@@ -13,14 +13,26 @@ public final class FunctionCapacityRegistry implements WorkloadCapacityControlle
     FunctionCapacityRegistry(LongSupplier nanoTime) { this.nanoTime = nanoTime; }
 
     public FunctionCapacityState register(String functionName, int configuredConcurrency) {
+        return register(functionName, configuredConcurrency, false);
+    }
+
+    public FunctionCapacityState register(String functionName, int configuredConcurrency,
+                                          boolean replaceRetiredGeneration) {
         Entry entry = entries.computeIfAbsent(functionName, ignored -> new Entry());
         entry.lock.lock();
         try {
-            if (entries.get(functionName) != entry) return register(functionName, configuredConcurrency);
+            if (entries.get(functionName) != entry) {
+                return register(functionName, configuredConcurrency, replaceRetiredGeneration);
+            }
             FunctionCapacityState state = entry.state;
             if (state == null || !state.isActive()) {
                 if (state != null && state.inFlight() > 0) {
-                    throw new IllegalStateException("Cannot re-register function with active slots: " + functionName);
+                    if (!replaceRetiredGeneration) {
+                        throw new IllegalStateException("Cannot re-register function with active slots: " + functionName);
+                    }
+                    Entry replacement = new Entry();
+                    entries.replace(functionName, entry, replacement);
+                    return register(functionName, configuredConcurrency, false);
                 }
                 state = new FunctionCapacityState(configuredConcurrency, nanoTime,
                         () -> removeDrained(functionName, entry));
