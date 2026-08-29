@@ -74,9 +74,9 @@ class ScalingMetricsReaderTest {
     }
 
     @Test
-    void readMetric_rps_worksWithoutAQueueModule() {
-        // Autoscaling and concurrency control intentionally use different metric consumers:
-        // rps is read from a meter here, not from the source, so the autoscaler stays useful.
+    void readMetric_rps_canBeUnitTestedWithAWorkloadSourceStub() {
+        // RPS is read from a meter rather than WorkloadMetricsSource. This unit test uses a stub
+        // only to isolate the reader; the autoscaler module itself requires a queue provider.
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         ScalingMetricsReader r = new ScalingMetricsReader(new WorkloadMetricsSource() {
             public int queueDepth(String functionName) { return 0; }
