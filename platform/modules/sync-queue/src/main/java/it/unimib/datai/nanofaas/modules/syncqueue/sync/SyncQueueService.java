@@ -9,6 +9,8 @@ import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
+import it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -37,6 +39,8 @@ public class SyncQueueService implements SyncQueueGateway {
     private final Object workSignal = new Object();
     private final SyncQueueAdmissionController admissionController;
     private final Set<String> removedFunctions = ConcurrentHashMap.newKeySet();
+    private final FunctionCapacityRegistry capacityRegistry;
+    private final WorkloadDiagnostics diagnostics;
 
     public SyncQueueService(SyncQueueProperties props,
                             ExecutionStore executionStore,
@@ -47,7 +51,20 @@ public class SyncQueueService implements SyncQueueGateway {
                 new WaitEstimator(props.throughputWindow(), props.perFunctionMinSamples()),
                 metrics,
                 Clock.systemUTC(),
-                configSource);
+                configSource,
+                new FunctionCapacityRegistry(),
+                null);
+    }
+
+    public SyncQueueService(SyncQueueProperties props,
+                            ExecutionStore executionStore,
+                            SyncQueueMetrics metrics,
+                            SyncQueueConfigSource configSource,
+                            FunctionCapacityRegistry capacityRegistry,
+                            WorkloadDiagnostics diagnostics) {
+        this(props, executionStore,
+                new WaitEstimator(props.throughputWindow(), props.perFunctionMinSamples()),
+                metrics, Clock.systemUTC(), configSource, capacityRegistry, diagnostics);
     }
 
     SyncQueueService(SyncQueueProperties props,
@@ -56,6 +73,18 @@ public class SyncQueueService implements SyncQueueGateway {
                      SyncQueueMetrics metrics,
                      Clock clock,
                      SyncQueueConfigSource configSource) {
+        this(props, executionStore, estimator, metrics, clock, configSource,
+                new FunctionCapacityRegistry(), null);
+    }
+
+    public SyncQueueService(SyncQueueProperties props,
+                            ExecutionStore executionStore,
+                            WaitEstimator estimator,
+                            SyncQueueMetrics metrics,
+                            Clock clock,
+                            SyncQueueConfigSource configSource,
+                            FunctionCapacityRegistry capacityRegistry,
+                            WorkloadDiagnostics diagnostics) {
         this.configSource = configSource;
         this.executionStore = executionStore;
         this.estimator = estimator;
@@ -64,6 +93,8 @@ public class SyncQueueService implements SyncQueueGateway {
         this.queue = new ArrayDeque<>(props.maxDepth());
         this.maxDepth = props.maxDepth();
         this.admissionController = new SyncQueueAdmissionController(configSource, props.maxDepth(), estimator);
+        this.capacityRegistry = capacityRegistry;
+        this.diagnostics = diagnostics;
     }
 
     public boolean enabled() {
@@ -81,6 +112,7 @@ public class SyncQueueService implements SyncQueueGateway {
             throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
         }
         Instant now = clock.instant();
+        long offerStarted = System.nanoTime();
         SyncQueueAdmissionResult decision = admissionController.evaluate(task.functionName(), queuedItems(), now);
         if (!decision.accepted()) {
             metrics.rejected(task.functionName());
@@ -98,6 +130,9 @@ public class SyncQueueService implements SyncQueueGateway {
             queue.addLast(new SyncQueueItem(task, now));
             metrics.registerFunction(task.functionName());
             metrics.admitted(task.functionName());
+        }
+        if (diagnostics != null) {
+            diagnostics.recordQueueOfferDuration(task.functionName(), System.nanoTime() - offerStarted);
         }
         synchronized (workSignal) {
             workSignal.notifyAll();
@@ -134,6 +169,16 @@ public class SyncQueueService implements SyncQueueGateway {
         }
     }
 
+    public int queuedItems(String functionName) {
+        synchronized (queue) {
+            int count = 0;
+            for (SyncQueueItem item : queue) {
+                if (item.task().functionName().equals(functionName)) count++;
+            }
+            return count;
+        }
+    }
+
     public SyncQueueItem peekReady(Instant now) {
         while (true) {
             SyncQueueItem timedOut = null;
@@ -153,12 +198,14 @@ public class SyncQueueService implements SyncQueueGateway {
     }
 
     public SyncQueueItem pollReady(Instant now) {
+        long pollStarted = System.nanoTime();
         SyncQueueItem item;
         synchronized (queue) {
             item = queue.pollFirst();
         }
         if (item != null) {
             recordDequeued(item, now);
+            recordQueuePoll(item.task().functionName(), pollStarted);
         }
         return item;
     }
@@ -193,6 +240,7 @@ public class SyncQueueService implements SyncQueueGateway {
     }
 
     public boolean removeReady(SyncQueueItem item, Instant now) {
+        long pollStarted = System.nanoTime();
         boolean removed;
         synchronized (queue) {
             removed = queue.remove(item);
@@ -201,6 +249,7 @@ public class SyncQueueService implements SyncQueueGateway {
             return false;
         }
         recordDequeued(item, now);
+        recordQueuePoll(item.task().functionName(), pollStarted);
         return true;
     }
 
@@ -261,11 +310,17 @@ public class SyncQueueService implements SyncQueueGateway {
         drainRemovedFunction(functionName);
         estimator.removeFunctionState(functionName);
         metrics.removeFunctionState(functionName);
+        capacityRegistry.remove(functionName);
     }
 
     public void registerFunction(String functionName) {
+        registerFunction(functionName, 1);
+    }
+
+    public void registerFunction(String functionName, int concurrency) {
         removedFunctions.remove(functionName);
         metrics.registerFunction(functionName);
+        capacityRegistry.register(functionName, concurrency, true);
     }
 
     private void drainRemovedFunction(String functionName) {
@@ -331,5 +386,11 @@ public class SyncQueueService implements SyncQueueGateway {
         metrics.dequeued(item.task().functionName());
         long waitMillis = Duration.between(item.enqueuedAt(), now).toMillis();
         metrics.recordWait(item.task().functionName(), waitMillis);
+    }
+
+    private void recordQueuePoll(String functionName, long started) {
+        if (diagnostics != null) {
+            diagnostics.recordQueuePollDuration(functionName, System.nanoTime() - started);
+        }
     }
 }

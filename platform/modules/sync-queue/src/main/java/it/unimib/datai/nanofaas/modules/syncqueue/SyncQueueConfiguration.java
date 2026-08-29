@@ -13,6 +13,9 @@ import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
 import it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncScheduler;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueMetrics;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
+import it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -29,11 +32,43 @@ public class SyncQueueConfiguration {
     }
 
     @Bean
+    FunctionCapacityRegistry syncQueueCapacityRegistry() {
+        return new FunctionCapacityRegistry();
+    }
+
+    @Bean
+    WorkloadDiagnostics syncQueueWorkloadDiagnostics(MeterRegistry meterRegistry) {
+        return new WorkloadDiagnostics(meterRegistry);
+    }
+
+    @Bean
+    SyncQueueWorkloadMetricsSource syncQueueWorkloadMetricsSource(
+            SyncQueueService syncQueueService, FunctionCapacityRegistry capacityRegistry) {
+        return new SyncQueueWorkloadMetricsSource(syncQueueService, capacityRegistry);
+    }
+
+    @Bean
+    WorkloadMetricsBinder syncQueueWorkloadMetricsBinder(MeterRegistry meterRegistry,
+                                                         SyncQueueWorkloadMetricsSource source) {
+        return new WorkloadMetricsBinder(meterRegistry, source);
+    }
+
+    @Bean
+    @Primary
+    SyncQueueInvocationEnqueuer syncQueueInvocationEnqueuer(FunctionCapacityRegistry capacityRegistry,
+                                                             WorkloadDiagnostics diagnostics) {
+        return new SyncQueueInvocationEnqueuer(capacityRegistry, diagnostics);
+    }
+
+    @Bean
     SyncQueueService syncQueueService(SyncQueueProperties props,
                                       ExecutionStore executionStore,
                                       SyncQueueMetrics metrics,
-                                      SyncQueueConfigSource configSource) {
-        return new SyncQueueService(props, executionStore, metrics, configSource);
+                                      SyncQueueConfigSource configSource,
+                                      FunctionCapacityRegistry capacityRegistry,
+                                      WorkloadDiagnostics diagnostics) {
+        return new SyncQueueService(props, executionStore, metrics, configSource,
+                capacityRegistry, diagnostics);
     }
 
     @Bean("mutableSyncQueueConfigSource")
@@ -46,8 +81,9 @@ public class SyncQueueConfiguration {
     @ConditionalOnProperty(prefix = "sync-queue", name = "enabled", havingValue = "true")
     SyncScheduler syncScheduler(InvocationEnqueuer enqueuer,
                                 SyncQueueService syncQueueService,
-                                InvocationService invocationService) {
-        return new SyncScheduler(enqueuer, syncQueueService, invocationService);
+                                InvocationService invocationService,
+                                WorkloadDiagnostics diagnostics) {
+        return new SyncScheduler(enqueuer, syncQueueService, invocationService, diagnostics);
     }
 
     @Bean
@@ -63,16 +99,19 @@ public class SyncQueueConfiguration {
     }
 
     @Bean
-    FunctionRegistrationListener syncQueueLifecycleListener(SyncQueueService syncQueueService) {
+    FunctionRegistrationListener syncQueueLifecycleListener(SyncQueueService syncQueueService,
+                                                             WorkloadMetricsBinder binder) {
         return new FunctionRegistrationListener() {
             @Override
             public void onRegister(FunctionSpec spec) {
-                syncQueueService.registerFunction(spec.name());
+                syncQueueService.registerFunction(spec.name(), spec.concurrency());
+                binder.registerFunction(spec.name());
             }
 
             @Override
             public void onRemove(String functionName) {
                 syncQueueService.removeFunctionState(functionName);
+                binder.removeFunction(functionName);
             }
         };
     }
