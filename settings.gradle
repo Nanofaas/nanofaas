@@ -24,6 +24,7 @@ plugins {
 rootProject.name = 'nanofaas'
 
 include('common');            project(':common').projectDir = file('platform/common')
+include('workload-metrics');  project(':workload-metrics').projectDir = file('platform/workload-metrics')
 include(':sdks:java');        project(':sdks:java').projectDir = file('sdks/java')
 include('control-plane');     project(':control-plane').projectDir = file('platform/control-plane')
 include(':services:java:warm-echo'); project(':services:java:warm-echo').projectDir = file('services/java/warm-echo')
