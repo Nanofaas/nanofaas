@@ -31,14 +31,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * external HPA) still gets a governed concurrency limit.</p>
  */
 public class ConcurrencyGovernor implements SmartLifecycle {
-    @Deprecated
-    public ConcurrencyGovernor(FunctionRegistry registry, Metrics metrics, ConcurrencyControllers controllers,
-                               ConcurrencyControlProperties properties, ManagedDeploymentCoordinator deployment,
-                               WorkloadMetricsSource source, InstantSource clock) {
-        this(registry, metrics, controllers, properties, deployment, source,
-                (WorkloadCapacityController) source,
-                new ConcurrencyControlMetrics(new io.micrometer.core.instrument.simple.SimpleMeterRegistry(), source), clock);
-    }
     private static final Logger log = LoggerFactory.getLogger(ConcurrencyGovernor.class);
 
     private final FunctionRegistry registry;

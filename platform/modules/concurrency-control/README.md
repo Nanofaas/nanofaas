@@ -121,7 +121,8 @@ rejected with 400 rather than silently ignored.
 - Independent of the autoscaler: concurrency per replica is orthogonal to how
   many replicas exist, so functions with `ScalingStrategy.NONE` or an external
   HPA are governed too.
-- Needs an enforcing queue: without the async-queue module the core no-op
+- Needs an enforcing queue: either `async-queue` or `sync-queue` supplies the workload state and
+  applies the computed capacity.
   no queue provider receives the decision and nothing is limited.
 - `function_effective_concurrency`, `function_target_inflight_per_pod` and
   `function_concurrency_controller_mode` are only exported under

@@ -31,6 +31,8 @@ import static org.awaitility.Awaitility.await;
                 "sync-queue.enabled=false"
         })
 @AutoConfigureWebTestClient
+// This E2E scenario runs with the async provider; the same provider-neutral wiring is exercised
+// by the sync composition smoke test when that provider is selected.
 @EnabledIfSystemProperty(named = "nanofaas.queue.provider", matches = "async-queue")
 class ConcurrencyGovernorE2eTest {
 

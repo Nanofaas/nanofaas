@@ -8,27 +8,17 @@ import it.unimib.datai.nanofaas.controlplane.service.Metrics;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 
 @AutoConfiguration
-@AutoConfigureAfter(name = "it.unimib.datai.nanofaas.modules.asyncqueue.AsyncQueueConfiguration")
 @ConditionalOnBean({WorkloadMetricsSource.class, WorkloadCapacityController.class, FunctionRegistry.class, Metrics.class})
 @EnableConfigurationProperties(ConcurrencyControlProperties.class)
 public class ConcurrencyControlConfiguration {
 
-    /**
-     * Refuses to start when no module supplies real queue state.
-     *
-     * <p>{@code @ConditionalOnBean} above cannot catch this: the core always registers a no-op
-     * source, so the condition holds even when nothing produces one. The governor would then run
-     * against a source reporting depth 0 and in-flight 0 forever, and — worse — every limit it
-     * computed would be written into that same no-op and enforced by nobody. The module would be
-     * entirely inert while its metrics claimed otherwise.
-     */
+    /** Starts only when a queue provider supplies workload readings and capacity control. */
     @Bean
     StaticPerPodConcurrencyController staticPerPodConcurrencyController() {
         return new StaticPerPodConcurrencyController();

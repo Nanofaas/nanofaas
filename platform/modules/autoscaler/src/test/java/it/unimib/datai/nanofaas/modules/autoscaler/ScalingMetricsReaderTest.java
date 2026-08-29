@@ -7,6 +7,7 @@ import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -19,6 +20,12 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class ScalingMetricsReaderTest {
+
+    @Test
+    void configurationDoesNotDependOnAsyncQueueOrdering() {
+        assertThat(AutoscalerConfiguration.class.getAnnotation(AutoConfigureAfter.class))
+                .isNull();
+    }
 
     @Mock
     private WorkloadMetricsSource scalingMetricsSource;
@@ -65,7 +72,7 @@ class ScalingMetricsReaderTest {
 
     @Test
     void readMetric_rps_worksWithoutAQueueModule() {
-        // Deliberate asymmetry with concurrency-control, which refuses to start against the no-op:
+        // Autoscaling and concurrency control intentionally use different metric consumers:
         // rps is read from a meter here, not from the source, so the autoscaler stays useful.
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         ScalingMetricsReader r = new ScalingMetricsReader(new WorkloadMetricsSource() {

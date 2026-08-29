@@ -12,15 +12,6 @@ import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
  * {@link WorkloadCapacityController}, which is where the enforcing queue picks it up.
  */
 public final class ConcurrencyControlCoordinator {
-    @Deprecated
-    public ConcurrencyControlCoordinator(WorkloadMetricsSource metricsSource,
-                                         ConcurrencyControlProperties properties,
-                                         StaticPerPodConcurrencyController staticController,
-                                         AdaptivePerPodConcurrencyController adaptiveController) {
-        this(metricsSource, (WorkloadCapacityController) metricsSource,
-                new ConcurrencyControlMetrics(new io.micrometer.core.instrument.simple.SimpleMeterRegistry(), metricsSource),
-                properties, staticController, adaptiveController);
-    }
     private final WorkloadMetricsSource metricsSource;
     private final WorkloadCapacityController capacityController;
     private final ConcurrencyControlMetrics concurrencyMetrics;

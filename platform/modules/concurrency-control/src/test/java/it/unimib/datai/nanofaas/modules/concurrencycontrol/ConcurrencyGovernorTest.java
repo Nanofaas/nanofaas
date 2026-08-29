@@ -45,6 +45,8 @@ class ConcurrencyGovernorTest {
         metrics = new Metrics(new SimpleMeterRegistry());
         coordinator = new ConcurrencyControlCoordinator(
                 metricsSource,
+                metricsSource,
+                new ConcurrencyControlMetrics(new SimpleMeterRegistry(), metricsSource),
                 properties,
                 new StaticPerPodConcurrencyController(),
                 new AdaptivePerPodConcurrencyController()
@@ -163,6 +165,8 @@ class ConcurrencyGovernorTest {
                 new ConcurrencyControlProperties(5000L, 2, budget),
                 null,
                 metricsSource,
+                metricsSource,
+                new ConcurrencyControlMetrics(new SimpleMeterRegistry(), metricsSource),
                 InstantSource.fixed(Instant.ofEpochMilli(10_000))
         );
     }
@@ -198,6 +202,8 @@ class ConcurrencyGovernorTest {
                 properties,
                 null,
                 metricsSource,
+                metricsSource,
+                new ConcurrencyControlMetrics(new SimpleMeterRegistry(), metricsSource),
                 () -> Instant.ofEpochMilli(clock.getAndAdd(5_000))
         );
 
@@ -237,6 +243,8 @@ class ConcurrencyGovernorTest {
                 properties,
                 coordinatorOrNull,
                 metricsSource,
+                metricsSource,
+                new ConcurrencyControlMetrics(new SimpleMeterRegistry(), metricsSource),
                 InstantSource.fixed(Instant.ofEpochMilli(nowEpochMs))
         );
     }
