@@ -9,6 +9,10 @@ dependencyManagement {
     }
 }
 
+def selectedQueue = gradle.ext.nanofaasSelectedControlPlaneModules.contains('sync-queue')
+        ? 'sync-queue'
+        : 'async-queue'
+
 dependencies {
     implementation project(':common')
     implementation project(':control-plane')
@@ -23,7 +27,11 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-webtestclient'
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.0'
     testImplementation 'org.awaitility:awaitility:4.3.0'
-    // end-to-end test drives the governor into the queue's real concurrency gate
-    testImplementation project(':control-plane-modules:async-queue')
+    // The selected queue provider supplies the real concurrency gate for the E2E test.
+    testImplementation project(":control-plane-modules:${selectedQueue}")
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    systemProperty 'nanofaas.queue.provider', selectedQueue
 }

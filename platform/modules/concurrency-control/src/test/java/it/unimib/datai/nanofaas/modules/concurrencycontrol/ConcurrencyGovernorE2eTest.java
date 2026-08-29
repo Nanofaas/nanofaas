@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.modules.concurrencycontrol;
 import io.micrometer.core.instrument.MeterRegistry;
 import it.unimib.datai.nanofaas.controlplane.ControlPlaneApplication;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
@@ -30,6 +31,7 @@ import static org.awaitility.Awaitility.await;
                 "sync-queue.enabled=false"
         })
 @AutoConfigureWebTestClient
+@EnabledIfSystemProperty(named = "nanofaas.queue.provider", matches = "async-queue")
 class ConcurrencyGovernorE2eTest {
 
     @Autowired
