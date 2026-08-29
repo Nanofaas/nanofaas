@@ -16,6 +16,7 @@ public final class WorkloadDiagnostics {
     private final Timer schedulerIdleDuration;
     private final Map<String, List<Meter.Id>> meters = new ConcurrentHashMap<>();
     private final Map<String, FunctionMeters> functions = new ConcurrentHashMap<>();
+    private final Object lifecycleLock = new Object();
 
     public WorkloadDiagnostics(MeterRegistry registry) {
         this.registry = registry;
@@ -24,23 +25,27 @@ public final class WorkloadDiagnostics {
     }
 
     public void registerFunction(String functionName) {
-        functions.computeIfAbsent(functionName, name -> {
-            Timer offer = timer("function_queue_offer_duration", name);
-            Timer poll = timer("function_queue_poll_duration", name);
-            Timer submit = timer("function_scheduler_dispatch_submit_duration", name);
-            Counter holdSeconds = counter("function_dispatch_slot_hold_seconds", name, "seconds");
-            Counter holdEvents = counter("function_dispatch_slot_hold_events", name, null);
-            Counter blocked = counter("function_scheduler_slot_blocked", name, null);
-            meters.put(name, List.of(offer.getId(), poll.getId(), submit.getId(),
-                    holdSeconds.getId(), holdEvents.getId(), blocked.getId()));
-            return new FunctionMeters(offer, poll, submit, holdSeconds, holdEvents, blocked);
-        });
+        synchronized (lifecycleLock) {
+            functions.computeIfAbsent(functionName, name -> {
+                Timer offer = timer("function_queue_offer_duration", name);
+                Timer poll = timer("function_queue_poll_duration", name);
+                Timer submit = timer("function_scheduler_dispatch_submit_duration", name);
+                Counter holdSeconds = counter("function_dispatch_slot_hold_seconds", name, "seconds");
+                Counter holdEvents = counter("function_dispatch_slot_hold_events", name, null);
+                Counter blocked = counter("function_scheduler_slot_blocked", name, null);
+                meters.put(name, List.of(offer.getId(), poll.getId(), submit.getId(),
+                        holdSeconds.getId(), holdEvents.getId(), blocked.getId()));
+                return new FunctionMeters(offer, poll, submit, holdSeconds, holdEvents, blocked);
+            });
+        }
     }
 
     public void removeFunction(String functionName) {
-        functions.remove(functionName);
-        List<Meter.Id> ids = meters.remove(functionName);
-        if (ids != null) ids.forEach(registry::remove);
+        synchronized (lifecycleLock) {
+            functions.remove(functionName);
+            List<Meter.Id> ids = meters.remove(functionName);
+            if (ids != null) ids.forEach(registry::remove);
+        }
     }
 
     public void recordSchedulerVisitDuration(long nanos) { schedulerVisitDuration.record(nanos, TimeUnit.NANOSECONDS); }

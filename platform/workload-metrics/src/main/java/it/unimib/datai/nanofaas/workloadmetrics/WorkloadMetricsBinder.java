@@ -13,6 +13,7 @@ public final class WorkloadMetricsBinder {
     private final MeterRegistry registry;
     private final WorkloadMetricsSource source;
     private final Map<String, List<Meter.Id>> meters = new ConcurrentHashMap<>();
+    private final Object lifecycleLock = new Object();
 
     public WorkloadMetricsBinder(MeterRegistry registry, WorkloadMetricsSource source) {
         this.registry = registry;
@@ -20,17 +21,21 @@ public final class WorkloadMetricsBinder {
     }
 
     public void registerFunction(String functionName) {
-        meters.computeIfAbsent(functionName, name -> List.of(
-                gauge(WorkloadMetricNames.QUEUE_DEPTH, name, () -> source.queueDepth(name)),
-                gauge(WorkloadMetricNames.IN_FLIGHT, name, () -> source.inFlight(name)),
-                gauge(WorkloadMetricNames.EFFECTIVE_CONCURRENCY, name, () -> source.effectiveConcurrency(name)),
-                gauge(WorkloadMetricNames.DISPATCHABLE_BACKLOG, name, () -> source.dispatchableBacklog(name))));
+        synchronized (lifecycleLock) {
+            meters.computeIfAbsent(functionName, name -> List.of(
+                    gauge(WorkloadMetricNames.QUEUE_DEPTH, name, () -> source.queueDepth(name)),
+                    gauge(WorkloadMetricNames.IN_FLIGHT, name, () -> source.inFlight(name)),
+                    gauge(WorkloadMetricNames.EFFECTIVE_CONCURRENCY, name, () -> source.effectiveConcurrency(name)),
+                    gauge(WorkloadMetricNames.DISPATCHABLE_BACKLOG, name, () -> source.dispatchableBacklog(name))));
+        }
     }
 
     public void removeFunction(String functionName) {
-        List<Meter.Id> ids = meters.remove(functionName);
-        if (ids != null) {
-            ids.forEach(registry::remove);
+        synchronized (lifecycleLock) {
+            List<Meter.Id> ids = meters.remove(functionName);
+            if (ids != null) {
+                ids.forEach(registry::remove);
+            }
         }
     }
 

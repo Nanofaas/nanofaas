@@ -4,6 +4,9 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -14,6 +17,7 @@ class WorkloadDiagnosticsTest {
         WorkloadDiagnostics diagnostics = new WorkloadDiagnostics(meters);
         diagnostics.registerFunction("echo");
         diagnostics.registerFunction("echo");
+        diagnostics.registerFunction("other");
         diagnostics.recordSchedulerVisitDuration(10);
         diagnostics.recordSchedulerIdleDuration(20);
         diagnostics.recordQueueOfferDuration("echo", 20);
@@ -45,6 +49,10 @@ class WorkloadDiagnosticsTest {
                         "function_queue_offer_duration", "function_queue_poll_duration",
                         "function_scheduler_dispatch_submit_duration",
                         "function_dispatch_slot_hold_seconds", "function_dispatch_slot_hold_events",
+                        "function_scheduler_slot_blocked",
+                        "function_queue_offer_duration", "function_queue_poll_duration",
+                        "function_scheduler_dispatch_submit_duration",
+                        "function_dispatch_slot_hold_seconds", "function_dispatch_slot_hold_events",
                         "function_scheduler_slot_blocked");
 
         diagnostics.removeFunction("echo");
@@ -54,7 +62,37 @@ class WorkloadDiagnosticsTest {
         assertThat(meters.find("function_dispatch_slot_hold_seconds").tag("function", "echo").counter()).isNull();
         assertThat(meters.find("function_dispatch_slot_hold_events").tag("function", "echo").counter()).isNull();
         assertThat(meters.find("function_scheduler_slot_blocked").tag("function", "echo").counter()).isNull();
+        assertThat(meters.find("function_queue_offer_duration").tag("function", "other").timer()).isNotNull();
+        assertThat(meters.find("function_queue_poll_duration").tag("function", "other").timer()).isNotNull();
+        assertThat(meters.find("function_scheduler_dispatch_submit_duration").tag("function", "other").timer()).isNotNull();
+        assertThat(meters.find("function_dispatch_slot_hold_seconds").tag("function", "other").counter()).isNotNull();
+        assertThat(meters.find("function_dispatch_slot_hold_events").tag("function", "other").counter()).isNotNull();
+        assertThat(meters.find("function_scheduler_slot_blocked").tag("function", "other").counter()).isNotNull();
         assertThat(meters.find("scheduler_visit_duration").timer()).isNotNull();
         assertThat(meters.find("scheduler_idle_duration").timer()).isNotNull();
+    }
+
+    @Test
+    void concurrentRegisterAndRemoveLeavesNoFunctionMetersAfterRemoval() throws Exception {
+        SimpleMeterRegistry meters = new SimpleMeterRegistry();
+        WorkloadDiagnostics diagnostics = new WorkloadDiagnostics(meters);
+        ExecutorService workers = Executors.newFixedThreadPool(2);
+        CountDownLatch start = new CountDownLatch(1);
+        workers.submit(() -> { await(start); diagnostics.registerFunction("echo"); });
+        workers.submit(() -> { await(start); diagnostics.removeFunction("echo"); });
+        start.countDown();
+        workers.shutdown();
+        assertThat(workers.awaitTermination(1, TimeUnit.SECONDS)).isTrue();
+        diagnostics.removeFunction("echo");
+        assertThat(meters.getMeters()).hasSize(2);
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(e);
+        }
     }
 }

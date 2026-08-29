@@ -111,6 +111,45 @@ class FunctionCapacityRegistryTest {
         assertThat(state.inFlight()).isLessThanOrEqualTo(state.configuredConcurrency());
     }
 
+    @Test
+    void concurrentAcquisitionNeverExceedsLoweredEffectiveBound() throws Exception {
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        registry.register("echo", 8);
+        registry.setEffectiveConcurrency("echo", 2);
+        ExecutorService workers = Executors.newFixedThreadPool(32);
+        CountDownLatch ready = new CountDownLatch(32);
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch acquired = new CountDownLatch(2);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicInteger maxInFlight = new AtomicInteger();
+
+        try {
+            for (int i = 0; i < 32; i++) {
+                workers.submit(() -> {
+                    ready.countDown();
+                    await(start);
+                    if (registry.tryAcquireSlot("echo")) {
+                        maxInFlight.accumulateAndGet(registry.inFlight("echo"), Math::max);
+                        acquired.countDown();
+                        await(release);
+                        registry.releaseSlotAndGetHoldNanos("echo");
+                    }
+                });
+            }
+            assertThat(ready.await(1, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            assertThat(acquired.await(1, TimeUnit.SECONDS)).isTrue();
+            release.countDown();
+            workers.shutdown();
+            assertThat(workers.awaitTermination(1, TimeUnit.SECONDS)).isTrue();
+        } finally {
+            workers.shutdownNow();
+        }
+
+        assertThat(maxInFlight).hasValue(2);
+        assertThat(registry.inFlight("echo")).isLessThanOrEqualTo(registry.effectiveConcurrency("echo"));
+    }
+
     private static void await(CountDownLatch latch) {
         try {
             latch.await();
