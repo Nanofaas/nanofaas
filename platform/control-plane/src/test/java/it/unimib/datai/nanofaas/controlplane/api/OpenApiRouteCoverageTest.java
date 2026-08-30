@@ -1,56 +1,102 @@
 package it.unimib.datai.nanofaas.controlplane.api;
 
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.config.BeanDefinition;
-import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.core.annotation.AnnotatedElementUtils;
-import org.springframework.core.type.filter.AnnotationTypeFilter;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
+import org.springframework.core.type.classreading.MetadataReader;
+import org.springframework.core.type.classreading.SimpleMetadataReaderFactory;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 import org.yaml.snakeyaml.Yaml;
 
+import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Points at {@code openapi.yaml} when a route is added without documenting it. The spec is
- * hand-written and nothing generates from it, so this is a signpost, not a contract check: it
- * compares routes only, and says nothing about request/response schemas.
+ * Scans every {@code @RestController} under {@code it.unimib.datai.nanofaas} — core API plus
+ * whichever optional modules are on the test classpath — and checks each public route is
+ * documented in the Gradle-composed contract at {@code META-INF/resources/openapi.yaml} (core
+ * document + enabled module fragments), the same file Spring Boot serves at {@code /openapi.yaml}.
+ * Route coverage only: request/response schema shape is owned by the composer's own tests and by
+ * endpoint tests.
  */
 class OpenApiRouteCoverageTest {
 
     /** Callbacks the control plane exposes to its own function pods, not part of the public API. */
     private static final String INTERNAL_PREFIX = "/v1/internal/";
 
+    private static final String SCAN_ROOT = "it.unimib.datai.nanofaas";
+
     @Test
-    void everyPublicRouteOfTheCoreControllersIsInTheSpec() {
+    void everyPublicRouteIsInTheComposedSpec() {
         Set<String> documented = documentedOperations();
 
         Set<String> undocumented = new TreeSet<>(declaredRoutes());
         undocumented.removeAll(documented);
 
         assertThat(undocumented)
-                .as("routes missing from openapi.yaml — add them there, or move them under %s if internal",
+                .as("routes missing from the composed openapi.yaml — document them there, or move them under %s if internal",
                         INTERNAL_PREFIX)
                 .isEmpty();
     }
 
-    private static Set<String> declaredRoutes() {
-        ClassPathScanningCandidateComponentProvider scanner =
-                new ClassPathScanningCandidateComponentProvider(false);
-        scanner.addIncludeFilter(new AnnotationTypeFilter(RestController.class));
+    @Test
+    void enabledModuleRoutesAreDocumented() {
+        Set<String> selected = selectedModules();
+        Assumptions.assumeTrue(selected.contains("build-metadata") && selected.contains("runtime-config"),
+                "build-metadata and runtime-config modules are not both selected: " + selected);
 
+        assertThat(declaredRoutes()).contains(
+                "get /modules/build-metadata",
+                "get /v1/admin/runtime-config");
+        assertThat(documentedOperations()).containsAll(declaredRoutes());
+    }
+
+    private static Set<String> selectedModules() {
+        String modules = System.getProperty("nanofaas.selectedControlPlaneModules", "");
+        return Stream.of(modules.split(","))
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .collect(Collectors.toSet());
+    }
+
+    /**
+     * Finds every {@code @RestController} under {@link #SCAN_ROOT} by reading class metadata
+     * directly, rather than via {@code ClassPathScanningCandidateComponentProvider}: that provider
+     * evaluates {@code @Conditional} annotations (like {@code @ConditionalOnProperty} on
+     * {@code AdminRuntimeConfigController}) against an empty environment and silently drops
+     * controllers it can't prove are active, which is wrong here — a route review needs every
+     * declared controller, active or not.
+     */
+    private static Set<String> declaredRoutes() {
         Set<String> routes = new TreeSet<>();
-        for (BeanDefinition candidate : scanner.findCandidateComponents(OpenApiRouteCoverageTest.class.getPackageName())) {
-            Class<?> controller = loadClass(candidate.getBeanClassName());
+        var resolver = new PathMatchingResourcePatternResolver();
+        var readerFactory = new SimpleMetadataReaderFactory(resolver);
+        String pattern = "classpath*:" + SCAN_ROOT.replace('.', '/') + "/**/*.class";
+        Resource[] resources;
+        try {
+            resources = resolver.getResources(pattern);
+        } catch (IOException e) {
+            throw new IllegalStateException("Cannot scan " + pattern, e);
+        }
+        for (Resource resource : resources) {
+            var metadata = readMetadata(readerFactory, resource).getAnnotationMetadata();
+            if (!metadata.isConcrete() || !metadata.isIndependent()
+                    || !metadata.getAnnotationTypes().contains(RestController.class.getName())) {
+                continue;
+            }
+            Class<?> controller = loadClass(metadata.getClassName());
             String prefix = firstPath(AnnotatedElementUtils.findMergedAnnotation(controller, RequestMapping.class));
             for (var method : controller.getDeclaredMethods()) {
                 RequestMapping mapping = AnnotatedElementUtils.findMergedAnnotation(method, RequestMapping.class);
@@ -70,19 +116,36 @@ class OpenApiRouteCoverageTest {
         return routes;
     }
 
+    private static MetadataReader readMetadata(SimpleMetadataReaderFactory readerFactory, Resource resource) {
+        try {
+            return readerFactory.getMetadataReader(resource);
+        } catch (IOException e) {
+            throw new IllegalStateException("Cannot read " + resource, e);
+        }
+    }
+
+    private static final Set<String> HTTP_METHODS =
+            Set.of("get", "put", "post", "delete", "options", "head", "patch", "trace");
+
     @SuppressWarnings("unchecked")
     private static Set<String> documentedOperations() {
-        Path spec = repoRoot().resolve("openapi/core.yaml");
         Map<String, Object> root;
-        try (InputStream in = Files.newInputStream(spec)) {
+        String resource = "/META-INF/resources/openapi.yaml";
+        try (InputStream in = OpenApiRouteCoverageTest.class.getResourceAsStream(resource)) {
+            if (in == null) {
+                throw new IllegalStateException(resource + " not found on the test classpath — "
+                        + "did composeControlPlaneOpenApi run before processResources?");
+            }
             root = new Yaml().load(in);
         } catch (Exception e) {
-            throw new IllegalStateException("Cannot read " + spec, e);
+            throw new IllegalStateException("Cannot read " + resource, e);
         }
 
         Set<String> operations = new TreeSet<>();
         Map<String, Map<String, Object>> paths = (Map<String, Map<String, Object>>) root.get("paths");
-        paths.forEach((path, verbs) -> verbs.keySet().forEach(verb -> operations.add(operation(verb, path))));
+        paths.forEach((path, verbs) -> verbs.keySet().stream()
+                .filter(HTTP_METHODS::contains)
+                .forEach(verb -> operations.add(operation(verb, path))));
         return operations;
     }
 
@@ -103,16 +166,5 @@ class OpenApiRouteCoverageTest {
         } catch (ClassNotFoundException e) {
             throw new IllegalStateException(e);
         }
-    }
-
-    private static Path repoRoot() {
-        Path current = Path.of("").toAbsolutePath();
-        while (current != null && !Files.exists(current.resolve("settings.gradle"))) {
-            current = current.getParent();
-        }
-        if (current == null) {
-            throw new IllegalStateException("Could not locate the repository root");
-        }
-        return current;
     }
 }
