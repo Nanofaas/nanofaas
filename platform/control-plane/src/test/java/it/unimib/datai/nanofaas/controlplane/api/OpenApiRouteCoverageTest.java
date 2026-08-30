@@ -72,7 +72,7 @@ class OpenApiRouteCoverageTest {
 
     @SuppressWarnings("unchecked")
     private static Set<String> documentedOperations() {
-        Path spec = repoRoot().resolve("openapi.yaml");
+        Path spec = repoRoot().resolve("openapi/core.yaml");
         Map<String, Object> root;
         try (InputStream in = Files.newInputStream(spec)) {
             root = new Yaml().load(in);

@@ -49,7 +49,8 @@ tasks.named('test') {
     // OpenApiRouteCoverageTest and IssueCoverageTest read repo files; without declaring them the
     // task stays UP-TO-DATE when only the spec or a doc changes, and never notices the drift.
     inputs.files(
-            rootProject.file('openapi.yaml'),
+            rootProject.file('openapi/core.yaml'),
+            rootProject.fileTree('platform/modules') { include '*/openapi.yaml' },
             rootProject.file('docs/slo.md'),
             rootProject.file('docs/quickstart.md'),
             rootProject.file('docs/example-function.md')

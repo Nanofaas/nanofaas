@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Merges the core OpenAPI document with per-module fragments into one deterministic YAML file.
@@ -117,11 +118,17 @@ final class OpenApiComposer {
         }
     }
 
+    private static final Set<String> HTTP_METHODS =
+            Set.of("get", "put", "post", "delete", "options", "head", "patch", "trace");
+
     private static Map<String, Map<String, Object>> indexOperationsById(Map<String, Object> paths) {
         Map<String, Map<String, Object>> index = new LinkedHashMap<>();
         for (Object pathValue : paths.values()) {
-            for (Object methodValue : asMap(pathValue).values()) {
-                Map<String, Object> operation = asMap(methodValue);
+            for (Map.Entry<String, Object> methodEntry : asMap(pathValue).entrySet()) {
+                if (!HTTP_METHODS.contains(methodEntry.getKey())) {
+                    continue; // path-item fields like 'parameters' or 'summary' are not operations
+                }
+                Map<String, Object> operation = asMap(methodEntry.getValue());
                 Object operationId = operation.get("operationId");
                 if (operationId instanceof String id && index.put(id, operation) != null) {
                     throw new IllegalArgumentException("Duplicate operationId '" + id + "'");

@@ -56,7 +56,7 @@ class IssueCoverageTest {
     /** Cases: issue005_openApiExists, issue019_sloDocExists, issue020_quickstartDocExists, issue021_exampleFunctionDocExists. */
     static Stream<Path> repoFiles() {
         return Stream.of(
-                Path.of("openapi.yaml"),              // issue005: OpenAPI spec
+                Path.of("openapi/core.yaml"),         // issue005: OpenAPI spec
                 Path.of("docs/slo.md"),               // issue019: SLO doc
                 Path.of("docs/quickstart.md"),        // issue020: quickstart doc
                 Path.of("docs/example-function.md")); // issue021: example function doc

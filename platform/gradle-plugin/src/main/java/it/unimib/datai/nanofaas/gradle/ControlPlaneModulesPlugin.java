@@ -2,9 +2,15 @@ package it.unimib.datai.nanofaas.gradle;
 
 import org.gradle.api.GradleException;
 import org.gradle.api.Plugin;
+import org.gradle.api.Project;
+import org.gradle.api.file.Directory;
 import org.gradle.api.initialization.Settings;
 import org.gradle.api.logging.Logging;
+import org.gradle.api.provider.Provider;
+import org.gradle.api.tasks.TaskProvider;
+import org.gradle.language.jvm.tasks.ProcessResources;
 
+import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -27,9 +33,39 @@ public final class ControlPlaneModulesPlugin implements Plugin<Settings> {
             if (project.getPath().startsWith(":control-plane-modules:")) {
                 project.getPluginManager().apply(ControlPlaneModuleProjectPlugin.class);
             }
+            if (project.getPath().equals(":control-plane")) {
+                configureOpenApiComposition(project, modulesRoot, selected);
+            }
         });
         settings.getGradle().getExtensions().getExtraProperties()
                 .set(SELECTED_EXTRA_PROPERTY, List.copyOf(selected));
+    }
+
+    private static void configureOpenApiComposition(Project project, Path modulesRoot, List<String> selected) {
+        List<String> fragmentModuleIds = new ArrayList<>();
+        List<File> fragmentFiles = new ArrayList<>();
+        for (String moduleId : selected) {
+            File fragment = modulesRoot.resolve(moduleId).resolve("openapi.yaml").toFile();
+            if (fragment.isFile()) {
+                fragmentModuleIds.add(moduleId);
+                fragmentFiles.add(fragment);
+            }
+        }
+
+        Provider<Directory> generatedDir = project.getLayout().getBuildDirectory().dir("generated/openapi");
+        TaskProvider<ComposeOpenApiTask> composeTask = project.getTasks().register(
+                "composeControlPlaneOpenApi", ComposeOpenApiTask.class, task -> {
+                    task.getCoreDocument().set(project.getRootProject().file("openapi/core.yaml"));
+                    task.getFragments().setFrom(fragmentFiles);
+                    task.getModuleIds().set(fragmentModuleIds);
+                    task.getOutputFile().set(generatedDir.map(dir -> dir.file("META-INF/resources/openapi.yaml")));
+                });
+
+        project.getPluginManager().withPlugin("java", ignored ->
+                project.getTasks().named("processResources", ProcessResources.class, task -> {
+                    task.dependsOn(composeTask);
+                    task.from(generatedDir);
+                }));
     }
 
     private static List<ModuleDescriptor> discover(Settings settings, Path modulesRoot) {

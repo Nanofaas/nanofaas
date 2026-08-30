@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.gradle;
 
 import org.gradle.testkit.runner.BuildResult;
 import org.gradle.testkit.runner.GradleRunner;
+import org.gradle.testkit.runner.TaskOutcome;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.io.TempDir;
@@ -209,6 +210,53 @@ class ControlPlaneModulesPluginTest {
         Files.writeString(module.resolve("module.properties"), descriptor("declared", false, "", "", "", ""));
 
         failsWith("-PcontrolPlaneModules=none", "directory name 'actual' does not match descriptor id 'declared'");
+    }
+
+    @Test
+    void composesSelectedModuleFragmentsIntoControlPlaneOpenApi() throws IOException {
+        Files.writeString(projectDir.resolve("settings.gradle"),
+                "plugins { id 'it.unimib.datai.nanofaas.control-plane-modules' }\n"
+                        + "include('control-plane'); project(':control-plane').projectDir = file('control-plane')\n");
+
+        Files.createDirectories(projectDir.resolve("openapi"));
+        Files.writeString(projectDir.resolve("openapi/core.yaml"), """
+                openapi: 3.0.3
+                info:
+                  title: Core
+                  version: "1"
+                paths: {}
+                components: {}
+                """);
+
+        writeModule("alpha", true, "", "", "", "");
+        writeModule("beta", true, "", "", "", "");
+        writeFragment("alpha", "/alpha");
+        writeFragment("beta", "/beta");
+
+        Path controlPlane = projectDir.resolve("control-plane");
+        Files.createDirectories(controlPlane);
+        Files.writeString(controlPlane.resolve("build.gradle"), "plugins { id 'java' }\n");
+
+        BuildResult result = run("-PcontrolPlaneModules=alpha", ":control-plane:processResources");
+
+        Path output = projectDir.resolve(
+                "control-plane/build/generated/openapi/META-INF/resources/openapi.yaml");
+        assertThat(output).exists();
+        assertThat(Files.readString(output)).contains("/alpha").doesNotContain("/beta");
+        assertThat(result.task(":control-plane:composeControlPlaneOpenApi").getOutcome())
+                .isEqualTo(TaskOutcome.SUCCESS);
+    }
+
+    private void writeFragment(String moduleId, String path) throws IOException {
+        Files.writeString(projectDir.resolve("platform/modules/" + moduleId + "/openapi.yaml"), """
+                paths:
+                  %s:
+                    get:
+                      operationId: %sRoute
+                      responses:
+                        "200":
+                          description: ok
+                """.formatted(path, moduleId));
     }
 
     private BuildResult run(String... arguments) {
