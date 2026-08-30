@@ -1,6 +1,9 @@
 # JVM-only local development Dockerfile.
 # Production native images are built via GitHub Actions using Cloud Native Buildpacks.
-FROM eclipse-temurin:25-jdk AS jre-builder
+ARG BUILDER_IMAGE=eclipse-temurin:25-jdk
+ARG RUNTIME_IMAGE=gcr.io/distroless/base-debian13:nonroot
+
+FROM ${BUILDER_IMAGE} AS jre-builder
 WORKDIR /tmp/build
 COPY build/libs/app.jar app.jar
 # jlink a runtime with only the modules this jar actually touches, instead of shipping the
@@ -22,7 +25,11 @@ RUN jar xf app.jar BOOT-INF/lib BOOT-INF/classes && \
 ARG JVM_TUNING="-XX:+UseSerialGC -XX:TieredStopAtLevel=1"
 RUN printf '%s\n' $JVM_TUNING > /jvm.options
 
-FROM gcr.io/distroless/base-debian13:nonroot
+FROM ${RUNTIME_IMAGE}
+ARG BUILDER_IMAGE
+ARG RUNTIME_IMAGE
+ENV NANOFAAS_BUILD_BASE_IMAGE=${BUILDER_IMAGE}
+ENV NANOFAAS_RUNTIME_BASE_IMAGE=${RUNTIME_IMAGE}
 WORKDIR /app
 COPY --from=jre-builder --chown=nonroot:nonroot /jre /opt/jre
 COPY build/libs/app.jar app.jar

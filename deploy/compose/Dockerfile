@@ -1,4 +1,7 @@
-FROM eclipse-temurin:25-jdk AS build
+ARG BUILDER_IMAGE=eclipse-temurin:25-jdk
+ARG RUNTIME_IMAGE=gcr.io/distroless/base-debian13:nonroot
+
+FROM ${BUILDER_IMAGE} AS build
 
 ARG NANOFAAS_CONTROL_PLANE_MODULES=container-deployment-provider
 
@@ -21,7 +24,12 @@ RUN cd /workspace/platform/control-plane/build/libs && \
       --strip-debug --no-header-files --no-man-pages --compress=zip-9 \
       --output /jre
 
-FROM gcr.io/distroless/base-debian13:nonroot
+FROM ${RUNTIME_IMAGE}
+
+ARG BUILDER_IMAGE
+ARG RUNTIME_IMAGE
+ENV NANOFAAS_BUILD_BASE_IMAGE=${BUILDER_IMAGE}
+ENV NANOFAAS_RUNTIME_BASE_IMAGE=${RUNTIME_IMAGE}
 
 WORKDIR /app
 COPY --from=build --chown=nonroot:nonroot /jre /opt/jre

@@ -5,14 +5,18 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 target="${1:-}"
 image="${2:-}"
-gradle_args=""
+gradle_args="-PnanofaasBuildType=native"
+
+if [ -n "${NANOFAAS_BUILD_VARIANT:-}" ]; then
+  gradle_args="$gradle_args -PnanofaasBuildVariant=$NANOFAAS_BUILD_VARIANT"
+fi
 
 case "$target" in
   control-plane)
     task=":control-plane:nativeCompile"
     binary="platform/control-plane/build/native/nativeCompile/control-plane"
     default_image="nanofaas/control-plane:native"
-    gradle_args="-PcontrolPlaneModules=${CONTROL_PLANE_MODULES:-all}"
+    gradle_args="$gradle_args -PcontrolPlaneModules=${CONTROL_PLANE_MODULES:-all}"
     ;;
   warm-echo)
     task=":services:java:warm-echo:nativeCompile"
@@ -86,7 +90,7 @@ fi
 # which is 10% faster where memory is not the constraint and costs only registry
 # space — with a heap ceiling in place both levels peak at the same resident size.
 if [ -n "${NATIVE_OPTIMIZATION:-}" ]; then
-  gradle_args="$gradle_args -PnativeOptimization=$NATIVE_OPTIMIZATION"
+  gradle_args="$gradle_args -PnativeOptimization=$NATIVE_OPTIMIZATION -PnanofaasBuildOptimization=$NATIVE_OPTIMIZATION"
 fi
 
 # NATIVE_BUILD_MEMORY=6g bounds the builder, not the built image. native-image

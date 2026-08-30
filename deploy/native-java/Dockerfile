@@ -1,4 +1,7 @@
-FROM oraclelinux:9-slim AS builder
+ARG BUILDER_IMAGE=oraclelinux:9-slim
+ARG RUNTIME_IMAGE=gcr.io/distroless/cc-debian13:nonroot
+
+FROM ${BUILDER_IMAGE} AS builder
 
 ARG TARGETARCH
 # gcc-c++ is needed only by G1: its collector library (libg1gc-cr) is C++, and
@@ -41,7 +44,11 @@ RUN ./gradlew "$NATIVE_TASK" $GRADLE_ARGS --no-daemon && \
 # only pays the few megabytes, which is cheaper than two runtime images that can
 # drift apart — the base image failed at startup, not at build, with
 # "libstdc++.so.6: cannot open shared object file".
-FROM gcr.io/distroless/cc-debian13:nonroot
+FROM ${RUNTIME_IMAGE}
+ARG BUILDER_IMAGE
+ARG RUNTIME_IMAGE
+ENV NANOFAAS_BUILD_BASE_IMAGE=${BUILDER_IMAGE}
+ENV NANOFAAS_RUNTIME_BASE_IMAGE=${RUNTIME_IMAGE}
 WORKDIR /app
 COPY --from=builder --chown=nonroot:nonroot /tmp/application /app/application
 EXPOSE 8080 8081

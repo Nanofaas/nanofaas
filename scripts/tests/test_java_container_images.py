@@ -86,6 +86,44 @@ def test_native_java_images_use_the_shared_builder():
         assert f"{target})" in wrapper
 
 
+def test_jvm_dockerfiles_report_their_base_images():
+    # /modules/build-metadata reads NANOFAAS_BUILD_BASE_IMAGE and
+    # NANOFAAS_RUNTIME_BASE_IMAGE from the running process's environment, so the
+    # image actually built FROM must be the value reported — not a hardcoded
+    # string that can drift from the FROM line.
+    for relative_path, builder_image, runtime_image in (
+        ("platform/control-plane/Dockerfile", "eclipse-temurin:25-jdk", "gcr.io/distroless/base-debian13:nonroot"),
+        ("deploy/compose/Dockerfile", "eclipse-temurin:25-jdk", "gcr.io/distroless/base-debian13:nonroot"),
+    ):
+        dockerfile = (REPO_ROOT / relative_path).read_text()
+        assert f"ARG BUILDER_IMAGE={builder_image}" in dockerfile
+        assert f"ARG RUNTIME_IMAGE={runtime_image}" in dockerfile
+        assert "FROM ${BUILDER_IMAGE}" in dockerfile
+        assert "FROM ${RUNTIME_IMAGE}" in dockerfile
+        assert "ENV NANOFAAS_BUILD_BASE_IMAGE=${BUILDER_IMAGE}" in dockerfile
+        assert "ENV NANOFAAS_RUNTIME_BASE_IMAGE=${RUNTIME_IMAGE}" in dockerfile
+
+
+def test_native_java_dockerfile_reports_its_base_images():
+    dockerfile = (REPO_ROOT / "deploy/native-java/Dockerfile").read_text()
+
+    assert "ARG BUILDER_IMAGE=oraclelinux:9-slim" in dockerfile
+    assert "ARG RUNTIME_IMAGE=gcr.io/distroless/cc-debian13:nonroot" in dockerfile
+    assert "FROM ${BUILDER_IMAGE}" in dockerfile
+    assert "FROM ${RUNTIME_IMAGE}" in dockerfile
+    assert "ENV NANOFAAS_BUILD_BASE_IMAGE=${BUILDER_IMAGE}" in dockerfile
+    assert "ENV NANOFAAS_RUNTIME_BASE_IMAGE=${RUNTIME_IMAGE}" in dockerfile
+
+
+def test_native_java_image_script_passes_build_identity_properties():
+    wrapper = (REPO_ROOT / "scripts/native-java-image.sh").read_text()
+
+    assert '-PnanofaasBuildType=native' in wrapper
+    assert 'NANOFAAS_BUILD_VARIANT' in wrapper
+    assert '-PnanofaasBuildVariant=' in wrapper
+    assert '-PnanofaasBuildOptimization=' in wrapper
+
+
 def test_native_builder_can_link_the_g1_collector():
     """G1's collector library is C++; the serial one is not.
 
