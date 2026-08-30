@@ -15,6 +15,7 @@ repositories {
 }
 
 dependencies {
+    implementation 'org.yaml:snakeyaml:2.4'
     testImplementation gradleTestKit()
     testImplementation 'org.assertj:assertj-core:3.26.3'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.3'
