@@ -3,14 +3,12 @@ package it.unimib.datai.nanofaas.modules.buildmetadata;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.function.Supplier;
-
 @RestController
 public class BuildMetadataController {
 
-    private final Supplier<BuildMetadata> buildMetadataProvider;
+    private final BuildMetadataProvider buildMetadataProvider;
 
-    BuildMetadataController(Supplier<BuildMetadata> buildMetadataProvider) {
+    BuildMetadataController(BuildMetadataProvider buildMetadataProvider) {
         this.buildMetadataProvider = buildMetadataProvider;
     }
 

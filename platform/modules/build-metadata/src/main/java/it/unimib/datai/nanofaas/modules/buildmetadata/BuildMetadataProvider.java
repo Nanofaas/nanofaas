@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
-import java.util.function.Supplier;
 
 /**
  * Resolves this artifact's {@link BuildMetadata} once at construction from the
@@ -21,7 +20,7 @@ import java.util.function.Supplier;
  * hands back the same immutable instance on every call. Never touches Docker
  * or Kubernetes, and never exposes raw JVM arguments.
  */
-final class BuildMetadataProvider implements Supplier<BuildMetadata> {
+final class BuildMetadataProvider {
 
     private static final String PROPERTIES_RESOURCE = "META-INF/nanofaas-build.properties";
     private static final Logger LOG = LoggerFactory.getLogger(BuildMetadataProvider.class);
@@ -42,7 +41,7 @@ final class BuildMetadataProvider implements Supplier<BuildMetadata> {
                 parseDirty(buildProperties.getProperty("dirty")),
                 parseModules(buildProperties.getProperty("modules")),
                 new BuildMetadata.Build(
-                        nullIfBlank(buildProperties.getProperty("type")),
+                        resolveBuildType(buildProperties, systemProperties),
                         nullIfBlank(buildProperties.getProperty("variant")),
                         nullIfBlank(buildProperties.getProperty("optimization")),
                         new BuildMetadata.BaseImages(
@@ -52,12 +51,11 @@ final class BuildMetadataProvider implements Supplier<BuildMetadata> {
                         normalizeArchitecture(systemProperties.get("os.arch")),
                         nullIfBlank(systemProperties.get("os.version")),
                         nullIfBlank(systemProperties.get("java.version")),
-                        resolveVm(systemProperties),
+                        nullIfBlank(systemProperties.get("java.vm.name")),
                         sortedOrNull(garbageCollectors)));
     }
 
-    @Override
-    public BuildMetadata get() {
+    BuildMetadata get() {
         return metadata;
     }
 
@@ -90,7 +88,17 @@ final class BuildMetadataProvider implements Supplier<BuildMetadata> {
     }
 
     private static Boolean parseDirty(String raw) {
-        return raw == null || raw.isBlank() ? null : Boolean.parseBoolean(raw);
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        if ("true".equalsIgnoreCase(raw)) {
+            return true;
+        }
+        if ("false".equalsIgnoreCase(raw)) {
+            return false;
+        }
+        LOG.warn("Malformed 'dirty' build property value '{}'; reporting dirty as null", raw);
+        return null;
     }
 
     private static List<String> parseModules(String raw) {
@@ -125,13 +133,14 @@ final class BuildMetadataProvider implements Supplier<BuildMetadata> {
         };
     }
 
-    // ponytail: java.vm.name is already accurate for a native image at real runtime;
-    // this fallback only covers unit tests that don't set it explicitly.
-    private static String resolveVm(Map<String, String> systemProperties) {
-        String vmName = nullIfBlank(systemProperties.get("java.vm.name"));
-        if (vmName != null) {
-            return vmName;
+    // A property-sourced 'type' always wins; the imagecode marker is only a fallback
+    // for builds whose generated properties don't carry it, and it's an honest
+    // observation (the process really is running as a native image), not a sentinel.
+    private static String resolveBuildType(Properties buildProperties, Map<String, String> systemProperties) {
+        String fromProperties = nullIfBlank(buildProperties.getProperty("type"));
+        if (fromProperties != null) {
+            return fromProperties;
         }
-        return systemProperties.get("org.graalvm.nativeimage.imagecode") != null ? "GraalVM Native Image" : null;
+        return systemProperties.get("org.graalvm.nativeimage.imagecode") != null ? "native" : null;
     }
 }

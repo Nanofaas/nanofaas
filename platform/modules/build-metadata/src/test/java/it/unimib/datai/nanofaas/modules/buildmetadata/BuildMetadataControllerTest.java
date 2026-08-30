@@ -11,29 +11,41 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class BuildMetadataControllerTest {
 
-    private static final BuildMetadata FIXED = new BuildMetadata(
-            "0.4.0",
-            "a".repeat(40),
-            false,
-            List.of("async-queue", "build-metadata"),
-            new BuildMetadata.Build("jvm", "jvm-g1-c2", "c2",
-                    new BuildMetadata.BaseImages("eclipse-temurin:25-jdk", "gcr.io/distroless/base-debian13:nonroot")),
-            new BuildMetadata.Runtime("arm64", "6.8.0-52-generic", "25.0.1",
-                    "OpenJDK 64-Bit Server VM", List.of("G1 Concurrent GC", "G1 Young Generation")));
+    private static BuildMetadataProvider fixedProvider() {
+        Properties props = new Properties();
+        props.setProperty("version", "0.4.0");
+        props.setProperty("revision", "a".repeat(40));
+        props.setProperty("dirty", "false");
+        props.setProperty("modules", "async-queue,build-metadata");
+        props.setProperty("type", "jvm");
+        props.setProperty("variant", "jvm-g1-c2");
+        props.setProperty("optimization", "c2");
+        Map<String, String> env = Map.of(
+                "NANOFAAS_BUILD_BASE_IMAGE", "eclipse-temurin:25-jdk",
+                "NANOFAAS_RUNTIME_BASE_IMAGE", "gcr.io/distroless/base-debian13:nonroot");
+        Map<String, String> systemProps = Map.of(
+                "os.arch", "aarch64",
+                "os.version", "6.8.0-52-generic",
+                "java.version", "25.0.1",
+                "java.vm.name", "OpenJDK 64-Bit Server VM");
+        return new BuildMetadataProvider(props, env, systemProps, List.of("G1 Young Generation", "G1 Concurrent GC"));
+    }
+
+    private static BuildMetadataProvider emptyProvider() {
+        return new BuildMetadataProvider(new Properties(), Map.of(), Map.of(), List.of());
+    }
 
     @Test
     void describeReturnsTheProvidersMetadata() {
-        BuildMetadataController controller = new BuildMetadataController(() -> FIXED);
+        BuildMetadataProvider provider = fixedProvider();
+        BuildMetadataController controller = new BuildMetadataController(provider);
 
-        assertThat(controller.describe()).isSameAs(FIXED);
+        assertThat(controller.describe()).isSameAs(provider.get());
     }
 
     @Test
     void httpResponseExposesExactFieldNamesAndNullableValues() {
-        BuildMetadata sparse = new BuildMetadata(null, null, null, null,
-                new BuildMetadata.Build(null, null, null, new BuildMetadata.BaseImages(null, null)),
-                new BuildMetadata.Runtime(null, null, null, null, null));
-        BuildMetadataController controller = new BuildMetadataController(() -> sparse);
+        BuildMetadataController controller = new BuildMetadataController(emptyProvider());
         WebTestClient client = WebTestClient.bindToController(controller).build();
 
         client.get().uri("/modules/build-metadata").exchange()
@@ -57,7 +69,7 @@ class BuildMetadataControllerTest {
 
     @Test
     void httpResponseSerializesRealValues() {
-        BuildMetadataController controller = new BuildMetadataController(() -> FIXED);
+        BuildMetadataController controller = new BuildMetadataController(fixedProvider());
         WebTestClient client = WebTestClient.bindToController(controller).build();
 
         client.get().uri("/modules/build-metadata").exchange()

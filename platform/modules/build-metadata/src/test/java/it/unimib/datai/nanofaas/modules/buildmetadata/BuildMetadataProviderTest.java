@@ -77,18 +77,42 @@ class BuildMetadataProviderTest {
     }
 
     @Test
-    void nativeImageDetectedWhenJvmVmNameAbsent() {
+    void vmIsNullWhenJavaVmNameAbsentEvenUnderNativeImageMarker() {
         assertThat(provider(new Properties(), Map.of(),
                 Map.of("org.graalvm.nativeimage.imagecode", "runtime"), List.of())
-                .get().runtime().vm()).isEqualTo("GraalVM Native Image");
+                .get().runtime().vm()).isNull();
     }
 
     @Test
-    void jvmVmNameTakesPrecedenceOverNativeDetection() {
+    void vmComesFromJavaVmNameAlone() {
         assertThat(provider(new Properties(), Map.of(),
-                Map.of("java.vm.name", "OpenJDK 64-Bit Server VM",
-                        "org.graalvm.nativeimage.imagecode", "runtime"), List.of())
+                Map.of("java.vm.name", "OpenJDK 64-Bit Server VM"), List.of())
                 .get().runtime().vm()).isEqualTo("OpenJDK 64-Bit Server VM");
+    }
+
+    @Test
+    void buildTypeFallsBackToNativeImageMarkerWhenPropertyAbsent() {
+        assertThat(provider(new Properties(), Map.of(),
+                Map.of("org.graalvm.nativeimage.imagecode", "runtime"), List.of())
+                .get().build().type()).isEqualTo("native");
+    }
+
+    @Test
+    void buildTypePropertyWinsOverNativeImageMarker() {
+        Properties props = new Properties();
+        props.setProperty("type", "jvm");
+
+        assertThat(provider(props, Map.of(),
+                Map.of("org.graalvm.nativeimage.imagecode", "runtime"), List.of())
+                .get().build().type()).isEqualTo("jvm");
+    }
+
+    @Test
+    void malformedDirtyPropertyIsNull() {
+        Properties props = new Properties();
+        props.setProperty("dirty", "maybe");
+
+        assertThat(provider(props, Map.of(), Map.of(), List.of()).get().dirty()).isNull();
     }
 
     @Test
@@ -128,5 +152,20 @@ class BuildMetadataProviderTest {
         BuildMetadataProvider provider = provider(new Properties(), Map.of(), Map.of(), List.of());
 
         assertThat(provider.get()).isSameAs(provider.get());
+    }
+
+    @Test
+    void productionConstructorToleratesMissingBuildPropertiesResource() {
+        // META-INF/nanofaas-build.properties does not exist on this test classpath yet
+        // (a later task generates it) - the no-arg constructor must not throw, and every
+        // property-sourced field must come back null rather than a fabricated value.
+        BuildMetadata metadata = new BuildMetadataProvider().get();
+
+        assertThat(metadata.version()).isNull();
+        assertThat(metadata.revision()).isNull();
+        assertThat(metadata.dirty()).isNull();
+        assertThat(metadata.modules()).isNull();
+        assertThat(metadata.build().variant()).isNull();
+        assertThat(metadata.build().optimization()).isNull();
     }
 }
