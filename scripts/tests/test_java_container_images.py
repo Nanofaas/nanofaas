@@ -4,6 +4,37 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _line_index(lines, needle, start=0):
+    return next(i for i, line in enumerate(lines) if i >= start and needle in line)
+
+
+def _assert_runtime_stage_redeclares_and_reports_base_images(dockerfile_text):
+    # Substring-only checks can't tell a real redeclaration from a stray earlier
+    # match, and the ARG must come strictly between the runtime FROM and the ENV
+    # lines that consume it: a global ARG (declared before the first FROM) does
+    # NOT carry into a later stage's non-FROM instructions, so a redeclaration
+    # placed anywhere else leaves NANOFAAS_BUILD_BASE_IMAGE / _RUNTIME_BASE_IMAGE
+    # resolving to empty at runtime.
+    lines = dockerfile_text.splitlines()
+
+    runtime_from = _line_index(lines, "FROM ${RUNTIME_IMAGE}")
+    # search strictly after the runtime FROM: the global declarations above the
+    # first FROM also contain these substrings, and matching those would let a
+    # missing redeclaration slip through undetected.
+    arg_builder = _line_index(lines, "ARG BUILDER_IMAGE", start=runtime_from + 1)
+    arg_runtime = _line_index(lines, "ARG RUNTIME_IMAGE", start=runtime_from + 1)
+    env_builder = _line_index(lines, "ENV NANOFAAS_BUILD_BASE_IMAGE=${BUILDER_IMAGE}", start=runtime_from + 1)
+    env_runtime = _line_index(lines, "ENV NANOFAAS_RUNTIME_BASE_IMAGE=${RUNTIME_IMAGE}", start=runtime_from + 1)
+
+    # both redeclarations are bare (no default) - they must resolve from the
+    # stage's build-args, not silently pick up a hardcoded value here.
+    assert lines[arg_builder].strip() == "ARG BUILDER_IMAGE"
+    assert lines[arg_runtime].strip() == "ARG RUNTIME_IMAGE"
+
+    assert runtime_from < arg_builder < env_builder
+    assert runtime_from < arg_runtime < env_runtime
+
+
 def test_java_container_images_target_java_25():
     # These JVM Dockerfiles jlink a minimal runtime (only the modules the jar actually uses)
     # from eclipse-temurin:25-jdk, and run it on the same distroless/base image the native
@@ -102,6 +133,7 @@ def test_jvm_dockerfiles_report_their_base_images():
         assert "FROM ${RUNTIME_IMAGE}" in dockerfile
         assert "ENV NANOFAAS_BUILD_BASE_IMAGE=${BUILDER_IMAGE}" in dockerfile
         assert "ENV NANOFAAS_RUNTIME_BASE_IMAGE=${RUNTIME_IMAGE}" in dockerfile
+        _assert_runtime_stage_redeclares_and_reports_base_images(dockerfile)
 
 
 def test_native_java_dockerfile_reports_its_base_images():
@@ -113,6 +145,7 @@ def test_native_java_dockerfile_reports_its_base_images():
     assert "FROM ${RUNTIME_IMAGE}" in dockerfile
     assert "ENV NANOFAAS_BUILD_BASE_IMAGE=${BUILDER_IMAGE}" in dockerfile
     assert "ENV NANOFAAS_RUNTIME_BASE_IMAGE=${RUNTIME_IMAGE}" in dockerfile
+    _assert_runtime_stage_redeclares_and_reports_base_images(dockerfile)
 
 
 def test_native_java_image_script_passes_build_identity_properties():
