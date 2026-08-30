@@ -16,8 +16,8 @@ import java.util.Objects;
 /**
  * Merges the core OpenAPI document with per-module fragments into one deterministic YAML file.
  * Fragments contribute new paths/components and may patch existing operations via
- * {@code x-nanofaas-overlays}, keyed by operationId, using JSON-merge-patch semantics
- * (maps recurse, null removes, anything else replaces).
+ * {@code x-nanofaas-overlays}: a list of {@code {operationId, patch}} entries, applied with
+ * JSON-merge-patch semantics (maps recurse, null removes, anything else replaces).
  */
 final class OpenApiComposer {
 
@@ -37,10 +37,6 @@ final class OpenApiComposer {
         List<String> moduleIds = new ArrayList<>(fragments.keySet());
         moduleIds.sort(String::compareTo);
 
-        record PendingOverlay(String module, Map<String, Object> overlays) {
-        }
-        List<PendingOverlay> pendingOverlays = new ArrayList<>();
-
         for (String moduleId : moduleIds) {
             Map<String, Object> fragment = loadMap(fragments.get(moduleId));
             for (String key : fragment.keySet()) {
@@ -51,27 +47,42 @@ final class OpenApiComposer {
             }
             mergePaths(paths, asMap(fragment.get("paths")), moduleId);
             mergeComponents(components, asMap(fragment.get("components")), moduleId);
-            Object overlays = fragment.get("x-nanofaas-overlays");
-            if (overlays != null) {
-                pendingOverlays.add(new PendingOverlay(moduleId, asMap(overlays)));
-            }
         }
 
         Map<String, Map<String, Object>> operationsById = indexOperationsById(paths);
         Map<String, Write> writes = new LinkedHashMap<>();
-        for (PendingOverlay pending : pendingOverlays) {
-            for (Map.Entry<String, Object> entry : pending.overlays().entrySet()) {
-                String operationId = entry.getKey();
-                Map<String, Object> operation = operationsById.get(operationId);
-                if (operation == null) {
-                    throw new IllegalArgumentException("Module '" + pending.module()
-                            + "' overlay targets unknown operationId '" + operationId + "'");
+        for (String moduleId : moduleIds) {
+            Map<String, Object> fragment = loadMap(fragments.get(moduleId));
+            for (Object overlayEntry : asList(fragment.get("x-nanofaas-overlays"))) {
+                Map<String, Object> overlay = asMap(overlayEntry);
+                Object operationId = overlay.get("operationId");
+                Object patch = overlay.get("patch");
+                if (!(operationId instanceof String id) || patch == null) {
+                    throw new IllegalArgumentException("Module '" + moduleId
+                            + "' has an x-nanofaas-overlays entry missing 'operationId' or 'patch'");
                 }
-                applyPatch(operation, entry.getValue(), operationId, "", pending.module(), writes);
+                Map<String, Object> operation = operationsById.get(id);
+                if (operation == null) {
+                    throw new IllegalArgumentException(
+                            "Module '" + moduleId + "' overlay targets unknown operationId '" + id + "'");
+                }
+                applyPatch(operation, patch, id, "", moduleId, writes);
             }
         }
 
         writeYaml(document, output);
+    }
+
+    private static List<Object> asList(Object value) {
+        if (value == null) {
+            return List.of();
+        }
+        if (!(value instanceof List)) {
+            throw new IllegalArgumentException("Expected x-nanofaas-overlays to be a list but found " + value.getClass());
+        }
+        @SuppressWarnings("unchecked")
+        List<Object> list = (List<Object>) value;
+        return list;
     }
 
     private static void mergePaths(Map<String, Object> target, Map<String, Object> incoming, String moduleId) {

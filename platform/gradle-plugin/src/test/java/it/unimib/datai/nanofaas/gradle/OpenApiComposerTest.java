@@ -176,21 +176,23 @@ class OpenApiComposerTest {
     private Path overlay(String operationId, String status, String description) {
         return write("""
                 x-nanofaas-overlays:
-                  %s:
-                    responses:
-                      "%s":
-                        description: "%s"
+                  - operationId: %s
+                    patch:
+                      responses:
+                        "%s":
+                          description: "%s"
                 """.formatted(operationId, status, description));
     }
 
     private Path overlayRemoving501AndAdding202() {
         return write("""
                 x-nanofaas-overlays:
-                  invokeFunctionAsync:
-                    responses:
-                      "501": null
-                      "202":
-                        description: accepted
+                  - operationId: invokeFunctionAsync
+                    patch:
+                      responses:
+                        "501": null
+                        "202":
+                          description: accepted
                 """);
     }
 
