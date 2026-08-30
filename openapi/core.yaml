@@ -183,10 +183,6 @@ paths:
           description: Too many requests. Returned for rate limiting and queue/admission backpressure on the synchronous invoke path.
         '500':
           description: Invocation failed
-        '502':
-          description: The invocation was offloaded to a remote instance and that instance failed. There is no local fallback.
-        '504':
-          description: The invocation was offloaded to a remote instance and that instance timed out.
 
   /v1/functions/{name}:enqueue:
     post:
@@ -207,18 +203,8 @@ paths:
               type: string
               format: binary
       responses:
-        '202':
-          description: Accepted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnqueueResponse'
         '404':
           description: Function not registered
-        '429':
-          description: Too many requests. Returned for rate limiting or async queue saturation.
-        '500':
-          description: Enqueue failed
         '501':
           description: The async-queue module is not part of this build, so the asynchronous path is unavailable.
 
@@ -238,94 +224,8 @@ paths:
         '404':
           description: Not found
 
-  /v1/admin/runtime-config:
-    get:
-      summary: Get the current runtime configuration snapshot
-      description: Available only when `nanofaas.admin.runtime-config.enabled=true`.
-      operationId: getRuntimeConfig
-      responses:
-        '200':
-          description: Current runtime configuration
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RuntimeConfigSnapshot'
-        '404':
-          description: Admin runtime-config API is disabled
-  /v1/admin/runtime-config/{namespace}:
-    parameters:
-      - $ref: '#/components/parameters/RuntimeConfigNamespace'
-    get:
-      summary: Get one runtime configuration namespace
-      responses:
-        '200':
-          description: Current namespace configuration
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: true
-        '404':
-          description: Namespace or admin runtime-config API not found
-    patch:
-      summary: Patch one runtime configuration namespace
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RuntimeConfigPatchRequest'
-      responses:
-        '200':
-          description: Runtime configuration updated and applied
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RuntimeConfigPatchResponse'
-        '404':
-          description: Namespace or admin runtime-config API not found
-        '409':
-          description: Revision mismatch
-        '422':
-          description: Validation failed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationErrors'
-        '503':
-          description: Configuration update was rolled back because applying it failed
-  /v1/admin/runtime-config/{namespace}/validate:
-    parameters:
-      - $ref: '#/components/parameters/RuntimeConfigNamespace'
-    post:
-      summary: Validate a runtime configuration namespace patch
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: true
-      responses:
-        '200':
-          description: Patch is valid
-        '404':
-          description: Namespace or admin runtime-config API not found
-        '422':
-          description: Validation failed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationErrors'
-
 components:
   parameters:
-    RuntimeConfigNamespace:
-      name: namespace
-      in: path
-      required: true
-      schema:
-        type: string
     FunctionName:
       name: name
       in: path
@@ -744,15 +644,6 @@ components:
             - type: 'null'
         error:
           $ref: '#/components/schemas/ErrorInfo'
-    EnqueueResponse:
-      type: object
-      required: [executionId, status]
-      properties:
-        executionId:
-          type: string
-        status:
-          type: string
-          enum: [queued]
     ExecutionStatus:
       type: object
       required: [executionId, status]
@@ -817,51 +708,3 @@ components:
           type: string
         message:
           type: string
-    RuntimeConfigPatchRequest:
-      type: object
-      required: [expectedRevision, values]
-      properties:
-        expectedRevision:
-          type: integer
-          format: int64
-        values:
-          type: object
-          additionalProperties: true
-    RuntimeConfigSnapshot:
-      type: object
-      required: [revision, namespaces]
-      properties:
-        revision:
-          type: integer
-          format: int64
-        namespaces:
-          type: object
-          additionalProperties:
-            type: object
-            additionalProperties: true
-    RuntimeConfigPatchResponse:
-      type: object
-      required: [revision, effectiveConfig, appliedAt, changeId, warnings]
-      properties:
-        revision:
-          type: integer
-          format: int64
-        effectiveConfig:
-          $ref: '#/components/schemas/RuntimeConfigSnapshot'
-        appliedAt:
-          type: string
-          format: date-time
-        changeId:
-          type: string
-        warnings:
-          type: array
-          items:
-            type: string
-    ValidationErrors:
-      type: object
-      required: [errors]
-      properties:
-        errors:
-          type: array
-          items:
-            type: string

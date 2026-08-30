@@ -1,0 +1,14 @@
+x-nanofaas-overlays:
+  - operationId: invokeFunctionSync
+    patch:
+      responses:
+        '200':
+          headers:
+            X-NanoFaaS-Offloaded:
+              schema:
+                type: string
+              description: Present and set to `true` when this invocation was proxied to a remote nanofaas instance.
+        '502':
+          description: The invocation was offloaded to a remote instance and that instance failed. There is no local fallback.
+        '504':
+          description: The invocation was offloaded to a remote instance and that instance timed out.

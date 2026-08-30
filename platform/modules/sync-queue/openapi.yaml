@@ -1,0 +1,14 @@
+x-nanofaas-overlays:
+  - operationId: invokeFunctionSync
+    patch:
+      responses:
+        '429':
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before retrying, when known.
+            X-Queue-Reject-Reason:
+              schema:
+                type: string
+              description: Machine-readable reason the sync queue rejected the request.

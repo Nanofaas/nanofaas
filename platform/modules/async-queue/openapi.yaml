@@ -1,0 +1,27 @@
+components:
+  schemas:
+    EnqueueResponse:
+      type: object
+      required: [executionId, status]
+      properties:
+        executionId:
+          type: string
+        status:
+          type: string
+          enum: [queued]
+
+x-nanofaas-overlays:
+  - operationId: invokeFunctionAsync
+    patch:
+      responses:
+        '501': null
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnqueueResponse'
+        '429':
+          description: Too many requests. Returned for rate limiting or async queue saturation.
+        '500':
+          description: Enqueue failed

@@ -1,0 +1,90 @@
+paths:
+  /modules/build-metadata:
+    get:
+      summary: Get build and runtime metadata for this control-plane instance
+      description: |
+        Diagnostics endpoint reporting what this binary was built from and what it is
+        currently running on. Every field is best-effort: a value absent at build or
+        runtime is reported as null rather than omitted.
+      operationId: getBuildMetadata
+      responses:
+        '200':
+          description: Build and runtime metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildMetadataResponse'
+
+components:
+  schemas:
+    BuildMetadataResponse:
+      type: object
+      properties:
+        version:
+          type: string
+          nullable: true
+          description: Application version recorded at build time
+        revision:
+          type: string
+          nullable: true
+          description: Full git commit SHA the build was produced from
+        dirty:
+          type: boolean
+          nullable: true
+          description: Whether the working tree had uncommitted changes at build time
+        modules:
+          type: array
+          nullable: true
+          description: Control-plane modules compiled into this build
+          items:
+            type: string
+        build:
+          type: object
+          nullable: true
+          description: Build-time characteristics of this binary
+          properties:
+            type:
+              type: string
+              nullable: true
+              description: Build kind, e.g. `jvm` or `native`
+            variant:
+              type: string
+              nullable: true
+              description: Build variant identifier, e.g. `jvm-g1-c2`
+            optimization:
+              type: string
+              nullable: true
+              description: Native-image optimization level, when built native
+            baseImages:
+              type: object
+              nullable: true
+              description: OCI base images used to build and run this binary
+              properties:
+                builder:
+                  type: string
+                  nullable: true
+                runtime:
+                  type: string
+                  nullable: true
+        runtime:
+          type: object
+          nullable: true
+          description: Characteristics of the JVM/host this instance is currently running on
+          properties:
+            architecture:
+              type: string
+              nullable: true
+            kernelVersion:
+              type: string
+              nullable: true
+            javaVersion:
+              type: string
+              nullable: true
+            vm:
+              type: string
+              nullable: true
+            garbageCollectors:
+              type: array
+              nullable: true
+              items:
+                type: string
