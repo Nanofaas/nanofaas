@@ -8,6 +8,6 @@ public class BuildMetadataConfiguration {
 
     @Bean
     BuildMetadataController buildMetadataController() {
-        return new BuildMetadataController();
+        return new BuildMetadataController(new BuildMetadataProvider());
     }
 }
