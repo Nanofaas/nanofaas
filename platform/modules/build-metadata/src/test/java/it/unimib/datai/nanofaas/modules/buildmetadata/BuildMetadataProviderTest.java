@@ -2,6 +2,8 @@ package it.unimib.datai.nanofaas.modules.buildmetadata;
 
 import org.junit.jupiter.api.Test;
 
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -163,5 +165,23 @@ class BuildMetadataProviderTest {
 
         assertThat(metadata.version()).isNotBlank();
         assertThat(metadata.build().type()).isEqualTo("jvm");
+    }
+
+    @Test
+    void productionConstructorToleratesMissingBuildPropertiesResource() {
+        // A classloader with no delegate parent and no classpath entries can't see
+        // META-INF/nanofaas-build.properties regardless of whether generateBuildMetadata
+        // ran - this exercises loadBuildProperties()'s "in == null" branch, which a jar
+        // assembled without that Gradle task hitting at runtime must also tolerate.
+        ClassLoader emptyClassLoader = new URLClassLoader(new URL[0], null);
+
+        BuildMetadata metadata = new BuildMetadataProvider(emptyClassLoader).get();
+
+        assertThat(metadata.version()).isNull();
+        assertThat(metadata.revision()).isNull();
+        assertThat(metadata.dirty()).isNull();
+        assertThat(metadata.modules()).isNull();
+        assertThat(metadata.build().variant()).isNull();
+        assertThat(metadata.build().optimization()).isNull();
     }
 }

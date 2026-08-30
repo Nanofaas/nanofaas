@@ -28,7 +28,14 @@ final class BuildMetadataProvider {
     private final BuildMetadata metadata;
 
     BuildMetadataProvider() {
-        this(loadBuildProperties(), System.getenv(), systemPropertiesAsMap(), garbageCollectorNames());
+        this(BuildMetadataProvider.class.getClassLoader());
+    }
+
+    // Package-private: lets a test drive resource LOADING (as opposed to the
+    // Properties-injecting constructor below, which only exercises parsing) with a
+    // classloader that can't see META-INF/nanofaas-build.properties.
+    BuildMetadataProvider(ClassLoader resourceClassLoader) {
+        this(loadBuildProperties(resourceClassLoader), System.getenv(), systemPropertiesAsMap(), garbageCollectorNames());
     }
 
     // Package-private: tests supply Properties/env/system-properties/GC names directly
@@ -59,9 +66,9 @@ final class BuildMetadataProvider {
         return metadata;
     }
 
-    private static Properties loadBuildProperties() {
+    private static Properties loadBuildProperties(ClassLoader resourceClassLoader) {
         Properties properties = new Properties();
-        try (InputStream in = BuildMetadataProvider.class.getClassLoader().getResourceAsStream(PROPERTIES_RESOURCE)) {
+        try (InputStream in = resourceClassLoader.getResourceAsStream(PROPERTIES_RESOURCE)) {
             if (in != null) {
                 properties.load(in);
             }
