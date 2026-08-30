@@ -47,7 +47,7 @@ jobs:
       # sync-queue is defaultEnabled=false, so the main suite only ever exercises
       # async-queue; SyncConcurrencyControlE2eTest self-skips there.
       - name: Run Sync-Queue Concurrency Tests
-        run: ./gradlew :control-plane-modules:concurrency-control:test -PcontrolPlaneModules=sync-queue,concurrency-control,runtime-config
+        run: ./gradlew :control-plane-modules:concurrency-control:test :control-plane-modules:sync-queue:test -PcontrolPlaneModules=sync-queue,concurrency-control,runtime-config
 
   test-python:
     runs-on: ubuntu-latest
