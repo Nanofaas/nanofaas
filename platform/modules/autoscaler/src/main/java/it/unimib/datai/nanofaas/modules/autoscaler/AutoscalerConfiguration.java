@@ -19,7 +19,14 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
         "it.unimib.datai.nanofaas.modules.asyncqueue.AsyncQueueConfiguration",
         "it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueConfiguration"
 })
-@ConditionalOnBean({WorkloadMetricsSource.class, MeterRegistry.class, FunctionRegistry.class})
+// MeterRegistry is deliberately not in this list. It is created by Spring Boot's own
+// metrics auto-configuration, and @AutoConfigureAfter orders this class only against the
+// two queue providers named above - so the condition was evaluated before the registry's
+// bean definition existed, failed, and took the whole module with it. Silently: no bean,
+// no InternalScaler, no line in the log, and a campaign that ran 340 requests a second
+// against a threshold of 100 while sitting on one replica. The registry is injected into
+// the beans below, so if it really were missing the context would say so out loud.
+@ConditionalOnBean({WorkloadMetricsSource.class, FunctionRegistry.class})
 @EnableConfigurationProperties(ScalingProperties.class)
 public class AutoscalerConfiguration {
 

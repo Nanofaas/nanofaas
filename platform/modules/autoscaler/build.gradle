@@ -18,6 +18,11 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-webflux'
+    // The queue provider supplies WorkloadMetricsSource, which is what
+    // AutoscalerConfiguration is conditional on. Without it on the test
+    // classpath nothing here can tell whether this module starts at all.
+    testImplementation project(':control-plane-modules:async-queue')
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
