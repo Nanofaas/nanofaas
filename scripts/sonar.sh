@@ -88,8 +88,9 @@ if [ "$DRY" = false ]; then
 
     echo "Waiting for SonarQube on ${SONAR_HOST} (timeout ${START_TIMEOUT}s)..."
     deadline=$((SECONDS + START_TIMEOUT))
-    while ! curl -sf "$SONAR_HOST/api/system/status" 2>/dev/null | python3 -c \
-        'import json,sys; sys.exit(0 if json.load(sys.stdin).get("status")=="UP" else 1)'; do
+    # grep, not a JSON parse: until the server answers, the body is empty or an
+    # error page, and json.load dumped a traceback on every poll for the whole wait.
+    while ! curl -sf "$SONAR_HOST/api/system/status" 2>/dev/null | grep -q '"status":"UP"'; do
         if (( SECONDS >= deadline )); then
             echo "SonarQube not UP after ${START_TIMEOUT}s; last container logs:" >&2
             docker logs --tail 50 "$CONTAINER_NAME" >&2 || true
