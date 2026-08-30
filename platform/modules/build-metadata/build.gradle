@@ -18,3 +18,87 @@ dependencies {
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
+
+tasks.named('test') {
+    systemProperty 'project.version', project.version.toString()
+}
+
+// Resolved-at-configuration build identity: computed once per invocation (not per
+// configuration pass) and declared as task inputs so generateBuildMetadata stays
+// correctly UP-TO-DATE/cacheable and re-runs when any of them changes.
+static String runGit(File workingDir, String... args) {
+    try {
+        def process = (['git'] + (args as List)).execute(null, workingDir)
+        def output = process.inputStream.text
+        process.waitFor()
+        return process.exitValue() == 0 ? output.trim() : null
+    } catch (IOException ignored) {
+        // No git on PATH, or not a git checkout: revision/dirty are simply omitted.
+        return null
+    }
+}
+
+def gitRevision = runGit(project.projectDir, 'rev-parse', 'HEAD')
+def gitStatus = gitRevision == null ? null : runGit(project.projectDir, 'status', '--porcelain', '--untracked-files=no')
+def gitDirty = gitStatus == null ? null : !gitStatus.isEmpty()
+
+def selectedModules = (gradle.ext.nanofaasSelectedControlPlaneModules as List<String>).sort(false)
+
+def nativeTaskRequested = gradle.startParameter.taskNames.any {
+    def taskName = it.toLowerCase()
+    taskName.contains('nativecompile') || taskName.contains('nativetest')
+}
+def buildType = (project.findProperty('nanofaasBuildType')
+        ?: (nativeTaskRequested ? 'native' : 'jvm')).toString()
+def buildVariant = project.findProperty('nanofaasBuildVariant')?.toString()
+def buildOptimization = (project.findProperty('nanofaasBuildOptimization')
+        ?: project.findProperty('nativeOptimization'))?.toString()
+
+def generatedBuildMetadataDir = layout.buildDirectory.dir('generated/build-metadata')
+
+def generateBuildMetadata = tasks.register('generateBuildMetadata') {
+    inputs.property('version', project.version.toString())
+    inputs.property('revision', gitRevision).optional(true)
+    inputs.property('dirty', gitDirty).optional(true)
+    inputs.property('modules', selectedModules)
+    inputs.property('type', buildType)
+    inputs.property('variant', buildVariant).optional(true)
+    inputs.property('optimization', buildOptimization).optional(true)
+
+    def outputFile = generatedBuildMetadataDir.map { it.file('META-INF/nanofaas-build.properties') }
+    outputs.file(outputFile)
+
+    doLast {
+        def properties = new TreeMap<String, String>()
+        properties['version'] = project.version.toString()
+        if (gitRevision) {
+            properties['revision'] = gitRevision
+        }
+        if (gitDirty != null) {
+            properties['dirty'] = gitDirty.toString()
+        }
+        properties['modules'] = selectedModules.join(',')
+        properties['type'] = buildType
+        if (buildVariant) {
+            properties['variant'] = buildVariant
+        }
+        if (buildOptimization) {
+            properties['optimization'] = buildOptimization
+        }
+
+        def file = outputFile.get().asFile
+        file.parentFile.mkdirs()
+        // Properties.store() stamps a timestamp comment; write sorted key=value lines
+        // directly so the file is byte-identical across runs for identical inputs.
+        file.text = properties.collect { key, value -> "${key}=${value}" }.join('\n') + '\n'
+    }
+}
+
+sourceSets.main.output.dir(generatedBuildMetadataDir, builtBy: generateBuildMetadata)
+
+// output.dir(builtBy:) alone only wires generateBuildMetadata ahead of tasks that consume
+// sourceSets.main.output (classes, jar, test runtime classpath). processResources doesn't
+// consume that output, so wire it explicitly too.
+tasks.named('processResources') {
+    dependsOn generateBuildMetadata
+}
