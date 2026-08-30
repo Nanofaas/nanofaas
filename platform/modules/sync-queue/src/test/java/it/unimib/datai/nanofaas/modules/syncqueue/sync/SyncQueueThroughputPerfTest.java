@@ -14,7 +14,6 @@ import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.awaitility.Awaitility;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -32,9 +31,6 @@ class SyncQueueThroughputPerfTest {
 
     private final ExecutionStore executionStore = new ExecutionStore();
 
-    @AfterEach
-    void tearDown() {
-    }
 
     @Test
     void syncQueue_readyWorkBehindBlockedHead_stillMakesProgress() {

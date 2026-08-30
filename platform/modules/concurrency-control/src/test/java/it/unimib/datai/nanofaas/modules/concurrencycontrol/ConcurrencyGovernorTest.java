@@ -48,7 +48,6 @@ class ConcurrencyGovernorTest {
         metrics = new Metrics(new SimpleMeterRegistry());
         coordinator = new ConcurrencyControlCoordinator(
                 metricsSource,
-                metricsSource,
                 concurrencyMetrics,
                 properties,
                 new StaticPerPodConcurrencyController(),

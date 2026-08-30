@@ -20,6 +20,8 @@ import java.util.UUID;
 @RequestMapping("/v1/admin/runtime-config")
 @ConditionalOnProperty(name = "nanofaas.admin.runtime-config.enabled", havingValue = "true")
 public class AdminRuntimeConfigController {
+    private static final String ERROR = "error";
+
     private final RuntimeConfigService service;
 
     public AdminRuntimeConfigController(RuntimeConfigService service) {
@@ -32,7 +34,7 @@ public class AdminRuntimeConfigController {
     }
 
     @GetMapping("/{namespace}")
-    public ResponseEntity<?> getNamespace(@PathVariable("namespace") String namespace) {
+    public ResponseEntity<Object> getNamespace(@PathVariable("namespace") String namespace) {
         RuntimeConfigSnapshot snapshot = service.getSnapshot();
         return snapshot.namespaces().containsKey(namespace)
                 ? ResponseEntity.ok(snapshot.namespaces().get(namespace))
@@ -40,36 +42,36 @@ public class AdminRuntimeConfigController {
     }
 
     @PostMapping("/{namespace}/validate")
-    public ResponseEntity<?> validate(@PathVariable("namespace") String namespace, @RequestBody Map<String, Object> values) {
+    public ResponseEntity<Object> validate(@PathVariable("namespace") String namespace, @RequestBody Map<String, Object> values) {
         try {
             List<String> errors = service.validate(namespace, values);
             return errors.isEmpty()
                     ? ResponseEntity.ok(Map.of("valid", true))
                     : ResponseEntity.unprocessableEntity().body(Map.of("errors", errors));
-        } catch (UnknownRuntimeConfigNamespaceException e) {
+        } catch (UnknownRuntimeConfigNamespaceException _) {
             return ResponseEntity.notFound().build();
         }
     }
 
     @PatchMapping("/{namespace}")
-    public ResponseEntity<?> patch(@PathVariable("namespace") String namespace, @RequestBody PatchRequest request) {
+    public ResponseEntity<Object> patch(@PathVariable("namespace") String namespace, @RequestBody PatchRequest request) {
         if (request.expectedRevision() == null || request.values() == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "expectedRevision and values are required"));
+            return ResponseEntity.badRequest().body(Map.of(ERROR, "expectedRevision and values are required"));
         }
         try {
             RuntimeConfigSnapshot updated = service.update(request.expectedRevision(), namespace, request.values());
             return ResponseEntity.ok(new PatchResponse(updated.revision(), updated, Instant.now().toString(),
                     UUID.randomUUID().toString(), List.of()));
-        } catch (UnknownRuntimeConfigNamespaceException e) {
+        } catch (UnknownRuntimeConfigNamespaceException _) {
             return ResponseEntity.notFound().build();
         } catch (RevisionMismatchException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(Map.of("error", e.getMessage(), "currentRevision", e.getActual()));
+                    .body(Map.of(ERROR, e.getMessage(), "currentRevision", e.getActual()));
         } catch (RuntimeConfigValidationException e) {
             return ResponseEntity.unprocessableEntity().body(Map.of("errors", e.errors()));
         } catch (RuntimeConfigApplyException e) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .body(Map.of("error", "Apply failed, rolled back", "detail", e.getMessage()));
+                    .body(Map.of(ERROR, "Apply failed, rolled back", "detail", e.getMessage()));
         }
     }
 

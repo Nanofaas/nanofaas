@@ -52,7 +52,7 @@ class ReactiveInvocationCoordinatorOffloadTest {
 
     private ReactiveInvocationCoordinator coordinator(SyncQueueGateway syncGateway) {
         return new ReactiveInvocationCoordinator(null, metrics, syncGateway, offloadGateway,
-                completionHandler, new InvocationResponseMapper(), executionStore);
+                completionHandler, new InvocationResponseMapper());
     }
 
     /** Stubs that mirror the real handler's offload completion paths. */

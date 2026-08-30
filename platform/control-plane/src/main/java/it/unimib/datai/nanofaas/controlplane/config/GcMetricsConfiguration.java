@@ -107,7 +107,7 @@ class GcMetricsConfiguration {
                 stream.enable("jdk.ExecuteVMOperation");
                 stream.onEvent(
                         "jdk.ExecuteVMOperation",
-                        event -> metrics.record(event.getString("operation"), event.getDuration()));
+                        event -> metrics.recordPause(event.getString("operation"), event.getDuration()));
                 stream.startAsync();
                 jfrStream = stream;
             } catch (IllegalStateException | UnsupportedOperationException exception) {

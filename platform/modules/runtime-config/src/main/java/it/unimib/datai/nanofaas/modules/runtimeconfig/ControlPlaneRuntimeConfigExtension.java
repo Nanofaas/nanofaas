@@ -8,6 +8,8 @@ import java.util.Map;
 import java.util.Set;
 
 final class ControlPlaneRuntimeConfigExtension implements RuntimeConfigExtension {
+    private static final String RATE_MAX_PER_SECOND = "rateMaxPerSecond";
+
     private final RateLimiter rateLimiter;
 
     ControlPlaneRuntimeConfigExtension(RateLimiter rateLimiter) {
@@ -21,15 +23,15 @@ final class ControlPlaneRuntimeConfigExtension implements RuntimeConfigExtension
 
     @Override
     public Map<String, Object> snapshot() {
-        return Map.of("rateMaxPerSecond", rateLimiter.getMaxPerSecond());
+        return Map.of(RATE_MAX_PER_SECOND, rateLimiter.getMaxPerSecond());
     }
 
     @Override
     public List<String> validate(Map<String, Object> patch) {
-        if (!patch.keySet().equals(Set.of("rateMaxPerSecond"))) {
+        if (!patch.keySet().equals(Set.of(RATE_MAX_PER_SECOND))) {
             return List.of("control-plane supports only rateMaxPerSecond");
         }
-        Object value = patch.get("rateMaxPerSecond");
+        Object value = patch.get(RATE_MAX_PER_SECOND);
         if (!isPositiveInt(value)) {
             return List.of("rateMaxPerSecond must be a positive integer");
         }
@@ -42,18 +44,18 @@ final class ControlPlaneRuntimeConfigExtension implements RuntimeConfigExtension
         }
         try {
             return new BigDecimal(number.toString()).intValueExact() > 0;
-        } catch (ArithmeticException | NumberFormatException e) {
+        } catch (ArithmeticException | NumberFormatException _) {
             return false;
         }
     }
 
     @Override
     public void apply(Map<String, Object> patch) {
-        rateLimiter.setMaxPerSecond(((Number) patch.get("rateMaxPerSecond")).intValue());
+        rateLimiter.setMaxPerSecond(((Number) patch.get(RATE_MAX_PER_SECOND)).intValue());
     }
 
     @Override
     public void restore(Map<String, Object> snapshot) {
-        rateLimiter.setMaxPerSecond(((Number) snapshot.get("rateMaxPerSecond")).intValue());
+        rateLimiter.setMaxPerSecond(((Number) snapshot.get(RATE_MAX_PER_SECOND)).intValue());
     }
 }

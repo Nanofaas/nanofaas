@@ -15,9 +15,9 @@ class JfrGcMetricsTest {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         JfrGcMetrics metrics = new JfrGcMetrics(registry);
 
-        metrics.record("Collect for allocation", Duration.ofNanos(7));
-        metrics.record("G1 wrapper", Duration.ofNanos(11));
-        metrics.record("Collect for allocation", Duration.ofNanos(13));
+        metrics.recordPause("Collect for allocation", Duration.ofNanos(7));
+        metrics.recordPause("G1 wrapper", Duration.ofNanos(11));
+        metrics.recordPause("Collect for allocation", Duration.ofNanos(13));
 
         assertThat(registry.find("nanofaas_jfr_vm_operation_count").functionCounters())
                 .extracting(FunctionCounter::count)

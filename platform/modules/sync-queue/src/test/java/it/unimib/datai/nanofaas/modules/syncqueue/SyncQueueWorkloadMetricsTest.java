@@ -10,7 +10,6 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.service.ExecutionCompletionHandler;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
 import it.unimib.datai.nanofaas.controlplane.service.Metrics;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
@@ -19,8 +18,6 @@ import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueMetrics;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
 import it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
-import it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueInvocationEnqueuer;
-import it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueWorkloadMetricsSource;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -37,8 +34,8 @@ class SyncQueueWorkloadMetricsTest {
         registry.register("fn", 1);
         SyncQueueInvocationEnqueuer enqueuer = new SyncQueueInvocationEnqueuer(registry);
 
-        // enqueue() is the gateway seam and is covered by SyncQueueInvocationEnqueuerTest;
-        // what this test pins is that the async endpoint stays disabled.
+        // The gateway seam has its own test in SyncQueueInvocationEnqueuerTest; what this
+        // one pins is that the async endpoint stays disabled.
         assertFalse(enqueuer.enabled());
         assertTrue(enqueuer.hasAvailableSlot("fn"));
         assertTrue(enqueuer.tryAcquireSlot("fn"));

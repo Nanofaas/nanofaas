@@ -139,7 +139,7 @@ class InvocationPathAccountingTest {
     private void assertThatNoSeries(String name, String function, String path) {
         try {
             assertThat(counter(name, function, path)).isZero();
-        } catch (MeterNotFoundException expected) {
+        } catch (MeterNotFoundException _) {
             // never registered is as good as zero
         }
     }

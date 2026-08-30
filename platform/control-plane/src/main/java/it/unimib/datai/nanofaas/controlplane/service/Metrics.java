@@ -16,6 +16,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 @Component
 public class Metrics {
+    private static final String FUNCTION_TAG = "function";
     private final MeterRegistry registry;
     private final Map<String, FunctionMeters> meters = new ConcurrentHashMap<>();
     private final Set<String> removedFunctions = ConcurrentHashMap.newKeySet();
@@ -243,18 +244,18 @@ public class Metrics {
 
     private Counter pathCounter(String name, String function, InvocationKind kind) {
         return Counter.builder(name)
-                .tag("function", function)
+                .tag(FUNCTION_TAG, function)
                 .tag("path", kind.tag())
                 .register(registry);
     }
 
     private Counter counter(String name, String function) {
-        return Counter.builder(name).tag("function", function).register(registry);
+        return Counter.builder(name).tag(FUNCTION_TAG, function).register(registry);
     }
 
     private Timer timer(String name, String function) {
         return Timer.builder(name)
-                .tag("function", function)
+                .tag(FUNCTION_TAG, function)
                 .register(registry);
     }
 

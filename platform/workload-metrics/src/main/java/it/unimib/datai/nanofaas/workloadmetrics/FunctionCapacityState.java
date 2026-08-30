@@ -77,7 +77,7 @@ public final class FunctionCapacityState {
     }
 
     public synchronized void setEffectiveConcurrency(int concurrency) {
-        effectiveConcurrency = Math.min(configuredConcurrency, Math.max(1, concurrency));
+        effectiveConcurrency = Math.clamp(concurrency, 1, configuredConcurrency);
     }
 
     public int configuredConcurrency() { return configuredConcurrency; }

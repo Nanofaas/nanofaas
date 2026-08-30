@@ -12,7 +12,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class FunctionCapacityRegistryTest {
     @Test
@@ -165,7 +164,7 @@ class FunctionCapacityRegistryTest {
         allowTimestamp.countDown();
 
         assertThat(acquire.get(1, TimeUnit.SECONDS)).isTrue();
-        assertThat(release.get(1, TimeUnit.SECONDS)).isEqualTo(0);
+        assertThat(release.get(1, TimeUnit.SECONDS)).isZero();
         assertThat(state.inFlight()).isZero();
     }
 

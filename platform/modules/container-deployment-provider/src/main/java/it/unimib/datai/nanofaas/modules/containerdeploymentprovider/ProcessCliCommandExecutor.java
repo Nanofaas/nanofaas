@@ -27,7 +27,9 @@ final class ProcessCliCommandExecutor implements CliCommandExecutor {
 
     @Override
     public ExecutionResult run(List<String> command) {
-        log.debug("Executing CLI command: {}", String.join(" ", command));
+        if (log.isDebugEnabled()) {
+            log.debug("Executing CLI command: {}", String.join(" ", command));
+        }
 
         ProcessBuilder processBuilder = new ProcessBuilder(command);
         processBuilder.redirectErrorStream(true);

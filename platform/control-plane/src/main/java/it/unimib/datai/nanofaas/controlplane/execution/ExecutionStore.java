@@ -64,8 +64,8 @@ public class ExecutionStore {
         // Quanto la piattaforma sta ricordando, e quanto sta davvero eseguendo.
         // Fu la distanza fra questi due numeri a mostrare il problema: senza il
         // secondo, il primo si poteva ancora scambiare per lavoro in corso.
-        Gauge.builder("execution_store_size", () -> outcomes.estimatedSize()).register(registry);
-        Gauge.builder("execution_in_flight_records", () -> inFlight.estimatedSize()).register(registry);
+        Gauge.builder("execution_store_size", outcomes::estimatedSize).register(registry);
+        Gauge.builder("execution_in_flight_records", inFlight::estimatedSize).register(registry);
     }
 
     ExecutionStore(ExecutionStoreProperties properties) {

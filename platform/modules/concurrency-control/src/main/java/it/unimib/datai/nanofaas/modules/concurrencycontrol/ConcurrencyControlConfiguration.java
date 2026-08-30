@@ -40,13 +40,12 @@ public class ConcurrencyControlConfiguration {
     }
 
     @Bean
-    ConcurrencyControlCoordinator concurrencyControlCoordinator(WorkloadMetricsSource metricsSource,
-                                                                WorkloadCapacityController capacityController,
+    ConcurrencyControlCoordinator concurrencyControlCoordinator(WorkloadCapacityController capacityController,
                                                                 ConcurrencyControlMetrics concurrencyMetrics,
                                                                 ConcurrencyControlProperties properties,
                                                                 StaticPerPodConcurrencyController staticController,
                                                                 AdaptivePerPodConcurrencyController adaptiveController) {
-        return new ConcurrencyControlCoordinator(metricsSource, capacityController, concurrencyMetrics,
+        return new ConcurrencyControlCoordinator(capacityController, concurrencyMetrics,
                 properties, staticController, adaptiveController);
     }
 

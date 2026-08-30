@@ -55,7 +55,7 @@ public class InvocationService {
                 completionHandler,
                 new InvocationExecutionFactory(executionStore, idempotencyStore, metrics),
                 new InvocationResponseMapper(),
-                new ReactiveInvocationCoordinator(enqueuer, metrics, syncQueueGateway, null, completionHandler, new InvocationResponseMapper(), executionStore)
+                new ReactiveInvocationCoordinator(enqueuer, metrics, syncQueueGateway, null, completionHandler, new InvocationResponseMapper())
         );
     }
 

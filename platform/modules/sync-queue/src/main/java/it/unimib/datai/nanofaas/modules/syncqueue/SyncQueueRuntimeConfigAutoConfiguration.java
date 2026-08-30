@@ -23,21 +23,21 @@ public class SyncQueueRuntimeConfigAutoConfiguration {
             @Override public List<String> validate(Map<String, Object> patch) {
                 List<String> errors = new ArrayList<>();
                 try {
-                    if (!java.util.Set.of("enabled", "admissionEnabled", "maxEstimatedWait", "maxQueueWait",
-                            "retryAfterSeconds").containsAll(patch.keySet())) {
+                    if (!java.util.Set.of(MutableSyncQueueConfigSource.KEY_ENABLED, MutableSyncQueueConfigSource.KEY_ADMISSION_ENABLED, MutableSyncQueueConfigSource.KEY_MAX_ESTIMATED_WAIT, MutableSyncQueueConfigSource.KEY_MAX_QUEUE_WAIT,
+                            MutableSyncQueueConfigSource.KEY_RETRY_AFTER_SECONDS).containsAll(patch.keySet())) {
                         throw new IllegalArgumentException("unknown field");
                     }
                     Map<String, Object> candidate = new java.util.HashMap<>(source.snapshot());
                     candidate.putAll(patch);
-                    if (!(candidate.get("enabled") instanceof Boolean)
-                            || !(candidate.get("admissionEnabled") instanceof Boolean)
-                            || !(candidate.get("maxEstimatedWait") instanceof String)
-                            || !(candidate.get("maxQueueWait") instanceof String)
-                            || !isPositiveInt(candidate.get("retryAfterSeconds"))
-                            || !java.time.Duration.parse((String) candidate.get("maxEstimatedWait")).isPositive()
-                            || !java.time.Duration.parse((String) candidate.get("maxQueueWait")).isPositive()
-                            || java.time.Duration.parse((String) candidate.get("maxEstimatedWait"))
-                            .compareTo(java.time.Duration.parse((String) candidate.get("maxQueueWait"))) > 0) {
+                    if (!(candidate.get(MutableSyncQueueConfigSource.KEY_ENABLED) instanceof Boolean)
+                            || !(candidate.get(MutableSyncQueueConfigSource.KEY_ADMISSION_ENABLED) instanceof Boolean)
+                            || !(candidate.get(MutableSyncQueueConfigSource.KEY_MAX_ESTIMATED_WAIT) instanceof String)
+                            || !(candidate.get(MutableSyncQueueConfigSource.KEY_MAX_QUEUE_WAIT) instanceof String)
+                            || !isPositiveInt(candidate.get(MutableSyncQueueConfigSource.KEY_RETRY_AFTER_SECONDS))
+                            || !java.time.Duration.parse((String) candidate.get(MutableSyncQueueConfigSource.KEY_MAX_ESTIMATED_WAIT)).isPositive()
+                            || !java.time.Duration.parse((String) candidate.get(MutableSyncQueueConfigSource.KEY_MAX_QUEUE_WAIT)).isPositive()
+                            || java.time.Duration.parse((String) candidate.get(MutableSyncQueueConfigSource.KEY_MAX_ESTIMATED_WAIT))
+                            .compareTo(java.time.Duration.parse((String) candidate.get(MutableSyncQueueConfigSource.KEY_MAX_QUEUE_WAIT))) > 0) {
                         throw new IllegalArgumentException("invalid type or non-positive value");
                     }
                 } catch (RuntimeException e) {
@@ -56,7 +56,7 @@ public class SyncQueueRuntimeConfigAutoConfiguration {
         }
         try {
             return new BigDecimal(number.toString()).intValueExact() > 0;
-        } catch (ArithmeticException | NumberFormatException e) {
+        } catch (ArithmeticException | NumberFormatException _) {
             return false;
         }
     }

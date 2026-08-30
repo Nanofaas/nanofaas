@@ -11,7 +11,6 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationExecutionFactory;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -26,9 +25,6 @@ class InvocationHotPathPerfTest {
     private final IdempotencyStore idempotencyStore = new IdempotencyStore(Duration.ofMinutes(15));
     private final InvocationExecutionFactory factory = new InvocationExecutionFactory(executionStore, idempotencyStore, new Metrics(new SimpleMeterRegistry()));
 
-    @AfterEach
-    void tearDown() {
-    }
 
     @Test
     void repeatedIdempotentReplay_doesNotAllocateNewExecutionRecords() {

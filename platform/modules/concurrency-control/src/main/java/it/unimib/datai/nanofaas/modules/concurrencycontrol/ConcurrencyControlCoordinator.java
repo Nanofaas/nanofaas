@@ -5,27 +5,23 @@ import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController;
-import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 
 /**
  * Decides the effective concurrency of one function and publishes it through the
  * {@link WorkloadCapacityController}, which is where the enforcing queue picks it up.
  */
 public final class ConcurrencyControlCoordinator {
-    private final WorkloadMetricsSource metricsSource;
     private final WorkloadCapacityController capacityController;
     private final ConcurrencyControlMetrics concurrencyMetrics;
     private final ConcurrencyControlProperties properties;
     private final StaticPerPodConcurrencyController staticConcurrencyController;
     private final AdaptivePerPodConcurrencyController adaptiveConcurrencyController;
 
-    public ConcurrencyControlCoordinator(WorkloadMetricsSource metricsSource,
-                                         WorkloadCapacityController capacityController,
+    public ConcurrencyControlCoordinator(WorkloadCapacityController capacityController,
                                          ConcurrencyControlMetrics concurrencyMetrics,
                                          ConcurrencyControlProperties properties,
                                          StaticPerPodConcurrencyController staticConcurrencyController,
                                          AdaptivePerPodConcurrencyController adaptiveConcurrencyController) {
-        this.metricsSource = metricsSource;
         this.capacityController = capacityController;
         this.concurrencyMetrics = concurrencyMetrics;
         this.properties = properties;

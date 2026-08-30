@@ -93,17 +93,17 @@ class GcMetricsConfigurationTest {
 
     @Test
     void startsAndClosesOneJfrFallbackWhenMxBeansAreAbsent() {
-        GcMetricsConfiguration configuration;
+        GcMetricsConfiguration jfrFallback;
         try (MockedStatic<ManagementFactory> managementFactory = mockStatic(ManagementFactory.class)) {
             managementFactory.when(ManagementFactory::getGarbageCollectorMXBeans).thenReturn(List.of());
-            configuration = new GcMetricsConfiguration();
+            jfrFallback = new GcMetricsConfiguration();
         }
 
         try (MockedConstruction<RecordingStream> streams = mockConstruction(RecordingStream.class)) {
-            MeterBinder binder = configuration.jfrVmOperationMetrics();
+            MeterBinder binder = jfrFallback.jfrVmOperationMetrics();
             binder.bindTo(registry);
             binder.bindTo(registry);
-            configuration.closeJfrStream();
+            jfrFallback.closeJfrStream();
 
             assertThat(streams.constructed()).singleElement().satisfies(stream -> {
                 verify(stream, times(1)).startAsync();

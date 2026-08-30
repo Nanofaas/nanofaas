@@ -52,10 +52,12 @@ class RuntimeConfigRegistryTest {
 
             @Override
             public void apply(Map<String, Object> patch) {
+                // The registry is what is under test here; this stub records nothing.
             }
 
             @Override
             public void restore(Map<String, Object> snapshot) {
+                // Same: rollback is exercised through the service tests, not here.
             }
         };
     }

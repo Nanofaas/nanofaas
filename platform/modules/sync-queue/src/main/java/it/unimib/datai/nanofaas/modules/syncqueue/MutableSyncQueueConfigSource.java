@@ -7,6 +7,14 @@ import java.time.Duration;
 import java.util.Map;
 
 public final class MutableSyncQueueConfigSource implements SyncQueueConfigSource {
+    // One spelling of each runtime key, shared with the validator: they were written
+    // out five times across two files, where a typo changes a key silently.
+    public static final String KEY_ENABLED = "enabled";
+    public static final String KEY_ADMISSION_ENABLED = "admissionEnabled";
+    public static final String KEY_MAX_ESTIMATED_WAIT = "maxEstimatedWait";
+    public static final String KEY_MAX_QUEUE_WAIT = "maxQueueWait";
+    public static final String KEY_RETRY_AFTER_SECONDS = "retryAfterSeconds";
+
     private volatile boolean enabled;
     private volatile boolean admissionEnabled;
     private volatile Duration maxEstimatedWait;
@@ -14,10 +22,10 @@ public final class MutableSyncQueueConfigSource implements SyncQueueConfigSource
     private volatile int retryAfterSeconds;
 
     public MutableSyncQueueConfigSource(SyncQueueProperties props) {
-        restore(Map.of("enabled", props.enabled(), "admissionEnabled", props.admissionEnabled(),
-                "maxEstimatedWait", props.maxEstimatedWait().toString(),
-                "maxQueueWait", props.maxQueueWait().toString(),
-                "retryAfterSeconds", props.retryAfterSeconds()));
+        restore(Map.of(KEY_ENABLED, props.enabled(), KEY_ADMISSION_ENABLED, props.admissionEnabled(),
+                KEY_MAX_ESTIMATED_WAIT, props.maxEstimatedWait().toString(),
+                KEY_MAX_QUEUE_WAIT, props.maxQueueWait().toString(),
+                KEY_RETRY_AFTER_SECONDS, props.retryAfterSeconds()));
     }
 
     @Override public boolean syncQueueEnabled() { return enabled; }
@@ -27,9 +35,9 @@ public final class MutableSyncQueueConfigSource implements SyncQueueConfigSource
     @Override public int syncQueueRetryAfterSeconds() { return retryAfterSeconds; }
 
     public Map<String, Object> snapshot() {
-        return Map.of("enabled", enabled, "admissionEnabled", admissionEnabled,
-                "maxEstimatedWait", maxEstimatedWait.toString(), "maxQueueWait", maxQueueWait.toString(),
-                "retryAfterSeconds", retryAfterSeconds);
+        return Map.of(KEY_ENABLED, enabled, KEY_ADMISSION_ENABLED, admissionEnabled,
+                KEY_MAX_ESTIMATED_WAIT, maxEstimatedWait.toString(), KEY_MAX_QUEUE_WAIT, maxQueueWait.toString(),
+                KEY_RETRY_AFTER_SECONDS, retryAfterSeconds);
     }
 
     public void apply(Map<String, Object> values) {
@@ -39,10 +47,10 @@ public final class MutableSyncQueueConfigSource implements SyncQueueConfigSource
     }
 
     public void restore(Map<String, Object> values) {
-        enabled = (Boolean) values.get("enabled");
-        admissionEnabled = (Boolean) values.get("admissionEnabled");
-        maxEstimatedWait = Duration.parse((String) values.get("maxEstimatedWait"));
-        maxQueueWait = Duration.parse((String) values.get("maxQueueWait"));
-        retryAfterSeconds = ((Number) values.get("retryAfterSeconds")).intValue();
+        enabled = (Boolean) values.get(KEY_ENABLED);
+        admissionEnabled = (Boolean) values.get(KEY_ADMISSION_ENABLED);
+        maxEstimatedWait = Duration.parse((String) values.get(KEY_MAX_ESTIMATED_WAIT));
+        maxQueueWait = Duration.parse((String) values.get(KEY_MAX_QUEUE_WAIT));
+        retryAfterSeconds = ((Number) values.get(KEY_RETRY_AFTER_SECONDS)).intValue();
     }
 }

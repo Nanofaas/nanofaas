@@ -64,7 +64,7 @@ public class RuntimeConfigService {
         } finally {
             try {
                 sample.stop(applyTimer);
-            } catch (Exception ignored) {
+            } catch (Exception _) {
                 // Metrics must not change runtime-config transaction semantics.
             }
         }

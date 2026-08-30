@@ -27,7 +27,7 @@ class ReactiveInvocationCoordinatorTest {
             new InvocationExecutionFactory(executionStore, idempotencyStore, metrics);
     private final ExecutionCompletionHandler completionHandler = mock(ExecutionCompletionHandler.class);
     private final ReactiveInvocationCoordinator coordinator =
-            new ReactiveInvocationCoordinator(null, metrics, null, null, completionHandler, new InvocationResponseMapper(), executionStore);
+            new ReactiveInvocationCoordinator(null, metrics, null, null, completionHandler, new InvocationResponseMapper());
 
     @Test
     void clientTimeoutDoesNotCancelSharedCompletionFuture() {

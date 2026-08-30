@@ -12,7 +12,6 @@ import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListen
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -23,9 +22,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AsyncQueueConfigurationTest {
     private final ExecutionStore executionStore = new ExecutionStore();
 
-    @AfterEach
-    void tearDown() {
-    }
 
     @Test
     void queueLifecycleListener_marksDrainedQueuedExecutionAsFunctionRemoved() {

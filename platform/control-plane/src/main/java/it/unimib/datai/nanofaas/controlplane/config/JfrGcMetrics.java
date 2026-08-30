@@ -16,7 +16,7 @@ final class JfrGcMetrics {
         this.registry = registry;
     }
 
-    void record(String operationName, Duration duration) {
+    void recordPause(String operationName, Duration duration) {
         Operation operation = operations.computeIfAbsent(operationName, this::register);
         operation.count.incrementAndGet();
         operation.totalNanos.addAndGet(duration.toNanos());

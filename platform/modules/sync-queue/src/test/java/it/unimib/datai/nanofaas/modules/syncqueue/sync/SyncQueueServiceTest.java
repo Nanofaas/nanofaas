@@ -29,11 +29,11 @@ import java.util.concurrent.TimeUnit;
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueInvocationEnqueuer;
 
 class SyncQueueServiceTest {
@@ -90,7 +90,7 @@ class SyncQueueServiceTest {
                 removalBlocked.countDown();
                 try {
                     allowRemoval.await(1, TimeUnit.SECONDS);
-                } catch (InterruptedException e) {
+                } catch (InterruptedException _) {
                     Thread.currentThread().interrupt();
                 }
                 return null;
@@ -103,7 +103,6 @@ class SyncQueueServiceTest {
         capacity.register("fn", 1);
         assertTrue(capacity.tryAcquireSlot("fn"));
 
-        var oldState = capacity.state("fn");
         service.enqueueOrThrow(task("fn", "queued"));
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
             var remove = executor.submit(() -> service.removeFunctionState("fn"));
@@ -111,8 +110,8 @@ class SyncQueueServiceTest {
             var register = executor.submit(() -> service.registerFunction("fn", 1));
             assertTrue(capacity.releaseSlotAndGetHoldNanos("fn") >= 0);
             allowRemoval.countDown();
-            assertTrue(remove.get() == null);
-            assertTrue(register.get() == null);
+            assertNull(remove.get());
+            assertNull(register.get());
         }
 
         assertTrue(capacity.tryAcquireSlot("fn"));

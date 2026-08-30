@@ -2,7 +2,6 @@ package it.unimib.datai.nanofaas.modules.concurrencycontrol;
 
 import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
-import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 import it.unimib.datai.nanofaas.controlplane.service.RecordingWorkloadMetricsSource;
 import org.junit.jupiter.api.Test;
 

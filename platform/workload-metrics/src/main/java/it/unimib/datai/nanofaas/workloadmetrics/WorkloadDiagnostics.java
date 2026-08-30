@@ -51,19 +51,19 @@ public final class WorkloadDiagnostics {
 
     public void recordSchedulerVisitDuration(long nanos) { schedulerVisitDuration.record(nanos, TimeUnit.NANOSECONDS); }
     public void recordSchedulerIdleDuration(long nanos) { schedulerIdleDuration.record(nanos, TimeUnit.NANOSECONDS); }
-    public void recordQueueOfferDuration(String functionName, long nanos) { FunctionMeters meters = function(functionName); if (meters != null) meters.offer.record(nanos, TimeUnit.NANOSECONDS); }
-    public void recordQueuePollDuration(String functionName, long nanos) { FunctionMeters meters = function(functionName); if (meters != null) meters.poll.record(nanos, TimeUnit.NANOSECONDS); }
-    public void recordDispatchSubmitDuration(String functionName, long nanos) { FunctionMeters meters = function(functionName); if (meters != null) meters.submit.record(nanos, TimeUnit.NANOSECONDS); }
+    public void recordQueueOfferDuration(String functionName, long nanos) { FunctionMeters functionMeters = function(functionName); if (functionMeters != null) functionMeters.offer.record(nanos, TimeUnit.NANOSECONDS); }
+    public void recordQueuePollDuration(String functionName, long nanos) { FunctionMeters functionMeters = function(functionName); if (functionMeters != null) functionMeters.poll.record(nanos, TimeUnit.NANOSECONDS); }
+    public void recordDispatchSubmitDuration(String functionName, long nanos) { FunctionMeters functionMeters = function(functionName); if (functionMeters != null) functionMeters.submit.record(nanos, TimeUnit.NANOSECONDS); }
     public void recordSchedulerDispatchSubmitDuration(String functionName, long nanos) { recordDispatchSubmitDuration(functionName, nanos); }
     public void recordDispatchSlotHold(String functionName, long nanos) {
-        FunctionMeters meters = function(functionName);
-        if (meters == null) return;
+        FunctionMeters functionMeters = function(functionName);
+        if (functionMeters == null) return;
         if (nanos >= 0) {
-            meters.holdSeconds.increment(nanos / 1_000_000_000.0);
-            meters.holdEvents.increment();
+            functionMeters.holdSeconds.increment(nanos / 1_000_000_000.0);
+            functionMeters.holdEvents.increment();
         }
     }
-    public void recordSchedulerSlotBlocked(String functionName) { FunctionMeters meters = function(functionName); if (meters != null) meters.blocked.increment(); }
+    public void recordSchedulerSlotBlocked(String functionName) { FunctionMeters functionMeters = function(functionName); if (functionMeters != null) functionMeters.blocked.increment(); }
     public void recordDispatchSlotBlocked(String functionName) { recordSchedulerSlotBlocked(functionName); }
 
     private FunctionMeters function(String name) {
