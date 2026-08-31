@@ -49,7 +49,7 @@ public class FnTestCommand implements Callable<Integer> {
             InvocationRequest request = new InvocationRequest(payload.input(), null);
             InvocationResponse response;
             try {
-                response = parent.root.controlPlaneClient().invokeSync(name, request, null, null, timeoutMs);
+                response = parent.root.controlPlaneClient().invokeSync(name, request, null, null, timeoutMs).response();
             } catch (RuntimeException e) {
                 failed++;
                 System.out.printf("\u274c %s - invocation failed: %s%n", file.getFileName(), e.getMessage());

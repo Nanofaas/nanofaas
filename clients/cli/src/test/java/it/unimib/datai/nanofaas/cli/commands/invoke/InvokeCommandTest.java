@@ -186,4 +186,78 @@ class InvokeCommandTest {
         );
         assertThat(exit).isNotZero();
     }
+
+    @Test
+    void invokeMarked201ExitsZero() throws Exception {
+        server.enqueue(new MockResponse()
+                .setResponseCode(201)
+                .addHeader("X-NanoFaaS-Function-Status", "true")
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"executionId\":\"e1\",\"status\":\"success\",\"output\":{\"id\":\"created\"},\"statusCode\":201}"));
+
+        RootCommand root = new RootCommand();
+        CommandLine cli = new CommandLine(root);
+
+        int exit = cli.execute(
+                "--endpoint", server.url("/").toString(),
+                "invoke", "echo",
+                "-d", "{\"message\":\"hello\"}"
+        );
+        assertThat(exit).isZero();
+    }
+
+    @Test
+    void invokeMarked404PrintsEnvelopeAndExitsOne() throws Exception {
+        server.enqueue(new MockResponse()
+                .setResponseCode(404)
+                .addHeader("X-NanoFaaS-Function-Status", "true")
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"executionId\":\"e1\",\"status\":\"error\",\"output\":{\"error\":\"missing\"},\"statusCode\":404}"));
+
+        RootCommand root = new RootCommand();
+        CommandLine cli = new CommandLine(root);
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PrintStream prev = System.out;
+        System.setOut(new PrintStream(out));
+        try {
+            int exit = cli.execute(
+                    "--endpoint", server.url("/").toString(),
+                    "invoke", "echo",
+                    "-d", "{\"message\":\"hello\"}"
+            );
+            assertThat(exit).isEqualTo(1);
+        } finally {
+            System.setOut(prev);
+        }
+
+        assertThat(out.toString()).contains("\"statusCode\":404");
+    }
+
+    @Test
+    void invokeMarked204PrintsStatusCode() throws Exception {
+        server.enqueue(new MockResponse()
+                .setResponseCode(204)
+                .addHeader("X-NanoFaaS-Function-Status", "true")
+                .addHeader("X-Execution-Id", "exec-204"));
+
+        RootCommand root = new RootCommand();
+        CommandLine cli = new CommandLine(root);
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PrintStream prev = System.out;
+        System.setOut(new PrintStream(out));
+        try {
+            int exit = cli.execute(
+                    "--endpoint", server.url("/").toString(),
+                    "invoke", "echo",
+                    "-d", "{\"message\":\"hello\"}"
+            );
+            assertThat(exit).isZero();
+        } finally {
+            System.setOut(prev);
+        }
+
+        assertThat(out.toString()).contains("{\"statusCode\":204}");
+    }
 }

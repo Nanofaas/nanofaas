@@ -98,7 +98,7 @@ class ControlPlaneClientTest {
         ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
 
         InvocationRequest reqBody = new InvocationRequest(Map.of("message", "hi"), null);
-        InvocationResponse resp = client.invokeSync("echo", reqBody, null, null, null);
+        InvocationResponse resp = client.invokeSync("echo", reqBody, null, null, null).response();
 
         RecordedRequest req = server.takeRequest();
         assertThat(req.getMethod()).isEqualTo("POST");
@@ -298,5 +298,72 @@ class ControlPlaneClientTest {
                     ControlPlaneHttpException he = (ControlPlaneHttpException) ex;
                     assertThat(he.getStatus()).isEqualTo(500);
                 });
+    }
+
+    @Test
+    void invokeReturnsFunctionDecidedNon200() {
+        server.enqueue(new MockResponse()
+                .setResponseCode(404)
+                .addHeader("X-NanoFaaS-Function-Status", "true")
+                .addHeader("Content-Type", "application/json")
+                .setBody("""
+                        {"executionId":"exec-1","status":"success",
+                         "output":{"error":"missing"},"statusCode":404}
+                        """));
+
+        InvocationCallResult result = new ControlPlaneClient(server.url("/").toString())
+                .invokeSync("lookup", new InvocationRequest(Map.of(), null), null, null, null);
+
+        assertThat(result.httpStatus()).isEqualTo(404);
+        assertThat(result.response().statusCode()).isEqualTo(404);
+    }
+
+    @Test
+    void invokeReturnsFunctionDecided201() {
+        server.enqueue(new MockResponse()
+                .setResponseCode(201)
+                .addHeader("X-NanoFaaS-Function-Status", "true")
+                .addHeader("Content-Type", "application/json")
+                .setBody("""
+                        {"executionId":"exec-1","status":"success",
+                         "output":{"id":"created"},"statusCode":201}
+                        """));
+
+        InvocationCallResult result = new ControlPlaneClient(server.url("/").toString())
+                .invokeSync("create", new InvocationRequest(Map.of(), null), null, null, null);
+
+        assertThat(result.httpStatus()).isEqualTo(201);
+        assertThat(result.isSuccessful()).isTrue();
+        assertThat(result.response().statusCode()).isEqualTo(201);
+    }
+
+    @Test
+    void invokeUnmarked404StillThrows() {
+        server.enqueue(new MockResponse()
+                .setResponseCode(404)
+                .setBody("not found"));
+
+        ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
+
+        assertThatThrownBy(() -> client.invokeSync("missing", new InvocationRequest(Map.of(), null), null, null, null))
+                .isInstanceOf(ControlPlaneHttpException.class)
+                .satisfies(ex -> assertThat(((ControlPlaneHttpException) ex).getStatus()).isEqualTo(404));
+    }
+
+    @Test
+    void invokeReturnsSyntheticResponseFor204() {
+        server.enqueue(new MockResponse()
+                .setResponseCode(204)
+                .addHeader("X-NanoFaaS-Function-Status", "true")
+                .addHeader("X-Execution-Id", "exec-204"));
+
+        InvocationCallResult result = new ControlPlaneClient(server.url("/").toString())
+                .invokeSync("noop", new InvocationRequest(Map.of(), null), null, null, null);
+
+        assertThat(result.httpStatus()).isEqualTo(204);
+        assertThat(result.isSuccessful()).isTrue();
+        assertThat(result.response().statusCode()).isEqualTo(204);
+        assertThat(result.response().output()).isNull();
+        assertThat(result.response().executionId()).isEqualTo("exec-204");
     }
 }

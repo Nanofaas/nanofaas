@@ -97,8 +97,8 @@ public final class ControlPlaneClient {
         return json.fromJson(resp.body(), FunctionDetails.class);
     }
 
-    public InvocationResponse invokeSync(String name, InvocationRequest request,
-                                         String idempotencyKey, String traceId, Integer timeoutMs) {
+    public InvocationCallResult invokeSync(String name, InvocationRequest request,
+                                           String idempotencyKey, String traceId, Integer timeoutMs) {
         String body = json.toJson(request);
         HttpRequest.Builder b = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + name + ":invoke"))
                 .header(CONTENT_TYPE, APPLICATION_JSON)
@@ -116,10 +116,19 @@ public final class ControlPlaneClient {
         }
 
         HttpResponse<String> resp = send(b.build());
-        if (resp.statusCode() != 200) {
+        boolean functionDecided = resp.headers().firstValue("X-NanoFaaS-Function-Status")
+                .map(Boolean::parseBoolean)
+                .orElse(false);
+        if (resp.statusCode() != 200 && !functionDecided) {
             throw httpError("invoke function", resp);
         }
-        return json.fromJson(resp.body(), InvocationResponse.class);
+        InvocationResponse response = resp.body() == null || resp.body().isBlank()
+                ? new InvocationResponse(
+                        resp.headers().firstValue("X-Execution-Id").orElse(null),
+                        resp.statusCode() >= 200 && resp.statusCode() < 300 ? "success" : "error",
+                        null, null, resp.statusCode(), null, null)
+                : json.fromJson(resp.body(), InvocationResponse.class);
+        return new InvocationCallResult(resp.statusCode(), response);
     }
 
     public InvocationResponse enqueue(String name, InvocationRequest request, String idempotencyKey, String traceId) {
