@@ -48,9 +48,6 @@ public record FunctionDetails(
         ExecutionMode requestedMode = requested.executionMode() == null
                 ? ExecutionMode.DEPLOYMENT
                 : requested.executionMode();
-        RuntimeMode requestedRuntime = requested.runtimeMode() == null
-                ? RuntimeMode.HTTP
-                : requested.runtimeMode();
         boolean endpointMatches = requestedMode == ExecutionMode.DEPLOYMENT
                 || matchesIfSpecified(endpointUrl, requested.endpointUrl());
         return Objects.equals(name, requested.name())
@@ -64,7 +61,7 @@ public record FunctionDetails(
                 && matchesIfSpecified(maxRetries, requested.maxRetries())
                 && endpointMatches
                 && requestedExecutionMode == requestedMode
-                && runtimeMode == requestedRuntime
+                && matchesIfSpecified(runtimeMode, requested.runtimeMode())
                 && matchesIfSpecified(runtimeCommand, requested.runtimeCommand())
                 && matchesIfSpecified(scalingConfig, requested.scalingConfig())
                 && matchesIfSpecified(imagePullSecrets, requested.imagePullSecrets())
@@ -87,9 +84,11 @@ public record FunctionDetails(
                 ? null : requested.scalingConfig().concurrencyControl();
         ConcurrencyControlConfig currentCc = scalingConfig == null
                 ? null : scalingConfig.concurrencyControl();
+        boolean deployment = (requested.executionMode() == null ? ExecutionMode.DEPLOYMENT : requested.executionMode()) == ExecutionMode.DEPLOYMENT;
+        ConcurrencyControlConfig expected = requestedCc == null ? null
+                : deployment ? ConcurrencyControlConfig.normalize(requestedCc) : requestedCc;
         ConcurrencyControlConfig concurrencyControl =
-                requestedCc != null && !Objects.equals(currentCc, requestedCc)
-                        ? requestedCc : null;
+                requestedCc != null && !Objects.equals(currentCc, expected) ? requestedCc : null;
 
         return new FunctionPatch(concurrency, timeoutMs, maxRetries, concurrencyControl);
     }
@@ -98,9 +97,6 @@ public record FunctionDetails(
         ExecutionMode requestedMode = requested.executionMode() == null
                 ? ExecutionMode.DEPLOYMENT
                 : requested.executionMode();
-        RuntimeMode requestedRuntime = requested.runtimeMode() == null
-                ? RuntimeMode.HTTP
-                : requested.runtimeMode();
         boolean endpointMatches = requestedMode == ExecutionMode.DEPLOYMENT
                 || matchesIfSpecified(endpointUrl, requested.endpointUrl());
 
@@ -118,10 +114,16 @@ public record FunctionDetails(
                 || !matchesIfSpecified(queueSize, requested.queueSize())
                 || !endpointMatches
                 || requestedExecutionMode != requestedMode
-                || runtimeMode != requestedRuntime
+                || !matchesIfSpecified(runtimeMode, requested.runtimeMode())
                 || !matchesIfSpecified(runtimeCommand, requested.runtimeCommand())
                 || scalingImmutableDiffers
                 || !matchesIfSpecified(imagePullSecrets, requested.imagePullSecrets())
                 || !matchesIfSpecified(offload, requested.offload());
+    }
+
+    public FunctionSpec toSpec() {
+        return new FunctionSpec(name, image, command, env, resources, timeoutMs, concurrency, queueSize,
+                maxRetries, endpointUrl, requestedExecutionMode, runtimeMode, runtimeCommand,
+                scalingConfig, imagePullSecrets, offload);
     }
 }

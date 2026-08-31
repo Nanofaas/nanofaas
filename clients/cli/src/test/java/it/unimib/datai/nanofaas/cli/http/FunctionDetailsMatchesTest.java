@@ -337,4 +337,76 @@ class FunctionDetailsMatchesTest {
     void noDifferencesMeansNoImmutableDifferences() {
         assertThat(fullDetails().hasImmutableDifferences(fullSpec())).isFalse();
     }
+
+    @Test
+    void mutablePatchConvergesForStatedStaticPerPod() {
+        ConcurrencyControlConfig stored = new ConcurrencyControlConfig(
+                ConcurrencyControlMode.STATIC_PER_POD, 2, 1, 8, 30_000L, 60_000L, 0.5, 0.15);
+        FunctionDetails current = new FunctionDetails("echo", "img", null, null, null,
+                5000, 1, 10, 0, null, ExecutionMode.DEPLOYMENT, ExecutionMode.DEPLOYMENT,
+                null, null, RuntimeMode.HTTP, null,
+                new ScalingConfig(ScalingStrategy.INTERNAL, 1, 3, List.of(), stored),
+                null, null, null);
+
+        ConcurrencyControlConfig allNull = new ConcurrencyControlConfig(
+                ConcurrencyControlMode.STATIC_PER_POD, null, null, null, null, null, null, null);
+        FunctionSpec requested = new FunctionSpec("echo", "img", null, null, null,
+                5000, 1, 10, 0, null, ExecutionMode.DEPLOYMENT, RuntimeMode.HTTP, null,
+                new ScalingConfig(ScalingStrategy.INTERNAL, 1, 3, List.of(), allNull),
+                null, null);
+
+        FunctionPatch patch = current.mutablePatch(requested);
+
+        assertThat(patch.concurrencyControl()).isNull();
+        assertThat(patch.isEmpty()).isTrue();
+    }
+
+    @Test
+    void mutablePatchConvergesForBudgetedManifest() {
+        ConcurrencyControlConfig stored = new ConcurrencyControlConfig(
+                ConcurrencyControlMode.BUDGETED, null, 1, null, null, null, null, null, 250L, 1.0);
+        FunctionDetails current = new FunctionDetails("echo", "img", null, null, null,
+                5000, 1, 10, 0, null, ExecutionMode.DEPLOYMENT, ExecutionMode.DEPLOYMENT,
+                null, null, RuntimeMode.HTTP, null,
+                new ScalingConfig(ScalingStrategy.INTERNAL, 1, 3, List.of(), stored),
+                null, null, null);
+
+        ConcurrencyControlConfig modeOnly = new ConcurrencyControlConfig(
+                ConcurrencyControlMode.BUDGETED, null, null, null, null, null, null, null, null, null);
+        FunctionSpec requested = new FunctionSpec("echo", "img", null, null, null,
+                5000, 1, 10, 0, null, ExecutionMode.DEPLOYMENT, RuntimeMode.HTTP, null,
+                new ScalingConfig(ScalingStrategy.INTERNAL, 1, 3, List.of(), modeOnly),
+                null, null);
+
+        assertThat(current.mutablePatch(requested).concurrencyControl()).isNull();
+    }
+
+    @Test
+    void mutablePatchStillConvergesForNonDeployment() {
+        ConcurrencyControlConfig raw = new ConcurrencyControlConfig(
+                ConcurrencyControlMode.BUDGETED, null, null, null, null, null, null, null, null, null);
+        FunctionDetails current = new FunctionDetails("echo", "img", null, null, null,
+                5000, 1, 10, 0, "http://ext", ExecutionMode.EXTERNAL, ExecutionMode.EXTERNAL,
+                null, null, RuntimeMode.HTTP, null,
+                new ScalingConfig(ScalingStrategy.INTERNAL, 1, 3, List.of(), raw),
+                null, null, null);
+        FunctionSpec requested = new FunctionSpec("echo", "img", null, null, null,
+                5000, 1, 10, 0, "http://ext", ExecutionMode.EXTERNAL, RuntimeMode.HTTP, null,
+                new ScalingConfig(ScalingStrategy.INTERNAL, 1, 3, List.of(), raw),
+                null, null);
+
+        assertThat(current.mutablePatch(requested).concurrencyControl()).isNull();
+    }
+
+    @Test
+    void omittedRuntimeModeIsNotAnImmutableDifference() {
+        FunctionDetails current = new FunctionDetails("echo", "img", null, null, null,
+                5000, 1, 10, 0, null, ExecutionMode.DEPLOYMENT, ExecutionMode.DEPLOYMENT,
+                null, null, null, null, null, null, null, null);
+        FunctionSpec requested = new FunctionSpec("echo", "img", null, null, null,
+                5000, 1, 10, 0, null, ExecutionMode.DEPLOYMENT, null, null, null, null, null);
+
+        assertThat(current.hasImmutableDifferences(requested)).isFalse();
+        assertThat(current.matches(requested)).isTrue();
+    }
 }

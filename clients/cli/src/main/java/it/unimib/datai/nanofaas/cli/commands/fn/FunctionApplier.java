@@ -32,12 +32,29 @@ public final class FunctionApplier {
                 throw new IllegalArgumentException(
                         "Immutable function fields differ; rerun with --replace (replacement is not atomic)");
             }
-            client.deleteFunction(desired.name());
-            client.registerFunction(desired);
+            replaceDestructively(client, desired, existing);
             return;
         }
         if (!patch.isEmpty()) {
             client.updateFunction(desired.name(), patch);
+        }
+    }
+
+    private static void replaceDestructively(ControlPlaneClient client, FunctionSpec desired, FunctionDetails previous) {
+        client.deleteFunction(desired.name());
+        try {
+            client.registerFunction(desired);
+        } catch (ControlPlaneHttpException failure) {
+            RuntimeException mapped = mapError(failure);
+            try {
+                client.registerFunction(previous.toSpec());
+            } catch (RuntimeException restoreFailure) {
+                mapped.addSuppressed(restoreFailure);
+                throw new IllegalStateException(
+                        "Replacing function '" + desired.name() + "' failed and the previous function could not be restored", mapped);
+            }
+            throw new IllegalStateException(
+                    "Replacing function '" + desired.name() + "' failed; the previous function was restored", mapped);
         }
     }
 
