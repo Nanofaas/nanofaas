@@ -18,9 +18,13 @@ public class FnApplyCommand implements Runnable {
     @Option(names = {"-f", "--file"}, required = true, description = "Path to function YAML.")
     Path file;
 
+    @Option(names = {"--replace"},
+            description = "Allow destructive replacement (DELETE+POST) of immutable fields.")
+    boolean replace;
+
     @Override
     public void run() {
         FunctionSpec desired = YamlIO.read(file, FunctionSpec.class);
-        FunctionApplier.apply(parent.root.controlPlaneClient(), desired);
+        FunctionApplier.apply(parent.root.controlPlaneClient(), desired, replace);
     }
 }

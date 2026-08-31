@@ -13,6 +13,7 @@ import picocli.CommandLine.Command;
                 FnGetCommand.class,
                 FnDeleteCommand.class,
                 FnApplyCommand.class,
+                FnUpdateCommand.class,
                 FnTestCommand.class
         }
 )

@@ -4,12 +4,13 @@ import it.unimib.datai.nanofaas.cli.http.ControlPlaneClient;
 import it.unimib.datai.nanofaas.cli.http.ControlPlaneError;
 import it.unimib.datai.nanofaas.cli.http.ControlPlaneHttpException;
 import it.unimib.datai.nanofaas.cli.http.FunctionDetails;
+import it.unimib.datai.nanofaas.cli.http.FunctionPatch;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 
 public final class FunctionApplier {
     private FunctionApplier() {}
 
-    public static void apply(ControlPlaneClient client, FunctionSpec desired) {
+    public static void apply(ControlPlaneClient client, FunctionSpec desired, boolean replace) {
         try {
             client.registerFunction(desired);
             return;
@@ -25,9 +26,18 @@ public final class FunctionApplier {
             return;
         }
 
-        if (!existing.matches(desired)) {
+        FunctionPatch patch = existing.mutablePatch(desired);
+        if (existing.hasImmutableDifferences(desired)) {
+            if (!replace) {
+                throw new IllegalArgumentException(
+                        "Immutable function fields differ; rerun with --replace (replacement is not atomic)");
+            }
             client.deleteFunction(desired.name());
             client.registerFunction(desired);
+            return;
+        }
+        if (!patch.isEmpty()) {
+            client.updateFunction(desired.name(), patch);
         }
     }
 

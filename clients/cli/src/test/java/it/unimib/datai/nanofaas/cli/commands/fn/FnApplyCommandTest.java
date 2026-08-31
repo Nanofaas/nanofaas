@@ -62,36 +62,31 @@ class FnApplyCommandTest {
     }
 
     @Test
-    void applyOnConflictReplacesWhenDifferent() throws Exception {
+    void applyOnConflictMutableDifferencePatches() throws Exception {
         Path fn = tmp.resolve("function.yaml");
         String yaml = """
                 name: echo
                 image: registry.example/echo:1
-                timeoutMs: 1000
-                x-cli:
-                  build:
-                    context: .
+                timeoutMs: 7000
                 """;
         java.nio.file.Files.writeString(fn, yaml);
 
         // 1) register -> 409 conflict
         server.enqueue(new MockResponse().setResponseCode(409));
-        // 2) get existing -> different spec
+        // 2) get existing -> same immutable fields, different mutable timeoutMs
         server.enqueue(new MockResponse()
                 .setResponseCode(200)
-                .addHeader("Content-Type", "application/json")
-                .setBody("{\"name\":\"echo\",\"image\":\"registry.example/echo:OLD\",\"timeoutMs\":1000}"));
-        // 3) delete -> 204
-        server.enqueue(new MockResponse().setResponseCode(204));
-        // 4) register -> 201 created
-        server.enqueue(new MockResponse()
-                .setResponseCode(201)
                 .addHeader("Content-Type", "application/json")
                 .setBody("""
                         {"name":"echo","image":"registry.example/echo:1","timeoutMs":1000,
                          "requestedExecutionMode":"DEPLOYMENT","effectiveExecutionMode":"DEPLOYMENT",
                          "runtimeMode":"HTTP"}
                         """));
+        // 3) patch -> 200
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"name\":\"echo\",\"image\":\"registry.example/echo:1\",\"timeoutMs\":7000}"));
 
         RootCommand root = new RootCommand();
         CommandLine cli = new CommandLine(root);
@@ -104,6 +99,9 @@ class FnApplyCommandTest {
 
         assertThat(exit).isZero();
 
+        // POST (409), GET, PATCH — never DELETE
+        assertThat(server.getRequestCount()).isEqualTo(3);
+
         RecordedRequest r1 = server.takeRequest();
         assertThat(r1.getMethod()).isEqualTo("POST");
         assertThat(r1.getPath()).isEqualTo("/v1/functions");
@@ -113,13 +111,106 @@ class FnApplyCommandTest {
         assertThat(r2.getPath()).isEqualTo("/v1/functions/echo");
 
         RecordedRequest r3 = server.takeRequest();
+        assertThat(r3.getMethod()).isEqualTo("PATCH");
+        assertThat(r3.getPath()).isEqualTo("/v1/functions/echo");
+        assertThat(r3.getBody().readUtf8()).contains("\"timeoutMs\":7000");
+    }
+
+    @Test
+    void applyOnConflictImmutableDifferenceRequiresReplace() throws Exception {
+        Path fn = tmp.resolve("function.yaml");
+        String yaml = """
+                name: echo
+                image: registry.example/echo:2
+                """;
+        java.nio.file.Files.writeString(fn, yaml);
+
+        // 1) register -> 409 conflict
+        server.enqueue(new MockResponse().setResponseCode(409));
+        // 2) get existing -> different immutable image
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("""
+                        {"name":"echo","image":"registry.example/echo:1",
+                         "requestedExecutionMode":"DEPLOYMENT","effectiveExecutionMode":"DEPLOYMENT",
+                         "runtimeMode":"HTTP"}
+                        """));
+
+        RootCommand root = new RootCommand();
+        CommandLine cli = new CommandLine(root);
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        cli.setErr(new PrintWriter(err, true));
+
+        int exit = cli.execute(
+                "--endpoint", server.url("/").toString(),
+                "fn", "apply",
+                "-f", fn.toString()
+        );
+
+        assertThat(exit).isNotZero();
+        assertThat(err.toString()).contains("Immutable function fields differ");
+
+        // POST (409) + GET only; never DELETE or re-POST
+        assertThat(server.getRequestCount()).isEqualTo(2);
+        RecordedRequest r1 = server.takeRequest();
+        assertThat(r1.getMethod()).isEqualTo("POST");
+        RecordedRequest r2 = server.takeRequest();
+        assertThat(r2.getMethod()).isEqualTo("GET");
+        assertThat(r2.getPath()).isEqualTo("/v1/functions/echo");
+    }
+
+    @Test
+    void applyOnConflictImmutableDifferenceWithReplaceDeletesThenPosts() throws Exception {
+        Path fn = tmp.resolve("function.yaml");
+        String yaml = """
+                name: echo
+                image: registry.example/echo:2
+                """;
+        java.nio.file.Files.writeString(fn, yaml);
+
+        // 1) register -> 409 conflict
+        server.enqueue(new MockResponse().setResponseCode(409));
+        // 2) get existing -> different immutable image
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("""
+                        {"name":"echo","image":"registry.example/echo:1",
+                         "requestedExecutionMode":"DEPLOYMENT","effectiveExecutionMode":"DEPLOYMENT",
+                         "runtimeMode":"HTTP"}
+                        """));
+        // 3) delete -> 204
+        server.enqueue(new MockResponse().setResponseCode(204));
+        // 4) register -> 201 created
+        server.enqueue(new MockResponse()
+                .setResponseCode(201)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"name\":\"echo\",\"image\":\"registry.example/echo:2\"}"));
+
+        RootCommand root = new RootCommand();
+        CommandLine cli = new CommandLine(root);
+
+        int exit = cli.execute(
+                "--endpoint", server.url("/").toString(),
+                "fn", "apply", "--replace",
+                "-f", fn.toString()
+        );
+
+        assertThat(exit).isZero();
+
+        assertThat(server.getRequestCount()).isEqualTo(4);
+        RecordedRequest r1 = server.takeRequest();
+        assertThat(r1.getMethod()).isEqualTo("POST");
+        RecordedRequest r2 = server.takeRequest();
+        assertThat(r2.getMethod()).isEqualTo("GET");
+        RecordedRequest r3 = server.takeRequest();
         assertThat(r3.getMethod()).isEqualTo("DELETE");
         assertThat(r3.getPath()).isEqualTo("/v1/functions/echo");
-
         RecordedRequest r4 = server.takeRequest();
         assertThat(r4.getMethod()).isEqualTo("POST");
         assertThat(r4.getPath()).isEqualTo("/v1/functions");
-        assertThat(r4.getBody().readUtf8()).contains("\"image\":\"registry.example/echo:1\"");
+        assertThat(r4.getBody().readUtf8()).contains("\"image\":\"registry.example/echo:2\"");
     }
 
     @Test

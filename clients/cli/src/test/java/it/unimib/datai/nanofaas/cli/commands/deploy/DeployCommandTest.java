@@ -157,7 +157,7 @@ class DeployCommandTest {
     }
 
     @Test
-    void deployOn409ConflictReplacesWhenDifferent() throws Exception {
+    void deployOn409ChangedImageRequiresReplace() throws Exception {
         Path ctx = tmp.resolve("build-ctx2");
         Files.createDirectories(ctx);
         Files.writeString(ctx.resolve("Dockerfile"), "FROM scratch\n");
@@ -175,18 +175,11 @@ class DeployCommandTest {
 
         // 1) register → 409 conflict
         server.enqueue(new MockResponse().setResponseCode(409));
-        // 2) GET → different spec
+        // 2) GET → different image
         server.enqueue(new MockResponse()
                 .setResponseCode(200)
                 .addHeader("Content-Type", "application/json")
                 .setBody("{\"name\":\"echo\",\"image\":\"nanofaas-test-deploy2:OLD\"}"));
-        // 3) DELETE → 204
-        server.enqueue(new MockResponse().setResponseCode(204));
-        // 4) register → 201
-        server.enqueue(new MockResponse()
-                .setResponseCode(201)
-                .addHeader("Content-Type", "application/json")
-                .setBody("{\"name\":\"echo\",\"image\":\"nanofaas-test-deploy2:latest\"}"));
 
         RootCommand root = new RootCommand();
         CommandLine cli = new CommandLine(root);
@@ -194,6 +187,55 @@ class DeployCommandTest {
         int exit = cli.execute(
                 "--endpoint", server.url("/").toString(),
                 "deploy", "-f", fn.toString()
+        );
+        assertThat(exit).isNotZero();
+
+        // POST + GET only; no DELETE/re-POST
+        assertThat(server.getRequestCount()).isEqualTo(2);
+        RecordedRequest r1 = server.takeRequest();
+        assertThat(r1.getMethod()).isEqualTo("POST");
+        RecordedRequest r2 = server.takeRequest();
+        assertThat(r2.getMethod()).isEqualTo("GET");
+    }
+
+    @Test
+    void deployOn409ChangedImageWithReplaceDeletesThenPosts() throws Exception {
+        Path ctx = tmp.resolve("build-ctx2b");
+        Files.createDirectories(ctx);
+        Files.writeString(ctx.resolve("Dockerfile"), "FROM scratch\n");
+
+        Path fn = tmp.resolve("function.yaml");
+        Files.writeString(fn, """
+                name: echo
+                image: nanofaas-test-deploy2b:latest
+                x-cli:
+                  build:
+                    context: %s
+                    dockerfile: %s/Dockerfile
+                    push: false
+                """.formatted(ctx, ctx));
+
+        // 1) register → 409 conflict
+        server.enqueue(new MockResponse().setResponseCode(409));
+        // 2) GET → different image
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"name\":\"echo\",\"image\":\"nanofaas-test-deploy2b:OLD\"}"));
+        // 3) DELETE → 204
+        server.enqueue(new MockResponse().setResponseCode(204));
+        // 4) register → 201
+        server.enqueue(new MockResponse()
+                .setResponseCode(201)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"name\":\"echo\",\"image\":\"nanofaas-test-deploy2b:latest\"}"));
+
+        RootCommand root = new RootCommand();
+        CommandLine cli = new CommandLine(root);
+
+        int exit = cli.execute(
+                "--endpoint", server.url("/").toString(),
+                "deploy", "--replace", "-f", fn.toString()
         );
         assertThat(exit).isZero();
 
