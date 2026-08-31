@@ -22,6 +22,7 @@ public final class ControlPlaneModulesPlugin implements Plugin<Settings> {
 
     private static final String SELECTOR_PROPERTY = "controlPlaneModules";
     private static final String SELECTED_EXTRA_PROPERTY = "nanofaasSelectedControlPlaneModules";
+    private static final String NATIVE_BUILD_EXTRA_PROPERTY = "nanofaasNativeBuildRequested";
 
     @Override
     public void apply(Settings settings) {
@@ -39,6 +40,20 @@ public final class ControlPlaneModulesPlugin implements Plugin<Settings> {
         });
         settings.getGradle().getExtensions().getExtraProperties()
                 .set(SELECTED_EXTRA_PROPERTY, List.copyOf(selected));
+        settings.getGradle().getExtensions().getExtraProperties()
+                .set(NATIVE_BUILD_EXTRA_PROPERTY, isNativeBuildRequested(settings));
+    }
+
+    /**
+     * Whether the invocation targets a native build. Resolved once here because both
+     * {@code :control-plane} (to gate Spring AOT) and the build-metadata module (to default
+     * the recorded build type) need the same answer, and two copies of the heuristic would
+     * drift apart the day the native task names change.
+     */
+    private static boolean isNativeBuildRequested(Settings settings) {
+        return settings.getStartParameter().getTaskNames().stream()
+                .map(name -> name.toLowerCase(java.util.Locale.ROOT))
+                .anyMatch(name -> name.contains("nativecompile") || name.contains("nativetest"));
     }
 
     private static void configureOpenApiComposition(Project project, Path modulesRoot, List<String> selected) {

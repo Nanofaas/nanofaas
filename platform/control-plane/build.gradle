@@ -84,12 +84,9 @@ graalvmNative {
     }
 }
 
-// Enable Spring AOT processing only for native-oriented builds.
-def nativeBuildRequested = gradle.startParameter.taskNames.any {
-    def taskName = it.toLowerCase()
-
-    taskName.contains('nativecompile') || taskName.contains('nativetest')
-}
+// Enable Spring AOT processing only for native-oriented builds. The settings plugin resolves
+// this once so the build-metadata module records the same answer it gates AOT on.
+def nativeBuildRequested = gradle.ext.nanofaasNativeBuildRequested
 
 if (!nativeBuildRequested) {
     // Main AOT - not needed for regular builds

@@ -5,10 +5,19 @@ FROM ${BUILDER_IMAGE} AS build
 
 ARG NANOFAAS_CONTROL_PLANE_MODULES=container-deployment-provider
 
+# .dockerignore strips .git and this image has no git binary, so the build cannot work out its
+# own revision. compose.yaml forwards the host's values when they are exported; left empty the
+# properties are simply omitted and /modules/build-metadata reports null, as it does for any
+# build that cannot establish provenance.
+ARG NANOFAAS_BUILD_REVISION=
+ARG NANOFAAS_BUILD_DIRTY=
+
 WORKDIR /workspace
 COPY . .
 RUN ./gradlew :control-plane:bootJar \
     -PcontrolPlaneModules=${NANOFAAS_CONTROL_PLANE_MODULES} \
+    ${NANOFAAS_BUILD_REVISION:+-PnanofaasBuildRevision=$NANOFAAS_BUILD_REVISION} \
+    ${NANOFAAS_BUILD_DIRTY:+-PnanofaasBuildDirty=$NANOFAAS_BUILD_DIRTY} \
     --no-daemon
 
 # jlink a runtime with only the modules app.jar actually touches, instead of shipping the full

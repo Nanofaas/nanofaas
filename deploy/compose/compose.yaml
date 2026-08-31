@@ -8,6 +8,13 @@ services:
       dockerfile: deploy/compose/Dockerfile
       args:
         NANOFAAS_CONTROL_PLANE_MODULES: ${NANOFAAS_CONTROL_PLANE_MODULES:-container-deployment-provider}
+        # Export these to stamp the image with its provenance, which the builder cannot
+        # determine itself (no .git, no git binary):
+        #   NANOFAAS_BUILD_REVISION=$(git rev-parse HEAD) \
+        #   NANOFAAS_BUILD_DIRTY=$(git status --porcelain --untracked-files=no | grep -q . && echo true || echo false) \
+        #   docker compose build
+        NANOFAAS_BUILD_REVISION: ${NANOFAAS_BUILD_REVISION:-}
+        NANOFAAS_BUILD_DIRTY: ${NANOFAAS_BUILD_DIRTY:-}
     user: "0:0"
     environment:
       NANOFAAS_DEPLOYMENT_DEFAULT_BACKEND: container-local

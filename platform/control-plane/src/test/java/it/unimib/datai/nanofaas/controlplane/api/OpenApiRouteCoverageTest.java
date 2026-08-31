@@ -14,6 +14,7 @@ import org.yaml.snakeyaml.Yaml;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Arrays;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -124,8 +125,14 @@ class OpenApiRouteCoverageTest {
         }
     }
 
-    private static final Set<String> HTTP_METHODS =
-            Set.of("get", "put", "post", "delete", "options", "head", "patch", "trace");
+    /**
+     * Path items also carry non-verb keys ({@code parameters}, {@code summary}, {@code $ref}),
+     * so the verbs have to be recognised rather than assumed. Derived from Spring's own enum
+     * so this list cannot drift from the annotations the scan above reads.
+     */
+    private static final Set<String> HTTP_METHODS = Arrays.stream(RequestMethod.values())
+            .map(method -> method.name().toLowerCase(Locale.ROOT))
+            .collect(Collectors.toUnmodifiableSet());
 
     @SuppressWarnings("unchecked")
     private static Set<String> documentedOperations() {
