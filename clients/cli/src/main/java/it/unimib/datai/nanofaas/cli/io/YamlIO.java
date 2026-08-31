@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.cli.io;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 
@@ -18,6 +19,14 @@ public final class YamlIO {
     public static <T> T read(Path path, Class<T> type) {
         try {
             return YAML.readValue(path.toFile(), type);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to read YAML: " + path, e);
+        }
+    }
+
+    public static JsonNode readTree(Path path) {
+        try {
+            return YAML.readTree(path.toFile());
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to read YAML: " + path, e);
         }

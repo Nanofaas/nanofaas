@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.cli.commands.controlplane;
 
 import it.unimib.datai.nanofaas.cli.commands.RootCommand;
+import it.unimib.datai.nanofaas.cli.commands.controlplane.config.ControlPlaneConfigCommand;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.ParentCommand;
 
@@ -10,11 +11,12 @@ import picocli.CommandLine.ParentCommand;
         description = "Inspect the control-plane build and API contract.",
         subcommands = {
                 ControlPlaneInfoCommand.class,
-                ControlPlaneContractCommand.class
+                ControlPlaneContractCommand.class,
+                ControlPlaneConfigCommand.class
         }
 )
 public class ControlPlaneCommand {
 
     @ParentCommand
-    RootCommand root;
+    public RootCommand root;
 }

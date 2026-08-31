@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.cli.http;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import it.unimib.datai.nanofaas.common.model.ExecutionStatus;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -17,6 +18,7 @@ import java.util.Map;
 
 public final class ControlPlaneClient {
     private static final String FUNCTIONS_PATH = "v1/functions/";
+    private static final String RUNTIME_CONFIG_PATH = "v1/admin/runtime-config";
     private static final String APPLICATION_JSON = "application/json";
     private static final String CONTENT_TYPE = "Content-Type";
 
@@ -263,6 +265,90 @@ public final class ControlPlaneClient {
      */
     public ControlPlaneCapabilities capabilities() {
         return ControlPlaneCapabilities.fromOpenApi(openApi());
+    }
+
+    /**
+     * Fetches the full runtime-configuration snapshot.
+     *
+     * @throws ControlPlaneHttpException for any non-200 status (404 = admin API disabled)
+     */
+    public RuntimeConfigSnapshot getRuntimeConfig() {
+        HttpRequest req = HttpRequest.newBuilder(base.resolve(RUNTIME_CONFIG_PATH))
+                .GET()
+                .timeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpResponse<String> resp = send(req);
+        if (resp.statusCode() != 200) {
+            throw httpError("get runtime config", resp);
+        }
+        return json.fromJson(resp.body(), RuntimeConfigSnapshot.class);
+    }
+
+    /**
+     * Fetches a single runtime-configuration namespace as an untyped JSON tree.
+     *
+     * @throws ControlPlaneHttpException for any non-200 status (404 = admin API disabled
+     *                                   or namespace not found)
+     */
+    public JsonNode getRuntimeConfig(String namespace) {
+        HttpRequest req = HttpRequest.newBuilder(base.resolve(RUNTIME_CONFIG_PATH + "/" + namespace))
+                .GET()
+                .timeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpResponse<String> resp = send(req);
+        if (resp.statusCode() != 200) {
+            throw httpError("get runtime config", resp);
+        }
+        return readTree(resp.body());
+    }
+
+    /**
+     * Validates a runtime-configuration patch for a namespace.
+     *
+     * @throws ControlPlaneHttpException for any non-200 status (422 = validation failed,
+     *                                   404 = admin API disabled or namespace not found)
+     */
+    public JsonNode validateRuntimeConfig(String namespace, Map<String, Object> values) {
+        HttpRequest req = HttpRequest.newBuilder(base.resolve(RUNTIME_CONFIG_PATH + "/" + namespace + "/validate"))
+                .header(CONTENT_TYPE, APPLICATION_JSON)
+                .POST(HttpRequest.BodyPublishers.ofString(json.toJson(values)))
+                .timeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpResponse<String> resp = send(req);
+        if (resp.statusCode() != 200) {
+            throw httpError("validate runtime config", resp);
+        }
+        return readTree(resp.body());
+    }
+
+    /**
+     * Patches a runtime-configuration namespace.
+     *
+     * @throws ControlPlaneHttpException for any non-200 status (404/409/422/503)
+     */
+    public RuntimeConfigPatchResponse patchRuntimeConfig(String namespace, RuntimeConfigPatchRequest request) {
+        HttpRequest req = HttpRequest.newBuilder(base.resolve(RUNTIME_CONFIG_PATH + "/" + namespace))
+                .header(CONTENT_TYPE, APPLICATION_JSON)
+                .method("PATCH", HttpRequest.BodyPublishers.ofString(json.toJson(request)))
+                .timeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpResponse<String> resp = send(req);
+        if (resp.statusCode() != 200) {
+            throw httpError("patch runtime config", resp);
+        }
+        return json.fromJson(resp.body(), RuntimeConfigPatchResponse.class);
+    }
+
+    private JsonNode readTree(String body) {
+        try {
+            return json.mapper().readTree(body);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Failed to parse JSON", e);
+        }
     }
 
     /**

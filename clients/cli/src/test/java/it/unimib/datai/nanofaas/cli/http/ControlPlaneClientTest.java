@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.cli.http;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.ExecutionStatus;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -545,5 +546,116 @@ class ControlPlaneClientTest {
         assertThatThrownBy(() -> client.setReplicas("echo", 2))
                 .isInstanceOf(ControlPlaneHttpException.class)
                 .satisfies(ex -> assertThat(((ControlPlaneHttpException) ex).getStatus()).isEqualTo(503));
+    }
+
+    @Test
+    void getRuntimeConfigReturnsAggregateSnapshot() throws Exception {
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"revision\":7,\"namespaces\":{\"requests\":{\"maxQueueWait\":\"PT2S\"}}}"));
+
+        ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
+
+        RuntimeConfigSnapshot snapshot = client.getRuntimeConfig();
+        RecordedRequest req = server.takeRequest();
+
+        assertThat(req.getMethod()).isEqualTo("GET");
+        assertThat(req.getPath()).isEqualTo("/v1/admin/runtime-config");
+        assertThat(snapshot.revision()).isEqualTo(7);
+        assertThat(snapshot.namespaces()).containsKey("requests");
+        assertThat(snapshot.namespaces().get("requests")).containsEntry("maxQueueWait", "PT2S");
+    }
+
+    @Test
+    void getRuntimeConfigNamespaceReturnsUntypedJsonNode() throws Exception {
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"maxQueueWait\":\"PT2S\"}"));
+
+        ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
+
+        JsonNode node = client.getRuntimeConfig("requests");
+        RecordedRequest req = server.takeRequest();
+
+        assertThat(req.getMethod()).isEqualTo("GET");
+        assertThat(req.getPath()).isEqualTo("/v1/admin/runtime-config/requests");
+        assertThat(node.path("maxQueueWait").asText()).isEqualTo("PT2S");
+    }
+
+    @Test
+    void validateRuntimeConfigPostsValuesToExpectedPath() throws Exception {
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"valid\":true}"));
+
+        ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
+
+        JsonNode node = client.validateRuntimeConfig("requests", Map.of("maxQueueWait", "PT2S"));
+        RecordedRequest req = server.takeRequest();
+
+        assertThat(req.getMethod()).isEqualTo("POST");
+        assertThat(req.getPath()).isEqualTo("/v1/admin/runtime-config/requests/validate");
+        assertThat(req.getHeader("Content-Type")).contains("application/json");
+        assertThat(req.getBody().readUtf8()).isEqualTo("{\"maxQueueWait\":\"PT2S\"}");
+        assertThat(node.path("valid").asBoolean()).isTrue();
+    }
+
+    @Test
+    void patchRuntimeConfigPatchesExpectedBody() throws Exception {
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("""
+                        {"revision":8,"effectiveConfig":{"revision":8,"namespaces":{"requests":{"maxQueueWait":"PT3S"}}},
+                         "appliedAt":"2026-01-01T00:00:00Z","changeId":"abc","warnings":[]}
+                        """));
+
+        ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
+
+        RuntimeConfigPatchResponse response = client.patchRuntimeConfig("requests",
+                new RuntimeConfigPatchRequest(7, Map.of("maxQueueWait", "PT3S")));
+        RecordedRequest req = server.takeRequest();
+
+        assertThat(req.getMethod()).isEqualTo("PATCH");
+        assertThat(req.getPath()).isEqualTo("/v1/admin/runtime-config/requests");
+        assertThat(req.getHeader("Content-Type")).contains("application/json");
+        assertThat(req.getBody().readUtf8()).isEqualTo("{\"expectedRevision\":7,\"values\":{\"maxQueueWait\":\"PT3S\"}}");
+        assertThat(response.revision()).isEqualTo(8);
+        assertThat(response.effectiveConfig().namespaces()).containsKey("requests");
+        assertThat(response.changeId()).isEqualTo("abc");
+    }
+
+    @Test
+    void getRuntimeConfigNon200ThrowsWithBodyPreserved() {
+        server.enqueue(new MockResponse().setResponseCode(404).setBody("admin disabled"));
+        ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
+
+        assertThatThrownBy(client::getRuntimeConfig)
+                .isInstanceOf(ControlPlaneHttpException.class)
+                .satisfies(ex -> {
+                    ControlPlaneHttpException he = (ControlPlaneHttpException) ex;
+                    assertThat(he.getStatus()).isEqualTo(404);
+                    assertThat(he.getBody()).isEqualTo("admin disabled");
+                });
+    }
+
+    @Test
+    void validateRuntimeConfig422ThrowsWithBodyPreserved() {
+        server.enqueue(new MockResponse()
+                .setResponseCode(422)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"errors\":[\"maxQueueWait must be a duration\"]}"));
+        ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
+
+        assertThatThrownBy(() -> client.validateRuntimeConfig("requests", Map.of("maxQueueWait", "bad")))
+                .isInstanceOf(ControlPlaneHttpException.class)
+                .satisfies(ex -> {
+                    ControlPlaneHttpException he = (ControlPlaneHttpException) ex;
+                    assertThat(he.getStatus()).isEqualTo(422);
+                    assertThat(he.getBody()).contains("maxQueueWait must be a duration");
+                });
     }
 }
