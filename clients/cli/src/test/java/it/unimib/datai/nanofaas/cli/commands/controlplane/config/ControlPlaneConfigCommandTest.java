@@ -275,6 +275,27 @@ class ControlPlaneConfigCommandTest {
     }
 
     @Test
+    void patchFetchesRevision404MapsToDomainMessage() throws Exception {
+        Path p = tmp.resolve("patch.yaml");
+        Files.writeString(p, "maxQueueWait: PT3S\n");
+
+        server.enqueue(openApiResponse(OPENAPI_WITH_RUNTIME_CONFIG));
+        server.enqueue(new MockResponse().setResponseCode(404).setBody("not found"));
+
+        CommandLine cli = new CommandLine(new RootCommand());
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        cli.setErr(new PrintWriter(err, true));
+
+        int exit = cli.execute("--endpoint", server.url("/").toString(),
+                "control-plane", "config", "patch", "requests", "-f", p.toString());
+
+        assertThat(exit).isNotZero();
+        assertThat(err.toString())
+                .contains("nanofaas.admin.runtime-config.enabled=true")
+                .doesNotContain("Control-plane HTTP 404");
+    }
+
+    @Test
     void patch409SurfacesCurrentRevision() throws Exception {
         Path p = tmp.resolve("patch.yaml");
         Files.writeString(p, """

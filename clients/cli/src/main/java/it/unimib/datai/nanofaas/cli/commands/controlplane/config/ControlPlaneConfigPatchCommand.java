@@ -34,10 +34,10 @@ public class ControlPlaneConfigPatchCommand implements Runnable {
                     "Runtime configuration is not supported by this control-plane build");
         }
         RuntimeConfigInput input = RuntimeConfigInput.load(file);
-        long revision = input.expectedRevision() != null
-                ? input.expectedRevision()
-                : client.getRuntimeConfig().revision();
         try {
+            long revision = input.expectedRevision() != null
+                    ? input.expectedRevision()
+                    : client.getRuntimeConfig().revision();
             RuntimeConfigPatchResponse response = client.patchRuntimeConfig(
                     namespace, new RuntimeConfigPatchRequest(revision, input.values()));
             System.out.println(new HttpJson().toJson(response));

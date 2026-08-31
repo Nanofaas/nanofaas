@@ -21,8 +21,9 @@ final class RuntimeConfigErrorMapper {
     static RuntimeException map(ControlPlaneHttpException e) {
         return switch (e.getStatus()) {
             case 404 -> new IllegalArgumentException(
-                    "Runtime configuration administration is disabled. "
-                            + "Enable it with nanofaas.admin.runtime-config.enabled=true on the control plane.");
+                    "Runtime configuration administration is disabled, or the namespace does not exist. "
+                            + "Check the namespace spelling, or enable the admin API with "
+                            + "nanofaas.admin.runtime-config.enabled=true on the control plane.");
             case 409 -> new IllegalArgumentException(staleRevisionMessage(e.getBody()));
             case 422 -> new IllegalArgumentException(validationMessage(e.getBody()));
             default -> e;
