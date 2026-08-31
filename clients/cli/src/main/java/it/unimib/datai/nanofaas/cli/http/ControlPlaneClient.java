@@ -166,6 +166,37 @@ public final class ControlPlaneClient {
     }
 
     /**
+     * Fetches the control-plane's OpenAPI contract document.
+     *
+     * @return the raw OpenAPI document body, unchanged
+     * @throws ControlPlaneHttpException if the document is not served with a 200 status
+     */
+    public String openApi() {
+        HttpRequest req = HttpRequest.newBuilder(base.resolve("openapi.yaml"))
+                .GET()
+                .timeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpResponse<String> resp = send(req);
+        if (resp.statusCode() != 200) {
+            throw httpError("get openapi", resp);
+        }
+        return resp.body();
+    }
+
+    /**
+     * Derives the control-plane's capabilities from its OpenAPI contract.
+     *
+     * <p>This performs a fresh fetch of {@code /openapi.yaml} on every call; there is
+     * deliberately no runtime cache.</p>
+     *
+     * @return the parsed capabilities
+     */
+    public ControlPlaneCapabilities capabilities() {
+        return ControlPlaneCapabilities.fromOpenApi(openApi());
+    }
+
+    /**
      * Sends an HTTP request to the control-plane and handles transport errors.
      *
      * @param request HTTP request to execute

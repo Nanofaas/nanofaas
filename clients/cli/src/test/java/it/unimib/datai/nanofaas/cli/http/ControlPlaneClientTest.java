@@ -218,6 +218,79 @@ class ControlPlaneClientTest {
     }
 
     @Test
+    void openApiReturnsBodyUnchanged() throws Exception {
+        String yaml = "openapi: 3.0.0\npaths: {}\n";
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/yaml")
+                .setBody(yaml));
+
+        ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
+
+        String body = client.openApi();
+        RecordedRequest req = server.takeRequest();
+
+        assertThat(req.getMethod()).isEqualTo("GET");
+        assertThat(req.getPath()).isEqualTo("/openapi.yaml");
+        assertThat(body).isEqualTo(yaml);
+    }
+
+    @Test
+    void capabilitiesParsesOpenApiBooleans() throws Exception {
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/yaml")
+                .setBody("""
+                        openapi: 3.0.0
+                        paths:
+                          /v1/functions/{name}:
+                            patch:
+                              summary: Update a function
+                          /v1/functions/{name}/replicas:
+                            get:
+                              summary: Read replicas
+                            put:
+                              summary: Set replicas
+                          /v1/functions/{name}:enqueue:
+                            post:
+                              summary: Enqueue
+                          /modules/build-metadata:
+                            get:
+                              summary: Build metadata
+                          /v1/admin/runtime-config:
+                            get:
+                              summary: Runtime config
+                          /v1/admin/runtime-config/{namespace}:
+                            patch:
+                              summary: Update runtime config
+                          /v1/admin/runtime-config/{namespace}/validate:
+                            post:
+                              summary: Validate runtime config
+                        """));
+
+        ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
+
+        ControlPlaneCapabilities caps = client.capabilities();
+
+        assertThat(caps.functionUpdate()).isTrue();
+        assertThat(caps.replicas()).isTrue();
+        assertThat(caps.asyncInvocation()).isTrue();
+        assertThat(caps.buildMetadata()).isTrue();
+        assertThat(caps.runtimeConfig()).isTrue();
+    }
+
+    @Test
+    void openApiNon200ThrowsControlPlaneHttpException() {
+        server.enqueue(new MockResponse().setResponseCode(500).setBody("error"));
+
+        ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
+
+        assertThatThrownBy(client::openApi)
+                .isInstanceOf(ControlPlaneHttpException.class)
+                .satisfies(ex -> assertThat(((ControlPlaneHttpException) ex).getStatus()).isEqualTo(500));
+    }
+
+    @Test
     void invokeSyncSendsOptionalHeaders() throws Exception {
         server.enqueue(new MockResponse()
                 .setResponseCode(200)
