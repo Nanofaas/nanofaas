@@ -112,13 +112,22 @@ class FunctionCapacityRegistryTest {
         registry.register("first", 1);
         registry.register("second", 1);
 
-        CompletableFuture<Boolean> first = CompletableFuture.supplyAsync(() -> registry.tryAcquireSlot("first"));
-        assertThat(firstTimestampEntered.await(1, TimeUnit.SECONDS)).isTrue();
-        CompletableFuture<Boolean> second = CompletableFuture.supplyAsync(() -> registry.tryAcquireSlot("second"));
+        // Own threads, not the common pool: the first task parks inside the timestamp read, and
+        // on a two-core runner the pool's single worker would never free up to start the second.
+        ExecutorService workers = Executors.newFixedThreadPool(2);
+        try {
+            CompletableFuture<Boolean> first =
+                    CompletableFuture.supplyAsync(() -> registry.tryAcquireSlot("first"), workers);
+            assertThat(firstTimestampEntered.await(1, TimeUnit.SECONDS)).isTrue();
+            CompletableFuture<Boolean> second =
+                    CompletableFuture.supplyAsync(() -> registry.tryAcquireSlot("second"), workers);
 
-        assertThat(second.get(1, TimeUnit.SECONDS)).isTrue();
-        allowFirstTimestamp.countDown();
-        assertThat(first.get(1, TimeUnit.SECONDS)).isTrue();
+            assertThat(second.get(1, TimeUnit.SECONDS)).isTrue();
+            allowFirstTimestamp.countDown();
+            assertThat(first.get(1, TimeUnit.SECONDS)).isTrue();
+        } finally {
+            workers.shutdownNow();
+        }
     }
 
     @Test
@@ -157,15 +166,24 @@ class FunctionCapacityRegistryTest {
             return 10;
         });
 
-        CompletableFuture<Boolean> acquire = CompletableFuture.supplyAsync(state::tryAcquireSlot);
-        assertThat(timestampEntered.await(1, TimeUnit.SECONDS)).isTrue();
-        CompletableFuture<Long> release = CompletableFuture.supplyAsync(state::releaseSlotAndGetHoldNanos);
-        Thread.sleep(50);
-        allowTimestamp.countDown();
+        // Own threads, not the common pool: the acquiring task parks inside the timestamp read,
+        // and on a two-core runner the pool's single worker would never free up for the release.
+        ExecutorService workers = Executors.newFixedThreadPool(2);
+        try {
+            CompletableFuture<Boolean> acquire =
+                    CompletableFuture.supplyAsync(state::tryAcquireSlot, workers);
+            assertThat(timestampEntered.await(1, TimeUnit.SECONDS)).isTrue();
+            CompletableFuture<Long> release =
+                    CompletableFuture.supplyAsync(state::releaseSlotAndGetHoldNanos, workers);
+            Thread.sleep(50);
+            allowTimestamp.countDown();
 
-        assertThat(acquire.get(1, TimeUnit.SECONDS)).isTrue();
-        assertThat(release.get(1, TimeUnit.SECONDS)).isZero();
-        assertThat(state.inFlight()).isZero();
+            assertThat(acquire.get(1, TimeUnit.SECONDS)).isTrue();
+            assertThat(release.get(1, TimeUnit.SECONDS)).isZero();
+            assertThat(state.inFlight()).isZero();
+        } finally {
+            workers.shutdownNow();
+        }
     }
 
     @Test
