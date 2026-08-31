@@ -643,6 +643,42 @@ class ControlPlaneClientTest {
     }
 
     @Test
+    void functionNameWithReservedCharactersIsPercentEncoded() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(404));
+
+        ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
+        client.getFunctionOrNull("a b#c?d");
+        RecordedRequest req = server.takeRequest();
+
+        assertThat(req.getPath()).isEqualTo("/v1/functions/a%20b%23c%3Fd");
+    }
+
+    @Test
+    void functionNameWithSlashIsEncodedNotSplit() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(404));
+
+        ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
+        client.getFunctionOrNull("a/b");
+        RecordedRequest req = server.takeRequest();
+
+        assertThat(req.getPath()).isEqualTo("/v1/functions/a%2Fb");
+    }
+
+    @Test
+    void runtimeConfigNamespaceIsPercentEncoded() throws Exception {
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{}"));
+
+        ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
+        client.getRuntimeConfig("con#trol");
+        RecordedRequest req = server.takeRequest();
+
+        assertThat(req.getPath()).isEqualTo("/v1/admin/runtime-config/con%23trol");
+    }
+
+    @Test
     void validateRuntimeConfig422ThrowsWithBodyPreserved() {
         server.enqueue(new MockResponse()
                 .setResponseCode(422)

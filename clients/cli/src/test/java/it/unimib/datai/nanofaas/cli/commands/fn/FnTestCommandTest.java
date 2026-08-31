@@ -181,6 +181,46 @@ class FnTestCommandTest {
     }
 
     @Test
+    void testFunctionDecidedErrorStatusFailsEvenWhenBodyStatusIsSuccess() throws Exception {
+        Path payloads = Files.createDirectories(tmp.resolve("payloads"));
+        Files.writeString(payloads.resolve("happy-path.json"), """
+                {
+                  "description": "valid input",
+                  "input": {"key": "value"},
+                  "expected": {"result": "ok"}
+                }
+                """);
+
+        server.enqueue(new MockResponse()
+                .setResponseCode(404)
+                .addHeader("X-NanoFaaS-Function-Status", "true")
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"executionId\":\"e1\",\"status\":\"success\",\"output\":{\"result\":\"ok\"}}"));
+
+        RootCommand root = new RootCommand();
+        CommandLine cli = new CommandLine(root);
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PrintStream previousOut = System.out;
+        System.setOut(new PrintStream(out));
+        try {
+            int exit = cli.execute(
+                    "--endpoint", server.url("/").toString(),
+                    "fn", "test", "echo",
+                    "--payloads", payloads.toString()
+            );
+
+            assertThat(exit).isEqualTo(1);
+        } finally {
+            System.setOut(previousOut);
+        }
+
+        assertThat(out.toString())
+                .contains("❌")
+                .contains("0 passed, 1 failed");
+    }
+
+    @Test
     void testPayloadResolvesJsonAssetInputRelativeToPayloadFile() throws Exception {
         Path payloads = Files.createDirectories(tmp.resolve("payloads"));
         Path assets = Files.createDirectories(payloads.resolve("assets"));

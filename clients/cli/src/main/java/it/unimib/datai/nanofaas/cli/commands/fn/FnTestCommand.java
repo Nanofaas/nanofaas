@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.cli.commands.fn;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import it.unimib.datai.nanofaas.cli.http.InvocationCallResult;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResponse;
 import picocli.CommandLine.Command;
@@ -47,16 +48,17 @@ public class FnTestCommand implements Callable<Integer> {
         for (Path file : files) {
             PayloadCase payload = readPayload(file);
             InvocationRequest request = new InvocationRequest(payload.input(), null);
-            InvocationResponse response;
+            InvocationCallResult callResult;
             try {
-                response = parent.root.controlPlaneClient().invokeSync(name, request, null, null, timeoutMs).response();
+                callResult = parent.root.controlPlaneClient().invokeSync(name, request, null, null, timeoutMs);
             } catch (RuntimeException e) {
                 failed++;
                 System.out.printf("\u274c %s - invocation failed: %s%n", file.getFileName(), e.getMessage());
                 continue;
             }
+            InvocationResponse response = callResult.response();
 
-            if ("success".equalsIgnoreCase(response.status())) {
+            if (callResult.isSuccessful() && "success".equalsIgnoreCase(response.status())) {
                 JsonNode actual = json.valueToTree(response.output());
                 if (actual.equals(payload.expected())) {
                     passed++;
@@ -70,6 +72,7 @@ public class FnTestCommand implements Callable<Integer> {
             } else {
                 failed++;
                 System.out.printf("\u274c %s - %s%n", file.getFileName(), payload.description());
+                System.out.printf("  http status: %d%n", callResult.httpStatus());
                 System.out.printf("  status: %s%n", response.status());
                 if (response.error() != null) {
                     System.out.printf("  error:  %s%n", compact(json.valueToTree(response.error())));

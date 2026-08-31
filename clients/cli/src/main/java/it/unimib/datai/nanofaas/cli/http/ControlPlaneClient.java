@@ -9,9 +9,11 @@ import it.unimib.datai.nanofaas.common.model.InvocationResponse;
 
 import java.io.IOException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -55,7 +57,7 @@ public final class ControlPlaneClient {
     }
 
     public FunctionDetails getFunctionOrNull(String name) {
-        HttpRequest req = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + name))
+        HttpRequest req = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + encodePathSegment(name)))
                 .GET()
                 .timeout(Duration.ofSeconds(30))
                 .build();
@@ -71,7 +73,7 @@ public final class ControlPlaneClient {
     }
 
     public void deleteFunction(String name) {
-        HttpRequest req = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + name))
+        HttpRequest req = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + encodePathSegment(name)))
                 .DELETE()
                 .timeout(Duration.ofSeconds(30))
                 .build();
@@ -86,7 +88,7 @@ public final class ControlPlaneClient {
     }
 
     public FunctionDetails updateFunction(String name, FunctionPatch patch) {
-        HttpRequest request = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + name))
+        HttpRequest request = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + encodePathSegment(name)))
                 .header(CONTENT_TYPE, APPLICATION_JSON)
                 .method("PATCH", HttpRequest.BodyPublishers.ofString(json.toJson(patch)))
                 .timeout(Duration.ofSeconds(30))
@@ -99,7 +101,7 @@ public final class ControlPlaneClient {
     }
 
     public ReplicaStatus getReplicas(String name) {
-        HttpRequest req = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + name + "/replicas"))
+        HttpRequest req = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + encodePathSegment(name) + "/replicas"))
                 .GET()
                 .timeout(Duration.ofSeconds(30))
                 .build();
@@ -113,7 +115,7 @@ public final class ControlPlaneClient {
 
     public Map<String, Object> setReplicas(String name, int replicas) {
         String body = json.toJson(Map.of("replicas", replicas));
-        HttpRequest req = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + name + "/replicas"))
+        HttpRequest req = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + encodePathSegment(name) + "/replicas"))
                 .header(CONTENT_TYPE, APPLICATION_JSON)
                 .method("PUT", HttpRequest.BodyPublishers.ofString(body))
                 .timeout(Duration.ofSeconds(30))
@@ -148,7 +150,7 @@ public final class ControlPlaneClient {
     public InvocationCallResult invokeSync(String name, InvocationRequest request,
                                            String idempotencyKey, String traceId, Integer timeoutMs) {
         String body = json.toJson(request);
-        HttpRequest.Builder b = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + name + ":invoke"))
+        HttpRequest.Builder b = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + encodePathSegment(name) + ":invoke"))
                 .header(CONTENT_TYPE, APPLICATION_JSON)
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .timeout(Duration.ofSeconds(300));
@@ -181,7 +183,7 @@ public final class ControlPlaneClient {
 
     public InvocationResponse enqueue(String name, InvocationRequest request, String idempotencyKey, String traceId) {
         String body = json.toJson(request);
-        HttpRequest.Builder b = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + name + ":enqueue"))
+        HttpRequest.Builder b = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + encodePathSegment(name) + ":enqueue"))
                 .header(CONTENT_TYPE, APPLICATION_JSON)
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .timeout(Duration.ofSeconds(30));
@@ -201,7 +203,7 @@ public final class ControlPlaneClient {
     }
 
     public ExecutionStatus getExecution(String executionId) {
-        HttpRequest req = HttpRequest.newBuilder(base.resolve("v1/executions/" + executionId))
+        HttpRequest req = HttpRequest.newBuilder(base.resolve("v1/executions/" + encodePathSegment(executionId)))
                 .GET()
                 .timeout(Duration.ofSeconds(30))
                 .build();
@@ -292,7 +294,7 @@ public final class ControlPlaneClient {
      *                                   or namespace not found)
      */
     public JsonNode getRuntimeConfig(String namespace) {
-        HttpRequest req = HttpRequest.newBuilder(base.resolve(RUNTIME_CONFIG_PATH + "/" + namespace))
+        HttpRequest req = HttpRequest.newBuilder(base.resolve(RUNTIME_CONFIG_PATH + "/" + encodePathSegment(namespace)))
                 .GET()
                 .timeout(Duration.ofSeconds(30))
                 .build();
@@ -311,7 +313,7 @@ public final class ControlPlaneClient {
      *                                   404 = admin API disabled or namespace not found)
      */
     public JsonNode validateRuntimeConfig(String namespace, Map<String, Object> values) {
-        HttpRequest req = HttpRequest.newBuilder(base.resolve(RUNTIME_CONFIG_PATH + "/" + namespace + "/validate"))
+        HttpRequest req = HttpRequest.newBuilder(base.resolve(RUNTIME_CONFIG_PATH + "/" + encodePathSegment(namespace) + "/validate"))
                 .header(CONTENT_TYPE, APPLICATION_JSON)
                 .POST(HttpRequest.BodyPublishers.ofString(json.toJson(values)))
                 .timeout(Duration.ofSeconds(30))
@@ -330,7 +332,7 @@ public final class ControlPlaneClient {
      * @throws ControlPlaneHttpException for any non-200 status (404/409/422/503)
      */
     public RuntimeConfigPatchResponse patchRuntimeConfig(String namespace, RuntimeConfigPatchRequest request) {
-        HttpRequest req = HttpRequest.newBuilder(base.resolve(RUNTIME_CONFIG_PATH + "/" + namespace))
+        HttpRequest req = HttpRequest.newBuilder(base.resolve(RUNTIME_CONFIG_PATH + "/" + encodePathSegment(namespace)))
                 .header(CONTENT_TYPE, APPLICATION_JSON)
                 .method("PATCH", HttpRequest.BodyPublishers.ofString(json.toJson(request)))
                 .timeout(Duration.ofSeconds(30))
@@ -400,5 +402,9 @@ public final class ControlPlaneClient {
         }
         String u = baseUrl.endsWith("/") ? baseUrl : (baseUrl + "/");
         return URI.create(u);
+    }
+
+    private static String encodePathSegment(String segment) {
+        return URLEncoder.encode(segment, StandardCharsets.UTF_8).replace("+", "%20");
     }
 }
