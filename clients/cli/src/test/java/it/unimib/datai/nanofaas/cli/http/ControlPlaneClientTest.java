@@ -439,4 +439,38 @@ class ControlPlaneClientTest {
         assertThat(result.response().output()).isNull();
         assertThat(result.response().executionId()).isEqualTo("exec-204");
     }
+
+    @Test
+    void updateFunctionPatchesWithOnlyNonNullFields() throws Exception {
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"name\":\"echo\",\"image\":\"example/echo:1\"}"));
+
+        ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
+
+        FunctionDetails updated = client.updateFunction("echo", new FunctionPatch(3, null, null, null));
+        RecordedRequest req = server.takeRequest();
+
+        assertThat(req.getMethod()).isEqualTo("PATCH");
+        assertThat(req.getPath()).isEqualTo("/v1/functions/echo");
+        assertThat(req.getHeader("Content-Type")).contains("application/json");
+
+        String body = req.getBody().readUtf8();
+        assertThat(body).contains("\"concurrency\":3");
+        assertThat(body).doesNotContain("timeoutMs");
+        assertThat(body).doesNotContain("maxRetries");
+        assertThat(body).doesNotContain("concurrencyControl");
+        assertThat(updated.name()).isEqualTo("echo");
+    }
+
+    @Test
+    void updateFunctionNon200Throws() {
+        server.enqueue(new MockResponse().setResponseCode(500).setBody("error"));
+        ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
+
+        assertThatThrownBy(() -> client.updateFunction("echo", new FunctionPatch(null, null, null, null)))
+                .isInstanceOf(ControlPlaneHttpException.class)
+                .satisfies(ex -> assertThat(((ControlPlaneHttpException) ex).getStatus()).isEqualTo(500));
+    }
 }

@@ -82,6 +82,19 @@ public final class ControlPlaneClient {
         }
     }
 
+    public FunctionDetails updateFunction(String name, FunctionPatch patch) {
+        HttpRequest request = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + name))
+                .header(CONTENT_TYPE, APPLICATION_JSON)
+                .method("PATCH", HttpRequest.BodyPublishers.ofString(json.toJson(patch)))
+                .timeout(Duration.ofSeconds(30))
+                .build();
+        HttpResponse<String> response = send(request);
+        if (response.statusCode() != 200) {
+            throw httpError("update function", response);
+        }
+        return json.fromJson(response.body(), FunctionDetails.class);
+    }
+
     public FunctionDetails registerFunction(FunctionSpec spec) {
         String body = json.toJson(spec);
         HttpRequest req = HttpRequest.newBuilder(base.resolve("v1/functions"))

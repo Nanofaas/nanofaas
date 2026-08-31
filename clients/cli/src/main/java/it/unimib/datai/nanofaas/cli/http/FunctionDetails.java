@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.cli.http;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import it.unimib.datai.nanofaas.common.model.ConcurrencyControlConfig;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.OffloadPolicy;
@@ -72,5 +73,55 @@ public record FunctionDetails(
 
     private static boolean matchesIfSpecified(Object actual, Object requested) {
         return requested == null || Objects.equals(actual, requested);
+    }
+
+    public FunctionPatch mutablePatch(FunctionSpec requested) {
+        Integer concurrency = matchesIfSpecified(this.concurrency, requested.concurrency())
+                ? null : requested.concurrency();
+        Integer timeoutMs = matchesIfSpecified(this.timeoutMs, requested.timeoutMs())
+                ? null : requested.timeoutMs();
+        Integer maxRetries = matchesIfSpecified(this.maxRetries, requested.maxRetries())
+                ? null : requested.maxRetries();
+
+        ConcurrencyControlConfig requestedCc = requested.scalingConfig() == null
+                ? null : requested.scalingConfig().concurrencyControl();
+        ConcurrencyControlConfig currentCc = scalingConfig == null
+                ? null : scalingConfig.concurrencyControl();
+        ConcurrencyControlConfig concurrencyControl =
+                requestedCc != null && !Objects.equals(currentCc, requestedCc)
+                        ? requestedCc : null;
+
+        return new FunctionPatch(concurrency, timeoutMs, maxRetries, concurrencyControl);
+    }
+
+    public boolean hasImmutableDifferences(FunctionSpec requested) {
+        ExecutionMode requestedMode = requested.executionMode() == null
+                ? ExecutionMode.DEPLOYMENT
+                : requested.executionMode();
+        RuntimeMode requestedRuntime = requested.runtimeMode() == null
+                ? RuntimeMode.HTTP
+                : requested.runtimeMode();
+        boolean endpointMatches = requestedMode == ExecutionMode.DEPLOYMENT
+                || matchesIfSpecified(endpointUrl, requested.endpointUrl());
+
+        ScalingConfig requestedScaling = requested.scalingConfig();
+        boolean scalingImmutableDiffers = requestedScaling != null && (
+                !matchesIfSpecified(scalingConfig == null ? null : scalingConfig.strategy(), requestedScaling.strategy())
+                        || !matchesIfSpecified(scalingConfig == null ? null : scalingConfig.minReplicas(), requestedScaling.minReplicas())
+                        || !matchesIfSpecified(scalingConfig == null ? null : scalingConfig.maxReplicas(), requestedScaling.maxReplicas())
+                        || !matchesIfSpecified(scalingConfig == null ? null : scalingConfig.metrics(), requestedScaling.metrics()));
+
+        return !matchesIfSpecified(image, requested.image())
+                || !matchesIfSpecified(command, requested.command())
+                || !matchesIfSpecified(env, requested.env())
+                || !matchesIfSpecified(resources, requested.resources())
+                || !matchesIfSpecified(queueSize, requested.queueSize())
+                || !endpointMatches
+                || requestedExecutionMode != requestedMode
+                || runtimeMode != requestedRuntime
+                || !matchesIfSpecified(runtimeCommand, requested.runtimeCommand())
+                || scalingImmutableDiffers
+                || !matchesIfSpecified(imagePullSecrets, requested.imagePullSecrets())
+                || !matchesIfSpecified(offload, requested.offload());
     }
 }
