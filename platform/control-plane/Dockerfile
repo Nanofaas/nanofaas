@@ -1,5 +1,6 @@
 # JVM-only local development Dockerfile.
-# Production native images are built via GitHub Actions using Cloud Native Buildpacks.
+# Native images are built via scripts/native-java-image.sh + deploy/native-java/Dockerfile;
+# this project does not use Cloud Native Buildpacks, and .github/workflows/ builds no image.
 ARG BUILDER_IMAGE=eclipse-temurin:25-jdk
 ARG RUNTIME_IMAGE=gcr.io/distroless/base-debian13:nonroot
 

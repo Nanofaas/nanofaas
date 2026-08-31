@@ -46,7 +46,8 @@ tasks.register('printSelectedControlPlaneModules') {
 
 tasks.named('test') {
     useJUnitPlatform()
-    // OpenApiRouteCoverageTest and IssueCoverageTest read repo files; without declaring them the
+    // IssueCoverageTest reads these repo files directly; OpenApiRouteCoverageTest reads the
+    // composed contract from the test classpath instead. Without declaring these inputs the
     // task stays UP-TO-DATE when only the spec or a doc changes, and never notices the drift.
     inputs.files(
             rootProject.file('openapi/core.yaml'),

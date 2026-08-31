@@ -187,6 +187,24 @@ revisione non corrispondente; \code{422}; \code{503} applicazione fallita \\
 
 Le durate usano il formato ISO-8601 (\code{PT5S}).
 
+\section{Diagnostica di build}
+
+\code{BuildMetadataController} \`e un semplice \code{@RestController}: risponde
+sulla porta \code{8080} (API), non sulla \code{8081} di management.
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\code{GET /modules/build-metadata} & Identit\`a di build e runtime, se il
+modulo \`e compilato; ogni campo pu\`o essere \code{null}
+(\cref{cap:16-moduli-diagnostici}) \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
 \section{Management}
 
 Sulla porta \code{8081}:
@@ -199,9 +217,6 @@ Sulla porta \code{8081}:
 \code{GET /actuator/health/liveness} & Sonda di liveness \\
 \code{GET /actuator/health/readiness} & Sonda di readiness \\
 \code{GET /actuator/prometheus} & Metriche (\cref{cap:C-metriche}) \\
-\code{GET /modules/build-metadata} & Identit\`a di build e runtime, se il
-modulo \`e compilato; ogni campo pu\`o essere \code{null}
-(\cref{cap:16-moduli-diagnostici}) \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}

@@ -268,16 +268,11 @@ governato da \code{HandlerResponse} e \code{ResponseHeaderPolicy}, discussi nel
 
 \section{L'API come artefatto versionato}
 
-La descrizione formale dell'API vive in \code{openapi.yaml} nella radice del
-repository. \`E mantenuta a mano, e questa scelta ha un costo che il progetto ha
-sperimentato: essendo esterna al codice, pu\`o divergere in silenzio. La verifica
-automatica esistente accerta che il file sia presente, non che sia allineato.
-
-\begin{damisurare}
-Il disallineamento fra \code{openapi.yaml} e il codice \`e stato rilevato e
-corretto manualmente in almeno un'occasione. Una verifica che confronti gli
-endpoint dichiarati nel file con quelli effettivamente esposti dal contesto
-Spring \`e realizzabile con gli strumenti gi\`a presenti nel progetto, ma non \`e
-stata implementata. \todomis{copertura effettiva di \code{openapi.yaml} rispetto
-alle rotte registrate}
-\end{damisurare}
+La descrizione formale dell'API non vive pi\`u in un unico file mantenuto a
+mano: \code{openapi/core.yaml} descrive il nucleo, e ciascun modulo opzionale
+porta il proprio frammento (\code{platform/modules/<id>/openapi.yaml}). Un
+task Gradle compone il contratto specifico per artefatto dai soli frammenti
+dei moduli selezionati per quella build, e la corrispondenza fra il contratto
+composto e le rotte effettivamente registrate \`e verificata a test time,
+non pi\`u lasciata alla disciplina di chi scrive la specifica a mano
+(\cref{cap:A-api}).

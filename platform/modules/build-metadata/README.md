@@ -26,8 +26,8 @@ only when this module is selected.
     "variant": "native-o3",
     "optimization": "3",
     "baseImages": {
-      "builder": "ghcr.io/graalvm/native-image-community:25-muslib",
-      "runtime": "gcr.io/distroless/base-debian13:nonroot"
+      "builder": "oraclelinux:9-slim",
+      "runtime": "gcr.io/distroless/cc-debian13:nonroot"
     }
   },
   "runtime": {
@@ -35,7 +35,7 @@ only when this module is selected.
     "kernelVersion": "6.5.0-generic",
     "javaVersion": "25",
     "vm": "Substrate VM",
-    "garbageCollectors": ["G1 Young Generation", "G1 Old Generation"]
+    "garbageCollectors": ["G1 Old Generation", "G1 Young Generation"]
   }
 }
 ```
@@ -67,6 +67,7 @@ only when this module is selected.
   `null`, never passed through raw.
 - `runtime.vm` — `java.vm.name` verbatim; this is the only source for it
   (native-image detection feeds `build.type`, not this field).
+- `runtime.garbageCollectors` — sorted alphabetically, like `modules` above.
 - Raw JVM arguments are never exposed anywhere in this response — they may
   carry secrets.
 
