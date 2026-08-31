@@ -185,6 +185,29 @@ public final class ControlPlaneClient {
     }
 
     /**
+     * Fetches the control-plane's build metadata, if the route is served.
+     *
+     * @return the parsed build metadata, or {@code null} when the control-plane
+     *         responds with 404 (metadata module not loaded)
+     * @throws ControlPlaneHttpException for any non-200/404 status
+     */
+    public BuildMetadata buildMetadataOrNull() {
+        HttpRequest req = HttpRequest.newBuilder(base.resolve("modules/build-metadata"))
+                .GET()
+                .timeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpResponse<String> resp = send(req);
+        if (resp.statusCode() == 404) {
+            return null;
+        }
+        if (resp.statusCode() != 200) {
+            throw httpError("get build metadata", resp);
+        }
+        return json.fromJson(resp.body(), BuildMetadata.class);
+    }
+
+    /**
      * Derives the control-plane's capabilities from its OpenAPI contract.
      *
      * <p>This performs a fresh fetch of {@code /openapi.yaml} on every call; there is

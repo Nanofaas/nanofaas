@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.cli.commands;
 
+import it.unimib.datai.nanofaas.cli.commands.controlplane.ControlPlaneCommand;
 import it.unimib.datai.nanofaas.cli.commands.fn.FnCommand;
 import it.unimib.datai.nanofaas.cli.config.ConfigStore;
 import it.unimib.datai.nanofaas.cli.config.ResolvedContext;
@@ -24,7 +25,8 @@ import java.nio.file.Path;
                 InvokeCommand.class,
                 EnqueueCommand.class,
                 ExecCommand.class,
-                DeployCommand.class
+                DeployCommand.class,
+                ControlPlaneCommand.class
         }
 )
 public class RootCommand {

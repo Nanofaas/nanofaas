@@ -29,7 +29,7 @@ class RootCommandTest {
         CommandLine cli = new CommandLine(new RootCommand());
 
         assertThat(cli.getSubcommands().keySet())
-                .isEqualTo(Set.of("fn", "invoke", "enqueue", "exec", "deploy"));
+                .isEqualTo(Set.of("fn", "invoke", "enqueue", "exec", "deploy", "control-plane"));
     }
 
     @Test
