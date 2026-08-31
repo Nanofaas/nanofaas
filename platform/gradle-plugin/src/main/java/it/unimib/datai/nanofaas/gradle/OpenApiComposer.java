@@ -158,6 +158,11 @@ final class OpenApiComposer {
         }
     }
 
+    // ponytail: conflict detection is per leaf JSON pointer, not subtree-aware. A module
+    // removing a node ('429': null) and another module writing inside that node's subtree
+    // record different pointers, so no conflict is raised and resolution silently falls back
+    // to module-id sort order. Today's fragments are fully disjoint so this is unreachable;
+    // revisit only if a future overlay actually needs to remove a node another module writes into.
     private static void recordWrite(String operationId, String pointer, String moduleId, Object value,
             Map<String, Write> writes) {
         String writeKey = operationId + "#" + pointer;

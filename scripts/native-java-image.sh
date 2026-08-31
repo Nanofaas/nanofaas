@@ -11,6 +11,19 @@ if [ -n "${NANOFAAS_BUILD_VARIANT:-}" ]; then
   gradle_args="$gradle_args -PnanofaasBuildVariant=$NANOFAAS_BUILD_VARIANT"
 fi
 
+# The builder stage COPYs the repo without .git (see .dockerignore) and installs no git,
+# so generateBuildMetadata can't shell out to git inside the container. Resolve the real
+# revision/dirty state on the host, where both are available, and inject them.
+host_git_revision="$(git rev-parse HEAD 2>/dev/null || true)"
+if [ -n "$host_git_revision" ]; then
+  gradle_args="$gradle_args -PnanofaasBuildRevision=$host_git_revision"
+  if [ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]; then
+    gradle_args="$gradle_args -PnanofaasBuildDirty=true"
+  else
+    gradle_args="$gradle_args -PnanofaasBuildDirty=false"
+  fi
+fi
+
 case "$target" in
   control-plane)
     task=":control-plane:nativeCompile"

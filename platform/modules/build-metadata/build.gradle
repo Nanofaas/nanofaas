@@ -19,10 +19,6 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
-tasks.named('test') {
-    systemProperty 'project.version', project.version.toString()
-}
-
 // Resolved-at-configuration build identity: computed once per invocation (not per
 // configuration pass) and declared as task inputs so generateBuildMetadata stays
 // correctly UP-TO-DATE/cacheable and re-runs when any of them changes.
@@ -38,9 +34,21 @@ static String runGit(File workingDir, String... args) {
     }
 }
 
-def gitRevision = runGit(project.projectDir, 'rev-parse', 'HEAD')
-def gitStatus = gitRevision == null ? null : runGit(project.projectDir, 'status', '--porcelain', '--untracked-files=no')
-def gitDirty = gitStatus == null ? null : !gitStatus.isEmpty()
+// A container build (deploy/native-java/Dockerfile, deploy/compose/Dockerfile) COPYs the
+// repo without .git (see .dockerignore) and without a git binary installed, so runGit()
+// can't answer inside the builder. Let the caller inject the values it already knows on
+// the host instead; the git subprocess remains the fallback for a normal checkout build.
+def injectedRevision = project.findProperty('nanofaasBuildRevision')?.toString()
+def injectedDirty = project.findProperty('nanofaasBuildDirty')?.toString()
+
+def gitRevision = injectedRevision ?: runGit(project.projectDir, 'rev-parse', 'HEAD')
+def gitDirty
+if (injectedDirty != null) {
+    gitDirty = Boolean.parseBoolean(injectedDirty)
+} else {
+    def gitStatus = gitRevision == null ? null : runGit(project.projectDir, 'status', '--porcelain', '--untracked-files=no')
+    gitDirty = gitStatus == null ? null : !gitStatus.isEmpty()
+}
 
 def selectedModules = (gradle.ext.nanofaasSelectedControlPlaneModules as List<String>).sort(false)
 
@@ -101,4 +109,11 @@ sourceSets.main.output.dir(generatedBuildMetadataDir, builtBy: generateBuildMeta
 // consume that output, so wire it explicitly too.
 tasks.named('processResources') {
     dependsOn generateBuildMetadata
+}
+
+tasks.named('test') {
+    systemProperty 'project.version', project.version.toString()
+    // Lets GeneratedBuildMetadataTest assert against the build type actually
+    // requested (e.g. -PnanofaasBuildType=native) instead of hard-coding 'jvm'.
+    systemProperty 'nanofaasBuildType', buildType
 }

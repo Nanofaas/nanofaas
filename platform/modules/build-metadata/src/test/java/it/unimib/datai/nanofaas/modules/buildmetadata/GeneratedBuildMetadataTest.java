@@ -25,10 +25,16 @@ class GeneratedBuildMetadataTest {
 
         assertThat(properties.getProperty("version"))
                 .isEqualTo(System.getProperty("project.version"));
-        assertThat(properties.getProperty("revision")).matches("[0-9a-f]{40}");
+        // A git-less build (source tarball, container build without .git) legitimately
+        // omits revision; when present, it must be a real commit SHA.
+        assertThat(properties.getProperty("revision")).satisfiesAnyOf(
+                revision -> assertThat(revision).isNull(),
+                revision -> assertThat(revision).matches("[0-9a-f]{40}"));
         assertThat(properties.getProperty("dirty")).isIn("true", "false");
         assertThat(properties.getProperty("modules").split(","))
                 .contains("build-metadata").isSorted();
-        assertThat(properties.getProperty("type")).isEqualTo("jvm");
+        // Matches whatever build type was actually requested (e.g. -PnanofaasBuildType=native),
+        // 'jvm' by default.
+        assertThat(properties.getProperty("type")).isEqualTo(System.getProperty("nanofaasBuildType"));
     }
 }
