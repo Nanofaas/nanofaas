@@ -101,4 +101,29 @@ class FnUpdateCommandTest {
         assertThat(r1.getMethod()).isEqualTo("GET");
         assertThat(r1.getPath()).isEqualTo("/openapi.yaml");
     }
+
+    @Test
+    void updateRejectsImmutableFieldsLocally() throws Exception {
+        Path patch = tmp.resolve("patch.yaml");
+        java.nio.file.Files.writeString(patch, "concurrency: 5\nimage: registry.example/echo:v2\n");
+
+        // Only the capability probe; strict parsing rejects the immutable `image` field
+        // before any PATCH is issued.
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/yaml")
+                .setBody(OPENAPI));
+
+        CommandLine cli = new CommandLine(new RootCommand());
+
+        int exit = cli.execute(
+                "--endpoint", server.url("/").toString(),
+                "fn", "update", "echo", "-f", patch.toString());
+        assertThat(exit).isNotZero();
+
+        assertThat(server.getRequestCount()).isEqualTo(1);
+        RecordedRequest r1 = server.takeRequest();
+        assertThat(r1.getMethod()).isEqualTo("GET");
+        assertThat(r1.getPath()).isEqualTo("/openapi.yaml");
+    }
 }

@@ -15,6 +15,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -101,12 +102,53 @@ class ControlPlaneConfigCommandTest {
     }
 
     @Test
-    void inputNonObjectValuesIsRejected() throws Exception {
+    void inputNonObjectValuesWithRevisionIsRejected() throws Exception {
         Path p = tmp.resolve("bad.yaml");
-        Files.writeString(p, "values: not-an-object\n");
+        Files.writeString(p, """
+                expectedRevision: 1
+                values: not-an-object
+                """);
 
         assertThatThrownBy(() -> RuntimeConfigInput.load(p))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("values");
+    }
+
+    @Test
+    void inputValuesKeyWithoutRevisionIsPlainMap() throws Exception {
+        Path p = tmp.resolve("plain-values.yaml");
+        Files.writeString(p, "values:\n  a: 1\n");
+
+        RuntimeConfigInput input = RuntimeConfigInput.load(p);
+
+        assertThat(input.expectedRevision()).isNull();
+        assertThat(input.values()).containsKey("values");
+        assertThat(input.values().get("values")).isInstanceOf(Map.class);
+    }
+
+    @Test
+    void inputNonNumericRevisionIsRejected() throws Exception {
+        for (String body : java.util.List.of(
+                "expectedRevision: latest\nvalues:\n  a: 1\n",
+                "expectedRevision: 7.5\nvalues:\n  a: 1\n",
+                "expectedRevision: \"7\"\nvalues:\n  a: 1\n")) {
+            Path p = tmp.resolve("bad-revision.yaml");
+            Files.writeString(p, body);
+
+            assertThatThrownBy(() -> RuntimeConfigInput.load(p))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("expectedRevision");
+        }
+    }
+
+    @Test
+    void inputBooleanWordIsPreservedAsString() throws Exception {
+        Path p = tmp.resolve("boolean-word.yaml");
+        Files.writeString(p, "logLevel: on\n");
+
+        RuntimeConfigInput input = RuntimeConfigInput.load(p);
+
+        assertThat(input.values()).containsEntry("logLevel", "on");
     }
 
     // --- get ---

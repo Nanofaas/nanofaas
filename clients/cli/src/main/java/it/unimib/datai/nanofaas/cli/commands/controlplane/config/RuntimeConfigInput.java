@@ -11,8 +11,8 @@ import java.util.Map;
 /**
  * Runtime-configuration patch input, loaded from YAML.
  *
- * <p>An object containing a {@code values} key is treated as an envelope with an optional
- * {@code expectedRevision}; otherwise the whole object is the values map.</p>
+ * <p>An object containing an {@code expectedRevision} key is treated as an envelope with a
+ * {@code values} map; otherwise the whole object is the values map.</p>
  */
 public record RuntimeConfigInput(Long expectedRevision, Map<String, Object> values) {
     private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
@@ -23,19 +23,24 @@ public record RuntimeConfigInput(Long expectedRevision, Map<String, Object> valu
             throw new IllegalArgumentException("Runtime config input must be a YAML object");
         }
 
-        JsonNode valuesNode = root.path("values");
-        if (valuesNode.isMissingNode()) {
-            return new RuntimeConfigInput(null, asMap(root));
+        JsonNode revisionNode = root.path("expectedRevision");
+        if (revisionNode.isMissingNode()) {
+            return new RuntimeConfigInput(null, asMap(root));   // plain map; a "values" key is legitimate
         }
+        JsonNode valuesNode = root.path("values");
         if (!valuesNode.isObject()) {
             throw new IllegalArgumentException("Runtime config 'values' must be an object");
         }
 
-        JsonNode revisionNode = root.path("expectedRevision");
-        Long expectedRevision = revisionNode.isMissingNode() || revisionNode.isNull()
-                ? null
-                : revisionNode.asLong();
+        Long expectedRevision = revisionNode.isNull() ? null : requireIntegral(revisionNode);
         return new RuntimeConfigInput(expectedRevision, asMap(valuesNode));
+    }
+
+    private static Long requireIntegral(JsonNode node) {
+        if (!node.isIntegralNumber()) {
+            throw new IllegalArgumentException("Runtime config 'expectedRevision' must be an integer");
+        }
+        return node.asLong();
     }
 
     private static Map<String, Object> asMap(JsonNode node) {

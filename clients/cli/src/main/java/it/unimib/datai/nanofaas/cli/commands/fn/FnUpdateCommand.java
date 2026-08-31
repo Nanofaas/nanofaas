@@ -30,7 +30,7 @@ public class FnUpdateCommand implements Runnable {
             throw new IllegalStateException(
                     "Function updates are not supported by this control-plane build");
         }
-        FunctionPatch patch = YamlIO.read(file, FunctionPatch.class);
+        FunctionPatch patch = YamlIO.readStrict(file, FunctionPatch.class);
         if (patch.isEmpty()) {
             throw new IllegalArgumentException("Function update is empty");
         }
