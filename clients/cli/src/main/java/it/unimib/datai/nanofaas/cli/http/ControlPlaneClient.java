@@ -13,6 +13,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
 public final class ControlPlaneClient {
     private static final String FUNCTIONS_PATH = "v1/functions/";
@@ -93,6 +94,38 @@ public final class ControlPlaneClient {
             throw httpError("update function", response);
         }
         return json.fromJson(response.body(), FunctionDetails.class);
+    }
+
+    public ReplicaStatus getReplicas(String name) {
+        HttpRequest req = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + name + "/replicas"))
+                .GET()
+                .timeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpResponse<String> resp = send(req);
+        if (resp.statusCode() != 200) {
+            throw httpError("get replicas", resp);
+        }
+        return json.fromJson(resp.body(), ReplicaStatus.class);
+    }
+
+    public Map<String, Object> setReplicas(String name, int replicas) {
+        String body = json.toJson(Map.of("replicas", replicas));
+        HttpRequest req = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + name + "/replicas"))
+                .header(CONTENT_TYPE, APPLICATION_JSON)
+                .method("PUT", HttpRequest.BodyPublishers.ofString(body))
+                .timeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpResponse<String> resp = send(req);
+        if (resp.statusCode() != 200) {
+            throw httpError("set replicas", resp);
+        }
+        try {
+            return json.mapper().readValue(resp.body(), new TypeReference<>() {});
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Failed to parse replica response", e);
+        }
     }
 
     public FunctionDetails registerFunction(FunctionSpec spec) {

@@ -473,4 +473,77 @@ class ControlPlaneClientTest {
                 .isInstanceOf(ControlPlaneHttpException.class)
                 .satisfies(ex -> assertThat(((ControlPlaneHttpException) ex).getStatus()).isEqualTo(500));
     }
+
+    @Test
+    void getReplicasParsesStatusResponse() throws Exception {
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"name\":\"echo\",\"desiredReplicas\":3,\"readyReplicas\":2}"));
+
+        ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
+
+        ReplicaStatus status = client.getReplicas("echo");
+        RecordedRequest req = server.takeRequest();
+
+        assertThat(req.getMethod()).isEqualTo("GET");
+        assertThat(req.getPath()).isEqualTo("/v1/functions/echo/replicas");
+        assertThat(status.name()).isEqualTo("echo");
+        assertThat(status.desiredReplicas()).isEqualTo(3);
+        assertThat(status.readyReplicas()).isEqualTo(2);
+    }
+
+    @Test
+    void setReplicasPutsBodyToExpectedPath() throws Exception {
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"function\":\"echo\",\"replicas\":3}"));
+
+        ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
+
+        client.setReplicas("echo", 3);
+        RecordedRequest req = server.takeRequest();
+
+        assertThat(req.getMethod()).isEqualTo("PUT");
+        assertThat(req.getPath()).isEqualTo("/v1/functions/echo/replicas");
+        assertThat(req.getHeader("Content-Type")).contains("application/json");
+        assertThat(req.getBody().readUtf8()).isEqualTo("{\"replicas\":3}");
+    }
+
+    @Test
+    void setReplicasAllowsZero() throws Exception {
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"function\":\"echo\",\"replicas\":0}"));
+
+        ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
+
+        client.setReplicas("echo", 0);
+        RecordedRequest req = server.takeRequest();
+
+        assertThat(req.getMethod()).isEqualTo("PUT");
+        assertThat(req.getBody().readUtf8()).isEqualTo("{\"replicas\":0}");
+    }
+
+    @Test
+    void getReplicasPreserves400() {
+        server.enqueue(new MockResponse().setResponseCode(400).setBody("unmanaged"));
+        ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
+
+        assertThatThrownBy(() -> client.getReplicas("echo"))
+                .isInstanceOf(ControlPlaneHttpException.class)
+                .satisfies(ex -> assertThat(((ControlPlaneHttpException) ex).getStatus()).isEqualTo(400));
+    }
+
+    @Test
+    void setReplicasPreserves503() {
+        server.enqueue(new MockResponse().setResponseCode(503).setBody("backend down"));
+        ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
+
+        assertThatThrownBy(() -> client.setReplicas("echo", 2))
+                .isInstanceOf(ControlPlaneHttpException.class)
+                .satisfies(ex -> assertThat(((ControlPlaneHttpException) ex).getStatus()).isEqualTo(503));
+    }
 }
