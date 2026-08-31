@@ -98,7 +98,7 @@ optimistic-concurrency update that reports `409` on a stale revision.
 
 Commands backed by an optional control-plane capability stay visible in
 `--help` even when the running control plane does not provide them; when the
-capability is absent they fail locally with "not supported by this build". No
+capability is absent they fail locally with "not supported by this control-plane build". No
 live endpoint is consulted for `--help`.
 
 `invoke` prints the `InvocationResponse` envelope — `executionId`, `status`,
