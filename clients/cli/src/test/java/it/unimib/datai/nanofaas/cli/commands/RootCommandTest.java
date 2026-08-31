@@ -59,6 +59,29 @@ class RootCommandTest {
     }
 
     @Test
+    void newLeafCommandsPrintUsage() {
+        assertLeafUsage("Usage: nanofaas fn replicas", "fn", "replicas");
+        assertLeafUsage("Usage: nanofaas fn update", "fn", "update");
+        assertLeafUsage("Usage: nanofaas control-plane info", "control-plane", "info");
+        assertLeafUsage("Usage: nanofaas control-plane config patch", "control-plane", "config", "patch");
+    }
+
+    private static void assertLeafUsage(String expected, String... path) {
+        CommandLine cli = new CommandLine(new RootCommand());
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        cli.setOut(new PrintWriter(out, true));
+
+        String[] args = new String[path.length + 1];
+        System.arraycopy(path, 0, args, 0, path.length);
+        args[path.length] = "--help";
+
+        int exit = cli.execute(args);
+
+        assertThat(exit).isZero();
+        assertThat(out.toString()).contains(expected);
+    }
+
+    @Test
     void globalOptionIsAcceptedAfterSubcommands() {
         RootCommand command = new RootCommand();
         CommandLine cli = new CommandLine(command);

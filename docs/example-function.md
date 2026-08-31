@@ -49,6 +49,11 @@ so NanoFaaS does not scale, probe, or wake them. The first request after idle
 waits for a bounded wake-up and readiness check, and therefore incurs
 cold-start latency.
 
+```bash
+nanofaas fn replicas set echo 0   # scale to zero
+nanofaas fn replicas get echo     # desired + ready replicas
+```
+
 ### EXTERNAL (passthrough to a hosted endpoint)
 
 ```json
@@ -60,10 +65,10 @@ cold-start latency.
 ```
 
 No image is needed: the control plane forwards every invocation to
-`endpointUrl` and returns the response as-is. The function must already be
-serving the `InvocationRequest` contract (`input` + `metadata`) on that URL.
-There is no lifecycle management — deleting the function only removes the
-registration.
+`endpointUrl` and relays the endpoint's response as the function output. The
+function must already be serving the `InvocationRequest` contract (`input` +
+`metadata`) on that URL. There is no lifecycle management — deleting the
+function only removes the registration.
 
 ## Invoking from the CLI
 
@@ -72,6 +77,9 @@ nanofaas invoke echo -d '{"input": {"message": "hi"}}'        # sync
 nanofaas enqueue echo -d '{"input": {"message": "hi"}}'       # async
 nanofaas exec get <executionId> --watch                       # poll async result
 ```
+
+`invoke` prints the `InvocationResponse` envelope (the handler result nested
+under `output`), not the raw handler result.
 
 ## Invoking over HTTP
 
