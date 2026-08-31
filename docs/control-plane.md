@@ -121,3 +121,47 @@ activates it when selected as the deployment backend.
 
 Each module owns its tests and explicit `@Bean` registrations; module packages
 are not discovered through application component scanning.
+
+## OpenAPI contract
+
+The API contract is split between `openapi/core.yaml` (the always-present
+routes) and a per-module `platform/modules/<id>/openapi.yaml` fragment. A
+Gradle-time task (`OpenApiComposer` in `platform/gradle-plugin`) merges the
+core document with the fragments of whatever modules were actually selected
+for the build, and packages the result as `META-INF/resources/openapi.yaml`
+inside the jar. There is no static `openapi.yaml` at the repository root
+anymore: the contract is generated per artifact, so a route whose module was
+not selected is absent from both the build and the published contract.
+
+A fragment contributes `paths` and `components`, plus an optional
+`x-nanofaas-overlays` list — `{operationId, patch}` entries applied to an
+operation already defined elsewhere with JSON-merge-patch semantics (maps
+recurse, `null` removes a key, anything else replaces it). Two fragments
+defining the same path+method, the same component name, or conflicting
+overlay values on the same operation fail the build rather than merging
+silently.
+
+An endpoint gated by a runtime property (for example
+`/v1/admin/runtime-config`, active only when
+`nanofaas.admin.runtime-config.enabled=true`) stays documented in the
+contract as long as its module is built in — the fragment describes the
+`404` response for the disabled case instead of omitting the path. The
+contract reflects what a binary was *built* to serve, not the runtime
+toggles of one running instance.
+
+`control-plane:test --tests '*OpenApiRouteCoverageTest'` asserts every
+registered route is present in the composed document for the module
+selection under test, so contract and routes cannot drift.
+
+## Build metadata
+
+`GET /modules/build-metadata` (module `build-metadata`, see
+`platform/modules/build-metadata/README.md`) reports what this binary was
+built from and what it is running on: version, full git revision, dirty
+working-tree flag, selected modules, build type/variant/optimization, base
+OCI images, and runtime architecture/kernel/JVM facts. The Dockerfiles set
+`NANOFAAS_BUILD_BASE_IMAGE` / `NANOFAAS_RUNTIME_BASE_IMAGE` from their
+`BUILDER_IMAGE` / `RUNTIME_IMAGE` build args so the reported base images
+match whatever base an image was actually built with. Every field is
+nullable; missing data is JSON `null`, never a sentinel, and never blocks
+startup.

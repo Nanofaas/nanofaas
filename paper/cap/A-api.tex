@@ -1,10 +1,22 @@
 \chapter{Riferimento API}
 \label{cap:A-api}
 
-Sintesi dell'API HTTP del control plane, derivata da \code{openapi.yaml} nella
-radice del repository e dai controller. Come osservato nel
-\cref{cap:05-contratti-dati}, il file di specifica \`e mantenuto a mano e la sua
-corrispondenza con le rotte registrate non \`e verificata automaticamente.
+Sintesi dell'API HTTP del control plane, derivata dal contratto OpenAPI
+composto e dai controller. Il contratto non \`e pi\`u un file unico mantenuto
+a mano: \code{openapi/core.yaml} descrive le rotte del nucleo, e ciascun
+modulo opzionale porta il proprio frammento
+(\code{platform/modules/<id>/openapi.yaml}). Un task Gradle unisce il nucleo
+ai frammenti dei soli moduli selezionati per la build e pubblica il
+risultato come \code{/openapi.yaml} dentro l'artefatto: il contratto \`e
+quindi specifico per binario, e una rotta il cui modulo non \`e stato
+selezionato \`e assente sia dal binario sia dal contratto. Un endpoint la cui
+attivazione dipende da una propriet\`a a runtime, come
+\code{/v1/admin/runtime-config}, resta invece documentato finch\'e il suo
+modulo \`e compilato: il frammento descrive anche la risposta \code{404} del
+caso disattivato, invece di omettere la rotta. La corrispondenza fra
+contratto composto e rotte effettivamente registrate \`e verificata a test
+time, non pi\`u lasciata alla disciplina di chi scrive la specifica a mano
+(\cref{cap:05-contratti-dati}).
 
 \section{Gestione delle funzioni}
 
@@ -187,8 +199,9 @@ Sulla porta \code{8081}:
 \code{GET /actuator/health/liveness} & Sonda di liveness \\
 \code{GET /actuator/health/readiness} & Sonda di readiness \\
 \code{GET /actuator/prometheus} & Metriche (\cref{cap:C-metriche}) \\
-\code{GET /modules/build-metadata} & Identit\`a della build, se il modulo \`e
-compilato \\
+\code{GET /modules/build-metadata} & Identit\`a di build e runtime, se il
+modulo \`e compilato; ogni campo pu\`o essere \code{null}
+(\cref{cap:16-moduli-diagnostici}) \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}

@@ -6,7 +6,7 @@
 - `platform/control-plane/` is the API gateway + scheduler + in-memory queues + dispatch logic (execution modes: `LOCAL`, `EXTERNAL`, and managed `DEPLOYMENT` via backend providers).
 - `sdks/java/` provides the reusable Java invocation runtime; `services/java/warm-echo/` is its runnable long-running example service.
 - `sdks/python/` provides the Python function SDK and FastAPI runtime.
-- `docs/` holds architecture and operational documentation; `openapi.yaml` is the API spec.
+- `docs/` holds architecture and operational documentation; the API spec is composed at build time from `openapi/core.yaml` plus per-module `platform/modules/<id>/openapi.yaml` fragments into a generated `/openapi.yaml` packaged into each artifact (see `docs/control-plane.md`).
 - `deploy/helm/nanofaas/` contains the Helm chart; `deploy/compose/` a Docker Compose stack; `scripts/` provides helper workflows.
 - Tests live in `*/src/test/java` with E2E tests under `platform/control-plane/src/test/java/.../e2e`.
 
@@ -46,7 +46,7 @@
 ## Commit & Pull Request Guidelines
 
 - Use short, imperative commits (e.g., `Add queue backpressure`).
-- PRs should include a summary, tests run, and updates to `docs/`, `openapi.yaml`, and `deploy/` when behavior changes.
+- PRs should include a summary, tests run, and updates to `docs/`, the relevant `openapi/core.yaml` or module `openapi.yaml` fragment, and `deploy/` when behavior changes.
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence

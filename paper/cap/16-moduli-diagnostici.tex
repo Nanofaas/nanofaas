@@ -7,9 +7,34 @@ moduli affatto.
 
 \section{\code{build-metadata}}
 
-Quarantatr\'e righe in tre classi. Espone un endpoint,
+Poco pi\`u di duecento righe in quattro classi. Espone un endpoint,
 \code{/modules/build-metadata}, che riporta l'identit\`a della build in
-esecuzione.
+esecuzione: versione, revisione git completa (i quaranta caratteri
+dell'hash, non una forma abbreviata), un flag \code{dirty} che riflette
+\code{git status --porcelain --untracked-files=no} al momento della build
+(i file non tracciati non contano), l'elenco dei moduli selezionati, il tipo
+di build (\code{jvm} o \code{native}) con variante e livello di
+ottimizzazione quando dichiarati, le immagini OCI di base usate per compilare
+ed eseguire il binario, e alcuni fatti sull'host in esecuzione: architettura
+normalizzata a \code{arm64} oppure \code{x86\_64} (un valore non riconosciuto
+diventa \code{null}, non \`e passato cos\`i com'\`e), versione del kernel,
+versione Java, nome della VM e garbage collector attivi. Ogni campo \`e
+best-effort: un valore assente in fase di build o di runtime \`e riportato
+come \code{null} JSON, mai come stringa sentinella, e la sua assenza non
+impedisce mai l'avvio. Gli argomenti JVM grezzi non sono mai esposti, perch\'e
+possono contenere segreti.
+
+Le immagini di base arrivano dalle variabili d'ambiente
+\code{NANOFAAS\_BUILD\_BASE\_IMAGE} e \code{NANOFAAS\_RUNTIME\_BASE\_IMAGE},
+che i Dockerfile impostano dai propri argomenti di build
+\code{BUILDER\_IMAGE}/\code{RUNTIME\_IMAGE}: un'immagine costruita con una
+base diversa dal default riporta la base che ha davvero usato. Le
+\emph{digest} delle immagini di base restano fuori perimetro. Il campo
+\code{build.type} viene letto dalle propriet\`a generate in fase di build
+quando presente; solo se quelle propriet\`a non portano affatto un
+\code{type} il modulo ricade sulla rilevazione a runtime di
+\code{org.graalvm.nativeimage.imagecode} e riporta \code{native} --- un
+\code{type} dichiarato in fase di build vince sempre su questa rilevazione.
 
 La sua utilit\`a \`e proporzionale alla combinatoria che il sistema modulare
 introduce. Un binario di \nf{} \`e definito da: la versione del codice, la
@@ -24,7 +49,10 @@ credeva.
 
 Che sia un modulo, e non un endpoint del nucleo, \`e coerente: la
 diagnostica sulla build serve a chi conduce esperimenti, non alla piattaforma.
-Un deployment di produzione pu\`o non compilarla.
+Un deployment di produzione pu\`o non compilarla. Coerentemente, la sua
+risposta \`e documentata solo nel frammento OpenAPI del modulo
+(\cref{cap:A-api}): entra nel contratto composto di un artefatto se e solo se
+\code{build-metadata} \`e stato selezionato per quella build.
 
 \section{La configurazione senza moduli}
 
