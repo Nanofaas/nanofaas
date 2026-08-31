@@ -61,9 +61,8 @@ public final class ConfigStore {
         Context ctx = (contextName == null || cfg.getContexts() == null) ? null : cfg.getContexts().get(contextName);
 
         String endpoint = firstNonBlank(getenv.apply("NANOFAAS_ENDPOINT"), ctx == null ? null : ctx.getEndpoint());
-        String namespace = firstNonBlank(getenv.apply("NANOFAAS_NAMESPACE"), ctx == null ? null : ctx.getNamespace());
 
-        return new ResolvedContext(contextName, endpoint, namespace);
+        return new ResolvedContext(contextName, endpoint);
     }
 
     public Path getPath() {

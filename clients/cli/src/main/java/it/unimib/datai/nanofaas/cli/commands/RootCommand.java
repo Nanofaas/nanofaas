@@ -40,10 +40,6 @@ public class RootCommand {
             description = "Control-plane base URL (overrides config/env). Default: http://localhost:8080")
     String endpoint;
 
-    @Option(names = {"--namespace", "-n"}, scope = ScopeType.INHERIT,
-            description = "Function namespace (overrides config/env).")
-    String namespace;
-
     private ConfigStore store;
     private ResolvedContext resolved;
     private ControlPlaneClient client;
@@ -65,15 +61,11 @@ public class RootCommand {
             ResolvedContext base = configStore().loadResolvedContext();
 
             // Add DEFAULT_ENDPOINT at the end as the default value.
-            String ep = firstNonBlank(
-                endpoint,
-                base.endpoint(),
-                DEFAULT_ENDPOINT
-            );
-
-            String ns = firstNonBlank(namespace, base.namespace());
-
-            resolved = new ResolvedContext(base.contextName(), ep, ns);
+            resolved = new ResolvedContext(base.contextName(), firstNonBlank(
+                    endpoint,
+                    base.endpoint(),
+                    DEFAULT_ENDPOINT
+            ));
         }
         return resolved;
     }

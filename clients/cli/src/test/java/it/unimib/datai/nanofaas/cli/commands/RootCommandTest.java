@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RootCommandTest {
 
@@ -89,25 +90,11 @@ class RootCommandTest {
     }
 
     @Test
-    void namespaceOptionOverridesConfig() {
-        // Setup config file with namespace
-        Path cfgPath = tmp.resolve("config.yaml");
-        ConfigStore store = new ConfigStore(cfgPath, k -> null);
-        Config cfg = new Config();
-        cfg.setCurrentContext("dev");
-        Context ctx = new Context();
-        ctx.setEndpoint("http://localhost:9999");
-        ctx.setNamespace("from-config");
-        cfg.setContexts(Map.of("dev", ctx));
-        store.save(cfg);
+    void namespaceOptionIsNotAccepted() {
+        CommandLine cli = new CommandLine(new RootCommand());
 
-        RootCommand cmd = new RootCommand();
-        CommandLine cli = new CommandLine(cmd);
-
-        // Use --config and --namespace to override
-        cli.parseArgs("--config", cfgPath.toString(), "--namespace", "from-flag", "fn", "list");
-
-        assertThat(cmd.resolvedContext().namespace()).isEqualTo("from-flag");
+        assertThatThrownBy(() -> cli.parseArgs("--namespace", "unused", "fn", "list"))
+                .isInstanceOf(CommandLine.ParameterException.class);
     }
 
     @Test
@@ -118,7 +105,6 @@ class RootCommandTest {
         cfg.setCurrentContext("prod");
         Context ctx = new Context();
         ctx.setEndpoint("http://prod:8080");
-        ctx.setNamespace("prod-ns");
         cfg.setContexts(Map.of("prod", ctx));
         store.save(cfg);
 
@@ -128,7 +114,6 @@ class RootCommandTest {
         cli.parseArgs("--config", cfgPath.toString(), "fn", "list");
 
         assertThat(cmd.resolvedContext().endpoint()).isEqualTo("http://prod:8080");
-        assertThat(cmd.resolvedContext().namespace()).isEqualTo("prod-ns");
     }
 
     @Test
