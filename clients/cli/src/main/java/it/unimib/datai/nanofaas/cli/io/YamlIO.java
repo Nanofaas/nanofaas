@@ -18,6 +18,10 @@ public final class YamlIO {
     private static final ObjectMapper YAML_STRICT = new ObjectMapper(new YAMLFactory())
             .findAndRegisterModules();
 
+    // PARSE_BOOLEAN_LIKE_WORDS_AS_STRINGS keeps on/off/yes/no as strings, but SnakeYAML's
+    // YAML 1.1 octal rule (a bare `0123` scalar parses to int 83) has no disabling hook in
+    // jackson-dataformat-yaml 2.x (YAMLParser.Feature exposes no number/octal switch). Runtime
+    // config values with leading zeros must be quoted (e.g. `"0123"`) or written as JSON.
     private static final ObjectMapper YAML_TREE = new ObjectMapper(
             YAMLFactory.builder()
                     .enable(YAMLParser.Feature.PARSE_BOOLEAN_LIKE_WORDS_AS_STRINGS)
