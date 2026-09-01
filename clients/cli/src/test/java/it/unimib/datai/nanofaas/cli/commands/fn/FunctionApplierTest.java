@@ -46,40 +46,64 @@ class FunctionApplierTest {
                 .setBody("""
                         {"name":"echo","image":"registry.example/echo:1",
                          "requestedExecutionMode":"DEPLOYMENT","effectiveExecutionMode":"DEPLOYMENT",
-                         "runtimeMode":"HTTP"}
+                         "deploymentBackend":"k8s","runtimeMode":"HTTP"}
                         """);
+    }
+
+    private static MockResponse replicas() {
+        return new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"name\":\"echo\",\"desiredReplicas\":4,\"readyReplicas\":3}");
+    }
+
+    private static MockResponse replicasRestored() {
+        return new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"function\":\"echo\",\"replicas\":4}");
     }
 
     @Test
     void replaceRollsBackWhenRegisterFailsAfterDelete() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(409));
         server.enqueue(existing());
+        server.enqueue(replicas());
         server.enqueue(new MockResponse().setResponseCode(204));
         server.enqueue(new MockResponse().setResponseCode(503));
         server.enqueue(new MockResponse()
                 .setResponseCode(201)
                 .addHeader("Content-Type", "application/json")
                 .setBody("{\"name\":\"echo\",\"image\":\"registry.example/echo:1\"}"));
+        server.enqueue(replicasRestored());
 
         IllegalStateException ex = assertThrows(IllegalStateException.class,
                 () -> FunctionApplier.apply(client, desired(), true));
 
         assertThat(ex).hasMessageContaining("restored");
 
-        assertThat(server.getRequestCount()).isEqualTo(5);
+        assertThat(server.getRequestCount()).isEqualTo(7);
         assertThat(server.takeRequest().getMethod()).isEqualTo("POST");
         assertThat(server.takeRequest().getMethod()).isEqualTo("GET");
+        RecordedRequest replicaSnapshot = server.takeRequest();
+        assertThat(replicaSnapshot.getMethod()).isEqualTo("GET");
+        assertThat(replicaSnapshot.getPath()).isEqualTo("/v1/functions/echo/replicas");
         assertThat(server.takeRequest().getMethod()).isEqualTo("DELETE");
         assertThat(server.takeRequest().getMethod()).isEqualTo("POST");
         RecordedRequest rollback = server.takeRequest();
         assertThat(rollback.getMethod()).isEqualTo("POST");
         assertThat(rollback.getBody().readUtf8()).contains("\"image\":\"registry.example/echo:1\"");
+        RecordedRequest replicaRestore = server.takeRequest();
+        assertThat(replicaRestore.getMethod()).isEqualTo("PUT");
+        assertThat(replicaRestore.getPath()).isEqualTo("/v1/functions/echo/replicas");
+        assertThat(replicaRestore.getBody().readUtf8()).contains("\"replicas\":4");
     }
 
     @Test
     void replaceMapsImageNotFoundAndStillRollsBack() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(409));
         server.enqueue(existing());
+        server.enqueue(replicas());
         server.enqueue(new MockResponse().setResponseCode(204));
         server.enqueue(new MockResponse()
                 .setResponseCode(400)
@@ -89,6 +113,7 @@ class FunctionApplierTest {
                 .setResponseCode(201)
                 .addHeader("Content-Type", "application/json")
                 .setBody("{\"name\":\"echo\",\"image\":\"registry.example/echo:1\"}"));
+        server.enqueue(replicasRestored());
 
         IllegalStateException ex = assertThrows(IllegalStateException.class,
                 () -> FunctionApplier.apply(client, desired(), true));
@@ -96,18 +121,21 @@ class FunctionApplierTest {
         assertThat(ex.getCause()).isInstanceOf(IllegalArgumentException.class);
         assertThat(ex.getCause()).hasMessageContaining("Image not found in registry");
 
-        assertThat(server.getRequestCount()).isEqualTo(5);
+        assertThat(server.getRequestCount()).isEqualTo(7);
+        server.takeRequest();
         server.takeRequest();
         server.takeRequest();
         server.takeRequest();
         server.takeRequest();
         assertThat(server.takeRequest().getMethod()).isEqualTo("POST"); // rollback
+        assertThat(server.takeRequest().getMethod()).isEqualTo("PUT");
     }
 
     @Test
     void replaceReportsUnrestorableWhenRollbackFailsToo() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(409));
         server.enqueue(existing());
+        server.enqueue(replicas());
         server.enqueue(new MockResponse().setResponseCode(204));
         server.enqueue(new MockResponse().setResponseCode(503));
         server.enqueue(new MockResponse().setResponseCode(503));
@@ -118,5 +146,26 @@ class FunctionApplierTest {
         assertThat(ex).hasMessageContaining("could not be restored");
         assertThat(ex.getCause()).isNotNull();
         assertThat(ex.getCause().getSuppressed()).isNotEmpty();
+    }
+
+    @Test
+    void replaceReportsUnrestorableWhenReplicaRollbackFails() {
+        server.enqueue(new MockResponse().setResponseCode(409));
+        server.enqueue(existing());
+        server.enqueue(replicas());
+        server.enqueue(new MockResponse().setResponseCode(204));
+        server.enqueue(new MockResponse().setResponseCode(503));
+        server.enqueue(new MockResponse()
+                .setResponseCode(201)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"name\":\"echo\",\"image\":\"registry.example/echo:1\"}"));
+        server.enqueue(new MockResponse().setResponseCode(503));
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> FunctionApplier.apply(client, desired(), true));
+
+        assertThat(ex).hasMessageContaining("could not be restored");
+        assertThat(ex.getCause()).isNotNull();
+        assertThat(ex.getCause().getSuppressed()).hasSize(1);
     }
 }

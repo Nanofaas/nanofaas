@@ -41,6 +41,9 @@ public final class FunctionApplier {
     }
 
     private static void replaceDestructively(ControlPlaneClient client, FunctionSpec desired, FunctionDetails previous) {
+        Integer previousReplicas = previous.deploymentBackend() == null || previous.deploymentBackend().isBlank()
+                ? null
+                : client.getReplicas(previous.name()).desiredReplicas();
         client.deleteFunction(desired.name());
         try {
             client.registerFunction(desired);
@@ -48,6 +51,9 @@ public final class FunctionApplier {
             RuntimeException mapped = mapError(failure);
             try {
                 client.registerFunction(previous.toSpec());
+                if (previousReplicas != null) {
+                    client.setReplicas(previous.name(), previousReplicas);
+                }
             } catch (RuntimeException restoreFailure) {
                 mapped.addSuppressed(restoreFailure);
                 throw new IllegalStateException(
