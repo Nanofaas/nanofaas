@@ -460,11 +460,11 @@ class ControlPlaneClientTest {
         assertThat(req.getPath()).isEqualTo("/v1/functions/echo");
         assertThat(req.getHeader("Content-Type")).contains("application/json");
 
+        // Exactly the patched field, and nothing else: an extra key (Jackson used to
+        // serialize the isEmpty() accessor as "empty") is rejected by the control
+        // plane as an unreadable body, which failed every fn update with HTTP 400.
         String body = req.getBody().readUtf8();
-        assertThat(body).contains("\"concurrency\":3");
-        assertThat(body).doesNotContain("timeoutMs");
-        assertThat(body).doesNotContain("maxRetries");
-        assertThat(body).doesNotContain("concurrencyControl");
+        assertThat(body).isEqualTo("{\"concurrency\":3}");
         assertThat(updated.name()).isEqualTo("echo");
     }
 
