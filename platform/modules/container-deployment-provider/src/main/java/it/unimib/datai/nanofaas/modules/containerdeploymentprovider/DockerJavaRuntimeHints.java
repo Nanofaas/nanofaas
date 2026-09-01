@@ -1,6 +1,12 @@
 package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 
 import com.github.dockerjava.api.command.CreateContainerResponse;
+import com.github.dockerjava.api.model.Container;
+import com.github.dockerjava.api.model.ContainerHostConfig;
+import com.github.dockerjava.api.model.ContainerMount;
+import com.github.dockerjava.api.model.ContainerNetwork;
+import com.github.dockerjava.api.model.ContainerNetworkSettings;
+import com.github.dockerjava.api.model.ContainerPort;
 import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.ExposedPorts;
 import com.github.dockerjava.api.model.HostConfig;
@@ -21,7 +27,14 @@ final class DockerJavaRuntimeHints implements RuntimeHintsRegistrar {
             ExposedPorts.class,
             PortBinding.class,
             Ports.class,
-            Ports.Binding.class
+            Ports.Binding.class,
+            Container.class,
+            ContainerPort.class,
+            ContainerHostConfig.class,
+            ContainerNetworkSettings.class,
+            ContainerNetwork.class,
+            ContainerNetwork.Ipam.class,
+            ContainerMount.class
     };
 
     @Override
