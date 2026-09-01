@@ -106,6 +106,12 @@ cd ../nanolab
   --environment packages/nanolab/environments/external.yaml.example
 ```
 
+`persistent-recovery-container.yaml` and `persistent-recovery-k8s.yaml` restart
+only the control plane after scaling `word-stats-java` to two replicas. They
+verify that the registration, replica target, and managed backend resources are
+restored without recreation; ordinary teardown still removes all state at the
+end of the run.
+
 The external environment is suitable for a remote VM reachable through SSH and
 provisioned separately with Ansible. Azure and Proxmox use the same workflow
 model. See [the nanolab guide](https://github.com/miciav/nanolab#readme) and
