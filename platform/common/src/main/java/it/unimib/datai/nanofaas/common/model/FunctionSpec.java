@@ -95,4 +95,14 @@ public record FunctionSpec(
                 null
         );
     }
+
+    /**
+     * Returns a copy of this spec with the effective endpoint URL and execution mode replaced, as
+     * reported by a deployment backend.
+     */
+    public FunctionSpec withEndpoint(String endpointUrl, ExecutionMode executionMode) {
+        return new FunctionSpec(
+                name, image, command, env, resources, timeoutMs, concurrency, queueSize, maxRetries,
+                endpointUrl, executionMode, runtimeMode, runtimeCommand, scalingConfig, imagePullSecrets, offload);
+    }
 }

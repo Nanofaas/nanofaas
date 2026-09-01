@@ -10,7 +10,6 @@ import io.fabric8.kubernetes.client.utils.Serialization;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
-import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.modules.k8s.config.KubernetesProperties;
 import it.unimib.datai.nanofaas.modules.k8s.deployment.KubernetesManagedDeploymentProvider;
 import org.slf4j.Logger;
@@ -56,7 +55,7 @@ public class KubernetesResourceManager {
             serviceCreated = createOrPatchService(client, service);
             log.info("Created/updated Service {} for function {}", service.getMetadata().getName(), spec.name());
 
-            if (spec.scalingConfig() != null && spec.scalingConfig().strategy() == ScalingStrategy.HPA) {
+            if (isHpaManaged(spec)) {
                 HorizontalPodAutoscaler hpa = builder.buildHpa(spec);
                 if (hpa != null) {
                     hpaCreated = createOrPatchHpa(client, hpa);
@@ -162,7 +161,7 @@ public class KubernetesResourceManager {
     }
 
     private static boolean isHpaManaged(FunctionSpec spec) {
-        return spec.scalingConfig() != null && spec.scalingConfig().strategy() == ScalingStrategy.HPA;
+        return KubernetesDeploymentBuilder.hpaOwnsScaling(spec.scalingConfig());
     }
 
     private static String serviceUrl(String serviceName, String namespace) {

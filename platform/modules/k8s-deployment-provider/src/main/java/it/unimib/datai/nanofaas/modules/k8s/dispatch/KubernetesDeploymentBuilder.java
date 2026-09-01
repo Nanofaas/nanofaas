@@ -129,7 +129,7 @@ public class KubernetesDeploymentBuilder {
                 .build();
     }
 
-    private static boolean hpaOwnsScaling(ScalingConfig scaling) {
+    static boolean hpaOwnsScaling(ScalingConfig scaling) {
         return scaling != null && scaling.strategy() == ScalingStrategy.HPA;
     }
 

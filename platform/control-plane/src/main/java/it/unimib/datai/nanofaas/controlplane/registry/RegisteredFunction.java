@@ -60,12 +60,7 @@ public record RegisteredFunction(
                     + "' but function '" + name() + "' runs in '"
                     + deploymentMetadata.effectiveExecutionMode() + "'");
         }
-        FunctionSpec refreshedSpec = new FunctionSpec(
-                spec.name(), spec.image(), spec.command(), spec.env(), spec.resources(),
-                spec.timeoutMs(), spec.concurrency(), spec.queueSize(), spec.maxRetries(),
-                result.endpointUrl(), result.effectiveExecutionMode(),
-                spec.runtimeMode(), spec.runtimeCommand(), spec.scalingConfig(), spec.imagePullSecrets(),
-                spec.offload());
+        FunctionSpec refreshedSpec = spec.withEndpoint(result.endpointUrl(), result.effectiveExecutionMode());
         DeploymentMetadata refreshedMetadata = new DeploymentMetadata(
                 deploymentMetadata.requestedExecutionMode(),
                 deploymentMetadata.effectiveExecutionMode(),

@@ -220,24 +220,7 @@ public class FunctionService {
     }
 
     private FunctionSpec withEffectiveProvisioning(FunctionSpec spec, ProvisionResult provisionResult) {
-        return new FunctionSpec(
-                spec.name(),
-                spec.image(),
-                spec.command(),
-                spec.env(),
-                spec.resources(),
-                spec.timeoutMs(),
-                spec.concurrency(),
-                spec.queueSize(),
-                spec.maxRetries(),
-                provisionResult.endpointUrl(),
-                provisionResult.effectiveExecutionMode(),
-                spec.runtimeMode(),
-                spec.runtimeCommand(),
-                spec.scalingConfig(),
-                spec.imagePullSecrets(),
-                spec.offload()
-        );
+        return spec.withEndpoint(provisionResult.endpointUrl(), provisionResult.effectiveExecutionMode());
     }
 
     private void rollbackProvisionedRegistration(RegisteredFunction function, RuntimeException failure) {

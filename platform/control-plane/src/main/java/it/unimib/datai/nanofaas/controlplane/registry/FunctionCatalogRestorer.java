@@ -9,7 +9,6 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
@@ -36,11 +35,10 @@ final class FunctionCatalogRestorer implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments arguments) {
-        List<RegisteredFunction> restored = new ArrayList<>();
-        for (RegisteredFunction function : registry.listRegistered().stream()
-                .sorted(Comparator.comparing(RegisteredFunction::name)).toList()) {
-            restored.add(reconcileIfManaged(function));
-        }
+        List<RegisteredFunction> restored = registry.listRegistered().stream()
+                .sorted(Comparator.comparing(RegisteredFunction::name))
+                .map(this::reconcileIfManaged)
+                .toList();
         registry.replaceAllDurably(restored);
         for (RegisteredFunction function : restored) {
             for (FunctionRegistrationListener listener : listeners) {
