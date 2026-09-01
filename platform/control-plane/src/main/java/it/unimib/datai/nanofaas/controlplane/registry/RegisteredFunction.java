@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.controlplane.registry;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
 
 import java.util.Optional;
@@ -17,6 +18,12 @@ public record RegisteredFunction(
         deploymentMetadata = deploymentMetadata == null
                 ? DeploymentMetadata.nonManaged(spec.executionMode(), spec.endpointUrl())
                 : deploymentMetadata;
+        if (deploymentMetadata.effectiveExecutionMode() == ExecutionMode.DEPLOYMENT
+                && deploymentMetadata.desiredReplicas() == null) {
+            ScalingConfig scaling = spec.scalingConfig();
+            deploymentMetadata = deploymentMetadata.withDesiredReplicas(
+                    scaling != null && scaling.minReplicas() != null ? scaling.minReplicas() : 1);
+        }
     }
 
     public static RegisteredFunction nonManaged(FunctionSpec spec) {
@@ -25,6 +32,14 @@ public record RegisteredFunction(
 
     public String name() {
         return spec.name();
+    }
+
+    public Integer desiredReplicas() {
+        return deploymentMetadata.desiredReplicas();
+    }
+
+    public RegisteredFunction withDesiredReplicas(int desiredReplicas) {
+        return new RegisteredFunction(spec, deploymentMetadata.withDesiredReplicas(desiredReplicas));
     }
 
     /**

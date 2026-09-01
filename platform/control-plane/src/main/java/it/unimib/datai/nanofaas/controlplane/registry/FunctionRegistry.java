@@ -3,14 +3,27 @@ package it.unimib.datai.nanofaas.controlplane.registry;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
 public class FunctionRegistry {
-    private final Map<String, RegisteredFunction> functions = new ConcurrentHashMap<>();
+    private final FunctionCatalog catalog;
+    private volatile Map<String, RegisteredFunction> functions;
+
+    public FunctionRegistry() {
+        this.catalog = null;
+        this.functions = Map.of();
+    }
+
+    @Autowired
+    public FunctionRegistry(FunctionCatalog catalog) {
+        this.catalog = catalog;
+        this.functions = immutableByName(catalog.load());
+    }
 
     public Collection<FunctionSpec> list() {
         return functions.values().stream()
@@ -31,12 +44,15 @@ public class FunctionRegistry {
     }
 
     public FunctionSpec put(FunctionSpec spec) {
-        RegisteredFunction previous = functions.put(spec.name(), RegisteredFunction.nonManaged(spec));
+        RegisteredFunction previous = put(RegisteredFunction.nonManaged(spec));
         return previous == null ? null : previous.spec();
     }
 
-    public RegisteredFunction put(RegisteredFunction function) {
-        return functions.put(function.name(), function);
+    public synchronized RegisteredFunction put(RegisteredFunction function) {
+        Map<String, RegisteredFunction> next = new HashMap<>(functions);
+        RegisteredFunction previous = next.put(function.name(), function);
+        saveAndPublish(next);
+        return previous;
     }
 
     /**
@@ -46,20 +62,80 @@ public class FunctionRegistry {
      * @return the previous value if one existed, or null if the put succeeded
      */
     public FunctionSpec putIfAbsent(FunctionSpec spec) {
-        RegisteredFunction previous = functions.putIfAbsent(spec.name(), RegisteredFunction.nonManaged(spec));
+        RegisteredFunction previous = putIfAbsent(RegisteredFunction.nonManaged(spec));
         return previous == null ? null : previous.spec();
     }
 
-    public RegisteredFunction putIfAbsent(RegisteredFunction function) {
-        return functions.putIfAbsent(function.name(), function);
+    public synchronized RegisteredFunction putIfAbsent(RegisteredFunction function) {
+        RegisteredFunction previous = functions.get(function.name());
+        if (previous != null) {
+            return previous;
+        }
+        Map<String, RegisteredFunction> next = new HashMap<>(functions);
+        next.put(function.name(), function);
+        saveAndPublish(next);
+        return null;
     }
 
     public FunctionSpec remove(String name) {
-        RegisteredFunction previous = functions.remove(name);
+        RegisteredFunction previous = removeRegistered(name);
         return previous == null ? null : previous.spec();
     }
 
-    public RegisteredFunction removeRegistered(String name) {
-        return functions.remove(name);
+    public synchronized RegisteredFunction removeRegistered(String name) {
+        RegisteredFunction previous = functions.get(name);
+        if (previous == null) {
+            return null;
+        }
+        Map<String, RegisteredFunction> next = new HashMap<>(functions);
+        next.remove(name);
+        saveAndPublish(next);
+        return previous;
+    }
+
+    synchronized RegisteredFunction detach(String name) {
+        Map<String, RegisteredFunction> next = new HashMap<>(functions);
+        RegisteredFunction detached = next.remove(name);
+        functions = Map.copyOf(next);
+        return detached;
+    }
+
+    synchronized void restoreDetached(RegisteredFunction function) {
+        if (function != null) {
+            Map<String, RegisteredFunction> next = new HashMap<>(functions);
+            next.put(function.name(), function);
+            functions = Map.copyOf(next);
+        }
+    }
+
+    synchronized void persistCurrentSnapshot() {
+        if (catalog != null) {
+            catalog.save(functions.values());
+        }
+    }
+
+    synchronized void replaceAllDurably(Collection<RegisteredFunction> replacement) {
+        Map<String, RegisteredFunction> next = immutableByName(replacement);
+        if (catalog != null) {
+            catalog.save(next.values());
+        }
+        functions = next;
+    }
+
+    private void saveAndPublish(Map<String, RegisteredFunction> next) {
+        if (catalog != null) {
+            catalog.save(next.values());
+        }
+        functions = Map.copyOf(next);
+    }
+
+    private static Map<String, RegisteredFunction> immutableByName(Collection<RegisteredFunction> registered) {
+        Map<String, RegisteredFunction> byName = new HashMap<>();
+        for (RegisteredFunction function : registered) {
+            if (byName.put(function.name(), function) != null) {
+                throw new IllegalArgumentException("Duplicate function name: " + function.name());
+            }
+        }
+        return Map.copyOf(byName);
     }
 }

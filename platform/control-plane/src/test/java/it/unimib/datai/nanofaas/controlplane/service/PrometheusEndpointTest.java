@@ -27,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "nanofaas.defaults.queueSize=10",
                 "nanofaas.defaults.maxRetries=3",
                 "nanofaas.metrics.profile=advanced",
+                "nanofaas.registry.path=build/test-prometheus-functions.json",
                 "sync-queue.enabled=false",
                 // Avoid fixed port collisions when Gradle runs tests in parallel.
                 "management.server.port=0",
@@ -50,6 +51,7 @@ class PrometheusEndpointTest {
 
     @BeforeEach
     void setup() {
+        functionService.remove("echo");
         functionService.register(new FunctionSpec(
                 "echo",
                 "local",

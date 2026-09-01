@@ -140,6 +140,7 @@ public class FunctionService {
                 throw new IllegalArgumentException("Function '" + name + "' is not in DEPLOYMENT mode");
             }
             managedDeploymentCoordinator.setReplicas(requireManagedDeploymentTarget(function), replicas);
+            registry.put(function.withDesiredReplicas(replicas));
             log.info("Set replicas for function {} to {}", name, replicas);
             return Optional.of(replicas);
         });

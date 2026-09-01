@@ -28,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
                 "nanofaas.defaults.concurrency=2",
                 "nanofaas.defaults.queueSize=10",
                 "nanofaas.defaults.maxRetries=3",
+                "nanofaas.registry.path=build/test-control-plane-api-functions.json",
                 "sync-queue.enabled=false"
         })
 @AutoConfigureWebTestClient
@@ -49,6 +50,7 @@ class ControlPlaneApiTest {
 
     @BeforeEach
     void setup() {
+        functionService.remove("echo");
         functionService.register(new FunctionSpec(
                 "echo",
                 "local",

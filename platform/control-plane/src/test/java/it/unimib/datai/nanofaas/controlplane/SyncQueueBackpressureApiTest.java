@@ -23,6 +23,7 @@ import java.util.stream.Stream;
                 "nanofaas.defaults.concurrency=2",
                 "nanofaas.defaults.queueSize=10",
                 "nanofaas.defaults.maxRetries=3",
+                "nanofaas.registry.path=build/test-sync-queue-backpressure-api-functions.json",
                 "sync-queue.enabled=true",
                 "sync-queue.admission-enabled=true",
                 "sync-queue.max-estimated-wait=0s",
@@ -44,6 +45,7 @@ class SyncQueueBackpressureApiTest {
     void syncInvokeReturns429WithRetryAfter() {
         Assumptions.assumeTrue(selectedModules().contains("sync-queue"));
 
+        functionService.remove("echo");
         functionService.register(new FunctionSpec(
                 "echo",
                 "local",

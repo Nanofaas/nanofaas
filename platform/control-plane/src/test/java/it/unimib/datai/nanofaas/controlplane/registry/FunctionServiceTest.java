@@ -291,6 +291,7 @@ class FunctionServiceTest {
 
         assertTrue(result.isPresent());
         assertEquals(3, result.get());
+        assertEquals(3, registry.getRegistered("fn").orElseThrow().desiredReplicas());
         verify(provider).setReplicas("fn", 3);
     }
 

@@ -24,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "nanofaas.defaults.concurrency=2",
                 "nanofaas.defaults.queueSize=10",
                 "nanofaas.defaults.maxRetries=3",
+                "nanofaas.registry.path=build/test-core-only-api-functions.json",
                 "sync-queue.enabled=false",
                 "nanofaas.admin.runtime-config.enabled=false"
         })
@@ -41,6 +42,7 @@ class CoreOnlyApiTest {
 
     @BeforeEach
     void setup() {
+        functionService.remove("echo");
         functionService.register(new FunctionSpec(
                 "echo",
                 "local",
