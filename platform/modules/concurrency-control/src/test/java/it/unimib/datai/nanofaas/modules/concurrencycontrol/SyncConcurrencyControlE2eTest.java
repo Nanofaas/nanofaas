@@ -1,9 +1,11 @@
 package it.unimib.datai.nanofaas.modules.concurrencycontrol;
 
 import it.unimib.datai.nanofaas.controlplane.ControlPlaneApplication;
+import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityState;
 import it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,7 +24,8 @@ import static org.awaitility.Awaitility.await;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "nanofaas.metrics.profile=advanced",
-                "nanofaas.concurrency-control.poll-interval-ms=100"
+                "nanofaas.concurrency-control.poll-interval-ms=100",
+                "nanofaas.registry.path=build/test-sync-concurrency-control-functions.json"
         })
 @AutoConfigureWebTestClient
 @EnabledIfSystemProperty(named = "nanofaas.queue.provider", matches = "sync-queue")
@@ -36,6 +39,16 @@ class SyncConcurrencyControlE2eTest {
 
     @Autowired
     private FunctionCapacityRegistry capacityRegistry;
+
+    @Autowired
+    private FunctionService functionService;
+
+    @BeforeEach
+    void setup() {
+        // A re-run without `./gradlew clean` restores this EXTERNAL function from the
+        // persisted catalog; drop it so the register(...) below never collides.
+        functionService.remove("sync-governed");
+    }
 
     @Test
     void governorUpdatesTheSharedSyncCapacityState() {

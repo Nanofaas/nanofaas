@@ -3,6 +3,8 @@ package it.unimib.datai.nanofaas.modules.concurrencycontrol;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import it.unimib.datai.nanofaas.controlplane.ControlPlaneApplication;
+import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +31,7 @@ import static org.awaitility.Awaitility.await;
                 "nanofaas.concurrency-control.total-budget=10",
                 // the concurrency gauges are filtered out of the basic metrics profile
                 "nanofaas.metrics.profile=advanced",
+                "nanofaas.registry.path=build/test-concurrency-governor-functions.json",
                 "sync-queue.enabled=false"
         })
 @AutoConfigureWebTestClient
@@ -42,6 +45,18 @@ class ConcurrencyGovernorE2eTest {
 
     @Autowired
     private MeterRegistry meterRegistry;
+
+    @Autowired
+    private FunctionService functionService;
+
+    @BeforeEach
+    void setup() {
+        // A re-run without `./gradlew clean` restores these EXTERNAL functions from the
+        // persisted catalog; drop them so the register(...) below never collides.
+        for (String name : new String[]{"governed", "capped", "alpha", "beta"}) {
+            functionService.remove(name);
+        }
+    }
 
     @Test
     void governorThrottlesTheQueueConcurrencyLimitOfARegisteredFunction() {

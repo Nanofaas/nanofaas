@@ -71,7 +71,8 @@ class OffloadPressureE2eTest {
                         + "it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigConfiguration",
                 // no admission throughput history exists in a fresh instance:
                 // est-wait would falsely 429 the offloads
-                "--sync-queue.enabled=false");
+                "--sync-queue.enabled=false",
+                "--nanofaas.registry.path=build/test-offload-cloud-functions.json");
         cloudUrl = "http://127.0.0.1:" + port(cloud, "local.server.port");
 
         edge = new SpringApplicationBuilder(ControlPlaneApplication.class).run(
@@ -85,9 +86,15 @@ class OffloadPressureE2eTest {
                 "--sync-queue.max-depth=1",
                 "--sync-queue.admission-enabled=false",
                 // queued work legitimately waits behind the 2s slow pod
-                "--sync-queue.max-queue-wait=30s");
+                "--sync-queue.max-queue-wait=30s",
+                "--nanofaas.registry.path=build/test-offload-edge-functions.json");
         edgeUrl = "http://127.0.0.1:" + port(edge, "local.server.port");
         edgeManagementUrl = "http://127.0.0.1:" + port(edge, "local.management.port");
+
+        // A re-run without a clean build restores FUNCTION from each persisted catalog;
+        // drop it so the registration below never collides.
+        delete(cloudUrl, FUNCTION);
+        delete(edgeUrl, FUNCTION);
 
         register(cloudUrl, """
                 {"name": "%s", "image": "img", "executionMode": "LOCAL", "timeoutMs": 10000}
@@ -159,6 +166,12 @@ class OffloadPressureE2eTest {
         String value = context.getEnvironment().getProperty(property);
         assertThat(value).as(property).isNotNull();
         return Integer.parseInt(value);
+    }
+
+    private static void delete(String baseUrl, String name) throws IOException {
+        send(HttpRequest.newBuilder(URI.create(baseUrl + "/v1/functions/" + name))
+                .DELETE()
+                .build());
     }
 
     private static void register(String baseUrl, String spec) throws IOException {
