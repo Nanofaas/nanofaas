@@ -6,9 +6,12 @@ import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProperties;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
+import jakarta.validation.Validation;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -18,6 +21,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import tools.jackson.databind.ObjectMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -28,6 +32,9 @@ class FunctionServiceConcurrencyTest {
 
     private FunctionRegistry registry;
     private FunctionService functionService;
+
+    @TempDir
+    Path tempDir;
 
     @BeforeEach
     void setUp() {
@@ -303,6 +310,67 @@ class FunctionServiceConcurrencyTest {
         }
 
         assertThat(localService.get("tear-fn")).isEmpty();
+        verify(localProvider).deprovision("tear-fn");
+    }
+
+    @Test
+    void remove_persistsDeleteOnlyAfterTeardownCompletes() throws Exception {
+        FunctionDefaults defaults = new FunctionDefaults(30000, 4, 100, 3);
+        FunctionCatalog catalog = new FunctionCatalog(
+                new FunctionCatalogProperties(tempDir.resolve("functions.json")),
+                new ObjectMapper(),
+                Validation.buildDefaultValidatorFactory().getValidator());
+        FunctionRegistry localRegistry = new FunctionRegistry(catalog);
+        ManagedDeploymentProvider localProvider = provider();
+        FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
+        FunctionService localService = new FunctionService(
+                localRegistry,
+                defaults,
+                ImageValidator.noOp(),
+                List.of(listener),
+                resolver(localProvider)
+        );
+        when(localProvider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
+
+        CountDownLatch removalStarted = new CountDownLatch(1);
+        CountDownLatch allowRemoval = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            removalStarted.countDown();
+            if (!allowRemoval.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Timed out waiting to finish remove");
+            }
+            return null;
+        }).when(listener).onRemove("tear-fn");
+
+        FunctionSpec spec = new FunctionSpec(
+                "tear-fn", "img:latest",
+                null, null, null, null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null
+        );
+        assertThat(localService.register(spec)).isPresent();
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<Optional<FunctionSpec>> removeFuture = executor.submit(() -> localService.remove("tear-fn"));
+
+            assertThat(removalStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+            // hidden from the in-memory registry...
+            await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
+                assertThat(localService.get("tear-fn")).isEmpty();
+                assertThat(localRegistry.get("tear-fn")).isEmpty();
+            });
+            // ...but still present in the durable catalog until teardown completes
+            assertThat(new FunctionRegistry(catalog).get("tear-fn")).isPresent();
+
+            allowRemoval.countDown();
+
+            assertThat(removeFuture.get(5, TimeUnit.SECONDS)).isPresent();
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertThat(localService.get("tear-fn")).isEmpty();
+        assertThat(new FunctionRegistry(catalog).get("tear-fn")).isEmpty();
         verify(localProvider).deprovision("tear-fn");
     }
 

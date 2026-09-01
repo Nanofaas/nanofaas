@@ -6,17 +6,24 @@ import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProperties;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
+import jakarta.validation.Validation;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.lang.reflect.ParameterizedType;
+import java.nio.file.Path;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import tools.jackson.databind.ObjectMapper;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -31,6 +38,9 @@ class FunctionServiceTest {
     private FunctionRegistrationListener listener;
     private ImageValidator imageValidator;
     private FunctionService service;
+
+    @TempDir
+    Path tempDir;
 
     @BeforeEach
     void setUp() {
@@ -422,6 +432,108 @@ class FunctionServiceTest {
         assertTrue(service.update("nope", new FunctionUpdateRequest(8, null, null, null)).isEmpty());
     }
 
+    @Test
+    void registrationCommitsDurablyOnlyAfterProvisionAndListeners() {
+        when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
+        FunctionRegistry spiedRegistry = spy(registry);
+        FunctionService ordered = new FunctionService(
+                spiedRegistry, defaults, imageValidator, List.of(listener), resolver(provider));
+
+        ordered.register(new FunctionSpec("fn", "img:latest", null, null, null,
+                null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null));
+
+        InOrder order = inOrder(provider, listener, spiedRegistry);
+        order.verify(provider).provision(any());
+        order.verify(listener).onRegister(any());
+        order.verify(spiedRegistry).put(any(RegisteredFunction.class));
+    }
+
+    @Test
+    void register_catalogFailure_rollsBackListenersAndDeprovisions() {
+        ControllableCatalog catalog = new ControllableCatalog(tempDir.resolve("functions.json"));
+        catalog.failSaves(true);
+        FunctionRegistry realRegistry = new FunctionRegistry(catalog);
+        when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
+        FunctionService localService = new FunctionService(
+                realRegistry, defaults, imageValidator, List.of(listener), resolver(provider));
+
+        FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
+                null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null);
+
+        IllegalStateException thrown = assertThrows(IllegalStateException.class, () -> localService.register(spec));
+
+        assertEquals("catalog failure", thrown.getMessage());
+        assertTrue(localService.get("fn").isEmpty());
+        verify(provider).provision(any());
+        verify(provider).deprovision("fn");
+        verify(listener).onRegister(any());
+        verify(listener).onRemove("fn");
+    }
+
+    @Test
+    void update_catalogFailure_leavesOldValueAndListenersUntouched() {
+        ControllableCatalog catalog = new ControllableCatalog(tempDir.resolve("functions.json"));
+        FunctionRegistry realRegistry = new FunctionRegistry(catalog);
+        when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
+        FunctionService localService = new FunctionService(
+                realRegistry, defaults, imageValidator, List.of(listener), resolver(provider));
+        localService.register(new FunctionSpec("fn", "img:latest", null, null, null,
+                null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null));
+
+        catalog.failSaves(true);
+
+        IllegalStateException thrown = assertThrows(IllegalStateException.class,
+                () -> localService.update("fn", new FunctionUpdateRequest(16, null, null, null)));
+
+        assertEquals("catalog failure", thrown.getMessage());
+        assertEquals(4, realRegistry.get("fn").orElseThrow().concurrency());
+        verify(listener, times(1)).onRegister(any());
+    }
+
+    @Test
+    void remove_catalogFailure_restoresReplaysAndReconciles() {
+        ControllableCatalog catalog = new ControllableCatalog(tempDir.resolve("functions.json"));
+        FunctionRegistry realRegistry = new FunctionRegistry(catalog);
+        Map<String, String> deploymentObjects = Map.of("deployment", "fn-deploy", "service", "fn-svc");
+        when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s", deploymentObjects));
+        FunctionService localService = new FunctionService(
+                realRegistry, defaults, imageValidator, List.of(listener), resolver(provider));
+        localService.register(new FunctionSpec("fn", "img:latest", null, null, null,
+                null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null));
+
+        catalog.failSaves(true);
+
+        IllegalStateException thrown = assertThrows(IllegalStateException.class, () -> localService.remove("fn"));
+
+        assertEquals("catalog failure", thrown.getMessage());
+        assertTrue(localService.get("fn").isPresent());
+        verify(listener).onRemove("fn");
+        verify(listener, times(2)).onRegister(any());
+        verify(provider).deprovision("fn");
+        ArgumentCaptor<FunctionSpec> specCaptor = ArgumentCaptor.forClass(FunctionSpec.class);
+        verify(provider).reconcile(specCaptor.capture(), eq(1), eq(deploymentObjects));
+        assertEquals("fn", specCaptor.getValue().name());
+    }
+
+    @Test
+    void interruptedRegistration_leavesNoCatalogEntryForOrphanBackendResource() {
+        ControllableCatalog catalog = new ControllableCatalog(tempDir.resolve("functions.json"));
+        FunctionRegistry realRegistry = new FunctionRegistry(catalog);
+        when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
+        FunctionService localService = new FunctionService(
+                realRegistry, defaults, imageValidator, List.of(listener), resolver(provider));
+
+        catalog.failSaves(true);
+
+        assertThrows(IllegalStateException.class, () -> localService.register(new FunctionSpec(
+                "fn", "img:latest", null, null, null,
+                null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null)));
+
+        // Startup re-reads the catalog and finds nothing: an orphaned backend resource from an
+        // interrupted registration is never fabricated into the catalog (no intent journal in the MVP).
+        assertTrue(new FunctionRegistry(catalog).list().isEmpty());
+    }
+
     private static ManagedDeploymentProvider provider() {
         ManagedDeploymentProvider provider = mock(ManagedDeploymentProvider.class);
         when(provider.backendId()).thenReturn("k8s");
@@ -432,5 +544,31 @@ class FunctionServiceTest {
 
     private static DeploymentProviderResolver resolver(ManagedDeploymentProvider provider) {
         return new DeploymentProviderResolver(List.of(provider), new DeploymentProperties(null));
+    }
+
+    /**
+     * A real {@link FunctionCatalog} backed by a temp file whose {@code save} can be made to fail on
+     * demand, so tests exercise the in-memory-versus-file invariant without mocking it away.
+     */
+    static final class ControllableCatalog extends FunctionCatalog {
+        private volatile boolean failSaves;
+
+        ControllableCatalog(Path path) {
+            super(new FunctionCatalogProperties(path),
+                    new ObjectMapper(),
+                    Validation.buildDefaultValidatorFactory().getValidator());
+        }
+
+        void failSaves(boolean fail) {
+            this.failSaves = fail;
+        }
+
+        @Override
+        public void save(Collection<RegisteredFunction> functions) {
+            if (failSaves) {
+                throw new IllegalStateException("catalog failure");
+            }
+            super.save(functions);
+        }
     }
 }

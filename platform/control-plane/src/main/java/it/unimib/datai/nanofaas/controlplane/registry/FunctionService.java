@@ -83,13 +83,18 @@ public class FunctionService {
             imageValidator.validate(initialResolved);
             RegisteredFunction registered = resolveRegistration(initialResolved);
 
+            List<FunctionRegistrationListener> notified = new ArrayList<>();
             try {
-                notifyRegisterListeners(registered.spec());
-                registry.put(registered);
+                for (FunctionRegistrationListener listener : listeners) {
+                    listener.onRegister(registered.spec());
+                    notified.add(listener);
+                }
+                registry.put(registered); // durable commit
                 return Optional.of(registered);
-            } catch (RuntimeException e) {
-                rollbackProvisionedRegistration(registered, e);
-                throw e;
+            } catch (RuntimeException failure) {
+                rollbackRegistrationListeners(registered.name(), notified, failure);
+                rollbackProvisionedRegistration(registered, failure);
+                throw failure;
             }
         });
     }
@@ -161,25 +166,36 @@ public class FunctionService {
 
     public Optional<FunctionSpec> remove(String name) {
         return locks.withLock(name, () -> {
-            RegisteredFunction existing = registry.removeRegistered(name);
-            if (existing != null) {
-                List<FunctionRegistrationListener> notified = new ArrayList<>();
-                try {
-                    for (FunctionRegistrationListener listener : listeners) {
-                        listener.onRemove(name);
-                        notified.add(listener);
-                    }
-                    if (existing.deploymentMetadata().effectiveExecutionMode() == ExecutionMode.DEPLOYMENT) {
-                        managedDeploymentCoordinator.deprovision(requireManagedDeploymentTarget(existing));
-                    }
-                } catch (RuntimeException e) {
-                    rollbackRemovalListeners(existing.spec(), notified, e);
-                    registry.put(existing);
-                    throw e;
-                }
-                return Optional.of(existing.spec());
+            RegisteredFunction existing = registry.detach(name);
+            if (existing == null) {
+                return Optional.empty();
             }
-            return Optional.empty();
+
+            List<FunctionRegistrationListener> notified = new ArrayList<>();
+            boolean deprovisioned = false;
+            try {
+                for (FunctionRegistrationListener listener : listeners) {
+                    listener.onRemove(name);
+                    notified.add(listener);
+                }
+                if (existing.managedDeploymentTarget().isPresent()) {
+                    managedDeploymentCoordinator.deprovision(existing.managedDeploymentTarget().orElseThrow());
+                    deprovisioned = true;
+                }
+                registry.persistCurrentSnapshot(); // durable delete commit happens last
+                return Optional.of(existing.spec());
+            } catch (RuntimeException failure) {
+                registry.restoreDetached(existing);
+                rollbackRemovalListeners(existing.spec(), notified, failure);
+                if (deprovisioned) {
+                    try {
+                        reconcile(existing);
+                    } catch (RuntimeException rollback) {
+                        failure.addSuppressed(rollback);
+                    }
+                }
+                throw failure;
+            }
         });
     }
 
@@ -234,17 +250,16 @@ public class FunctionService {
         }
     }
 
-    private void notifyRegisterListeners(FunctionSpec spec) {
-        List<FunctionRegistrationListener> notified = new ArrayList<>();
-        try {
-            for (FunctionRegistrationListener listener : listeners) {
-                listener.onRegister(spec);
-                notified.add(listener);
-            }
-        } catch (RuntimeException e) {
-            rollbackRegistrationListeners(spec.name(), notified, e);
-            throw e;
-        }
+    /**
+     * Restores a managed deployment that was already deprovisioned before a delete-catalog failure.
+     * Reconciles only the exact persisted backend (never backend selection or degradation), driving
+     * the provider's non-destructive reconcile toward the persisted spec and replica target.
+     */
+    private void reconcile(RegisteredFunction existing) {
+        ManagedDeploymentTarget target = existing.managedDeploymentTarget().orElseThrow(() -> new IllegalStateException(
+                "Function '" + existing.name() + "' has no persisted managed deployment"));
+        managedDeploymentCoordinator.requireProvider(target)
+                .reconcile(existing.spec(), existing.desiredReplicas(), existing.deploymentMetadata().deploymentObjects());
     }
 
     private ManagedDeploymentTarget requireManagedDeploymentTarget(RegisteredFunction function) {

@@ -6,14 +6,21 @@ import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProperties;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
+import jakarta.validation.Validation;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import tools.jackson.databind.ObjectMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -22,6 +29,9 @@ import static org.mockito.Mockito.when;
 class FunctionServiceManagedDeploymentTest {
 
     private final FunctionDefaults defaults = new FunctionDefaults(30000, 4, 100, 3);
+
+    @TempDir
+    Path tempDir;
 
     @Test
     void register_providerBackedDeployment_persistsMetadataAndEndpoint() {
@@ -119,6 +129,39 @@ class FunctionServiceManagedDeploymentTest {
         verify(provider).deprovision("fn");
         assertThat(service.get("fn")).isEmpty();
         assertThat(service.getRegistered("fn")).isEmpty();
+    }
+
+    @Test
+    void remove_catalogFailure_reconcilesExactPersistedBackend() {
+        FunctionServiceTest.ControllableCatalog catalog =
+                new FunctionServiceTest.ControllableCatalog(tempDir.resolve("functions.json"));
+        FunctionRegistry registry = new FunctionRegistry(catalog);
+        ManagedDeploymentProvider provider = provider("k8s");
+        Map<String, String> deploymentObjects = Map.of("deployment", "fn-deploy", "service", "fn-svc");
+        when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080/invoke", "k8s", deploymentObjects));
+        FunctionService service = new FunctionService(
+                registry,
+                defaults,
+                ImageValidator.noOp(),
+                List.of(),
+                new DeploymentProviderResolver(List.of(provider), new DeploymentProperties(null))
+        );
+
+        assertThat(service.register(deploymentSpec("fn", null))).isPresent();
+        assertThat(service.setReplicas("fn", 5)).contains(5);
+
+        catalog.failSaves(true);
+
+        assertThatThrownBy(() -> service.remove("fn"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("catalog failure");
+
+        assertThat(service.get("fn")).isPresent();
+        verify(provider).deprovision("fn");
+        verify(provider).reconcile(
+                argThat(spec -> spec.name().equals("fn")),
+                eq(5),
+                eq(deploymentObjects));
     }
 
     private FunctionService serviceWithProviders(ManagedDeploymentProvider... providers) {
