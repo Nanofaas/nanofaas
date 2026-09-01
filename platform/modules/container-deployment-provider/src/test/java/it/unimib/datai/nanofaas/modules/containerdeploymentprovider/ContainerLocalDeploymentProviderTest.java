@@ -465,6 +465,25 @@ class ContainerLocalDeploymentProviderTest {
     }
 
     @Test
+    void deprovision_removesDiscoveredOwnedContainersWhenRestoreDidNotBuildState() {
+        RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
+        adapter.managedContainers(List.of(
+                new ManagedContainer("nanofaas-echo-r1", 1, 31001, true),
+                new ManagedContainer("nanofaas-echo-r2", 2, 31002, true)));
+        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                adapter,
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
+                new ReadyEndpointProbe(),
+                new FixedPortAllocator(19001),
+                functionName -> new RecordingProxy("http://127.0.0.1:19090/invoke")
+        );
+
+        provider.deprovision("echo");
+
+        assertThat(adapter.removedContainers()).containsExactly("nanofaas-echo-r1", "nanofaas-echo-r2");
+    }
+
+    @Test
     void reconcile_creationFailure_removesOnlyContainersCreatedDuringReconcile() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         adapter.managedContainers(List.of(

@@ -139,14 +139,13 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
 
     @Override
     public void deprovision(String functionName) {
-        ReentrantLock lock = locks.get(functionName);
-        if (lock == null) {
-            return;
-        }
+        ReentrantLock lock = locks.computeIfAbsent(functionName, k -> new ReentrantLock());
         lock.lock();
         try {
             FunctionState state = states.remove(functionName);
             if (state == null) {
+                adapter.listManagedContainers(functionName)
+                        .forEach(container -> adapter.removeContainer(container.name()));
                 return;
             }
             for (int replicaIndex : List.copyOf(state.replicas.keySet()).reversed()) {
