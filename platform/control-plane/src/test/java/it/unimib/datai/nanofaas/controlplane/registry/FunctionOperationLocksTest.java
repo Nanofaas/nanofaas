@@ -9,9 +9,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class FunctionOperationLocksTest {
 
@@ -52,8 +54,8 @@ class FunctionOperationLocksTest {
             }));
 
             // The second call must stay blocked on the per-function lock.
-            Thread.sleep(100);
-            assertThat(second.isDone()).isFalse();
+            assertThatThrownBy(() -> second.get(100, TimeUnit.MILLISECONDS))
+                    .isInstanceOf(TimeoutException.class);
 
             release.countDown();
             first.get(5, TimeUnit.SECONDS);

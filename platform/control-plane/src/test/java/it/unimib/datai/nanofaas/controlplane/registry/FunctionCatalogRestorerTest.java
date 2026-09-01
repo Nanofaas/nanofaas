@@ -164,7 +164,8 @@ class FunctionCatalogRestorerTest {
         doThrow(new IllegalStateException("listener failure")).when(listener).onRegister(any());
 
         FunctionCatalogRestorer restorer = new FunctionCatalogRestorer(registry, resolver, List.of(listener));
-        assertThatThrownBy(() -> restorer.run(new DefaultApplicationArguments()))
+        DefaultApplicationArguments arguments = new DefaultApplicationArguments();
+        assertThatThrownBy(() -> restorer.run(arguments))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("listener failure");
     }
@@ -222,7 +223,8 @@ class FunctionCatalogRestorerTest {
         catalog.failSaves(true);
 
         FunctionCatalogRestorer restorer = new FunctionCatalogRestorer(registry, resolver, List.of(listener));
-        assertThatThrownBy(() -> restorer.run(new DefaultApplicationArguments()))
+        DefaultApplicationArguments arguments = new DefaultApplicationArguments();
+        assertThatThrownBy(() -> restorer.run(arguments))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("catalog failure");
 

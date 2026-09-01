@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class FunctionRegistry {
     private final FunctionCatalog catalog;
-    private volatile Map<String, RegisteredFunction> functions;
+    private volatile Map<String, RegisteredFunction> functions; // NOSONAR: replaced wholesale with an immutable snapshot, never mutated in place
 
     public FunctionRegistry() {
         this.catalog = null;

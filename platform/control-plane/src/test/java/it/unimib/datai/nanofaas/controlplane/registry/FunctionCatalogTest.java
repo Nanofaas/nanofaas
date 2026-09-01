@@ -48,7 +48,7 @@ class FunctionCatalogTest {
         FunctionCatalog catalog = catalog(path);
         List<RegisteredFunction> duplicates = List.of(function("same"), function("same"));
         List<RegisteredFunction> invalid = List.of(function(""));
-        assertThrows(IllegalStateException.class, () -> catalog.load());
+        assertThrows(IllegalStateException.class, catalog::load);
         assertThrows(IllegalStateException.class, () -> catalog.save(duplicates));
         assertThrows(IllegalStateException.class, () -> catalog.save(invalid));
     }
@@ -58,12 +58,12 @@ class FunctionCatalogTest {
         Path path = tempDir.resolve("functions.json");
         Files.writeString(path, "not json");
         FunctionCatalog catalog = catalog(path);
-        assertThrows(IllegalStateException.class, () -> catalog.load());
+        assertThrows(IllegalStateException.class, catalog::load);
 
         if (Files.getFileAttributeView(path, PosixFileAttributeView.class) != null) {
             Files.setPosixFilePermissions(path, Set.of(PosixFilePermission.OWNER_WRITE));
             Assumptions.assumeFalse(Files.isReadable(path));
-            assertThrows(IllegalStateException.class, () -> catalog.load());
+            assertThrows(IllegalStateException.class, catalog::load);
         }
     }
 
@@ -76,13 +76,13 @@ class FunctionCatalogTest {
                   {"spec":{"name":"same","image":"example:latest"}}]}
                 """);
         FunctionCatalog catalog = catalog(path);
-        assertThrows(IllegalStateException.class, () -> catalog.load());
+        assertThrows(IllegalStateException.class, catalog::load);
 
         Files.writeString(path, """
                 {"schemaVersion":1,"functions":[
                   {"spec":{"name":"","image":"example:latest"}}]}
                 """);
-        assertThrows(IllegalStateException.class, () -> catalog.load());
+        assertThrows(IllegalStateException.class, catalog::load);
     }
 
     @Test

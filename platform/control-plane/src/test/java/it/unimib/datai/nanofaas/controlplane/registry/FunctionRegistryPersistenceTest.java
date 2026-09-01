@@ -36,7 +36,8 @@ class FunctionRegistryPersistenceTest {
                 objectMapper, validator, (source, target) -> { throw new IOException("move failed"); });
         FunctionRegistry registry = new FunctionRegistry(failingCatalog);
 
-        assertThrows(IllegalStateException.class, () -> registry.put(spec("lost", ExecutionMode.LOCAL, null)));
+        FunctionSpec lost = spec("lost", ExecutionMode.LOCAL, null);
+        assertThrows(IllegalStateException.class, () -> registry.put(lost));
         assertTrue(registry.get("lost").isEmpty());
     }
 
