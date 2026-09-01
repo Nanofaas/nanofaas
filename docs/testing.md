@@ -12,8 +12,8 @@ Plan tests do not need Docker or a VM:
 ```bash
 export NANOFAAS_ROOT="$(pwd)"
 cd ../nanolab
-./nanolab.sh plan packages/nanolab/scenarios-v2/validate-container.yaml
-./nanolab.sh plan packages/nanolab/scenarios-v2/validate-k8s.yaml \
+./nanolab.sh plan packages/nanolab/scenarios-v2/deployment-lifecycle-container.yaml
+./nanolab.sh plan packages/nanolab/scenarios-v2/deployment-lifecycle-k8s.yaml \
   --environment packages/nanolab/environments/multipass.yaml
 ./nanolab.sh plan packages/nanolab/scenarios-v2/loadtest.yaml \
   --environment packages/nanolab/environments/external.yaml.example

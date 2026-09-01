@@ -88,8 +88,8 @@ Inspect a workflow before running it:
 ```bash
 export NANOFAAS_ROOT="$(pwd)"
 cd ../nanolab
-./nanolab.sh plan packages/nanolab/scenarios-v2/validate-container.yaml
-./nanolab.sh run packages/nanolab/scenarios-v2/validate-container.yaml
+./nanolab.sh plan packages/nanolab/scenarios-v2/deployment-lifecycle-container.yaml
+./nanolab.sh run packages/nanolab/scenarios-v2/deployment-lifecycle-container.yaml
 ```
 
 For k3s in Multipass:
@@ -97,7 +97,7 @@ For k3s in Multipass:
 ```bash
 export NANOFAAS_ROOT="$(pwd)"
 cd ../nanolab
-./nanolab.sh plan packages/nanolab/scenarios-v2/validate-k8s.yaml \
+./nanolab.sh plan packages/nanolab/scenarios-v2/deployment-lifecycle-k8s.yaml \
   --environment packages/nanolab/environments/multipass.yaml
 ```
 

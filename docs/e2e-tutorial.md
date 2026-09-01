@@ -9,8 +9,8 @@ Start Docker, then inspect and run the bundled container scenario:
 ```bash
 export NANOFAAS_ROOT="$(pwd)"
 cd ../nanolab
-./nanolab.sh plan packages/nanolab/scenarios-v2/validate-container.yaml
-./nanolab.sh run packages/nanolab/scenarios-v2/validate-container.yaml
+./nanolab.sh plan packages/nanolab/scenarios-v2/deployment-lifecycle-container.yaml
+./nanolab.sh run packages/nanolab/scenarios-v2/deployment-lifecycle-container.yaml
 ```
 
 ## Kubernetes in Multipass
@@ -20,9 +20,9 @@ On the first run, explicitly create or reuse the named VM and apply the separate
 ```bash
 export NANOFAAS_ROOT="$(pwd)"
 cd ../nanolab
-./nanolab.sh plan packages/nanolab/scenarios-v2/validate-k8s.yaml \
+./nanolab.sh plan packages/nanolab/scenarios-v2/deployment-lifecycle-k8s.yaml \
   --environment packages/nanolab/environments/multipass.yaml
-./nanolab.sh run packages/nanolab/scenarios-v2/validate-k8s.yaml \
+./nanolab.sh run packages/nanolab/scenarios-v2/deployment-lifecycle-k8s.yaml \
   --environment packages/nanolab/environments/multipass.yaml \
   --provision
 ```
@@ -35,7 +35,7 @@ Copy `packages/nanolab/environments/external.yaml.example` (in your `nanolab` ch
 
 ```bash
 export NANOFAAS_ROOT="$(pwd)"
-(cd ../nanolab && ./nanolab.sh run packages/nanolab/scenarios-v2/validate-k8s.yaml \
+(cd ../nanolab && ./nanolab.sh run packages/nanolab/scenarios-v2/deployment-lifecycle-k8s.yaml \
   --environment packages/nanolab/environments/external.yaml \
   --provision)
 ```

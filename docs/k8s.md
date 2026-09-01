@@ -81,7 +81,7 @@ run the `validate-k8s` scenario for end-to-end validation:
 
 ```bash
 export NANOFAAS_ROOT="$(pwd)"
-(cd ../nanolab && ./nanolab.sh run packages/nanolab/scenarios-v2/validate-k8s.yaml \
+(cd ../nanolab && ./nanolab.sh run packages/nanolab/scenarios-v2/deployment-lifecycle-k8s.yaml \
   --environment packages/nanolab/environments/multipass.yaml --provision)
 ```
 

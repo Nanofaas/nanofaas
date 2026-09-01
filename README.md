@@ -100,9 +100,9 @@ The Python control-plane tool reads versioned YAML scenarios and environment bin
 export NANOFAAS_ROOT="$(pwd)"
 cd ../nanolab
 ./nanolab.sh list
-./nanolab.sh plan packages/nanolab/scenarios-v2/validate-k8s.yaml \
+./nanolab.sh plan packages/nanolab/scenarios-v2/deployment-lifecycle-k8s.yaml \
   --environment packages/nanolab/environments/multipass.yaml
-./nanolab.sh run packages/nanolab/scenarios-v2/validate-k8s.yaml \
+./nanolab.sh run packages/nanolab/scenarios-v2/deployment-lifecycle-k8s.yaml \
   --environment packages/nanolab/environments/external.yaml.example
 ```
 
