@@ -8,13 +8,18 @@ import io.fabric8.kubernetes.client.dsl.base.PatchContext;
 import io.fabric8.kubernetes.client.dsl.base.PatchType;
 import io.fabric8.kubernetes.client.utils.Serialization;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.modules.k8s.config.KubernetesProperties;
+import it.unimib.datai.nanofaas.modules.k8s.deployment.KubernetesManagedDeploymentProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
+
+import java.util.Map;
+import java.util.Objects;
 
 @Component
 public class KubernetesResourceManager {
@@ -70,11 +75,109 @@ public class KubernetesResourceManager {
             throw failure;
         }
 
-        String serviceUrl = String.format("http://%s.%s.svc.cluster.local:8080/invoke",
-                KubernetesDeploymentBuilder.serviceName(spec.name()), resolvedNamespace);
+        String serviceUrl = serviceUrl(KubernetesDeploymentBuilder.serviceName(spec.name()), resolvedNamespace);
         log.info("Function {} provisioned at {}", spec.name(), serviceUrl);
         return serviceUrl;
     }
+
+    /**
+     * Restores a function's resources at their persisted names without destroying
+     * anything healthy: existing Deployment and Service are left alone, only the
+     * missing pieces are created, and a non-HPA Deployment is scaled to the
+     * coordinator-driven replica target. HPA config is restored but its replica
+     * count is left to Kubernetes.
+     */
+    public ProvisionResult reconcile(FunctionSpec spec,
+                                     int desiredReplicas,
+                                     Map<String, String> deploymentObjects) {
+        ResourceNames names = requirePersistedNames(spec, deploymentObjects);
+        KubernetesClient client = clientProvider.getObject();
+
+        Deployment existingDeployment = client.apps().deployments()
+                .inNamespace(names.namespace()).withName(names.deployment()).get();
+        Service existingService = client.services()
+                .inNamespace(names.namespace()).withName(names.service()).get();
+
+        if (existingDeployment == null) {
+            createDeployment(client, spec, names, desiredReplicas);
+        } else if (!isHpaManaged(spec)
+                && !Objects.equals(existingDeployment.getSpec().getReplicas(), desiredReplicas)) {
+            client.apps().deployments().inNamespace(names.namespace())
+                    .withName(names.deployment()).scale(desiredReplicas);
+        }
+        if (existingService == null) {
+            createService(client, spec, names);
+        }
+        if (isHpaManaged(spec) && getHpa(client, names) == null) {
+            createHpa(client, spec, names);
+        }
+
+        return provisionResult(names);
+    }
+
+    private ResourceNames requirePersistedNames(FunctionSpec spec, Map<String, String> deploymentObjects) {
+        String namespace = deploymentObjects.get(ProvisionResult.NAMESPACE);
+        String deployment = deploymentObjects.get(ProvisionResult.DEPLOYMENT);
+        String service = deploymentObjects.get(ProvisionResult.SERVICE);
+        if (namespace == null || namespace.isBlank()
+                || deployment == null || deployment.isBlank()
+                || service == null || service.isBlank()) {
+            throw new IllegalArgumentException("Persisted deployment objects are missing required names");
+        }
+        String expectedDeployment = KubernetesDeploymentBuilder.deploymentName(spec.name());
+        String expectedService = KubernetesDeploymentBuilder.serviceName(spec.name());
+        if (!namespace.equals(resolvedNamespace)
+                || !deployment.equals(expectedDeployment)
+                || !service.equals(expectedService)) {
+            throw new IllegalArgumentException(
+                    "Persisted deployment object names do not match function '" + spec.name() + "'");
+        }
+        return new ResourceNames(namespace, deployment, service);
+    }
+
+    private void createDeployment(KubernetesClient client, FunctionSpec spec, ResourceNames names, int desiredReplicas) {
+        Deployment deployment = builder.buildDeployment(spec);
+        if (!isHpaManaged(spec)) {
+            deployment.getSpec().setReplicas(desiredReplicas);
+        }
+        client.apps().deployments().inNamespace(names.namespace()).resource(deployment).create();
+    }
+
+    private void createService(KubernetesClient client, FunctionSpec spec, ResourceNames names) {
+        Service service = builder.buildService(spec);
+        client.services().inNamespace(names.namespace()).resource(service).create();
+    }
+
+    private HorizontalPodAutoscaler getHpa(KubernetesClient client, ResourceNames names) {
+        return client.autoscaling().v2().horizontalPodAutoscalers()
+                .inNamespace(names.namespace()).withName(names.deployment()).get();
+    }
+
+    private void createHpa(KubernetesClient client, FunctionSpec spec, ResourceNames names) {
+        HorizontalPodAutoscaler hpa = builder.buildHpa(spec);
+        if (hpa != null) {
+            client.autoscaling().v2().horizontalPodAutoscalers()
+                    .inNamespace(names.namespace()).resource(hpa).create();
+        }
+    }
+
+    private static boolean isHpaManaged(FunctionSpec spec) {
+        return spec.scalingConfig() != null && spec.scalingConfig().strategy() == ScalingStrategy.HPA;
+    }
+
+    private static String serviceUrl(String serviceName, String namespace) {
+        return String.format("http://%s.%s.svc.cluster.local:8080/invoke", serviceName, namespace);
+    }
+
+    private ProvisionResult provisionResult(ResourceNames names) {
+        return new ProvisionResult(serviceUrl(names.service(), names.namespace()),
+                KubernetesManagedDeploymentProvider.BACKEND_ID, Map.of(
+                ProvisionResult.DEPLOYMENT, names.deployment(),
+                ProvisionResult.SERVICE, names.service(),
+                ProvisionResult.NAMESPACE, names.namespace()));
+    }
+
+    private record ResourceNames(String namespace, String deployment, String service) {}
 
     private boolean createOrPatchDeployment(KubernetesClient client, Deployment deployment) {
         var deploymentResource = client.apps().deployments()

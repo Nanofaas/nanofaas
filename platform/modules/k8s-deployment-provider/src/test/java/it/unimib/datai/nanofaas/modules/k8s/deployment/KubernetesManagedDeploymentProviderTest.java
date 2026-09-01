@@ -2,10 +2,13 @@ package it.unimib.datai.nanofaas.modules.k8s.deployment;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.common.model.ScalingConfig;
+import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
 import it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManager;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -85,6 +88,40 @@ class KubernetesManagedDeploymentProviderTest {
                 entry(ProvisionResult.DEPLOYMENT, "fn-word-stats"),
                 entry(ProvisionResult.SERVICE, "fn-word-stats"),
                 entry(ProvisionResult.NAMESPACE, "nanofaas-e2e")
+        );
+    }
+
+    @Test
+    void reconcileDelegatesThePersistedReplicaTargetAndObjectNames() {
+        KubernetesResourceManager resourceManager = mock(KubernetesResourceManager.class);
+        KubernetesManagedDeploymentProvider provider = new KubernetesManagedDeploymentProvider(resourceManager);
+        FunctionSpec spec = spec("echo", ScalingStrategy.INTERNAL);
+        Map<String, String> objects = Map.of(
+                ProvisionResult.NAMESPACE, "functions",
+                ProvisionResult.DEPLOYMENT, "fn-echo",
+                ProvisionResult.SERVICE, "fn-echo");
+
+        provider.reconcile(spec, 0, objects);
+
+        verify(resourceManager).reconcile(spec, 0, objects);
+    }
+
+    private static FunctionSpec spec(String name, ScalingStrategy strategy) {
+        return new FunctionSpec(
+                name,
+                "img:latest",
+                null,
+                Map.of(),
+                null,
+                30_000,
+                4,
+                100,
+                3,
+                null,
+                ExecutionMode.DEPLOYMENT,
+                null,
+                null,
+                new ScalingConfig(strategy, 1, 10, List.of())
         );
     }
 }

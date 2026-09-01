@@ -47,6 +47,13 @@ public class KubernetesManagedDeploymentProvider implements ManagedDeploymentPro
     }
 
     @Override
+    public ProvisionResult reconcile(FunctionSpec spec,
+                                     int desiredReplicas,
+                                     Map<String, String> deploymentObjects) {
+        return resourceManager.reconcile(spec, desiredReplicas, deploymentObjects);
+    }
+
+    @Override
     public void deprovision(String functionName) {
         resourceManager.deprovision(functionName);
     }

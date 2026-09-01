@@ -6,15 +6,19 @@ import io.fabric8.kubernetes.api.model.autoscaling.v2.HorizontalPodAutoscaler;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.server.mock.EnableKubernetesMockClient;
 import io.fabric8.kubernetes.client.server.mock.KubernetesMockServer;
+import io.fabric8.mockwebserver.http.RecordedRequest;
 import it.unimib.datai.nanofaas.common.model.*;
 import it.unimib.datai.nanofaas.modules.k8s.config.KubernetesProperties;
+import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
@@ -44,6 +48,22 @@ class KubernetesResourceManagerTest {
                 null, ExecutionMode.DEPLOYMENT, RuntimeMode.HTTP, null,
                 scaling
         );
+    }
+
+    private static Map<String, String> objects(String namespace, String deployment, String service) {
+        return Map.of(
+                ProvisionResult.NAMESPACE, namespace,
+                ProvisionResult.DEPLOYMENT, deployment,
+                ProvisionResult.SERVICE, service);
+    }
+
+    private List<String> drainRequests() throws Exception {
+        List<String> log = new ArrayList<>();
+        RecordedRequest request;
+        while ((request = server.takeRequest(200, TimeUnit.MILLISECONDS)) != null) {
+            log.add(request.getMethod() + " " + request.getPath());
+        }
+        return log;
     }
 
     @Test
@@ -279,5 +299,123 @@ class KubernetesResourceManagerTest {
 
         assertNull(client.autoscaling().v2().horizontalPodAutoscalers()
                 .inNamespace("default").withName("fn-echo").get());
+    }
+
+    @Test
+    void reconcile_preservesExistingDeploymentAndService() throws Exception {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 1, 10,
+                List.of(new ScalingMetric("queue_depth", "5", null)));
+        resourceManager.provision(spec(scaling));
+        Deployment deployment = client.apps().deployments().inNamespace("default").withName("fn-echo").get();
+        var service = client.services().inNamespace("default").withName("fn-echo").get();
+        String deploymentUid = deployment.getMetadata().getUid();
+        String serviceUid = service.getMetadata().getUid();
+        int replicas = deployment.getSpec().getReplicas();
+        String serviceType = service.getSpec().getType();
+        drainRequests();
+
+        resourceManager.reconcile(spec(scaling), 1, objects("default", "fn-echo", "fn-echo"));
+
+        assertEquals(List.of(
+                        "GET /apis/apps/v1/namespaces/default/deployments/fn-echo",
+                        "GET /api/v1/namespaces/default/services/fn-echo"),
+                drainRequests());
+
+        Deployment afterDeployment = client.apps().deployments().inNamespace("default").withName("fn-echo").get();
+        var afterService = client.services().inNamespace("default").withName("fn-echo").get();
+        assertEquals(deploymentUid, afterDeployment.getMetadata().getUid());
+        assertEquals(serviceUid, afterService.getMetadata().getUid());
+        assertEquals(replicas, afterDeployment.getSpec().getReplicas());
+        assertEquals(serviceType, afterService.getSpec().getType());
+        assertEquals(1, client.apps().deployments().inNamespace("default").list().getItems().size());
+        assertEquals(1, client.services().inNamespace("default").list().getItems().size());
+    }
+
+    @Test
+    void reconcile_createsMissingDeploymentAndService() {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 2, 10,
+                List.of(new ScalingMetric("queue_depth", "5", null)));
+
+        resourceManager.reconcile(spec(scaling), 3, objects("default", "fn-echo", "fn-echo"));
+
+        Deployment deployment = client.apps().deployments().inNamespace("default").withName("fn-echo").get();
+        assertNotNull(deployment);
+        assertEquals(3, deployment.getSpec().getReplicas());
+        assertNotNull(client.services().inNamespace("default").withName("fn-echo").get());
+    }
+
+    @Test
+    void reconcile_patchesNonHpaDeploymentToDesiredReplicasIncludingZero() {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 1, 10,
+                List.of(new ScalingMetric("queue_depth", "5", null)));
+        resourceManager.provision(spec(scaling));
+
+        resourceManager.reconcile(spec(scaling), 0, objects("default", "fn-echo", "fn-echo"));
+        assertEquals(0, client.apps().deployments().inNamespace("default").withName("fn-echo").get().getSpec().getReplicas());
+
+        resourceManager.reconcile(spec(scaling), 3, objects("default", "fn-echo", "fn-echo"));
+        assertEquals(3, client.apps().deployments().inNamespace("default").withName("fn-echo").get().getSpec().getReplicas());
+    }
+
+    @Test
+    void reconcile_hpaManagedLeavesReplicasAloneAndRecreatesMissingHpa() {
+        ScalingConfig hpa = new ScalingConfig(ScalingStrategy.HPA, 1, 5,
+                List.of(new ScalingMetric("cpu", "80", null)));
+        resourceManager.provision(spec(hpa));
+        int replicas = client.apps().deployments().inNamespace("default").withName("fn-echo").get().getSpec().getReplicas();
+        client.autoscaling().v2().horizontalPodAutoscalers()
+                .inNamespace("default").withName("fn-echo").delete();
+        assertNull(client.autoscaling().v2().horizontalPodAutoscalers()
+                .inNamespace("default").withName("fn-echo").get());
+
+        resourceManager.reconcile(spec(hpa), 7, objects("default", "fn-echo", "fn-echo"));
+
+        assertEquals(replicas, client.apps().deployments().inNamespace("default").withName("fn-echo").get().getSpec().getReplicas());
+        HorizontalPodAutoscaler recreatedHpa = client.autoscaling().v2().horizontalPodAutoscalers()
+                .inNamespace("default").withName("fn-echo").get();
+        assertNotNull(recreatedHpa);
+        assertEquals(1, recreatedHpa.getSpec().getMinReplicas());
+        assertEquals(5, recreatedHpa.getSpec().getMaxReplicas());
+    }
+
+    @Test
+    void reconcile_preservesExistingHpa() throws Exception {
+        ScalingConfig hpa = new ScalingConfig(ScalingStrategy.HPA, 1, 5,
+                List.of(new ScalingMetric("cpu", "80", null)));
+        resourceManager.provision(spec(hpa));
+        String hpaUid = client.autoscaling().v2().horizontalPodAutoscalers()
+                .inNamespace("default").withName("fn-echo").get().getMetadata().getUid();
+        drainRequests();
+
+        resourceManager.reconcile(spec(hpa), 7, objects("default", "fn-echo", "fn-echo"));
+
+        assertTrue(drainRequests().stream().allMatch(request -> request.startsWith("GET")));
+
+        assertEquals(hpaUid, client.autoscaling().v2().horizontalPodAutoscalers()
+                .inNamespace("default").withName("fn-echo").get().getMetadata().getUid());
+        assertEquals(1, client.autoscaling().v2().horizontalPodAutoscalers()
+                .inNamespace("default").list().getItems().size());
+    }
+
+    @Test
+    void reconcile_failsOnMalformedPersistedNames() {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 1, 10,
+                List.of(new ScalingMetric("queue_depth", "5", null)));
+
+        assertThrows(IllegalArgumentException.class, () -> resourceManager.reconcile(
+                spec(scaling), 1, Map.of(ProvisionResult.DEPLOYMENT, "fn-echo", ProvisionResult.SERVICE, "fn-echo")));
+        assertThrows(IllegalArgumentException.class, () -> resourceManager.reconcile(
+                spec(scaling), 1, objects("default", " ", "fn-echo")));
+    }
+
+    @Test
+    void reconcile_failsOnMismatchedPersistedNames() {
+        ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 1, 10,
+                List.of(new ScalingMetric("queue_depth", "5", null)));
+
+        assertThrows(IllegalArgumentException.class, () -> resourceManager.reconcile(
+                spec(scaling), 1, objects("default", "fn-other", "fn-echo")));
+        assertThrows(IllegalArgumentException.class, () -> resourceManager.reconcile(
+                spec(scaling), 1, objects("other-ns", "fn-echo", "fn-echo")));
     }
 }
