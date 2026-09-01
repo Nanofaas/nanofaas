@@ -19,6 +19,9 @@ class ControlPlaneCommandTest {
               /v1/functions/{name}:enqueue:
                 post:
                   summary: Enqueue an async invocation
+                  responses:
+                    '202':
+                      description: Accepted
               /modules/build-metadata:
                 get:
                   summary: Build metadata
@@ -30,6 +33,9 @@ class ControlPlaneCommandTest {
               /v1/functions/{name}:enqueue:
                 post:
                   summary: Enqueue an async invocation
+                  responses:
+                    '202':
+                      description: Accepted
             """;
 
     private static final String METADATA_JSON = """

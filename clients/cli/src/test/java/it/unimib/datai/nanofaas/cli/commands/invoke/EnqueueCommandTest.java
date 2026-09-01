@@ -25,11 +25,20 @@ class EnqueueCommandTest {
               /v1/functions/{name}:enqueue:
                 post:
                   summary: Enqueue an async invocation
+                  responses:
+                    '202':
+                      description: Accepted
             """;
 
     private static final String OPENAPI_WITHOUT_ASYNC = """
             openapi: 3.0.0
-            paths: {}
+            paths:
+              /v1/functions/{name}:enqueue:
+                post:
+                  summary: Enqueue an async invocation
+                  responses:
+                    '501':
+                      description: Async queue unavailable
             """;
 
     private MockWebServer server;

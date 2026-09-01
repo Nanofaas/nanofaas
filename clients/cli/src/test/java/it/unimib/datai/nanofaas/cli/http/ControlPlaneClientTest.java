@@ -255,6 +255,9 @@ class ControlPlaneClientTest {
                           /v1/functions/{name}:enqueue:
                             post:
                               summary: Enqueue
+                              responses:
+                                '202':
+                                  description: Accepted
                           /modules/build-metadata:
                             get:
                               summary: Build metadata

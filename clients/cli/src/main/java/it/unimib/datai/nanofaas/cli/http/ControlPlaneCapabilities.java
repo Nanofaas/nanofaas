@@ -9,9 +9,9 @@ import java.io.IOException;
 /**
  * Capabilities of a control-plane build, derived from its OpenAPI contract.
  *
- * <p>Each boolean reflects the presence of a specific route + HTTP method in the
- * control-plane's {@code /openapi.yaml} document. Optional CLI commands guard on
- * these at execution time so that {@code --help} remains offline.</p>
+ * <p>Each boolean reflects an operation exposed by the control-plane's
+ * {@code /openapi.yaml} document. Optional CLI commands guard on these at execution
+ * time so that {@code --help} remains offline.</p>
  */
 public record ControlPlaneCapabilities(
         boolean functionUpdate,
@@ -29,7 +29,8 @@ public record ControlPlaneCapabilities(
                     has(paths, "/v1/functions/{name}", "patch"),
                     has(paths, "/v1/functions/{name}/replicas", "get")
                             && has(paths, "/v1/functions/{name}/replicas", "put"),
-                    has(paths, "/v1/functions/{name}:enqueue", "post"),
+                    paths.path("/v1/functions/{name}:enqueue")
+                            .path("post").path("responses").has("202"),
                     has(paths, "/modules/build-metadata", "get"),
                     has(paths, "/v1/admin/runtime-config", "get")
                             && has(paths, "/v1/admin/runtime-config/{namespace}", "patch")

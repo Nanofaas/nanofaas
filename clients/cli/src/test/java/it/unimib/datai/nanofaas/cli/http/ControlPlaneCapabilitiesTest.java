@@ -24,6 +24,9 @@ class ControlPlaneCapabilitiesTest {
               /v1/functions/{name}:enqueue:
                 post:
                   summary: Enqueue an async invocation
+                  responses:
+                    '202':
+                      description: Accepted
               /modules/build-metadata:
                 get:
                   summary: Build metadata
@@ -50,16 +53,19 @@ class ControlPlaneCapabilitiesTest {
     }
 
     @Test
-    void missingRouteYieldsFalseCapability() {
+    void coreEnqueueStubYieldsFalseAsyncCapability() {
         ControlPlaneCapabilities caps = ControlPlaneCapabilities.fromOpenApi("""
                 openapi: 3.0.0
                 paths:
                   /v1/functions/{name}:enqueue:
                     post:
                       summary: Enqueue an async invocation
+                      responses:
+                        '501':
+                          description: Async queue unavailable
                 """);
 
-        assertThat(caps.asyncInvocation()).isTrue();
+        assertThat(caps.asyncInvocation()).isFalse();
         assertThat(caps.functionUpdate()).isFalse();
         assertThat(caps.replicas()).isFalse();
         assertThat(caps.buildMetadata()).isFalse();
