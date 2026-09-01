@@ -4,6 +4,8 @@ import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.CreateContainerCmd;
 import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.exception.NotFoundException;
+import com.github.dockerjava.api.model.Container;
+import com.github.dockerjava.api.model.ContainerPort;
 import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.HostConfig;
 import com.github.dockerjava.api.model.PortBinding;
@@ -86,6 +88,7 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
                 .withName(spec.containerName())
                 .withExposedPorts(functionPort)
                 .withHostConfig(hostConfig)
+                .withLabels(spec.labels())
                 .withEnv(environment(spec.env()))) {
             if (spec.command() != null && !spec.command().isEmpty()) {
                 create.withCmd(spec.command());
@@ -103,6 +106,49 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
         } catch (NotFoundException _) {
             // Removal is idempotent.
         }
+    }
+
+    @Override
+    public List<ManagedContainer> listManagedContainers(String functionName) {
+        return client.listContainersCmd()
+                .withShowAll(true)
+                .withLabelFilter(Map.of(
+                        ContainerLocalDeploymentProvider.MANAGED_LABEL, "true",
+                        ContainerLocalDeploymentProvider.FUNCTION_LABEL, functionName))
+                .exec().stream()
+                .map(DockerJavaContainerRuntimeAdapter::toManagedContainer)
+                .toList();
+    }
+
+    private static ManagedContainer toManagedContainer(Container container) {
+        String name = containerName(container);
+        return new ManagedContainer(
+                name,
+                ContainerLocalDeploymentProvider.replicaIndex(name),
+                publishedHostPort(container),
+                "running".equalsIgnoreCase(container.getState()));
+    }
+
+    private static String containerName(Container container) {
+        String[] names = container.getNames();
+        if (names == null || names.length == 0) {
+            return "";
+        }
+        String name = names[0];
+        return name.startsWith("/") ? name.substring(1) : name;
+    }
+
+    private static Integer publishedHostPort(Container container) {
+        ContainerPort[] ports = container.getPorts();
+        if (ports == null) {
+            return null;
+        }
+        for (ContainerPort port : ports) {
+            if ("tcp".equalsIgnoreCase(port.getType()) && Integer.valueOf(8080).equals(port.getPrivatePort())) {
+                return port.getPublicPort();
+            }
+        }
+        return null;
     }
 
     @Override

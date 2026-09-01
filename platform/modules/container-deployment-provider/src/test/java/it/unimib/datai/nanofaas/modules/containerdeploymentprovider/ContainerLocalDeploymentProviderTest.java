@@ -382,6 +382,159 @@ class ContainerLocalDeploymentProviderTest {
                         .containsEntry("CALLBACK_URL", "http://control-plane.local:8080/v1/internal/executions"));
     }
 
+    @Test
+    void reconcile_adoptsHealthyOwnedContainersAndCreatesOnlyMissingReplicas() {
+        RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
+        adapter.managedContainers(List.of(
+                new ManagedContainer("nanofaas-echo-r1", 1, 31001, true),
+                new ManagedContainer("nanofaas-echo-r2", 2, 31002, true)));
+        RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
+        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                adapter,
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
+                new ReadyEndpointProbe(),
+                new FixedPortAllocator(),
+                functionName -> proxy
+        );
+
+        ProvisionResult result = provider.reconcile(spec("echo", 2), 2,
+                Map.of(ProvisionResult.CONTAINER_NAME_PREFIX, "nanofaas-echo"));
+
+        assertThat(adapter.removedContainers()).isEmpty();
+        assertThat(adapter.startedSpecs()).isEmpty();
+        assertThat(provider.getReplicaStatus("echo").readyReplicas()).isEqualTo(2);
+        assertThat(result.endpointUrl()).isNotBlank();
+        assertThat(proxy.backends()).containsExactly(
+                "http://127.0.0.1:31001",
+                "http://127.0.0.1:31002"
+        );
+    }
+
+    @Test
+    void reconcile_replacesOnlyUnhealthyOrMissingReplicas() {
+        RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
+        adapter.managedContainers(List.of(
+                new ManagedContainer("nanofaas-echo-r1", 1, 31001, true),
+                new ManagedContainer("nanofaas-echo-r2", 2, null, false)));
+        RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
+        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                adapter,
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
+                new ReadyEndpointProbe(),
+                new FixedPortAllocator(31002, 31003),
+                functionName -> proxy
+        );
+
+        provider.reconcile(spec("echo", 3), 3,
+                Map.of(ProvisionResult.CONTAINER_NAME_PREFIX, "nanofaas-echo"));
+
+        assertThat(adapter.removedContainers()).containsExactly("nanofaas-echo-r2");
+        assertThat(adapter.startedSpecs().stream().map(ContainerInstanceSpec::containerName))
+                .containsExactly("nanofaas-echo-r2", "nanofaas-echo-r3");
+        assertThat(provider.getReplicaStatus("echo").readyReplicas()).isEqualTo(3);
+        assertThat(proxy.backends()).containsExactly(
+                "http://127.0.0.1:31001",
+                "http://127.0.0.1:31002",
+                "http://127.0.0.1:31003"
+        );
+    }
+
+    @Test
+    void reconcile_removesOnlyReplicasAboveThePersistedTarget() {
+        RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
+        adapter.managedContainers(List.of(
+                new ManagedContainer("nanofaas-echo-r1", 1, 31001, true),
+                new ManagedContainer("nanofaas-echo-r2", 2, 31002, true),
+                new ManagedContainer("nanofaas-echo-r3", 3, 31003, true)));
+        RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
+        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                adapter,
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
+                new ReadyEndpointProbe(),
+                new FixedPortAllocator(),
+                functionName -> proxy
+        );
+
+        provider.reconcile(spec("echo", 1), 1,
+                Map.of(ProvisionResult.CONTAINER_NAME_PREFIX, "nanofaas-echo"));
+
+        assertThat(adapter.removedContainers()).containsExactly("nanofaas-echo-r2", "nanofaas-echo-r3");
+        assertThat(adapter.startedSpecs()).isEmpty();
+        assertThat(proxy.backends()).containsExactly("http://127.0.0.1:31001");
+        assertThat(provider.getReplicaStatus("echo").readyReplicas()).isEqualTo(1);
+    }
+
+    @Test
+    void reconcile_creationFailure_removesOnlyContainersCreatedDuringReconcile() {
+        RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
+        adapter.managedContainers(List.of(
+                new ManagedContainer("nanofaas-echo-r1", 1, 31001, true)));
+        RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
+        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                adapter,
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
+                new FailSecondOnceEndpointProbe(),
+                new FixedPortAllocator(31002, 31003),
+                functionName -> proxy
+        );
+
+        Throwable failure = catchThrowable(() -> provider.reconcile(spec("echo", 3), 3,
+                Map.of(ProvisionResult.CONTAINER_NAME_PREFIX, "nanofaas-echo")));
+
+        assertThat(failure).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("second replica failed");
+        assertThat(adapter.removedContainers())
+                .containsExactly("nanofaas-echo-r3", "nanofaas-echo-r2");
+        assertThat(proxy.isClosed()).isTrue();
+    }
+
+    @Test
+    void reconcile_wrongPersistedPrefix_failsWithoutRemovingAdoptedContainers() {
+        RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
+        adapter.managedContainers(List.of(
+                new ManagedContainer("nanofaas-echo-r1", 1, 31001, true)));
+        RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
+        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                adapter,
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
+                new ReadyEndpointProbe(),
+                new FixedPortAllocator(),
+                functionName -> proxy
+        );
+
+        assertThatThrownBy(() -> provider.reconcile(spec("echo", 1), 1,
+                Map.of(ProvisionResult.CONTAINER_NAME_PREFIX, "nanofaas-other")))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        assertThat(adapter.removedContainers()).isEmpty();
+        assertThat(adapter.startedSpecs()).isEmpty();
+        assertThat(proxy.isClosed()).isFalse();
+    }
+
+    @Test
+    void reconcile_duplicateReplicaIndex_failsWithoutRemovingAdoptedContainers() {
+        RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
+        adapter.managedContainers(List.of(
+                new ManagedContainer("nanofaas-echo-r1", 1, 31001, true),
+                new ManagedContainer("nanofaas-echo-r1", 1, 31002, true)));
+        RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
+        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                adapter,
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
+                new ReadyEndpointProbe(),
+                new FixedPortAllocator(),
+                functionName -> proxy
+        );
+
+        assertThatThrownBy(() -> provider.reconcile(spec("echo", 2), 2,
+                Map.of(ProvisionResult.CONTAINER_NAME_PREFIX, "nanofaas-echo")))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        assertThat(adapter.removedContainers()).isEmpty();
+        assertThat(adapter.startedSpecs()).isEmpty();
+        assertThat(proxy.isClosed()).isFalse();
+    }
+
     private static FunctionSpec spec(String name, int minReplicas) {
         return spec(name, minReplicas, null);
     }
@@ -460,6 +613,7 @@ class ContainerLocalDeploymentProviderTest {
     private static class RecordingContainerRuntimeAdapter implements ContainerRuntimeAdapter {
         private final List<ContainerInstanceSpec> started = new ArrayList<>();
         private final List<String> removed = new ArrayList<>();
+        private List<ManagedContainer> managedContainers = List.of();
 
         @Override
         public boolean isAvailable() {
@@ -479,6 +633,15 @@ class ContainerLocalDeploymentProviderTest {
         @Override
         public void removeContainer(String containerName) {
             removed.add(containerName);
+        }
+
+        @Override
+        public List<ManagedContainer> listManagedContainers(String functionName) {
+            return managedContainers;
+        }
+
+        void managedContainers(List<ManagedContainer> containers) {
+            this.managedContainers = List.copyOf(containers);
         }
 
         List<Integer> startedPorts() {

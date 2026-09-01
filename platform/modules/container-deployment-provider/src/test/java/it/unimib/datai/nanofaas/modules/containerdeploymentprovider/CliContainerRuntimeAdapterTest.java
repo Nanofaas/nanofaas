@@ -43,7 +43,8 @@ class CliContainerRuntimeAdapterTest {
                 new ResourceSpec(
                         new ResourceQuantity(new BigDecimal("0.25"), 256),
                         new ResourceQuantity(BigDecimal.ONE, 512)
-                )
+                ),
+                null
         ));
 
         assertThat(executor.commands()).containsExactly(
@@ -91,7 +92,7 @@ class CliContainerRuntimeAdapterTest {
     }
 
     private static ContainerInstanceSpec instance(ResourceSpec resources) {
-        return new ContainerInstanceSpec("fn-r1", "img", 18080, List.of(), Map.of(), resources);
+        return new ContainerInstanceSpec("fn-r1", "img", 18080, List.of(), Map.of(), resources, null);
     }
 
     private static final class RecordingCliCommandExecutor implements CliCommandExecutor {
@@ -129,7 +130,7 @@ class CliContainerRuntimeAdapterTest {
                 new CliContainerRuntimeAdapter("docker", executor, "0-3");
 
         adapter.runContainer(new ContainerInstanceSpec(
-                "nanofaas-echo-r1", "img:latest", 18080, List.of(), Map.of(), null));
+                "nanofaas-echo-r1", "img:latest", 18080, List.of(), Map.of(), null, null));
 
         assertThat(executor.commands().get(1)).containsSequence("--cpuset-cpus", "0-3");
     }
@@ -142,8 +143,52 @@ class CliContainerRuntimeAdapterTest {
         CliContainerRuntimeAdapter adapter = new CliContainerRuntimeAdapter("docker", executor);
 
         adapter.runContainer(new ContainerInstanceSpec(
-                "nanofaas-echo-r1", "img:latest", 18080, List.of(), Map.of(), null));
+                "nanofaas-echo-r1", "img:latest", 18080, List.of(), Map.of(), null, null));
 
         assertThat(executor.commands().get(1)).doesNotContain("--cpuset-cpus");
+    }
+
+    @Test
+    void runContainer_passesOwnershipLabels() {
+        RecordingCliCommandExecutor executor = new RecordingCliCommandExecutor()
+                .withResult(ExecutionResult.success(""))
+                .withResult(ExecutionResult.success(""));
+        CliContainerRuntimeAdapter adapter = new CliContainerRuntimeAdapter("docker", executor);
+
+        adapter.runContainer(new ContainerInstanceSpec(
+                "nanofaas-echo-r1", "img:latest", 18080, List.of(), Map.of(), null,
+                Map.of(
+                        ContainerLocalDeploymentProvider.MANAGED_LABEL, "true",
+                        ContainerLocalDeploymentProvider.FUNCTION_LABEL, "echo",
+                        ContainerLocalDeploymentProvider.REPLICA_LABEL, "1")
+        ));
+
+        assertThat(executor.commands().get(1)).containsSubsequence(
+                "--label", "io.nanofaas.function=echo",
+                "--label", "io.nanofaas.managed=true",
+                "--label", "io.nanofaas.replica=1"
+        );
+    }
+
+    @Test
+    void listManagedContainers_returnsRunningAndStoppedOwnedReplicasWithIndexAndHostPort() {
+        RecordingCliCommandExecutor executor = new RecordingCliCommandExecutor()
+                .withResult(ExecutionResult.success("nanofaas-echo-r1\trunning\nnanofaas-echo-r2\texited\n"))
+                .withResult(ExecutionResult.success("0.0.0.0:31001"));
+        CliContainerRuntimeAdapter adapter = new CliContainerRuntimeAdapter("docker", executor);
+
+        assertThat(adapter.listManagedContainers("echo")).containsExactly(
+                new ManagedContainer("nanofaas-echo-r1", 1, 31001, true),
+                new ManagedContainer("nanofaas-echo-r2", 2, null, false)
+        );
+
+        assertThat(executor.commands()).containsExactly(
+                List.of(
+                        "docker", "ps", "-a",
+                        "--filter", "label=io.nanofaas.managed=true",
+                        "--filter", "label=io.nanofaas.function=echo",
+                        "--format", "{{.Names}}\t{{.State}}"),
+                List.of("docker", "port", "nanofaas-echo-r1", "8080/tcp")
+        );
     }
 }

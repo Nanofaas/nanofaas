@@ -67,6 +67,12 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
                     command.add("-e");
                     command.add(entry.getKey() + "=" + entry.getValue());
                 });
+        spec.labels().entrySet().stream()
+                .sorted(Map.Entry.comparingByKey(Comparator.naturalOrder()))
+                .forEach(entry -> {
+                    command.add("--label");
+                    command.add(entry.getKey() + "=" + entry.getValue());
+                });
         command.add(spec.image());
         if (spec.command() != null && !spec.command().isEmpty()) {
             command.addAll(spec.command());
@@ -108,5 +114,47 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
     @Override
     public void removeContainer(String containerName) {
         executor.run(List.of(runtimeAdapter, "rm", "-f", containerName));
+    }
+
+    @Override
+    public List<ManagedContainer> listManagedContainers(String functionName) {
+        ExecutionResult listing = executor.run(List.of(
+                runtimeAdapter, "ps", "-a",
+                "--filter", "label=" + ContainerLocalDeploymentProvider.MANAGED_LABEL + "=true",
+                "--filter", "label=" + ContainerLocalDeploymentProvider.FUNCTION_LABEL + "=" + functionName,
+                "--format", "{{.Names}}\t{{.State}}"));
+        if (!listing.isSuccess()) {
+            return List.of();
+        }
+
+        List<ManagedContainer> containers = new ArrayList<>();
+        for (String line : listing.output().lines().toList()) {
+            if (line.isBlank()) {
+                continue;
+            }
+            int tab = line.indexOf('\t');
+            String name = tab < 0 ? line.strip() : line.substring(0, tab);
+            boolean running = tab >= 0 && "running".equalsIgnoreCase(line.substring(tab + 1).strip());
+            containers.add(new ManagedContainer(
+                    name,
+                    ContainerLocalDeploymentProvider.replicaIndex(name),
+                    running ? publishedPort(name) : null,
+                    running));
+        }
+        return containers;
+    }
+
+    private Integer publishedPort(String containerName) {
+        ExecutionResult port = executor.run(List.of(runtimeAdapter, "port", containerName, "8080/tcp"));
+        if (!port.isSuccess() || port.output().isBlank()) {
+            return null;
+        }
+        String output = port.output().strip();
+        int colon = output.lastIndexOf(':');
+        try {
+            return Integer.parseInt(colon < 0 ? output : output.substring(colon + 1));
+        } catch (NumberFormatException _) {
+            return null;
+        }
     }
 }

@@ -3,10 +3,13 @@ package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.CreateContainerCmd;
 import com.github.dockerjava.api.command.CreateContainerResponse;
+import com.github.dockerjava.api.command.ListContainersCmd;
 import com.github.dockerjava.api.command.PingCmd;
 import com.github.dockerjava.api.command.RemoveContainerCmd;
 import com.github.dockerjava.api.command.StartContainerCmd;
 import com.github.dockerjava.api.exception.NotFoundException;
+import com.github.dockerjava.api.model.Container;
+import com.github.dockerjava.api.model.ContainerPort;
 import com.github.dockerjava.api.model.HostConfig;
 import it.unimib.datai.nanofaas.common.model.ResourceQuantity;
 import it.unimib.datai.nanofaas.common.model.ResourceSpec;
@@ -62,7 +65,8 @@ class DockerJavaContainerRuntimeAdapterTest {
                 new ResourceSpec(
                         new ResourceQuantity(new BigDecimal("0.25"), 256),
                         new ResourceQuantity(BigDecimal.ONE, 512)
-                )
+                ),
+                null
         ));
 
         ArgumentCaptor<List<String>> env = ArgumentCaptor.forClass(List.class);
@@ -105,6 +109,7 @@ class DockerJavaContainerRuntimeAdapterTest {
                 null,
                 List.of(),
                 Map.of(),
+                null,
                 null
         ));
 
@@ -125,5 +130,68 @@ class DockerJavaContainerRuntimeAdapterTest {
 
         assertThatCode(() -> adapter.removeContainer("missing")).doesNotThrowAnyException();
         verify(remove).withForce(true);
+    }
+
+    @Test
+    void runContainer_passesOwnershipLabelsToDocker() {
+        DockerClient client = mock(DockerClient.class);
+        RemoveContainerCmd remove = mock(RemoveContainerCmd.class, RETURNS_SELF);
+        CreateContainerCmd create = mock(CreateContainerCmd.class, RETURNS_SELF);
+        StartContainerCmd start = mock(StartContainerCmd.class);
+        CreateContainerResponse response = new CreateContainerResponse();
+        response.setId("container-id");
+        when(client.removeContainerCmd("nanofaas-echo-r1")).thenReturn(remove);
+        when(client.createContainerCmd("example/echo:latest")).thenReturn(create);
+        when(create.exec()).thenReturn(response);
+        when(client.startContainerCmd("container-id")).thenReturn(start);
+
+        DockerJavaContainerRuntimeAdapter adapter = new DockerJavaContainerRuntimeAdapter(client);
+        adapter.runContainer(new ContainerInstanceSpec(
+                "nanofaas-echo-r1",
+                "example/echo:latest",
+                18080,
+                List.of(),
+                Map.of(),
+                null,
+                Map.of(
+                        ContainerLocalDeploymentProvider.MANAGED_LABEL, "true",
+                        ContainerLocalDeploymentProvider.FUNCTION_LABEL, "echo",
+                        ContainerLocalDeploymentProvider.REPLICA_LABEL, "1")
+        ));
+
+        verify(create).withLabels(Map.of(
+                ContainerLocalDeploymentProvider.MANAGED_LABEL, "true",
+                ContainerLocalDeploymentProvider.FUNCTION_LABEL, "echo",
+                ContainerLocalDeploymentProvider.REPLICA_LABEL, "1"));
+    }
+
+    @Test
+    void listManagedContainers_returnsRunningAndStoppedOwnedReplicasWithIndexAndHostPort() {
+        DockerClient client = mock(DockerClient.class);
+        ListContainersCmd list = mock(ListContainersCmd.class, RETURNS_SELF);
+        when(client.listContainersCmd()).thenReturn(list);
+
+        Container running = mock(Container.class);
+        when(running.getNames()).thenReturn(new String[]{"/nanofaas-echo-r1"});
+        when(running.getState()).thenReturn("running");
+        when(running.getPorts()).thenReturn(new ContainerPort[]{
+                new ContainerPort().withType("tcp").withPrivatePort(8080).withPublicPort(31001)
+        });
+        Container stopped = mock(Container.class);
+        when(stopped.getNames()).thenReturn(new String[]{"/nanofaas-echo-r2"});
+        when(stopped.getState()).thenReturn("exited");
+        when(stopped.getPorts()).thenReturn(new ContainerPort[0]);
+        when(list.exec()).thenReturn(List.of(running, stopped));
+
+        DockerJavaContainerRuntimeAdapter adapter = new DockerJavaContainerRuntimeAdapter(client);
+
+        assertThat(adapter.listManagedContainers("echo")).containsExactly(
+                new ManagedContainer("nanofaas-echo-r1", 1, 31001, true),
+                new ManagedContainer("nanofaas-echo-r2", 2, null, false)
+        );
+        verify(list).withShowAll(true);
+        verify(list).withLabelFilter(Map.of(
+                ContainerLocalDeploymentProvider.MANAGED_LABEL, "true",
+                ContainerLocalDeploymentProvider.FUNCTION_LABEL, "echo"));
     }
 }

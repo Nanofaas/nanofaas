@@ -7,6 +7,8 @@ import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvide
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +19,9 @@ import java.util.concurrent.locks.ReentrantLock;
 public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvider {
 
     static final String BACKEND_ID = "container-local";
+    static final String MANAGED_LABEL = "io.nanofaas.managed";
+    static final String FUNCTION_LABEL = "io.nanofaas.function";
+    static final String REPLICA_LABEL = "io.nanofaas.replica";
     private static final Set<String> RESERVED_ENV = Set.of(
             "FUNCTION_NAME", "WARM", "TIMEOUT_MS", "EXECUTION_MODE", "WATCHDOG_CMD", "CALLBACK_URL"
     );
@@ -80,6 +85,51 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
                 states.remove(spec.name());
                 suppressCleanupFailure(e, proxy::close);
                 throw e;
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    @Override
+    public ProvisionResult reconcile(FunctionSpec spec,
+                                     int desiredReplicas,
+                                     Map<String, String> deploymentObjects) {
+        ReentrantLock lock = locks.computeIfAbsent(spec.name(), k -> new ReentrantLock());
+        lock.lock();
+        try {
+            String prefix = requirePersistedPrefix(spec.name(), deploymentObjects);
+            List<ManagedContainer> discovered = adapter.listManagedContainers(spec.name()).stream()
+                    .sorted(Comparator.comparingInt(ManagedContainer::replicaIndex))
+                    .toList();
+            validateReplicaIndexes(prefix, discovered);
+
+            ManagedFunctionProxy proxy = proxyFactory.create(spec.name());
+            FunctionState state = new FunctionState(spec, proxy);
+            Set<String> createdDuringReconcile = new HashSet<>();
+            try {
+                for (ManagedContainer container : discovered) {
+                    if (container.replicaIndex() > desiredReplicas) {
+                        adapter.removeContainer(container.name());
+                    } else if (adoptable(container)) {
+                        state.replicas.put(container.replicaIndex(),
+                                new ReplicaState(container.name(), container.hostPort(),
+                                        baseUrl(container.name(), container.hostPort())));
+                    } else {
+                        adapter.removeContainer(container.name());
+                        addReplica(state, container.replicaIndex());
+                        createdDuringReconcile.add(container.name());
+                    }
+                }
+                createMissingReplicas(state, desiredReplicas, createdDuringReconcile);
+                states.put(spec.name(), state);
+                return new ProvisionResult(proxy.endpointUrl(), backendId(), deploymentObjects(spec.name()));
+            } catch (RuntimeException failure) {
+                for (String createdName : createdDuringReconcile) {
+                    suppressCleanupFailure(failure, () -> adapter.removeContainer(createdName));
+                }
+                safeClose(proxy);
+                throw failure;
             }
         } finally {
             lock.unlock();
@@ -176,7 +226,11 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
                 hostPort,
                 state.spec.command() == null ? List.of() : state.spec.command(),
                 buildEnv(state.spec),
-                state.spec.resources()
+                state.spec.resources(),
+                Map.of(
+                        MANAGED_LABEL, "true",
+                        FUNCTION_LABEL, state.spec.name(),
+                        REPLICA_LABEL, Integer.toString(replicaIndex))
         );
 
         try {
@@ -194,6 +248,51 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
         if (removed != null) {
             adapter.removeContainer(removed.containerName());
         }
+    }
+
+    private String requirePersistedPrefix(String functionName, Map<String, String> deploymentObjects) {
+        String expected = containerNamePrefix(functionName);
+        String persisted = deploymentObjects == null ? null
+                : deploymentObjects.get(ProvisionResult.CONTAINER_NAME_PREFIX);
+        if (persisted == null || persisted.isBlank() || !expected.equals(persisted)) {
+            throw new IllegalArgumentException("Persisted container name prefix '" + persisted
+                    + "' does not match function '" + functionName + "'");
+        }
+        return expected;
+    }
+
+    private static void validateReplicaIndexes(String prefix, List<ManagedContainer> discovered) {
+        Set<Integer> seen = new HashSet<>();
+        for (ManagedContainer container : discovered) {
+            if (container.replicaIndex() < 1) {
+                throw new IllegalArgumentException("Managed container '" + container.name()
+                        + "' has an invalid replica index");
+            }
+            if (!container.name().equals(prefix + "-r" + container.replicaIndex())) {
+                throw new IllegalArgumentException("Managed container '" + container.name()
+                        + "' does not match the persisted prefix '" + prefix + "'");
+            }
+            if (!seen.add(container.replicaIndex())) {
+                throw new IllegalArgumentException("Duplicate replica index " + container.replicaIndex());
+            }
+        }
+    }
+
+    private boolean adoptable(ManagedContainer container) {
+        if (!container.running()) {
+            return false;
+        }
+        return properties.networkName() != null || container.hostPort() != null;
+    }
+
+    private void createMissingReplicas(FunctionState state, int desiredReplicas, Set<String> createdDuringReconcile) {
+        for (int replicaIndex = 1; replicaIndex <= desiredReplicas; replicaIndex++) {
+            if (!state.replicas.containsKey(replicaIndex)) {
+                addReplica(state, replicaIndex);
+                createdDuringReconcile.add(containerName(state.spec.name(), replicaIndex));
+            }
+        }
+        state.proxy.updateBackends(state.replicas.values().stream().map(ReplicaState::baseUrl).toList());
     }
 
     private int desiredReplicas(FunctionSpec spec) {
@@ -235,6 +334,18 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
 
     private static String containerNamePrefix(String functionName) {
         return "nanofaas-" + normalizeName(functionName);
+    }
+
+    static int replicaIndex(String containerName) {
+        int separator = containerName == null ? -1 : containerName.lastIndexOf("-r");
+        if (separator < 0) {
+            return -1;
+        }
+        try {
+            return Integer.parseInt(containerName.substring(separator + 2));
+        } catch (NumberFormatException _) {
+            return -1;
+        }
     }
 
     private String containerName(String functionName, int replicaIndex) {

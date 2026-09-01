@@ -35,6 +35,7 @@ class DockerJavaContainerRuntimeAdapterIntegrationTest {
                     18089,
                     List.of("sh", "-c", "sleep 30"),
                     Map.of("NANOFAAS_SPIKE", "true"),
+                    null,
                     null
             ));
 
@@ -73,6 +74,7 @@ class DockerJavaContainerRuntimeAdapterIntegrationTest {
                     null,
                     List.of("sh", "-c", "sleep 30"),
                     Map.of(),
+                    null,
                     null
             ));
 

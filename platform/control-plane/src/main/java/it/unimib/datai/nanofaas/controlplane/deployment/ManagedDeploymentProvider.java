@@ -17,16 +17,11 @@ public interface ManagedDeploymentProvider {
      * Restores persisted functions without destroying healthy resources: the
      * backend must reconcile its resources toward the persisted names and
      * replica target, creating only what is missing and leaving existing
-     * objects untouched.
-     *
-     * <p>The default is a temporary safe guard until every backend implements
-     * reconciliation. It must never delegate to {@link #provision(FunctionSpec)}.
+     * objects untouched. It must never delegate to {@link #provision(FunctionSpec)}.
      */
-    default ProvisionResult reconcile(FunctionSpec spec,
-                                      int desiredReplicas,
-                                      Map<String, String> deploymentObjects) {
-        throw new UnsupportedOperationException("Backend '" + backendId() + "' does not support reconciliation");
-    }
+    ProvisionResult reconcile(FunctionSpec spec,
+                              int desiredReplicas,
+                              Map<String, String> deploymentObjects);
 
     void deprovision(String functionName);
 

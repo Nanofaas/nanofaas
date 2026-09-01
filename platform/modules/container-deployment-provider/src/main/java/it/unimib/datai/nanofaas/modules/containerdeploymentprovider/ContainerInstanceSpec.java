@@ -10,6 +10,10 @@ record ContainerInstanceSpec(
         Integer hostPort,
         List<String> command,
         Map<String, String> env,
-        ResourceSpec resources
+        ResourceSpec resources,
+        Map<String, String> labels
 ) {
+    ContainerInstanceSpec {
+        labels = labels == null ? Map.of() : Map.copyOf(labels);
+    }
 }

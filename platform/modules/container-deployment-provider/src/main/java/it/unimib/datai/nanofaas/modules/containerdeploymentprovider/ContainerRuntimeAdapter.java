@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 
+import java.util.List;
+
 public interface ContainerRuntimeAdapter {
     boolean isAvailable();
 
@@ -8,4 +10,6 @@ public interface ContainerRuntimeAdapter {
     void runContainer(ContainerInstanceSpec spec);
 
     void removeContainer(String containerName);
+
+    List<ManagedContainer> listManagedContainers(String functionName);
 }
