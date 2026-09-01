@@ -137,7 +137,11 @@ public class FunctionService {
         if (function.deploymentMetadata().effectiveExecutionMode() != ExecutionMode.DEPLOYMENT) {
             throw new IllegalArgumentException("Function '" + name + "' is not in DEPLOYMENT mode");
         }
-        managedDeploymentCoordinator.setReplicas(requireManagedDeploymentTarget(function), replicas);
+        if (!managedDeploymentCoordinator.setReplicas(requireManagedDeploymentTarget(function), replicas)) {
+            // A concurrent remove deleted the function between the lookup above and the
+            // coordinator's own re-check under the lock; treat it as not-found.
+            return Optional.empty();
+        }
         log.info("Set replicas for function {} to {}", name, replicas);
         return Optional.of(replicas);
     }

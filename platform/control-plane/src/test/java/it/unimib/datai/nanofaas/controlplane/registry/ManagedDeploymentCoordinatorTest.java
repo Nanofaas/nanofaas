@@ -131,7 +131,9 @@ class ManagedDeploymentCoordinatorTest {
             Future<Optional<FunctionSpec>> removeFuture = executor.submit(() -> service.remove("fn"));
             assertThat(removalEntered.await(5, TimeUnit.SECONDS)).isTrue();
 
-            Future<?> scaleFuture = executor.submit(() -> sharedCoordinator.setReplicas(target, 3));
+            Future<Boolean> scaleFuture = executor.submit(() -> {
+                return sharedCoordinator.setReplicas(target, 3);
+            });
 
             // The autoscaler-style scale must stay blocked while removal holds the shared lock.
             Thread.sleep(100);
@@ -140,8 +142,7 @@ class ManagedDeploymentCoordinatorTest {
             releaseRemoval.countDown();
             assertThat(removeFuture.get(5, TimeUnit.SECONDS)).isPresent();
 
-            assertThatThrownBy(() -> scaleFuture.get(5, TimeUnit.SECONDS))
-                    .hasRootCauseMessage("Function 'fn' is not registered");
+            assertThat(scaleFuture.get(5, TimeUnit.SECONDS)).isFalse();
             verify(provider, never()).setReplicas("fn", 3);
             verify(provider).deprovision("fn");
         } finally {

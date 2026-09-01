@@ -9,6 +9,7 @@ import org.mockito.ArgumentCaptor;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProperties;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
+import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class FunctionServiceTest {
@@ -293,6 +295,31 @@ class FunctionServiceTest {
     @Test
     void setReplicas_notFound_returnsEmpty() {
         assertTrue(service.setReplicas("ghost", 2).isEmpty());
+    }
+
+    @Test
+    void setReplicas_returnsEmptyWhenCoordinatorFindsFunctionAlreadyRemoved() {
+        ManagedDeploymentProvider provider = provider();
+        when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
+        ManagedDeploymentCoordinator coordinator = mock(ManagedDeploymentCoordinator.class);
+        FunctionService service = new FunctionService(
+                registry,
+                defaults,
+                imageValidator,
+                List.of(),
+                resolver(provider),
+                new FunctionOperationLocks(),
+                coordinator
+        );
+        service.register(new FunctionSpec("fn", "img:latest", null, null, null,
+                null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null));
+
+        // A concurrent remove won the race after the manual lookup above but before the
+        // coordinator's re-check under the lock; the coordinator reports the function as gone.
+        when(coordinator.setReplicas(any(ManagedDeploymentTarget.class), eq(2))).thenReturn(false);
+
+        assertTrue(service.setReplicas("fn", 2).isEmpty());
+        verify(coordinator).setReplicas(any(ManagedDeploymentTarget.class), eq(2));
     }
 
     @Test

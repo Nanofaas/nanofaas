@@ -35,14 +35,21 @@ public class ManagedDeploymentCoordinator {
         return requireProvider(target).getReplicaStatus(target.functionName());
     }
 
-    public void setReplicas(ManagedDeploymentTarget target, int replicas) {
+    /**
+     * Persists the new replica target and applies it through the backend provider.
+     *
+     * @return {@code false} when the function is no longer registered (e.g. a concurrent removal
+     *         won the race); {@code true} once the change has been applied.
+     */
+    public boolean setReplicas(ManagedDeploymentTarget target, int replicas) {
         if (replicas < 0) {
             throw new IllegalArgumentException("replicas must be >= 0");
         }
-        locks.withLock(target.functionName(), () -> {
-            RegisteredFunction existing = registry.getRegistered(target.functionName())
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Function '" + target.functionName() + "' is not registered"));
+        return locks.withLock(target.functionName(), () -> {
+            RegisteredFunction existing = registry.getRegistered(target.functionName()).orElse(null);
+            if (existing == null) {
+                return false;
+            }
             if (existing.managedDeploymentTarget().filter(target::equals).isEmpty()) {
                 throw new IllegalStateException("Persisted deployment backend does not match " + target);
             }
@@ -59,6 +66,7 @@ public class ManagedDeploymentCoordinator {
                 }
                 throw failure;
             }
+            return true;
         });
     }
 
