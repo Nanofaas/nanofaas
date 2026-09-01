@@ -19,16 +19,20 @@ class RuntimeConfigRegistryTest {
                 .extracting(Map::keySet)
                 .isEqualTo(java.util.Set.of("control-plane", "sync-queue"));
         assertThat(registry.extension("control-plane")).isPresent();
-        assertThatThrownBy(() -> registry.snapshot().put("other", Map.of()))
+        Map<String, Map<String, Object>> snapshot = registry.snapshot();
+        Map<String, Object> extra = Map.of();
+        assertThatThrownBy(() -> snapshot.put("other", extra))
                 .isInstanceOf(UnsupportedOperationException.class);
     }
 
     @Test
     void rejectsBlankAndDuplicateNamespaces() {
-        assertThatThrownBy(() -> new RuntimeConfigRegistry(List.of(extension(" ", 1))))
+        List<RuntimeConfigExtension> blankNamespace = List.of(extension(" ", 1));
+        assertThatThrownBy(() -> new RuntimeConfigRegistry(blankNamespace))
                 .isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> new RuntimeConfigRegistry(List.of(
-                extension("queue", 1), extension("queue", 2))))
+        List<RuntimeConfigExtension> duplicateNamespace =
+                List.of(extension("queue", 1), extension("queue", 2));
+        assertThatThrownBy(() -> new RuntimeConfigRegistry(duplicateNamespace))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("queue");
     }

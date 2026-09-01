@@ -124,8 +124,8 @@ class SyncQueueWorkloadMetricsTest {
     void realCompletionPathReleasesAcquiredSlot() {
         Fixture fixture = fixture();
         InvocationTask task = task("e1", "fn");
-        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
-        fixture.store.put(record);
+        ExecutionRecord execution = new ExecutionRecord(task.executionId(), task);
+        fixture.store.put(execution);
         assertTrue(fixture.enqueuer.tryAcquireSlot("fn"));
 
         new ExecutionCompletionHandler(fixture.store, fixture.enqueuer,
@@ -139,10 +139,10 @@ class SyncQueueWorkloadMetricsTest {
     void realTimeoutCompletionPathReleasesAcquiredSlot() {
         Fixture fixture = fixture();
         InvocationTask task = task("e1", "fn");
-        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
-        fixture.store.put(record);
+        ExecutionRecord execution = new ExecutionRecord(task.executionId(), task);
+        fixture.store.put(execution);
         assertTrue(fixture.enqueuer.tryAcquireSlot("fn"));
-        record.markTimeout();
+        execution.markTimeout();
 
         new ExecutionCompletionHandler(fixture.store, fixture.enqueuer,
                 mock(DispatcherRouter.class), new Metrics(new SimpleMeterRegistry()))

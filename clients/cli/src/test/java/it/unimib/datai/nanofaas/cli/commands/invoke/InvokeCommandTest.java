@@ -188,7 +188,7 @@ class InvokeCommandTest {
     }
 
     @Test
-    void invokeMarked201ExitsZero() throws Exception {
+    void invokeMarked201ExitsZero() {
         server.enqueue(new MockResponse()
                 .setResponseCode(201)
                 .addHeader("X-NanoFaaS-Function-Status", "true")
@@ -207,7 +207,7 @@ class InvokeCommandTest {
     }
 
     @Test
-    void invokeMarked404PrintsEnvelopeAndExitsOne() throws Exception {
+    void invokeMarked404PrintsEnvelopeAndExitsOne() {
         server.enqueue(new MockResponse()
                 .setResponseCode(404)
                 .addHeader("X-NanoFaaS-Function-Status", "true")
@@ -235,7 +235,7 @@ class InvokeCommandTest {
     }
 
     @Test
-    void invokeMarked204PrintsStatusCode() throws Exception {
+    void invokeMarked204PrintsStatusCode() {
         server.enqueue(new MockResponse()
                 .setResponseCode(204)
                 .addHeader("X-NanoFaaS-Function-Status", "true")

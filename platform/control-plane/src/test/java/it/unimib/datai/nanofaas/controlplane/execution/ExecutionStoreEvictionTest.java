@@ -55,11 +55,11 @@ class ExecutionStoreEvictionTest {
     @Test
     void settleMovesTheRecordOutOfTheLiving() {
         ExecutionStore store = store();
-        ExecutionRecord record = executionRecord("done");
-        store.put(record);
-        record.markSuccess("out");
+        ExecutionRecord execution = executionRecord("done");
+        store.put(execution);
+        execution.markSuccess("out");
 
-        store.settle(record);
+        store.settle(execution);
 
         // E' questo il punto di tutto il lavoro: l'apparato del vivo - la future,
         // il task, la richiesta, il set dei tentativi - smette di essere raggiungibile.
@@ -72,11 +72,11 @@ class ExecutionStoreEvictionTest {
     @Test
     void settleIgnoresARecordThatIsStillRunning() {
         ExecutionStore store = store();
-        ExecutionRecord record = executionRecord("still-going");
-        store.put(record);
-        record.markRunning();
+        ExecutionRecord execution = executionRecord("still-going");
+        store.put(execution);
+        execution.markRunning();
 
-        store.settle(record);
+        store.settle(execution);
 
         assertThat(store.getOrNull("still-going")).isNotNull();
         assertThat(store.outcomeOf("still-going")).isNull();
@@ -87,12 +87,12 @@ class ExecutionStoreEvictionTest {
         // Le sedi che la chiamano sono nove su tre moduli, e alcune si sovrappongono:
         // un dispatch che completa dopo che il percorso sincrono e' gia' andato in timeout.
         ExecutionStore store = store();
-        ExecutionRecord record = executionRecord("twice");
-        store.put(record);
-        record.markSuccess("out");
+        ExecutionRecord execution = executionRecord("twice");
+        store.put(execution);
+        execution.markSuccess("out");
 
-        store.settle(record);
-        store.settle(record);
+        store.settle(execution);
+        store.settle(execution);
 
         assertThat(store.size()).isEqualTo(1);
     }
@@ -125,10 +125,10 @@ class ExecutionStoreEvictionTest {
         ExecutionStore store = store(new ExecutionStoreProperties(TTL, MAX_LIFETIME, SYNC_TTL, 10));
 
         for (int i = 0; i < 500; i++) {
-            ExecutionRecord record = executionRecord("exec-" + i);
-            store.put(record);
-            record.markSuccess("out");
-            store.settle(record);
+            ExecutionRecord execution = executionRecord("exec-" + i);
+            store.put(execution);
+            execution.markSuccess("out");
+            store.settle(execution);
         }
 
         assertThat(store.size()).isLessThanOrEqualTo(10);
@@ -137,10 +137,10 @@ class ExecutionStoreEvictionTest {
     @Test
     void removeDeletesFromBothStructures() {
         ExecutionStore store = store();
-        ExecutionRecord record = executionRecord("to-remove");
-        store.put(record);
-        record.markSuccess("out");
-        store.settle(record);
+        ExecutionRecord execution = executionRecord("to-remove");
+        store.put(execution);
+        execution.markSuccess("out");
+        store.settle(execution);
 
         store.remove("to-remove");
 

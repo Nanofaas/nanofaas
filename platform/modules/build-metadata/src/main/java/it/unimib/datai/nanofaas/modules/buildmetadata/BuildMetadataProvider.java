@@ -94,6 +94,11 @@ final class BuildMetadataProvider {
         return (value == null || value.isBlank()) ? null : value;
     }
 
+    // null is the third state, not a mistake: "the build did not say". Reporting
+    // false for an artifact whose dirty flag is missing or malformed would claim a
+    // clean tree nobody verified, which is exactly the claim this endpoint exists
+    // to make checkable. Tests assert the null (BuildMetadataProviderTest).
+    @SuppressWarnings("java:S2447")
     private static Boolean parseDirty(String raw) {
         if (raw == null || raw.isBlank()) {
             return null;
@@ -108,6 +113,9 @@ final class BuildMetadataProvider {
         return null;
     }
 
+    // null distinguishes "the build recorded no module list" from the empty list,
+    // which would claim a control plane compiled with no modules at all.
+    @SuppressWarnings("java:S1168")
     private static List<String> parseModules(String raw) {
         if (raw == null || raw.isBlank()) {
             return null;
@@ -122,6 +130,7 @@ final class BuildMetadataProvider {
         return sortedOrNull(modules);
     }
 
+    @SuppressWarnings("java:S1168")   // see parseModules: null means unknown, empty means none
     private static List<String> sortedOrNull(List<String> values) {
         if (values == null || values.isEmpty()) {
             return null;

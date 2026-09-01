@@ -175,7 +175,12 @@ class FunctionCapacityRegistryTest {
             assertThat(timestampEntered.await(1, TimeUnit.SECONDS)).isTrue();
             CompletableFuture<Long> release =
                     CompletableFuture.supplyAsync(state::releaseSlotAndGetHoldNanos, workers);
-            Thread.sleep(50);
+            // The one thing with no signal to wait on: this proves the releasing thread
+            // reaches the lock while the acquirer still holds it, and "has blocked on a
+            // lock" is not observable. The latch above already replaced the wait that
+            // could be waited on; this window only widens the race the test is about,
+            // so a short nap here cannot make it pass falsely, only miss.
+            Thread.sleep(50);   // NOSONAR (java:S2925)
             allowTimestamp.countDown();
 
             assertThat(acquire.get(1, TimeUnit.SECONDS)).isTrue();

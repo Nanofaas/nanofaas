@@ -14,6 +14,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 class RuntimeConfigServiceTest {
+
+    // Hoisted out of the assertThatThrownBy lambdas: a lambda that also builds its
+    // argument has two calls that can throw, and the assertion cannot say which one did.
+    private static final Map<String, Object> NEW_VALUE = Map.of("value", 2);
+    private static final Map<String, Object> UNKNOWN_KEY = Map.of("invalid", true);
+
     @Test
     void updatesOneNamespaceAndIncrementsRevision() {
         TestExtension extension = new TestExtension("queue", 1);
@@ -37,9 +43,9 @@ class RuntimeConfigServiceTest {
         TestExtension extension = new TestExtension("queue", 1);
         RuntimeConfigService service = service(extension);
 
-        assertThatThrownBy(() -> service.update(1, "queue", Map.of("value", 2)))
+        assertThatThrownBy(() -> service.update(1, "queue", NEW_VALUE))
                 .isInstanceOf(RevisionMismatchException.class);
-        assertThatThrownBy(() -> service.update(0, "missing", Map.of("value", 2)))
+        assertThatThrownBy(() -> service.update(0, "missing", NEW_VALUE))
                 .isInstanceOf(UnknownRuntimeConfigNamespaceException.class);
         assertThat(extension.value).isEqualTo(1);
         assertThat(service.getSnapshot().revision()).isZero();
@@ -51,7 +57,7 @@ class RuntimeConfigServiceTest {
         extension.fail = true;
         RuntimeConfigService service = service(extension);
 
-        assertThatThrownBy(() -> service.update(0, "queue", Map.of("value", 2)))
+        assertThatThrownBy(() -> service.update(0, "queue", NEW_VALUE))
                 .isInstanceOf(RuntimeConfigApplyException.class);
         assertThat(extension.value).isEqualTo(1);
         assertThat(service.getSnapshot().revision()).isZero();
@@ -64,7 +70,7 @@ class RuntimeConfigServiceTest {
         SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
         RuntimeConfigService service = service(extension, meterRegistry);
 
-        assertThatThrownBy(() -> service.update(0, "queue", Map.of("value", 2)))
+        assertThatThrownBy(() -> service.update(0, "queue", NEW_VALUE))
                 .isInstanceOf(RuntimeConfigApplyException.class);
         assertThat(extension.value).isEqualTo(1);
         assertThat(service.getSnapshot().revision()).isZero();
@@ -88,7 +94,7 @@ class RuntimeConfigServiceTest {
         RuntimeConfigService service = new RuntimeConfigService(
                 new RuntimeConfigRegistry(List.of(extension)), meterRegistry);
 
-        assertThatThrownBy(() -> service.update(0, "queue", Map.of("value", 2)))
+        assertThatThrownBy(() -> service.update(0, "queue", NEW_VALUE))
                 .isInstanceOf(RuntimeConfigApplyException.class);
         assertThat(extension.value).isEqualTo(1);
         assertThat(service.getSnapshot().revision()).isZero();
@@ -126,9 +132,9 @@ class RuntimeConfigServiceTest {
         SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
         RuntimeConfigService service = service(extension, meterRegistry);
 
-        assertThatThrownBy(() -> service.update(1, "queue", Map.of("value", 2)))
+        assertThatThrownBy(() -> service.update(1, "queue", NEW_VALUE))
                 .isInstanceOf(RevisionMismatchException.class);
-        assertThatThrownBy(() -> service.update(0, "queue", Map.of("invalid", true)))
+        assertThatThrownBy(() -> service.update(0, "queue", UNKNOWN_KEY))
                 .isInstanceOf(RuntimeConfigValidationException.class);
 
         assertThat(meterRegistry.get("controlplane_runtime_config_apply_duration_seconds").timer().count()).isZero();

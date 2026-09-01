@@ -172,13 +172,23 @@ public final class ControlPlaneClient {
         if (resp.statusCode() != 200 && !functionDecided) {
             throw httpError("invoke function", resp);
         }
-        InvocationResponse response = resp.body() == null || resp.body().isBlank()
-                ? new InvocationResponse(
-                        resp.headers().firstValue("X-Execution-Id").orElse(null),
-                        resp.statusCode() >= 200 && resp.statusCode() < 300 ? "success" : "error",
-                        null, null, resp.statusCode(), null, null)
+        InvocationResponse response = bodilessResponse(resp)
+                ? synthesizedResponse(resp)
                 : json.fromJson(resp.body(), InvocationResponse.class);
         return new InvocationCallResult(resp.statusCode(), response);
+    }
+
+    private static boolean bodilessResponse(HttpResponse<String> response) {
+        return response.body() == null || response.body().isBlank();
+    }
+
+    /** The envelope a 204 carries in its headers instead of its body. */
+    private static InvocationResponse synthesizedResponse(HttpResponse<String> response) {
+        int status = response.statusCode();
+        String outcome = (status >= 200 && status < 300) ? "success" : "error";
+        return new InvocationResponse(
+                response.headers().firstValue("X-Execution-Id").orElse(null),
+                outcome, null, null, status, null, null);
     }
 
     public InvocationResponse enqueue(String name, InvocationRequest request, String idempotencyKey, String traceId) {

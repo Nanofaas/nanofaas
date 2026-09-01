@@ -93,11 +93,13 @@ class InvocationPathAccountingTest {
         when(enqueuer.isQueueFull(anyString())).thenReturn(true);
 
         // Early refusal: no execution is built, so the only record it leaves is this one.
-        assertThatThrownBy(() -> invocationService.invokeSyncReactive(
-                "full-fn", new InvocationRequest("payload", Map.of()), null, null, 50).block())
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        var refused = invocationService.invokeSyncReactive(
+                "full-fn", request, null, null, 50);
+        assertThatThrownBy(refused::block)
                 .isInstanceOf(QueueFullException.class);
         assertThatThrownBy(() -> invocationService.invokeAsync(
-                "full-fn", new InvocationRequest("payload", Map.of()), null, null))
+                "full-fn", request, null, null))
                 .isInstanceOf(QueueFullException.class);
 
         assertThat(refused("full-fn", "sync")).isEqualTo(1.0);

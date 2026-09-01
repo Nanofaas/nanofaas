@@ -41,6 +41,10 @@ public class AdminRuntimeConfigController {
                 : ResponseEntity.notFound().build();
     }
 
+    // 422 without an exception is the point of this endpoint: it reports whether a
+    // patch would be accepted, and the contract (openapi.yaml) declares that status
+    // as the "invalid values" answer. The CLI reads it as an answer, not a failure.
+    @SuppressWarnings("java:S6863")
     @PostMapping("/{namespace}/validate")
     public ResponseEntity<Object> validate(@PathVariable("namespace") String namespace, @RequestBody Map<String, Object> values) {
         try {

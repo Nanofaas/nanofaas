@@ -90,17 +90,17 @@ class RetentionFollowsTheReaderTest {
     @Test
     void aRetryDoesNotDemoteAKeyedExecution() {
         ExecutionStore store = store();
-        ExecutionRecord record = new ExecutionRecord("retried", task("retried", InvocationKind.SYNC, "order-8821", 1));
-        store.put(record);
+        ExecutionRecord execution = new ExecutionRecord("retried", task("retried", InvocationKind.SYNC, "order-8821", 1));
+        store.put(execution);
 
         // ExecutionCompletionHandler costruisce il task di retry SENZA la chiave -
         // il retry e' interno e non deve rivendicarla di nuovo. Letta dal task
         // corrente, la ritenzione declasserebbe proprio le esecuzioni che hanno
         // avuto problemi, e un client che replica la sua chiave non troverebbe
         // nulla e verrebbe addebitato due volte.
-        record.resetForRetry(task("retried", InvocationKind.SYNC, null, 2));
-        record.markSuccess("done");
-        store.settle(record);
+        execution.resetForRetry(task("retried", InvocationKind.SYNC, null, 2));
+        execution.markSuccess("done");
+        store.settle(execution);
 
         advance(SYNC_TTL.plusSeconds(1));
 
@@ -148,11 +148,11 @@ class RetentionFollowsTheReaderTest {
     @Test
     void everyOutcomeKeepsItsErrorAndItsTimings() {
         ExecutionStore store = store();
-        ExecutionRecord record = new ExecutionRecord("failed", task("failed", InvocationKind.SYNC, null, 1));
-        record.markRunning();
-        record.markError(new it.unimib.datai.nanofaas.common.model.ErrorInfo("BOOM", "esploso"));
-        store.put(record);
-        store.settle(record);
+        ExecutionRecord execution = new ExecutionRecord("failed", task("failed", InvocationKind.SYNC, null, 1));
+        execution.markRunning();
+        execution.markError(new it.unimib.datai.nanofaas.common.model.ErrorInfo("BOOM", "esploso"));
+        store.put(execution);
+        store.settle(execution);
 
         Outcome outcome = store.outcomeOf("failed");
         // Due stringhe: l'unica cosa che ha senso rileggere se la connessione e'
@@ -165,11 +165,11 @@ class RetentionFollowsTheReaderTest {
     // --- fixture -----------------------------------------------------------
 
     private static ExecutionRecord settled(ExecutionStore store, String id, InvocationKind kind, String key) {
-        ExecutionRecord record = new ExecutionRecord(id, task(id, kind, key, 1));
-        store.put(record);
-        record.markRunning();
-        record.markSuccess("done", 200, Map.of("Content-Type", "application/json"), "json");
-        return record;
+        ExecutionRecord execution = new ExecutionRecord(id, task(id, kind, key, 1));
+        store.put(execution);
+        execution.markRunning();
+        execution.markSuccess("done", 200, Map.of("Content-Type", "application/json"), "json");
+        return execution;
     }
 
     private static InvocationTask task(String id, InvocationKind kind, String key, int attempt) {

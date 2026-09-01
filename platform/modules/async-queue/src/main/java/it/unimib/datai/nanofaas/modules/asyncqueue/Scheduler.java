@@ -147,6 +147,32 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
         log.info("Scheduler loop exited");
     }
 
+    /**
+     * The next task to dispatch, with its slot already taken, or null when there is
+     * nothing to dispatch.
+     *
+     * <p>Split from the loop because the two ways of coming up empty are not the
+     * same: no slot was taken at all, or a slot was taken and has to go back. Inside
+     * the loop they were two breaks whose cleanup differed; here the caller sees one
+     * answer and the cleanup stays next to what it undoes.</p>
+     */
+    private InvocationTask acquireNext(String functionName, FunctionQueueState state) {
+        if (!state.tryAcquireSlot()) {
+            queueManager.recordSchedulerSlotBlocked(functionName);
+            return null;
+        }
+        long pollStarted = nanoTime.getAsLong();
+        InvocationTask task = state.poll();
+        queueManager.recordQueuePollDuration(
+                functionName,
+                nanoTime.getAsLong() - pollStarted
+        );
+        if (task == null) {
+            state.releaseSlot();
+        }
+        return task;
+    }
+
     private void processFunction(String functionName) {
         FunctionQueueState state = queueManager.get(functionName);
         if (state == null) {
@@ -155,18 +181,8 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
 
         int dispatched = 0;
         while (running.get() && dispatched < MAX_BATCH_PER_FUNCTION) {
-            if (!state.tryAcquireSlot()) {
-                queueManager.recordSchedulerSlotBlocked(functionName);
-                break;
-            }
-            long pollStarted = nanoTime.getAsLong();
-            InvocationTask task = state.poll();
-            queueManager.recordQueuePollDuration(
-                    functionName,
-                    nanoTime.getAsLong() - pollStarted
-            );
+            InvocationTask task = acquireNext(functionName, state);
             if (task == null) {
-                state.releaseSlot();
                 break;
             }
             dispatched++;

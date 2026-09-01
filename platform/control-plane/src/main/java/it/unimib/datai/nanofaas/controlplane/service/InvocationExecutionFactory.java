@@ -185,6 +185,9 @@ public final class InvocationExecutionFactory {
                     idempotencyKey, claimToken, null, null);
         }
 
+        // Nine fields of one immutable lookup result, set once and read as a whole;
+        // a parameter object here would be this class under another name.
+        @SuppressWarnings("java:S107")
         private ExecutionLookup(ExecutionRecord executionRecord,
                                 boolean isNew,
                                 ExecutionStore executionStore,

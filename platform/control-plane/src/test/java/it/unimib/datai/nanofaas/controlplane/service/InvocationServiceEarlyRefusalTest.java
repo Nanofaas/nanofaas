@@ -76,8 +76,10 @@ class InvocationServiceEarlyRefusalTest {
         when(functionService.get("full-fn")).thenReturn(Optional.of(spec));
         when(enqueuer.isQueueFull("full-fn")).thenReturn(true);
 
-        assertThatThrownBy(() -> invocationService.invokeSyncReactive(
-                "full-fn", new InvocationRequest("payload", Map.of()), null, null, 1_000).block())
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        var refused = invocationService.invokeSyncReactive(
+                "full-fn", request, null, null, 1_000);
+        assertThatThrownBy(refused::block)
                 .isInstanceOf(QueueFullException.class);
 
         // The old path reached enqueue, which refused; nothing calls it now.
@@ -94,8 +96,10 @@ class InvocationServiceEarlyRefusalTest {
         when(functionService.get("full-fn")).thenReturn(Optional.of(spec));
         when(enqueuer.isQueueFull("full-fn")).thenReturn(true);
 
-        assertThatThrownBy(() -> invocationService.invokeSyncReactive(
-                "full-fn", new InvocationRequest("payload", Map.of()), idempotencyKey, null, 1_000).block())
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        var refused = invocationService.invokeSyncReactive(
+                "full-fn", request, idempotencyKey, null, 1_000);
+        assertThatThrownBy(refused::block)
                 .isInstanceOf(QueueFullException.class);
 
         verify(enqueuer, never()).enqueue(any());
@@ -112,9 +116,9 @@ class InvocationServiceEarlyRefusalTest {
                 null, null, Instant.now(), 1,
                 InvocationKind.SYNC
             );
-        ExecutionRecord record = new ExecutionRecord("exec-1", task);
-        record.markSuccess("stored-ok");
-        executionStore.put(record);
+        ExecutionRecord execution = new ExecutionRecord("exec-1", task);
+        execution.markSuccess("stored-ok");
+        executionStore.put(execution);
         idempotencyStore.put("replay-fn", "idem-1", "exec-1");
 
         // A replay's answer is already computed: refusing it because the queue is full
@@ -152,8 +156,10 @@ class InvocationServiceEarlyRefusalTest {
         when(enqueuer.isQueueFull("hot-fn")).thenReturn(true);
         String caller = Thread.currentThread().getName();
 
-        assertThatThrownBy(() -> invocationService.invokeSyncReactive(
-                "hot-fn", new InvocationRequest("payload", Map.of()), null, null, 1_000).block())
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        var refused = invocationService.invokeSyncReactive(
+                "hot-fn", request, null, null, 1_000);
+        assertThatThrownBy(refused::block)
                 .isInstanceOf(QueueFullException.class);
 
         // Without an idempotency key nothing on this path can park, so nothing needs
@@ -175,9 +181,9 @@ class InvocationServiceEarlyRefusalTest {
                 null, null, Instant.now(), 1,
                 InvocationKind.SYNC
             );
-        ExecutionRecord record = new ExecutionRecord("exec-1", task);
-        record.markSuccess("stored-ok");
-        executionStore.put(record);
+        ExecutionRecord execution = new ExecutionRecord("exec-1", task);
+        execution.markSuccess("stored-ok");
+        executionStore.put(execution);
         idempotencyStore.put("replay-fn", "idem-1", "exec-1");
         String caller = Thread.currentThread().getName();
 

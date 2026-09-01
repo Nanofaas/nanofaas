@@ -68,6 +68,20 @@ public record FunctionDetails(
                 && matchesIfSpecified(offload, requested.offload());
     }
 
+    /**
+     * What the control plane is expected to be holding for a requested concurrency
+     * control block: a DEPLOYMENT function has its block normalized on the way in,
+     * so comparing the raw request against it would report a difference that is
+     * only the normalization.
+     */
+    private static ConcurrencyControlConfig expectedConcurrencyControl(
+            ConcurrencyControlConfig requested, boolean deployment) {
+        if (requested == null) {
+            return null;
+        }
+        return deployment ? ConcurrencyControlConfig.normalize(requested) : requested;
+    }
+
     private static boolean matchesIfSpecified(Object actual, Object requested) {
         return requested == null || Objects.equals(actual, requested);
     }
@@ -85,8 +99,7 @@ public record FunctionDetails(
         ConcurrencyControlConfig currentCc = scalingConfig == null
                 ? null : scalingConfig.concurrencyControl();
         boolean deployment = (requested.executionMode() == null ? ExecutionMode.DEPLOYMENT : requested.executionMode()) == ExecutionMode.DEPLOYMENT;
-        ConcurrencyControlConfig expected = requestedCc == null ? null
-                : deployment ? ConcurrencyControlConfig.normalize(requestedCc) : requestedCc;
+        ConcurrencyControlConfig expected = expectedConcurrencyControl(requestedCc, deployment);
         ConcurrencyControlConfig concurrencyControl =
                 requestedCc != null && !Objects.equals(currentCc, expected) ? requestedCc : null;
 

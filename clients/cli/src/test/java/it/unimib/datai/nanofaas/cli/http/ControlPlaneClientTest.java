@@ -237,7 +237,7 @@ class ControlPlaneClientTest {
     }
 
     @Test
-    void capabilitiesParsesOpenApiBooleans() throws Exception {
+    void capabilitiesParsesOpenApiBooleans() {
         server.enqueue(new MockResponse()
                 .setResponseCode(200)
                 .addHeader("Content-Type", "application/yaml")
@@ -422,7 +422,8 @@ class ControlPlaneClientTest {
 
         ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
 
-        assertThatThrownBy(() -> client.invokeSync("missing", new InvocationRequest(Map.of(), null), null, null, null))
+        InvocationRequest request = new InvocationRequest(Map.of(), null);
+        assertThatThrownBy(() -> client.invokeSync("missing", request, null, null, null))
                 .isInstanceOf(ControlPlaneHttpException.class)
                 .satisfies(ex -> assertThat(((ControlPlaneHttpException) ex).getStatus()).isEqualTo(404));
     }
@@ -473,7 +474,8 @@ class ControlPlaneClientTest {
         server.enqueue(new MockResponse().setResponseCode(500).setBody("error"));
         ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
 
-        assertThatThrownBy(() -> client.updateFunction("echo", new FunctionPatch(null, null, null, null)))
+        FunctionPatch patch = new FunctionPatch(null, null, null, null);
+        assertThatThrownBy(() -> client.updateFunction("echo", patch))
                 .isInstanceOf(ControlPlaneHttpException.class)
                 .satisfies(ex -> assertThat(((ControlPlaneHttpException) ex).getStatus()).isEqualTo(500));
     }
@@ -689,7 +691,8 @@ class ControlPlaneClientTest {
                 .setBody("{\"errors\":[\"maxQueueWait must be a duration\"]}"));
         ControlPlaneClient client = new ControlPlaneClient(server.url("/").toString());
 
-        assertThatThrownBy(() -> client.validateRuntimeConfig("requests", Map.of("maxQueueWait", "bad")))
+        Map<String, Object> values = Map.of("maxQueueWait", "bad");
+        assertThatThrownBy(() -> client.validateRuntimeConfig("requests", values))
                 .isInstanceOf(ControlPlaneHttpException.class)
                 .satisfies(ex -> {
                     ControlPlaneHttpException he = (ControlPlaneHttpException) ex;

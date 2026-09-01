@@ -78,6 +78,9 @@ public class SyncQueueService implements SyncQueueGateway {
                 new FunctionCapacityRegistry(), null);
     }
 
+    // Spring wiring: eight distinct collaborators, each read on its own. The shorter
+    // constructors above are the ones tests use; this one is the full graph.
+    @SuppressWarnings("java:S107")
     public SyncQueueService(SyncQueueProperties props,
                             ExecutionStore executionStore,
                             WaitEstimator estimator,

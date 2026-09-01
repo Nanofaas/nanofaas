@@ -186,7 +186,7 @@ class ControlPlaneConfigCommandTest {
     }
 
     @Test
-    void get404ReportsDisabledWithEnablementFlag() throws Exception {
+    void get404ReportsDisabledWithEnablementFlag() {
         server.enqueue(openApiResponse(OPENAPI_WITH_RUNTIME_CONFIG));
         server.enqueue(new MockResponse().setResponseCode(404).setBody("not found"));
 
@@ -366,7 +366,7 @@ class ControlPlaneConfigCommandTest {
     // --- capability ---
 
     @Test
-    void configWhenUnsupportedReportsNotSupportedByThisBuild() throws Exception {
+    void configWhenUnsupportedReportsNotSupportedByThisBuild() {
         server.enqueue(openApiResponse(OPENAPI_WITHOUT_RUNTIME_CONFIG));
 
         CommandLine cli = new CommandLine(new RootCommand());

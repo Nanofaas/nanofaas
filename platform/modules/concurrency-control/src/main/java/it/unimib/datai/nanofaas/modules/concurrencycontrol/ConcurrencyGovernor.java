@@ -47,6 +47,10 @@ public class ConcurrencyGovernor implements SmartLifecycle {
     private final AtomicBoolean running = new AtomicBoolean(false);
     private ScheduledExecutorService executor;
 
+    // Spring wiring: every parameter is a distinct collaborator this class holds. The
+    // two that did belong together are already bundled into one controllers record, and
+    // grouping the rest by nothing but arity would make the wiring harder to read.
+    @SuppressWarnings("java:S107")
     public ConcurrencyGovernor(FunctionRegistry registry,
                                Metrics metrics,
                                ConcurrencyControlCoordinator coordinator,
@@ -77,6 +81,7 @@ public class ConcurrencyGovernor implements SmartLifecycle {
         }
     }
 
+    @SuppressWarnings("java:S107")   // see the delegating constructor above
     public ConcurrencyGovernor(FunctionRegistry registry,
                                Metrics metrics,
                                ConcurrencyControllers controllers,

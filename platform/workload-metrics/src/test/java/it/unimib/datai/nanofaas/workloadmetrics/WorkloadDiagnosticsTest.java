@@ -12,9 +12,15 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class WorkloadDiagnosticsTest {
-    @Test
-    void recordsAllDiagnosticsWithExactNamesUnitsAndTags() {
-        SimpleMeterRegistry meters = new SimpleMeterRegistry();
+    /**
+     * Two registered functions with a full round of recordings against one of them.
+     *
+     * Shared by the two tests below, which were one: what the meters look like after
+     * recording, and what removing a function leaves behind. Separate tests because
+     * they fail for separate reasons, and a single failure in the first half used to
+     * hide every assertion in the second.
+     */
+    private static WorkloadDiagnostics recorded(SimpleMeterRegistry meters) {
         WorkloadDiagnostics diagnostics = new WorkloadDiagnostics(meters);
         diagnostics.registerFunction("echo");
         diagnostics.registerFunction("echo");
@@ -27,6 +33,13 @@ class WorkloadDiagnosticsTest {
         diagnostics.recordDispatchSlotHold("echo", 2_000_000_000L);
         diagnostics.recordDispatchSlotHold("echo", -1);
         diagnostics.recordSchedulerSlotBlocked("echo");
+        return diagnostics;
+    }
+
+    @Test
+    void recordsAllDiagnosticsWithExactNamesUnitsAndTags() {
+        SimpleMeterRegistry meters = new SimpleMeterRegistry();
+        recorded(meters);
 
         assertThat(meters.get("scheduler_visit_duration").timer().count()).isEqualTo(1);
         assertThat(meters.get("scheduler_visit_duration").timer().totalTime(TimeUnit.NANOSECONDS)).isEqualTo(10);
@@ -55,8 +68,15 @@ class WorkloadDiagnosticsTest {
                         "function_scheduler_dispatch_submit_duration",
                         "function_dispatch_slot_hold_seconds", "function_dispatch_slot_hold_events",
                         "function_scheduler_slot_blocked");
+    }
+
+    @Test
+    void removingAFunctionDropsOnlyItsOwnMeters() {
+        SimpleMeterRegistry meters = new SimpleMeterRegistry();
+        WorkloadDiagnostics diagnostics = recorded(meters);
 
         diagnostics.removeFunction("echo");
+
         assertThat(meters.find("function_queue_offer_duration").tag("function", "echo").timer()).isNull();
         assertThat(meters.find("function_queue_poll_duration").tag("function", "echo").timer()).isNull();
         assertThat(meters.find("function_scheduler_dispatch_submit_duration").tag("function", "echo").timer()).isNull();

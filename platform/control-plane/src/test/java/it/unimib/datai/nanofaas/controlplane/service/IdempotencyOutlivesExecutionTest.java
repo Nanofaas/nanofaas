@@ -15,6 +15,7 @@ import java.time.Duration;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 /**
  * The failure that deriving the key's lifetime prevents, kept executable.
@@ -36,7 +37,7 @@ class IdempotencyOutlivesExecutionTest {
     }
 
     @Test
-    void aKeyShorterThanTheRecordDuplicatesTheExecution() throws InterruptedException {
+    void aKeyShorterThanTheRecordDuplicatesTheExecution() {
         // Records held for thirty minutes; the key, built the way production no
         // longer can, for a tenth of a second.
         ExecutionStore executions = new ExecutionStore(ExecutionStoreProperties.of(
@@ -51,7 +52,11 @@ class IdempotencyOutlivesExecutionTest {
         first.publishAdmission();
         first.executionRecord().markSuccess("charged once");
 
-        Thread.sleep(250);
+        // Wait for the key's own expiry rather than for a fixed nap: the point is the
+        // moment the key is gone, and a sleep either guesses it long or races it short.
+        await().atMost(Duration.ofSeconds(5))
+                .until(() -> keys.getExecutionId("charge-card", "order-42").isEmpty());
+
         assertThat(executions.getOrNull(firstId))
                 .describedAs("the answer is still held, which is the premise")
                 .isNotNull();

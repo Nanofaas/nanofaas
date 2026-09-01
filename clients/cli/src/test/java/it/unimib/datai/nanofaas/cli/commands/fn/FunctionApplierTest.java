@@ -77,8 +77,9 @@ class FunctionApplierTest {
                 .setBody("{\"name\":\"echo\",\"image\":\"registry.example/echo:1\"}"));
         server.enqueue(replicasRestored());
 
+        FunctionSpec desired = desired();
         IllegalStateException ex = assertThrows(IllegalStateException.class,
-                () -> FunctionApplier.apply(client, desired(), true));
+                () -> FunctionApplier.apply(client, desired, true));
 
         assertThat(ex).hasMessageContaining("restored");
 
@@ -115,8 +116,9 @@ class FunctionApplierTest {
                 .setBody("{\"name\":\"echo\",\"image\":\"registry.example/echo:1\"}"));
         server.enqueue(replicasRestored());
 
+        FunctionSpec desired = desired();
         IllegalStateException ex = assertThrows(IllegalStateException.class,
-                () -> FunctionApplier.apply(client, desired(), true));
+                () -> FunctionApplier.apply(client, desired, true));
 
         assertThat(ex.getCause()).isInstanceOf(IllegalArgumentException.class);
         assertThat(ex.getCause()).hasMessageContaining("Image not found in registry");
@@ -132,7 +134,7 @@ class FunctionApplierTest {
     }
 
     @Test
-    void replaceReportsUnrestorableWhenRollbackFailsToo() throws Exception {
+    void replaceReportsUnrestorableWhenRollbackFailsToo() {
         server.enqueue(new MockResponse().setResponseCode(409));
         server.enqueue(existing());
         server.enqueue(replicas());
@@ -140,8 +142,9 @@ class FunctionApplierTest {
         server.enqueue(new MockResponse().setResponseCode(503));
         server.enqueue(new MockResponse().setResponseCode(503));
 
+        FunctionSpec desired = desired();
         IllegalStateException ex = assertThrows(IllegalStateException.class,
-                () -> FunctionApplier.apply(client, desired(), true));
+                () -> FunctionApplier.apply(client, desired, true));
 
         assertThat(ex).hasMessageContaining("could not be restored");
         assertThat(ex.getCause()).isNotNull();
@@ -161,8 +164,9 @@ class FunctionApplierTest {
                 .setBody("{\"name\":\"echo\",\"image\":\"registry.example/echo:1\"}"));
         server.enqueue(new MockResponse().setResponseCode(503));
 
+        FunctionSpec desired = desired();
         IllegalStateException ex = assertThrows(IllegalStateException.class,
-                () -> FunctionApplier.apply(client, desired(), true));
+                () -> FunctionApplier.apply(client, desired, true));
 
         assertThat(ex).hasMessageContaining("could not be restored");
         assertThat(ex.getCause()).isNotNull();
