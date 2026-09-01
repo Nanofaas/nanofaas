@@ -209,24 +209,31 @@ public class FunctionService {
                 registry.persistCurrentSnapshot(); // durable delete commit happens last
                 return Optional.of(existing.spec());
             } catch (RuntimeException failure) {
-                RegisteredFunction restored = existing;
-                if (deprovisioned) {
-                    try {
-                        restored = reconcile(existing);
-                    } catch (RuntimeException rollback) {
-                        failure.addSuppressed(rollback);
-                    }
-                }
-                rollbackRemovalListeners(restored.spec(), notified, failure);
-                registry.restoreDetached(restored); // memory-only: keep serving even if the catalog is unwritable
-                try {
-                    registry.persistCurrentSnapshot(); // best-effort durable re-save closes the detach window
-                } catch (RuntimeException rollback) {
-                    failure.addSuppressed(rollback);
-                }
+                rollbackRemoval(existing, notified, deprovisioned, failure);
                 throw failure;
             }
         });
+    }
+
+    private void rollbackRemoval(RegisteredFunction existing,
+                                 List<FunctionRegistrationListener> notified,
+                                 boolean deprovisioned,
+                                 RuntimeException failure) {
+        RegisteredFunction restored = existing;
+        if (deprovisioned) {
+            try {
+                restored = reconcile(existing);
+            } catch (RuntimeException rollback) {
+                failure.addSuppressed(rollback);
+            }
+        }
+        rollbackRemovalListeners(restored.spec(), notified, failure);
+        registry.restoreDetached(restored); // memory-only: keep serving even if the catalog is unwritable
+        try {
+            registry.persistCurrentSnapshot(); // best-effort durable re-save closes the detach window
+        } catch (RuntimeException rollback) {
+            failure.addSuppressed(rollback);
+        }
     }
 
     private RegisteredFunction resolveRegistration(FunctionSpec spec) {
