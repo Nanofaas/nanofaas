@@ -4,6 +4,7 @@ import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
+import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
 
 import java.util.Optional;
 
@@ -40,6 +41,40 @@ public record RegisteredFunction(
 
     public RegisteredFunction withDesiredReplicas(int desiredReplicas) {
         return new RegisteredFunction(spec, deploymentMetadata.withDesiredReplicas(desiredReplicas));
+    }
+
+    /**
+     * Copies this function with the endpoint and object names a reconcile returned from the same
+     * backend. The persisted backend id and effective execution mode are load-bearing: a result that
+     * reports a different backend or mode means the recorded deployment no longer matches reality, so
+     * it is rejected rather than silently adopted.
+     */
+    public RegisteredFunction withProvisionResult(ProvisionResult result) {
+        if (result.backendId() != null && !result.backendId().equals(deploymentMetadata.deploymentBackend())) {
+            throw new IllegalStateException("Reconcile returned backend '" + result.backendId()
+                    + "' but function '" + name() + "' is managed by '"
+                    + deploymentMetadata.deploymentBackend() + "'");
+        }
+        if (result.effectiveExecutionMode() != deploymentMetadata.effectiveExecutionMode()) {
+            throw new IllegalStateException("Reconcile returned execution mode '" + result.effectiveExecutionMode()
+                    + "' but function '" + name() + "' runs in '"
+                    + deploymentMetadata.effectiveExecutionMode() + "'");
+        }
+        FunctionSpec refreshedSpec = new FunctionSpec(
+                spec.name(), spec.image(), spec.command(), spec.env(), spec.resources(),
+                spec.timeoutMs(), spec.concurrency(), spec.queueSize(), spec.maxRetries(),
+                result.endpointUrl(), result.effectiveExecutionMode(),
+                spec.runtimeMode(), spec.runtimeCommand(), spec.scalingConfig(), spec.imagePullSecrets(),
+                spec.offload());
+        DeploymentMetadata refreshedMetadata = new DeploymentMetadata(
+                deploymentMetadata.requestedExecutionMode(),
+                deploymentMetadata.effectiveExecutionMode(),
+                deploymentMetadata.deploymentBackend(),
+                deploymentMetadata.degradationReason(),
+                result.endpointUrl(),
+                result.deploymentObjects(),
+                deploymentMetadata.desiredReplicas());
+        return new RegisteredFunction(refreshedSpec, refreshedMetadata);
     }
 
     /**
