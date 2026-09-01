@@ -502,8 +502,9 @@ class ContainerLocalDeploymentProviderTest {
                 functionName -> proxy
         );
 
-        assertThatThrownBy(() -> provider.reconcile(spec("echo", 1), 1,
-                Map.of(ProvisionResult.CONTAINER_NAME_PREFIX, "nanofaas-other")))
+        FunctionSpec functionSpec = spec("echo", 1);
+        Map<String, String> wrongPrefix = Map.of(ProvisionResult.CONTAINER_NAME_PREFIX, "nanofaas-other");
+        assertThatThrownBy(() -> provider.reconcile(functionSpec, 1, wrongPrefix))
                 .isInstanceOf(IllegalArgumentException.class);
 
         assertThat(adapter.removedContainers()).isEmpty();
@@ -526,8 +527,9 @@ class ContainerLocalDeploymentProviderTest {
                 functionName -> proxy
         );
 
-        assertThatThrownBy(() -> provider.reconcile(spec("echo", 2), 2,
-                Map.of(ProvisionResult.CONTAINER_NAME_PREFIX, "nanofaas-echo")))
+        FunctionSpec functionSpec = spec("echo", 2);
+        Map<String, String> objects = Map.of(ProvisionResult.CONTAINER_NAME_PREFIX, "nanofaas-echo");
+        assertThatThrownBy(() -> provider.reconcile(functionSpec, 2, objects))
                 .isInstanceOf(IllegalArgumentException.class);
 
         assertThat(adapter.removedContainers()).isEmpty();

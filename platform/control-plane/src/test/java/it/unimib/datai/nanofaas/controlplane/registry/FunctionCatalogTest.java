@@ -45,22 +45,25 @@ class FunctionCatalogTest {
     void rejectsUnsupportedSchemaAndDuplicateOrInvalidFunctions() throws IOException {
         Path path = tempDir.resolve("functions.json");
         Files.writeString(path, "{\"schemaVersion\":2,\"functions\":[]}");
-        assertThrows(IllegalStateException.class, () -> catalog(path).load());
-
-        assertThrows(IllegalStateException.class, () -> catalog(path).save(List.of(function("same"), function("same"))));
-        assertThrows(IllegalStateException.class, () -> catalog(path).save(List.of(function(""))));
+        FunctionCatalog catalog = catalog(path);
+        List<RegisteredFunction> duplicates = List.of(function("same"), function("same"));
+        List<RegisteredFunction> invalid = List.of(function(""));
+        assertThrows(IllegalStateException.class, () -> catalog.load());
+        assertThrows(IllegalStateException.class, () -> catalog.save(duplicates));
+        assertThrows(IllegalStateException.class, () -> catalog.save(invalid));
     }
 
     @Test
     void rejectsMalformedOrUnreadableCatalog() throws IOException {
         Path path = tempDir.resolve("functions.json");
         Files.writeString(path, "not json");
-        assertThrows(IllegalStateException.class, () -> catalog(path).load());
+        FunctionCatalog catalog = catalog(path);
+        assertThrows(IllegalStateException.class, () -> catalog.load());
 
         if (Files.getFileAttributeView(path, PosixFileAttributeView.class) != null) {
             Files.setPosixFilePermissions(path, Set.of(PosixFilePermission.OWNER_WRITE));
             Assumptions.assumeFalse(Files.isReadable(path));
-            assertThrows(IllegalStateException.class, () -> catalog(path).load());
+            assertThrows(IllegalStateException.class, () -> catalog.load());
         }
     }
 
@@ -72,13 +75,14 @@ class FunctionCatalogTest {
                   {"spec":{"name":"same","image":"example:latest"}},
                   {"spec":{"name":"same","image":"example:latest"}}]}
                 """);
-        assertThrows(IllegalStateException.class, () -> catalog(path).load());
+        FunctionCatalog catalog = catalog(path);
+        assertThrows(IllegalStateException.class, () -> catalog.load());
 
         Files.writeString(path, """
                 {"schemaVersion":1,"functions":[
                   {"spec":{"name":"","image":"example:latest"}}]}
                 """);
-        assertThrows(IllegalStateException.class, () -> catalog(path).load());
+        assertThrows(IllegalStateException.class, () -> catalog.load());
     }
 
     @Test
@@ -88,7 +92,8 @@ class FunctionCatalogTest {
         FunctionCatalog catalog = new FunctionCatalog(new FunctionCatalogProperties(path), objectMapper, validator,
                 (source, target) -> { throw new IOException("move failed"); });
 
-        assertThrows(IllegalStateException.class, () -> catalog.save(List.of(function("fn"))));
+        List<RegisteredFunction> functions = List.of(function("fn"));
+        assertThrows(IllegalStateException.class, () -> catalog.save(functions));
         assertEquals("old catalog", Files.readString(path));
         try (var files = Files.list(tempDir)) {
             assertEquals(List.of(path), files.toList());

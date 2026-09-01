@@ -338,7 +338,10 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
     }
 
     static int replicaIndex(String containerName) {
-        int separator = containerName == null ? -1 : containerName.lastIndexOf("-r");
+        if (containerName == null) {
+            return -1;
+        }
+        int separator = containerName.lastIndexOf("-r");
         if (separator < 0) {
             return -1;
         }

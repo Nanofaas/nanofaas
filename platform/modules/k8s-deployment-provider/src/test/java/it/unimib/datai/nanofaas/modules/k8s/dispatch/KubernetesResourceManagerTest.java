@@ -420,10 +420,11 @@ class KubernetesResourceManagerTest {
         ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 1, 10,
                 List.of(new ScalingMetric("queue_depth", "5", null)));
 
-        assertThrows(IllegalArgumentException.class, () -> resourceManager.reconcile(
-                spec(scaling), 1, Map.of(ProvisionResult.DEPLOYMENT, "fn-echo", ProvisionResult.SERVICE, "fn-echo")));
-        assertThrows(IllegalArgumentException.class, () -> resourceManager.reconcile(
-                spec(scaling), 1, objects("default", " ", "fn-echo")));
+        FunctionSpec functionSpec = spec(scaling);
+        Map<String, String> missingNamespace = Map.of(ProvisionResult.DEPLOYMENT, "fn-echo", ProvisionResult.SERVICE, "fn-echo");
+        Map<String, String> blankService = objects("default", " ", "fn-echo");
+        assertThrows(IllegalArgumentException.class, () -> resourceManager.reconcile(functionSpec, 1, missingNamespace));
+        assertThrows(IllegalArgumentException.class, () -> resourceManager.reconcile(functionSpec, 1, blankService));
     }
 
     @Test
@@ -431,9 +432,10 @@ class KubernetesResourceManagerTest {
         ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 1, 10,
                 List.of(new ScalingMetric("queue_depth", "5", null)));
 
-        assertThrows(IllegalArgumentException.class, () -> resourceManager.reconcile(
-                spec(scaling), 1, objects("default", "fn-other", "fn-echo")));
-        assertThrows(IllegalArgumentException.class, () -> resourceManager.reconcile(
-                spec(scaling), 1, objects("other-ns", "fn-echo", "fn-echo")));
+        FunctionSpec functionSpec = spec(scaling);
+        Map<String, String> mismatchedDeployment = objects("default", "fn-other", "fn-echo");
+        Map<String, String> mismatchedNamespace = objects("other-ns", "fn-echo", "fn-echo");
+        assertThrows(IllegalArgumentException.class, () -> resourceManager.reconcile(functionSpec, 1, mismatchedDeployment));
+        assertThrows(IllegalArgumentException.class, () -> resourceManager.reconcile(functionSpec, 1, mismatchedNamespace));
     }
 }

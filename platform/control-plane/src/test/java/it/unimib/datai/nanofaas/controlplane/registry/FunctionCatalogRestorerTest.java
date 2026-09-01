@@ -163,8 +163,8 @@ class FunctionCatalogRestorerTest {
         FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
         doThrow(new IllegalStateException("listener failure")).when(listener).onRegister(any());
 
-        assertThatThrownBy(() -> new FunctionCatalogRestorer(registry, resolver, List.of(listener))
-                .run(new DefaultApplicationArguments()))
+        FunctionCatalogRestorer restorer = new FunctionCatalogRestorer(registry, resolver, List.of(listener));
+        assertThatThrownBy(() -> restorer.run(new DefaultApplicationArguments()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("listener failure");
     }
@@ -221,8 +221,8 @@ class FunctionCatalogRestorerTest {
 
         catalog.failSaves(true);
 
-        assertThatThrownBy(() -> new FunctionCatalogRestorer(registry, resolver, List.of(listener))
-                .run(new DefaultApplicationArguments()))
+        FunctionCatalogRestorer restorer = new FunctionCatalogRestorer(registry, resolver, List.of(listener));
+        assertThatThrownBy(() -> restorer.run(new DefaultApplicationArguments()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("catalog failure");
 

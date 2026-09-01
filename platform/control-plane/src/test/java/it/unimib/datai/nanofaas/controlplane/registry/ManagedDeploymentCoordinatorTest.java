@@ -17,6 +17,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
@@ -136,8 +137,8 @@ class ManagedDeploymentCoordinatorTest {
             });
 
             // The autoscaler-style scale must stay blocked while removal holds the shared lock.
-            Thread.sleep(100);
-            assertThat(scaleFuture.isDone()).isFalse();
+            assertThatThrownBy(() -> scaleFuture.get(100, TimeUnit.MILLISECONDS))
+                    .isInstanceOf(TimeoutException.class);
 
             releaseRemoval.countDown();
             assertThat(removeFuture.get(5, TimeUnit.SECONDS)).isPresent();

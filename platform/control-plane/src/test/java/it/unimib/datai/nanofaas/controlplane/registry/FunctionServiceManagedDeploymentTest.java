@@ -6,7 +6,6 @@ import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProperties;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
-import jakarta.validation.Validation;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -14,7 +13,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import tools.jackson.databind.ObjectMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

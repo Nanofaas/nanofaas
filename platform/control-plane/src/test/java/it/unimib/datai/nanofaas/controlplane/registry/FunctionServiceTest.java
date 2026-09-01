@@ -309,26 +309,26 @@ class FunctionServiceTest {
 
     @Test
     void setReplicas_returnsEmptyWhenCoordinatorFindsFunctionAlreadyRemoved() {
-        ManagedDeploymentProvider provider = provider();
-        when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
+        ManagedDeploymentProvider managedProvider = provider();
+        when(managedProvider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
         ManagedDeploymentCoordinator coordinator = mock(ManagedDeploymentCoordinator.class);
-        FunctionService service = new FunctionService(
+        FunctionService localService = new FunctionService(
                 registry,
                 defaults,
                 imageValidator,
                 List.of(),
-                resolver(provider),
+                resolver(managedProvider),
                 new FunctionOperationLocks(),
                 coordinator
         );
-        service.register(new FunctionSpec("fn", "img:latest", null, null, null,
+        localService.register(new FunctionSpec("fn", "img:latest", null, null, null,
                 null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null));
 
         // A concurrent remove won the race after the manual lookup above but before the
         // coordinator's re-check under the lock; the coordinator reports the function as gone.
         when(coordinator.setReplicas(any(ManagedDeploymentTarget.class), eq(2))).thenReturn(false);
 
-        assertTrue(service.setReplicas("fn", 2).isEmpty());
+        assertTrue(localService.setReplicas("fn", 2).isEmpty());
         verify(coordinator).setReplicas(any(ManagedDeploymentTarget.class), eq(2));
     }
 
@@ -482,8 +482,9 @@ class FunctionServiceTest {
 
         catalog.failSaves(true);
 
+        FunctionUpdateRequest request = new FunctionUpdateRequest(16, null, null, null);
         IllegalStateException thrown = assertThrows(IllegalStateException.class,
-                () -> localService.update("fn", new FunctionUpdateRequest(16, null, null, null)));
+                () -> localService.update("fn", request));
 
         assertEquals("catalog failure", thrown.getMessage());
         assertEquals(4, realRegistry.get("fn").orElseThrow().concurrency());
@@ -525,9 +526,9 @@ class FunctionServiceTest {
 
         catalog.failSaves(true);
 
-        assertThrows(IllegalStateException.class, () -> localService.register(new FunctionSpec(
-                "fn", "img:latest", null, null, null,
-                null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null)));
+        FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
+                null, null, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null);
+        assertThrows(IllegalStateException.class, () -> localService.register(spec));
 
         // Startup re-reads the catalog and finds nothing: an orphaned backend resource from an
         // interrupted registration is never fabricated into the catalog (no intent journal in the MVP).

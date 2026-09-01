@@ -91,7 +91,7 @@ public class FunctionCatalog {
             if (temporary != null) {
                 try {
                     Files.deleteIfExists(temporary);
-                } catch (IOException ignored) {
+                } catch (IOException _) {
                     // The original catalog is retained when a move fails.
                 }
             }
@@ -123,7 +123,7 @@ public class FunctionCatalog {
             if (Files.getFileAttributeView(file, PosixFileAttributeView.class) != null) {
                 Files.setPosixFilePermissions(file, permissions);
             }
-        } catch (IOException | SecurityException ignored) {
+        } catch (IOException | SecurityException _) {
             // Best-effort hardening: the process may not own the target directory (a
             // root-owned PVC mounted under a non-root UID), so a failed chmod must not
             // fail the save. The 0700/0600 modes are defense-in-depth, not correctness.
