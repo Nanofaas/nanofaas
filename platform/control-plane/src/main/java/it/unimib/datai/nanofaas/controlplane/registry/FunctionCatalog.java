@@ -63,6 +63,10 @@ public class FunctionCatalog {
         }
     }
 
+    // ponytail: every mutation rewrites and fsyncs the whole catalog, serialized on the registry
+    // monitor (including autoscaler setReplicas ticks). This is the "atomic snapshot before success"
+    // durability guarantee; write-behind with a coalesced flush is the upgrade path if throughput
+    // becomes the bottleneck.
     public void save(Collection<RegisteredFunction> functions) {
         List<RegisteredFunction> sorted = validatedSorted(functions);
         Path parent = path.toAbsolutePath().getParent();
@@ -80,6 +84,7 @@ public class FunctionCatalog {
                 channel.force(true);
             }
             moveOperation.move(temporary, path);
+            forceDirectory(parent);
         } catch (IOException | RuntimeException exception) {
             throw new IllegalStateException("Cannot save function catalog: " + path, exception);
         } finally {
@@ -113,9 +118,21 @@ public class FunctionCatalog {
         }
     }
 
-    private static void setPermissions(Path file, Set<PosixFilePermission> permissions) throws IOException {
-        if (Files.getFileAttributeView(file, PosixFileAttributeView.class) != null) {
-            Files.setPosixFilePermissions(file, permissions);
+    private static void setPermissions(Path file, Set<PosixFilePermission> permissions) {
+        try {
+            if (Files.getFileAttributeView(file, PosixFileAttributeView.class) != null) {
+                Files.setPosixFilePermissions(file, permissions);
+            }
+        } catch (IOException | SecurityException ignored) {
+            // Best-effort hardening: the process may not own the target directory (a
+            // root-owned PVC mounted under a non-root UID), so a failed chmod must not
+            // fail the save. The 0700/0600 modes are defense-in-depth, not correctness.
+        }
+    }
+
+    private static void forceDirectory(Path directory) throws IOException {
+        try (FileChannel channel = FileChannel.open(directory, StandardOpenOption.READ)) {
+            channel.force(true);
         }
     }
 }

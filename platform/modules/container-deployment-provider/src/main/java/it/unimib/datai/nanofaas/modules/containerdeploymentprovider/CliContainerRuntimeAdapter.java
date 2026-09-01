@@ -145,16 +145,20 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
     }
 
     private Integer publishedPort(String containerName) {
-        ExecutionResult port = executor.run(List.of(runtimeAdapter, "port", containerName, "8080/tcp"));
-        if (!port.isSuccess() || port.output().isBlank()) {
-            return null;
+        // A transient `docker port` miss (CLI hiccup) must not make a running replica look
+        // unaddressable and get removed + recreated by reconcile. Retry briefly.
+        for (int attempt = 0; attempt < 3; attempt++) {
+            ExecutionResult port = executor.run(List.of(runtimeAdapter, "port", containerName, "8080/tcp"));
+            if (port.isSuccess() && !port.output().isBlank()) {
+                String output = port.output().strip();
+                int colon = output.lastIndexOf(':');
+                try {
+                    return Integer.parseInt(colon < 0 ? output : output.substring(colon + 1));
+                } catch (NumberFormatException _) {
+                    return null;
+                }
+            }
         }
-        String output = port.output().strip();
-        int colon = output.lastIndexOf(':');
-        try {
-            return Integer.parseInt(colon < 0 ? output : output.substring(colon + 1));
-        } catch (NumberFormatException _) {
-            return null;
-        }
+        return null;
     }
 }

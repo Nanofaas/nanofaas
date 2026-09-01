@@ -302,6 +302,23 @@ class KubernetesResourceManagerTest {
     }
 
     @Test
+    void reconcile_deletesStaleHpaWhenNotHpaManaged() {
+        ScalingConfig hpa = new ScalingConfig(ScalingStrategy.HPA, 1, 5,
+                List.of(new ScalingMetric("cpu", "80", null)));
+        ScalingConfig internal = new ScalingConfig(ScalingStrategy.INTERNAL, 1, 10,
+                List.of(new ScalingMetric("queue_depth", "5", null)));
+
+        resourceManager.provision(spec(hpa));
+        assertNotNull(client.autoscaling().v2().horizontalPodAutoscalers()
+                .inNamespace("default").withName("fn-echo").get());
+
+        resourceManager.reconcile(spec(internal), 1, objects("default", "fn-echo", "fn-echo"));
+
+        assertNull(client.autoscaling().v2().horizontalPodAutoscalers()
+                .inNamespace("default").withName("fn-echo").get());
+    }
+
+    @Test
     void reconcile_preservesExistingDeploymentAndService() throws Exception {
         ScalingConfig scaling = new ScalingConfig(ScalingStrategy.INTERNAL, 1, 10,
                 List.of(new ScalingMetric("queue_depth", "5", null)));
@@ -318,7 +335,8 @@ class KubernetesResourceManagerTest {
 
         assertEquals(List.of(
                         "GET /apis/apps/v1/namespaces/default/deployments/fn-echo",
-                        "GET /api/v1/namespaces/default/services/fn-echo"),
+                        "GET /api/v1/namespaces/default/services/fn-echo",
+                        "GET /apis/autoscaling/v2/namespaces/default/horizontalpodautoscalers/fn-echo"),
                 drainRequests());
 
         Deployment afterDeployment = client.apps().deployments().inNamespace("default").withName("fn-echo").get();

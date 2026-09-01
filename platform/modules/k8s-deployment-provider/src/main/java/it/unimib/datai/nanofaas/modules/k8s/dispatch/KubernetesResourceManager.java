@@ -107,8 +107,13 @@ public class KubernetesResourceManager {
         if (existingService == null) {
             createService(client, spec, names);
         }
-        if (isHpaManaged(spec) && getHpa(client, names) == null) {
-            createHpa(client, spec, names);
+        if (isHpaManaged(spec)) {
+            if (getHpa(client, names) == null) {
+                createHpa(client, spec, names);
+            }
+        } else if (getHpa(client, names) != null) {
+            client.autoscaling().v2().horizontalPodAutoscalers()
+                    .inNamespace(names.namespace()).withName(names.deployment()).delete();
         }
 
         return provisionResult(names);

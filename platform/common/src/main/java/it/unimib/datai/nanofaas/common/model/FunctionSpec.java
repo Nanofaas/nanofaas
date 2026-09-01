@@ -20,7 +20,7 @@ public record FunctionSpec(
         ExecutionMode executionMode,
         RuntimeMode runtimeMode,
         String runtimeCommand,
-        ScalingConfig scalingConfig,
+        @Valid ScalingConfig scalingConfig,
         List<String> imagePullSecrets,
         OffloadPolicy offload
 ) {

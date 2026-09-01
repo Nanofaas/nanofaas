@@ -23,7 +23,7 @@ public record RegisteredFunction(
                 && deploymentMetadata.desiredReplicas() == null) {
             ScalingConfig scaling = spec.scalingConfig();
             deploymentMetadata = deploymentMetadata.withDesiredReplicas(
-                    scaling != null && scaling.minReplicas() != null ? scaling.minReplicas() : 1);
+                    scaling != null && scaling.minReplicas() != null ? Math.max(0, scaling.minReplicas()) : 1);
         }
     }
 

@@ -4,11 +4,14 @@ import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolv
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
@@ -21,30 +24,51 @@ import java.util.List;
  */
 @Component
 final class FunctionCatalogRestorer implements ApplicationRunner {
+    private static final Logger log = LoggerFactory.getLogger(FunctionCatalogRestorer.class);
+
     private final FunctionRegistry registry;
     private final DeploymentProviderResolver resolver;
     private final List<FunctionRegistrationListener> listeners;
+    private final FunctionRestoreGate gate;
 
+    @Autowired
     FunctionCatalogRestorer(FunctionRegistry registry,
                             DeploymentProviderResolver resolver,
-                            @Autowired(required = false) List<FunctionRegistrationListener> listeners) {
+                            @Autowired(required = false) List<FunctionRegistrationListener> listeners,
+                            FunctionRestoreGate gate) {
         this.registry = registry;
         this.resolver = resolver;
         this.listeners = listeners == null ? List.of() : listeners;
+        this.gate = gate;
+    }
+
+    FunctionCatalogRestorer(FunctionRegistry registry,
+                            DeploymentProviderResolver resolver,
+                            List<FunctionRegistrationListener> listeners) {
+        this(registry, resolver, listeners, FunctionRestoreGate.open());
     }
 
     @Override
     public void run(ApplicationArguments arguments) {
-        List<RegisteredFunction> restored = registry.listRegistered().stream()
-                .sorted(Comparator.comparing(RegisteredFunction::name))
-                .map(this::reconcileIfManaged)
-                .toList();
+        List<RegisteredFunction> restored = new ArrayList<>();
+        for (RegisteredFunction function : registry.listRegistered().stream()
+                .sorted(Comparator.comparing(RegisteredFunction::name)).toList()) {
+            try {
+                restored.add(reconcileIfManaged(function));
+            } catch (RuntimeException failure) {
+                // Degrade per-function: a transient backend failure must not block startup.
+                // Keep the persisted record (unreconciled) so it is not dropped from the catalog.
+                log.warn("Skipping reconcile of function '{}' during restore: {}", function.name(), failure.getMessage());
+                restored.add(function);
+            }
+        }
         registry.replaceAllDurably(restored);
         for (RegisteredFunction function : restored) {
             for (FunctionRegistrationListener listener : listeners) {
                 listener.onRegister(function.spec());
             }
         }
+        gate.markReady();
     }
 
     private RegisteredFunction reconcileIfManaged(RegisteredFunction function) {

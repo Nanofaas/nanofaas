@@ -473,7 +473,7 @@ class ContainerLocalDeploymentProviderTest {
         ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
-                new FailSecondOnceEndpointProbe(),
+                new FailNthOnceEndpointProbe(3, "third replica failed"),
                 new FixedPortAllocator(31002, 31003),
                 functionName -> proxy
         );
@@ -482,7 +482,7 @@ class ContainerLocalDeploymentProviderTest {
                 Map.of(ProvisionResult.CONTAINER_NAME_PREFIX, "nanofaas-echo")));
 
         assertThat(failure).isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("second replica failed");
+                .hasMessageContaining("third replica failed");
         assertThat(adapter.removedContainers())
                 .containsExactly("nanofaas-echo-r3", "nanofaas-echo-r2");
         assertThat(proxy.isClosed()).isTrue();
@@ -741,6 +741,29 @@ class ContainerLocalDeploymentProviderTest {
         public void awaitReady(String baseUrl, Duration timeout, Duration pollInterval) {
             if (calls.incrementAndGet() == 2) {
                 throw new IllegalStateException("second replica failed");
+            }
+        }
+
+        @Override
+        public boolean isReady(String baseUrl) {
+            return true;
+        }
+    }
+
+    private static final class FailNthOnceEndpointProbe implements EndpointProbe {
+        private final int failOnCall;
+        private final String message;
+        private final AtomicInteger calls = new AtomicInteger();
+
+        FailNthOnceEndpointProbe(int failOnCall, String message) {
+            this.failOnCall = failOnCall;
+            this.message = message;
+        }
+
+        @Override
+        public void awaitReady(String baseUrl, Duration timeout, Duration pollInterval) {
+            if (calls.incrementAndGet() == failOnCall) {
+                throw new IllegalStateException(message);
             }
         }
 

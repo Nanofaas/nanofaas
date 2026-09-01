@@ -27,6 +27,7 @@ public class FunctionService {
     private final ImageValidator imageValidator;
     private final List<FunctionRegistrationListener> listeners;
     private final FunctionOperationLocks locks;
+    private final FunctionRestoreGate restoreGate;
 
     public FunctionService(FunctionRegistry registry,
                            FunctionDefaults defaults,
@@ -34,7 +35,18 @@ public class FunctionService {
                            @Autowired(required = false) List<FunctionRegistrationListener> listeners,
                            DeploymentProviderResolver deploymentProviderResolver) {
         this(registry, defaults, imageValidator, listeners, deploymentProviderResolver,
-                new FunctionOperationLocks(), null);
+                new FunctionOperationLocks(), null, null);
+    }
+
+    public FunctionService(FunctionRegistry registry,
+                           FunctionDefaults defaults,
+                           ImageValidator imageValidator,
+                           @Autowired(required = false) List<FunctionRegistrationListener> listeners,
+                           DeploymentProviderResolver deploymentProviderResolver,
+                           FunctionOperationLocks locks,
+                           ManagedDeploymentCoordinator managedDeploymentCoordinator) {
+        this(registry, defaults, imageValidator, listeners, deploymentProviderResolver,
+                locks, managedDeploymentCoordinator, null);
     }
 
     @Autowired
@@ -44,7 +56,8 @@ public class FunctionService {
                            @Autowired(required = false) List<FunctionRegistrationListener> listeners,
                            DeploymentProviderResolver deploymentProviderResolver,
                            FunctionOperationLocks locks,
-                           @Autowired(required = false) ManagedDeploymentCoordinator managedDeploymentCoordinator) {
+                           @Autowired(required = false) ManagedDeploymentCoordinator managedDeploymentCoordinator,
+                           @Autowired(required = false) FunctionRestoreGate restoreGate) {
         this.registry = registry;
         this.resolver = new FunctionSpecResolver(defaults);
         this.deploymentProviderResolver = deploymentProviderResolver;
@@ -54,6 +67,13 @@ public class FunctionService {
                 : managedDeploymentCoordinator;
         this.imageValidator = imageValidator;
         this.listeners = listeners == null ? List.of() : listeners;
+        this.restoreGate = restoreGate == null ? FunctionRestoreGate.open() : restoreGate;
+    }
+
+    private void ensureReady() {
+        if (!restoreGate.isReady()) {
+            throw new IllegalStateException("Control plane is still restoring the function catalog");
+        }
     }
 
     public Collection<FunctionSpec> list() {
@@ -73,6 +93,7 @@ public class FunctionService {
     }
 
     public Optional<RegisteredFunction> register(FunctionSpec spec) {
+        ensureReady();
         FunctionSpec initialResolved = resolver.resolve(spec);
 
         return locks.withLock(initialResolved.name(), () -> {
@@ -107,6 +128,7 @@ public class FunctionService {
      * @return the updated function, or empty if it is not registered
      */
     public Optional<RegisteredFunction> update(String name, FunctionUpdateRequest request) {
+        ensureReady();
         return locks.withLock(name, () -> {
             RegisteredFunction existing = registry.getRegistered(name).orElse(null);
             if (existing == null) {
@@ -135,6 +157,7 @@ public class FunctionService {
      * Throws IllegalStateException if the effective deployment provider is not available.
      */
     public Optional<Integer> setReplicas(String name, int replicas) {
+        ensureReady();
         RegisteredFunction function = registry.getRegistered(name).orElse(null);
         if (function == null) {
             return Optional.empty();
@@ -165,6 +188,7 @@ public class FunctionService {
     }
 
     public Optional<FunctionSpec> remove(String name) {
+        ensureReady();
         return locks.withLock(name, () -> {
             RegisteredFunction existing = registry.detach(name);
             if (existing == null) {
@@ -185,14 +209,20 @@ public class FunctionService {
                 registry.persistCurrentSnapshot(); // durable delete commit happens last
                 return Optional.of(existing.spec());
             } catch (RuntimeException failure) {
-                registry.restoreDetached(existing);
-                rollbackRemovalListeners(existing.spec(), notified, failure);
+                RegisteredFunction restored = existing;
                 if (deprovisioned) {
                     try {
-                        reconcile(existing);
+                        restored = reconcile(existing);
                     } catch (RuntimeException rollback) {
                         failure.addSuppressed(rollback);
                     }
+                }
+                rollbackRemovalListeners(restored.spec(), notified, failure);
+                registry.restoreDetached(restored); // memory-only: keep serving even if the catalog is unwritable
+                try {
+                    registry.persistCurrentSnapshot(); // best-effort durable re-save closes the detach window
+                } catch (RuntimeException rollback) {
+                    failure.addSuppressed(rollback);
                 }
                 throw failure;
             }
@@ -238,11 +268,12 @@ public class FunctionService {
      * Reconciles only the exact persisted backend (never backend selection or degradation), driving
      * the provider's non-destructive reconcile toward the persisted spec and replica target.
      */
-    private void reconcile(RegisteredFunction existing) {
+    private RegisteredFunction reconcile(RegisteredFunction existing) {
         ManagedDeploymentTarget target = existing.managedDeploymentTarget().orElseThrow(() -> new IllegalStateException(
                 "Function '" + existing.name() + "' has no persisted managed deployment"));
-        managedDeploymentCoordinator.requireProvider(target)
+        ProvisionResult result = managedDeploymentCoordinator.requireProvider(target)
                 .reconcile(existing.spec(), existing.desiredReplicas(), existing.deploymentMetadata().deploymentObjects());
+        return existing.withProvisionResult(result);
     }
 
     private ManagedDeploymentTarget requireManagedDeploymentTarget(RegisteredFunction function) {

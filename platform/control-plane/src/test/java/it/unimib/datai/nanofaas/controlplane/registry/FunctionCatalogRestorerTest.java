@@ -53,6 +53,18 @@ class FunctionCatalogRestorerTest {
     }
 
     @Test
+    void marksRestoreGateReadyAfterSuccessfulRun() {
+        FunctionRegistry registry = new FunctionRegistry();
+        DeploymentProviderResolver resolver = mock(DeploymentProviderResolver.class);
+        FunctionRestoreGate gate = new FunctionRestoreGate();
+
+        new FunctionCatalogRestorer(registry, resolver, List.of(), gate)
+                .run(new DefaultApplicationArguments());
+
+        assertThat(gate.isReady()).isTrue();
+    }
+
+    @Test
     void processesFunctionsInNameOrder() {
         FunctionRegistry registry = new FunctionRegistry();
         registry.put(managedFunction("zebra", "container-local", 1));
@@ -110,23 +122,22 @@ class FunctionCatalogRestorerTest {
     }
 
     @Test
-    void missingBackendEscapesRun() {
+    void missingBackendDegradesThatFunction() {
         FunctionRegistry registry = new FunctionRegistry();
         registry.put(managedFunction("echo", "container-local", 0));
         DeploymentProviderResolver resolver =
                 new DeploymentProviderResolver(List.of(), new DeploymentProperties(null));
         FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
 
-        assertThatThrownBy(() -> new FunctionCatalogRestorer(registry, resolver, List.of(listener))
-                .run(new DefaultApplicationArguments()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("container-local");
+        new FunctionCatalogRestorer(registry, resolver, List.of(listener))
+                .run(new DefaultApplicationArguments());
 
-        verifyNoInteractions(listener);
+        assertThat(registry.listRegistered()).extracting(RegisteredFunction::name).containsExactly("echo");
+        verify(listener).onRegister(any());
     }
 
     @Test
-    void reconcileErrorEscapesRun() {
+    void reconcileErrorDegradesThatFunction() {
         FunctionRegistry registry = new FunctionRegistry();
         registry.put(managedFunction("echo", "container-local", 0));
         ManagedDeploymentProvider provider = provider("container-local");
@@ -135,12 +146,11 @@ class FunctionCatalogRestorerTest {
                 .thenThrow(new IllegalStateException("reconcile failure"));
         FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
 
-        assertThatThrownBy(() -> new FunctionCatalogRestorer(registry, resolver, List.of(listener))
-                .run(new DefaultApplicationArguments()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessage("reconcile failure");
+        new FunctionCatalogRestorer(registry, resolver, List.of(listener))
+                .run(new DefaultApplicationArguments());
 
-        verify(listener, never()).onRegister(any());
+        assertThat(registry.listRegistered()).extracting(RegisteredFunction::name).containsExactly("echo");
+        verify(listener).onRegister(any());
     }
 
     @Test
@@ -160,7 +170,7 @@ class FunctionCatalogRestorerTest {
     }
 
     @Test
-    void reconcileReturningChangedBackendIsRejected() {
+    void reconcileReturningChangedBackendIsKeptUnreconciled() {
         FunctionRegistry registry = new FunctionRegistry();
         registry.put(managedFunction("echo", "container-local", 0));
         ManagedDeploymentProvider provider = provider("container-local");
@@ -169,16 +179,17 @@ class FunctionCatalogRestorerTest {
                 .thenReturn(new ProvisionResult("http://other/invoke", "k8s"));
         FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
 
-        assertThatThrownBy(() -> new FunctionCatalogRestorer(registry, resolver, List.of(listener))
-                .run(new DefaultApplicationArguments()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("k8s");
+        new FunctionCatalogRestorer(registry, resolver, List.of(listener))
+                .run(new DefaultApplicationArguments());
 
-        verify(listener, never()).onRegister(any());
+        RegisteredFunction kept = registry.listRegistered().iterator().next();
+        assertThat(kept.name()).isEqualTo("echo");
+        assertThat(kept.deploymentMetadata().deploymentBackend()).isEqualTo("container-local");
+        verify(listener).onRegister(any());
     }
 
     @Test
-    void reconcileReturningDegradedExecutionModeIsRejected() {
+    void reconcileReturningDegradedExecutionModeIsKeptUnreconciled() {
         FunctionRegistry registry = new FunctionRegistry();
         registry.put(managedFunction("echo", "container-local", 0));
         ManagedDeploymentProvider provider = provider("container-local");
@@ -188,12 +199,13 @@ class FunctionCatalogRestorerTest {
                         ExecutionMode.EXTERNAL, "degraded", Map.of()));
         FunctionRegistrationListener listener = mock(FunctionRegistrationListener.class);
 
-        assertThatThrownBy(() -> new FunctionCatalogRestorer(registry, resolver, List.of(listener))
-                .run(new DefaultApplicationArguments()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("EXTERNAL");
+        new FunctionCatalogRestorer(registry, resolver, List.of(listener))
+                .run(new DefaultApplicationArguments());
 
-        verify(listener, never()).onRegister(any());
+        RegisteredFunction kept = registry.listRegistered().iterator().next();
+        assertThat(kept.name()).isEqualTo("echo");
+        assertThat(kept.deploymentMetadata().effectiveExecutionMode()).isEqualTo(ExecutionMode.DEPLOYMENT);
+        verify(listener).onRegister(any());
     }
 
     @Test

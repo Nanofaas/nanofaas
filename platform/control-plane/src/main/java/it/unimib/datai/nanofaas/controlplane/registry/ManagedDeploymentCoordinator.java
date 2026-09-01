@@ -51,10 +51,16 @@ public class ManagedDeploymentCoordinator {
                 return false;
             }
             if (existing.managedDeploymentTarget().filter(target::equals).isEmpty()) {
-                throw new IllegalStateException("Persisted deployment backend does not match " + target);
+                // A stale target (removed and re-registered under a different backend between the
+                // caller's lookup and this locked re-check) is a no-op, not an error.
+                return false;
             }
 
             RegisteredFunction updated = existing.withDesiredReplicas(replicas);
+            // ponytail: durable-first. Persisting before applying keeps the target across a crash
+            // after a successful scale, but a provider failure whose rollback save also fails leaves
+            // a never-applied target that the next restart's reconcile enforces. A full fix needs an
+            // intent journal, out of scope for the MVP.
             registry.put(updated);
             try {
                 requireProvider(target).setReplicas(target.functionName(), replicas);

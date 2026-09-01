@@ -112,9 +112,10 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
                     if (container.replicaIndex() > desiredReplicas) {
                         adapter.removeContainer(container.name());
                     } else if (adoptable(container)) {
+                        String url = baseUrl(container.name(), container.hostPort());
+                        endpointProbe.awaitReady(url, properties.readinessTimeout(), properties.readinessPollInterval());
                         state.replicas.put(container.replicaIndex(),
-                                new ReplicaState(container.name(), container.hostPort(),
-                                        baseUrl(container.name(), container.hostPort())));
+                                new ReplicaState(container.name(), container.hostPort(), url));
                     } else {
                         adapter.removeContainer(container.name());
                         addReplica(state, container.replicaIndex());

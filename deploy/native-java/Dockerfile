@@ -37,7 +37,8 @@ ARG NATIVE_TASK
 ARG NATIVE_BINARY
 ARG GRADLE_ARGS
 RUN ./gradlew "$NATIVE_TASK" $GRADLE_ARGS --no-daemon && \
-    cp "$NATIVE_BINARY" /tmp/application
+    cp "$NATIVE_BINARY" /tmp/application && \
+    mkdir -p /var/lib/nanofaas && touch /var/lib/nanofaas/.keep
 
 # `cc` rather than `base`: it carries libstdc++, which a G1 binary loads at run
 # time because the collector itself is C++. A serial binary does not need it and
@@ -49,7 +50,9 @@ ARG BUILDER_IMAGE
 ARG RUNTIME_IMAGE
 ENV NANOFAAS_BUILD_BASE_IMAGE=${BUILDER_IMAGE}
 ENV NANOFAAS_RUNTIME_BASE_IMAGE=${RUNTIME_IMAGE}
+ENV NANOFAAS_REGISTRY_PATH=/var/lib/nanofaas/functions.json
 WORKDIR /app
 COPY --from=builder --chown=nonroot:nonroot /tmp/application /app/application
+COPY --from=builder --chown=nonroot:nonroot /var/lib/nanofaas /var/lib/nanofaas
 EXPOSE 8080 8081
 ENTRYPOINT ["/app/application"]

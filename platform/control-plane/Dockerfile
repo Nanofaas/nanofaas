@@ -25,16 +25,19 @@ RUN jar xf app.jar BOOT-INF/lib BOOT-INF/classes && \
 # nothing is byte-for-byte the build that was measured.
 ARG JVM_TUNING="-XX:+UseSerialGC -XX:TieredStopAtLevel=1"
 RUN printf '%s\n' $JVM_TUNING > /jvm.options
+RUN mkdir -p /var/lib/nanofaas && touch /var/lib/nanofaas/.keep
 
 FROM ${RUNTIME_IMAGE}
 ARG BUILDER_IMAGE
 ARG RUNTIME_IMAGE
 ENV NANOFAAS_BUILD_BASE_IMAGE=${BUILDER_IMAGE}
 ENV NANOFAAS_RUNTIME_BASE_IMAGE=${RUNTIME_IMAGE}
+ENV NANOFAAS_REGISTRY_PATH=/var/lib/nanofaas/functions.json
 WORKDIR /app
 COPY --from=jre-builder --chown=nonroot:nonroot /jre /opt/jre
 COPY build/libs/app.jar app.jar
 COPY --from=jre-builder --chown=nonroot:nonroot /jvm.options /app/jvm.options
+COPY --from=jre-builder --chown=nonroot:nonroot /var/lib/nanofaas /var/lib/nanofaas
 EXPOSE 8080 8081
 
 # Collector and JIT tiering come from JVM_TUNING (see the builder stage). The
