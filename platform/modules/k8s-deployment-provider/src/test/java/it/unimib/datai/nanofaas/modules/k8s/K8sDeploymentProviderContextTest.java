@@ -1,7 +1,7 @@
 package it.unimib.datai.nanofaas.modules.k8s;
 
 import it.unimib.datai.nanofaas.controlplane.ControlPlaneApplication;
-import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentCoordinator;
+import it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

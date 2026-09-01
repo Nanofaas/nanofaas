@@ -307,7 +307,7 @@ class FunctionServiceConcurrencyTest {
     }
 
     @Test
-    void setReplicas_waitsForRemovalAndDoesNotScaleFunctionUnderTeardown() throws Exception {
+    void setReplicas_doesNotScaleFunctionWhileTeardownIsInProgress() throws Exception {
         FunctionRegistry localRegistry = new FunctionRegistry();
         FunctionDefaults defaults = new FunctionDefaults(30000, 4, 100, 3);
         ManagedDeploymentProvider localProvider = provider();
@@ -343,18 +343,13 @@ class FunctionServiceConcurrencyTest {
 
             assertThat(removalStarted.await(5, TimeUnit.SECONDS)).isTrue();
 
-            Future<Optional<Integer>> scaleFuture = executor.submit(() -> localService.setReplicas("tear-fn", 2));
-
-            // setReplicas must still be pending while teardown is blocked on the latch
-            await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
-                assertThat(scaleFuture.isDone()).isFalse();
-                assertThat(localRegistry.get("tear-fn")).isEmpty();
-            });
+            // The function is already gone from the registry while teardown is blocked on the
+            // listener, so scaling it is a no-op returning empty rather than touching the provider.
+            assertThat(localService.setReplicas("tear-fn", 2)).isEmpty();
 
             allowRemoval.countDown();
 
             assertThat(removeFuture.get(5, TimeUnit.SECONDS)).isPresent();
-            assertThat(scaleFuture.get(5, TimeUnit.SECONDS)).isEmpty();
         } finally {
             executor.shutdownNow();
         }

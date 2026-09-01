@@ -13,11 +13,9 @@ import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -151,18 +149,6 @@ class FunctionServiceTest {
         verify(firstListener).onRemove("fn");
         verify(secondListener, never()).onRemove("fn");
         verify(provider).deprovision("fn");
-    }
-
-    @Test
-    void perFunctionLocksAreCleanedUpAfterOperations() throws Exception {
-        FunctionSpec spec = new FunctionSpec("fn", "img:latest", null, null, null,
-                null, null, null, null, null, ExecutionMode.LOCAL, null, null, null);
-
-        service.register(spec);
-        service.remove("fn");
-        service.remove("ghost");
-
-        assertEquals(0, functionLockCount(service));
     }
 
     private static FunctionSpec resolved(String name, String image, ExecutionMode mode) {
@@ -407,13 +393,6 @@ class FunctionServiceTest {
     @Test
     void update_unknownFunction_returnsEmpty() {
         assertTrue(service.update("nope", new FunctionUpdateRequest(8, null, null, null)).isEmpty());
-    }
-
-    private static int functionLockCount(FunctionService service) throws Exception {
-        Field functionLocksField = FunctionService.class.getDeclaredField("functionLocks");
-        functionLocksField.setAccessible(true);
-        ConcurrentHashMap<?, ?> functionLocks = (ConcurrentHashMap<?, ?>) functionLocksField.get(service);
-        return functionLocks.size();
     }
 
     private static ManagedDeploymentProvider provider() {

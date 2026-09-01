@@ -3,7 +3,6 @@ package it.unimib.datai.nanofaas.controlplane.registry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
-import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
@@ -16,9 +15,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.locks.ReentrantLock;
-import java.util.function.Supplier;
 
 @Service
 public class FunctionService {
@@ -30,14 +26,15 @@ public class FunctionService {
     private final ManagedDeploymentCoordinator managedDeploymentCoordinator;
     private final ImageValidator imageValidator;
     private final List<FunctionRegistrationListener> listeners;
-    private final ConcurrentHashMap<String, LockEntry> functionLocks = new ConcurrentHashMap<>();
+    private final FunctionOperationLocks locks;
 
     public FunctionService(FunctionRegistry registry,
                            FunctionDefaults defaults,
                            ImageValidator imageValidator,
                            @Autowired(required = false) List<FunctionRegistrationListener> listeners,
                            DeploymentProviderResolver deploymentProviderResolver) {
-        this(registry, defaults, imageValidator, listeners, deploymentProviderResolver, null);
+        this(registry, defaults, imageValidator, listeners, deploymentProviderResolver,
+                new FunctionOperationLocks(), null);
     }
 
     @Autowired
@@ -46,12 +43,14 @@ public class FunctionService {
                            ImageValidator imageValidator,
                            @Autowired(required = false) List<FunctionRegistrationListener> listeners,
                            DeploymentProviderResolver deploymentProviderResolver,
+                           FunctionOperationLocks locks,
                            @Autowired(required = false) ManagedDeploymentCoordinator managedDeploymentCoordinator) {
         this.registry = registry;
         this.resolver = new FunctionSpecResolver(defaults);
         this.deploymentProviderResolver = deploymentProviderResolver;
+        this.locks = locks;
         this.managedDeploymentCoordinator = managedDeploymentCoordinator == null
-                ? new ManagedDeploymentCoordinator(deploymentProviderResolver)
+                ? new ManagedDeploymentCoordinator(deploymentProviderResolver, registry, locks)
                 : managedDeploymentCoordinator;
         this.imageValidator = imageValidator;
         this.listeners = listeners == null ? List.of() : listeners;
@@ -76,7 +75,7 @@ public class FunctionService {
     public Optional<RegisteredFunction> register(FunctionSpec spec) {
         FunctionSpec initialResolved = resolver.resolve(spec);
 
-        return withFunctionLock(initialResolved.name(), () -> {
+        return locks.withLock(initialResolved.name(), () -> {
             if (registry.getRegistered(initialResolved.name()).isPresent()) {
                 return Optional.empty();
             }
@@ -103,7 +102,7 @@ public class FunctionService {
      * @return the updated function, or empty if it is not registered
      */
     public Optional<RegisteredFunction> update(String name, FunctionUpdateRequest request) {
-        return withFunctionLock(name, () -> {
+        return locks.withLock(name, () -> {
             RegisteredFunction existing = registry.getRegistered(name).orElse(null);
             if (existing == null) {
                 return Optional.empty();
@@ -131,23 +130,20 @@ public class FunctionService {
      * Throws IllegalStateException if the effective deployment provider is not available.
      */
     public Optional<Integer> setReplicas(String name, int replicas) {
-        return withFunctionLock(name, () -> {
-            RegisteredFunction function = registry.getRegistered(name).orElse(null);
-            if (function == null) {
-                return Optional.empty();
-            }
-            if (function.deploymentMetadata().effectiveExecutionMode() != ExecutionMode.DEPLOYMENT) {
-                throw new IllegalArgumentException("Function '" + name + "' is not in DEPLOYMENT mode");
-            }
-            managedDeploymentCoordinator.setReplicas(requireManagedDeploymentTarget(function), replicas);
-            registry.put(function.withDesiredReplicas(replicas));
-            log.info("Set replicas for function {} to {}", name, replicas);
-            return Optional.of(replicas);
-        });
+        RegisteredFunction function = registry.getRegistered(name).orElse(null);
+        if (function == null) {
+            return Optional.empty();
+        }
+        if (function.deploymentMetadata().effectiveExecutionMode() != ExecutionMode.DEPLOYMENT) {
+            throw new IllegalArgumentException("Function '" + name + "' is not in DEPLOYMENT mode");
+        }
+        managedDeploymentCoordinator.setReplicas(requireManagedDeploymentTarget(function), replicas);
+        log.info("Set replicas for function {} to {}", name, replicas);
+        return Optional.of(replicas);
     }
 
     public Optional<ReplicaStatus> getReplicaStatus(String name) {
-        return withFunctionLock(name, () -> {
+        return locks.withLock(name, () -> {
             RegisteredFunction function = registry.getRegistered(name).orElse(null);
             if (function == null) {
                 return Optional.empty();
@@ -160,7 +156,7 @@ public class FunctionService {
     }
 
     public Optional<FunctionSpec> remove(String name) {
-        return withFunctionLock(name, () -> {
+        return locks.withLock(name, () -> {
             RegisteredFunction existing = registry.removeRegistered(name);
             if (existing != null) {
                 List<FunctionRegistrationListener> notified = new ArrayList<>();
@@ -286,37 +282,4 @@ public class FunctionService {
         }
     }
 
-    private <T> T withFunctionLock(String functionName, Supplier<T> action) {
-        LockEntry lockEntry = acquireLockEntry(functionName);
-        lockEntry.lock.lock();
-        try {
-            return action.get();
-        } finally {
-            lockEntry.lock.unlock();
-            releaseLockEntry(functionName, lockEntry);
-        }
-    }
-
-    private LockEntry acquireLockEntry(String functionName) {
-        return functionLocks.compute(functionName, (ignored, existing) -> {
-            LockEntry entry = existing == null ? new LockEntry() : existing;
-            entry.users++;
-            return entry;
-        });
-    }
-
-    private void releaseLockEntry(String functionName, LockEntry lockEntry) {
-        functionLocks.computeIfPresent(functionName, (ignored, existing) -> {
-            if (existing != lockEntry) {
-                return existing;
-            }
-            existing.users--;
-            return existing.users == 0 ? null : existing;
-        });
-    }
-
-    private static final class LockEntry {
-        private final ReentrantLock lock = new ReentrantLock();
-        private int users;
-    }
 }
