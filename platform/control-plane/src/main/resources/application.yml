@@ -32,6 +32,8 @@ management:
         enabled: true
 
 nanofaas:
+  registry:
+    path: "${NANOFAAS_REGISTRY_PATH:build/nanofaas/functions.json}"
   metrics:
     profile: basic
   admin:
