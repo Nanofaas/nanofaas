@@ -4,12 +4,13 @@ import it.unimib.datai.nanofaas.cli.http.ControlPlaneClient;
 import it.unimib.datai.nanofaas.cli.http.ControlPlaneError;
 import it.unimib.datai.nanofaas.cli.http.ControlPlaneHttpException;
 import it.unimib.datai.nanofaas.cli.http.FunctionDetails;
+import it.unimib.datai.nanofaas.cli.http.FunctionPatch;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 
 public final class FunctionApplier {
     private FunctionApplier() {}
 
-    public static void apply(ControlPlaneClient client, FunctionSpec desired) {
+    public static void apply(ControlPlaneClient client, FunctionSpec desired, boolean replace) {
         try {
             client.registerFunction(desired);
             return;
@@ -25,9 +26,41 @@ public final class FunctionApplier {
             return;
         }
 
-        if (!existing.matches(desired)) {
-            client.deleteFunction(desired.name());
+        FunctionPatch patch = existing.mutablePatch(desired);
+        if (existing.hasImmutableDifferences(desired)) {
+            if (!replace) {
+                throw new IllegalArgumentException(
+                        "Immutable function fields differ; rerun with --replace (replacement is not atomic)");
+            }
+            replaceDestructively(client, desired, existing);
+            return;
+        }
+        if (!patch.isEmpty()) {
+            client.updateFunction(desired.name(), patch);
+        }
+    }
+
+    private static void replaceDestructively(ControlPlaneClient client, FunctionSpec desired, FunctionDetails previous) {
+        Integer previousReplicas = previous.deploymentBackend() == null || previous.deploymentBackend().isBlank()
+                ? null
+                : client.getReplicas(previous.name()).desiredReplicas();
+        client.deleteFunction(desired.name());
+        try {
             client.registerFunction(desired);
+        } catch (ControlPlaneHttpException failure) {
+            RuntimeException mapped = mapError(failure);
+            try {
+                client.registerFunction(previous.toSpec());
+                if (previousReplicas != null) {
+                    client.setReplicas(previous.name(), previousReplicas);
+                }
+            } catch (RuntimeException restoreFailure) {
+                mapped.addSuppressed(restoreFailure);
+                throw new IllegalStateException(
+                        "Replacing function '" + desired.name() + "' failed and the previous function could not be restored", mapped);
+            }
+            throw new IllegalStateException(
+                    "Replacing function '" + desired.name() + "' failed; the previous function was restored", mapped);
         }
     }
 

@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.cli.commands;
 
+import it.unimib.datai.nanofaas.cli.commands.controlplane.ControlPlaneCommand;
 import it.unimib.datai.nanofaas.cli.commands.fn.FnCommand;
 import it.unimib.datai.nanofaas.cli.config.ConfigStore;
 import it.unimib.datai.nanofaas.cli.config.ResolvedContext;
@@ -24,7 +25,8 @@ import java.nio.file.Path;
                 InvokeCommand.class,
                 EnqueueCommand.class,
                 ExecCommand.class,
-                DeployCommand.class
+                DeployCommand.class,
+                ControlPlaneCommand.class
         }
 )
 public class RootCommand {
@@ -39,10 +41,6 @@ public class RootCommand {
             scope = ScopeType.INHERIT,
             description = "Control-plane base URL (overrides config/env). Default: http://localhost:8080")
     String endpoint;
-
-    @Option(names = {"--namespace", "-n"}, scope = ScopeType.INHERIT,
-            description = "Function namespace (overrides config/env).")
-    String namespace;
 
     private ConfigStore store;
     private ResolvedContext resolved;
@@ -65,15 +63,11 @@ public class RootCommand {
             ResolvedContext base = configStore().loadResolvedContext();
 
             // Add DEFAULT_ENDPOINT at the end as the default value.
-            String ep = firstNonBlank(
-                endpoint,
-                base.endpoint(),
-                DEFAULT_ENDPOINT
-            );
-
-            String ns = firstNonBlank(namespace, base.namespace());
-
-            resolved = new ResolvedContext(base.contextName(), ep, ns);
+            resolved = new ResolvedContext(base.contextName(), firstNonBlank(
+                    endpoint,
+                    base.endpoint(),
+                    DEFAULT_ENDPOINT
+            ));
         }
         return resolved;
     }

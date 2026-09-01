@@ -1,8 +1,10 @@
 package it.unimib.datai.nanofaas.cli.io;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.fasterxml.jackson.dataformat.yaml.YAMLParser;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -13,11 +15,40 @@ public final class YamlIO {
             .findAndRegisterModules()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
+    private static final ObjectMapper YAML_STRICT = new ObjectMapper(new YAMLFactory())
+            .findAndRegisterModules();
+
+    // PARSE_BOOLEAN_LIKE_WORDS_AS_STRINGS keeps on/off/yes/no as strings, but SnakeYAML's
+    // YAML 1.1 octal rule (a bare `0123` scalar parses to int 83) has no disabling hook in
+    // jackson-dataformat-yaml 2.x (YAMLParser.Feature exposes no number/octal switch). Runtime
+    // config values with leading zeros must be quoted (e.g. `"0123"`) or written as JSON.
+    private static final ObjectMapper YAML_TREE = new ObjectMapper(
+            YAMLFactory.builder()
+                    .enable(YAMLParser.Feature.PARSE_BOOLEAN_LIKE_WORDS_AS_STRINGS)
+                    .build())
+            .findAndRegisterModules();
+
     private YamlIO() {}
 
     public static <T> T read(Path path, Class<T> type) {
         try {
             return YAML.readValue(path.toFile(), type);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to read YAML: " + path, e);
+        }
+    }
+
+    public static <T> T readStrict(Path path, Class<T> type) {
+        try {
+            return YAML_STRICT.readValue(path.toFile(), type);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to read YAML: " + path, e);
+        }
+    }
+
+    public static JsonNode readTree(Path path) {
+        try {
+            return YAML_TREE.readTree(path.toFile());
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to read YAML: " + path, e);
         }

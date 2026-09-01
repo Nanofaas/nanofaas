@@ -13,7 +13,9 @@ import picocli.CommandLine.Command;
                 FnGetCommand.class,
                 FnDeleteCommand.class,
                 FnApplyCommand.class,
-                FnTestCommand.class
+                FnUpdateCommand.class,
+                FnTestCommand.class,
+                FnReplicasCommand.class
         }
 )
 public class FnCommand {

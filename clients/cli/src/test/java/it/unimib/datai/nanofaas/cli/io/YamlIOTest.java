@@ -1,5 +1,8 @@
 package it.unimib.datai.nanofaas.cli.io;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
+import it.unimib.datai.nanofaas.cli.http.FunctionPatch;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -39,5 +42,48 @@ class YamlIOTest {
         assertThatThrownBy(() -> YamlIO.read(p, FunctionSpec.class))
                 .isInstanceOf(UncheckedIOException.class)
                 .hasMessageContaining("Failed to read YAML");
+    }
+
+    @Test
+    void readTreeReturnsJsonNode() throws Exception {
+        Path p = tmp.resolve("config.yaml");
+        Files.writeString(p, "maxQueueWait: PT2S\n");
+
+        JsonNode node = YamlIO.readTree(p);
+
+        assertThat(node.path("maxQueueWait").asText()).isEqualTo("PT2S");
+    }
+
+    @Test
+    void readTreeNonExistentFileThrowsUncheckedIOException() {
+        Path p = tmp.resolve("nonexistent.yaml");
+
+        assertThatThrownBy(() -> YamlIO.readTree(p))
+                .isInstanceOf(UncheckedIOException.class)
+                .hasMessageContaining("Failed to read YAML");
+    }
+
+    @Test
+    void readStrictRejectsUnknownProperties() throws Exception {
+        Path p = tmp.resolve("patch.yaml");
+        Files.writeString(p, """
+                concurrency: 5
+                image: registry.example/echo:v2
+                """);
+
+        assertThatThrownBy(() -> YamlIO.readStrict(p, FunctionPatch.class))
+                .isInstanceOf(UncheckedIOException.class)
+                .hasCauseInstanceOf(UnrecognizedPropertyException.class);
+    }
+
+    @Test
+    void readTreePreservesBooleanWordsAsStrings() throws Exception {
+        Path p = tmp.resolve("config.yaml");
+        Files.writeString(p, "logLevel: on\n");
+
+        JsonNode node = YamlIO.readTree(p);
+
+        assertThat(node.path("logLevel").isTextual()).isTrue();
+        assertThat(node.path("logLevel").asText()).isEqualTo("on");
     }
 }

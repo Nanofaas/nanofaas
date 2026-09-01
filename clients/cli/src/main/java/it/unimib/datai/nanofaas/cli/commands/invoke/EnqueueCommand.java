@@ -36,6 +36,9 @@ public class EnqueueCommand implements Runnable {
 
     @Override
     public void run() {
+        if (!root.controlPlaneClient().capabilities().asyncInvocation()) {
+            throw new IllegalStateException("Asynchronous invocation is not supported by this control-plane build");
+        }
         JsonNode input = JsonInput.read(data);
         InvocationRequest req = new InvocationRequest(input, null);
         InvocationResponse resp = root.controlPlaneClient().enqueue(name, req, idempotencyKey, traceId);

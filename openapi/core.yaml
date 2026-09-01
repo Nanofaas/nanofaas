@@ -162,9 +162,21 @@ paths:
               format: binary
       responses:
         '200':
-          description: Function result
+          description: |
+            Function result. The body is always the `InvocationResponse` envelope,
+            never raw handler output. When the handler decides its own HTTP status,
+            that status replaces this 200 — signalled by the
+            `X-NanoFaaS-Function-Status` response header — while the body remains
+            `InvocationResponse` JSON.
           headers:
             X-Execution-Id:
+              schema:
+                type: string
+            X-NanoFaaS-Function-Status:
+              description: |
+                Marker (value `true`) that the HTTP status is function-decided
+                rather than control-plane-decided. A marked non-2xx status is still
+                a completed invocation, not a platform error.
               schema:
                 type: string
           content:

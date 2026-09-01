@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.cli.config;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 
@@ -22,7 +23,6 @@ class ConfigStoreTest {
         cfg.setCurrentContext("dev");
         Context ctx = new Context();
         ctx.setEndpoint("http://localhost:8080");
-        ctx.setNamespace("nanofaas");
         cfg.setContexts(Map.of("dev", ctx));
 
         store.save(cfg);
@@ -31,7 +31,6 @@ class ConfigStoreTest {
         assertThat(loaded.getCurrentContext()).isEqualTo("dev");
         assertThat(loaded.getContexts()).containsKey("dev");
         assertThat(loaded.getContexts().get("dev").getEndpoint()).isEqualTo("http://localhost:8080");
-        assertThat(loaded.getContexts().get("dev").getNamespace()).isEqualTo("nanofaas");
     }
 
     @Test
@@ -52,25 +51,6 @@ class ConfigStoreTest {
     }
 
     @Test
-    void namespaceEnvOverrideWins() {
-        Path p = tmp.resolve("config.yaml");
-        ConfigStore store = new ConfigStore(p, k -> k.equals("NANOFAAS_NAMESPACE") ? "override-ns" : null);
-
-        Config cfg = new Config();
-        cfg.setCurrentContext("dev");
-        Context ctx = new Context();
-        ctx.setEndpoint("http://localhost:8080");
-        ctx.setNamespace("original-ns");
-        cfg.setContexts(Map.of("dev", ctx));
-        store.save(cfg);
-
-        ResolvedContext resolved = store.loadResolvedContext();
-
-        assertThat(resolved.namespace()).isEqualTo("override-ns");
-        assertThat(resolved.endpoint()).isEqualTo("http://localhost:8080");
-    }
-
-    @Test
     void contextEnvOverrideSelectsDifferentContext() {
         Path p = tmp.resolve("config.yaml");
         ConfigStore store = new ConfigStore(p, k -> k.equals("NANOFAAS_CONTEXT") ? "prod" : null);
@@ -80,11 +60,9 @@ class ConfigStoreTest {
 
         Context devCtx = new Context();
         devCtx.setEndpoint("http://dev:8080");
-        devCtx.setNamespace("dev-ns");
 
         Context prodCtx = new Context();
         prodCtx.setEndpoint("http://prod:8080");
-        prodCtx.setNamespace("prod-ns");
 
         cfg.setContexts(Map.of("dev", devCtx, "prod", prodCtx));
         store.save(cfg);
@@ -93,7 +71,22 @@ class ConfigStoreTest {
 
         assertThat(resolved.contextName()).isEqualTo("prod");
         assertThat(resolved.endpoint()).isEqualTo("http://prod:8080");
-        assertThat(resolved.namespace()).isEqualTo("prod-ns");
+    }
+
+    @Test
+    void legacyNamespacePropertyIsIgnored() throws Exception {
+        Path path = tmp.resolve("config.yaml");
+        Files.writeString(path, """
+                currentContext: dev
+                contexts:
+                  dev:
+                    endpoint: http://localhost:8080
+                    namespace: legacy
+                """);
+
+        ResolvedContext resolved = new ConfigStore(path, key -> null).loadResolvedContext();
+
+        assertThat(resolved).isEqualTo(new ResolvedContext("dev", "http://localhost:8080"));
     }
 
     @Test
@@ -132,6 +125,5 @@ class ConfigStoreTest {
 
         assertThat(resolved.contextName()).isNull();
         assertThat(resolved.endpoint()).isNull();
-        assertThat(resolved.namespace()).isNull();
     }
 }

@@ -1,7 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.registry;
 
 import it.unimib.datai.nanofaas.common.model.ConcurrencyControlConfig;
-import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
@@ -14,21 +13,6 @@ import java.util.Optional;
 import java.util.Set;
 
 public class FunctionSpecResolver {
-    private static final int DEFAULT_TARGET_PER_POD = 2;
-    private static final int DEFAULT_MIN_TARGET_PER_POD = 1;
-    private static final int DEFAULT_MAX_TARGET_PER_POD = 8;
-    private static final long DEFAULT_UPSCALE_COOLDOWN_MS = 30_000L;
-    private static final long DEFAULT_DOWNSCALE_COOLDOWN_MS = 60_000L;
-    // Fractions of latency degradation over the function's best observed service time:
-    // back off above 2x, grow again below ~1.18x. See the concurrency-control module.
-    private static final double DEFAULT_HIGH_LOAD_THRESHOLD = 0.5;
-    private static final double DEFAULT_LOW_LOAD_THRESHOLD = 0.15;
-    // A generic service-time SLO for a function that did not state one. Deliberately not
-    // derived from anything the platform measures: a target the controller inferred from
-    // observed latency would move whenever the function got slower, which is the one thing
-    // an SLO must not do.
-    private static final long DEFAULT_TARGET_LATENCY_MS = 250L;
-    private static final double DEFAULT_WEIGHT = 1.0;
     private static final String QUEUE_DEPTH_METRIC = "queue_depth";
 
     private final FunctionDefaults defaults;
@@ -109,110 +93,6 @@ public class FunctionSpecResolver {
     }
 
     private ConcurrencyControlConfig normalizeConcurrencyControl(ConcurrencyControlConfig config) {
-        if (config == null || config.mode() == null || config.mode() == ConcurrencyControlMode.FIXED) {
-            return new ConcurrencyControlConfig(
-                    ConcurrencyControlMode.FIXED,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null
-            );
-        }
-
-        if (config.mode() == ConcurrencyControlMode.BUDGETED) {
-            return normalizeBudgeted(config);
-        }
-        if (config.mode() == ConcurrencyControlMode.SOJOURN) {
-            return normalizeSojourn(config);
-        }
-
-        int min = Optional.ofNullable(config.minTargetInFlightPerPod())
-                .map(v -> Math.max(1, v))
-                .orElse(DEFAULT_MIN_TARGET_PER_POD);
-        int max = Optional.ofNullable(config.maxTargetInFlightPerPod())
-                .map(v -> Math.max(1, v))
-                .orElse(DEFAULT_MAX_TARGET_PER_POD);
-        if (min > max) {
-            min = max;
-        }
-
-        int target = Optional.ofNullable(config.targetInFlightPerPod()).orElse(DEFAULT_TARGET_PER_POD);
-        target = Math.clamp(target, min, max);
-
-        return new ConcurrencyControlConfig(
-                config.mode(),
-                target,
-                min,
-                max,
-                Optional.ofNullable(config.upscaleCooldownMs()).orElse(DEFAULT_UPSCALE_COOLDOWN_MS),
-                Optional.ofNullable(config.downscaleCooldownMs()).orElse(DEFAULT_DOWNSCALE_COOLDOWN_MS),
-                Optional.ofNullable(config.highLoadThreshold()).orElse(DEFAULT_HIGH_LOAD_THRESHOLD),
-                Optional.ofNullable(config.lowLoadThreshold()).orElse(DEFAULT_LOW_LOAD_THRESHOLD)
-        );
-    }
-
-    /**
-     * SOJOURN searches for a minimum rather than stepping towards a per-replica target, so the
-     * target and the gradient thresholds are left null. Its {@code targetLatencyMs} is an
-     * end-to-end promise rather than a service-time one, and the weight is unused: the mode governs
-     * one function at a time and has no budget to divide.
-     */
-    private ConcurrencyControlConfig normalizeSojourn(ConcurrencyControlConfig config) {
-        long targetLatencyMs = Optional.ofNullable(config.targetLatencyMs())
-                .filter(value -> value > 0)
-                .orElse(DEFAULT_TARGET_LATENCY_MS);
-        int min = Optional.ofNullable(config.minTargetInFlightPerPod())
-                .map(value -> Math.max(1, value))
-                .orElse(1);
-        Integer max = config.maxTargetInFlightPerPod() == null
-                ? null
-                : Math.max(min, config.maxTargetInFlightPerPod());
-        return new ConcurrencyControlConfig(
-                ConcurrencyControlMode.SOJOURN,
-                null,
-                min,
-                max,
-                null,
-                null,
-                null,
-                null,
-                targetLatencyMs,
-                null
-        );
-    }
-
-    /**
-     * BUDGETED states what the function needs, not how its controller steps, so the per-replica
-     * target and the gradient thresholds are left null rather than filled with values that would
-     * read as configuration nobody set.
-     */
-    private ConcurrencyControlConfig normalizeBudgeted(ConcurrencyControlConfig config) {
-        long targetLatencyMs = Optional.ofNullable(config.targetLatencyMs())
-                .filter(value -> value > 0)
-                .orElse(DEFAULT_TARGET_LATENCY_MS);
-        double weight = Optional.ofNullable(config.weight())
-                .filter(value -> value > 0)
-                .orElse(DEFAULT_WEIGHT);
-        int min = Optional.ofNullable(config.minTargetInFlightPerPod())
-                .map(value -> Math.max(1, value))
-                .orElse(1);
-        Integer max = config.maxTargetInFlightPerPod() == null
-                ? null
-                : Math.max(min, config.maxTargetInFlightPerPod());
-        return new ConcurrencyControlConfig(
-                ConcurrencyControlMode.BUDGETED,
-                null,
-                min,
-                max,
-                null,
-                null,
-                null,
-                null,
-                targetLatencyMs,
-                weight
-        );
+        return ConcurrencyControlConfig.normalize(config);
     }
 }

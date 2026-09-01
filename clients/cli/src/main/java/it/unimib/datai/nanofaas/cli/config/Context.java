@@ -5,7 +5,6 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public final class Context {
     private String endpoint;
-    private String namespace;
 
     public String getEndpoint() {
         return endpoint;
@@ -13,13 +12,5 @@ public final class Context {
 
     public void setEndpoint(String endpoint) {
         this.endpoint = endpoint;
-    }
-
-    public String getNamespace() {
-        return namespace;
-    }
-
-    public void setNamespace(String namespace) {
-        this.namespace = namespace;
     }
 }

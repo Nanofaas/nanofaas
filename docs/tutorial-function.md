@@ -176,11 +176,22 @@ This builds the container image and registers the function on the control plane.
 nanofaas invoke greet -d '{"name":"Alice"}'
 ```
 
-Expected response:
+Expected response — the `InvocationResponse` envelope, with the handler's
+result nested under `output` (not returned raw):
 
 ```json
-{"greeting": "Hello, Alice!"}
+{
+  "executionId": "...",
+  "status": "success",
+  "output": {"greeting": "Hello, Alice!"},
+  "statusCode": 200
+}
 ```
+
+`statusCode`, `headers`, and `encoding` appear only when the handler sets them.
+A handler-decided non-2xx status (marked by the `X-NanoFaaS-Function-Status`
+response header) still prints this envelope, but the CLI exits `1` so pipelines
+can distinguish it from a successful invocation.
 
 ---
 

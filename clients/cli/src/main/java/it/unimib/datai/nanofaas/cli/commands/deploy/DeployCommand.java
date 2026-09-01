@@ -28,6 +28,10 @@ public class DeployCommand implements Runnable {
             description = "Container runtime to use (docker or podman).")
     String runtime;
 
+    @Option(names = {"--replace"},
+            description = "Allow destructive replacement (DELETE+POST) of immutable fields.")
+    boolean replace;
+
     @Override
     public void run() {
         FunctionSpec desired = YamlIO.read(file, FunctionSpec.class);
@@ -38,6 +42,6 @@ public class DeployCommand implements Runnable {
         BuildSpec build = BuildSpecLoader.load(file);
         DockerBuildx.run(desired.image(), build, runtime);
 
-        FunctionApplier.apply(root.controlPlaneClient(), desired);
+        FunctionApplier.apply(root.controlPlaneClient(), desired, replace);
     }
 }

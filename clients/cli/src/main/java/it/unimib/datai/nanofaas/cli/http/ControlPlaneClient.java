@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.cli.http;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import it.unimib.datai.nanofaas.common.model.ExecutionStatus;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -8,14 +9,18 @@ import it.unimib.datai.nanofaas.common.model.InvocationResponse;
 
 import java.io.IOException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
 public final class ControlPlaneClient {
     private static final String FUNCTIONS_PATH = "v1/functions/";
+    private static final String RUNTIME_CONFIG_PATH = "v1/admin/runtime-config";
     private static final String APPLICATION_JSON = "application/json";
     private static final String CONTENT_TYPE = "Content-Type";
 
@@ -52,7 +57,7 @@ public final class ControlPlaneClient {
     }
 
     public FunctionDetails getFunctionOrNull(String name) {
-        HttpRequest req = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + name))
+        HttpRequest req = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + encodePathSegment(name)))
                 .GET()
                 .timeout(Duration.ofSeconds(30))
                 .build();
@@ -68,7 +73,7 @@ public final class ControlPlaneClient {
     }
 
     public void deleteFunction(String name) {
-        HttpRequest req = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + name))
+        HttpRequest req = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + encodePathSegment(name)))
                 .DELETE()
                 .timeout(Duration.ofSeconds(30))
                 .build();
@@ -79,6 +84,51 @@ public final class ControlPlaneClient {
         }
         if (resp.statusCode() != 204) {
             throw httpError("delete function", resp);
+        }
+    }
+
+    public FunctionDetails updateFunction(String name, FunctionPatch patch) {
+        HttpRequest request = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + encodePathSegment(name)))
+                .header(CONTENT_TYPE, APPLICATION_JSON)
+                .method("PATCH", HttpRequest.BodyPublishers.ofString(json.toJson(patch)))
+                .timeout(Duration.ofSeconds(30))
+                .build();
+        HttpResponse<String> response = send(request);
+        if (response.statusCode() != 200) {
+            throw httpError("update function", response);
+        }
+        return json.fromJson(response.body(), FunctionDetails.class);
+    }
+
+    public ReplicaStatus getReplicas(String name) {
+        HttpRequest req = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + encodePathSegment(name) + "/replicas"))
+                .GET()
+                .timeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpResponse<String> resp = send(req);
+        if (resp.statusCode() != 200) {
+            throw httpError("get replicas", resp);
+        }
+        return json.fromJson(resp.body(), ReplicaStatus.class);
+    }
+
+    public Map<String, Object> setReplicas(String name, int replicas) {
+        String body = json.toJson(Map.of("replicas", replicas));
+        HttpRequest req = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + encodePathSegment(name) + "/replicas"))
+                .header(CONTENT_TYPE, APPLICATION_JSON)
+                .method("PUT", HttpRequest.BodyPublishers.ofString(body))
+                .timeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpResponse<String> resp = send(req);
+        if (resp.statusCode() != 200) {
+            throw httpError("set replicas", resp);
+        }
+        try {
+            return json.mapper().readValue(resp.body(), new TypeReference<>() {});
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Failed to parse replica response", e);
         }
     }
 
@@ -97,10 +147,10 @@ public final class ControlPlaneClient {
         return json.fromJson(resp.body(), FunctionDetails.class);
     }
 
-    public InvocationResponse invokeSync(String name, InvocationRequest request,
-                                         String idempotencyKey, String traceId, Integer timeoutMs) {
+    public InvocationCallResult invokeSync(String name, InvocationRequest request,
+                                           String idempotencyKey, String traceId, Integer timeoutMs) {
         String body = json.toJson(request);
-        HttpRequest.Builder b = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + name + ":invoke"))
+        HttpRequest.Builder b = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + encodePathSegment(name) + ":invoke"))
                 .header(CONTENT_TYPE, APPLICATION_JSON)
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .timeout(Duration.ofSeconds(300));
@@ -116,15 +166,24 @@ public final class ControlPlaneClient {
         }
 
         HttpResponse<String> resp = send(b.build());
-        if (resp.statusCode() != 200) {
+        boolean functionDecided = resp.headers().firstValue("X-NanoFaaS-Function-Status")
+                .map(Boolean::parseBoolean)
+                .orElse(false);
+        if (resp.statusCode() != 200 && !functionDecided) {
             throw httpError("invoke function", resp);
         }
-        return json.fromJson(resp.body(), InvocationResponse.class);
+        InvocationResponse response = resp.body() == null || resp.body().isBlank()
+                ? new InvocationResponse(
+                        resp.headers().firstValue("X-Execution-Id").orElse(null),
+                        resp.statusCode() >= 200 && resp.statusCode() < 300 ? "success" : "error",
+                        null, null, resp.statusCode(), null, null)
+                : json.fromJson(resp.body(), InvocationResponse.class);
+        return new InvocationCallResult(resp.statusCode(), response);
     }
 
     public InvocationResponse enqueue(String name, InvocationRequest request, String idempotencyKey, String traceId) {
         String body = json.toJson(request);
-        HttpRequest.Builder b = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + name + ":enqueue"))
+        HttpRequest.Builder b = HttpRequest.newBuilder(base.resolve(FUNCTIONS_PATH + encodePathSegment(name) + ":enqueue"))
                 .header(CONTENT_TYPE, APPLICATION_JSON)
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .timeout(Duration.ofSeconds(30));
@@ -144,7 +203,7 @@ public final class ControlPlaneClient {
     }
 
     public ExecutionStatus getExecution(String executionId) {
-        HttpRequest req = HttpRequest.newBuilder(base.resolve("v1/executions/" + executionId))
+        HttpRequest req = HttpRequest.newBuilder(base.resolve("v1/executions/" + encodePathSegment(executionId)))
                 .GET()
                 .timeout(Duration.ofSeconds(30))
                 .build();
@@ -154,6 +213,144 @@ public final class ControlPlaneClient {
             throw httpError("get execution", resp);
         }
         return json.fromJson(resp.body(), ExecutionStatus.class);
+    }
+
+    /**
+     * Fetches the control-plane's OpenAPI contract document.
+     *
+     * @return the raw OpenAPI document body, unchanged
+     * @throws ControlPlaneHttpException if the document is not served with a 200 status
+     */
+    public String openApi() {
+        HttpRequest req = HttpRequest.newBuilder(base.resolve("openapi.yaml"))
+                .GET()
+                .timeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpResponse<String> resp = send(req);
+        if (resp.statusCode() != 200) {
+            throw httpError("get openapi", resp);
+        }
+        return resp.body();
+    }
+
+    /**
+     * Fetches the control-plane's build metadata, if the route is served.
+     *
+     * @return the parsed build metadata, or {@code null} when the control-plane
+     *         responds with 404 (metadata module not loaded)
+     * @throws ControlPlaneHttpException for any non-200/404 status
+     */
+    public BuildMetadata buildMetadataOrNull() {
+        HttpRequest req = HttpRequest.newBuilder(base.resolve("modules/build-metadata"))
+                .GET()
+                .timeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpResponse<String> resp = send(req);
+        if (resp.statusCode() == 404) {
+            return null;
+        }
+        if (resp.statusCode() != 200) {
+            throw httpError("get build metadata", resp);
+        }
+        return json.fromJson(resp.body(), BuildMetadata.class);
+    }
+
+    /**
+     * Derives the control-plane's capabilities from its OpenAPI contract.
+     *
+     * <p>This performs a fresh fetch of {@code /openapi.yaml} on every call; there is
+     * deliberately no runtime cache.</p>
+     *
+     * @return the parsed capabilities
+     */
+    public ControlPlaneCapabilities capabilities() {
+        return ControlPlaneCapabilities.fromOpenApi(openApi());
+    }
+
+    /**
+     * Fetches the full runtime-configuration snapshot.
+     *
+     * @throws ControlPlaneHttpException for any non-200 status (404 = admin API disabled)
+     */
+    public RuntimeConfigSnapshot getRuntimeConfig() {
+        HttpRequest req = HttpRequest.newBuilder(base.resolve(RUNTIME_CONFIG_PATH))
+                .GET()
+                .timeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpResponse<String> resp = send(req);
+        if (resp.statusCode() != 200) {
+            throw httpError("get runtime config", resp);
+        }
+        return json.fromJson(resp.body(), RuntimeConfigSnapshot.class);
+    }
+
+    /**
+     * Fetches a single runtime-configuration namespace as an untyped JSON tree.
+     *
+     * @throws ControlPlaneHttpException for any non-200 status (404 = admin API disabled
+     *                                   or namespace not found)
+     */
+    public JsonNode getRuntimeConfig(String namespace) {
+        HttpRequest req = HttpRequest.newBuilder(base.resolve(RUNTIME_CONFIG_PATH + "/" + encodePathSegment(namespace)))
+                .GET()
+                .timeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpResponse<String> resp = send(req);
+        if (resp.statusCode() != 200) {
+            throw httpError("get runtime config", resp);
+        }
+        return readTree(resp.body());
+    }
+
+    /**
+     * Validates a runtime-configuration patch for a namespace.
+     *
+     * @throws ControlPlaneHttpException for any non-200 status (422 = validation failed,
+     *                                   404 = admin API disabled or namespace not found)
+     */
+    public JsonNode validateRuntimeConfig(String namespace, Map<String, Object> values) {
+        HttpRequest req = HttpRequest.newBuilder(base.resolve(RUNTIME_CONFIG_PATH + "/" + encodePathSegment(namespace) + "/validate"))
+                .header(CONTENT_TYPE, APPLICATION_JSON)
+                .POST(HttpRequest.BodyPublishers.ofString(json.toJson(values)))
+                .timeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpResponse<String> resp = send(req);
+        if (resp.statusCode() != 200) {
+            throw httpError("validate runtime config", resp);
+        }
+        return readTree(resp.body());
+    }
+
+    /**
+     * Patches a runtime-configuration namespace.
+     *
+     * @throws ControlPlaneHttpException for any non-200 status (404/409/422/503)
+     */
+    public RuntimeConfigPatchResponse patchRuntimeConfig(String namespace, RuntimeConfigPatchRequest request) {
+        HttpRequest req = HttpRequest.newBuilder(base.resolve(RUNTIME_CONFIG_PATH + "/" + encodePathSegment(namespace)))
+                .header(CONTENT_TYPE, APPLICATION_JSON)
+                .method("PATCH", HttpRequest.BodyPublishers.ofString(json.toJson(request)))
+                .timeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpResponse<String> resp = send(req);
+        if (resp.statusCode() != 200) {
+            throw httpError("patch runtime config", resp);
+        }
+        return json.fromJson(resp.body(), RuntimeConfigPatchResponse.class);
+    }
+
+    private JsonNode readTree(String body) {
+        try {
+            return json.mapper().readTree(body);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Failed to parse JSON", e);
+        }
     }
 
     /**
@@ -205,5 +402,9 @@ public final class ControlPlaneClient {
         }
         String u = baseUrl.endsWith("/") ? baseUrl : (baseUrl + "/");
         return URI.create(u);
+    }
+
+    private static String encodePathSegment(String segment) {
+        return URLEncoder.encode(segment, StandardCharsets.UTF_8).replace("+", "%20");
     }
 }
