@@ -1,0 +1,16 @@
+{{- if and .Values.controlPlane.persistence.enabled (not .Values.controlPlane.persistence.existingClaim) -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nanofaas-control-plane-data
+  namespace: {{ include "nanofaas.namespace" . | quote }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.controlPlane.persistence.size | quote }}
+  {{- with .Values.controlPlane.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+{{- end -}}

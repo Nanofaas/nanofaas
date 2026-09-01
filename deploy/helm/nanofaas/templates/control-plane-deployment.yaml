@@ -16,6 +16,10 @@ spec:
         {{- include "nanofaas.controlPlane.selectorLabels" . | nindent 8 }}
     spec:
       serviceAccountName: {{ .Values.serviceAccount.name | quote }}
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
       containers:
         - name: control-plane
           image: "{{ .Values.controlPlane.image.repository }}:{{ .Values.controlPlane.image.tag }}"
@@ -28,12 +32,17 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: NANOFAAS_REGISTRY_PATH
+              value: /var/lib/nanofaas/functions.json
             {{- with .Values.controlPlane.extraEnv }}
             {{- range $env := . }}
             - name: {{ $env.name | quote }}
               value: {{ $env.value | quote }}
             {{- end }}
             {{- end }}
+          volumeMounts:
+            - name: registry-data
+              mountPath: /var/lib/nanofaas
           resources:
             {{- toYaml .Values.controlPlane.resources | nindent 12 }}
           readinessProbe:
@@ -44,3 +53,11 @@ spec:
             httpGet:
               path: /actuator/health/liveness
               port: {{ .Values.controlPlane.service.ports.actuator }}
+      volumes:
+        - name: registry-data
+          {{- if .Values.controlPlane.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.controlPlane.persistence.existingClaim | default "nanofaas-control-plane-data" | quote }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

@@ -37,3 +37,13 @@ clients.
 The network is created by Compose. If the control plane is started separately,
 create a Docker network named `nanofaas` before configuring
 `nanofaas.container-local.network-name=nanofaas`.
+
+## Persistent function catalog
+
+The control plane writes its function catalog to a named volume,
+`control-plane-data`, mounted at `/var/lib/nanofaas`, with
+`NANOFAAS_REGISTRY_PATH=/var/lib/nanofaas/functions.json`. The catalog survives
+`docker compose down` and control-plane restarts; delete it explicitly with
+`docker compose down -v` to reset state. The catalog stores function specs
+including their environment variables in plaintext, so treat the volume as
+sensitive and back it up.

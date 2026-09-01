@@ -6,6 +6,11 @@ namespace:
 
 controlPlane:
   replicaCount: 1
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClass: ""
+    existingClaim: ""
   image:
     repository: ghcr.io/miciav/nanofaas/control-plane
     tag: v0.19.0

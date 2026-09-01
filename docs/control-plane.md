@@ -165,3 +165,44 @@ OCI images, and runtime architecture/kernel/JVM facts. The Dockerfiles set
 match whatever base an image was actually built with. Every field is
 nullable; missing data is JSON `null`, never a sentinel, and never blocks
 startup.
+
+## Persistent function catalog
+
+The control plane persists its function catalog to a JSON file and restores
+it at startup. The path is configured with `nanofaas.registry.path`
+(environment variable `NANOFAAS_REGISTRY_PATH`); the default is
+`build/nanofaas/functions.json`.
+
+**Restore semantics.** An absent file is a normal empty first start: the
+registry starts empty. A file that is unreadable, corrupt, or whose schema
+version is unsupported aborts startup — the control plane refuses to serve a
+partially restored catalog. Restoration replays each managed function against
+the exact backend recorded in the catalog (`requireBackend`), so a function
+that was persisted for a backend no longer available fails startup rather
+than silently degrading to a different backend or to an unmanaged state.
+
+**Security.** The catalog serializes each function's spec, including its
+environment variables, in plaintext. On POSIX the parent directory is written
+with mode `0700` and the file with mode `0600` (owner-only), and writes are
+atomic (temp file + rename) so a crash cannot leave a truncated catalog. The
+control plane runs as the distroless non-root user (UID/GID `65532`); treat
+the backing volume as sensitive and secure it accordingly, and back it up —
+it is the source of truth for registered functions.
+
+**Helm.** The chart mounts a persistent volume at `/var/lib/nanofaas` and sets
+`NANOFAAS_REGISTRY_PATH=/var/lib/nanofaas/functions.json`. Tune it with
+`controlPlane.persistence.{enabled,size,storageClass,existingClaim}`; setting
+`existingClaim` reuses an operator-provided PVC and suppresses the chart's own
+PVC, and `enabled: false` falls back to an `emptyDir` (state lost on pod
+restart).
+
+**Docker Compose.** The `control-plane-data` named volume is mounted at
+`/var/lib/nanofaas` and `NANOFAAS_REGISTRY_PATH=/var/lib/nanofaas/functions.json`
+is set; the volume survives `docker compose down` unless removed explicitly.
+
+**Limitations (MVP).** Registration is not journaled: a crash between the
+durable catalog write and the provisioning of a managed function's resources
+can leave a catalog entry whose backing resources were never created (an
+orphan). Restoration only reconciles the functions recorded in the catalog;
+unrelated residual Kubernetes resources or containers left over from an
+earlier run are not swept at startup.

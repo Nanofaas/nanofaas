@@ -53,3 +53,13 @@ def test_compose_prometheus_scrapes_control_plane_management_port():
 
 def test_compose_build_context_excludes_local_virtual_environments():
     assert "**/.venv" in DOCKERIGNORE.read_text(encoding="utf-8").splitlines()
+
+
+def test_compose_persists_function_registry_to_a_named_volume():
+    compose = COMPOSE.read_text(encoding="utf-8")
+
+    assert "control-plane-data:/var/lib/nanofaas" in compose
+    assert "NANOFAAS_REGISTRY_PATH: /var/lib/nanofaas/functions.json" in compose
+    # The named volume is declared under the top-level `volumes:` block, not just referenced.
+    top_level_volumes = compose.rpartition("volumes:")[2]
+    assert "control-plane-data:" in top_level_volumes
