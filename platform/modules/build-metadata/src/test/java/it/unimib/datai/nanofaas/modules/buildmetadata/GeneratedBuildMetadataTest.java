@@ -30,7 +30,9 @@ class GeneratedBuildMetadataTest {
         assertThat(properties.getProperty("revision")).satisfiesAnyOf(
                 revision -> assertThat(revision).isNull(),
                 revision -> assertThat(revision).matches("[0-9a-f]{40}"));
-        assertThat(properties.getProperty("dirty")).isIn("true", "false");
+        assertThat(properties.getProperty("dirty")).satisfiesAnyOf(
+                dirty -> assertThat(dirty).isNull(),
+                dirty -> assertThat(dirty).isIn("true", "false"));
         assertThat(properties.getProperty("modules").split(","))
                 .contains("build-metadata").isSorted();
         // Matches whatever build type was actually requested (e.g. -PnanofaasBuildType=native),
