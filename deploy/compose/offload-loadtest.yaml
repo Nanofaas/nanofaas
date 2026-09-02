@@ -1,0 +1,54 @@
+name: nanofaas-offload-loadtest
+
+services:
+  edge-control-plane:
+    image: nanofaas/offload-loadtest-control-plane:local
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile
+      args:
+        NANOFAAS_CONTROL_PLANE_MODULES: container-deployment-provider,offload,sync-queue
+    environment:
+      NANOFAAS_METRICS_PROFILE: advanced
+      NANOFAAS_OFFLOAD_TARGETURL: http://cloud-control-plane:8080
+      NANOFAAS_REGISTRY_PATH: /var/lib/nanofaas/functions.json
+      SYNC_QUEUE_MAX_DEPTH: 1
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    volumes:
+      - edge-control-plane-data:/var/lib/nanofaas
+    networks:
+      - nanofaas-offload-loadtest
+
+  cloud-control-plane:
+    image: nanofaas/offload-loadtest-control-plane:local
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile
+      args:
+        NANOFAAS_CONTROL_PLANE_MODULES: container-deployment-provider,offload,sync-queue
+    user: "0:0"
+    environment:
+      NANOFAAS_DEPLOYMENT_DEFAULT_BACKEND: container-local
+      NANOFAAS_CONTAINER_LOCAL_RUNTIME_ADAPTER: docker-java
+      NANOFAAS_CONTAINER_LOCAL_NETWORK_NAME: nanofaas-offload-loadtest
+      NANOFAAS_CONTAINER_LOCAL_CALLBACK_URL: http://cloud-control-plane:8080/v1/internal/executions
+      NANOFAAS_METRICS_PROFILE: advanced
+      NANOFAAS_REGISTRY_PATH: /var/lib/nanofaas/functions.json
+    ports:
+      - "19090:8080"
+      - "19091:8081"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - cloud-control-plane-data:/var/lib/nanofaas
+    networks:
+      - nanofaas-offload-loadtest
+
+networks:
+  nanofaas-offload-loadtest:
+    name: nanofaas-offload-loadtest
+
+volumes:
+  edge-control-plane-data:
+  cloud-control-plane-data:
