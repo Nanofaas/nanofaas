@@ -7,12 +7,13 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.ImportRuntimeHints;
 import it.unimib.datai.nanofaas.controlplane.config.CaffeineRuntimeHints;
 import it.unimib.datai.nanofaas.controlplane.config.ProcessorMetricsRuntimeHints;
+import it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogRuntimeHints;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionDefaults;
 
 @SpringBootApplication
 @ConfigurationPropertiesScan
 @EnableConfigurationProperties(FunctionDefaults.class)
-@ImportRuntimeHints({CaffeineRuntimeHints.class, ProcessorMetricsRuntimeHints.class})
+@ImportRuntimeHints({CaffeineRuntimeHints.class, ProcessorMetricsRuntimeHints.class, FunctionCatalogRuntimeHints.class})
 public class ControlPlaneApplication {
 
     public static void main(String[] args) {
