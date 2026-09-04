@@ -11,6 +11,7 @@ import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionUpdateRequest;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import it.unimib.datai.nanofaas.controlplane.registry.DeploymentMetadata;
+import it.unimib.datai.nanofaas.controlplane.service.RateLimiter;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,7 +32,7 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.never;
 
 @WebFluxTest(controllers = FunctionController.class)
-@Import(GlobalExceptionHandler.class)
+@Import({GlobalExceptionHandler.class, RateLimiter.class})
 class FunctionControllerTest {
 
     @Autowired

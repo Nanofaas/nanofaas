@@ -11,6 +11,7 @@ import it.unimib.datai.nanofaas.controlplane.service.AsyncQueueUnavailableExcept
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
 import it.unimib.datai.nanofaas.controlplane.service.SyncInvocation;
+import it.unimib.datai.nanofaas.controlplane.service.RateLimiter;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
 import org.junit.jupiter.api.Test;
@@ -33,7 +34,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @WebFluxTest(controllers = {InvocationController.class, FunctionController.class})
-@Import(GlobalExceptionHandler.class)
+@Import({GlobalExceptionHandler.class, RateLimiter.class})
 class InvocationControllerTest {
 
     @Autowired

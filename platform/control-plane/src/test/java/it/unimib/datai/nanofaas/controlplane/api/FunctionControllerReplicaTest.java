@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.controlplane.api;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
+import it.unimib.datai.nanofaas.controlplane.service.RateLimiter;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
@@ -16,7 +17,7 @@ import java.util.Optional;
 import static org.mockito.Mockito.*;
 
 @WebFluxTest(controllers = {FunctionController.class, InvocationController.class})
-@Import(GlobalExceptionHandler.class)
+@Import({GlobalExceptionHandler.class, RateLimiter.class})
 class FunctionControllerReplicaTest {
 
     @Autowired

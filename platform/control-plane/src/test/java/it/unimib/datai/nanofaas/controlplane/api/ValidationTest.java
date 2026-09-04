@@ -8,6 +8,7 @@ import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionNotFoundException;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
+import it.unimib.datai.nanofaas.controlplane.service.RateLimiter;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
@@ -22,7 +23,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 @WebFluxTest(controllers = {FunctionController.class, InvocationController.class})
-@Import(GlobalExceptionHandler.class)
+@Import({GlobalExceptionHandler.class, RateLimiter.class})
 class ValidationTest {
 
     @Autowired
