@@ -79,22 +79,36 @@ handoff — lo stesso scambio 6,1 µs contro 0,085 µs che il percorso sync ha g
 eliminato (`InvocationService.java:106-116`). Il ragionamento non è mai stato
 applicato al percorso async.
 
-### Quanto vale, secondo il dato che già abbiamo
+### Quanto vale — misurato, non stimato (aggiornato dopo il codice)
 
-`docs/experiments/archive/refusal-cost.md` (2026-08-22) ha già misurato il
-costo di ciò che questo filtro eviterebbe: l'andata-e-ritorno JSON completa
-costa **0,99 µs**, e l'intera pulizia in ingresso di quella sessione valeva
-**0,226% di un core** a 590 rifiuti/s — con la conclusione esplicita "sono
-pulizia, non prestazioni". Scalando quel conto: sul percorso sync, saltare
-solo la deserializzazione vale una frazione di quel totale, circa **0,06% di
-un core**; sul percorso `:enqueue`, dove si evita anche l'handoff a
-`boundedElastic` (6,1 µs contro 0,085 µs di lavoro utile), il conto sale a
-circa **0,4%**.
+**Il conto qui sotto era analitico e si è rivelato sbagliato di segno sul
+sync.** Prima che il filtro esistesse, `docs/experiments/archive/
+refusal-cost.md` (2026-08-22) aveva misurato solo i pezzi che il filtro
+avrebbe evitato — deserializzazione JSON (0,99 µs andata-e-ritorno),
+handoff a `boundedElastic` (6,1 µs) — e da lì un conto per scala aveva
+stimato ~0,06% di un core sul sync e ~0,4% sull'`:enqueue`, entrambi
+positivi. Una volta scritto il filtro, `docs/experiments/archive/
+webfilter-refusal-cost.md` (2026-09-04, passo 0 dell'Esperimento C) lo ha
+misurato per davvero, includendo il costo che il conto analitico non poteva
+vedere: la pipeline Reactor del filtro stesso (`getBody()` → `doOnNext` →
+`then(Mono.defer(...))` → `block()`).
 
-Questo non è un argomento contro il filtro — è pulizia legittima, e il codice
-async non ha mai ricevuto l'ottimizzazione che il sync ha già — ma ridimensiona
-l'aspettativa: non ci si deve aspettare che l'Esperimento C mostri un effetto
-sopra il rumore di una corsa Azure. Vedi il passo 0 aggiunto a quell'esperimento.
+**Sul sync il filtro perde**, di poco: −300...−600 ns per rifiuto su quattro
+corse indipendenti (segno stabile, ampiezza no), circa −0,02%...−0,04% di un
+core a 590 rifiuti/s — la pipeline reattiva costa più di quanto la
+deserializzazione JSON e il throw/catch che sostituisce costassero. **Sull'
+`:enqueue` il filtro vince**, e di molto: 7,3–13,1 µs per rifiuto,
+0,43%–0,77% di un core, perché evita per intero l'handoff a
+`boundedElastic` (rimisurato a 7,9–13,3 µs, non i 6,1 µs della sessione di
+agosto — stesso ordine di grandezza, macchina diversa, sessione diversa).
+
+Questo non cambia la decisione — il filtro resta pulizia legittima sul sync
+(la perdita è irrilevante in assoluto, sotto la soglia a cui la sessione di
+agosto giudicava "pulizia, non prestazioni" un effetto *positivo* venti
+volte più grande) — ma cambia dove guardare: l'Esperimento C, se gira su
+Azure, deve girare in `INVOCATION_MODE=async`. Un run in sync (il default di
+k6) non vedrebbe niente di distinguibile dal rumore, e quel niente sarebbe
+la risposta corretta, non un fallimento della misura.
 
 **Cosa fare:** un `WebFilter` che consulta `RateLimiter` **solo sui due
 suffissi di invocazione** (`:invoke`, `:enqueue`) — non `/v1/functions/**`
@@ -303,28 +317,39 @@ scoperta migliore di una conferma.
 
 **Domanda:** il `WebFilter` della Parte I.1 produce una differenza misurabile?
 
-**Passo 0 — banco locale prima di Azure.** `docs/experiments/archive/
-refusal-cost.md` ha già stabilito che questo genere di segnale è sotto il
-rumore delle corse Azure: a 1 core il throttling CFS oscilla dell'ordine del
-5% fra ripetizioni contro un effetto atteso sotto l'1%; a 4 core il sistema non
-è CPU-bound e non mostra nulla. Prima di spendere una corsa Azure, riprodurre
-lo stesso banco locale di quella nota — profondità di stack realistica via
-`deep(n, make)`, 50k giri di riscaldamento, 5 tornate da 50k, minimo — per
-confrontare il costo di un 429 con e senza il filtro, **su entrambi `:invoke`
-e `:enqueue`**. Se il numero non supera il rumore di fondo misurato in quella
-sessione, **non eseguire la corsa Azure**: la differenza non sarebbe
-distinguibile, e la conclusione corretta sarebbe la stessa di allora — "sono
-pulizia, non prestazioni" — non "non ha funzionato".
+**Passo 0 — fatto, 2026-09-04.** Risultato completo in
+`docs/experiments/archive/webfilter-refusal-cost.md`. Quattro corse
+indipendenti del banco locale (stesso metodo di `refusal-cost.md`:
+`deep(n, make)`, 50k di riscaldamento, 5 tornate da 50k, minimo — più una
+correzione necessaria: la costruzione di `MockServerWebExchange` va isolata
+e sottratta, altrimenti domina la misura e ne inverte il segno):
 
-**Se il banco locale mostra un effetto sopra rumore, forma della corsa Azure:**
-due bracci — `main` contro il branch col filtro — a carico di sovraccarico. Il
-riferimento è `azure-load3x`: **23,12% di scarti** a 2 core, cioè un regime in
-cui quasi un quarto delle richieste percorre il cammino del rifiuto. **Va corsa
-in entrambe le modalità di invocazione**, non solo `INVOCATION_MODE=sync` (il
-default di `experiments/k6/common.js:10`, e quindi implicito in
-`azure-load3x`): il caso più forte per il filtro è l'handoff a
-`boundedElastic` su `:enqueue`, che un regime sync non esercita affatto — vedi
-il conto in "Quanto vale" nella Parte I.1.
+- **Sync (`:invoke`): il filtro perde**, −300...−600 ns per rifiuto
+  (segno stabile sulle quattro corse), −0,02%...−0,04% di un core a 590
+  rifiuti/s. La pipeline Reactor del filtro costa più della
+  deserializzazione JSON + throw/catch che sostituisce. Irrilevante in
+  assoluto — sotto la soglia a cui la sessione di agosto giudicava "pulizia,
+  non prestazioni" un effetto *positivo* venti volte più grande — ma il
+  segno è opposto a quanto stimato in "Quanto vale" nella Parte I.1 prima
+  che il filtro esistesse davvero.
+- **`:enqueue`: il filtro vince**, 7,3–13,1 µs per rifiuto, 0,43%–0,77% di
+  un core, evitando per intero l'handoff a `boundedElastic` (rimisurato a
+  7,9–13,3 µs, non i 6,1 µs di agosto — stessa scala, sessione diversa).
+
+**Conseguenza per la corsa Azure, se si fa: solo `INVOCATION_MODE=async`.**
+Un run in sync (il default di `experiments/k6/common.js:10`, e quindi
+implicito in `azure-load3x`) non vedrebbe niente di distinguibile dal
+rumore CFS (~5% a 1 core contro un effetto ormai noto essere sotto lo
+0,04%) — e quel niente sarebbe la risposta corretta, non un fallimento
+della misura. Il segnale su `:enqueue` (0,43%–0,77%) è invece un ordine di
+grandezza sopra quanto la sessione di agosto aveva già giudicato invisibile
+su Azure, e potenzialmente sopra il rumore se la corsa satura davvero un
+core — è quello il braccio che giustifica la spesa, non il sync.
+
+**Forma della corsa Azure, se si fa:** due bracci — `main` contro il branch
+col filtro — a carico di sovraccarico, **in modalità async**. Il riferimento
+di carico resta `azure-load3x` (**23,12% di scarti** a 2 core in sync, da
+riprodurre in async prima di usarlo come regime).
 
 **Rischio da escludere prima di fidarsi del numero:** chiudere un 429 senza
 aver consumato il body della richiesta può far chiudere la connessione HTTP
@@ -341,8 +366,11 @@ riconnessioni.
 **accettate** (è lì che deve vedersi il guadagno), throughput a parità di carico
 offerto, `connections.active`.
 
-**Viene dopo:** richiede che il codice esista, e che il passo 0 l'abbia
-giustificato.
+**Stato:** entrambi i precondizioni sono soddisfatte — il codice esiste
+(`RateLimitWebFilter`, fatto 2026-09-04) e il passo 0 lo giustifica, ma solo
+per `:enqueue`. Non lanciata da questa revisione del piano: richiede Azure e
+va eseguita deliberatamente, in `INVOCATION_MODE=async`, non nella modalità
+sync di default.
 
 ## Ciò che ho deliberatamente rimandato: la matrice a 4 core
 
@@ -414,11 +442,17 @@ deliberatamente.
    `control_plane_variants.py` (`JVM_TUNING` + `-Dreactor.netty.ioWorkerCount=1`)
 3. Esperimento B — JIT × event loop. Scommentare `B-loop-cpu1` in `queue.tsv`
    dopo il passo 2 ed eseguire.
-4. Banco locale — costo del rifiuto con/senza filtro, `:invoke` e `:enqueue`
-   (Esperimento C, passo 0). Non passa da NanoLab: microbenchmark Java nel
-   repo nanofaas, risultato in `docs/experiments/archive/refusal-cost.md` o
-   un file gemello.
-5. Solo se il passo 4 supera il rumore di fondo: codice `WebFilter`
-   (Parte I.1) scoperto sui soli suffissi `:invoke`/`:enqueue`, poi corsa
-   Azure dell'Esperimento C in entrambe le modalità di invocazione
-6. Applicare, o non applicare, la Parte I.2 e I.3 secondo B
+4. ~~Banco locale (Esperimento C, passo 0)~~ — **fatto, 2026-09-04**, risultato
+   in `docs/experiments/archive/webfilter-refusal-cost.md`: perdita
+   irrilevante sul sync, vittoria netta su `:enqueue` (0,43%–0,77% di un
+   core). Eseguito dopo il codice, non prima come pianificato in origine —
+   ha misurato il filtro vero, non un'ipotesi.
+5. ~~Codice `WebFilter` (Parte I.1)~~ — **fatto, 2026-09-04**:
+   `RateLimitWebFilter`, scoperto sui soli suffissi `:invoke`/`:enqueue`,
+   piano di implementazione in
+   `docs/superpowers/plans/2026-09-04-rate-limit-webfilter.md`.
+6. Corsa Azure dell'Esperimento C, **solo in `INVOCATION_MODE=async`** (il
+   passo 0 ha già escluso un segnale visibile in sync) — priorità più bassa
+   di A e B, dato che il guadagno misurato è reale ma piccolo in assoluto
+   (sotto l'1% di un core).
+7. Applicare, o non applicare, la Parte I.2 e I.3 secondo B

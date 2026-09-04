@@ -1,9 +1,12 @@
 # Esperimenti archiviati
 
 Quello che c'è qui dentro è **chiuso**. Sono le campagne diagnostiche del
-2026-08: sono servite a trovare colli di bottiglia e a decidere, non a
-descrivere le prestazioni della piattaforma. I numeri che contengono valgono
-per il codice di allora e non vanno citati come prestazioni correnti.
+2026-08 (più un'aggiunta puntuale del 2026-09-04, [`webfilter-refusal-cost.md`](webfilter-refusal-cost.md),
+un banco locale di passo-0 nato dallo stesso bisogno — decidere prima di
+spendere un run Azure): sono servite a trovare colli di bottiglia e a
+decidere, non a descrivere le prestazioni della piattaforma. I numeri che
+contengono valgono per il codice di allora e non vanno citati come
+prestazioni correnti.
 
 La campagna aperta è in [`../baseline-2026-08/`](../baseline-2026-08/).
 
@@ -45,3 +48,15 @@ Matrice 4 bracci × 3 ripetizioni (sync/misto × 2x/3x), 5,04 M richieste.
 
 Gli scenari e il generatore (`mixed-workload.js`) vivono sul branch
 `dispatch-instrumentation` di NanoLab, non su `main`.
+
+## `webfilter-refusal-cost.md`
+
+Passo 0 dell'Esperimento C in
+[`../../plans/2026-09-04-overload-path-fixes.md`](../../plans/2026-09-04-overload-path-fixes.md):
+il `RateLimitWebFilter` che sposta il rifiuto prima del decode del body vale
+qualcosa, misurato invece che stimato? Gemello di [`refusal-cost.md`](refusal-cost.md),
+stesso metodo. **Risposta in due parti, non una**: sul percorso sync il
+filtro è una perdita minuscola (~300-600 ns per rifiuto, il costo della
+pipeline Reactor supera quanto evita), sul percorso `:enqueue` è una vittoria
+netta di diversi µs (evita l'handoff a `boundedElastic`). La corsa Azure che
+serve è solo quella in modalità async.
