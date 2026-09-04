@@ -242,13 +242,28 @@ in questo repo. Non c'è nulla da costruire per ottenere RSS e CFS: c'è solo da
 usare `nanolab.sh compare` invece di `e2e-memory-ab.sh` per queste due
 domande.
 
-Quello che resta effettivamente da costruire, verificato assente sia nel
-codice sorgente (`grep -r "reactor.netty.eventloop.pending" platform/` non
-trova nulla) sia nel catalogo di NanoLab:
+**Correzione, 2026-09-04.** La riga sotto diceva che il gauge dei task
+pendenti per event loop andava ancora costruito. Falso, e il modo in cui
+l'avevo verificato aveva un buco: `grep -r "reactor.netty.eventloop.pending"
+platform/` cerca una stringa nel codice sorgente di nanofaas, ma il gauge
+non vive lì — vive nel bytecode di reactor-netty stesso
+(`reactor.netty.transport.EventLoopMeters`/`MicrometerEventLoopMeterRegistrar`,
+verificato nel jar `reactor-netty-core-1.3.6`), e si attiva automaticamente
+ogni volta che le metriche del server sono accese — cosa che
+`NettyServerMetricsConfig` fa già (`server.metrics(true, ...)`). Verificato
+avviando davvero l'app e leggendo `/actuator/prometheus`: con venti
+richieste concorrenti compaiono venti serie
+`reactor_netty_eventloop_pending_tasks{name="reactor-http-nio-N"}`, una per
+loop. E NanoLab lo sa già da agosto: `packages/nanolab/src/nanolab/metrics/
+catalogue.py:338-344` ha sia `netty_eventloop_pending` (sommato) sia
+`netty_eventloop_pending_per_loop` (per thread) — è il numero che nel 2026-08-23
+aveva già rivelato gli 863 task in coda. Non c'è niente da costruire su
+questo fronte.
+
+Quello che resta effettivamente da costruire:
 
 | cosa manca | dove va | nota |
 |---|---|---|
-| gauge Micrometer dei task pendenti per event loop | `platform/control-plane` | il design esiste già: `2026-08-21-dispatch-bottleneck-and-comparison-rerun.md:2267-2269` — `Gauge.builder(..., singleThreadEventExecutor::pendingTasks)`, discusso e mai spedito. È il numero che ha rivelato gli 863; senza, l'Esperimento B non vede la coda dei loop, solo il suo sintomo (CFS e latenza) |
 | il conteggio degli event loop come asse della matrice | `packages/nanolab/src/nanolab/images/control_plane_variants.py` | oggi `ControlPlaneVariant.build_env` porta solo `JVM_TUNING` (GC/tiering) per le build JVM; `-Dreactor.netty.ioWorkerCount=N` è una system property e può entrare nello stesso `JVM_TUNING` — vedi Esperimento B |
 
 L'impalcatura di `e2e-memory-ab.sh` — provisioning VM, deploy A/B, k6,
@@ -299,9 +314,9 @@ CPU a 1 core — e perché la §23.1 vieta di confrontarle fra corse diverse.
 esistono ancora come `ControlPlaneVariant` — vanno aggiunti a
 `control_plane_variants.py` appendendo `-Dreactor.netty.ioWorkerCount=1` al
 `JVM_TUNING` dei due bracci esistenti (`jvm`, `jvm-c2`), il meccanismo già
-supporta system property arbitrarie oltre a GC/tiering. Il gauge dei task
-pendenti per loop (vedi Prerequisito) va anche lui aggiunto prima, o la
-metrica decisiva sotto resta vuota.
+supporta system property arbitrarie oltre a GC/tiering. **Questo è l'unico
+prerequisito rimasto** — il gauge dei task pendenti per loop esiste già
+(vedi Prerequisito), NanoLab lo interroga già come `netty_eventloop_pending_per_loop`.
 
 **Metriche decisive:** `nr_throttled/nr_periods`, p50/p95/p99, tasso di scarti,
 task pendenti per loop, riavvii da liveness.
@@ -446,11 +461,10 @@ deliberatamente.
 1. Esperimento A — memoria. Nessun prerequisito di codice: le celle
    `A-mem1024`/`A-mem512` in `queue.tsv` sono pronte, RSS e CFS arrivano già
    da NanoLab (`container_queries`). Lanciabile subito dopo `az login`.
-2. Prerequisito di codice per B: gauge dei task pendenti per event loop in
-   `platform/control-plane` (design in
-   `2026-08-21-dispatch-bottleneck-and-comparison-rerun.md:2267-2269`) e le
-   due varianti `jvm-loop1`/`jvm-c2-loop1` in
-   `control_plane_variants.py` (`JVM_TUNING` + `-Dreactor.netty.ioWorkerCount=1`)
+2. Prerequisito per B: le due varianti `jvm-loop1`/`jvm-c2-loop1` in
+   `control_plane_variants.py` (`JVM_TUNING` + `-Dreactor.netty.ioWorkerCount=1`).
+   Il gauge dei task pendenti per loop non serve costruirlo — esiste già,
+   vedi Prerequisito e nota di correzione del 2026-09-04.
 3. Esperimento B — JIT × event loop. Scommentare `B-loop-cpu1` in `queue.tsv`
    dopo il passo 2 ed eseguire.
 4. ~~Banco locale (Esperimento C, passo 0)~~ — **fatto, 2026-09-04**, risultato

@@ -100,15 +100,23 @@ celle:
 Una volta aggiunte in NanoLab, decommentare la riga `B-loop-cpu1` in
 `queue.tsv` e rilanciare la coda.
 
-**Metrica ancora mancante**: task pendenti per event loop. Non esiste né nel
-codice sorgente di nanofaas (`grep -r "reactor.netty.eventloop.pending"
-platform/` non trova nulla) né nel catalogo di NanoLab — è la sola cosa che
-questa campagna non può riusare da nessuna parte. Il design esiste già,
-discusso e mai spedito, in
-`../../plans/2026-08-21-dispatch-bottleneck-and-comparison-rerun.md:2267-2269`
-(`Gauge.builder(..., singleThreadEventExecutor::pendingTasks)`). Senza,
-l'Esperimento B vede solo il sintomo (CFS, latenza), non la coda dei loop che
-lo spiega.
+**Correzione, 2026-09-04: la metrica non mancava.** Verificato avviando
+davvero il control plane e leggendo `/actuator/prometheus`:
+`reactor_netty_eventloop_pending_tasks{name="reactor-http-nio-N"}` compare
+già, una serie per event loop, senza scrivere una riga di codice — è un
+gauge integrato in reactor-netty stesso
+(`reactor.netty.transport.EventLoopMeters`/`MicrometerEventLoopMeterRegistrar`
+nel jar `reactor-netty-core`), che si attiva da solo perché
+`NettyServerMetricsConfig` accende già le metriche del server
+(`server.metrics(true, ...)`). Il precedente `grep -r
+"reactor.netty.eventloop.pending" platform/` cercava una stringa nel
+sorgente nanofaas, ma il gauge vive nel bytecode della libreria, non lì —
+quel grep non poteva vederlo. NanoLab lo interroga già, dall'agosto scorso:
+`netty_eventloop_pending` (sommato) e `netty_eventloop_pending_per_loop`
+(per thread) in `packages/nanolab/src/nanolab/metrics/catalogue.py:338-344`
+— è il numero che nel 2026-08-23 aveva già rivelato gli 863 task in coda.
+L'unico prerequisito reale per questo esperimento sono le due varianti
+NanoLab sopra.
 
 <!-- B-loop-cpu1:inizio -->
 _Bloccato: varianti a un event loop non ancora aggiunte a NanoLab. Nessuna
