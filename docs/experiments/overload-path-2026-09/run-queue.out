@@ -1,0 +1,5 @@
+[coda] avvio coda: MCFAAS=/home/michele/Documenti/nanofaas NANOLAB=/home/michele/Documenti/nanolab GROUP=maurinoRicerca-rg
+[coda] A-mem1024: avvio (runtime-comparison-mem1024.yaml, varianti jvm-c2)
+[coda] A-mem1024: matrice finita
+[coda] A-mem1024: tabelle calcolate e scritte nel documento
+[coda] A-mem1024: archiviato e verificabile

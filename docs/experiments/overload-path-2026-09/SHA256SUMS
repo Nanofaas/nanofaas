@@ -1,0 +1,16 @@
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  raw/.gitkeep
+cca7462cf6f12fa632b31940e29f4a8a354fad5bc3ebdd74a6b57386bb19749e  raw/A-mem1024/comparison-manifest.json
+aab8ad78332869587d2bd251067261df16989abefb19bfe818c5ed4d01e83eae  raw/A-mem1024/comparison-report.html
+0007715af02111b22cd3b8010430b44369ebefb091e056b5b895d40051af6d4c  raw/A-mem1024/image-sizes.json
+da9eb325dccfd39298c8bf6e5230e16e5781cc7efe561be86e9d2c72a70e3219  raw/A-mem1024/jvm-c2/run-1/k6-summary.json
+c0c2922fc066bf7e7a4a8e83634bf564e64f3f2ceb5f71e2129cbaef6a688d88  raw/A-mem1024/jvm-c2/run-1/metrics/prometheus-snapshot.json.gz
+98c22a6279f851dae0123a42f8aa6dee51164f2fc5a6ee66c81e97dadc9a576d  raw/A-mem1024/jvm-c2/run-1/summary.json
+192c042a41658def7b6a159b6b379ad9b41487f0ed0599907b3dca2778a725a8  raw/A-mem1024/jvm-c2/run-2/k6-summary.json
+cbc71159419722d2991646d5b258a42aefd2feb45b3ad066f9d08d5938cb43cb  raw/A-mem1024/jvm-c2/run-2/metrics/prometheus-snapshot.json.gz
+14f984ed65b6cf9b77c9d966366ddd52aa9754789762322682f51b73ca131c4d  raw/A-mem1024/jvm-c2/run-2/summary.json
+17d305911f5fe784203dac7d808a00df51fceae1323539ac9392029dcc5b7998  raw/A-mem1024/jvm-c2/run-3/k6-summary.json
+aa3339de255efa38135f58efbfc452bb894ae1b8f714934ce5d7c47bd6e56491  raw/A-mem1024/jvm-c2/run-3/metrics/prometheus-snapshot.json.gz
+d47b771078bde0f7dfa6ebaf4bf907f2b62ba9c072cfbd6e06d7e646db1c936e  raw/A-mem1024/jvm-c2/run-3/summary.json
+aa645bd261aea7f4e7f0d31b621424355b733671b807a09f0a5cfed71e0dee40  raw/A-mem1024/run.log
+9882872e09082188273c04ef337c502edd6c438730b54152cd46673b137bf8b7  raw/A-mem1024/scenario.yaml
+4aeb09e366dc6a1ad3cf95c6b0e76a54749c4ac5e6481334bd6fac0f71cc72ef  raw/A-mem1024/tabella.md
