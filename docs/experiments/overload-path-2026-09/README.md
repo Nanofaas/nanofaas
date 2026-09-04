@@ -82,23 +82,23 @@ _Nessuna cella con dati._
 **Domanda 1:** dopo il fix dell'ExecutionStore, C2 batte ancora C1?
 **Domanda 2:** a 1 core, un event loop batte quattro?
 
-**Bloccato.** Le due varianti a un event loop (`jvm-loop1`, `jvm-c2-loop1`)
-non esistono ancora in `control_plane_variants.py`. Il meccanismo per
-aggiungerle è già lì: `ControlPlaneVariant.build_env` porta `JVM_TUNING`, che
-finisce tal quale in `/jvm.options` e da lì nell'`ENTRYPOINT` come argomenti
-JVM diretti (`platform/control-plane/Dockerfile:26-27,49`) — non solo
-`-XX:...`, qualunque flag, incluso `-Dreactor.netty.ioWorkerCount=N`. Quattro
-celle:
+**Varianti aggiunte, 2026-09-04** — non più bloccato sul codice, bloccato solo
+sul branch. Le due varianti a un event loop esistono in
+`control_plane_variants.py` sul branch NanoLab `feature/loop-count-variants`
+(non ancora su `main` di NanoLab). Quattro celle:
 
-| variante (da aggiungere) | `JVM_TUNING` |
+| variante | `JVM_TUNING` |
 |---|---|
-| `jvm` (esiste) | *(default)* — C1, 4 loop |
-| `jvm-c2` (esiste) | `-XX:+UseSerialGC` |
-| `jvm-loop1` (da aggiungere) | `-XX:+UseSerialGC -XX:TieredStopAtLevel=1 -Dreactor.netty.ioWorkerCount=1` |
-| `jvm-c2-loop1` (da aggiungere) | `-XX:+UseSerialGC -Dreactor.netty.ioWorkerCount=1` |
+| `jvm` (esiste su main) | *(default)* — C1, 4 loop |
+| `jvm-c2` (esiste su main) | `-XX:+UseSerialGC` |
+| `jvm-loop1` (su `feature/loop-count-variants`) | `-XX:+UseSerialGC -XX:TieredStopAtLevel=1 -Dreactor.netty.ioWorkerCount=1` |
+| `jvm-c2-loop1` (su `feature/loop-count-variants`) | `-XX:+UseSerialGC -Dreactor.netty.ioWorkerCount=1` |
 
-Una volta aggiunte in NanoLab, decommentare la riga `B-loop-cpu1` in
-`queue.tsv` e rilanciare la coda.
+La riga `B-loop-cpu1` in `queue.tsv` è scommentata. Prima di lanciarla, il
+checkout NanoLab che `$NANOLAB` in `run-queue.sh` punta deve avere
+`feature/loop-count-variants` estratto (o quel branch unito a `main`) — su
+`main` `resolve_variants()` rifiuta ancora `jvm-loop1`/`jvm-c2-loop1` come
+sconosciute.
 
 **Correzione, 2026-09-04: la metrica non mancava.** Verificato avviando
 davvero il control plane e leggendo `/actuator/prometheus`:

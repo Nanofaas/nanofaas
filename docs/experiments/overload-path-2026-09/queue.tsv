@@ -16,11 +16,12 @@
 A-mem1024	runtime-comparison-mem1024.yaml	jvm-c2	1	A-mem1024
 A-mem512	runtime-comparison-mem512.yaml	jvm-c2	0	A-mem512
 #
-# Esperimento B — il JIT vale ancora, e quanti event loop. BLOCCATO: le due
-# varianti a un solo event loop (jvm-loop1, jvm-c2-loop1) non esistono ancora
-# in packages/nanolab/src/nanolab/images/control_plane_variants.py. Vanno
-# aggiunte prima — build_env=_env(JVM_TUNING="... -Dreactor.netty.ioWorkerCount=1")
-# accanto a jvm e jvm-c2 esistenti — poi questa riga va scommentata.
+# Esperimento B — il JIT vale ancora, e quanti event loop. Varianti aggiunte
+# (2026-09-04) in packages/nanolab/src/nanolab/images/control_plane_variants.py,
+# sul branch nanolab feature/loop-count-variants — non ancora su main di
+# NanoLab. Prima di lanciare questa riga, quel branch deve essere quello
+# effettivamente estratto nel checkout NanoLab che $NANOLAB in run-queue.sh
+# punta, o resolve_variants() rifiuta jvm-loop1/jvm-c2-loop1 come sconosciute.
 # Regime: 1 core, scenario runtime-comparison-cpu1.yaml, stessa forma di
 # azure-jvm-2x2-cpu1 (§ piano, Esperimento B).
-# B-loop-cpu1	runtime-comparison-cpu1.yaml	jvm,jvm-c2,jvm-loop1,jvm-c2-loop1	0	B-loop-cpu1
+B-loop-cpu1	runtime-comparison-cpu1.yaml	jvm,jvm-c2,jvm-loop1,jvm-c2-loop1	0	B-loop-cpu1

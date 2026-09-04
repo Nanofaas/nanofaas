@@ -461,12 +461,15 @@ deliberatamente.
 1. Esperimento A — memoria. Nessun prerequisito di codice: le celle
    `A-mem1024`/`A-mem512` in `queue.tsv` sono pronte, RSS e CFS arrivano già
    da NanoLab (`container_queries`). Lanciabile subito dopo `az login`.
-2. Prerequisito per B: le due varianti `jvm-loop1`/`jvm-c2-loop1` in
-   `control_plane_variants.py` (`JVM_TUNING` + `-Dreactor.netty.ioWorkerCount=1`).
-   Il gauge dei task pendenti per loop non serve costruirlo — esiste già,
-   vedi Prerequisito e nota di correzione del 2026-09-04.
-3. Esperimento B — JIT × event loop. Scommentare `B-loop-cpu1` in `queue.tsv`
-   dopo il passo 2 ed eseguire.
+2. ~~Prerequisito per B~~ — **fatto, 2026-09-04**: le due varianti
+   `jvm-loop1`/`jvm-c2-loop1` aggiunte a `control_plane_variants.py` sul
+   branch NanoLab `feature/loop-count-variants` (14 test, tutti verdi;
+   `ruff check` pulito) — non ancora unito a `main` di NanoLab. Il gauge dei
+   task pendenti per loop non serve costruirlo — esiste già, vedi
+   Prerequisito e nota di correzione del 2026-09-04.
+3. Esperimento B — JIT × event loop. La riga `B-loop-cpu1` in `queue.tsv` è
+   scommentata; richiede solo che `feature/loop-count-variants` sia unito o
+   estratto nel checkout NanoLab della corsa prima di eseguire.
 4. ~~Banco locale (Esperimento C, passo 0)~~ — **fatto, 2026-09-04**, risultato
    in `docs/experiments/archive/webfilter-refusal-cost.md`: perdita
    irrilevante sul sync, vittoria netta su `:enqueue` (0,43%–0,77% di un
