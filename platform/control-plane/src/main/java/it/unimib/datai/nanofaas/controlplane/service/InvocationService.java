@@ -31,7 +31,6 @@ public class InvocationService {
     private final FunctionService functionService;
     private final InvocationEnqueuer enqueuer;
     private final ExecutionStore executionStore;
-    private final RateLimiter rateLimiter;
     private final Metrics metrics;
     private final ExecutionCompletionHandler completionHandler;
     private final InvocationExecutionFactory executionFactory;
@@ -42,7 +41,6 @@ public class InvocationService {
                              @Nullable InvocationEnqueuer enqueuer,
                              ExecutionStore executionStore,
                              IdempotencyStore idempotencyStore,
-                             RateLimiter rateLimiter,
                              Metrics metrics,
                              @Autowired(required = false) @Nullable SyncQueueGateway syncQueueGateway,
                              ExecutionCompletionHandler completionHandler) {
@@ -50,7 +48,6 @@ public class InvocationService {
                 functionService,
                 enqueuer,
                 executionStore,
-                rateLimiter,
                 metrics,
                 completionHandler,
                 new InvocationExecutionFactory(executionStore, idempotencyStore, metrics),
@@ -63,7 +60,6 @@ public class InvocationService {
     public InvocationService(FunctionService functionService,
                              @Nullable InvocationEnqueuer enqueuer,
                              ExecutionStore executionStore,
-                             RateLimiter rateLimiter,
                              Metrics metrics,
                              ExecutionCompletionHandler completionHandler,
                              InvocationExecutionFactory executionFactory,
@@ -72,7 +68,6 @@ public class InvocationService {
         this.functionService = functionService;
         this.enqueuer = enqueuer == null ? InvocationEnqueuer.noOp() : enqueuer;
         this.executionStore = executionStore;
-        this.rateLimiter = rateLimiter;
         this.metrics = metrics;
         this.completionHandler = completionHandler;
         this.executionFactory = executionFactory;
@@ -96,7 +91,6 @@ public class InvocationService {
                                                    OffloadContext offloadContext) {
         record Prepared(FunctionSpec spec, InvocationExecutionFactory.ExecutionLookup lookup) {}
         Mono<Prepared> prepared = Mono.fromCallable(() -> {
-            enforceRateLimit();
             FunctionSpec spec = functionService.get(functionName).orElseThrow(FunctionNotFoundException::new);
             refuseEarlyIfQueueFull(functionName, spec, idempotencyKey, InvocationKind.SYNC);
             return new Prepared(spec,
@@ -123,8 +117,6 @@ public class InvocationService {
                                           InvocationRequest request,
                                           String idempotencyKey,
                                           String traceId) {
-        enforceRateLimit();
-
         FunctionSpec spec = functionService.get(functionName).orElseThrow(FunctionNotFoundException::new);
         if (!enqueuer.enabled()) {
             throw new AsyncQueueUnavailableException();
@@ -211,12 +203,6 @@ public class InvocationService {
         metrics.queueRejected(functionName);
         metrics.refused(functionName, kind);
         throw new QueueFullException();
-    }
-
-    private void enforceRateLimit() {
-        if (!rateLimiter.allow()) {
-            throw new RateLimitException();
-        }
     }
 
 }

@@ -49,7 +49,6 @@ class InvocationServiceRetryTest {
 
     private ExecutionStore executionStore;
     private IdempotencyStore idempotencyStore;
-    private RateLimiter rateLimiter;
     private InvocationService invocationService;
 
     private FunctionSpec testSpec;
@@ -58,8 +57,6 @@ class InvocationServiceRetryTest {
     void setUp() {
         executionStore = new ExecutionStore();
         idempotencyStore = new IdempotencyStore();
-        rateLimiter = new RateLimiter();
-        rateLimiter.setMaxPerSecond(1000);
 
         ExecutionCompletionHandler completionHandler = new ExecutionCompletionHandler(
                 executionStore, enqueuer, dispatcherRouter, metrics);
@@ -69,7 +66,6 @@ class InvocationServiceRetryTest {
                 enqueuer,
                 executionStore,
                 idempotencyStore,
-                rateLimiter,
                 metrics,
                 syncQueueGateway,
                 completionHandler

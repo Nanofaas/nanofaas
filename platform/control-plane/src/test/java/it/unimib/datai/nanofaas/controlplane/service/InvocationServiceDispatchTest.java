@@ -84,8 +84,6 @@ class InvocationServiceDispatchTest {
     void setUp() {
         executionStore = new ExecutionStore();
         idempotencyStore = new IdempotencyStore();
-        RateLimiter rateLimiter = new RateLimiter();
-        rateLimiter.setMaxPerSecond(1000);
 
         completionHandler = new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics);
 
@@ -94,7 +92,6 @@ class InvocationServiceDispatchTest {
                 enqueuer,
                 executionStore,
                 idempotencyStore,
-                rateLimiter,
                 metrics,
                 syncQueueGateway,
                 completionHandler
@@ -316,7 +313,6 @@ class InvocationServiceDispatchTest {
                 enqueuer,
                 executionStore,
                 new IdempotencyStore(),
-                new RateLimiter(),
                 metrics,
                 null,
                 handler
@@ -572,7 +568,6 @@ class InvocationServiceDispatchTest {
                 enqueuer,
                 executionStore,
                 staleStore,
-                new RateLimiter(),
                 metrics,
                 syncQueueGateway,
                 completionHandler
@@ -624,7 +619,6 @@ class InvocationServiceDispatchTest {
                 enqueuer,
                 blockedStore,
                 staleStore,
-                new RateLimiter(),
                 metrics,
                 syncQueueGateway,
                 new ExecutionCompletionHandler(blockedStore, enqueuer, dispatcherRouter, metrics)

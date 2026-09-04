@@ -60,12 +60,10 @@ class InvocationServiceEarlyRefusalTest {
     void setUp() {
         executionStore = new ExecutionStore();
         idempotencyStore = new IdempotencyStore();
-        RateLimiter rateLimiter = new RateLimiter();
-        rateLimiter.setMaxPerSecond(1000);
         when(enqueuer.enabled()).thenReturn(true);
         when(syncQueueGateway.enabled()).thenReturn(false);
         invocationService = new InvocationService(
-                functionService, enqueuer, executionStore, idempotencyStore, rateLimiter,
+                functionService, enqueuer, executionStore, idempotencyStore,
                 metrics, syncQueueGateway,
                 new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics));
     }

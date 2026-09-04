@@ -1,7 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane;
 
 import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
-import it.unimib.datai.nanofaas.controlplane.service.RateLimitException;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
 import org.junit.jupiter.api.Test;
@@ -19,7 +18,6 @@ class RejectionExceptionsTest {
     @Test
     void rejectionsCarryNoStackTrace() {
         assertThat(new QueueFullException().getStackTrace()).isEmpty();
-        assertThat(new RateLimitException().getStackTrace()).isEmpty();
         assertThat(new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, 1).getStackTrace()).isEmpty();
     }
 

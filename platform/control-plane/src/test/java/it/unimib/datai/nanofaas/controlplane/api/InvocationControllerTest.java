@@ -10,7 +10,6 @@ import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.controlplane.service.AsyncQueueUnavailableException;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
-import it.unimib.datai.nanofaas.controlplane.service.RateLimitException;
 import it.unimib.datai.nanofaas.controlplane.service.SyncInvocation;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
@@ -139,34 +138,6 @@ class InvocationControllerTest {
                 .expectStatus().isEqualTo(429)
                 .expectHeader().valueEquals("Retry-After", "3")
                 .expectHeader().valueEquals("X-Queue-Reject-Reason", "depth");
-    }
-
-    @Test
-    void invokeSync_rateLimited_returns429() {
-        InvocationRequest request = new InvocationRequest("payload", Map.of());
-        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
-                .thenThrow(new RateLimitException());
-
-        webClient.post()
-                .uri("/v1/functions/echo:invoke")
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(request)
-                .exchange()
-                .expectStatus().isEqualTo(429);
-    }
-
-    @Test
-    void invokeSync_rateLimitedFromMono_returns429() {
-        InvocationRequest request = new InvocationRequest("payload", Map.of());
-        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
-                .thenReturn(Mono.error(new RateLimitException()));
-
-        webClient.post()
-                .uri("/v1/functions/echo:invoke")
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(request)
-                .exchange()
-                .expectStatus().isEqualTo(429);
     }
 
     @Test

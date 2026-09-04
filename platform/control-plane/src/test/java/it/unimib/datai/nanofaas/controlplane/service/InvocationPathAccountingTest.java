@@ -56,12 +56,10 @@ class InvocationPathAccountingTest {
         registry = new SimpleMeterRegistry();
         Metrics metrics = new Metrics(registry);
         ExecutionStore executionStore = new ExecutionStore();
-        RateLimiter rateLimiter = new RateLimiter();
-        rateLimiter.setMaxPerSecond(1000);
         when(enqueuer.enabled()).thenReturn(true);
         when(syncQueueGateway.enabled()).thenReturn(false);
         invocationService = new InvocationService(
-                functionService, enqueuer, executionStore, new IdempotencyStore(), rateLimiter,
+                functionService, enqueuer, executionStore, new IdempotencyStore(),
                 metrics, syncQueueGateway,
                 new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics));
     }

@@ -12,7 +12,6 @@ import it.unimib.datai.nanofaas.controlplane.service.AsyncQueueUnavailableExcept
 import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
 import it.unimib.datai.nanofaas.controlplane.service.SyncInvocation;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
-import it.unimib.datai.nanofaas.controlplane.service.RateLimitException;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -89,8 +88,6 @@ public class InvocationController {
                         Mono.just(ResponseEntity.notFound().<InvocationResponse>build()))
                 .onErrorResume(SyncQueueRejectedException.class, ex ->
                         Mono.just(tooManyRequests(ex)))
-                .onErrorResume(RateLimitException.class, ex ->
-                        Mono.just(tooManyRequests()))
                 .onErrorResume(QueueFullException.class, ex ->
                         Mono.just(tooManyRequests()))
                 .onErrorResume(OffloadFailedException.class, ex ->
@@ -152,8 +149,6 @@ public class InvocationController {
                         Mono.just(ResponseEntity.notFound().<InvocationResponse>build()))
                 .onErrorResume(AsyncQueueUnavailableException.class, ex ->
                         Mono.just(ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).<InvocationResponse>build()))
-                .onErrorResume(RateLimitException.class, ex ->
-                        Mono.just(tooManyRequests()))
                 .onErrorResume(QueueFullException.class, ex ->
                         Mono.just(tooManyRequests()));
     }
