@@ -1,8 +1,20 @@
 # Percorso di sovraccarico: tre modifiche e tre esperimenti
 
-**Data:** 2026-09-04
+**Data:** 2026-09-04, rivisto lo stesso giorno dopo revisione critica pre-esecuzione
 **Stato:** da eseguire
 **Continua:** `2026-08-21-dispatch-bottleneck-and-comparison-rerun.md`, `2026-08-26-execution-store-outcome.md`
+
+**Revisione:** la Parte I.1 e l'Esperimento C erano scritti come se il costo
+del rifiuto ingresso fosse ancora ignoto. `docs/experiments/archive/
+refusal-cost.md` (2026-08-22) lo aveva già misurato per lo stesso percorso —
+0,226% di un core, "pulizia non prestazioni" — e ne aveva già escluso la
+misurabilità su Azure per rumore di fondo. L'Esperimento C ora porta un passo
+0 locale che riusa quel banco prima di impegnare una corsa Azure, il filtro è
+scoperto sui soli suffissi di invocazione, e viene testato in modalità sync
+*e* async (il caso forte, l'handoff `boundedElastic`, è async, ma il default
+di k6 è sync). Il prerequisito di strumentazione è ridotto: RSS e CFS sono già
+scrapati da cAdvisor nel chart, serve solo interrogarli — non costruire un
+collettore nel pod. A e B non sono toccati.
 
 ## Il problema comune
 
@@ -35,23 +47,54 @@ Nessuna conclusione di agosto va data per valida senza rimisurarla.
 
 ## 1. Rate limit in un `WebFilter`, prima del body
 
-**Stato:** da fare.
+**Stato:** da fare, ma ridimensionato — vedi "Quanto vale" sotto.
 
-`RateLimiter.allow()` gira a `InvocationService.java:217`, dietro decode HTTP,
-deserializzazione Jackson del body e dispatch del controller. Ogni richiesta che
-finirà in 429 paga tutto questo prima di essere rifiutata, esattamente quando la
-piattaforma ha meno da spendere.
+`RateLimiter.allow()` gira a `InvocationService.java:99,126` (chiamato da
+`invokeSyncReactive` e `invokeAsync`), dietro decode HTTP, deserializzazione
+Jackson del body e dispatch del controller. Ogni richiesta che finirà in 429
+paga tutto questo prima di essere rifiutata, esattamente quando la piattaforma
+ha meno da spendere. (I numeri di riga del piano originale, `:217`, sono il
+corpo del metodo privato `enforceRateLimit()`; i due call site sono `:99` e
+`:126`.)
 
-Su `:enqueue` è peggio: `InvocationController.java:149` avvolge la chiamata in
+Su `:enqueue` è peggio: `InvocationController.java:148` avvolge la chiamata in
 `subscribeOn(Schedulers.boundedElastic())`, quindi un rifiuto costa un thread
 handoff — lo stesso scambio 6,1 µs contro 0,085 µs che il percorso sync ha già
 eliminato (`InvocationService.java:106-116`). Il ragionamento non è mai stato
 applicato al percorso async.
 
-**Cosa fare:** un `WebFilter` che consulta `RateLimiter` su `/v1/functions/**` e
-chiude con 429 prima che il body venga letto. Poi togliere il controllo da
-`InvocationService:217` e i due `onErrorResume(RateLimitException.class, ...)` a
+### Quanto vale, secondo il dato che già abbiamo
+
+`docs/experiments/archive/refusal-cost.md` (2026-08-22) ha già misurato il
+costo di ciò che questo filtro eviterebbe: l'andata-e-ritorno JSON completa
+costa **0,99 µs**, e l'intera pulizia in ingresso di quella sessione valeva
+**0,226% di un core** a 590 rifiuti/s — con la conclusione esplicita "sono
+pulizia, non prestazioni". Scalando quel conto: sul percorso sync, saltare
+solo la deserializzazione vale una frazione di quel totale, circa **0,06% di
+un core**; sul percorso `:enqueue`, dove si evita anche l'handoff a
+`boundedElastic` (6,1 µs contro 0,085 µs di lavoro utile), il conto sale a
+circa **0,4%**.
+
+Questo non è un argomento contro il filtro — è pulizia legittima, e il codice
+async non ha mai ricevuto l'ottimizzazione che il sync ha già — ma ridimensiona
+l'aspettativa: non ci si deve aspettare che l'Esperimento C mostri un effetto
+sopra il rumore di una corsa Azure. Vedi il passo 0 aggiunto a quell'esperimento.
+
+**Cosa fare:** un `WebFilter` che consulta `RateLimiter` **solo sui due
+suffissi di invocazione** (`:invoke`, `:enqueue`) — non `/v1/functions/**`
+intero, che includerebbe registrazione, listing e cancellazione, oggi non
+sottoposti a rate limit — e chiude con 429 prima che il body venga letto. Poi
+togliere il controllo da `InvocationService.java:99,126` e i due
+`onErrorResume(RateLimitException.class, ...)` a
 `InvocationController.java:92,155`.
+
+**Effetto collaterale da accettare consapevolmente:** il filtro gira prima di
+`@Valid` e prima della lookup della funzione, quindi sotto overload un payload
+malformato torna 429 invece di 400, e una funzione inesistente torna 429
+invece di 404. È intrinseco a spostare il controllo prima del parsing.
+`InvocationControllerTest.java` e `RejectionExceptionsTest.java` sono i posti
+più probabili in cui questo cambia un'asserzione esistente — verificare prima
+di aprire la PR.
 
 **Cosa NON risolve:** i 668 ms di attesa pre-applicativa annotati in
 `NettyServerMetricsConfig`. Quel tempo si consuma nella accept queue e nelle
@@ -140,7 +183,7 @@ che potrebbe essere un artefatto di un bug già corretto.
 
 ## Prerequisito — strumentare ciò che stiamo misurando
 
-**Questo viene prima di tutto il resto.**
+**Questo viene prima di tutto il resto — ma è più piccolo di quanto sembrava.**
 
 `experiments/e2e-memory-ab.sh` campiona `/actuator/prometheus` ogni 5 s e ne
 estrae heap usato, heap max, pause GC e thread vivi
@@ -149,13 +192,24 @@ container né il throttling CFS** — cioè le due metriche protagoniste di tutt
 questa analisi. Senza di esse l'Esperimento B non può rispondere alla propria
 domanda: non vedrebbe la variabile che sta cercando di ridurre.
 
+Queste due esistono però già altrove: `deploy/helm/nanofaas/templates/
+prometheus-configmap.yaml:126-128` fa scrape di cAdvisor via kubelet nel
+cluster e tiene esplicitamente `container_cpu_cfs_periods_total`,
+`container_cpu_cfs_throttled_periods_total`,
+`container_cpu_cfs_throttled_seconds_total`,
+`container_memory_working_set_bytes`, `container_memory_usage_bytes` — il
+commento nel chart dice testualmente "used by runtime A/B reporting". Non
+serve costruire un collettore nel pod (`/sys/fs/cgroup/cpu.stat`, come
+ipotizzato in origine): serve che il campionatore interroghi **anche** la
+Prometheus del cluster, non solo `/actuator/prometheus` dell'app.
+
 Da aggiungere al campionatore:
 
 | metrica | dove sta | nota |
 |---|---|---|
-| `nr_periods`, `nr_throttled`, `throttled_usec` | `/sys/fs/cgroup/cpu.stat` nel pod | **non** in `/actuator/prometheus`: serve una seconda sorgente |
-| RSS del container | `memory.current` del cgroup, o cAdvisor | le corse Azure lo avevano come `container_memory_bytes@control-plane` |
-| task pendenti per event loop | `reactor.netty` / Micrometer | è il numero che ha rivelato gli 863 |
+| `container_cpu_cfs_periods_total`, `..._throttled_periods_total`, `..._throttled_seconds_total` | Prometheus del cluster (già scrape via cAdvisor, vedi sopra) | query PromQL istantanea sul pod, non una sorgente nuova |
+| RSS/working-set del container | `container_memory_working_set_bytes`, stessa Prometheus | idem |
+| task pendenti per event loop | `reactor.netty` / Micrometer, ancora da esporre | è il numero che ha rivelato gli 863 — questo sì è lavoro nuovo |
 
 Seconda lacuna, minore: il braccio è cablato. `e2e-memory-ab.sh` sa confrontare
 solo `CONTROL_PLANE_EPOCH_MILLIS_ENABLED` acceso/spento (riga 200). Va
@@ -209,15 +263,46 @@ scoperta migliore di una conferma.
 
 **Domanda:** il `WebFilter` della Parte I.1 produce una differenza misurabile?
 
-**Forma:** due bracci — `main` contro il branch col filtro — a carico di
-sovraccarico. Il riferimento è `azure-load3x`: **23,12% di scarti** a 2 core, cioè
-un regime in cui quasi un quarto delle richieste percorre il cammino del rifiuto.
+**Passo 0 — banco locale prima di Azure.** `docs/experiments/archive/
+refusal-cost.md` ha già stabilito che questo genere di segnale è sotto il
+rumore delle corse Azure: a 1 core il throttling CFS oscilla dell'ordine del
+5% fra ripetizioni contro un effetto atteso sotto l'1%; a 4 core il sistema non
+è CPU-bound e non mostra nulla. Prima di spendere una corsa Azure, riprodurre
+lo stesso banco locale di quella nota — profondità di stack realistica via
+`deep(n, make)`, 50k giri di riscaldamento, 5 tornate da 50k, minimo — per
+confrontare il costo di un 429 con e senza il filtro, **su entrambi `:invoke`
+e `:enqueue`**. Se il numero non supera il rumore di fondo misurato in quella
+sessione, **non eseguire la corsa Azure**: la differenza non sarebbe
+distinguibile, e la conclusione corretta sarebbe la stessa di allora — "sono
+pulizia, non prestazioni" — non "non ha funzionato".
+
+**Se il banco locale mostra un effetto sopra rumore, forma della corsa Azure:**
+due bracci — `main` contro il branch col filtro — a carico di sovraccarico. Il
+riferimento è `azure-load3x`: **23,12% di scarti** a 2 core, cioè un regime in
+cui quasi un quarto delle richieste percorre il cammino del rifiuto. **Va corsa
+in entrambe le modalità di invocazione**, non solo `INVOCATION_MODE=sync` (il
+default di `experiments/k6/common.js:10`, e quindi implicito in
+`azure-load3x`): il caso più forte per il filtro è l'handoff a
+`boundedElastic` su `:enqueue`, che un regime sync non esercita affatto — vedi
+il conto in "Quanto vale" nella Parte I.1.
+
+**Rischio da escludere prima di fidarsi del numero:** chiudere un 429 senza
+aver consumato il body della richiesta può far chiudere la connessione HTTP
+invece di riusarla in keep-alive (comportamento noto di reactor-netty quando
+il body non viene drenato). Sotto overload questo aggiungerebbe un handshake
+TCP per rifiuto — un costo di ordini di grandezza superiore a quanto il filtro
+fa risparmiare, che lo renderebbe una regressione mascherata da
+ottimizzazione. Il filtro deve drenare o scartare esplicitamente il body prima
+di chiudere; verificare `connections.active` (già esposto da
+`NettyServerMetricsConfig`) prima/dopo per escludere un aumento delle
+riconnessioni.
 
 **Metriche decisive:** CPU per richiesta rifiutata, p99 delle richieste
 **accettate** (è lì che deve vedersi il guadagno), throughput a parità di carico
-offerto.
+offerto, `connections.active`.
 
-**Viene dopo:** richiede che il codice esista.
+**Viene dopo:** richiede che il codice esista, e che il passo 0 l'abbia
+giustificato.
 
 ## Ciò che ho deliberatamente rimandato: la matrice a 4 core
 
@@ -273,9 +358,14 @@ differenza che quasi sparisce a 2 core.
 
 ## Ordine di esecuzione
 
-1. Strumentazione: RSS e throttling nel campionatore A/B
+1. Strumentazione: interrogare la Prometheus del cluster (cAdvisor, già
+   presente) per RSS/CFS nel campionatore A/B; generalizzare il braccio a
+   env/build-arg
 2. Esperimento A — memoria
 3. Esperimento B — JIT × event loop
-4. Codice: `WebFilter` (Parte I.1)
-5. Esperimento C — costo del rifiuto
+4. Banco locale — costo del rifiuto con/senza filtro, `:invoke` e `:enqueue`
+   (Esperimento C, passo 0)
+5. Solo se il passo 4 supera il rumore di fondo: codice `WebFilter`
+   (Parte I.1) scoperto sui soli suffissi `:invoke`/`:enqueue`, poi corsa
+   Azure dell'Esperimento C in entrambe le modalità di invocazione
 6. Applicare, o non applicare, la Parte I.2 e I.3 secondo B
