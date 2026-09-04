@@ -336,20 +336,31 @@ e sottratta, altrimenti domina la misura e ne inverte il segno):
   un core, evitando per intero l'handoff a `boundedElastic` (rimisurato a
   7,9–13,3 µs, non i 6,1 µs di agosto — stessa scala, sessione diversa).
 
-**Conseguenza per la corsa Azure, se si fa: solo `INVOCATION_MODE=async`.**
-Un run in sync (il default di `experiments/k6/common.js:10`, e quindi
-implicito in `azure-load3x`) non vedrebbe niente di distinguibile dal
-rumore CFS (~5% a 1 core contro un effetto ormai noto essere sotto lo
-0,04%) — e quel niente sarebbe la risposta corretta, non un fallimento
-della misura. Il segnale su `:enqueue` (0,43%–0,77%) è invece un ordine di
-grandezza sopra quanto la sessione di agosto aveva già giudicato invisibile
-su Azure, e potenzialmente sopra il rumore se la corsa satura davvero un
-core — è quello il braccio che giustifica la spesa, non il sync.
+**La corsa Azure, se si fa, va in entrambe le modalità — sync e async —
+non solo in quella dove il passo 0 prevede un segnale.** Il passo 0 è un
+banco locale: prevede che il sync sia sotto il rumore CFS (~5% a 1 core
+contro un effetto ormai noto essere sotto lo 0,04%), ma è una previsione,
+non una misura su Azure — e questo intero piano poggia sul principio che
+nessuna previsione va data per valida senza misurarla (§ "Il vincolo che
+governa il disegno"). Saltare il sync perché il locale lo prevede
+irrilevante sarebbe esattamente l'errore che il passo 0 doveva prevenire,
+solo spostato di un livello. Due esiti sono entrambi informativi: se il
+sync su Azure conferma "nessun segnale sopra il rumore", il passo 0 è
+convalidato come previsione affidabile per le prossime domande di questo
+tipo; se mostra qualcosa, il banco locale ha un limite da capire prima di
+fidarsene ancora.
+
+Il segnale su `:enqueue` (0,43%–0,77%) resta comunque il braccio che
+giustifica la spesa nel senso stretto — un ordine di grandezza sopra quanto
+la sessione di agosto aveva già giudicato invisibile su Azure, e
+potenzialmente sopra il rumore se la corsa satura davvero un core — ma non
+è un motivo per non misurare anche il sync nella stessa corsa.
 
 **Forma della corsa Azure, se si fa:** due bracci — `main` contro il branch
-col filtro — a carico di sovraccarico, **in modalità async**. Il riferimento
-di carico resta `azure-load3x` (**23,12% di scarti** a 2 core in sync, da
-riprodurre in async prima di usarlo come regime).
+col filtro — a carico di sovraccarico, **in entrambe le modalità di
+invocazione**. Il riferimento di carico resta `azure-load3x` (**23,12% di
+scarti** a 2 core in sync); la sua controparte async va misurata nella
+stessa corsa, non assunta.
 
 **Rischio da escludere prima di fidarsi del numero:** chiudere un 429 senza
 aver consumato il body della richiesta può far chiudere la connessione HTTP
@@ -366,11 +377,11 @@ riconnessioni.
 **accettate** (è lì che deve vedersi il guadagno), throughput a parità di carico
 offerto, `connections.active`.
 
-**Stato:** entrambi i precondizioni sono soddisfatte — il codice esiste
-(`RateLimitWebFilter`, fatto 2026-09-04) e il passo 0 lo giustifica, ma solo
-per `:enqueue`. Non lanciata da questa revisione del piano: richiede Azure e
-va eseguita deliberatamente, in `INVOCATION_MODE=async`, non nella modalità
-sync di default.
+**Stato:** entrambe le precondizioni sono soddisfatte — il codice esiste
+(`RateLimitWebFilter`, fatto 2026-09-04) e il passo 0 lo giustifica per
+`:enqueue` (per il sync prevede assenza di segnale, da verificare, non da
+assumere). Non lanciata da questa revisione del piano: richiede Azure e va
+eseguita deliberatamente, in entrambe le modalità di invocazione.
 
 ## Ciò che ho deliberatamente rimandato: la matrice a 4 core
 
@@ -451,8 +462,10 @@ deliberatamente.
    `RateLimitWebFilter`, scoperto sui soli suffissi `:invoke`/`:enqueue`,
    piano di implementazione in
    `docs/superpowers/plans/2026-09-04-rate-limit-webfilter.md`.
-6. Corsa Azure dell'Esperimento C, **solo in `INVOCATION_MODE=async`** (il
-   passo 0 ha già escluso un segnale visibile in sync) — priorità più bassa
-   di A e B, dato che il guadagno misurato è reale ma piccolo in assoluto
-   (sotto l'1% di un core).
+6. Corsa Azure dell'Esperimento C, **in entrambe le modalità di
+   invocazione** — il passo 0 prevede assenza di segnale in sync, ma è una
+   previsione locale da verificare su Azure, non da dare per scontata.
+   Priorità più bassa di A e B, dato che il guadagno misurato del braccio
+   che conta (`:enqueue`) è reale ma piccolo in assoluto (sotto l'1% di un
+   core).
 7. Applicare, o non applicare, la Parte I.2 e I.3 secondo B
