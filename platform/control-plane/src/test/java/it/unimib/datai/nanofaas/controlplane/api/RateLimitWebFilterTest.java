@@ -84,4 +84,22 @@ class RateLimitWebFilterTest {
 
         assertThat(chainCalled).isTrue();
     }
+
+    @Test
+    void ignoresNonPostRequestsToInvocationPathsEvenWhenTheLimitIsExhausted() {
+        RateLimiter rateLimiter = new RateLimiter();
+        rateLimiter.setMaxPerSecond(0);
+        RateLimitWebFilter filter = new RateLimitWebFilter(rateLimiter);
+        ServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/v1/functions/echo:invoke").build());
+        AtomicBoolean chainCalled = new AtomicBoolean(false);
+        WebFilterChain chain = ex -> {
+            chainCalled.set(true);
+            return Mono.empty();
+        };
+
+        StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
+
+        assertThat(chainCalled).isTrue();
+    }
 }

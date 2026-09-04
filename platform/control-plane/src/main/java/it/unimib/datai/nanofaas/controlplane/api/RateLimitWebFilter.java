@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.controlplane.api;
 
 import it.unimib.datai.nanofaas.controlplane.service.RateLimiter;
 import org.springframework.core.io.buffer.DataBufferUtils;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
@@ -43,6 +44,9 @@ public class RateLimitWebFilter implements WebFilter {
     }
 
     private static boolean isInvocationPath(ServerWebExchange exchange) {
+        if (exchange.getRequest().getMethod() != HttpMethod.POST) {
+            return false;
+        }
         String path = exchange.getRequest().getPath().value();
         return path.startsWith("/v1/functions/") && (path.endsWith(":invoke") || path.endsWith(":enqueue"));
     }
