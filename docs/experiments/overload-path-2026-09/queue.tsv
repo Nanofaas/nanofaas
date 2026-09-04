@@ -1,0 +1,26 @@
+# nome	scenario	varianti	tieni_vm	marcatore
+#
+# Formato letto da run-queue.sh: `#` commenta l'intera riga, i campi sono
+# separati da un TAB singolo (non spazi). `tieni_vm=1` lascia la VM accesa per
+# la cella successiva della stessa matrice; l'ultima riga di un gruppo deve
+# avere `0` o il teardown non parte mai.
+#
+# Esperimento A — quanta RAM serve adesso (vedi la sezione omonima nel piano
+# 2026-09-04-overload-path-fixes.md). Un solo braccio, jvm-c2, sotto i due
+# tetti gia' definiti da NanoLab in runtime-comparison-mem{512,1024}.yaml.
+# Quegli scenari fissano deliberatamente la CPU a 2 core per isolare l'asse
+# memoria dal ginocchio CPU (vedi il commento negli scenari stessi) — cioe'
+# NON e' la configurazione che il chart spedisce oggi (1 core). Se serve
+# anche il numero "come spedito", aggiungere una terza riga con uno scenario
+# a cpu:1 prima di lanciare la coda.
+A-mem1024	runtime-comparison-mem1024.yaml	jvm-c2	1	A-mem1024
+A-mem512	runtime-comparison-mem512.yaml	jvm-c2	0	A-mem512
+#
+# Esperimento B — il JIT vale ancora, e quanti event loop. BLOCCATO: le due
+# varianti a un solo event loop (jvm-loop1, jvm-c2-loop1) non esistono ancora
+# in packages/nanolab/src/nanolab/images/control_plane_variants.py. Vanno
+# aggiunte prima — build_env=_env(JVM_TUNING="... -Dreactor.netty.ioWorkerCount=1")
+# accanto a jvm e jvm-c2 esistenti — poi questa riga va scommentata.
+# Regime: 1 core, scenario runtime-comparison-cpu1.yaml, stessa forma di
+# azure-jvm-2x2-cpu1 (§ piano, Esperimento B).
+# B-loop-cpu1	runtime-comparison-cpu1.yaml	jvm,jvm-c2,jvm-loop1,jvm-c2-loop1	0	B-loop-cpu1

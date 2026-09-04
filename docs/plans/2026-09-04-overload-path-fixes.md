@@ -12,9 +12,25 @@ misurabilità su Azure per rumore di fondo. L'Esperimento C ora porta un passo
 0 locale che riusa quel banco prima di impegnare una corsa Azure, il filtro è
 scoperto sui soli suffissi di invocazione, e viene testato in modalità sync
 *e* async (il caso forte, l'handoff `boundedElastic`, è async, ma il default
-di k6 è sync). Il prerequisito di strumentazione è ridotto: RSS e CFS sono già
-scrapati da cAdvisor nel chart, serve solo interrogarli — non costruire un
-collettore nel pod. A e B non sono toccati.
+di k6 è sync).
+
+**Revisione 2:** `../nanolab` (checkout separato che questo progetto usa per
+l'orchestrazione, vedi `CLAUDE.md`) possiede già gran parte di ciò che il
+Prerequisito e l'Esperimento B chiedevano di costruire. La prima revisione
+aveva corretto il prerequisito da "costruire un collettore nel pod" a
+"interrogare la Prometheus del cluster" — ma quella Prometheus, con la sua
+raccolta di RSS e CFS, è **già cablata end-to-end** dentro il workflow
+`compare` di NanoLab (`packages/nanolab/src/nanolab/metrics/
+catalogue.py::container_queries`), non solo scrapata e disponibile. La stessa
+infrastruttura ha già prodotto i numeri che questo piano cita
+(`azure-jvm-2x2-cpu{1,2}`, `azure-matrix-cpu1…4`) tramite scenari e uno script
+di sweep che esistono tuttora. Il Prerequisito, l'Esperimento A e
+l'Esperimento B sotto sono riscritti per riusare quell'infrastruttura invece
+di estendere `experiments/e2e-memory-ab.sh`, che resta lo strumento giusto
+solo per la sua domanda originale (epoch-millis on/off) e non era mai stato
+pensato per la matrice JIT×loop o per il tetto di memoria. La Parte I e
+l'Esperimento C restano come nella prima revisione: sono codice applicativo
+nanofaas, non infrastruttura di misura.
 
 ## Il problema comune
 
@@ -183,40 +199,47 @@ che potrebbe essere un artefatto di un bug già corretto.
 
 ## Prerequisito — strumentare ciò che stiamo misurando
 
-**Questo viene prima di tutto il resto — ma è più piccolo di quanto sembrava.**
+**Molto più piccolo di quanto sembrava alla prima stesura: la maggior parte
+esiste già, in NanoLab, non nel repo nanofaas.**
 
 `experiments/e2e-memory-ab.sh` campiona `/actuator/prometheus` ogni 5 s e ne
 estrae heap usato, heap max, pause GC e thread vivi
-(`sample_prometheus_text_to_jsonl`, righe 96-155). **Non raccoglie né l'RSS del
-container né il throttling CFS** — cioè le due metriche protagoniste di tutta
-questa analisi. Senza di esse l'Esperimento B non può rispondere alla propria
-domanda: non vedrebbe la variabile che sta cercando di ridurre.
+(`sample_prometheus_text_to_jsonl`, righe 96-155): **non raccoglie né l'RSS del
+container né il throttling CFS**. Questo è vero e resta vero — ma quello script
+non è il vettore giusto per l'Esperimento A o B: è lo strumento che confronta
+`CONTROL_PLANE_EPOCH_MILLIS_ENABLED` acceso/spento, una domanda diversa. Il
+vettore giusto per A e B è il workflow `compare` di NanoLab, ed *è già
+strumentato*:
 
-Queste due esistono però già altrove: `deploy/helm/nanofaas/templates/
-prometheus-configmap.yaml:126-128` fa scrape di cAdvisor via kubelet nel
-cluster e tiene esplicitamente `container_cpu_cfs_periods_total`,
-`container_cpu_cfs_throttled_periods_total`,
-`container_cpu_cfs_throttled_seconds_total`,
-`container_memory_working_set_bytes`, `container_memory_usage_bytes` — il
-commento nel chart dice testualmente "used by runtime A/B reporting". Non
-serve costruire un collettore nel pod (`/sys/fs/cgroup/cpu.stat`, come
-ipotizzato in origine): serve che il campionatore interroghi **anche** la
-Prometheus del cluster, non solo `/actuator/prometheus` dell'app.
+`packages/nanolab/src/nanolab/metrics/catalogue.py::container_queries()`
+interroga, per ogni run k8s, esattamente le due metriche che qui mancavano —
+`container_memory_bytes@control-plane` (da
+`container_memory_working_set_bytes`, il working-set del container: la
+funzione la preferisce esplicitamente a un gauge JVM di heap perché "un
+control plane JVM con un heap gauge piccolo aveva un RSS di 1002 MiB") e
+`container_cpu_throttled_periods@control-plane` /
+`container_cpu_periods@control-plane` /
+`container_cpu_throttled_seconds@control-plane` (dai contatori CFS). Queste
+query alimentano `comparison.json`/`comparison.md` di ogni corsa `nanolab.sh
+compare`, e la stessa serie di RSS alimenta anche la pipeline di regressione
+release (`packages/nanolab/src/nanolab/release/metrics.py:216`) — è il
+percorso che ha prodotto il commit "Record the v0.20.0 performance release"
+in questo repo. Non c'è nulla da costruire per ottenere RSS e CFS: c'è solo da
+usare `nanolab.sh compare` invece di `e2e-memory-ab.sh` per queste due
+domande.
 
-Da aggiungere al campionatore:
+Quello che resta effettivamente da costruire, verificato assente sia nel
+codice sorgente (`grep -r "reactor.netty.eventloop.pending" platform/` non
+trova nulla) sia nel catalogo di NanoLab:
 
-| metrica | dove sta | nota |
+| cosa manca | dove va | nota |
 |---|---|---|
-| `container_cpu_cfs_periods_total`, `..._throttled_periods_total`, `..._throttled_seconds_total` | Prometheus del cluster (già scrape via cAdvisor, vedi sopra) | query PromQL istantanea sul pod, non una sorgente nuova |
-| RSS/working-set del container | `container_memory_working_set_bytes`, stessa Prometheus | idem |
-| task pendenti per event loop | `reactor.netty` / Micrometer, ancora da esporre | è il numero che ha rivelato gli 863 — questo sì è lavoro nuovo |
+| gauge Micrometer dei task pendenti per event loop | `platform/control-plane` | il design esiste già: `2026-08-21-dispatch-bottleneck-and-comparison-rerun.md:2267-2269` — `Gauge.builder(..., singleThreadEventExecutor::pendingTasks)`, discusso e mai spedito. È il numero che ha rivelato gli 863; senza, l'Esperimento B non vede la coda dei loop, solo il suo sintomo (CFS e latenza) |
+| il conteggio degli event loop come asse della matrice | `packages/nanolab/src/nanolab/images/control_plane_variants.py` | oggi `ControlPlaneVariant.build_env` porta solo `JVM_TUNING` (GC/tiering) per le build JVM; `-Dreactor.netty.ioWorkerCount=N` è una system property e può entrare nello stesso `JVM_TUNING` — vedi Esperimento B |
 
-Seconda lacuna, minore: il braccio è cablato. `e2e-memory-ab.sh` sa confrontare
-solo `CONTROL_PLANE_EPOCH_MILLIS_ENABLED` acceso/spento (riga 200). Va
-generalizzato a «un braccio è un insieme di variabili d'ambiente e build-arg»
-invece che «un booleano». L'impalcatura riusabile — provisioning VM, deploy dei
-due bracci, k6, campionamento durante la corsa, `comparison.md`/`comparison.json`
-— resta intatta.
+L'impalcatura di `e2e-memory-ab.sh` — provisioning VM, deploy A/B, k6,
+campionamento durante la corsa — resta la scelta giusta per la sua domanda
+originale (epoch-millis) e non va toccata per questo piano.
 
 ## Esperimento A — Quanta RAM serve adesso
 
@@ -230,6 +253,12 @@ non può dare ad altri.
 **Forma:** un braccio, `jvm-c2`, codice corrente, profilo di carico standard.
 **Esito:** un valore di `limits.memory` giustificato da una misura.
 **Costo:** il più basso dei tre. Da fare per primo dopo la strumentazione.
+
+**Dove:** `docs/experiments/overload-path-2026-09/`, celle `A-mem1024` e
+`A-mem512` in `queue.tsv`, sugli scenari NanoLab già esistenti
+`runtime-comparison-mem{1024,512}.yaml`. Non lanciato da questa revisione del
+piano — richiede `az login` e un resource group Azure, vedi il README di
+quella campagna per i prerequisiti prima di eseguire `run-queue.sh`.
 
 ## Esperimento B — Il JIT vale ancora, e quanti event loop
 
@@ -248,6 +277,17 @@ CPU a 1 core — e perché la §23.1 vieta di confrontarle fra corse diverse.
 
 **Regime:** 1 core, carico che satura, 3 ripetizioni. Stessa forma di
 `azure-jvm-2x2-cpu1`, quindi lo scenario NanoLab si riusa quasi tale e quale.
+
+**Dove, e cosa manca prima di poter lanciare:**
+`docs/experiments/overload-path-2026-09/`, cella `B-loop-cpu1` in
+`queue.tsv`, sullo scenario esistente `runtime-comparison-cpu1.yaml`. La riga
+è presente ma commentata: i bracci C e D (`jvm-loop1`, `jvm-c2-loop1`) non
+esistono ancora come `ControlPlaneVariant` — vanno aggiunti a
+`control_plane_variants.py` appendendo `-Dreactor.netty.ioWorkerCount=1` al
+`JVM_TUNING` dei due bracci esistenti (`jvm`, `jvm-c2`), il meccanismo già
+supporta system property arbitrarie oltre a GC/tiering. Il gauge dei task
+pendenti per loop (vedi Prerequisito) va anche lui aggiunto prima, o la
+metrica decisiva sotto resta vuota.
 
 **Metriche decisive:** `nr_throttled/nr_periods`, p50/p95/p99, tasso di scarti,
 task pendenti per loop, riavvii da liveness.
@@ -358,13 +398,26 @@ differenza che quasi sparisce a 2 core.
 
 ## Ordine di esecuzione
 
-1. Strumentazione: interrogare la Prometheus del cluster (cAdvisor, già
-   presente) per RSS/CFS nel campionatore A/B; generalizzare il braccio a
-   env/build-arg
-2. Esperimento A — memoria
-3. Esperimento B — JIT × event loop
+Raccolta grezza e tabelle di A e B vivono in
+`docs/experiments/overload-path-2026-09/` (README, `queue.tsv`,
+`run-queue.sh`, `raw/`), sul modello di `../baseline-2026-08/`. Nessuna cella
+è stata eseguita da questa revisione del piano — richiede Azure e va lanciato
+deliberatamente.
+
+1. Esperimento A — memoria. Nessun prerequisito di codice: le celle
+   `A-mem1024`/`A-mem512` in `queue.tsv` sono pronte, RSS e CFS arrivano già
+   da NanoLab (`container_queries`). Lanciabile subito dopo `az login`.
+2. Prerequisito di codice per B: gauge dei task pendenti per event loop in
+   `platform/control-plane` (design in
+   `2026-08-21-dispatch-bottleneck-and-comparison-rerun.md:2267-2269`) e le
+   due varianti `jvm-loop1`/`jvm-c2-loop1` in
+   `control_plane_variants.py` (`JVM_TUNING` + `-Dreactor.netty.ioWorkerCount=1`)
+3. Esperimento B — JIT × event loop. Scommentare `B-loop-cpu1` in `queue.tsv`
+   dopo il passo 2 ed eseguire.
 4. Banco locale — costo del rifiuto con/senza filtro, `:invoke` e `:enqueue`
-   (Esperimento C, passo 0)
+   (Esperimento C, passo 0). Non passa da NanoLab: microbenchmark Java nel
+   repo nanofaas, risultato in `docs/experiments/archive/refusal-cost.md` o
+   un file gemello.
 5. Solo se il passo 4 supera il rumore di fondo: codice `WebFilter`
    (Parte I.1) scoperto sui soli suffissi `:invoke`/`:enqueue`, poi corsa
    Azure dell'Esperimento C in entrambe le modalità di invocazione
