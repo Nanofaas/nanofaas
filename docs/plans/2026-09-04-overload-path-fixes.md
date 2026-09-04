@@ -63,7 +63,7 @@ Nessuna conclusione di agosto va data per valida senza rimisurarla.
 
 ## 1. Rate limit in un `WebFilter`, prima del body
 
-**Stato:** fatto — `RateLimitWebFilter` (`platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/RateLimitWebFilter.java`), scoped a `:invoke`/`:enqueue`, corpo drenato prima del 429. `RateLimitException` e il controllo in `InvocationService` sono stati rimossi. Vedi `docs/superpowers/plans/2026-09-04-rate-limit-webfilter.md`.
+**Stato:** fatto — `RateLimitWebFilter` (`platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/RateLimitWebFilter.java`), scoped a `:invoke`/`:enqueue`, corpo drenato prima del 429. `RateLimitException` e il controllo in `InvocationService` sono stati rimossi. Vedi `docs/superpowers/plans/2026-09-04-rate-limit-webfilter.md`. Poiché il filtro corto-circuita prima che giri l'handler mapping di Spring, un 429 da rate limit viene registrato nella metrica `http.server.requests` con `uri=UNKNOWN` invece della rotta di invocazione — innocuo per gli strumenti esistenti (che filtrano solo su `status="429"`, non su `uri`), ma da tenere presente per chi in futuro volesse scomporre i rifiuti per rotta.
 
 `RateLimiter.allow()` gira a `InvocationService.java:99,126` (chiamato da
 `invokeSyncReactive` e `invokeAsync`), dietro decode HTTP, deserializzazione
