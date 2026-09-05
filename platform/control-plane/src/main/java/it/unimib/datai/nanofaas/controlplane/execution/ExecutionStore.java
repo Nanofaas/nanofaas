@@ -3,6 +3,8 @@ package it.unimib.datai.nanofaas.controlplane.execution;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.Expiry;
+import com.github.benmanes.caffeine.cache.RemovalCause;
+import com.github.benmanes.caffeine.cache.Scheduler;
 import com.github.benmanes.caffeine.cache.Ticker;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -11,7 +13,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 
+import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * Chi sta eseguendo, e cosa ne resta dopo.
@@ -52,6 +56,20 @@ public class ExecutionStore {
     /** Cosa ne resta. Limitato in numero, e con scadenza decisa per voce. */
     private final Cache<String, Outcome> outcomes;
 
+    /**
+     * Chi va avvertito quando {@link #inFlight} sfratta un record da solo, per
+     * {@code maxLifetime} scaduto - non perche' qualcuno lo ha archiviato con
+     * {@link #settle}.
+     *
+     * <p>Di default nessuno: uno store usato senza registrare un ascoltatore si
+     * comporta come prima, sfratto silenzioso. {@code ExecutionCompletionHandler}
+     * si registra qui in produzione, perche' e' lui a sapere come chiudere un
+     * dispatch abbandonato - completare la future condivisa, rilasciare lo slot,
+     * archiviare l'esito - non lo store, che di slot e future condivise non sa
+     * nulla al di fuori del record stesso.
+     */
+    private volatile Consumer<ExecutionRecord> expiryListener = record -> { };
+
     public ExecutionStore() {
         this(ExecutionStoreProperties.of(null, null, null));
     }
@@ -77,6 +95,23 @@ public class ExecutionStore {
         this.inFlight = Caffeine.newBuilder()
                 .expireAfterWrite(properties.maxLifetime())
                 .ticker(ticker)
+                // Senza questo, Caffeine controlla la scadenza solo quando qualcosa
+                // tocca la cache - una get, una put, una cleanUp() esplicita. Un
+                // record incastrato per un dispatch perso, con nessuno che lo
+                // rilegge mai (un chiamante ASYNC che non interroga piu', o nessun
+                // chiamante affatto), restava scaduto ma vivo indefinitamente: lo
+                // slot di concorrenza che teneva non tornava mai al budget. Lo
+                // scheduler pianifica lo sfratto sul tempo reale, indipendente da
+                // qualunque traffico successivo sulla cache.
+                .scheduler(Scheduler.systemScheduler())
+                .removalListener((String executionId, ExecutionRecord executionRecord, RemovalCause cause) -> {
+                    // EXPLICIT e' settle()/remove() - gia' gestito da chi le chiama.
+                    // REPLACED non si applica: nessun path fa put() due volte sullo
+                    // stesso id. Solo EXPIRED e' lo sfratto che nessuno ha deciso.
+                    if (cause == RemovalCause.EXPIRED && executionRecord != null) {
+                        expiryListener.accept(executionRecord);
+                    }
+                })
                 .build();
         this.outcomes = Caffeine.newBuilder()
                 .maximumSize(properties.maxOutcomes())
@@ -84,6 +119,15 @@ public class ExecutionStore {
                         outcome.readable() ? properties.ttl() : properties.syncTtl()))
                 .ticker(ticker)
                 .build();
+    }
+
+    /**
+     * Registra chi chiude un dispatch abbandonato quando {@code maxLifetime}
+     * scade da solo. Non additivo: l'ultima registrazione vince, come per ogni
+     * singleton Spring che si registra una volta sola all'avvio.
+     */
+    public void onAdministrativeExpiry(Consumer<ExecutionRecord> listener) {
+        this.expiryListener = Objects.requireNonNull(listener, "listener");
     }
 
     /** Quanti esiti sono archiviati adesso. */

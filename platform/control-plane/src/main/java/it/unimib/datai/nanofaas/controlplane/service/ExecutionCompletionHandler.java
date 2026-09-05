@@ -31,6 +31,12 @@ import java.util.concurrent.TimeUnit;
 public class ExecutionCompletionHandler {
     private static final Logger log = LoggerFactory.getLogger(ExecutionCompletionHandler.class);
 
+    /**
+     * Marks an outcome the administrative-expiry path fabricated because the real
+     * one never arrived, as opposed to a genuine runtime error.
+     */
+    static final String EXECUTION_EXPIRED_CODE = "EXECUTION_EXPIRED";
+
     private final ExecutionStore executionStore;
     private final InvocationEnqueuer enqueuer;
     private final DispatcherRouter dispatcherRouter;
@@ -52,6 +58,10 @@ public class ExecutionCompletionHandler {
         this.dispatcherRouter = dispatcherRouter;
         this.metrics = metrics;
         this.wakeUpGate = wakeUpGate;
+        // The store knows nothing about dispatch slots or shared futures; it only
+        // knows a record fell out of inFlight on its own. Closing what that record
+        // was actually holding is this class's job.
+        this.executionStore.onAdministrativeExpiry(this::handleAdministrativeExpiry);
     }
 
     /**
@@ -407,6 +417,75 @@ public class ExecutionCompletionHandler {
 
     public void completeExecution(String executionId, InvocationResult result, Integer completedAttempt) {
         completeExecution(executionId, DispatchResult.warm(result), completedAttempt);
+    }
+
+    /**
+     * The store's only escape hatch for a record nobody ever settled: it fell out
+     * of {@code inFlight} because {@code maxLifetime} elapsed, not because a
+     * dispatch outcome (or a sync timeout) ever touched it. Three things a lost
+     * callback would otherwise never do: conclude whoever is still parked on the
+     * shared future, give back the dispatch slot the (possibly still-running,
+     * possibly long-dead) local attempt is holding, and archive an outcome so
+     * {@code GET /v1/executions/{id}} has something to say instead of 404ing
+     * forever.
+     *
+     * <p>Never overwrites a real result: if the record is already terminal
+     * (e.g. a sync caller's own timeout already marked it, while the real
+     * dispatch outcome still hasn't arrived) its recorded state/output/error is
+     * reused verbatim - this only fabricates an error when nothing else ever
+     * will. {@link CompletableFuture#complete} is a no-op on an already-done
+     * future, so a real completion racing this one always wins, whichever runs
+     * first.
+     *
+     * <p>Slots are a local-dispatch bookkeeping device, not proof the remote
+     * runtime stopped executing: releasing one here only means this control
+     * plane stops counting the attempt against its own concurrency budget, the
+     * same limit an ordinary completion releases. Whether the invoked process is
+     * still running past this point is outside what a slot - or this method -
+     * can promise.
+     *
+     * <p>Only released when {@code dispatchedAt} is set - i.e. {@link #dispatch}
+     * actually ran for the current attempt. A record still sitting in a queue
+     * (task expired before ever being picked up) or served through offload
+     * (which never calls {@link #dispatch}) never acquired a slot in the first
+     * place, so there is nothing here to give back.
+     */
+    private void handleAdministrativeExpiry(ExecutionRecord executionRecord) {
+        InvocationResult result;
+        boolean wasNonTerminal;
+        boolean dispatchedLocally;
+        synchronized (executionRecord) {
+            dispatchedLocally = executionRecord.snapshot().dispatchedAt() != null;
+            wasNonTerminal = !isTerminal(executionRecord.state());
+            if (wasNonTerminal) {
+                executionRecord.markError(new ErrorInfo(EXECUTION_EXPIRED_CODE,
+                        "Execution exceeded its maximum lifetime before a dispatch outcome arrived"));
+            }
+            result = resultFromRecord(executionRecord);
+        }
+        InvocationTask task = executionRecord.task();
+        if (dispatchedLocally) {
+            releaseDispatchSlotOnce(executionRecord, task.attempt(), task.functionName());
+        }
+        if (wasNonTerminal) {
+            metrics.error(task.functionName());
+        }
+        executionRecord.completion().complete(result);
+        executionStore.settle(executionRecord);
+    }
+
+    /** Called under the record's monitor: reads snapshot() fields directly. */
+    private static InvocationResult resultFromRecord(ExecutionRecord executionRecord) {
+        ExecutionRecord.Snapshot snapshot = executionRecord.snapshot();
+        if (snapshot.state() == it.unimib.datai.nanofaas.controlplane.execution.ExecutionState.SUCCESS) {
+            return InvocationResult.successWithEnvelope(snapshot.output(), snapshot.statusCode(),
+                    snapshot.headers(), snapshot.encoding());
+        }
+        ErrorInfo error = snapshot.lastError() != null
+                ? snapshot.lastError()
+                : new ErrorInfo(EXECUTION_EXPIRED_CODE,
+                        "Execution exceeded its maximum lifetime before a dispatch outcome arrived");
+        return new InvocationResult(false, null, error);
     }
 
     private void releaseDispatchSlot(String functionName) {
