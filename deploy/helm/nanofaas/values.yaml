@@ -41,11 +41,16 @@ controlPlane:
     # size to the quota granted, not the host's core count, rounding UP for a
     # fractional limit rather than down - a single thread can't use more than
     # one core no matter the quota, so under-provisioning wastes headroom the
-    # quota would otherwise allow. Not derived from resources.limits.cpu above
-    # because Kubernetes CPU quantities (plain cores, "500m", fractional)
-    # don't reduce to an integer worker count by one parsing rule in Helm - if
-    # you change the CPU limit, change this to match, rounding up.
-    ioWorkerCount: 1
+    # quota would otherwise allow.
+    #
+    # Left empty by default: the deployment template derives it from
+    # resources.limits.cpu above via the "nanofaas.controlPlane.ioWorkerCount"
+    # helper (templates/_helpers.tpl), which parses plain cores ("1", "1.5")
+    # and millicores ("500m") and rounds up. Set a number here only to force a
+    # value that ignores the CPU limit - e.g. to reproduce Esperimento B's
+    # matrix cells, which held the limit fixed at 1 core and varied the
+    # worker count independently of it.
+    ioWorkerCount: ""
   # Kubernetes' bare defaults (timeoutSeconds: 1, failureThreshold: 3, periodSeconds: 10)
   # give a GC pause under memory pressure a 3-second window before three strikes call it
   # dead. dispatch-bottleneck/README.md (2026-08-21) already measured p95 probe latency at

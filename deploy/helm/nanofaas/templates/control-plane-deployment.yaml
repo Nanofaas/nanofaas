@@ -38,8 +38,10 @@ spec:
             # loop count depends on this chart's own CPU limit above, not on the
             # image, and the JVM reads this env var itself at launch - no shell
             # expansion needed even with the distroless exec-form ENTRYPOINT.
+            # controlPlane.jvm.ioWorkerCount overrides the auto-derived value when
+            # set; empty (the default) derives it from resources.limits.cpu.
             - name: JAVA_TOOL_OPTIONS
-              value: "-Dreactor.netty.ioWorkerCount={{ .Values.controlPlane.jvm.ioWorkerCount }}"
+              value: "-Dreactor.netty.ioWorkerCount={{ .Values.controlPlane.jvm.ioWorkerCount | default (include "nanofaas.controlPlane.ioWorkerCount" .) }}"
             {{- with .Values.controlPlane.extraEnv }}
             {{- range $env := . }}
             - name: {{ $env.name | quote }}
