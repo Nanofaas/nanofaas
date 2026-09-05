@@ -1,16 +1,31 @@
 package it.unimib.datai.nanofaas.workloadmetrics;
 
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 
 public final class FunctionCapacityRegistry implements WorkloadCapacityController {
     private final LongSupplier nanoTime;
     private final ConcurrentHashMap<String, Entry> entries = new ConcurrentHashMap<>();
+    private final Set<Consumer<String>> capacityListeners = ConcurrentHashMap.newKeySet();
 
     public FunctionCapacityRegistry() { this(System::nanoTime); }
 
     FunctionCapacityRegistry(LongSupplier nanoTime) { this.nanoTime = nanoTime; }
+
+    /**
+     * Registers a listener invoked (after the registry lock is released) when a function
+     * transitions to having at least one free dispatch slot. A queue scheduler subscribes so a
+     * concurrency-limit increase that opens capacity - which arrives through
+     * {@link WorkloadCapacityController#setEffectiveConcurrency} from the governor, not through
+     * any dispatch completion - can wake a worker parked on that function. Optional: a registry
+     * with no listeners behaves exactly as before.
+     */
+    public void addCapacityListener(Consumer<String> listener) {
+        capacityListeners.add(listener);
+    }
 
     public FunctionCapacityState register(String functionName, int configuredConcurrency) {
         Entry entry = entries.computeIfAbsent(functionName, ignored -> new Entry());
@@ -120,12 +135,22 @@ public final class FunctionCapacityRegistry implements WorkloadCapacityControlle
     public void setEffectiveConcurrency(String functionName, int concurrency) {
         Entry entry = entries.get(functionName);
         if (entry == null) return;
+        boolean opened;
         entry.lock.lock();
         try {
             FunctionCapacityState state = current(functionName, entry);
-            if (state != null) state.setEffectiveConcurrency(concurrency);
+            if (state == null) return;
+            boolean wasDispatchable = state.canDispatch();
+            state.setEffectiveConcurrency(concurrency);
+            opened = !wasDispatchable && state.canDispatch();
         } finally {
             entry.lock.unlock();
+        }
+        // Fire outside the entry lock: listeners may take other locks (e.g. a queue monitor),
+        // and the scheduler's scan path acquires this registry lock while holding the queue
+        // monitor, so notifying under the registry lock would invert that order.
+        if (opened) {
+            capacityListeners.forEach(listener -> listener.accept(functionName));
         }
     }
 

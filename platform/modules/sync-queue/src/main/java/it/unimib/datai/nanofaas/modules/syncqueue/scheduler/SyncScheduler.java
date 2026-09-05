@@ -16,66 +16,65 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-import java.util.function.LongConsumer;
 
 public class SyncScheduler implements SmartLifecycle {
     private static final Logger log = LoggerFactory.getLogger(SyncScheduler.class);
     private static final String COMPONENT_NAME = "Sync scheduler";
 
     /**
-     * How long the worker parks on the queue's work signal after finding the queue
-     * empty. New work wakes it immediately via {@code enqueueOrThrow}'s notification,
-     * so this timeout is a safety bound (spurious wakeups, shutdown detection), not the
-     * dispatch-latency budget. It deliberately is not a tight poll: the scheduler is
-     * created even while admission is disabled, and an idle worker must stay dormant
-     * rather than wake the CPU on a short timer.
+     * How long the worker parks on the queue's notification monitor after finding the queue
+     * empty. New work, a capacity release, a registration or a capacity increase wake it
+     * immediately via the queue's notification sequence, so this timeout is a safety bound
+     * (spurious wakeups, shutdown detection), not the dispatch-latency budget. It deliberately
+     * is not a tight poll: the scheduler is created even while admission is disabled, and an
+     * idle worker must stay dormant rather than wake the CPU on a short timer.
      */
     private static final long EMPTY_QUEUE_AWAIT_MS = 500L;
+
+    /**
+     * How long the worker parks when the queue has work but nothing in the current scan window
+     * can dispatch (every scanned item's function is at its concurrency limit, or unregistered).
+     * This too is a notifiable wait - a released slot, a capacity increase or a registration
+     * wakes it at once - so the timeout is only a safety bound. It is kept short (the old
+     * backoff cap was 50 ms) so that, in the absence of notifications, queue items that have
+     * expired are reaped and the scan window keeps rotating toward functions queued beyond the
+     * scan limit (head-of-line fairness). It is a timed park, not a poll: no CPU is consumed
+     * while parked.
+     */
+    private static final long CAPACITY_BLOCKED_AWAIT_MS = 50L;
 
     private final InvocationEnqueuer enqueuer;
     private final SyncQueueService queue;
     private final Consumer<InvocationTask> dispatch;
-    private final LongConsumer pause;
     private final WorkloadDiagnostics diagnostics;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final Object lifecycleMonitor = new Object();
-    private volatile long tickMs = 2;
-    private volatile long blockedBackoffMs = tickMs;
     private final AtomicReference<ExecutorService> executor = new AtomicReference<>();
 
     public SyncScheduler(InvocationEnqueuer enqueuer,
                          SyncQueueService queue,
                          it.unimib.datai.nanofaas.controlplane.service.InvocationService invocationService) {
-        this(enqueuer, queue, invocationService::dispatch, null, null);
+        this(enqueuer, queue, invocationService::dispatch, null);
     }
 
     public SyncScheduler(InvocationEnqueuer enqueuer,
                          SyncQueueService queue,
                          it.unimib.datai.nanofaas.controlplane.service.InvocationService invocationService,
                          WorkloadDiagnostics diagnostics) {
-        this(enqueuer, queue, invocationService::dispatch, null, diagnostics);
+        this(enqueuer, queue, invocationService::dispatch, diagnostics);
     }
 
     SyncScheduler(InvocationEnqueuer enqueuer, SyncQueueService queue, Consumer<InvocationTask> dispatch) {
-        this(enqueuer, queue, dispatch, null, null);
+        this(enqueuer, queue, dispatch, null);
     }
 
     SyncScheduler(InvocationEnqueuer enqueuer,
                   SyncQueueService queue,
                   Consumer<InvocationTask> dispatch,
-                  LongConsumer pause) {
-        this(enqueuer, queue, dispatch, pause, null);
-    }
-
-    SyncScheduler(InvocationEnqueuer enqueuer,
-                  SyncQueueService queue,
-                  Consumer<InvocationTask> dispatch,
-                  LongConsumer pause,
                   WorkloadDiagnostics diagnostics) {
         this.enqueuer = enqueuer;
         this.queue = queue;
         this.dispatch = dispatch;
-        this.pause = pause != null ? pause : this::sleep;
         this.diagnostics = diagnostics;
     }
 
@@ -85,7 +84,6 @@ public class SyncScheduler implements SmartLifecycle {
             if (!running.compareAndSet(false, true)) {
                 return;
             }
-            blockedBackoffMs = tickMs;
             ExecutorService newExecutor = SchedulerLifecycleSupport.newSingleThreadExecutor("nanofaas-sync-scheduler");
             executor.set(newExecutor);
             try {
@@ -108,7 +106,12 @@ public class SyncScheduler implements SmartLifecycle {
             }
             executorToStop = executor.getAndSet(null);
         }
-        SchedulerLifecycleSupport.shutdownExecutor(executorToStop, log, COMPONENT_NAME);
+        if (executorToStop != null) {
+            // Interrupt the parked worker so stop() does not wait out a safety bound; the loop
+            // exits because running is false (and the interrupt flag is set).
+            executorToStop.shutdownNow();
+            SchedulerLifecycleSupport.shutdownExecutor(executorToStop, log, COMPONENT_NAME);
+        }
     }
 
     @Override
@@ -138,6 +141,11 @@ public class SyncScheduler implements SmartLifecycle {
     }
 
     private void tickOnceInternal() {
+        // Record the notification sequence BEFORE scanning. If anything the scheduler cares
+        // about fires while the scan runs (new work, a released slot, a capacity increase), the
+        // sequence advances and the subsequent wait returns immediately instead of parking
+        // through the change - the lost-wakeup window between the state check and the wait.
+        long observedEpoch = queue.wakeupEpoch();
         Instant now = Instant.now();
         SyncQueueItem item = queue.findReadyMatching(now, task -> {
             boolean available = enqueuer.hasAvailableSlot(task.functionName());
@@ -149,29 +157,35 @@ public class SyncScheduler implements SmartLifecycle {
         if (item == null) {
             if (queue.peekReady(now) == null) {
                 long idleStarted = System.nanoTime();
-                blockedBackoffMs = tickMs;
-                queue.awaitWork(EMPTY_QUEUE_AWAIT_MS);
+                queue.awaitWakeup(EMPTY_QUEUE_AWAIT_MS, observedEpoch);
                 if (diagnostics != null) {
                     diagnostics.recordSchedulerIdleDuration(System.nanoTime() - idleStarted);
                 }
             } else {
+                // Work exists but nothing in the scan window can dispatch (its functions are at
+                // their limits, or unregistered). Rotate the window so functions queued beyond
+                // the scan limit are eventually considered, then park on capacity/work.
                 queue.rotateReadyScanWindow(now);
-                pause.accept(currentBlockedBackoff());
+                queue.awaitWakeup(CAPACITY_BLOCKED_AWAIT_MS, observedEpoch);
             }
             return;
         }
         String functionName = item.task().functionName();
         if (!enqueuer.tryAcquireSlot(functionName)) {
+            // The slot went between the scan and the acquire (e.g. the effective limit was
+            // lowered concurrently). Put the item back and park: the function is genuinely at
+            // its limit, and only a capacity event or the safety timeout should re-try it.
             queue.rotateReadyItem(item, now);
-            pause.accept(currentBlockedBackoff());
+            queue.awaitWakeup(CAPACITY_BLOCKED_AWAIT_MS, observedEpoch);
             return;
         }
         if (!queue.removeReady(item, now)) {
+            // Another thread removed the item (e.g. a removeFunctionState drain) after the slot
+            // was taken. Give the slot back and let the loop re-scan immediately: this is a
+            // one-time race, not a condition to back off on.
             enqueuer.releaseDispatchSlot(functionName);
-            pause.accept(currentBlockedBackoff());
             return;
         }
-        blockedBackoffMs = tickMs;
         queue.recordDispatched(functionName, now);
         long submitStarted = System.nanoTime();
         SchedulerDispatchSupport.dispatchWithFailureCleanup(
@@ -186,22 +200,8 @@ public class SyncScheduler implements SmartLifecycle {
     }
 
     private void loop() {
-        while (running.get()) {
+        while (running.get() && !Thread.currentThread().isInterrupted()) {
             tickOnce();
-        }
-    }
-
-    private long currentBlockedBackoff() {
-        long current = blockedBackoffMs;
-        blockedBackoffMs = Math.min(current * 2, 50);
-        return current;
-    }
-
-    private void sleep(long ms) {
-        try {
-            Thread.sleep(ms);
-        } catch (InterruptedException _) {
-            Thread.currentThread().interrupt();
         }
     }
 }

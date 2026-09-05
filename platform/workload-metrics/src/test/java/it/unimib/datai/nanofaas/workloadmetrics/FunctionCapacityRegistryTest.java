@@ -37,6 +37,33 @@ class FunctionCapacityRegistryTest {
     }
 
     @Test
+    void capacityListenerFiresOnlyWhenARaiseOpensADispatchableSlot() {
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        AtomicInteger notifications = new AtomicInteger();
+        registry.addCapacityListener(name -> notifications.incrementAndGet());
+
+        FunctionCapacityState state = registry.register("echo", 3);
+        assertThat(state.canDispatch()).isTrue();
+        assertThat(registry.tryAcquireSlot("echo")).isTrue();
+        assertThat(registry.tryAcquireSlot("echo")).isTrue();
+
+        // Lower the effective limit below in-flight: the function is now full, no slot opens.
+        registry.setEffectiveConcurrency("echo", 2);
+        assertThat(state.canDispatch()).isFalse();
+        assertThat(notifications).hasValue(0);
+
+        // Raise it back above in-flight: a slot opens -> exactly one notification.
+        registry.setEffectiveConcurrency("echo", 3);
+        assertThat(state.canDispatch()).isTrue();
+        assertThat(notifications).hasValue(1);
+
+        // A raise that leaves an already-dispatchable function dispatchable is not a capacity
+        // opening and must not spam listeners (the governor ticks every function every cycle).
+        registry.setEffectiveConcurrency("echo", 3);
+        assertThat(notifications).hasValue(1);
+    }
+
+    @Test
     void configuredConcurrencyAndRemovalAreSafe() {
         FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
         registry.register("echo", 6);

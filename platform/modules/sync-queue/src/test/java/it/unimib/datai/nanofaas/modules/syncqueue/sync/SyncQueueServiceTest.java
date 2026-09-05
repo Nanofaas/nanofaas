@@ -208,7 +208,7 @@ class SyncQueueServiceTest {
     }
 
     @Test
-    void awaitWork_unblocksWhenTaskIsEnqueued() throws Exception {
+    void awaitWakeup_unblocksWhenTaskIsEnqueued() throws Exception {
         SyncQueueProperties props = new SyncQueueProperties(
                 true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
         );
@@ -219,7 +219,8 @@ class SyncQueueServiceTest {
 
         CountDownLatch done = new CountDownLatch(1);
         Thread waiter = new Thread(() -> {
-            service.awaitWork(500);
+            long epoch = service.wakeupEpoch();
+            service.awaitWakeup(500, epoch);
             done.countDown();
         });
         waiter.start();
@@ -228,8 +229,8 @@ class SyncQueueServiceTest {
         InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
         store.put(new ExecutionRecord("e1", task));
 
-        // Wait until the waiter is blocked inside awaitWork's workSignal.wait(500)
-        // so the enqueue below is what wakes it, not a queue that is already non-empty
+        // Wait until the waiter is blocked inside awaitWakeup's workSignal.wait(500)
+        // so the enqueue below is what wakes it, not an epoch that already moved.
         await().atMost(2, TimeUnit.SECONDS).untilAsserted(() ->
                 assertEquals(Thread.State.TIMED_WAITING, waiter.getState()));
 
@@ -240,14 +241,82 @@ class SyncQueueServiceTest {
     }
 
     @Test
-    void awaitWork_returnsWhenTimeoutExpiresWithoutWork() {
+    void awaitWakeup_returnsWhenTimeoutExpiresWithoutSignal() {
         SyncQueueProperties props = new SyncQueueProperties(
                 true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
         );
         SyncQueueService service = createService(props, new ExecutionStore(),
                 new WaitEstimator(Duration.ofSeconds(30), 3), new SyncQueueMetrics(new SimpleMeterRegistry()), Clock.systemUTC());
 
-        assertTimeoutPreemptively(Duration.ofMillis(250), () -> service.awaitWork(10));
+        long epoch = service.wakeupEpoch();
+        assertTimeoutPreemptively(Duration.ofMillis(250), () -> service.awaitWakeup(10, epoch));
+    }
+
+    @Test
+    void capacityRelease_advancesWakeupEpochWhenQueueHasQueuedWork() {
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
+        );
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        SyncQueueService service = new SyncQueueService(
+                props, new ExecutionStore(), new WaitEstimator(Duration.ofSeconds(30), 3),
+                new SyncQueueMetrics(new SimpleMeterRegistry()), Clock.systemUTC(),
+                SyncQueueConfigSource.fixed(props.runtimeDefaults()), registry, null);
+        SyncQueueInvocationEnqueuer enqueuer = new SyncQueueInvocationEnqueuer(
+                registry, null, service::onDispatchSlotReleased, service);
+        service.registerFunction("fn", 1);
+        assertTrue(enqueuer.tryAcquireSlot("fn"));
+        service.enqueueOrThrow(task("queued", "fn"));
+
+        long epochBefore = service.wakeupEpoch();
+        enqueuer.releaseDispatchSlot("fn");
+
+        assertTrue(service.wakeupEpoch() > epochBefore,
+                "a slot release with queued work must advance the wakeup sequence so a parked "
+                        + "scheduler re-scans instead of sleeping through the freed slot");
+    }
+
+    @Test
+    void capacityRelease_doesNotWakeWhenQueueIsEmpty() {
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
+        );
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        SyncQueueService service = new SyncQueueService(
+                props, new ExecutionStore(), new WaitEstimator(Duration.ofSeconds(30), 3),
+                new SyncQueueMetrics(new SimpleMeterRegistry()), Clock.systemUTC(),
+                SyncQueueConfigSource.fixed(props.runtimeDefaults()), registry, null);
+        SyncQueueInvocationEnqueuer enqueuer = new SyncQueueInvocationEnqueuer(
+                registry, null, service::onDispatchSlotReleased, service);
+        service.registerFunction("fn", 1);
+        assertTrue(enqueuer.tryAcquireSlot("fn"));
+
+        long epochBefore = service.wakeupEpoch();
+        enqueuer.releaseDispatchSlot("fn");
+
+        assertEquals(epochBefore, service.wakeupEpoch(),
+                "a release with no queued work must not wake an idle scheduler");
+    }
+
+    @Test
+    void registration_advancesWakeupEpochWhenQueueHasQueuedWork() {
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
+        );
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        SyncQueueService service = new SyncQueueService(
+                props, new ExecutionStore(), new WaitEstimator(Duration.ofSeconds(30), 3),
+                new SyncQueueMetrics(new SimpleMeterRegistry()), Clock.systemUTC(),
+                SyncQueueConfigSource.fixed(props.runtimeDefaults()), registry, null);
+        // A task queued while the function has no registered capacity yet.
+        service.enqueueOrThrow(task("queued", "fn"));
+
+        long epochBefore = service.wakeupEpoch();
+        service.registerFunction("fn", 1);
+
+        assertTrue(service.wakeupEpoch() > epochBefore,
+                "registering a function with queued work must wake a scheduler parked on its "
+                        + "missing capacity");
     }
 
     @Test

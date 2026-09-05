@@ -37,6 +37,15 @@ public class SyncQueueService implements SyncQueueGateway {
     private final Deque<SyncQueueItem> queue;
     private final int maxDepth;
     private final Object workSignal = new Object();
+    /**
+     * Monotonic notification sequence guarded by {@link #workSignal}. Every event that can
+     * make a queued item newly dispatchable - new work, a released slot, a capacity increase,
+     * a (re)registration, a removal drain - increments it and notifies the monitor. A waiter
+     * records the sequence before scanning and re-checks it under the same monitor before
+     * parking, so no signal is lost between the state check and the wait (the classic
+     * missed-wakeup race): if the sequence moved, the waiter re-scans instead of sleeping.
+     */
+    private long wakeSeq;
     private final SyncQueueAdmissionController admissionController;
     private final Set<String> removedFunctions = ConcurrentHashMap.newKeySet();
     private final ConcurrentHashMap<String, LifecycleLock> lifecycleLocks = new ConcurrentHashMap<>();
@@ -99,6 +108,16 @@ public class SyncQueueService implements SyncQueueGateway {
         this.admissionController = new SyncQueueAdmissionController(configSource, props.maxDepth(), estimator);
         this.capacityRegistry = capacityRegistry;
         this.diagnostics = diagnostics;
+        // Capacity opens are announced by the shared registry (the concurrency governor raises
+        // the effective limit through it, outside the enqueuer's release path). This queue is
+        // the only subscriber in the sync profile; a registry with no listener is unchanged.
+        if (capacityRegistry != null) {
+            capacityRegistry.addCapacityListener(this::onCapacityOpened);
+        }
+    }
+
+    private void onCapacityOpened(String functionName) {
+        signalIfQueueHasWork();
     }
 
     private LifecycleLock acquireLifecycleLock(String functionName) {
@@ -120,7 +139,12 @@ public class SyncQueueService implements SyncQueueGateway {
     }
 
     public void onDispatchSlotReleased(String functionName) {
-        // Fires on every completed execution. Only a drained generation needs cleaning up,
+        // Fires on every completed execution (a slot was just released by the enqueuer, so the
+        // state change is already visible). A queued item for a function that was at its limit
+        // may now be dispatchable - wake a parked scheduler. Gated on a non-empty queue so an
+        // idle worker is not woken by completions of in-flight work it cannot use.
+        signalIfQueueHasWork();
+        // Only a drained generation needs cleaning up,
         // and that is exactly when the registry stops carrying the function.
         if (capacityRegistry.hasGeneration(functionName)) return;
         LifecycleLock lock;
@@ -179,21 +203,38 @@ public class SyncQueueService implements SyncQueueGateway {
         if (diagnostics != null) {
             diagnostics.recordQueueOfferDuration(task.functionName(), System.nanoTime() - offerStarted);
         }
+        // New work: wake a scheduler parked on an empty queue (unconditional - a worker parked
+        // because the queue was empty must always see the new item). Unnecessary wakeups for an
+        // already-running worker are harmless: it re-scans and parks again.
+        signalWakeup();
+    }
+
+    /**
+     * The current notification sequence. A scheduler records it before scanning the queue and
+     * passes it to {@link #awaitWakeup}; if any relevant event fires while it scans, the
+     * sequence moves and the wait returns immediately instead of sleeping through the change.
+     */
+    public long wakeupEpoch() {
         synchronized (workSignal) {
-            workSignal.notifyAll();
+            return wakeSeq;
         }
     }
 
     /**
-     * Waits for new work when the queue is empty to avoid busy polling.
+     * Parks until either the notification sequence advances past {@code observedEpoch} (new
+     * work, a capacity release/increase, a registration or a removal made something newly
+     * dispatchable) or {@code timeoutMs} elapses. The timeout is a safety bound - for queue-item
+     * expiry checks, scan-window rotation and shutdown detection - not the dispatch-latency
+     * budget: real events wake the worker through the monitor, so this is not a poll. An
+     * interrupt (e.g. scheduler stop) returns immediately with the flag preserved.
      */
-    public void awaitWork(long timeoutMs) {
-        if (timeoutMs <= 0 || queuedItems() > 0) {
+    public void awaitWakeup(long timeoutMs, long observedEpoch) {
+        if (timeoutMs <= 0) {
             return;
         }
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
         synchronized (workSignal) {
-            while (queuedItems() == 0) {
+            while (wakeSeq == observedEpoch) {
                 long remainingNanos = deadlineNanos - System.nanoTime();
                 if (remainingNanos <= 0) {
                     return;
@@ -206,6 +247,28 @@ public class SyncQueueService implements SyncQueueGateway {
                 }
             }
         }
+    }
+
+    /**
+     * Bumps the notification sequence and wakes any parked scheduler thread.
+     */
+    private void signalWakeup() {
+        synchronized (workSignal) {
+            wakeSeq++;
+            workSignal.notifyAll();
+        }
+    }
+
+    /**
+     * Signals that capacity may have opened for a queued function. When the queue is empty no
+     * queued item can benefit, so the notification is skipped - an idle worker stays dormant
+     * rather than waking on every completion of in-flight work.
+     */
+    private void signalIfQueueHasWork() {
+        if (queuedItems() == 0) {
+            return;
+        }
+        signalWakeup();
     }
 
     public int queuedItems() {
@@ -365,6 +428,9 @@ public class SyncQueueService implements SyncQueueGateway {
         } finally {
             releaseLifecycleLock(functionName, lifecycleLock);
         }
+        // Draining the removed function's queued items can expose dispatchable work that was
+        // behind them in the scan window; a parked scheduler should re-examine the queue.
+        signalIfQueueHasWork();
     }
 
     public void registerFunction(String functionName, int concurrency) {
@@ -383,6 +449,9 @@ public class SyncQueueService implements SyncQueueGateway {
         } finally {
             releaseLifecycleLock(functionName, lifecycleLock);
         }
+        // A registration gives the function capacity (a queued item admitted while the function
+        // was unregistered, or re-registered under load, may now be dispatchable).
+        signalIfQueueHasWork();
     }
 
     private static final class LifecycleLock {
