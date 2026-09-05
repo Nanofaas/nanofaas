@@ -2,11 +2,11 @@ package it.unimib.datai.nanofaas.controlplane.service;
 
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Field;
-import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.LongSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -144,59 +144,214 @@ class RateLimiterTest {
     /**
      * Regression coverage for the concurrent defect called out at the end of
      * docs/control-plane-review-2026-09-05.md ("Un ulteriore difetto concorrente e' in
-     * RateLimiter.allow"), verified there only by reading the source. {@link RateLimiter#allow()}
-     * updates the window and resets the counter as two separate, non-atomic operations:
+     * RateLimiter.allow"), originally verified there only by reading the source and first
+     * reproduced by task A0. The defect was that {@link RateLimiter#allow()} updated the
+     * window and reset the counter as two separate, non-atomic operations:
      * <pre>
-     *   if (now > currentWindow && windowStartSecond.compareAndSet(currentWindow, now)) {
+     *   if (now &gt; currentWindow &amp;&amp; windowStartSecond.compareAndSet(currentWindow, now)) {
      *       windowCount.set(0);
      *   }
-     *   return windowCount.incrementAndGet() <= maxPerSecond;
+     *   return windowCount.incrementAndGet() &lt;= maxPerSecond;
      * </pre>
-     * A thread that wins the CAS publishes the new window second first and only resets the
-     * counter afterwards. Any call that lands in that gap — real or, as here, reconstructed —
-     * sees {@code windowStartSecond} already pointing at the new (empty, from the caller's
-     * perspective) window while {@code windowCount} still holds the stale value from the
-     * window that just ended, and gets wrongly rejected.
+     * A thread that won the CAS published the new window second first and only reset the
+     * counter afterwards, so a call landing in that gap saw the window already advanced while
+     * the counter still held the previous window's saturated value and was wrongly rejected.
      *
-     * <p>Driving that interleaving through real thread scheduling is exactly the kind of
-     * fragile, sleep-dependent concurrency test this task's brief says to avoid, and
-     * {@link RateLimiter} hard-codes {@code Instant.now()} with no injectable clock to make it
-     * deterministic that way either. Instead, this test uses reflection purely to reach into
-     * the private fields and set up the precise intermediate state a real race produces —
-     * window already rolled over, counter not yet reset — then calls the real, unmodified
-     * {@link RateLimiter#allow()} to observe its outcome. No sleeps, no timing assumptions,
-     * fully deterministic.
+     * <p>That intermediate state is structurally unreachable now that window and counter live
+     * in one atomically-CAS-updated state (the rollover seeds the new window's count in the
+     * same transition). This test therefore drives the exact <em>caller-observable</em>
+     * precondition of the old race through the controllable clock: the previous window is
+     * saturated, the clock has moved into a fresh window, and no request has been admitted
+     * there yet. A correct limiter must admit the next request rather than carry the stale
+     * saturated count over the boundary.
      */
     @Test
-    void allow_windowRolledOverButCounterNotYetReset_wronglyRejectsAFreshRequest() throws Exception {
+    void allow_windowRolledOverButCounterNotYetReset_wronglyRejectsAFreshRequest() {
         int maxPerSecond = 3;
-        RateLimiter limiter = new RateLimiter();
+        MutableClock clock = new MutableClock(1_000L);
+        RateLimiter limiter = new RateLimiter(clock);
         limiter.setMaxPerSecond(maxPerSecond);
 
-        Field windowStartField = RateLimiter.class.getDeclaredField("windowStartSecond");
-        windowStartField.setAccessible(true);
-        AtomicLong windowStartSecond = (AtomicLong) windowStartField.get(limiter);
+        // Saturate the current window: exactly maxPerSecond admissions, then a refusal.
+        for (int i = 0; i < maxPerSecond; i++) {
+            assertThat(limiter.allow()).isTrue();
+        }
+        assertThat(limiter.allow()).isFalse();
 
-        Field windowCountField = RateLimiter.class.getDeclaredField("windowCount");
-        windowCountField.setAccessible(true);
-        AtomicInteger windowCount = (AtomicInteger) windowCountField.get(limiter);
+        // The clock moves into a fresh window. Nothing has been admitted there yet, but the
+        // stored count still holds the previous window's saturated value, mirroring what a
+        // caller observed in the old post-CAS/pre-reset gap.
+        clock.advanceSeconds(1);
 
-        // Reconstruct the exact post-CAS, pre-reset state: the window-swap winner already
-        // published "now" as the current window second (so a fresh allow() call takes the
-        // "nothing to do here" branch and skips straight to the increment)...
-        windowStartSecond.set(Instant.now().getEpochSecond());
-        // ...but has not yet reset the counter, which still holds the prior window's
-        // saturated value.
-        windowCount.set(maxPerSecond);
+        // The fresh window admits from an empty count: no admission may be lost to the stale
+        // saturated counter, and the full new-window quota is available again.
+        assertThat(limiter.allow()).isTrue();
+        assertThat(limiter.allow()).isTrue();
+        assertThat(limiter.allow()).isTrue();
+        assertThat(limiter.allow()).isFalse();
+    }
 
-        // A brand-new window has admitted nothing yet from this caller's point of view, so a
-        // correct implementation must accept this request.
-        boolean admitted = limiter.allow();
+    /**
+     * Controlled interleaving between a window change and concurrent requests: all callers are
+     * parked until the clock has been advanced past the boundary, then released together so
+     * they race the rollover. Every caller belongs to the fresh window and none may be lost.
+     */
+    @Test
+    void allow_concurrentWindowRollover_losesNoAdmission() throws Exception {
+        int maxPerSecond = 8;
+        MutableClock clock = new MutableClock(2_000L);
+        RateLimiter limiter = new RateLimiter(clock);
+        limiter.setMaxPerSecond(maxPerSecond);
 
-        assertThat(admitted)
-                .as("a request arriving in a fresh rate-limit window must not be rejected just "
-                        + "because the counter reset from the previous window's CAS winner "
-                        + "has not run yet")
-                .isTrue();
+        for (int i = 0; i < maxPerSecond; i++) {
+            assertThat(limiter.allow()).isTrue();
+        }
+        assertThat(limiter.allow()).isFalse();
+
+        int workers = maxPerSecond;
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch endLatch = new CountDownLatch(workers);
+        AtomicInteger admitted = new AtomicInteger(0);
+        List<Thread> threads = new ArrayList<>();
+        for (int i = 0; i < workers; i++) {
+            Thread t = new Thread(() -> {
+                try {
+                    startLatch.await();
+                    if (limiter.allow()) {
+                        admitted.incrementAndGet();
+                    }
+                } catch (InterruptedException _) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    endLatch.countDown();
+                }
+            });
+            threads.add(t);
+            t.start();
+        }
+
+        // Window change happens while the workers are parked: they all observe the fresh
+        // window on their first read and contend for the single rollover CAS.
+        clock.advanceSeconds(1);
+        startLatch.countDown();
+        endLatch.await();
+
+        // Every worker's request is the first, second, ... admission of the fresh window, so
+        // all workers (workers == maxPerSecond) must be admitted.
+        assertThat(admitted.get()).isEqualTo(workers);
+    }
+
+    /** High concurrency inside a single fixed window: exactly the limit is admitted, no more and no fewer. */
+    @Test
+    void allow_concurrentCallsWithinOneWindow_neverExceedLimit() throws Exception {
+        int maxPerSecond = 100;
+        MutableClock clock = new MutableClock(3_000L);
+        RateLimiter limiter = new RateLimiter(clock);
+        limiter.setMaxPerSecond(maxPerSecond);
+
+        int numThreads = 16;
+        int requestsPerThread = 500;
+        AtomicInteger allowedCount = new AtomicInteger(0);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch endLatch = new CountDownLatch(numThreads);
+
+        for (int i = 0; i < numThreads; i++) {
+            Thread t = new Thread(() -> {
+                try {
+                    startLatch.await();
+                    for (int j = 0; j < requestsPerThread; j++) {
+                        if (limiter.allow()) {
+                            allowedCount.incrementAndGet();
+                        }
+                    }
+                } catch (InterruptedException _) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    endLatch.countDown();
+                }
+            });
+            t.start();
+        }
+
+        startLatch.countDown();
+        endLatch.await();
+
+        // 8000 requests compete for 100 slots in the same (clock-fixed) window: the CAS loop
+        // admits exactly maxPerSecond, never more (over-admission) and never fewer (lost updates).
+        assertThat(allowedCount.get()).isEqualTo(maxPerSecond);
+    }
+
+    /** Runtime updates keep working: a lower limit binds immediately, a higher one frees capacity, across rollovers. */
+    @Test
+    void allow_runtimeLimitChange_isRespectedAcrossWindowRollover() {
+        MutableClock clock = new MutableClock(4_000L);
+        RateLimiter limiter = new RateLimiter(clock);
+        limiter.setMaxPerSecond(5);
+
+        for (int i = 0; i < 5; i++) {
+            assertThat(limiter.allow()).isTrue();
+        }
+        assertThat(limiter.allow()).isFalse();
+
+        // Lower the limit at runtime: the current window is already above it, so the next
+        // request is refused even before the window rolls.
+        limiter.setMaxPerSecond(2);
+        assertThat(limiter.allow()).isFalse();
+
+        // After the rollover the fresh window is governed by the new, lower limit.
+        clock.advanceSeconds(1);
+        assertThat(limiter.allow()).isTrue();
+        assertThat(limiter.allow()).isTrue();
+        assertThat(limiter.allow()).isFalse();
+
+        // Raise the limit again mid-window: capacity frees up within the same window.
+        limiter.setMaxPerSecond(4);
+        assertThat(limiter.allow()).isTrue();
+        assertThat(limiter.allow()).isTrue();
+        assertThat(limiter.allow()).isFalse();
+    }
+
+    /**
+     * Pins the documented fixed-window semantics: this is not a token bucket, so a burst
+     * straddling a window boundary is admitted (up to {@code maxPerSecond} per window, even if
+     * the two windows are adjacent in time).
+     */
+    @Test
+    void allow_twoAdjacentWindows_eachAdmitUpToTheLimit() {
+        int maxPerSecond = 3;
+        MutableClock clock = new MutableClock(5_000L);
+        RateLimiter limiter = new RateLimiter(clock);
+        limiter.setMaxPerSecond(maxPerSecond);
+
+        for (int i = 0; i < maxPerSecond; i++) {
+            assertThat(limiter.allow()).isTrue();
+        }
+        assertThat(limiter.allow()).isFalse();
+
+        // Cross the boundary immediately: three more admissions in the adjacent window, even
+        // though the six requests could be back-to-back in wall-clock time.
+        clock.advanceSeconds(1);
+        for (int i = 0; i < maxPerSecond; i++) {
+            assertThat(limiter.allow()).isTrue();
+        }
+        assertThat(limiter.allow()).isFalse();
+    }
+
+    /** Controllable epoch-second source for deterministic window-boundary tests. */
+    private static final class MutableClock implements LongSupplier {
+        private long epochSecond;
+
+        MutableClock(long epochSecond) {
+            this.epochSecond = epochSecond;
+        }
+
+        void advanceSeconds(long delta) {
+            epochSecond += delta;
+        }
+
+        @Override
+        public long getAsLong() {
+            return epochSecond;
+        }
     }
 }
