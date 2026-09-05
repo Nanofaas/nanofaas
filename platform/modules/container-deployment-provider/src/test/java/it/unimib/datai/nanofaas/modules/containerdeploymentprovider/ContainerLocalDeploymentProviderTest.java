@@ -55,6 +55,48 @@ class ContainerLocalDeploymentProviderTest {
     }
 
     @Test
+    void provision_pushesFunctionTimeoutAndAdmissionBoundToProxy() {
+        RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
+        RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
+        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                adapter,
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
+                new ReadyEndpointProbe(),
+                new FixedPortAllocator(19001, 19002),
+                functionName -> proxy
+        );
+
+        // spec("echo", 2) → concurrency 4, timeout 30_000 ms, 2 replicas.
+        provider.provision(spec("echo", 2));
+
+        // Admission bound = replicas * per-replica concurrency; single-hop timeout = function timeout.
+        assertThat(proxy.maxInFlight()).isEqualTo(8);
+        assertThat(proxy.singleHopTimeout()).isEqualTo(Duration.ofMillis(30_000));
+    }
+
+    @Test
+    void setReplicas_refreshesAdmissionBoundAndKeepsFunctionTimeout() {
+        RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
+        RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
+        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                adapter,
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
+                new ReadyEndpointProbe(),
+                new FixedPortAllocator(19001, 19002, 19003),
+                functionName -> proxy
+        );
+
+        provider.provision(spec("echo", 1));
+        assertThat(proxy.maxInFlight()).isEqualTo(4);
+
+        provider.setReplicas("echo", 3);
+
+        assertThat(proxy.backends()).hasSize(3);
+        assertThat(proxy.maxInFlight()).isEqualTo(12);
+        assertThat(proxy.singleHopTimeout()).isEqualTo(Duration.ofMillis(30_000));
+    }
+
+    @Test
     void provision_onDockerNetworkUsesContainerDnsWithoutAllocatingHostPorts() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
@@ -836,6 +878,8 @@ class ContainerLocalDeploymentProviderTest {
         private final String endpointUrl;
         private List<String> backends = List.of();
         private boolean closed;
+        private int maxInFlight = -1;
+        private Duration singleHopTimeout;
 
         private RecordingProxy(String endpointUrl) {
             this.endpointUrl = endpointUrl;
@@ -852,12 +896,26 @@ class ContainerLocalDeploymentProviderTest {
         }
 
         @Override
+        public void updateLimits(int maxInFlight, Duration singleHopTimeout) {
+            this.maxInFlight = maxInFlight;
+            this.singleHopTimeout = singleHopTimeout;
+        }
+
+        @Override
         public void close() {
             closed = true;
         }
 
         List<String> backends() {
             return backends;
+        }
+
+        int maxInFlight() {
+            return maxInFlight;
+        }
+
+        Duration singleHopTimeout() {
+            return singleHopTimeout;
         }
 
         boolean isClosed() {

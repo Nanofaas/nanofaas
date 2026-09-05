@@ -7,6 +7,7 @@ import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvide
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 
+import java.time.Duration;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -25,6 +26,14 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
     private static final Set<String> RESERVED_ENV = Set.of(
             "FUNCTION_NAME", "WARM", "TIMEOUT_MS", "EXECUTION_MODE", "WATCHDOG_CMD", "CALLBACK_URL"
     );
+
+    /**
+     * Fallbacks for a spec that was not run through {@code FunctionSpecResolver} (which always
+     * fills both). Production specs are resolved before they reach this provider, so these values
+     * only guard direct construction in tests and embedded use.
+     */
+    private static final int DEFAULT_CONCURRENCY = 4;
+    private static final long DEFAULT_TIMEOUT_MS = 30_000;
 
     private final ContainerRuntimeAdapter adapter;
     private final ContainerLocalProperties properties;
@@ -213,7 +222,25 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
                 removeReplica(state, replicaIndex);
             }
         }
+        pushProxyConfig(state);
+    }
+
+    /**
+     * Publishes the current replica set and the derived proxy tuning to the proxy. The admission
+     * bound tracks the platform's per-replica concurrency ceiling ({@code spec.concurrency})
+     * scaled by the number of replicas, so governed traffic is never rejected while runaway bursts
+     * beyond that ceiling still get a defined rejection at the proxy. The single-hop timeout is the
+     * function's own timeout: this hop is where the function actually runs, so it must not be cut
+     * short by a smaller fixed value. Health checks are not governed by this bound.
+     */
+    private void pushProxyConfig(FunctionState state) {
         state.proxy.updateBackends(state.replicas.values().stream().map(ReplicaState::baseUrl).toList());
+        int perReplicaConcurrency = state.spec.concurrency() == null
+                ? DEFAULT_CONCURRENCY
+                : Math.max(1, state.spec.concurrency());
+        int maxInFlight = Math.max(1, state.replicas.size() * perReplicaConcurrency);
+        long timeoutMs = state.spec.timeoutMs() == null ? DEFAULT_TIMEOUT_MS : state.spec.timeoutMs();
+        state.proxy.updateLimits(maxInFlight, Duration.ofMillis(timeoutMs));
     }
 
     private void addReplica(FunctionState state, int replicaIndex) {
@@ -292,7 +319,7 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
                 createdDuringReconcile.add(containerName(state.spec.name(), replicaIndex));
             }
         }
-        state.proxy.updateBackends(state.replicas.values().stream().map(ReplicaState::baseUrl).toList());
+        pushProxyConfig(state);
     }
 
     private int desiredReplicas(FunctionSpec spec) {
