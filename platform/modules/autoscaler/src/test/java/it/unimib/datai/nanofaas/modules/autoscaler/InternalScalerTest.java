@@ -256,8 +256,10 @@ class InternalScalerTest {
         when(registry.listRegistered()).thenReturn(List.of(function));
         when(registry.getRegistered("echo")).thenReturn(Optional.of(function));
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(0.0);
-        when(deploymentCoordinator.getReplicaStatus(target))
-                .thenReturn(new ReplicaStatus(2, 2), new ReplicaStatus(0, 0), new ReplicaStatus(1, 1));
+        // The scaler's periodic read is the cached path; the wake-up gate reads fresh.
+        when(deploymentCoordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(2, 2));
+        when(deploymentCoordinator.getFreshReplicaStatus(target))
+                .thenReturn(new ReplicaStatus(0, 0), new ReplicaStatus(1, 1));
         doAnswer(invocation -> {
             if ((int) invocation.getArgument(1) == 0) {
                 zeroEntered.countDown();

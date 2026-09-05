@@ -6,10 +6,13 @@ import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProperties;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
+import it.unimib.datai.nanofaas.controlplane.deployment.MutableInstantSource;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshot;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
@@ -29,6 +32,7 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -149,6 +153,92 @@ class ManagedDeploymentCoordinatorTest {
         } finally {
             executor.shutdownNow();
         }
+    }
+
+    @Test
+    void getReplicaStatus_servesOneProviderReadAcrossRepeatedReadsWithinTheTtl() {
+        ManagedDeploymentCoordinator cached = coordinatorWithSnapshot();
+        registry.put(managedFunction("fn", 1));
+        when(provider.getReplicaStatus("fn")).thenReturn(new ReplicaStatus(3, 2));
+
+        assertThat(cached.getReplicaStatus(target)).isEqualTo(new ReplicaStatus(3, 2));
+        assertThat(cached.getReplicaStatus(target)).isEqualTo(new ReplicaStatus(3, 2));
+
+        verify(provider, times(1)).getReplicaStatus("fn");
+    }
+
+    @Test
+    void getReadyReplicas_sharesTheSnapshotWithGetReplicaStatus() {
+        ManagedDeploymentCoordinator cached = coordinatorWithSnapshot();
+        registry.put(managedFunction("fn", 1));
+        when(provider.getReplicaStatus("fn")).thenReturn(new ReplicaStatus(3, 2));
+
+        assertThat(cached.getReplicaStatus(target)).isEqualTo(new ReplicaStatus(3, 2));
+        assertThat(cached.getReadyReplicas(target)).isEqualTo(2);
+
+        verify(provider, times(1)).getReplicaStatus("fn");
+    }
+
+    @Test
+    void setReplicas_invalidatesTheSnapshotSoTheNextReadRefetches() {
+        ManagedDeploymentCoordinator cached = coordinatorWithSnapshot();
+        registry.put(managedFunction("fn", 1));
+        when(provider.getReplicaStatus("fn")).thenReturn(new ReplicaStatus(3, 2), new ReplicaStatus(4, 3));
+
+        assertThat(cached.getReplicaStatus(target)).isEqualTo(new ReplicaStatus(3, 2));
+        cached.setReplicas(target, 4);
+        assertThat(cached.getReplicaStatus(target)).isEqualTo(new ReplicaStatus(4, 3));
+
+        verify(provider, times(2)).getReplicaStatus("fn");
+    }
+
+    @Test
+    void deprovision_invalidatesTheSnapshotSoTheNextReadRefetches() {
+        ManagedDeploymentCoordinator cached = coordinatorWithSnapshot();
+        registry.put(managedFunction("fn", 1));
+        when(provider.getReplicaStatus("fn")).thenReturn(new ReplicaStatus(3, 2));
+
+        assertThat(cached.getReplicaStatus(target)).isEqualTo(new ReplicaStatus(3, 2));
+        cached.deprovision(target);
+        cached.getReplicaStatus(target);
+
+        verify(provider, times(2)).getReplicaStatus("fn");
+    }
+
+    @Test
+    void invalidate_forcesTheNextReadToRefetch() {
+        ManagedDeploymentCoordinator cached = coordinatorWithSnapshot();
+        registry.put(managedFunction("fn", 1));
+        when(provider.getReplicaStatus("fn")).thenReturn(new ReplicaStatus(3, 2));
+
+        assertThat(cached.getReplicaStatus(target)).isEqualTo(new ReplicaStatus(3, 2));
+        cached.invalidate(target);
+        cached.getReplicaStatus(target);
+
+        verify(provider, times(2)).getReplicaStatus("fn");
+    }
+
+    @Test
+    void getFreshReplicaStatus_alwaysReachesTheProvider() {
+        ManagedDeploymentCoordinator cached = coordinatorWithSnapshot();
+        registry.put(managedFunction("fn", 1));
+        when(provider.getReplicaStatus("fn")).thenReturn(new ReplicaStatus(3, 2));
+
+        assertThat(cached.getFreshReplicaStatus(target)).isEqualTo(new ReplicaStatus(3, 2));
+        assertThat(cached.getFreshReplicaStatus(target)).isEqualTo(new ReplicaStatus(3, 2));
+
+        verify(provider, times(2)).getReplicaStatus("fn");
+    }
+
+    private ManagedDeploymentCoordinator coordinatorWithSnapshot() {
+        ReplicaStatusSnapshot snapshot = new ReplicaStatusSnapshot(
+                new MutableInstantSource(0).instantSource(), Duration.ofSeconds(5), Runnable::run);
+        return new ManagedDeploymentCoordinator(
+                new DeploymentProviderResolver(List.of(provider), new DeploymentProperties(null)),
+                registry,
+                locks,
+                snapshot
+        );
     }
 
     private static RegisteredFunction managedFunction(String name, int replicas) {

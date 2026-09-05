@@ -111,6 +111,9 @@ public class FunctionService {
                     notified.add(listener);
                 }
                 registry.put(registered); // durable commit
+                // Re-registration (or first registration) replaces any cached replica status from a
+                // previous incarnation of the same name, and orphans an in-flight refresh for it.
+                registered.managedDeploymentTarget().ifPresent(managedDeploymentCoordinator::invalidate);
                 return Optional.of(registered);
             } catch (RuntimeException failure) {
                 rollbackRegistrationListeners(registered.name(), notified, failure);
@@ -183,7 +186,7 @@ public class FunctionService {
             if (function.deploymentMetadata().effectiveExecutionMode() != ExecutionMode.DEPLOYMENT) {
                 throw new IllegalArgumentException("Function '" + name + "' is not in DEPLOYMENT mode");
             }
-            return Optional.of(managedDeploymentCoordinator.getReplicaStatus(requireManagedDeploymentTarget(function)));
+            return Optional.of(managedDeploymentCoordinator.getFreshReplicaStatus(requireManagedDeploymentTarget(function)));
         });
     }
 

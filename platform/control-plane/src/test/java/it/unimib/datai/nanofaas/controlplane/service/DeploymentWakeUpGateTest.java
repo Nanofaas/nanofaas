@@ -67,7 +67,7 @@ class DeploymentWakeUpGateTest {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
         when(registry.getRegistered("echo")).thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
-        when(coordinator.getReplicaStatus(target))
+        when(coordinator.getFreshReplicaStatus(target))
                 .thenReturn(new ReplicaStatus(0, 0), new ReplicaStatus(1, 1));
 
         CompletableFuture<Void> ready = gate().ensureReady(task);
@@ -75,9 +75,9 @@ class DeploymentWakeUpGateTest {
         ready.join();
 
         var order = inOrder(coordinator);
-        order.verify(coordinator).getReplicaStatus(target);
+        order.verify(coordinator).getFreshReplicaStatus(target);
         order.verify(coordinator).setReplicas(target, 1);
-        order.verify(coordinator).getReplicaStatus(target);
+        order.verify(coordinator).getFreshReplicaStatus(target);
         assertThat(ready).isCompletedWithValue(null);
     }
 
@@ -86,13 +86,13 @@ class DeploymentWakeUpGateTest {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
         when(registry.getRegistered("echo")).thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
-        when(coordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(0, 0), new ReplicaStatus(1, 1));
+        when(coordinator.getFreshReplicaStatus(target)).thenReturn(new ReplicaStatus(0, 0), new ReplicaStatus(1, 1));
 
         DeploymentWakeUpCoordinator wakeUpCoordinator = new DeploymentWakeUpCoordinator();
         gate(Duration.ofSeconds(1), Duration.ofMillis(1), Runnable::run, wakeUpCoordinator).ensureReady(task).join();
 
         var order = inOrder(coordinator);
-        order.verify(coordinator).getReplicaStatus(target);
+        order.verify(coordinator).getFreshReplicaStatus(target);
         order.verify(coordinator).setReplicas(target, 1);
         assertThat(wakeUpCoordinator.scaleDownIfUnprotected(target, () -> { })).isFalse();
     }
@@ -102,11 +102,11 @@ class DeploymentWakeUpGateTest {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
         when(registry.getRegistered("echo")).thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
-        when(coordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(1, 1));
+        when(coordinator.getFreshReplicaStatus(target)).thenReturn(new ReplicaStatus(1, 1));
 
         gate().ensureReady(task).join();
 
-        verify(coordinator).getReplicaStatus(target);
+        verify(coordinator).getFreshReplicaStatus(target);
         verify(coordinator, never()).setReplicas(target, 1);
     }
 
@@ -115,7 +115,7 @@ class DeploymentWakeUpGateTest {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
         when(registry.getRegistered("echo")).thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
-        when(coordinator.getReplicaStatus(target)).thenReturn(
+        when(coordinator.getFreshReplicaStatus(target)).thenReturn(
                 new ReplicaStatus(0, 0), new ReplicaStatus(1, 1),
                 new ReplicaStatus(0, 0), new ReplicaStatus(1, 1));
 
@@ -135,7 +135,7 @@ class DeploymentWakeUpGateTest {
         CountDownLatch releaseFirstStatus = new CountDownLatch(1);
         AtomicInteger statusCalls = new AtomicInteger();
         when(registry.getRegistered("echo")).thenReturn(Optional.of(deployment("echo", "container-local", ScalingStrategy.INTERNAL, 0)));
-        when(coordinator.getReplicaStatus(target)).thenAnswer(invocation -> {
+        when(coordinator.getFreshReplicaStatus(target)).thenAnswer(invocation -> {
             if (statusCalls.incrementAndGet() == 1) {
                 firstStatusEntered.countDown();
                 await(releaseFirstStatus);
@@ -172,7 +172,7 @@ class DeploymentWakeUpGateTest {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
         when(registry.getRegistered("echo")).thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
-        when(coordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(0, 0));
+        when(coordinator.getFreshReplicaStatus(target)).thenReturn(new ReplicaStatus(0, 0));
 
         assertThatThrownBy(() -> gate(Duration.ofMillis(100), Duration.ofMillis(5))
                 .ensureReady(task).get(1, TimeUnit.SECONDS))
@@ -185,7 +185,7 @@ class DeploymentWakeUpGateTest {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
         when(registry.getRegistered("echo")).thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
-        when(coordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(0, 0));
+        when(coordinator.getFreshReplicaStatus(target)).thenReturn(new ReplicaStatus(0, 0));
         long started = System.nanoTime();
 
         assertThatThrownBy(() -> gate(Duration.ofMillis(50), Duration.ofSeconds(1))
@@ -203,7 +203,7 @@ class DeploymentWakeUpGateTest {
         CountDownLatch delaySchedulerBlocked = new CountDownLatch(1);
         CountDownLatch releaseDelayScheduler = new CountDownLatch(1);
         when(registry.getRegistered("echo")).thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
-        when(coordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(0, 0));
+        when(coordinator.getFreshReplicaStatus(target)).thenReturn(new ReplicaStatus(0, 0));
         CompletableFuture.delayedExecutor(0, TimeUnit.NANOSECONDS, Runnable::run)
                 .execute(() -> {
                     delaySchedulerBlocked.countDown();
@@ -228,7 +228,7 @@ class DeploymentWakeUpGateTest {
         CountDownLatch delaySchedulerBlocked = new CountDownLatch(1);
         CountDownLatch releaseDelayScheduler = new CountDownLatch(1);
         when(registry.getRegistered("echo")).thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
-        when(coordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(0, 0), new ReplicaStatus(1, 1));
+        when(coordinator.getFreshReplicaStatus(target)).thenReturn(new ReplicaStatus(0, 0), new ReplicaStatus(1, 1));
         CompletableFuture.delayedExecutor(0, TimeUnit.NANOSECONDS, Runnable::run)
                 .execute(() -> {
                     delaySchedulerBlocked.countDown();
@@ -250,7 +250,7 @@ class DeploymentWakeUpGateTest {
         CountDownLatch statusEntered = new CountDownLatch(1);
         CountDownLatch releaseStatus = new CountDownLatch(1);
         when(registry.getRegistered("echo")).thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
-        when(coordinator.getReplicaStatus(target)).thenAnswer(invocation -> {
+        when(coordinator.getFreshReplicaStatus(target)).thenAnswer(invocation -> {
             statusEntered.countDown();
             await(releaseStatus);
             return new ReplicaStatus(0, 0);
@@ -303,7 +303,7 @@ class DeploymentWakeUpGateTest {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
         when(registry.getRegistered("echo")).thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
-        when(coordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(0, 0));
+        when(coordinator.getFreshReplicaStatus(target)).thenReturn(new ReplicaStatus(0, 0));
         doThrow(new IllegalStateException("provider unavailable"))
                 .when(coordinator).setReplicas(target, 1);
 
@@ -318,7 +318,7 @@ class DeploymentWakeUpGateTest {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
         when(registry.getRegistered("echo")).thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
-        when(coordinator.getReplicaStatus(target)).thenThrow(new IllegalStateException("provider unavailable"));
+        when(coordinator.getFreshReplicaStatus(target)).thenThrow(new IllegalStateException("provider unavailable"));
 
         CompletableFuture<Void> ready = gate().ensureReady(task);
         assertThatThrownBy(ready::join)

@@ -135,7 +135,7 @@ public class DeploymentWakeUpGate {
 
     private void start(ManagedDeploymentTarget target, long deadline, CompletableFuture<Void> result) {
         try {
-            ReplicaStatus status = coordinator.getReplicaStatus(target);
+            ReplicaStatus status = coordinator.getFreshReplicaStatus(target);
             if (result.isDone()) {
                 return;
             }
@@ -155,7 +155,7 @@ public class DeploymentWakeUpGate {
             return;
         }
         try {
-            ReplicaStatus status = coordinator.getReplicaStatus(target);
+            ReplicaStatus status = coordinator.getFreshReplicaStatus(target);
             if (result.isDone()) {
                 return;
             }

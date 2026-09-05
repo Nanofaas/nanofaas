@@ -4,13 +4,21 @@ import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolv
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshot;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+
+import java.time.InstantSource;
 
 /**
  * Single persistence point for a managed deployment's replica target: it durably commits the new
  * {@code desiredReplicas} to the {@link FunctionRegistry} before applying the change through the
  * backend provider, and serializes every caller (manual scaling, the autoscaler, and the deployment
  * wake-up gate) on the shared per-function lock.
+ *
+ * <p>Replica-status reads go through a {@link ReplicaStatusSnapshot} shared by every consumer, so
+ * the autoscaler, the governor and any other periodic reader hit the provider at most once per TTL
+ * window. Wake-up and lifecycle paths force a fresh read through {@link #getFreshReplicaStatus}.</p>
  */
 @Service
 public class ManagedDeploymentCoordinator {
@@ -18,20 +26,50 @@ public class ManagedDeploymentCoordinator {
     private final DeploymentProviderResolver deploymentProviderResolver;
     private final FunctionRegistry registry;
     private final FunctionOperationLocks locks;
+    private final ReplicaStatusSnapshot snapshot;
 
+    @Autowired
     public ManagedDeploymentCoordinator(DeploymentProviderResolver deploymentProviderResolver,
                                         FunctionRegistry registry,
                                         FunctionOperationLocks locks) {
+        this(deploymentProviderResolver, registry, locks,
+                ReplicaStatusSnapshot.withDefaults(InstantSource.system()));
+    }
+
+    // Package-private for tests: inject a snapshot with a steerable clock or executor.
+    ManagedDeploymentCoordinator(DeploymentProviderResolver deploymentProviderResolver,
+                                 FunctionRegistry registry,
+                                 FunctionOperationLocks locks,
+                                 ReplicaStatusSnapshot snapshot) {
         this.deploymentProviderResolver = deploymentProviderResolver;
         this.registry = registry;
         this.locks = locks;
+        this.snapshot = snapshot;
     }
 
     public int getReadyReplicas(ManagedDeploymentTarget target) {
-        return requireProvider(target).getReadyReplicas(target.functionName());
+        return getReplicaStatus(target).readyReplicas();
     }
 
+    /** Cached read shared by the periodic consumers (autoscaler, concurrency governor, ...). */
     public ReplicaStatus getReplicaStatus(ManagedDeploymentTarget target) {
+        return snapshot.read(target, this::fetchReplicaStatus);
+    }
+
+    /** Forced fresh read for wake-up and lifecycle paths (still single-flight). */
+    public ReplicaStatus getFreshReplicaStatus(ManagedDeploymentTarget target) {
+        return snapshot.refresh(target, this::fetchReplicaStatus);
+    }
+
+    /**
+     * Drops the cached replica status for a function after a target change, removal or
+     * re-registration, so the next read re-fetches instead of serving stale data.
+     */
+    public void invalidate(ManagedDeploymentTarget target) {
+        snapshot.invalidate(target.functionName());
+    }
+
+    private ReplicaStatus fetchReplicaStatus(ManagedDeploymentTarget target) {
         return requireProvider(target).getReplicaStatus(target.functionName());
     }
 
@@ -72,12 +110,15 @@ public class ManagedDeploymentCoordinator {
                 }
                 throw failure;
             }
+            // The target changed: forget the cached read so the next one re-fetches the new count.
+            snapshot.invalidate(target.functionName());
             return true;
         });
     }
 
     public void deprovision(ManagedDeploymentTarget target) {
         requireProvider(target).deprovision(target.functionName());
+        snapshot.invalidate(target.functionName());
     }
 
     public ManagedDeploymentProvider requireProvider(ManagedDeploymentTarget target) {
