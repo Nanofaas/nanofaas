@@ -28,6 +28,19 @@ controlPlane:
     limits:
       cpu: "1"
       memory: 2Gi
+  jvm:
+    # reactor-netty's own default is max(4, availableProcessors()) - a floor of
+    # four event loops regardless of the CPU quota. At limits.cpu: "1" that's
+    # four loops sharing a one-core quota, each too thin a wedge to avoid CFS
+    # throttling. docs/experiments/overload-path-2026-09 (2026-09-05,
+    # B-loop-cpu1) measured one loop against four at this exact quota: p99 5.4ms
+    # vs 19.7ms, shed 0.05% vs 0.46%, on the same jvm-c2 build. Not derived from
+    # resources.limits.cpu above because Kubernetes CPU quantities (plain
+    # cores, "500m", fractional) don't reduce to an integer worker count by any
+    # single rule - if you change the CPU limit, change this to match its
+    # integer part; below one whole core the lever stops doing anything; the
+    # plan's own words for why in Part I.2 of the overload-path-fixes plan.
+    ioWorkerCount: 1
   # Kubernetes' bare defaults (timeoutSeconds: 1, failureThreshold: 3, periodSeconds: 10)
   # give a GC pause under memory pressure a 3-second window before three strikes call it
   # dead. dispatch-bottleneck/README.md (2026-08-21) already measured p95 probe latency at

@@ -173,8 +173,14 @@ di thread smette di essere una leva.**
 
 ## 3. Allineare il default JIT del Dockerfile alla conclusione già presa
 
-**Stato:** decisione presa il 2026-08-23, mai applicata. **Da rivalidare prima di
-applicarla** (vedi Esperimento B).
+**Stato:** rivalidata su Esperimento B (`B-loop-cpu1`, 2026-09-05, 3
+ripetizioni per braccio, tutti e quattro vivi a fine cella) — **la conclusione
+regge sul codice di oggi**, dopo il fix dell'ExecutionStore. A 4 event loop
+(configurazione spedita), `jvm-c2` contro `jvm`: p99 19,7 contro 176,5 ms
+(9×), scarti 0,46% contro 26,63% (58×), CPU strozzata 5,5% contro 22,6%.
+Il dubbio che C2 vincesse solo per la GC pressure del vecchio
+`ExecutionStore` (sotto) è chiuso: la pressione non c'è più, e il divario
+resta enorme. **Applicare.**
 
 `2026-08-21-dispatch-bottleneck-and-comparison-rerun.md:1588`:
 
@@ -206,6 +212,13 @@ richieste. Tolta la pressione, il vantaggio può essersi ridotto di molto.
 
 Applicare senza rimisurare significherebbe portare in produzione una conclusione
 che potrebbe essere un artefatto di un bug già corretto.
+
+### Fatto, 2026-09-05
+
+`platform/control-plane/Dockerfile:26` allineato a
+`deploy/compose/Dockerfile:49`: `-XX:+UseSerialGC` senza
+`-XX:TieredStopAtLevel=1`. (Le build native non hanno un default JIT da
+allineare — sono AOT, `-XX:TieredStopAtLevel` non le riguarda.)
 
 ---
 

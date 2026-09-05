@@ -21,9 +21,14 @@ RUN jar xf app.jar BOOT-INF/lib BOOT-INF/classes && \
 
 # The tuning flags live in a @argfile because the final image is distroless: an
 # exec-form ENTRYPOINT does no variable expansion and there is no shell to do it.
-# The default reproduces what was hard-coded here before, so a build that passes
-# nothing is byte-for-byte the build that was measured.
-ARG JVM_TUNING="-XX:+UseSerialGC -XX:TieredStopAtLevel=1"
+#
+# Full tiering (no TieredStopAtLevel), matching deploy/compose/Dockerfile: the
+# 2026-08-23 comparison found C2 40% faster in dispatch at 1 core, and
+# docs/experiments/overload-path-2026-09 (2026-09-05, post-ExecutionStore-fix)
+# revalidated it on today's code - p99 19.7ms vs 176.5ms, shed 0.46% vs
+# 26.63% at 4 event loops. See docs/plans/2026-09-04-overload-path-fixes.md
+# Part I.3.
+ARG JVM_TUNING="-XX:+UseSerialGC"
 RUN printf '%s\n' $JVM_TUNING > /jvm.options
 RUN mkdir -p /var/lib/nanofaas && touch /var/lib/nanofaas/.keep
 
@@ -41,9 +46,11 @@ COPY --from=jre-builder --chown=nonroot:nonroot /var/lib/nanofaas /var/lib/nanof
 EXPOSE 8080 8081
 
 # Collector and JIT tiering come from JVM_TUNING (see the builder stage). The
-# defaults were chosen for a single-core deployment - serial GC and C1 only -
-# which is the assumption the CPU sweep of 2026-08-23 showed the chart was
-# quietly making. Everything below is unconditional.
+# default is serial GC with full tiering: serial because the chart's default
+# is a single-core deployment (the assumption the CPU sweep of 2026-08-23
+# surfaced), full tiering because C1-only lost decisively at every core count
+# measured (see Part I.3 of the overload-path-fixes plan). Everything below is
+# unconditional.
 # - Container-aware RAM ceiling
 # - JMX and other features a function runtime does not need are off
 ENTRYPOINT ["/opt/jre/bin/java", \
