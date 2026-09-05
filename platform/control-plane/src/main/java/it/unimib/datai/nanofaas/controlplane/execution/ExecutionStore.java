@@ -9,12 +9,16 @@ import com.github.benmanes.caffeine.cache.Ticker;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import it.unimib.datai.nanofaas.controlplane.config.ExecutionStoreProperties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
 /**
@@ -43,6 +47,7 @@ import java.util.function.Consumer;
  */
 @Component
 public class ExecutionStore {
+    private static final Logger log = LoggerFactory.getLogger(ExecutionStore.class);
 
     /**
      * Chi sta ancora eseguendo. Scade da solo dopo {@code maxLifetime}: e' cio'
@@ -76,9 +81,11 @@ public class ExecutionStore {
      * di idempotenza. Di default nessuno. {@code InvocationExecutionFactory}
      * registra qui {@code IdempotencyStore}, perche' il vincolo della chiave deve
      * passare dallo stato "vivo" a quello "terminale" esattamente quando l'esito
-     * esce dai vivi, senza finestre in cui la stessa chiave torni acquisibile.
+     * esce dai vivi, senza finestre in cui la stessa chiave torni acquisibile;
+     * {@code ExecutionCompletionHandler} registra la conclusione end-to-end, perche'
+     * archiviarsi e' l'unico evento comune a OGNI politica terminale.
      */
-    private volatile Consumer<ExecutionRecord> terminalListener = record -> { };
+    private final List<Consumer<ExecutionRecord>> terminalListeners = new CopyOnWriteArrayList<>();
 
     public ExecutionStore() {
         this(ExecutionStoreProperties.of(null, null, null));
@@ -141,12 +148,13 @@ public class ExecutionStore {
     }
 
     /**
-     * Registra chi transita la chiave al vincolo terminale quando un'esecuzione si
-     * archivia. Non additivo: l'ultima registrazione vince, come per ogni singleton
-     * Spring che si registra una volta sola all'avvio.
+     * Registra chi va avvertito quando un'esecuzione si archivia. Additivo: ogni
+     * collaboratore interessato al momento terminale si aggiunge, e nessuno puo'
+     * silenziare l'altro. Prima era uno slot singolo "l'ultimo vince", e bastava un
+     * secondo costruttore a far sparire in silenzio la transizione della chiave.
      */
     public void onTerminal(Consumer<ExecutionRecord> listener) {
-        this.terminalListener = Objects.requireNonNull(listener, "listener");
+        terminalListeners.add(Objects.requireNonNull(listener, "listener"));
     }
 
     /** Quanti esiti sono archiviati adesso. */
@@ -201,7 +209,17 @@ public class ExecutionStore {
         // qui che parte la ritenzione terminale della chiave. Invertire l'ordine
         // riaprirebbe la finestra in cui la chiave e' gia' terminale mentre l'esito
         // non e' ancora visibile ai replay.
-        terminalListener.accept(executionRecord);
+        for (Consumer<ExecutionRecord> listener : terminalListeners) {
+            try {
+                listener.accept(executionRecord);
+            } catch (RuntimeException ex) {
+                // I listener sono collaboratori indipendenti registrati da bean diversi, in un
+                // ordine che decide Spring. Se uno fallisce, gli altri devono comunque girare:
+                // perdere la transizione terminale della chiave di idempotenza perche' e' saltata
+                // una metrica riaprirebbe in silenzio la finestra di riesecuzione.
+                log.warn("Terminal listener failed for execution {}", executionRecord.executionId(), ex);
+            }
+        }
     }
 
     public void remove(String executionId) {

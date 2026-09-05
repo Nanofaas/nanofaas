@@ -10,6 +10,7 @@ import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.MutableClock;
+import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.junit.jupiter.api.BeforeEach;
@@ -152,6 +153,83 @@ class ExecutionCompletionHandlerTimingTest {
         assertThat(record.task().attempt()).isEqualTo(2);
         assertThat(record.admittedAt()).isEqualTo(admission);
         assertThat(record.snapshot().admittedAt()).isEqualTo(admission);
+    }
+
+    @Test
+    void anOffloadedSuccessRecordsItsEndToEndConclusion() {
+        FunctionSpec spec = spec("fn", 0);
+        MutableClock clock = new MutableClock(1_000_000L, 0L);
+        ExecutionRecord record = new ExecutionRecord("exec", task("exec", spec, clock), clock.source());
+        executionStore.put(record);
+
+        clock.advanceMillis(40);
+        completionHandler.completeOffloadedExecution("exec", InvocationResult.success("remote"));
+
+        assertThat(metrics.e2eLatency("fn").count())
+                .as("an offloaded invocation is admitted work and owes exactly one e2e conclusion")
+                .isEqualTo(1);
+        assertThat(metrics.e2eLatency("fn").totalTime(TimeUnit.MILLISECONDS)).isEqualTo(40.0);
+    }
+
+    @Test
+    void anOffloadedFailureRecordsItsEndToEndConclusion() {
+        FunctionSpec spec = spec("fn", 0);
+        MutableClock clock = new MutableClock(1_000_000L, 0L);
+        ExecutionRecord record = new ExecutionRecord("exec", task("exec", spec, clock), clock.source());
+        executionStore.put(record);
+
+        clock.advanceMillis(25);
+        completionHandler.failOffloadedExecution("exec",
+                new OffloadFailedException("http://remote", true, "remote refused"));
+
+        assertThat(metrics.e2eLatency("fn").count())
+                .as("a failed offload still concluded the invocation and owes its total")
+                .isEqualTo(1);
+        assertThat(metrics.e2eLatency("fn").totalTime(TimeUnit.MILLISECONDS)).isEqualTo(25.0);
+    }
+
+    @Test
+    void anInvocationConcludedOutsideTheCompletionHandlerStillRecordsItsTotalOnSettle() {
+        // The sync queue times out a queued item and settles the record itself; the completion
+        // handler never sees that invocation. It was still admitted here and owes its one
+        // end-to-end conclusion — and it is exactly the population that appears under overload,
+        // so censoring it biases the sojourn the concurrency governor steers on.
+        FunctionSpec spec = spec("fn", 0);
+        MutableClock clock = new MutableClock(1_000_000L, 0L);
+        ExecutionRecord record = new ExecutionRecord("exec", task("exec", spec, clock), clock.source());
+        executionStore.put(record);
+
+        clock.advanceMillis(60);
+        record.markTimeout();
+        executionStore.settle(record);
+
+        assertThat(metrics.e2eLatency("fn").count()).isEqualTo(1);
+        assertThat(metrics.e2eLatency("fn").totalTime(TimeUnit.MILLISECONDS)).isEqualTo(60.0);
+        assertThat(metrics.latency("fn").count())
+                .as("nothing dispatched, so there is no service time to sample")
+                .isZero();
+    }
+
+    @Test
+    void aConclusionAlreadyEmittedElsewhereIsNotEmittedAgainByTheCompletionPath() {
+        // The expiry listener runs on Caffeine's removal executor and can win the
+        // single-conclusion guard between completeUnderLock releasing the monitor and
+        // publishFinalCompletion recording. Standing in for that interleaving: the
+        // guard is already consumed when the normal completion path publishes.
+        FunctionSpec spec = spec("fn", 0);
+        MutableClock clock = new MutableClock(1_000_000L, 0L);
+        ExecutionRecord record = new ExecutionRecord("exec", task("exec", spec, clock), clock.source());
+        executionStore.put(record);
+        clock.advanceMillis(5);
+        record.markRunning();
+        clock.advanceMillis(10);
+
+        assertThat(record.markMetricsRecorded()).isTrue();
+        completionHandler.completeExecution("exec", InvocationResult.success("ok"));
+
+        assertThat(metrics.e2eLatency("fn").count())
+                .as("the invocation's end-to-end conclusion must be emitted exactly once")
+                .isZero();
     }
 
     private static FunctionSpec spec(String name, int maxRetries) {

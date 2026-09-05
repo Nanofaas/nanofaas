@@ -208,6 +208,38 @@ class SyncQueueServiceTest {
     }
 
     @Test
+    void aQueueWaitTimeoutStillRecordsTheInvocationsEndToEndConclusion() {
+        // The queue terminates this invocation itself — the completion handler never sees it.
+        // It was still admitted, and it is exactly the population that appears under overload,
+        // so its total must reach the e2e timer the concurrency governor steers on.
+        Instant t0 = Instant.parse("2026-02-01T00:00:00Z");
+        Clock fixed = Clock.fixed(t0, ZoneOffset.UTC);
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
+        );
+        ExecutionStore store = new ExecutionStore();
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        it.unimib.datai.nanofaas.controlplane.service.Metrics coreMetrics =
+                new it.unimib.datai.nanofaas.controlplane.service.Metrics(registry);
+        // Constructing the handler is what registers the terminal listener on this store.
+        // No dispatcher: this invocation never dispatches, it dies waiting in the queue.
+        new it.unimib.datai.nanofaas.controlplane.service.ExecutionCompletionHandler(
+                store, null, null, coreMetrics);
+        SyncQueueService service = createService(props, store,
+                new WaitEstimator(Duration.ofSeconds(30), 3),
+                new SyncQueueMetrics(registry), fixed);
+
+        FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
+        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, t0, 1, InvocationKind.SYNC);
+        store.put(new ExecutionRecord("e1", task));
+
+        service.enqueueOrThrow(task);
+        service.peekReady(t0.plusSeconds(3));
+
+        assertEquals(1, coreMetrics.e2eLatency("fn").count());
+    }
+
+    @Test
     void awaitWakeup_unblocksWhenTaskIsEnqueued() throws Exception {
         SyncQueueProperties props = new SyncQueueProperties(
                 true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3

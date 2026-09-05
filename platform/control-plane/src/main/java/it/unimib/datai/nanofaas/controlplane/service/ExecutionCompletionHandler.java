@@ -62,6 +62,13 @@ public class ExecutionCompletionHandler {
         // knows a record fell out of inFlight on its own. Closing what that record
         // was actually holding is this class's job.
         this.executionStore.onAdministrativeExpiry(this::handleAdministrativeExpiry);
+        // Archiving is the ONLY event common to every terminal policy: normal completion, sync
+        // timeout, administrative expiry, offload conclusion, and the queue-side terminations a
+        // module owns (queue-wait timeout, function removed while queued) — which this class
+        // never sees at all. Hanging the end-to-end conclusion here is what makes "exactly one
+        // per invocation" true for all of them instead of only for the paths that pass through
+        // publishFinalCompletion; the record's own guard keeps it to one.
+        this.executionStore.onTerminal(this::recordTerminalConclusionOnce);
     }
 
     /**
@@ -260,11 +267,10 @@ public class ExecutionCompletionHandler {
             // di aspettare invano fino al proprio timeout. complete() su una future
             // gia' completata non fa nulla, quindi non puo' sovrascrivere niente.
             //
-            // Questo e' anche il momento in cui la conclusione end-to-end del timeout
-            // viene registrata una sola volta: il totale (ammissione -> timeout) e' reale
-            // e misurabile, il tempo di servizio no (il dispatch era ancora in volo), quindi
+            // La conclusione end-to-end di questo timeout la registra il listener terminale
+            // dello store al settle qui sotto: il totale (ammissione -> timeout) e' reale e
+            // misurabile, il tempo di servizio no (il dispatch era ancora in volo), quindi
             // si registra solo il totale, mai un campione di servizio censurato.
-            recordTerminalConclusionOnce(executionRecord);
             executionRecord.completion().complete(dispatchResult.result());
         }
         // Ultimo, e fuori dal monitor: completeUnderLock rilascia lo slot di dispatch
@@ -399,19 +405,21 @@ public class ExecutionCompletionHandler {
             return;
         }
         String functionName = completion.functionName();
-        recordCompletionMetrics(completion);
+        // The guard is consumed BEFORE recording, not after: an administrative expiry running on
+        // Caffeine's removal executor can win it between completeUnderLock releasing the record
+        // monitor and this line. Claiming it first is what makes the end-to-end conclusion single;
+        // recording first and claiming after left a window for two samples.
+        boolean wonTheConclusion = executionRecord.markMetricsRecorded();
+        recordCompletionMetrics(completion, wonTheConclusion);
         if (completion.result().success()) {
             metrics.success(functionName);
         } else {
             metrics.error(functionName);
         }
         executionRecord.completion().complete(completion.result());
-        // The invocation's single end-to-end conclusion has been emitted; a late callback or an
-        // administrative expiry racing this one must not record it a second time.
-        executionRecord.markMetricsRecorded();
     }
 
-    private void recordCompletionMetrics(FinalCompletion completion) {
+    private void recordCompletionMetrics(FinalCompletion completion, boolean wonTheConclusion) {
         String functionName = completion.functionName();
         Metrics.FunctionTimers timers = metrics.timers(functionName);
         // Cold/warm is a property of a dispatch that actually ran. A retry that never scheduled
@@ -432,7 +440,7 @@ public class ExecutionCompletionHandler {
         if (completion.queueWaitMs() != null && completion.queueWaitMs() >= 0) {
             timers.queueWait().record(completion.queueWaitMs(), TimeUnit.MILLISECONDS);
         }
-        if (completion.e2eMs() != null && completion.e2eMs() >= 0) {
+        if (wonTheConclusion && completion.e2eMs() != null && completion.e2eMs() >= 0) {
             timers.e2eLatency().record(completion.e2eMs(), TimeUnit.MILLISECONDS);
         }
     }
@@ -513,25 +521,30 @@ public class ExecutionCompletionHandler {
             metrics.error(task.functionName());
         }
         // An invocation that died for maxLifetime still has one end-to-end conclusion: its total,
-        // admission to expiry. Recorded once, guarded against a late dispatch racing this eviction.
-        recordTerminalConclusionOnce(executionRecord);
+        // admission to expiry. The store's terminal listener records it at the settle below,
+        // guarded against a late dispatch racing this eviction.
         executionRecord.completion().complete(result);
         executionStore.settle(executionRecord);
     }
 
     /**
      * The single end-to-end conclusion for an invocation that became terminal outside the normal
-     * completion path — a sync caller's timeout, or administrative expiry — where the service time
-     * was censored (the dispatch never produced an observed completion). Only the total duration is
-     * recorded, and only once: the record's guard makes a late dispatch callback racing the timeout
-     * or the eviction a no-op the second time.
+     * completion path — a sync caller's timeout, an administrative expiry, or an offloaded call
+     * concluded by the remote plane — where the service time was censored (no dispatch on this
+     * side produced an observed completion). Only the total duration is recorded, and only once:
+     * the record's guard makes a late dispatch callback racing the timeout or the eviction a no-op
+     * the second time.
+     *
+     * <p>The measurability check comes BEFORE the guard is claimed. Claiming first would burn the
+     * invocation's one conclusion on a record that has no {@code finishedAtNanos} to record, and
+     * the real terminal path arriving afterwards would then find the guard spent and stay silent.
      */
     private void recordTerminalConclusionOnce(ExecutionRecord executionRecord) {
-        if (!executionRecord.markMetricsRecorded()) {
-            return;
-        }
         Long finishedAtNanos = executionRecord.finishedAtNanos();
         if (finishedAtNanos == null) {
+            return;
+        }
+        if (!executionRecord.markMetricsRecorded()) {
             return;
         }
         Long e2eMs = nanosToMs(executionRecord.admittedAtNanos(), finishedAtNanos);

@@ -28,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -55,7 +56,11 @@ class InvocationServiceAsyncReplayTest {
     @Mock
     private InvocationEnqueuer enqueuer;
 
-    @Mock
+    /**
+     * A spy over a real Metrics, not a bare mock: the store's terminal listener records the
+     * invocation's end-to-end conclusion through timers(), and a mock returning null there
+     * would fail for a reason that has nothing to do with what these tests assert.
+     */
     private Metrics metrics;
 
     @Mock
@@ -74,6 +79,7 @@ class InvocationServiceAsyncReplayTest {
     void setUp() {
         executionStore = new ExecutionStore();
         idempotencyStore = new IdempotencyStore();
+        metrics = spy(new Metrics(new SimpleMeterRegistry()));
 
         ExecutionCompletionHandler completionHandler = new ExecutionCompletionHandler(
                 executionStore, enqueuer, dispatcherRouter, metrics);

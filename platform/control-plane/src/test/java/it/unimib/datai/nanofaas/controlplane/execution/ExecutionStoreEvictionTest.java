@@ -173,6 +173,28 @@ class ExecutionStoreEvictionTest {
         assertThat(store.inFlightCount()).isZero();
     }
 
+    @Test
+    void everyTerminalListenerRunsEvenWhenAnEarlierOneThrows() {
+        // The listeners are independent collaborators registered by different beans in an
+        // order Spring decides. A metrics listener blowing up must not cost the idempotency
+        // key its terminal transition — that would silently reopen the re-execution window.
+        ExecutionStore store = store();
+        List<String> ran = new java.util.ArrayList<>();
+        store.onTerminal(record -> {
+            ran.add("first");
+            throw new IllegalStateException("listener failed");
+        });
+        store.onTerminal(record -> ran.add("second"));
+
+        ExecutionRecord record = executionRecord("exec");
+        store.put(record);
+        record.markSuccess("ok");
+        store.settle(record);
+
+        assertThat(ran).containsExactly("first", "second");
+        assertThat(store.outcomeOf("exec").state()).isEqualTo(ExecutionState.SUCCESS);
+    }
+
     private static ExecutionRecord executionRecord(String id) {
         FunctionSpec spec = new FunctionSpec("fn", "img", List.of(), Map.of(), null,
                 1000, 1, 10, 0, null, ExecutionMode.LOCAL, RuntimeMode.HTTP, null, null, null);

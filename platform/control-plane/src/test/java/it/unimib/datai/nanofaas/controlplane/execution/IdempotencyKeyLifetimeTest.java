@@ -61,7 +61,7 @@ class IdempotencyKeyLifetimeTest {
         store.put("fn", "k", "exec-1");
 
         advance(Duration.ofMinutes(29));
-        store.markTerminal("fn", "k");
+        store.markTerminal("fn", "k", "exec-1");
 
         // t=31m: oltre il vecchio orizzonte, ma dentro la ritenzione terminale.
         advance(Duration.ofMinutes(2));
@@ -77,17 +77,31 @@ class IdempotencyKeyLifetimeTest {
         IdempotencyStore store = store(Duration.ofMinutes(5), Duration.ofMinutes(30));
         store.put("fn", "k", "exec-1");
 
-        store.markTerminal("fn", "k");
-        store.markTerminal("fn", "k");
+        store.markTerminal("fn", "k", "exec-1");
+        store.markTerminal("fn", "k", "exec-1");
 
         assertThat(store.getExecutionId("fn", "k")).hasValue("exec-1");
 
         // Pending: la transizione non puo' scavalcare una rivendicazione in corso.
         IdempotencyStore.AcquireResult claim = store.acquireOrGet("fn", "k2");
-        store.markTerminal("fn", "k2");
+        store.markTerminal("fn", "k2", "exec-2");
         assertThat(store.acquireOrGet("fn", "k2").state())
                 .isEqualTo(IdempotencyStore.AcquireResult.State.PENDING);
         assertThat(claim.state()).isEqualTo(IdempotencyStore.AcquireResult.State.CLAIMED);
+    }
+
+    @Test
+    void markTerminalIgnoresAKeyThatHasSinceBeenReboundToAnotherExecution() {
+        IdempotencyStore store = store(Duration.ofMinutes(5), Duration.ofMinutes(30));
+        store.put("fn", "k", "exec-2");
+
+        // L'esecuzione sostituita si archivia in ritardo: il vincolo corrente non e' suo.
+        store.markTerminal("fn", "k", "exec-1");
+
+        advance(Duration.ofMinutes(20));
+        assertThat(store.getExecutionId("fn", "k"))
+                .as("il vincolo resta vivo con la ritenzione della sua esecuzione, non di quella sostituita")
+                .hasValue("exec-2");
     }
 
     @Test
@@ -99,7 +113,7 @@ class IdempotencyKeyLifetimeTest {
         // La fase viva copre almeno maxLifetime, e dopo markTerminal almeno ttl.
         advance(defaults.maxLifetime().dividedBy(2));
         assertThat(store.getExecutionId("fn", "k")).hasValue("exec-1");
-        store.markTerminal("fn", "k");
+        store.markTerminal("fn", "k", "exec-1");
         advance(defaults.ttl().dividedBy(2));
         assertThat(store.getExecutionId("fn", "k")).hasValue("exec-1");
     }

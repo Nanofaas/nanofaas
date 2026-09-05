@@ -33,7 +33,8 @@ public final class InvocationExecutionFactory {
         // Il record porta ancora la chiave originale anche dopo un retry interno.
         executionStore.onTerminal(record -> {
             if (record.idempotencyKey() != null) {
-                idempotencyStore.markTerminal(record.task().functionName(), record.idempotencyKey());
+                idempotencyStore.markTerminal(record.task().functionName(), record.idempotencyKey(),
+                        record.executionId());
             }
         });
     }
@@ -293,6 +294,16 @@ public final class InvocationExecutionFactory {
             }
             idempotencyStore.publishClaim(functionName, idempotencyKey, claimToken, executionRecord.executionId());
             claimPublished = true;
+            // L'ammissione dispaccia PRIMA di pubblicare (InvocationEnqueueSupport.admitIfNew),
+            // e senza moduli di coda il dispatch e' inline: il record puo' essere gia'
+            // archiviato qui. In quel caso il listener terminale ha gia' visto la chiave
+            // ancora pending e non ha fatto nulla per design, quindi il vincolo appena
+            // pubblicato resterebbe non terminale per sempre - e un replay dopo l'espulsione
+            // del payload rieseguirebbe la funzione invece di rispondere 410.
+            // Le due sequenze convergono cosi' sullo stesso vincolo terminale.
+            if (executionRecord.isTerminal()) {
+                idempotencyStore.markTerminal(functionName, idempotencyKey, executionRecord.executionId());
+            }
         }
 
         public void abandonAdmission() {

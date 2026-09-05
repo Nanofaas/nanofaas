@@ -161,6 +161,66 @@ class IdempotentRetentionContractTest {
     }
 
     @Test
+    void capacityEvictionRepliesGoneEvenWhenTheExecutionSettledBeforeItsClaimWasPublished() {
+        // Production ordering, not the convenience ordering the other tests use:
+        // InvocationEnqueueSupport.admitIfNew runs the admission action FIRST and
+        // publishes the claim after it returns. In the no-queue profile the dispatch
+        // runs inline on the admitting thread, so the record is already terminal by
+        // the time publishAdmission() is reached and the terminal listener has
+        // already fired against a still-pending key.
+        rebuild(ExecutionStoreProperties.of(TTL, MAX_LIFETIME, SYNC_TTL, 1), 100_000);
+
+        InvocationExecutionFactory.ExecutionLookup first =
+                factory.createOrReuseExecution("fn", spec(), request(), "k1", "trace-1", InvocationKind.SYNC);
+        String firstId = first.executionRecord().executionId();
+        first.executionRecord().markSuccess("gone-soon");
+        executions.settle(first.executionRecord());
+        first.publishAdmission();
+
+        InvocationExecutionFactory.ExecutionLookup second =
+                factory.createOrReuseExecution("fn", spec(), request(), "k2", "trace-2", InvocationKind.SYNC);
+        second.executionRecord().markSuccess("second");
+        executions.settle(second.executionRecord());
+        second.publishAdmission();
+
+        assertThat(executions.size()).isEqualTo(1);
+        assertThat(executions.outcomeOf(firstId)).isNull();
+
+        InvocationExecutionFactory.ExecutionLookup replay =
+                factory.createOrReuseExecution("fn", spec(), request(), "k1", "trace-3", InvocationKind.SYNC);
+        assertThat(replay.isNew())
+                .as("a replay past capacity eviction must never re-invoke the function")
+                .isFalse();
+        assertThat(replay.gone()).isTrue();
+        assertThat(replay.settledExecutionId()).isEqualTo(firstId);
+    }
+
+    @Test
+    void aLateSettleOfAReplacedExecutionDoesNotMarkTheCurrentBindingTerminal() {
+        // The first execution is abandoned after publishing (admission failed late),
+        // so a replay legitimately re-claims the key for a NEW execution. The first
+        // record settling afterwards must not flip the new binding to terminal:
+        // terminal retention would then start at the wrong instant and never restart.
+        InvocationExecutionFactory.ExecutionLookup first =
+                factory.createOrReuseExecution("fn", spec(), request(), "k", "trace-1", InvocationKind.SYNC);
+        first.publishAdmission();
+        ExecutionRecord abandoned = first.executionRecord();
+        executions.remove(abandoned.executionId());
+
+        InvocationExecutionFactory.ExecutionLookup second =
+                factory.createOrReuseExecution("fn", spec(), request(), "k", "trace-2", InvocationKind.SYNC);
+        assertThat(second.isNew()).isTrue();
+        second.publishAdmission();
+
+        abandoned.markSuccess("late");
+        executions.settle(abandoned);
+
+        assertThat(keys.acquireOrGet("fn", "k").terminal())
+                .as("a settle from a replaced execution must not mark the live binding terminal")
+                .isFalse();
+    }
+
+    @Test
     void anExhaustedKeyBudgetRejectsNewKeyedAdmissionsBeforeDispatchAndKeepsReplaysServiceable() {
         rebuild(ExecutionStoreProperties.of(TTL, MAX_LIFETIME, SYNC_TTL), 1);
 

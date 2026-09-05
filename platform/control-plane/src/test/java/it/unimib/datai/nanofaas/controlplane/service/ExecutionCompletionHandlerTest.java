@@ -253,7 +253,9 @@ class ExecutionCompletionHandlerTest {
         completionHandler.completeExecution("exec-count", InvocationResult.success("result"));
 
         assertThat(executionRecord.snapshotReads()).isZero();
-        assertThat(executionRecord.finishedAtNanosReads()).isEqualTo(1);
+        // Two readers, one each: the completion path computing the durations, and the store's
+        // terminal listener checking whether this record has a conclusion left to record.
+        assertThat(executionRecord.finishedAtNanosReads()).isEqualTo(2);
     }
 
     @Test
