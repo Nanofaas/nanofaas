@@ -3,3 +3,11 @@
 [coda] A-mem1024: matrice finita
 [coda] A-mem1024: tabelle calcolate e scritte nel documento
 [coda] A-mem1024: archiviato e verificabile
+[coda] A-mem1024: committato 432f7607
+[coda] A-mem1024: VM tenuta in piedi per il run successivo
+[coda] disinstallo il rilascio Helm ereditato su 20.86.165.68
+[coda] A-mem512: avvio (runtime-comparison-mem512.yaml, varianti jvm-c2)
+[coda] A-mem512: **FALLITO** (vedi /home/michele/Documenti/nanolab/packages/nanolab/runs/overload-path-2026-09/A-mem512.log)
+[coda] teardown in corso
+[coda] teardown completo, nessuna risorsa residua
+[coda] coda interrotta
