@@ -128,8 +128,34 @@ class OffloadHeaderLossE2eTest {
     @Test
     @SuppressWarnings("unchecked")
     void applicationHeaderSurvivesAnEagerOffloadHop() throws Exception {
+        Map<String, Object> receivedHeaders = invokeHeaderEcho(edgeUrl);
+
+        // BUG (regression, fixed by A6): the offload hop used to drop application headers,
+        // so the remote function never saw x-tenant even though the local caller sent it.
+        // The second control plane rebuilds InvocationRequest.headers() from the HTTP
+        // transport of the offload hop, so x-tenant must arrive as a real hop header.
+        assertThat(receivedHeaders)
+                .as("headers observed by the remote function after an eager offload hop")
+                .containsEntry("x-tenant", "acme");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void applicationHeaderSurvivesDirectInvocationWithoutOffload() throws Exception {
+        Map<String, Object> receivedHeaders = invokeHeaderEcho(cloudUrl);
+
+        // Control for the offloaded case: invoking the same function on the cloud
+        // instance directly (no offload) must also preserve the caller's x-tenant,
+        // so a handler sees the same header value locally and offloaded.
+        assertThat(receivedHeaders)
+                .as("headers observed by the function on a direct (non-offloaded) call")
+                .containsEntry("x-tenant", "acme");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> invokeHeaderEcho(String baseUrl) throws IOException {
         HttpResponse<String> response = send(HttpRequest.newBuilder(
-                        URI.create(edgeUrl + "/v1/functions/" + FUNCTION + ":invoke"))
+                        URI.create(baseUrl + "/v1/functions/" + FUNCTION + ":invoke"))
                 .header("Content-Type", "application/json")
                 .header("x-tenant", "acme")
                 .POST(HttpRequest.BodyPublishers.ofString("{\"input\":\"ping\"}"))
@@ -141,16 +167,10 @@ class OffloadHeaderLossE2eTest {
         Object output = body.get("output");
         assertThat(output).as("function output envelope").isInstanceOf(Map.class);
         Object receivedHeaders = ((Map<String, Object>) output).get("receivedHeaders");
-
-        // BUG (still reproduces on current code): the offload hop drops application headers,
-        // so the remote function never sees x-tenant even though the local caller sent it.
         assertThat(receivedHeaders)
-                .as("the remote function should still see the caller's x-tenant header "
-                        + "after an eager offload hop")
+                .as("headers observed by the handler")
                 .isInstanceOf(Map.class);
-        assertThat((Map<String, Object>) receivedHeaders)
-                .as("headers observed by the remote function")
-                .containsEntry("x-tenant", "acme");
+        return (Map<String, Object>) receivedHeaders;
     }
 
     private static int port(ConfigurableApplicationContext context, String property) {

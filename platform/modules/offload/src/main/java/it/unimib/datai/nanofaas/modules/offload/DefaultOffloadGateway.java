@@ -16,6 +16,10 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
@@ -25,6 +29,39 @@ public class DefaultOffloadGateway implements OffloadGateway {
     // coordinator's local wait, making 504 (not a local "timeout") deterministic
     private static final long TIMEOUT_MARGIN_MS = 50;
     private static final String REMOTE_PREFIX = "remote ";
+
+    /**
+     * Application headers that must never cross the offload hop as real HTTP headers.
+     *
+     * <p>The remote control plane rebuilds {@code InvocationRequest.headers()} from the HTTP
+     * transport of the offload hop ({@code InvocationController.withCallerHeaders}), so the
+     * gateway forwards the caller's application headers as real HTTP headers on the second
+     * hop. This set keeps that copy away from (a) transport framing the HTTP client owns —
+     * {@code host}, {@code content-length}, and above all {@code content-type}, which must
+     * keep describing the JSON envelope rather than the caller's original body; (b) headers
+     * this gateway sets itself and that dedicated handling must keep control of — the
+     * offload-hop marker and the tracing headers; and (c) the reserved headers the receiving
+     * control plane binds to dedicated parameters. The list intentionally mirrors
+     * {@code InvocationController.EXCLUDED_REQUEST_HEADERS} (lower-cased): forwarding a
+     * name the receiver would drop anyway is pointless, and an application value must never
+     * be able to masquerade as a control-plane header.
+     */
+    private static final Set<String> EXCLUDED_FORWARD_HEADERS = Set.of(
+            "content-length", "content-type", "host", "transfer-encoding",
+            "accept", "user-agent",
+            "x-execution-id", "x-trace-id", "x-dispatch-attempt", "x-timeout-ms",
+            "x-nanofaas-offload-hop", "idempotency-key", "traceparent", "tracestate");
+
+    /**
+     * RFC 9110 hop-by-hop headers plus the de-facto {@code Proxy-Connection} extension.
+     * They name per-connection semantics and would be meaningless — or actively harmful — on
+     * the next hop, whose connection is a different one. {@code proxy-authenticate} and
+     * {@code proxy-authorization} are excluded through the {@code proxy-} prefix below.
+     */
+    private static final Set<String> HOP_BY_HOP_HEADERS = Set.of(
+            "connection", "keep-alive", "proxy-connection", "te", "trailer", "upgrade");
+
+    private static final String PROXY_HEADER_PREFIX = "proxy-";
 
     private final OffloadProperties properties;
     private final Supplier<WebClient> webClient;
@@ -101,6 +138,8 @@ public class DefaultOffloadGateway implements OffloadGateway {
             request.header("tracestate", context.tracestate());
         }
 
+        forwardApplicationHeaders(request, task.request().headers());
+
         return request.bodyValue(task.request())
                 .exchangeToMono(response -> {
                     boolean functionDecided = "true".equalsIgnoreCase(
@@ -143,6 +182,63 @@ public class DefaultOffloadGateway implements OffloadGateway {
                 .doOnError(OffloadFailedException.class, ex ->
                         meterRegistry.get().counter("nanofaas.offload.failure",
                                 "function", task.functionName()).increment());
+    }
+
+    /**
+     * Copy the caller's application headers onto the offload hop as real HTTP headers.
+     *
+     * <p>Best-effort and defensive: reserved names, hop-by-hop names, names nominated by the
+     * {@code Connection} field and any {@code proxy-*} header are skipped, and the gateway's
+     * own hop/tracing headers set above are never overwritten because they are excluded here.
+     * A {@code null} value is skipped rather than sent (WebClient would reject it).
+     */
+    private static void forwardApplicationHeaders(WebClient.RequestBodySpec request,
+                                                  Map<String, String> applicationHeaders) {
+        if (applicationHeaders == null || applicationHeaders.isEmpty()) {
+            return;
+        }
+        Set<String> connectionNominated = connectionNominatedHeaders(applicationHeaders);
+        applicationHeaders.forEach((name, value) -> {
+            if (name == null || value == null) {
+                return;
+            }
+            String key = name.toLowerCase(Locale.ROOT);
+            if (EXCLUDED_FORWARD_HEADERS.contains(key)
+                    || HOP_BY_HOP_HEADERS.contains(key)
+                    || key.startsWith(PROXY_HEADER_PREFIX)
+                    || connectionNominated.contains(key)) {
+                return;
+            }
+            request.header(name, value);
+        });
+    }
+
+    /**
+     * Headers the {@code Connection} field nominates as hop-by-hop. The {@code Connection}
+     * header itself is never forwarded (it is excluded above), so its nominations are read
+     * from the envelope to make sure they are not leaked onto the next hop either. Header
+     * names are matched case-insensitively because the envelope may come from a caller that
+     * did not go through the receiving controller's lower-casing filter (unit callers, tests).
+     */
+    private static Set<String> connectionNominatedHeaders(Map<String, String> applicationHeaders) {
+        String connection = null;
+        for (Map.Entry<String, String> entry : applicationHeaders.entrySet()) {
+            if (entry.getKey() != null && "connection".equalsIgnoreCase(entry.getKey())) {
+                connection = entry.getValue();
+                break;
+            }
+        }
+        if (connection == null || connection.isBlank()) {
+            return Set.of();
+        }
+        Set<String> nominated = new HashSet<>();
+        for (String token : connection.split(",")) {
+            String trimmed = token.strip();
+            if (!trimmed.isEmpty()) {
+                nominated.add(trimmed.toLowerCase(Locale.ROOT));
+            }
+        }
+        return nominated;
     }
 
     private InvocationResult toResult(InvocationResponse response) {

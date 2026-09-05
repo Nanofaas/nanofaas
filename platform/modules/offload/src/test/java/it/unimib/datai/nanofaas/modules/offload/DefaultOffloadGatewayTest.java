@@ -72,6 +72,19 @@ class DefaultOffloadGatewayTest {
             );
     }
 
+    private static InvocationTask task(FunctionSpec spec, Map<String, String> requestHeaders) {
+        return new InvocationTask("exec-1", spec.name(), spec,
+                new InvocationRequest("payload", Map.of(), requestHeaders), null, "trace-1", Instant.now(), 1,
+                InvocationKind.SYNC
+            );
+    }
+
+    private static MockResponse successEnvelope() {
+        return new MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"executionId\":\"remote-1\",\"status\":\"success\",\"output\":\"out\",\"error\":null}");
+    }
+
     private static OffloadFailedException offloadFailure(Throwable ex) {
         assertThat(ex).isInstanceOf(OffloadFailedException.class);
         return (OffloadFailedException) ex;
@@ -318,5 +331,87 @@ class DefaultOffloadGatewayTest {
         // no target anywhere: never offload, even under pressure
         assertThat(noGlobalTarget.shouldOffloadEagerly(withoutTarget)).isFalse();
         assertThat(noGlobalTarget.shouldOffloadOnPressure(withoutTarget)).isFalse();
+    }
+
+    @Test
+    void invokeRemote_forwardsApplicationHeadersAsRealHttpHeaders() throws InterruptedException {
+        server.enqueue(successEnvelope());
+        FunctionSpec spec = spec("echo", null, 5000);
+
+        gateway().invokeRemote(task(spec, Map.of(
+                        "x-tenant", "acme",
+                        "X-Request-Id", "req-42")),
+                OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS).block();
+
+        RecordedRequest recorded = server.takeRequest();
+        assertThat(recorded.getHeader("x-tenant")).isEqualTo("acme");
+        assertThat(recorded.getHeader("X-Request-Id")).isEqualTo("req-42");
+    }
+
+    @Test
+    void invokeRemote_reservedHeadersCannotOverrideGatewayOwnedHeaders() throws InterruptedException {
+        server.enqueue(successEnvelope());
+        FunctionSpec spec = spec("guarded", null, 5000);
+
+        // The envelope carries reserved names the gateway itself manages. None may
+        // reach the wire: the receiving control plane would bind them to dedicated
+        // parameters, so a forged value would corrupt the offload-hop marker or the
+        // trace context (re-offload prevention / tracing acceptance).
+        gateway().invokeRemote(task(spec, Map.of(
+                        "x-tenant", "acme",
+                        "x-nanofaas-offload-hop", "forged-hop",
+                        "x-trace-id", "forged-trace",
+                        "traceparent", "00-forged-parent-01",
+                        "tracestate", "forged=vendor",
+                        "content-type", "text/plain",
+                        "content-length", "999",
+                        "host", "forged-host")),
+                OffloadTrigger.EAGER, new OffloadContext(false, "00-real-parent-01", "real=vendor"), BUDGET_MS).block();
+
+        RecordedRequest recorded = server.takeRequest();
+        assertThat(recorded.getHeaders().values("X-NanoFaaS-Offload-Hop")).containsExactly("1");
+        assertThat(recorded.getHeaders().values("X-Trace-Id")).containsExactly("trace-1");
+        assertThat(recorded.getHeaders().values("traceparent")).containsExactly("00-real-parent-01");
+        assertThat(recorded.getHeaders().values("tracestate")).containsExactly("real=vendor");
+        // the application header still crosses, and the transport Content-Type keeps
+        // describing the JSON envelope rather than the forged text/plain value
+        assertThat(recorded.getHeader("x-tenant")).isEqualTo("acme");
+        assertThat(recorded.getHeader("Content-Type")).startsWith("application/json");
+        assertThat(recorded.getHeader("Content-Length")).isNotEqualTo("999");
+        assertThat(recorded.getHeader("Host")).isNotEqualTo("forged-host");
+    }
+
+    @Test
+    void invokeRemote_hopByHopAndConnectionNominatedHeadersAreNotForwarded() throws InterruptedException {
+        server.enqueue(successEnvelope());
+        FunctionSpec spec = spec("hop", null, 5000);
+
+        // Connection nominates X-Hop-Data as hop-by-hop; keep-alive, proxy-*, upgrade,
+        // trailer and transfer-encoding are per-connection semantics that must not leak
+        // onto the second hop.
+        gateway().invokeRemote(task(spec, Map.of(
+                        "x-tenant", "acme",
+                        "connection", "X-Hop-Data, keep-alive",
+                        "X-Hop-Data", "secret",
+                        "keep-alive", "timeout=5",
+                        "proxy-authorization", "Basic Zm9yZ2Vk",
+                        "upgrade", "h2c",
+                        "trailer", "X-Trailer",
+                        "transfer-encoding", "chunked")),
+                OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS).block();
+
+        RecordedRequest recorded = server.takeRequest();
+        assertThat(recorded.getHeader("x-tenant")).isEqualTo("acme");
+        // the Connection-nominated header must not be forwarded even though Connection
+        // itself is excluded from the copy
+        assertThat(recorded.getHeader("X-Hop-Data")).isNull();
+        assertThat(recorded.getHeaders().values("Connection")).doesNotContain("X-Hop-Data, keep-alive");
+        assertThat(recorded.getHeader("Keep-Alive")).isNull();
+        assertThat(recorded.getHeader("Proxy-Authorization")).isNull();
+        assertThat(recorded.getHeader("Upgrade")).isNull();
+        assertThat(recorded.getHeader("Trailer")).isNull();
+        // transfer-encoding is hop-by-hop; if the HTTP client legitimately uses it for the
+        // body it will be its own value, never the forged one
+        assertThat(recorded.getHeaders().values("Transfer-Encoding")).doesNotContain("chunked");
     }
 }
