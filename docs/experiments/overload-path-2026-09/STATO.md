@@ -30,3 +30,13 @@ Warning: Permanently added '20.71.27.249' (ED25519) to the list of known hosts.
 archiviate 3 celle in raw/A-mem512  (5.1M)
 2026-09-05 07:53  A-mem512: tabelle calcolate e scritte nel documento
 2026-09-05 07:53  A-mem512: archiviato e verificabile
+2026-09-05 07:53  A-mem512: committato 48269f2d
+2026-09-05 07:53  teardown in corso
+2026-09-05 07:57  teardown completo, nessuna risorsa residua
+2026-09-05 07:57  B-loop-cpu1: avvio (runtime-comparison-cpu1.yaml, varianti jvm,jvm-c2,jvm-loop1,jvm-c2-loop1)
+2026-09-05 09:57  B-loop-cpu1: matrice finita
+dimensioni immagini da 104.214.227.72...
+Warning: Permanently added '104.214.227.72' (ED25519) to the list of known hosts.
+archiviate 12 celle in raw/B-loop-cpu1  (6.2M)
+2026-09-05 09:57  B-loop-cpu1: tabelle calcolate e scritte nel documento
+2026-09-05 09:57  B-loop-cpu1: archiviato e verificabile

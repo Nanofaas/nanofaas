@@ -1,0 +1,71 @@
+{
+  "started_at": "2026-09-05T05:57:15.560045+00:00",
+  "functions": [
+    "word-stats-java",
+    "word-stats-javascript"
+  ],
+  "repetitions": 3,
+  "order": [
+    "jvm run 1",
+    "jvm-c2 run 1",
+    "jvm-loop1 run 1",
+    "jvm-c2-loop1 run 1",
+    "jvm run 2",
+    "jvm-c2 run 2",
+    "jvm-loop1 run 2",
+    "jvm-c2-loop1 run 2",
+    "jvm run 3",
+    "jvm-c2 run 3",
+    "jvm-loop1 run 3",
+    "jvm-c2-loop1 run 3"
+  ],
+  "variants": [
+    {
+      "key": "jvm",
+      "label": "JVM (Java 25, JIT)",
+      "rationale": "The baseline everything else is compared against, and the only build that JIT-compiles from a profile gathered during the run itself.",
+      "build_env": {},
+      "image": "127.0.0.1:5000/nanofaas/control-plane:jvm"
+    },
+    {
+      "key": "jvm-c2",
+      "label": "JVM (serial GC, full tiering)",
+      "rationale": "Isolates the JIT: C2 restored, collector held at the baseline's serial.",
+      "build_env": {
+        "JVM_TUNING": "-XX:+UseSerialGC"
+      },
+      "image": "127.0.0.1:5000/nanofaas/control-plane:jvm-c2"
+    },
+    {
+      "key": "jvm-loop1",
+      "label": "JVM (serial GC, C1 only, 1 event loop)",
+      "rationale": "jvm with the event-loop floor removed: isolates whether a single loop avoids the CFS throttling four loops hit on a one-core quota.",
+      "build_env": {
+        "JVM_TUNING": "-XX:+UseSerialGC -XX:TieredStopAtLevel=1 -Dreactor.netty.ioWorkerCount=1"
+      },
+      "image": "127.0.0.1:5000/nanofaas/control-plane:jvm-loop1"
+    },
+    {
+      "key": "jvm-c2-loop1",
+      "label": "JVM (serial GC, full tiering, 1 event loop)",
+      "rationale": "jvm-c2 with the event-loop floor removed: the JIT-and-loop-count 2x2 cell that decides both axes together, since both attack the same one-core CPU starvation and comparisons must stay inside one run.",
+      "build_env": {
+        "JVM_TUNING": "-XX:+UseSerialGC -Dreactor.netty.ioWorkerCount=1"
+      },
+      "image": "127.0.0.1:5000/nanofaas/control-plane:jvm-c2-loop1"
+    }
+  ],
+  "regime": {
+    "control_plane_resources": {
+      "limits": {
+        "cpu": 1.0,
+        "memoryMiB": 2048
+      }
+    },
+    "load_scale": 1.0,
+    "load_vus": null,
+    "load_profile": "comparison",
+    "backend": "k8s",
+    "scenario": "packages/nanolab/scenarios-v2/runtime-comparison-cpu1.yaml"
+  }
+}

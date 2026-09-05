@@ -4,3 +4,10 @@
 [coda] A-mem512: matrice finita
 [coda] A-mem512: tabelle calcolate e scritte nel documento
 [coda] A-mem512: archiviato e verificabile
+[coda] A-mem512: committato 48269f2d
+[coda] teardown in corso
+[coda] teardown completo, nessuna risorsa residua
+[coda] B-loop-cpu1: avvio (runtime-comparison-cpu1.yaml, varianti jvm,jvm-c2,jvm-loop1,jvm-c2-loop1)
+[coda] B-loop-cpu1: matrice finita
+[coda] B-loop-cpu1: tabelle calcolate e scritte nel documento
+[coda] B-loop-cpu1: archiviato e verificabile
