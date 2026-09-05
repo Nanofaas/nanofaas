@@ -2,8 +2,11 @@ package it.unimib.datai.nanofaas.controlplane.service;
 
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
+import java.time.Instant;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -136,5 +139,64 @@ class RateLimiterTest {
 
         // No violations should occur
         assertThat(violations.get()).isZero();
+    }
+
+    /**
+     * Regression coverage for the concurrent defect called out at the end of
+     * docs/control-plane-review-2026-09-05.md ("Un ulteriore difetto concorrente e' in
+     * RateLimiter.allow"), verified there only by reading the source. {@link RateLimiter#allow()}
+     * updates the window and resets the counter as two separate, non-atomic operations:
+     * <pre>
+     *   if (now > currentWindow && windowStartSecond.compareAndSet(currentWindow, now)) {
+     *       windowCount.set(0);
+     *   }
+     *   return windowCount.incrementAndGet() <= maxPerSecond;
+     * </pre>
+     * A thread that wins the CAS publishes the new window second first and only resets the
+     * counter afterwards. Any call that lands in that gap — real or, as here, reconstructed —
+     * sees {@code windowStartSecond} already pointing at the new (empty, from the caller's
+     * perspective) window while {@code windowCount} still holds the stale value from the
+     * window that just ended, and gets wrongly rejected.
+     *
+     * <p>Driving that interleaving through real thread scheduling is exactly the kind of
+     * fragile, sleep-dependent concurrency test this task's brief says to avoid, and
+     * {@link RateLimiter} hard-codes {@code Instant.now()} with no injectable clock to make it
+     * deterministic that way either. Instead, this test uses reflection purely to reach into
+     * the private fields and set up the precise intermediate state a real race produces —
+     * window already rolled over, counter not yet reset — then calls the real, unmodified
+     * {@link RateLimiter#allow()} to observe its outcome. No sleeps, no timing assumptions,
+     * fully deterministic.
+     */
+    @Test
+    void allow_windowRolledOverButCounterNotYetReset_wronglyRejectsAFreshRequest() throws Exception {
+        int maxPerSecond = 3;
+        RateLimiter limiter = new RateLimiter();
+        limiter.setMaxPerSecond(maxPerSecond);
+
+        Field windowStartField = RateLimiter.class.getDeclaredField("windowStartSecond");
+        windowStartField.setAccessible(true);
+        AtomicLong windowStartSecond = (AtomicLong) windowStartField.get(limiter);
+
+        Field windowCountField = RateLimiter.class.getDeclaredField("windowCount");
+        windowCountField.setAccessible(true);
+        AtomicInteger windowCount = (AtomicInteger) windowCountField.get(limiter);
+
+        // Reconstruct the exact post-CAS, pre-reset state: the window-swap winner already
+        // published "now" as the current window second (so a fresh allow() call takes the
+        // "nothing to do here" branch and skips straight to the increment)...
+        windowStartSecond.set(Instant.now().getEpochSecond());
+        // ...but has not yet reset the counter, which still holds the prior window's
+        // saturated value.
+        windowCount.set(maxPerSecond);
+
+        // A brand-new window has admitted nothing yet from this caller's point of view, so a
+        // correct implementation must accept this request.
+        boolean admitted = limiter.allow();
+
+        assertThat(admitted)
+                .as("a request arriving in a fresh rate-limit window must not be rejected just "
+                        + "because the counter reset from the previous window's CAS winner "
+                        + "has not run yet")
+                .isTrue();
     }
 }
