@@ -94,6 +94,33 @@ class InvocationControllerTest {
     }
 
     @Test
+    void invokeSync_connectionNominatedHeadersAreStrippedFromCallerHeaders() {
+        InvocationResponse response = new InvocationResponse("exec-hdr", "success", "out", null);
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
+                .thenReturn(Mono.just(SyncInvocation.local(response)));
+
+        webClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("Authorization", "Bearer x")
+                .header("Connection", "X-Hop-Data")
+                .header("X-Hop-Data", "secret")
+                .bodyValue(new InvocationRequest("payload", Map.of()))
+                .exchange()
+                .expectStatus().isOk();
+
+        // RFC 9110: Connection nominates X-Hop-Data as hop-by-hop. It concerns only the
+        // caller's connection, so it must not reach the handler (nor, later, the offload
+        // gateway, which only ever sees this map).
+        ArgumentCaptor<InvocationRequest> captor = ArgumentCaptor.forClass(InvocationRequest.class);
+        verify(invocationService).invokeSyncReactive(eq("echo"), captor.capture(), eq(null), eq(null), eq(null), any());
+        Map<String, String> capturedHeaders = captor.getValue().headers();
+        assertThat(capturedHeaders)
+                .containsEntry("authorization", "Bearer x")
+                .doesNotContainKeys("connection", "x-hop-data");
+    }
+
+    @Test
     void invokeSync_callerCannotForgeHeadersViaBody() {
         InvocationResponse response = new InvocationResponse("exec-forge", "success", "out", null);
         when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))

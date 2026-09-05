@@ -382,36 +382,30 @@ class DefaultOffloadGatewayTest {
     }
 
     @Test
-    void invokeRemote_hopByHopAndConnectionNominatedHeadersAreNotForwarded() throws InterruptedException {
+    void invokeRemote_hopByHopHeadersAreNotForwarded() throws InterruptedException {
         server.enqueue(successEnvelope());
         FunctionSpec spec = spec("hop", null, 5000);
 
-        // Connection nominates X-Hop-Data as hop-by-hop; keep-alive, proxy-*, upgrade,
-        // trailer and transfer-encoding are per-connection semantics that must not leak
-        // onto the second hop.
+        // proxy-*, upgrade, trailer and te are hop-by-hop per-connection semantics that the
+        // receiving controller does NOT strip from the envelope, so on a real path they reach
+        // the gateway map and must not leak onto the second hop. (Headers nominated by the
+        // caller's Connection field are excluded upstream by InvocationController and covered
+        // by the controller/E2E tests, not here.)
         gateway().invokeRemote(task(spec, Map.of(
                         "x-tenant", "acme",
-                        "connection", "X-Hop-Data, keep-alive",
-                        "X-Hop-Data", "secret",
-                        "keep-alive", "timeout=5",
                         "proxy-authorization", "Basic Zm9yZ2Vk",
+                        "proxy-connection", "keep-alive",
                         "upgrade", "h2c",
                         "trailer", "X-Trailer",
-                        "transfer-encoding", "chunked")),
+                        "te", "trailers")),
                 OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS).block();
 
         RecordedRequest recorded = server.takeRequest();
         assertThat(recorded.getHeader("x-tenant")).isEqualTo("acme");
-        // the Connection-nominated header must not be forwarded even though Connection
-        // itself is excluded from the copy
-        assertThat(recorded.getHeader("X-Hop-Data")).isNull();
-        assertThat(recorded.getHeaders().values("Connection")).doesNotContain("X-Hop-Data, keep-alive");
-        assertThat(recorded.getHeader("Keep-Alive")).isNull();
         assertThat(recorded.getHeader("Proxy-Authorization")).isNull();
+        assertThat(recorded.getHeader("Proxy-Connection")).isNull();
         assertThat(recorded.getHeader("Upgrade")).isNull();
         assertThat(recorded.getHeader("Trailer")).isNull();
-        // transfer-encoding is hop-by-hop; if the HTTP client legitimately uses it for the
-        // body it will be its own value, never the forged one
-        assertThat(recorded.getHeaders().values("Transfer-Encoding")).doesNotContain("chunked");
+        assertThat(recorded.getHeader("TE")).isNull();
     }
 }

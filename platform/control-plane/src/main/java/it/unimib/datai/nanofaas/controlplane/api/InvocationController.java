@@ -26,6 +26,7 @@ import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -57,17 +58,51 @@ public class InvocationController {
      * Rebuild the request with the caller's real headers, lower-cased. The body's own
      * {@code headers} field is overwritten, never merged: a caller must not be able to
      * forge a header it did not send.
+     *
+     * <p>Besides {@link #EXCLUDED_REQUEST_HEADERS}, headers the transport's {@code Connection}
+     * field nominates as hop-by-hop are stripped too (RFC 9110): they concern only the
+     * caller's connection and must not reach the handler — and, when the invocation is later
+     * offloaded, they must not reach the offload gateway, which only ever sees this map.
      */
     private static InvocationRequest withCallerHeaders(InvocationRequest request,
-                                                         Map<String, String> rawHeaders) {
+                                                       Map<String, String> rawHeaders) {
+        Set<String> connectionNominated = connectionNominatedHeaders(rawHeaders);
         Map<String, String> filtered = new LinkedHashMap<>();
         rawHeaders.forEach((name, value) -> {
             String key = name.toLowerCase(Locale.ROOT);
-            if (!EXCLUDED_REQUEST_HEADERS.contains(key)) {
+            if (!EXCLUDED_REQUEST_HEADERS.contains(key) && !connectionNominated.contains(key)) {
                 filtered.put(key, value);
             }
         });
         return new InvocationRequest(request.input(), request.metadata(), filtered);
+    }
+
+    /**
+     * Headers the transport's {@code Connection} field nominates as hop-by-hop, lower-cased.
+     * The {@code Connection} header itself is already excluded by
+     * {@link #EXCLUDED_REQUEST_HEADERS}; its nominations are read from the raw transport
+     * headers so they do not leak to the handler (or, through an offload hop, to a remote
+     * plane) as if they were ordinary application headers.
+     */
+    private static Set<String> connectionNominatedHeaders(Map<String, String> rawHeaders) {
+        String connection = null;
+        for (Map.Entry<String, String> entry : rawHeaders.entrySet()) {
+            if (entry.getKey() != null && "connection".equalsIgnoreCase(entry.getKey())) {
+                connection = entry.getValue();
+                break;
+            }
+        }
+        if (connection == null || connection.isBlank()) {
+            return Set.of();
+        }
+        Set<String> nominated = new HashSet<>();
+        for (String token : connection.split(",")) {
+            String trimmed = token.strip().toLowerCase(Locale.ROOT);
+            if (!trimmed.isEmpty()) {
+                nominated.add(trimmed);
+            }
+        }
+        return nominated;
     }
 
     @PostMapping("/functions/{name}:invoke")

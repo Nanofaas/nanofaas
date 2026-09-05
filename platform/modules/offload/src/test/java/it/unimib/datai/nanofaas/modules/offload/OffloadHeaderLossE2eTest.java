@@ -12,11 +12,17 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 import tools.jackson.databind.ObjectMapper;
 
+import java.io.BufferedInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
 
@@ -152,6 +158,32 @@ class OffloadHeaderLossE2eTest {
                 .containsEntry("x-tenant", "acme");
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void connectionNominatedHeaderDoesNotReachTheRemoteFunction() throws Exception {
+        // java.net.http.HttpClient forbids setting the Connection header, so this request is
+        // sent over a raw HTTP/1.1 socket. Connection nominates X-Hop-Data as hop-by-hop:
+        // RFC 9110 says it concerns only the caller->edge connection, so it must not reach
+        // the handler on the second control plane even though it is not a "reserved" name.
+        RawResponse response = rawInvoke(edgeUrl, "/v1/functions/" + FUNCTION + ":invoke", Map.of(
+                "Content-Type", "application/json",
+                "x-tenant", "acme",
+                "Connection", "X-Hop-Data",
+                "X-Hop-Data", "secret"), "{\"input\":\"ping\"}");
+
+        assertThat(response.status()).as(response.body()).isEqualTo(200);
+        Map<String, Object> body = MAPPER.readValue(response.body(), Map.class);
+        assertThat(body.get("status")).isEqualTo("success");
+        Object output = body.get("output");
+        assertThat(output).as("function output envelope").isInstanceOf(Map.class);
+        Map<String, Object> receivedHeaders = (Map<String, Object>) ((Map<String, Object>) output)
+                .get("receivedHeaders");
+        assertThat(receivedHeaders)
+                .as("headers observed by the remote function after an eager offload hop")
+                .containsEntry("x-tenant", "acme")
+                .doesNotContainKey("x-hop-data");
+    }
+
     @SuppressWarnings("unchecked")
     private static Map<String, Object> invokeHeaderEcho(String baseUrl) throws IOException {
         HttpResponse<String> response = send(HttpRequest.newBuilder(
@@ -201,5 +233,102 @@ class OffloadHeaderLossE2eTest {
             Thread.currentThread().interrupt();
             throw new IOException(ex);
         }
+    }
+
+    private record RawResponse(int status, String body) {
+    }
+
+    /**
+     * Minimal HTTP/1.1 POST over a raw socket. Needed only to send a {@code Connection}
+     * header, which {@link HttpClient} forbids as a restricted header. Reads the response by
+     * Content-Length when present, otherwise to end of stream.
+     */
+    private static RawResponse rawInvoke(String baseUrl, String path,
+                                         Map<String, String> headers, String body) throws IOException {
+        URI uri = URI.create(baseUrl);
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(uri.getHost(), uri.getPort()), 5000);
+            socket.setSoTimeout(15_000);
+            byte[] payload = body.getBytes(StandardCharsets.UTF_8);
+            StringBuilder request = new StringBuilder()
+                    .append("POST ").append(path).append(" HTTP/1.1\r\n")
+                    .append("Host: ").append(uri.getHost()).append(':').append(uri.getPort()).append("\r\n");
+            headers.forEach((name, value) -> request.append(name).append(": ").append(value).append("\r\n"));
+            request.append("Content-Length: ").append(payload.length).append("\r\n\r\n");
+            OutputStream out = socket.getOutputStream();
+            out.write(request.toString().getBytes(StandardCharsets.UTF_8));
+            out.write(payload);
+            out.flush();
+
+            BufferedInputStream in = new BufferedInputStream(socket.getInputStream());
+            String statusLine = readAsciiLine(in);
+            String[] statusParts = statusLine.split(" ");
+            int status = statusParts.length > 1 ? Integer.parseInt(statusParts[1]) : -1;
+            int contentLength = -1;
+            boolean chunked = false;
+            String line;
+            while ((line = readAsciiLine(in)) != null && !line.isEmpty()) {
+                int colon = line.indexOf(':');
+                if (colon <= 0) {
+                    continue;
+                }
+                String name = line.substring(0, colon).trim();
+                String value = line.substring(colon + 1).trim();
+                if ("Content-Length".equalsIgnoreCase(name)) {
+                    contentLength = Integer.parseInt(value);
+                } else if ("Transfer-Encoding".equalsIgnoreCase(name) && value.contains("chunked")) {
+                    chunked = true;
+                }
+            }
+            String responseBody;
+            if (chunked) {
+                responseBody = readChunked(in);
+            } else if (contentLength >= 0) {
+                responseBody = new String(in.readNBytes(contentLength), StandardCharsets.UTF_8);
+            } else {
+                responseBody = readToEndOfStream(in);
+            }
+            return new RawResponse(status, responseBody);
+        }
+    }
+
+    private static String readAsciiLine(InputStream in) throws IOException {
+        StringBuilder sb = new StringBuilder();
+        int c;
+        while ((c = in.read()) != -1 && c != '\n') {
+            sb.append((char) c);
+        }
+        if (sb.length() > 0 && sb.charAt(sb.length() - 1) == '\r') {
+            sb.setLength(sb.length() - 1);
+        }
+        return sb.toString();
+    }
+
+    private static String readChunked(InputStream in) throws IOException {
+        StringBuilder body = new StringBuilder();
+        while (true) {
+            String sizeLine = readAsciiLine(in).trim();
+            int size;
+            try {
+                size = Integer.parseInt(sizeLine.split(";")[0].trim(), 16);
+            } catch (NumberFormatException ex) {
+                throw new IOException("malformed chunk size: " + sizeLine);
+            }
+            if (size == 0) {
+                // consume the trailing CRLF (and any trailer section up to the blank line)
+                while (!readAsciiLine(in).isEmpty()) {
+                    // skip trailers
+                }
+                break;
+            }
+            byte[] chunk = in.readNBytes(size);
+            body.append(new String(chunk, StandardCharsets.UTF_8));
+            readAsciiLine(in); // chunk terminator CRLF
+        }
+        return body.toString();
+    }
+
+    private static String readToEndOfStream(InputStream in) throws IOException {
+        return new String(in.readAllBytes(), StandardCharsets.UTF_8);
     }
 }
