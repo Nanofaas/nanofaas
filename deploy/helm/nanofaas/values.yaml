@@ -28,6 +28,26 @@ controlPlane:
     limits:
       cpu: "1"
       memory: 2Gi
+  # Kubernetes' bare defaults (timeoutSeconds: 1, failureThreshold: 3, periodSeconds: 10)
+  # give a GC pause under memory pressure a 3-second window before three strikes call it
+  # dead. dispatch-bottleneck/README.md (2026-08-21) already measured p95 probe latency at
+  # 1707ms on a merely busy control plane, well past that default; a control plane under
+  # real memory pressure (full GC pauses running into seconds) needs more room still, or
+  # the probe becomes the mechanism that kills it rather than the mechanism that reports it.
+  # Liveness gets a longer failureThreshold than readiness: readiness failing just pulls
+  # the pod from service (cheap, reversible); liveness failing kills it and loses all
+  # in-memory execution state (expensive, and the failure this is here to prevent).
+  probes:
+    readiness:
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+    liveness:
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 6
 
 rbac:
   create: true

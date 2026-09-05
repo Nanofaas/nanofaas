@@ -49,10 +49,18 @@ spec:
             httpGet:
               path: /actuator/health/readiness
               port: {{ .Values.controlPlane.service.ports.actuator }}
+            initialDelaySeconds: {{ .Values.controlPlane.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.controlPlane.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.controlPlane.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.controlPlane.probes.readiness.failureThreshold }}
           livenessProbe:
             httpGet:
               path: /actuator/health/liveness
               port: {{ .Values.controlPlane.service.ports.actuator }}
+            initialDelaySeconds: {{ .Values.controlPlane.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.controlPlane.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.controlPlane.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.controlPlane.probes.liveness.failureThreshold }}
       volumes:
         - name: registry-data
           {{- if .Values.controlPlane.persistence.enabled }}
