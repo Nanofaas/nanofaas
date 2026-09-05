@@ -1,7 +1,7 @@
 # Percorso di sovraccarico: tre modifiche e tre esperimenti
 
-**Data:** 2026-09-04, rivisto lo stesso giorno dopo revisione critica pre-esecuzione
-**Stato:** da eseguire
+**Data:** 2026-09-04, rivisto il 2026-09-05 dopo Esperimenti A, B, C-passo-0
+**Stato:** quasi completo — resta solo la corsa Azure dell'Esperimento C (§ Ordine di esecuzione, passo 6)
 **Continua:** `2026-08-21-dispatch-bottleneck-and-comparison-rerun.md`, `2026-08-26-execution-store-outcome.md`
 
 **Revisione:** la Parte I.1 e l'Esperimento C erano scritti come se il costo
@@ -467,22 +467,22 @@ differenza che quasi sparisce a 2 core.
 
 Raccolta grezza e tabelle di A e B vivono in
 `docs/experiments/overload-path-2026-09/` (README, `queue.tsv`,
-`run-queue.sh`, `raw/`), sul modello di `../baseline-2026-08/`. Nessuna cella
-è stata eseguita da questa revisione del piano — richiede Azure e va lanciato
-deliberatamente.
+`run-queue.sh`, `raw/`), sul modello di `../baseline-2026-08/`.
 
-1. Esperimento A — memoria. Nessun prerequisito di codice: le celle
-   `A-mem1024`/`A-mem512` in `queue.tsv` sono pronte, RSS e CFS arrivano già
-   da NanoLab (`container_queries`). Lanciabile subito dopo `az login`.
+1. ~~Esperimento A — memoria~~ — **fatto, 2026-09-05**. `A-mem1024`: 3/3
+   ripetizioni vive, RSS 871,3 ± 123,6 MiB. `A-mem512`: 3/3 completate ma
+   **morte a fine cella** (control plane riavviato sotto pressione di
+   memoria in ogni ripetizione) — la prima corsa era fallita del tutto su
+   un problema di automazione distinto (vedi sotto), risolto e rilanciata.
+   **Risposta: 512 MiB non regge**, 1024 MiB sì ma con margine risicato.
 2. ~~Prerequisito per B~~ — **fatto, 2026-09-04**: le due varianti
-   `jvm-loop1`/`jvm-c2-loop1` aggiunte a `control_plane_variants.py` sul
-   branch NanoLab `feature/loop-count-variants` (14 test, tutti verdi;
-   `ruff check` pulito) — non ancora unito a `main` di NanoLab. Il gauge dei
-   task pendenti per loop non serve costruirlo — esiste già, vedi
-   Prerequisito e nota di correzione del 2026-09-04.
-3. Esperimento B — JIT × event loop. La riga `B-loop-cpu1` in `queue.tsv` è
-   scommentata; richiede solo che `feature/loop-count-variants` sia unito o
-   estratto nel checkout NanoLab della corsa prima di eseguire.
+   `jvm-loop1`/`jvm-c2-loop1` aggiunte a `control_plane_variants.py`,
+   mergiate su `main` di NanoLab il 2026-09-05.
+3. ~~Esperimento B — JIT × event loop~~ — **fatto, 2026-09-05**, `B-loop-cpu1`,
+   12/12 celle vive. C2 batte ancora C1 (p99 19,7 contro 176,5 ms). Un event
+   loop batte quattro per entrambi i JIT (p99 5,4 contro 19,7 ms su C2, 72,7
+   contro 176,5 ms su C1). I due effetti si sommano: `jvm-c2-loop1` vince su
+   ogni metrica.
 4. ~~Banco locale (Esperimento C, passo 0)~~ — **fatto, 2026-09-04**, risultato
    in `docs/experiments/archive/webfilter-refusal-cost.md`: perdita
    irrilevante sul sync, vittoria netta su `:enqueue` (0,43%–0,77% di un
@@ -493,9 +493,26 @@ deliberatamente.
    piano di implementazione in
    `docs/superpowers/plans/2026-09-04-rate-limit-webfilter.md`.
 6. Corsa Azure dell'Esperimento C, **in entrambe le modalità di
-   invocazione** — il passo 0 prevede assenza di segnale in sync, ma è una
-   previsione locale da verificare su Azure, non da dare per scontata.
-   Priorità più bassa di A e B, dato che il guadagno misurato del braccio
-   che conta (`:enqueue`) è reale ma piccolo in assoluto (sotto l'1% di un
-   core).
-7. Applicare, o non applicare, la Parte I.2 e I.3 secondo B
+   invocazione** — ancora da fare. Priorità più bassa delle altre, dato che
+   il guadagno misurato del braccio che conta (`:enqueue`) è reale ma
+   piccolo in assoluto (sotto l'1% di un core).
+7. ~~Applicare, o non applicare, la Parte I.2 e I.3 secondo B~~ — **fatto,
+   2026-09-05**: entrambe applicate, B le ha confermate entrambe.
+
+### Una scoperta laterale, dalla prima corsa di A-mem512
+
+La prima corsa di `A-mem512` non ha fallito sulla memoria — è fallita
+sull'automazione: il control plane si è riavviato sotto pressione (probe di
+liveness sui default nudi di Kubernetes, `timeoutSeconds: 1`), e il
+workflow di NanoLab ha interpretato la funzione già registrata, correttamente
+riconciliata da `FunctionCatalogRestorer` al riavvio, come un conflitto
+(`409`). Due correzioni, non previste da questo piano quando è stato scritto: le
+probe di readiness/liveness del chart Helm, che giravano sui default nudi
+di Kubernetes (`timeoutSeconds: 1`, `failureThreshold: 3`) senza alcun
+override — ora `controlPlane.probes` in `values.yaml`, con più margine per
+una pausa di GC sotto pressione di memoria; e `HttpFunctionRegisterTask` in
+NanoLab reso tollerante a un `409` quando la registrazione esistente
+coincide con quella richiesta. Senza la seconda
+correzione, `A-mem512` non avrebbe mai potuto completare — e la sua stessa
+incapacità di completare sarebbe stata scambiata per "impossibile misurare"
+invece che per la risposta che è: 512 MiB non tiene.
