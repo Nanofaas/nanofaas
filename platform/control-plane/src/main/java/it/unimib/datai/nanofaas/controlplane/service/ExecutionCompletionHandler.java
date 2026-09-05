@@ -354,6 +354,17 @@ public class ExecutionCompletionHandler {
             log.warn("Retry queue full for execution {}, completing with error", executionRecord.executionId());
             executionRecord.markError(result.error());
             return FinalCompletion.retryExhausted(functionName, result);
+        } catch (RuntimeException ex) {
+            // Belt-and-braces: enqueueOrThrow only ever throws QueueFullException on its
+            // own account, but the enqueuer it wraps is pluggable (queue-backed, sync-queue,
+            // executor-backed, or a future implementation) and scheduling a retry is exactly
+            // the kind of call whose failure must never leave the record parked in QUEUED
+            // with nothing left that will ever complete it. Any other exception surfacing
+            // from the scheduling attempt gets the same terminal treatment as a full queue.
+            log.warn("Retry scheduling failed for execution {}, completing with error: {}",
+                    executionRecord.executionId(), ex.toString());
+            executionRecord.markError(result.error());
+            return FinalCompletion.retryExhausted(functionName, result);
         }
     }
 
