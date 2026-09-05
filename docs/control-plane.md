@@ -153,6 +153,48 @@ toggles of one running instance.
 registered route is present in the composed document for the module
 selection under test, so contract and routes cannot drift.
 
+## Idempotency and outcome retention
+
+A request may carry an `Idempotency-Key` header on `:invoke` and `:enqueue`.
+The key is bound to the execution it admits for the execution's whole life,
+and that binding is never allowed to become re-acquirable while the answer it
+points at could still be served.
+
+The key goes through three states, each with its own expiry derived from
+`nanofaas.execution-store`, never configured separately:
+
+- **pending** — claimed but not yet published; expires after `max-lifetime`,
+  the same ceiling as a stuck execution.
+- **published** — bound to a live execution; expires after `max-lifetime`,
+  so the key and the execution die together if the dispatch never returns.
+- **terminal** — the execution settled; this is the tombstone. Its retention
+  is `ttl` and starts at *completion*, not at publication, so a long execution
+  that completes just before `max-lifetime` still keeps its key for the full
+  outcome-readability window.
+
+Dedup and payload retention are decoupled. When an outcome is evicted for
+capacity (`max-outcomes`) before its window ends, the terminal key survives as
+a light tombstone (execution id + expiry). A replay of that key does **not**
+re-run the function: it returns an explicit `410 Gone` with the
+`X-Execution-Id` header, so the caller can tell "ran, but the answer is gone"
+from "never ran".
+
+The number of keys/tombstones is bounded by `max-keys`, separate from the
+outcome budget so a byte-budget on outcomes never silently evicts dedup
+protection. At budget exhaustion a **new** keyed admission is refused with
+`429 Too Many Requests` before dispatch; replays of keys already held remain
+serviceable.
+
+Relevant settings under `nanofaas.execution-store`:
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `ttl` | `5m` | Terminal key retention and readable-outcome retention, from completion |
+| `sync-ttl` | `30s` | Retention of an unkeyed sync outcome (answer already handed back) |
+| `max-lifetime` | `30m` | Live key/execution ceiling for a stuck dispatch |
+| `max-outcomes` | `100000` | Outcome payload budget (capacity eviction) |
+| `max-keys` | `100000` | Key/tombstone budget (refuses new keyed admissions when exhausted) |
+
 ## Build metadata
 
 `GET /modules/build-metadata` (module `build-metadata`, see

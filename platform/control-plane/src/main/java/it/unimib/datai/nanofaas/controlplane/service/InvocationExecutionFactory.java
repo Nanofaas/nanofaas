@@ -28,6 +28,14 @@ public final class InvocationExecutionFactory {
         this.metrics = metrics;
         this.executionStore = executionStore;
         this.idempotencyStore = idempotencyStore;
+        // Quando un'esecuzione si archivia, la sua chiave passa al vincolo terminale:
+        // la ritenzione terminale parte dal completamento, non dalla pubblicazione.
+        // Il record porta ancora la chiave originale anche dopo un retry interno.
+        executionStore.onTerminal(record -> {
+            if (record.idempotencyKey() != null) {
+                idempotencyStore.markTerminal(record.task().functionName(), record.idempotencyKey());
+            }
+        });
     }
 
     public ExecutionLookup createOrReuseExecution(String functionName,
@@ -59,6 +67,10 @@ public final class InvocationExecutionFactory {
                 parkPendingClaim();
                 continue;
             }
+            if (acquire.state() == AcquireResult.State.BUDGET_EXHAUSTED) {
+                // Rifiutare PRIMA del dispatch, senza toccare le chiavi gia' presenti.
+                throw new IdempotencyBudgetExhaustedException();
+            }
 
             String existingExecutionId = acquire.executionIdOrToken();
             ExecutionRecord existing = executionStore.getOrNull(existingExecutionId);
@@ -78,21 +90,33 @@ public final class InvocationExecutionFactory {
                 return ExecutionLookup.settled(existingExecutionId, settledOutcome);
             }
 
-            AcquireResult staleClaim = idempotencyStore.claimIfMatches(functionName, idempotencyKey, existingExecutionId);
-            if (staleClaim.state() == AcquireResult.State.CLAIMED) {
-                return createClaimedRecord(
-                        functionName,
-                        spec,
-                        request,
-                        idempotencyKey,
-                        traceId,
-                        kind,
-                        staleClaim.executionIdOrToken()
-                );
+            // Vincolo TERMINALE che punta a un'esecuzione ne' viva ne' archiviata:
+            // l'esecuzione si e' conclusa e il payload del suo esito e' stato espulso
+            // per capacita' prima della fine della finestra. La garanzia di
+            // deduplicazione regge comunque - il tombstone e' la chiave stessa - quindi
+            // il replay NON riesegue la funzione: torna un esito esplicito di "non piu'
+            // disponibile" (HTTP 410).
+            if (acquire.terminal()) {
+                metrics.replayed(functionName, kind);
+                return ExecutionLookup.gone(existingExecutionId);
             }
-            if (staleClaim.state() == AcquireResult.State.PENDING) {
+
+            // Vincolo PUBBLICATO che punta a un'esecuzione sparita senza essersi mai
+            // conclusa (ammissione abbandonata dopo la pubblicazione): rivendicazione
+            // stantia. Qui la chiave PUO' tornare acquisibile - la funzione non e'
+            // mai girata - quindi si rivendica e si costruisce una nuova esecuzione.
+            // La finestra che il tombstone chiude e' solo quella terminale qui sopra.
+            AcquireResult reclaimed =
+                    idempotencyStore.claimIfMatches(functionName, idempotencyKey, existingExecutionId);
+            if (reclaimed.state() == AcquireResult.State.CLAIMED) {
+                return createClaimedRecord(functionName, spec, request, idempotencyKey, traceId, kind,
+                        reclaimed.executionIdOrToken());
+            }
+            if (reclaimed.state() == AcquireResult.State.PENDING) {
                 parkPendingClaim();
             }
+            // MISSING o EXISTING: il vincolo e' cambiato nel frattempo (magari a
+            // terminale) - si rilegge dall'inizio del loop.
         }
     }
 
@@ -172,6 +196,7 @@ public final class InvocationExecutionFactory {
         private final String claimToken;
         private final Outcome settledOutcome;
         private final String settledExecutionId;
+        private final boolean gone;
         private boolean claimPublished;
 
         private ExecutionLookup(ExecutionRecord executionRecord,
@@ -182,10 +207,10 @@ public final class InvocationExecutionFactory {
                                 String idempotencyKey,
                                 String claimToken) {
             this(executionRecord, isNew, executionStore, idempotencyStore, functionName,
-                    idempotencyKey, claimToken, null, null);
+                    idempotencyKey, claimToken, null, null, false);
         }
 
-        // Nine fields of one immutable lookup result, set once and read as a whole;
+        // Ten fields of one immutable lookup result, set once and read as a whole;
         // a parameter object here would be this class under another name.
         @SuppressWarnings("java:S107")
         private ExecutionLookup(ExecutionRecord executionRecord,
@@ -196,7 +221,8 @@ public final class InvocationExecutionFactory {
                                 String idempotencyKey,
                                 String claimToken,
                                 Outcome settledOutcome,
-                                String settledExecutionId) {
+                                String settledExecutionId,
+                                boolean gone) {
             this.executionRecord = executionRecord;
             this.isNew = isNew;
             this.executionStore = executionStore;
@@ -206,6 +232,7 @@ public final class InvocationExecutionFactory {
             this.claimToken = claimToken;
             this.settledOutcome = settledOutcome;
             this.settledExecutionId = settledExecutionId;
+            this.gone = gone;
         }
 
         private static ExecutionLookup existing(ExecutionRecord executionRecord) {
@@ -214,7 +241,15 @@ public final class InvocationExecutionFactory {
 
         /** Un'esecuzione con chiave gia' finita: c'e' solo l'esito da riconsegnare. */
         private static ExecutionLookup settled(String executionId, Outcome outcome) {
-            return new ExecutionLookup(null, false, null, null, null, null, null, outcome, executionId);
+            return new ExecutionLookup(null, false, null, null, null, null, null, outcome, executionId, false);
+        }
+
+        /**
+         * La chiave e' ancora vincolata a un'esecuzione conclusa, ma il payload del suo
+         * esito e' stato espulso per capacita'. Il replay non riesegue la funzione.
+         */
+        private static ExecutionLookup gone(String executionId) {
+            return new ExecutionLookup(null, false, null, null, null, null, null, null, executionId, true);
         }
 
         private static ExecutionLookup newUnclaimed(ExecutionRecord executionRecord, ExecutionStore executionStore) {
@@ -241,6 +276,11 @@ public final class InvocationExecutionFactory {
 
         public String settledExecutionId() {
             return settledExecutionId;
+        }
+
+        /** Non null solo quando la chiave ha trovato un'esecuzione conclusa il cui payload e' stato espulso. */
+        public boolean gone() {
+            return gone;
         }
 
         public boolean isNew() {

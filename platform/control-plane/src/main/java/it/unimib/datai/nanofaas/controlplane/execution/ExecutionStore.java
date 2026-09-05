@@ -70,6 +70,16 @@ public class ExecutionStore {
      */
     private volatile Consumer<ExecutionRecord> expiryListener = record -> { };
 
+    /**
+     * Chi va avvertito quando un record terminale viene archiviato con
+     * {@link #settle} - l'istante da cui parte la ritenzione terminale della chiave
+     * di idempotenza. Di default nessuno. {@code InvocationExecutionFactory}
+     * registra qui {@code IdempotencyStore}, perche' il vincolo della chiave deve
+     * passare dallo stato "vivo" a quello "terminale" esattamente quando l'esito
+     * esce dai vivi, senza finestre in cui la stessa chiave torni acquisibile.
+     */
+    private volatile Consumer<ExecutionRecord> terminalListener = record -> { };
+
     public ExecutionStore() {
         this(ExecutionStoreProperties.of(null, null, null));
     }
@@ -90,8 +100,8 @@ public class ExecutionStore {
         this(properties, Ticker.systemTicker());
     }
 
-    /** Pacchetto-privato: le prove di sfratto muovono l'orologio invece di dormire. */
-    ExecutionStore(ExecutionStoreProperties properties, Ticker ticker) {
+    /** Le prove di sfratto muovono l'orologio invece di dormire; public per i test nel package service. */
+    public ExecutionStore(ExecutionStoreProperties properties, Ticker ticker) {
         this.inFlight = Caffeine.newBuilder()
                 .expireAfterWrite(properties.maxLifetime())
                 .ticker(ticker)
@@ -128,6 +138,15 @@ public class ExecutionStore {
      */
     public void onAdministrativeExpiry(Consumer<ExecutionRecord> listener) {
         this.expiryListener = Objects.requireNonNull(listener, "listener");
+    }
+
+    /**
+     * Registra chi transita la chiave al vincolo terminale quando un'esecuzione si
+     * archivia. Non additivo: l'ultima registrazione vince, come per ogni singleton
+     * Spring che si registra una volta sola all'avvio.
+     */
+    public void onTerminal(Consumer<ExecutionRecord> listener) {
+        this.terminalListener = Objects.requireNonNull(listener, "listener");
     }
 
     /** Quanti esiti sono archiviati adesso. */
@@ -178,6 +197,11 @@ public class ExecutionStore {
         String executionId = executionRecord.executionId();
         outcomes.put(executionId, executionRecord.toOutcome());
         inFlight.invalidate(executionId);
+        // Dopo l'archivio, e non prima: solo adesso l'esito e' servibile, ed e' da
+        // qui che parte la ritenzione terminale della chiave. Invertire l'ordine
+        // riaprirebbe la finestra in cui la chiave e' gia' terminale mentre l'esito
+        // non e' ancora visibile ai replay.
+        terminalListener.accept(executionRecord);
     }
 
     public void remove(String executionId) {

@@ -9,7 +9,9 @@ import it.unimib.datai.nanofaas.controlplane.offload.OffloadContext;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionNotFoundException;
 import it.unimib.datai.nanofaas.controlplane.service.AsyncQueueUnavailableException;
+import it.unimib.datai.nanofaas.controlplane.service.IdempotencyBudgetExhaustedException;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
+import it.unimib.datai.nanofaas.controlplane.service.OutcomeGoneException;
 import it.unimib.datai.nanofaas.controlplane.service.SyncInvocation;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
@@ -91,7 +93,11 @@ public class InvocationController {
                 .onErrorResume(QueueFullException.class, ex ->
                         Mono.just(tooManyRequests()))
                 .onErrorResume(OffloadFailedException.class, ex ->
-                        Mono.just(offloadFailed(ex)));
+                        Mono.just(offloadFailed(ex)))
+                .onErrorResume(OutcomeGoneException.class, ex ->
+                        Mono.just(outcomeGone(ex)))
+                .onErrorResume(IdempotencyBudgetExhaustedException.class, ex ->
+                        Mono.just(tooManyRequests()));
     }
 
     private static ResponseEntity<InvocationResponse> toResponse(SyncInvocation invocation) {
@@ -150,6 +156,10 @@ public class InvocationController {
                 .onErrorResume(AsyncQueueUnavailableException.class, ex ->
                         Mono.just(ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).<InvocationResponse>build()))
                 .onErrorResume(QueueFullException.class, ex ->
+                        Mono.just(tooManyRequests()))
+                .onErrorResume(OutcomeGoneException.class, ex ->
+                        Mono.just(outcomeGone(ex)))
+                .onErrorResume(IdempotencyBudgetExhaustedException.class, ex ->
                         Mono.just(tooManyRequests()));
     }
 
@@ -197,6 +207,12 @@ public class InvocationController {
                 // Locale.ROOT, not the default locale: TIMEOUT contains 'I', which folds to
                 // dotless 'ı' under a Turkish/Azerbaijani default — this is a wire header value.
                 .header("X-Queue-Reject-Reason", ex.reason().name().toLowerCase(Locale.ROOT))
+                .build();
+    }
+
+    private static ResponseEntity<InvocationResponse> outcomeGone(OutcomeGoneException ex) {
+        return ResponseEntity.status(HttpStatus.GONE)
+                .header("X-Execution-Id", ex.executionId())
                 .build();
     }
 

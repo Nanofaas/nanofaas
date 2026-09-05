@@ -33,16 +33,23 @@ public record ExecutionStoreProperties(
         Duration ttl,
         Duration maxLifetime,
         Duration syncTtl,
-        long maxOutcomes
+        long maxOutcomes,
+        long maxKeys
 ) {
     private static final long DEFAULT_MAX_OUTCOMES = 100_000;
+    private static final long DEFAULT_MAX_KEYS = 100_000;
 
     /**
      * Fabbrica, non costruttore: con due costruttori Spring smette di legare il
      * record per costruttore e cerca quello senza argomenti, che un record non ha.
      */
     public static ExecutionStoreProperties of(Duration ttl, Duration maxLifetime, Duration syncTtl) {
-        return new ExecutionStoreProperties(ttl, maxLifetime, syncTtl, DEFAULT_MAX_OUTCOMES);
+        return new ExecutionStoreProperties(ttl, maxLifetime, syncTtl, DEFAULT_MAX_OUTCOMES, DEFAULT_MAX_KEYS);
+    }
+
+    /** Fabbrica, non costruttore: i test che costruiscono lo store con il solo tetto degli esiti. */
+    public static ExecutionStoreProperties of(Duration ttl, Duration maxLifetime, Duration syncTtl, long maxOutcomes) {
+        return new ExecutionStoreProperties(ttl, maxLifetime, syncTtl, maxOutcomes, DEFAULT_MAX_KEYS);
     }
 
     public ExecutionStoreProperties {
@@ -57,6 +64,9 @@ public record ExecutionStoreProperties(
         }
         if (maxOutcomes <= 0) {
             maxOutcomes = DEFAULT_MAX_OUTCOMES;
+        }
+        if (maxKeys <= 0) {
+            maxKeys = DEFAULT_MAX_KEYS;
         }
         // Non ha senso tenere piu' a lungo cio' che nessuno puo' leggere.
         if (syncTtl.compareTo(ttl) > 0) {

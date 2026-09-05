@@ -65,6 +65,13 @@ public final class ReactiveInvocationCoordinator {
                     responseMapper.terminalResponse(lookup.settledExecutionId(), settled)));
         }
 
+        // L'esecuzione e' conclusa ma il payload del suo esito e' stato espulso: il
+        // replay non riesegue la funzione, torna 410 Gone. Va controllato prima di
+        // dereferenziare executionRecord, che la factory lascia null su questo ramo.
+        if (lookup.gone()) {
+            return Mono.error(new OutcomeGoneException(lookup.settledExecutionId()));
+        }
+
         ExecutionRecord executionRecord = lookup.executionRecord();
         InvocationResponse replay = responseMapper.terminalResponse(executionRecord);
         if (replay != null) {

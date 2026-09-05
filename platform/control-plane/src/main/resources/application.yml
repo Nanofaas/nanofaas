@@ -55,6 +55,12 @@ nanofaas:
     # al tasso di arrivo: il 2026-08-23 erano 1,05 GB e il 50,6% del tempo in GC.
     # Un esito compatto misura 116 byte, quindi questo tetto costa circa 12 MB.
     max-outcomes: 100000
+    # Il tetto in numero per le chiavi di idempotenza (vincoli e tombstone), separato
+    # dal budget degli esiti: espellere un esito per capacita' non deve mai espellere
+    # la deduplicazione. A budget esaurito una NUOVA ammissione con chiave viene
+    # rifiutata (429) prima del dispatch; i replay delle chiavi gia' presenti restano
+    # servibili. Dimensionarlo come `tasso di ammissioni con chiave x (maxLifetime + ttl)`.
+    max-keys: 100000
   defaults:
     timeoutMs: 30000
     concurrency: 4

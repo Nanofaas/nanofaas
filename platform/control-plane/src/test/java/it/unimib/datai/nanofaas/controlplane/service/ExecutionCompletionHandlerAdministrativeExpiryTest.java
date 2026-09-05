@@ -127,7 +127,7 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
 
     private static ExecutionStore shortLivedStore() {
         return new ExecutionStore(
-                new ExecutionStoreProperties(Duration.ofMinutes(5), SHORT_MAX_LIFETIME, Duration.ofSeconds(30), 100_000),
+                ExecutionStoreProperties.of(Duration.ofMinutes(5), SHORT_MAX_LIFETIME, Duration.ofSeconds(30), 100_000),
                 new SimpleMeterRegistry());
     }
 

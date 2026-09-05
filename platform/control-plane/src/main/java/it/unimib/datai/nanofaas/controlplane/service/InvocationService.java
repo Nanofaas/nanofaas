@@ -138,6 +138,12 @@ public class InvocationService {
             return responseMapper.terminalResponse(lookup.settledExecutionId(), settled);
         }
 
+        // Esito espulso per capacita': il replay non riesegue la funzione, torna 410.
+        // Come per il ramo sync, va controllato prima di dereferenziare executionRecord.
+        if (lookup.gone()) {
+            throw new OutcomeGoneException(lookup.settledExecutionId());
+        }
+
         ExecutionRecord executionRecord = lookup.executionRecord();
 
         // replay is a component that checks if the execution has already completed and returns the appropriate response if so.

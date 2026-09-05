@@ -191,8 +191,15 @@ paths:
           description: Function not registered
         '408':
           description: Invocation timed out. The execution is terminal and will remain in `timeout` if later inspected via `GET /v1/executions/{executionId}`.
+        '410':
+          description: |
+            The invocation already completed under this `Idempotency-Key`, but its
+            outcome payload was evicted for capacity before the retention window
+            ended. The function was NOT re-invoked: the deduplication guarantee
+            holds, only the stored result is gone. The `X-Execution-Id` header names
+            the completed execution.
         '429':
-          description: Too many requests. Returned for rate limiting and queue/admission backpressure on the synchronous invoke path.
+          description: Too many requests. Returned for rate limiting, queue/admission backpressure, and an exhausted idempotency-key budget on the synchronous invoke path.
         '500':
           description: Invocation failed
 
@@ -217,6 +224,14 @@ paths:
       responses:
         '404':
           description: Function not registered
+        '410':
+          description: |
+            The invocation already completed under this `Idempotency-Key`, but its
+            outcome payload was evicted for capacity before the retention window
+            ended. The function was NOT re-invoked; the `X-Execution-Id` header names
+            the completed execution.
+        '429':
+          description: Too many requests. Returned for queue/admission backpressure and an exhausted idempotency-key budget on the asynchronous enqueue path.
         '501':
           description: The async-queue module is not part of this build, so the asynchronous path is unavailable.
 
@@ -258,7 +273,13 @@ components:
       required: false
       schema:
         type: string
-      description: Client-provided key to deduplicate requests.
+      description: |
+        Client-provided key to deduplicate requests. A key stays bound to its
+        execution for the execution's whole life and for
+        `nanofaas.execution-store.ttl` after it completes. A replay within that
+        window returns the stored outcome — or `410 Gone` if the outcome payload
+        was evicted for capacity — instead of re-invoking the function. After the
+        window elapses the same key may start a new execution.
     TraceId:
       name: X-Trace-Id
       in: header

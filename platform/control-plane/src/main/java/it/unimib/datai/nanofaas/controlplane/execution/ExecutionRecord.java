@@ -40,6 +40,16 @@ public class ExecutionRecord {
      */
     private final boolean readableAfterFinishing;
 
+    /**
+     * The idempotency key this execution was admitted under, captured once at
+     * construction and deliberately not read back from the current task: a retry
+     * replaces the task with one whose key is null (the retry is internal and must
+     * not claim the key again), so asking the task later would lose the very key the
+     * {@link IdempotencyStore} must keep bound until completion. Null for unkeyed
+     * executions.
+     */
+    private final String idempotencyKey;
+
     // Guarded by 'this' - all mutable state is accessed under synchronization
     private InvocationTask task;
     private ExecutionState state;
@@ -60,6 +70,9 @@ public class ExecutionRecord {
         this.task = task;
         this.readableAfterFinishing = task.kind() == InvocationKind.ASYNC
                 || (task.idempotencyKey() != null && !task.idempotencyKey().isBlank());
+        this.idempotencyKey = (task.idempotencyKey() != null && !task.idempotencyKey().isBlank())
+                ? task.idempotencyKey()
+                : null;
         this.completion = new CompletableFuture<>();
         this.state = ExecutionState.QUEUED;
     }
@@ -71,6 +84,11 @@ public class ExecutionRecord {
     /** See {@link #readableAfterFinishing}. */
     public boolean readableAfterFinishing() {
         return readableAfterFinishing;
+    }
+
+    /** The key the execution was admitted under, stable across internal retries; null if unkeyed. */
+    public String idempotencyKey() {
+        return idempotencyKey;
     }
 
     public CompletableFuture<InvocationResult> completion() {

@@ -103,7 +103,7 @@ class ExecutionStoreAdministrativeExpiryTest {
     @Test
     void expiryFiresOnItsOwnWithoutAnyFurtherCacheActivity() {
         ExecutionStore store = new ExecutionStore(
-                new ExecutionStoreProperties(TTL, Duration.ofMillis(80), SYNC_TTL, 100_000),
+                ExecutionStoreProperties.of(TTL, Duration.ofMillis(80), SYNC_TTL, 100_000),
                 new SimpleMeterRegistry());
         ConcurrentLinkedQueue<ExecutionRecord> notified = new ConcurrentLinkedQueue<>();
         store.onAdministrativeExpiry(notified::add);

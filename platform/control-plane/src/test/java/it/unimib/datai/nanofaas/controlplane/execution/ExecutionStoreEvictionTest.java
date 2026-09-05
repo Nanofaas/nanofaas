@@ -122,7 +122,7 @@ class ExecutionStoreEvictionTest {
         // La ritenzione dichiarata nel tempo lascia crescere la memoria col tasso
         // di arrivo: e' cosi' che il 2026-08-23 si arrivo' a 1,05 GB. Il tetto in
         // numero e' la manopola che allora non esisteva.
-        ExecutionStore store = store(new ExecutionStoreProperties(TTL, MAX_LIFETIME, SYNC_TTL, 10));
+        ExecutionStore store = store(ExecutionStoreProperties.of(TTL, MAX_LIFETIME, SYNC_TTL, 10));
 
         for (int i = 0; i < 500; i++) {
             ExecutionRecord execution = executionRecord("exec-" + i);

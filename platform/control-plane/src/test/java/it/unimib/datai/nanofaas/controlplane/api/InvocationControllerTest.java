@@ -9,7 +9,9 @@ import it.unimib.datai.nanofaas.controlplane.registry.FunctionNotFoundException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.controlplane.service.AsyncQueueUnavailableException;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
+import it.unimib.datai.nanofaas.controlplane.service.IdempotencyBudgetExhaustedException;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
+import it.unimib.datai.nanofaas.controlplane.service.OutcomeGoneException;
 import it.unimib.datai.nanofaas.controlplane.service.SyncInvocation;
 import it.unimib.datai.nanofaas.controlplane.service.RateLimiter;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
@@ -496,5 +498,67 @@ class InvocationControllerTest {
                         """)
                 .exchange()
                 .expectStatus().isNoContent();
+    }
+
+    @Test
+    void invokeSync_outcomeGone_mapsTo410WithExecutionId() {
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq("k"), eq(null), eq(null), any()))
+                .thenReturn(Mono.error(new OutcomeGoneException("exec-gone")));
+
+        webClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("Idempotency-Key", "k")
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isEqualTo(410)
+                .expectHeader().valueEquals("X-Execution-Id", "exec-gone");
+    }
+
+    @Test
+    void invokeSync_keyBudgetExhausted_mapsTo429() {
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq("k"), eq(null), eq(null), any()))
+                .thenReturn(Mono.error(new IdempotencyBudgetExhaustedException()));
+
+        webClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("Idempotency-Key", "k")
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isEqualTo(429);
+    }
+
+    @Test
+    void invokeAsync_outcomeGone_mapsTo410WithExecutionId() {
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        when(invocationService.invokeAsync(eq("echo"), any(), eq("k"), eq(null)))
+                .thenThrow(new OutcomeGoneException("exec-gone-async"));
+
+        webClient.post()
+                .uri("/v1/functions/echo:enqueue")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("Idempotency-Key", "k")
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isEqualTo(410)
+                .expectHeader().valueEquals("X-Execution-Id", "exec-gone-async");
+    }
+
+    @Test
+    void invokeAsync_keyBudgetExhausted_mapsTo429() {
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        when(invocationService.invokeAsync(eq("echo"), any(), eq("k"), eq(null)))
+                .thenThrow(new IdempotencyBudgetExhaustedException());
+
+        webClient.post()
+                .uri("/v1/functions/echo:enqueue")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("Idempotency-Key", "k")
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isEqualTo(429);
     }
 }

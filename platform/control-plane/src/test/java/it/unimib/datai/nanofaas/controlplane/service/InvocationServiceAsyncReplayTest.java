@@ -5,10 +5,12 @@ import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResponse;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
+import it.unimib.datai.nanofaas.controlplane.config.ExecutionStoreProperties;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,9 +21,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.time.Duration;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
@@ -223,5 +227,35 @@ class InvocationServiceAsyncReplayTest {
         // Exactly one enqueue across all three calls: only the original admission.
         verify(enqueuer, times(1)).enqueue(any());
         verify(metrics, times(1)).admitted(anyString(), any());
+    }
+
+    @Test
+    void invokeAsync_replayOfEvictedOutcome_throwsOutcomeGoneInsteadOfReEnqueueing() {
+        // One outcome slot: the second execution evicts the first outcome for capacity,
+        // before its retention window ends. The key binding must still hold, so the
+        // replay must NOT re-run the function.
+        executionStore = new ExecutionStore(
+                ExecutionStoreProperties.of(Duration.ofMinutes(5), Duration.ofMinutes(30), Duration.ofSeconds(30), 1),
+                new SimpleMeterRegistry());
+        idempotencyStore = new IdempotencyStore();
+        ExecutionCompletionHandler completionHandler = new ExecutionCompletionHandler(
+                executionStore, enqueuer, dispatcherRouter, metrics);
+        invocationService = new InvocationService(
+                functionService, enqueuer, executionStore, idempotencyStore, metrics, syncQueueGateway, completionHandler);
+
+        ExecutionRecord first = queueAndSettleSuccess("idem-gone", "first");
+        queueAndSettleSuccess("idem-other", "second");
+        // size() calls cleanUp(): Caffeine's capacity eviction is deferred, and
+        // getIfPresent would still see the victim until the maintenance drains.
+        assertThat(executionStore.size()).isEqualTo(1);
+        assertThat(executionStore.outcomeOf(first.executionId())).isNull();
+
+        assertThatThrownBy(() -> invocationService.invokeAsync(
+                "testFunc", new InvocationRequest("payload", null), "idem-gone", null))
+                .isInstanceOf(OutcomeGoneException.class)
+                .hasMessageContaining(first.executionId());
+
+        // Exactly two admissions (the two originals); the replay enqueued nothing.
+        verify(enqueuer, times(2)).enqueue(any());
     }
 }
