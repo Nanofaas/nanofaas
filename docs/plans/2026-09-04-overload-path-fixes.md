@@ -233,6 +233,18 @@ che potrebbe essere un artefatto di un bug già corretto.
 `-XX:TieredStopAtLevel=1`. (Le build native non hanno un default JIT da
 allineare — sono AOT, `-XX:TieredStopAtLevel` non le riguarda.)
 
+**Cosa NON è stato rivalidato: seriale contro G1.** Le quattro celle di
+`B-loop-cpu1` (`jvm`, `jvm-c2`, `jvm-loop1`, `jvm-c2-loop1`) sono tutte a
+`UseSerialGC` — nessuna usa G1. Il confronto seriale/G1 resta quello unico
+di agosto (righe `jvm-g1`/`jvm-g1-c2` nella tabella sopra), sotto lo stesso
+sospetto di artefatto da pressione GC che ha motivato tutta questa
+revalidazione: quelle corse precedono il fix dell'ExecutionStore quanto la
+riga `jvm`/`jvm-c2`. Non era mai stato in discussione in questo piano — il
+Dockerfile aveva `UseSerialGC` prima e ce l'ha dopo — ma "non cambiato"
+non è lo stesso di "rivalidato". Se la scelta del collettore diventa di
+nuovo una domanda aperta, va misurata da capo con lo stesso metodo, non
+data per buona sulla base della tabella di agosto.
+
 ---
 
 # Parte II — Gli esperimenti
