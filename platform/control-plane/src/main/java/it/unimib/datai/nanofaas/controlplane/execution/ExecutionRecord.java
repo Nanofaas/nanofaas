@@ -65,9 +65,34 @@ public class ExecutionRecord {
     private String encoding;
     private final Set<Integer> releasedDispatchAttempts = new HashSet<>();
 
+    private final TimeSource timeSource;
+
+    /**
+     * The instant the caller was admitted, and its monotonic counterpart. Deliberately final and
+     * separate from {@code task.enqueuedAt()}: a retry replaces the task (and with it the enqueue
+     * instant of the current attempt), but the invocation began here and its end-to-end duration
+     * must be measured from here, retries included.
+     */
+    private final Instant admittedAt;
+    private final long admittedAtNanos;
+
+    /** Monotonic enqueue instant of the current attempt (the first attempt is the admission itself). */
+    private long attemptEnqueuedAtNanos;
+    /** Monotonic dispatch/completion instants of the current attempt. */
+    private Long startedAtNanos;
+    private Long finishedAtNanos;
+
+    /** Whether the end-to-end conclusion has already been recorded for this invocation. */
+    private boolean metricsRecorded;
+
     public ExecutionRecord(String executionId, InvocationTask task) {
+        this(executionId, task, TimeSource.system());
+    }
+
+    public ExecutionRecord(String executionId, InvocationTask task, TimeSource timeSource) {
         this.executionId = executionId;
         this.task = task;
+        this.timeSource = timeSource;
         this.readableAfterFinishing = task.kind() == InvocationKind.ASYNC
                 || (task.idempotencyKey() != null && !task.idempotencyKey().isBlank());
         this.idempotencyKey = (task.idempotencyKey() != null && !task.idempotencyKey().isBlank())
@@ -75,6 +100,9 @@ public class ExecutionRecord {
                 : null;
         this.completion = new CompletableFuture<>();
         this.state = ExecutionState.QUEUED;
+        this.admittedAt = task.enqueuedAt();
+        this.admittedAtNanos = timeSource.nanoTime();
+        this.attemptEnqueuedAtNanos = this.admittedAtNanos;
     }
 
     public String executionId() {
@@ -104,6 +132,7 @@ public class ExecutionRecord {
                 executionId,
                 task,
                 state,
+                admittedAt,
                 startedAt,
                 finishedAt,
                 dispatchedAt,
@@ -140,7 +169,7 @@ public class ExecutionRecord {
     public synchronized Outcome toOutcome() {
         return new Outcome(
                 state,
-                Outcome.epochMilli(startedAt),
+                Outcome.epochMilli(admittedAt),
                 Outcome.epochMilli(finishedAt),
                 readableAfterFinishing ? output : null,
                 lastError,
@@ -179,7 +208,8 @@ public class ExecutionRecord {
             return;
         }
         this.state = ExecutionState.RUNNING;
-        this.startedAt = Instant.now();
+        this.startedAt = timeSource.instant();
+        this.startedAtNanos = timeSource.nanoTime();
     }
 
     /**
@@ -199,7 +229,8 @@ public class ExecutionRecord {
             return;
         }
         this.state = ExecutionState.SUCCESS;
-        this.finishedAt = Instant.now();
+        this.finishedAt = timeSource.instant();
+        this.finishedAtNanos = timeSource.nanoTime();
         this.output = output;
         this.lastError = null;
         this.statusCode = statusCode;
@@ -215,7 +246,8 @@ public class ExecutionRecord {
             return;
         }
         this.state = ExecutionState.ERROR;
-        this.finishedAt = Instant.now();
+        this.finishedAt = timeSource.instant();
+        this.finishedAtNanos = timeSource.nanoTime();
         this.lastError = error;
         this.output = null;
     }
@@ -228,14 +260,15 @@ public class ExecutionRecord {
             return;
         }
         this.state = ExecutionState.TIMEOUT;
-        this.finishedAt = Instant.now();
+        this.finishedAt = timeSource.instant();
+        this.finishedAtNanos = timeSource.nanoTime();
     }
 
     /**
      * Marks the dispatch time for queue wait calculation.
      */
     public synchronized void markDispatchedAt() {
-        this.dispatchedAt = Instant.now();
+        this.dispatchedAt = timeSource.instant();
     }
 
     /**
@@ -258,6 +291,10 @@ public class ExecutionRecord {
         this.startedAt = null;
         this.finishedAt = null;
         this.dispatchedAt = null;
+        this.startedAtNanos = null;
+        this.finishedAtNanos = null;
+        // The retry is a fresh enqueue: its wait starts now, not at the original admission.
+        this.attemptEnqueuedAtNanos = timeSource.nanoTime();
         this.lastError = null;
         this.output = null;
         this.coldStart = false;
@@ -299,6 +336,46 @@ public class ExecutionRecord {
         return finishedAt;
     }
 
+    /**
+     * The instant the caller was admitted. Survives retries: {@link #startedAt()} is the current
+     * attempt's dispatch instant, while this is the invocation's true start.
+     */
+    public synchronized Instant admittedAt() {
+        return admittedAt;
+    }
+
+    /** Monotonic admission instant, for end-to-end duration computation. */
+    public synchronized long admittedAtNanos() {
+        return admittedAtNanos;
+    }
+
+    /** Monotonic enqueue instant of the current attempt, for its wait computation. */
+    public synchronized long attemptEnqueuedAtNanos() {
+        return attemptEnqueuedAtNanos;
+    }
+
+    public synchronized Long startedAtNanos() {
+        return startedAtNanos;
+    }
+
+    public synchronized Long finishedAtNanos() {
+        return finishedAtNanos;
+    }
+
+    /**
+     * Records that the end-to-end conclusion for this invocation has been emitted.
+     *
+     * @return true the first time this is called, false on duplicates — the guard that keeps a
+     *     late dispatch callback racing a sync timeout from double-sampling the duration.
+     */
+    public synchronized boolean markMetricsRecorded() {
+        if (metricsRecorded) {
+            return false;
+        }
+        metricsRecorded = true;
+        return true;
+    }
+
     public synchronized boolean isTerminal() {
         return isTerminalState(state);
     }
@@ -318,6 +395,7 @@ public class ExecutionRecord {
             String executionId,
             InvocationTask task,
             ExecutionState state,
+            Instant admittedAt,
             Instant startedAt,
             Instant finishedAt,
             Instant dispatchedAt,

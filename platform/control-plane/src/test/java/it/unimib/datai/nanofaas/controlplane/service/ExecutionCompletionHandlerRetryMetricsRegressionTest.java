@@ -9,12 +9,11 @@ import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
+import it.unimib.datai.nanofaas.controlplane.execution.MutableClock;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -52,37 +51,40 @@ class ExecutionCompletionHandlerRetryMetricsRegressionTest {
                 "testFunc", "test-image", List.of(), Map.of(), null,
                 30000, 4, 100, 3, null, ExecutionMode.LOCAL, null, null, null);
 
-        // The caller was admitted 10 seconds ago; this is the enqueue time a correct e2e
-        // measurement must be computed from, retries included.
-        Instant originalAdmission = Instant.now().minus(10, ChronoUnit.SECONDS);
+        // The caller was admitted 10 seconds before the first attempt even failed, and the retry
+        // itself took another second. The end-to-end measurement must be computed from the
+        // ORIGINAL admission, retries and their waits included — not from the retry's own enqueue.
+        MutableClock clock = new MutableClock(1_000_000L, 0L);
         InvocationTask originalTask = new InvocationTask(
                 "exec-retry-e2e", "testFunc", spec,
                 new InvocationRequest("payload", null),
-                null, null, originalAdmission, 1, InvocationKind.SYNC);
-        ExecutionRecord executionRecord = new ExecutionRecord("exec-retry-e2e", originalTask);
+                null, null, clock.instant(), 1, InvocationKind.SYNC);
+        ExecutionRecord executionRecord = new ExecutionRecord("exec-retry-e2e", originalTask, clock.source());
         executionStore.put(executionRecord);
 
         when(enqueuer.enqueue(any())).thenReturn(true);
 
-        // Attempt 1 fails -> retried. handleRetry stamps the retry task with Instant.now(),
-        // discarding originalAdmission.
+        // The original caller waited 10 seconds before the first attempt was even dispatched.
+        clock.advanceMillis(10_000);
+        // Attempt 1 fails -> retried. resetForRetry stamps the retry attempt's enqueue with the
+        // steered "now" (10s after admission), discarding nothing about the admission itself.
         completionHandler.completeExecution("exec-retry-e2e", InvocationResult.error("ERROR", "attempt 1 failed"));
         assertThat(executionRecord.completion().isDone()).isFalse();
         assertThat(executionRecord.task().attempt()).isEqualTo(2);
 
-        // Attempt 2 (the retry) succeeds essentially immediately.
+        // The retry runs for another second and succeeds.
+        clock.advanceMillis(1_000);
         completionHandler.completeExecution("exec-retry-e2e", InvocationResult.success("ok"));
         assertThat(executionRecord.completion().isDone()).isTrue();
 
         Timer e2eTimer = metrics.e2eLatency("testFunc");
         double recordedE2eMs = e2eTimer.totalTime(TimeUnit.MILLISECONDS);
 
-        // BUG (still reproduces on current code): the recorded e2e latency is computed from
-        // the retry's own enqueuedAt (just now), not the original admission 10s ago, so it
-        // comes back near-zero instead of reflecting the ~10s the caller actually waited.
+        // BUG (reproduced on the pre-fix code): the recorded e2e latency was computed from the
+        // retry's own enqueuedAt, so it came back near 1s instead of the ~11s the caller waited.
         assertThat(recordedE2eMs)
                 .as("end-to-end latency must be measured from the original admission time, "
-                        + "including any retries, not just the last attempt")
-                .isGreaterThanOrEqualTo(9_000.0);
+                        + "including any retries and their waits, not just the last attempt")
+                .isGreaterThanOrEqualTo(11_000.0);
     }
 }

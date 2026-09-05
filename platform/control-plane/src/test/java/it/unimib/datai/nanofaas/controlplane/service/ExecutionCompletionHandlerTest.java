@@ -253,7 +253,7 @@ class ExecutionCompletionHandlerTest {
         completionHandler.completeExecution("exec-count", InvocationResult.success("result"));
 
         assertThat(executionRecord.snapshotReads()).isZero();
-        assertThat(executionRecord.finishedAtReads()).isEqualTo(1);
+        assertThat(executionRecord.finishedAtNanosReads()).isEqualTo(1);
     }
 
     @Test
@@ -389,7 +389,7 @@ class ExecutionCompletionHandlerTest {
 
     private static final class CountingExecutionRecord extends ExecutionRecord {
         private final AtomicInteger snapshotReads = new AtomicInteger();
-        private final AtomicInteger finishedAtReads = new AtomicInteger();
+        private final AtomicInteger finishedAtNanosReads = new AtomicInteger();
 
         private CountingExecutionRecord(String executionId, InvocationTask task) {
             super(executionId, task);
@@ -402,17 +402,17 @@ class ExecutionCompletionHandlerTest {
         }
 
         @Override
-        public synchronized Instant finishedAt() {
-            finishedAtReads.incrementAndGet();
-            return super.finishedAt();
+        public synchronized Long finishedAtNanos() {
+            finishedAtNanosReads.incrementAndGet();
+            return super.finishedAtNanos();
         }
 
         int snapshotReads() {
             return snapshotReads.get();
         }
 
-        int finishedAtReads() {
-            return finishedAtReads.get();
+        int finishedAtNanosReads() {
+            return finishedAtNanosReads.get();
         }
     }
 }

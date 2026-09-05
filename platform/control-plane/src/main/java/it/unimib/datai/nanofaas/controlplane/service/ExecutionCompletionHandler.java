@@ -259,6 +259,12 @@ public class ExecutionCompletionHandler {
             // idempotenza che ha un budget suo, deve ricevere la risposta vera invece
             // di aspettare invano fino al proprio timeout. complete() su una future
             // gia' completata non fa nulla, quindi non puo' sovrascrivere niente.
+            //
+            // Questo e' anche il momento in cui la conclusione end-to-end del timeout
+            // viene registrata una sola volta: il totale (ammissione -> timeout) e' reale
+            // e misurabile, il tempo di servizio no (il dispatch era ancora in volo), quindi
+            // si registra solo il totale, mai un campione di servizio censurato.
+            recordTerminalConclusionOnce(executionRecord);
             executionRecord.completion().complete(dispatchResult.result());
         }
         // Ultimo, e fuori dal monitor: completeUnderLock rilascia lo slot di dispatch
@@ -301,28 +307,37 @@ public class ExecutionCompletionHandler {
             return handleRetry(executionRecord, currentTask, result);
         }
 
-        Instant enqueuedAt = currentTask.enqueuedAt();
-        Instant startedAt = executionRecord.startedAt();
         if (result.success()) {
             executionRecord.markSuccess(result.output(), result.statusCode(),
                     result.headers(), result.encoding());
         } else {
             executionRecord.markError(result.error());
         }
-        Instant finishedAt = executionRecord.finishedAt();
         if (dispatchResult.coldStart()) {
             executionRecord.markColdStart(dispatchResult.initDurationMs() != null ? dispatchResult.initDurationMs() : 0);
         }
 
-        Long latencyMs = elapsedMs(startedAt, finishedAt);
-        Long queueWaitMs = elapsedMs(enqueuedAt, startedAt);
-        Long e2eMs = elapsedMs(enqueuedAt, finishedAt);
+        // Durations are monotonic, not wall-clock diffs: an NTP step between admission and
+        // completion must not fabricate a latency sample. Service time is this attempt's
+        // dispatch-to-completion, wait is this attempt's enqueue-to-dispatch, and the total is
+        // the ORIGINAL admission to completion — retries and their waits included.
+        Long finishedAtNanos = executionRecord.finishedAtNanos();
+        Long startedAtNanos = executionRecord.startedAtNanos();
+        Long latencyMs = (startedAtNanos != null && finishedAtNanos != null)
+                ? nanosToMs(startedAtNanos, finishedAtNanos)
+                : null;
+        Long queueWaitMs = startedAtNanos == null
+                ? null
+                : nanosToMs(executionRecord.attemptEnqueuedAtNanos(), startedAtNanos);
+        Long e2eMs = finishedAtNanos == null
+                ? null
+                : nanosToMs(executionRecord.admittedAtNanos(), finishedAtNanos);
         return new FinalCompletion(functionName, result, latencyMs, queueWaitMs, e2eMs,
                 dispatchResult.coldStart(), dispatchResult.initDurationMs(), false);
     }
 
-    private static Long elapsedMs(Instant start, Instant end) {
-        return (start != null && end != null) ? end.toEpochMilli() - start.toEpochMilli() : null;
+    private static Long nanosToMs(long startNanos, long endNanos) {
+        return TimeUnit.NANOSECONDS.toMillis(endNanos - startNanos);
     }
 
     /**
@@ -352,8 +367,7 @@ public class ExecutionCompletionHandler {
             return null;
         } catch (QueueFullException _) {
             log.warn("Retry queue full for execution {}, completing with error", executionRecord.executionId());
-            executionRecord.markError(result.error());
-            return FinalCompletion.retryExhausted(functionName, result);
+            return retryExhaustedUnderLock(executionRecord, functionName, result);
         } catch (RuntimeException ex) {
             // Belt-and-braces: enqueueOrThrow only ever throws QueueFullException on its
             // own account, but the enqueuer it wraps is pluggable (queue-backed, sync-queue,
@@ -363,9 +377,21 @@ public class ExecutionCompletionHandler {
             // from the scheduling attempt gets the same terminal treatment as a full queue.
             log.warn("Retry scheduling failed for execution {}, completing with error: {}",
                     executionRecord.executionId(), ex.toString());
-            executionRecord.markError(result.error());
-            return FinalCompletion.retryExhausted(functionName, result);
+            return retryExhaustedUnderLock(executionRecord, functionName, result);
         }
+    }
+
+    /**
+     * The retry could not be scheduled: the invocation concludes in error here. The attempt
+     * never dispatched, so there is no service time and no wait for it — but the invocation's
+     * total, admission to this conclusion, is still real and is what the e2e timer records.
+     */
+    private static FinalCompletion retryExhaustedUnderLock(ExecutionRecord executionRecord,
+                                                           String functionName,
+                                                           InvocationResult result) {
+        executionRecord.markError(result.error());
+        Long e2eMs = nanosToMs(executionRecord.admittedAtNanos(), executionRecord.finishedAtNanos());
+        return FinalCompletion.retryExhausted(functionName, result, e2eMs);
     }
 
     private void publishFinalCompletion(ExecutionRecord executionRecord, FinalCompletion completion) {
@@ -373,27 +399,32 @@ public class ExecutionCompletionHandler {
             return;
         }
         String functionName = completion.functionName();
-        if (!completion.retryExhausted()) {
-            recordCompletionMetrics(completion);
-        }
+        recordCompletionMetrics(completion);
         if (completion.result().success()) {
             metrics.success(functionName);
         } else {
             metrics.error(functionName);
         }
         executionRecord.completion().complete(completion.result());
+        // The invocation's single end-to-end conclusion has been emitted; a late callback or an
+        // administrative expiry racing this one must not record it a second time.
+        executionRecord.markMetricsRecorded();
     }
 
     private void recordCompletionMetrics(FinalCompletion completion) {
         String functionName = completion.functionName();
         Metrics.FunctionTimers timers = metrics.timers(functionName);
-        if (completion.coldStart()) {
-            metrics.coldStart(functionName);
-            if (completion.initDurationMs() != null) {
-                timers.initDuration().record(completion.initDurationMs(), TimeUnit.MILLISECONDS);
+        // Cold/warm is a property of a dispatch that actually ran. A retry that never scheduled
+        // (queue full) dispatched nothing, so it is neither a cold nor a warm start.
+        if (!completion.retryExhausted()) {
+            if (completion.coldStart()) {
+                metrics.coldStart(functionName);
+                if (completion.initDurationMs() != null) {
+                    timers.initDuration().record(completion.initDurationMs(), TimeUnit.MILLISECONDS);
+                }
+            } else {
+                metrics.warmStart(functionName);
             }
-        } else {
-            metrics.warmStart(functionName);
         }
         if (completion.latencyMs() != null) {
             timers.latency().record(completion.latencyMs(), TimeUnit.MILLISECONDS);
@@ -414,8 +445,8 @@ public class ExecutionCompletionHandler {
                                    boolean coldStart,
                                    Long initDurationMs,
                                    boolean retryExhausted) {
-        static FinalCompletion retryExhausted(String functionName, InvocationResult result) {
-            return new FinalCompletion(functionName, result, null, null, null, false, null, true);
+        static FinalCompletion retryExhausted(String functionName, InvocationResult result, Long e2eMs) {
+            return new FinalCompletion(functionName, result, null, null, e2eMs, false, null, true);
         }
     }
 
@@ -481,8 +512,33 @@ public class ExecutionCompletionHandler {
         if (wasNonTerminal) {
             metrics.error(task.functionName());
         }
+        // An invocation that died for maxLifetime still has one end-to-end conclusion: its total,
+        // admission to expiry. Recorded once, guarded against a late dispatch racing this eviction.
+        recordTerminalConclusionOnce(executionRecord);
         executionRecord.completion().complete(result);
         executionStore.settle(executionRecord);
+    }
+
+    /**
+     * The single end-to-end conclusion for an invocation that became terminal outside the normal
+     * completion path — a sync caller's timeout, or administrative expiry — where the service time
+     * was censored (the dispatch never produced an observed completion). Only the total duration is
+     * recorded, and only once: the record's guard makes a late dispatch callback racing the timeout
+     * or the eviction a no-op the second time.
+     */
+    private void recordTerminalConclusionOnce(ExecutionRecord executionRecord) {
+        if (!executionRecord.markMetricsRecorded()) {
+            return;
+        }
+        Long finishedAtNanos = executionRecord.finishedAtNanos();
+        if (finishedAtNanos == null) {
+            return;
+        }
+        Long e2eMs = nanosToMs(executionRecord.admittedAtNanos(), finishedAtNanos);
+        if (e2eMs >= 0) {
+            metrics.timers(executionRecord.task().functionName())
+                    .e2eLatency().record(e2eMs, TimeUnit.MILLISECONDS);
+        }
     }
 
     /** Called under the record's monitor: reads snapshot() fields directly. */

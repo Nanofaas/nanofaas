@@ -46,7 +46,7 @@ public final class InvocationResponseMapper {
         return new ExecutionStatus(
                 snapshot.executionId(),
                 status,
-                snapshot.startedAt(),
+                snapshot.admittedAt(),
                 snapshot.finishedAt(),
                 snapshot.output(),
                 snapshot.lastError(),
