@@ -135,7 +135,8 @@ accorciano.
 
 ## 2. Event loop pari alla quota CPU, non al pavimento di 4
 
-**Stato:** da fare.
+**Stato:** fatto, 2026-09-05 — sul chart Helm (`deploy/helm/nanofaas`), non
+sul manifesto k8s semplice (vedi sotto per perché lì non serve ancora).
 
 `LoopResources.DEFAULT_IO_WORKER_COUNT` è `max(4, availableProcessors())`
 (verificato nel bytecode di reactor-netty 1.3.6). Con `limits.cpu: 1` vince il
@@ -161,9 +162,14 @@ worker, non 1 — un singolo thread non supera mai un core di lavoro,
 qualunque sia la quota disponibile; è la stessa regola che le guide di
 sizing dei worker thread di Envoy danno per lo stesso problema, e che
 questo progetto non aveva mai scritto esplicitamente prima). È una system
-property: nessun codice. **Fatto per il chart Helm** (`controlPlane.jvm.
-ioWorkerCount`, 2026-09-05) con arrotondamento manuale, non automatico —
-vedi il commento in `values.yaml` per il perché.
+property: nessun codice. **Fatto per il chart Helm**: `JAVA_TOOL_OPTIONS`
+imposta la property, e `templates/_helpers.tpl` (`nanofaas.controlPlane.
+ioWorkerCount`) la deriva da `resources.limits.cpu` automaticamente —
+arrotondando per eccesso, gestendo sia core interi/frazionari ("1", "1.5")
+sia millicore ("500m") — non un valore da tenere sincronizzato a mano.
+`controlPlane.jvm.ioWorkerCount` resta come override esplicito per quando
+serve scollegare i due numeri (è così che la cella `B-loop-cpu1` ha tenuto
+la quota CPU ferma a 1 core variando il numero di worker indipendentemente).
 
 Prima sistemare `deploy/k8s/control-plane-deployment.yaml:33`, o saltarlo lì:
 concede `500m`, e un singolo thread che gira continuo ne vuole uno intero —
