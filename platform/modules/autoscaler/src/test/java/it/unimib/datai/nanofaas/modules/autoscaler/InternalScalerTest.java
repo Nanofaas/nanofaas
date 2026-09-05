@@ -89,13 +89,13 @@ class InternalScalerTest {
         RegisteredFunction spec = functionSpec("echo", ExecutionMode.DEPLOYMENT, scaling);
 
         when(registry.listRegistered()).thenReturn(List.of(spec));
-        when(deploymentCoordinator.getReadyReplicas(target(spec))).thenReturn(1);
+        when(deploymentCoordinator.getReplicaStatus(target(spec))).thenReturn(new ReplicaStatus(1, 1));
         // queue_depth = 15, target = 5, ratio = 3.0, desired = ceil(3.0 * 1) = 3
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(15.0);
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator).getReadyReplicas(target(spec));
+        verify(deploymentCoordinator).getReplicaStatus(target(spec));
         verify(deploymentCoordinator).setReplicas(target(spec), 3);
     }
 
@@ -110,7 +110,7 @@ class InternalScalerTest {
         scaler.scalingLoop();
 
         verify(deploymentCoordinator, never()).setReplicas(any(), anyInt());
-        verify(deploymentCoordinator, never()).getReadyReplicas(any());
+        verify(deploymentCoordinator, never()).getReplicaStatus(any());
     }
 
     @Test
@@ -134,7 +134,7 @@ class InternalScalerTest {
         scaler.scalingLoop();
 
         verify(deploymentCoordinator, never()).setReplicas(any(), anyInt());
-        verify(deploymentCoordinator, never()).getReadyReplicas(any());
+        verify(deploymentCoordinator, never()).getReplicaStatus(any());
     }
 
     @Test
@@ -157,7 +157,7 @@ class InternalScalerTest {
         RegisteredFunction spec = functionSpec("echo", ExecutionMode.DEPLOYMENT, scaling);
 
         when(registry.listRegistered()).thenReturn(List.of(spec));
-        when(deploymentCoordinator.getReadyReplicas(target(spec))).thenReturn(1);
+        when(deploymentCoordinator.getReplicaStatus(target(spec))).thenReturn(new ReplicaStatus(1, 1));
         // queue_depth = 5, target = 5, ratio = 1.0, desired = ceil(1.0 * 1) = 1 (same as current)
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(5.0);
 
@@ -173,7 +173,7 @@ class InternalScalerTest {
         RegisteredFunction spec = functionSpec("echo", ExecutionMode.DEPLOYMENT, scaling);
 
         when(registry.listRegistered()).thenReturn(List.of(spec));
-        when(deploymentCoordinator.getReadyReplicas(target(spec))).thenReturn(3);
+        when(deploymentCoordinator.getReplicaStatus(target(spec))).thenReturn(new ReplicaStatus(3, 3));
         // queue_depth = 100, target = 1, ratio = 100, desired = ceil(100*3)=300 → clamped to 5
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(100.0);
 
@@ -190,7 +190,7 @@ class InternalScalerTest {
 
         when(registry.listRegistered()).thenReturn(List.of(spec));
         // 0 ready replicas, minReplicas=0 → currentReplicas should be treated as 1
-        when(deploymentCoordinator.getReadyReplicas(target(spec))).thenReturn(0);
+        when(deploymentCoordinator.getReplicaStatus(target(spec))).thenReturn(new ReplicaStatus(0, 0));
         // in_flight = 4, target = 2, ratio = 2.0, desired = ceil(2.0 * 1) = 2
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(4.0);
 
@@ -206,7 +206,7 @@ class InternalScalerTest {
         RegisteredFunction spec = functionSpec("echo", ExecutionMode.DEPLOYMENT, scaling);
 
         when(registry.listRegistered()).thenReturn(List.of(spec));
-        when(deploymentCoordinator.getReadyReplicas(target(spec))).thenReturn(2);
+        when(deploymentCoordinator.getReplicaStatus(target(spec))).thenReturn(new ReplicaStatus(2, 2));
         // in_flight = 0, target = 2, ratio = 0.0, desired = ceil(0 * 2) = 0, clamped to min=0
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(0.0);
 
@@ -221,7 +221,7 @@ class InternalScalerTest {
                 List.of(new ScalingMetric("in_flight", "2", null)));
         RegisteredFunction spec = functionSpec("echo", ExecutionMode.DEPLOYMENT, scaling);
         when(registry.listRegistered()).thenReturn(List.of(spec));
-        when(deploymentCoordinator.getReadyReplicas(target(spec))).thenReturn(0);
+        when(deploymentCoordinator.getReplicaStatus(target(spec))).thenReturn(new ReplicaStatus(2, 2));
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(0.0);
         wakeUpCoordinator.protectAndScaleUp(target(spec), System.nanoTime() + TimeUnit.SECONDS.toNanos(1), () -> { });
 
@@ -236,7 +236,7 @@ class InternalScalerTest {
                 List.of(new ScalingMetric("in_flight", "2", null)));
         RegisteredFunction spec = functionSpec("echo", ExecutionMode.DEPLOYMENT, scaling);
         when(registry.listRegistered()).thenReturn(List.of(spec));
-        when(deploymentCoordinator.getReadyReplicas(target(spec))).thenReturn(0);
+        when(deploymentCoordinator.getReplicaStatus(target(spec))).thenReturn(new ReplicaStatus(2, 2));
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(0.0);
         scaler.scalingLoop();
 
@@ -255,9 +255,9 @@ class InternalScalerTest {
 
         when(registry.listRegistered()).thenReturn(List.of(function));
         when(registry.getRegistered("echo")).thenReturn(Optional.of(function));
-        when(deploymentCoordinator.getReadyReplicas(target)).thenReturn(2);
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(0.0);
-        when(deploymentCoordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(0, 0), new ReplicaStatus(1, 1));
+        when(deploymentCoordinator.getReplicaStatus(target))
+                .thenReturn(new ReplicaStatus(2, 2), new ReplicaStatus(0, 0), new ReplicaStatus(1, 1));
         doAnswer(invocation -> {
             if ((int) invocation.getArgument(1) == 0) {
                 zeroEntered.countDown();
@@ -296,7 +296,7 @@ class InternalScalerTest {
         RegisteredFunction spec = functionSpec("echo", ExecutionMode.DEPLOYMENT, scaling);
 
         when(registry.listRegistered()).thenReturn(List.of(spec));
-        when(deploymentCoordinator.getReadyReplicas(target(spec))).thenReturn(1);
+        when(deploymentCoordinator.getReplicaStatus(target(spec))).thenReturn(new ReplicaStatus(1, 1));
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(15.0);
 
         scaler.scalingLoop();

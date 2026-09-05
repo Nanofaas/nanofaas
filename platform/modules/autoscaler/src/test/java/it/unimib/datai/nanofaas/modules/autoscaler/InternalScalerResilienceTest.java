@@ -8,6 +8,7 @@ import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.controlplane.registry.DeploymentMetadata;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
@@ -69,8 +70,8 @@ class InternalScalerResilienceTest {
         );
 
         when(registry.listRegistered()).thenReturn(List.of(broken, healthy));
-        when(deploymentCoordinator.getReadyReplicas(target(broken))).thenReturn(1);
-        when(deploymentCoordinator.getReadyReplicas(target(healthy))).thenReturn(1);
+        when(deploymentCoordinator.getReplicaStatus(target(broken))).thenReturn(new ReplicaStatus(1, 1));
+        when(deploymentCoordinator.getReplicaStatus(target(healthy))).thenReturn(new ReplicaStatus(1, 1));
         when(metricsReader.readMetric(eq("broken"), any())).thenReturn(10.0);
         when(metricsReader.readMetric(eq("healthy"), any())).thenReturn(15.0);
 

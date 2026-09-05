@@ -8,6 +8,7 @@ import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinator;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.controlplane.registry.DeploymentMetadata;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator;
@@ -29,10 +30,11 @@ import static org.mockito.Mockito.when;
 /**
  * Regression coverage for the "Alta" priority optimization finding in
  * docs/control-plane-review-2026-09-05.md: "Distinguere repliche desiderate e pronte
- * nell'autoscaler" — {@code InternalScaler.evaluateAndScale} feeds only
- * {@code getReadyReplicas} into {@code ScalingDecisionCalculator} as "current replicas", then
- * unconditionally overwrites the deployment's desired replica count with the freshly computed
- * recommendation. The review's literal example: 10 desired, 2 ready (rollout still catching
+ * nell'autoscaler" — {@code InternalScaler.evaluateAndScale} feeds only the ready count into
+ * {@code ScalingDecisionCalculator} as "current replicas", then unconditionally overwrites the
+ * deployment's desired replica count with the freshly computed recommendation instead of
+ * reading desired and ready together from one {@code ReplicaStatus}. The review's literal
+ * example: 10 desired, 2 ready (rollout still catching
  * up), ratio 2 -> the calculator recommends ceil(2*2)=4 and the scaler calls it a scale-up
  * (4 > 2 ready) and issues {@code setReplicas(target, 4)}, which actually *reduces* the real
  * outstanding target from 10 to 4 even though load pressure has not dropped. This finding was
@@ -93,14 +95,14 @@ class InternalScalerDesiredVsReadyRegressionTest {
 
         // Round 1: only 5 replicas ready so far -> recommended = ceil(2.0*5) = 10.
         // This issues the "real" desired target of 10.
-        when(deploymentCoordinator.getReadyReplicas(target)).thenReturn(5);
+        when(deploymentCoordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(5, 5));
         scaler.scalingLoop();
 
         clearScaleUpCooldown("echo");
 
         // Round 2: rollout is still catching up, only 2 of the 10 requested replicas are
         // actually Ready yet. Load pressure (ratio) has NOT changed.
-        when(deploymentCoordinator.getReadyReplicas(target)).thenReturn(2);
+        when(deploymentCoordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(10, 2));
         scaler.scalingLoop();
 
         ArgumentCaptor<Integer> replicaCounts = ArgumentCaptor.forClass(Integer.class);

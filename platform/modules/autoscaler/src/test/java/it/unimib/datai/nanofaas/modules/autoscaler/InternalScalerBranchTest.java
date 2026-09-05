@@ -8,6 +8,7 @@ import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.controlplane.registry.DeploymentMetadata;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
@@ -64,8 +65,8 @@ class InternalScalerBranchTest {
         RegisteredFunction good = spec("good", 1, 10, List.of(new ScalingMetric("queue_depth", "5", null)));
 
         when(registry.listRegistered()).thenReturn(List.of(bad, good));
-        when(deploymentCoordinator.getReadyReplicas(target(bad))).thenReturn(1);
-        when(deploymentCoordinator.getReadyReplicas(target(good))).thenReturn(1);
+        when(deploymentCoordinator.getReplicaStatus(target(bad))).thenReturn(new ReplicaStatus(1, 1));
+        when(deploymentCoordinator.getReplicaStatus(target(good))).thenReturn(new ReplicaStatus(1, 1));
         when(metricsReader.readMetric(eq("bad"), any())).thenThrow(new RuntimeException("metric failure"));
         when(metricsReader.readMetric(eq("good"), any())).thenReturn(15.0);
 
@@ -79,7 +80,7 @@ class InternalScalerBranchTest {
         RegisteredFunction spec = spec("echo", 1, 10, List.of(new ScalingMetric("queue_depth", "5", null)));
 
         when(registry.listRegistered()).thenReturn(List.of(spec));
-        when(deploymentCoordinator.getReadyReplicas(target(spec))).thenReturn(1);
+        when(deploymentCoordinator.getReplicaStatus(target(spec))).thenReturn(new ReplicaStatus(1, 1));
         when(metricsReader.readMetric(eq("echo"), any())).thenReturn(15.0);
 
         scaler.scalingLoop();
@@ -93,7 +94,7 @@ class InternalScalerBranchTest {
         RegisteredFunction spec = spec("echo", 0, 10, List.of(new ScalingMetric("in_flight", "2", null)));
 
         when(registry.listRegistered()).thenReturn(List.of(spec));
-        when(deploymentCoordinator.getReadyReplicas(target(spec))).thenReturn(3);
+        when(deploymentCoordinator.getReplicaStatus(target(spec))).thenReturn(new ReplicaStatus(3, 3));
         when(metricsReader.readMetric(eq("echo"), any())).thenReturn(0.0);
 
         scaler.scalingLoop();
@@ -108,8 +109,8 @@ class InternalScalerBranchTest {
         RegisteredFunction invalidTarget = spec("invalid", 0, 10, List.of(new ScalingMetric("queue_depth", "abc", null)));
 
         when(registry.listRegistered()).thenReturn(List.of(blankTarget, invalidTarget));
-        when(deploymentCoordinator.getReadyReplicas(target(blankTarget))).thenReturn(1);
-        when(deploymentCoordinator.getReadyReplicas(target(invalidTarget))).thenReturn(1);
+        when(deploymentCoordinator.getReplicaStatus(target(blankTarget))).thenReturn(new ReplicaStatus(1, 1));
+        when(deploymentCoordinator.getReplicaStatus(target(invalidTarget))).thenReturn(new ReplicaStatus(1, 1));
         when(metricsReader.readMetric(eq("blank"), any())).thenReturn(10.0);   // 10/50 => 0.2 => no scale
         when(metricsReader.readMetric(eq("invalid"), any())).thenReturn(25.0); // 25/50 => 0.5 => no scale
 
