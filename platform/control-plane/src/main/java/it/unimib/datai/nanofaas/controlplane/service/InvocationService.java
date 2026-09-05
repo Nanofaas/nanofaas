@@ -127,9 +127,20 @@ public class InvocationService {
         InvocationExecutionFactory.ExecutionLookup lookup =
                 executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId,
                         InvocationKind.ASYNC);
+
+        // The key found an already-archived execution: the mutable record is gone,
+        // but the outcome the replay needs is still there. Same handling as the
+        // sync coordinator (ReactiveInvocationCoordinator.invoke) - checked before
+        // ever touching lookup.executionRecord(), which the factory returns as null
+        // for this branch.
+        Outcome settled = lookup.settledOutcome();
+        if (settled != null) {
+            return responseMapper.terminalResponse(lookup.settledExecutionId(), settled);
+        }
+
         ExecutionRecord executionRecord = lookup.executionRecord();
 
-        // replay is a component that checks if the execution has already completed and returns the appropriate response if so. 
+        // replay is a component that checks if the execution has already completed and returns the appropriate response if so.
         // If replay is not null, it means the execution has already completed, and we can return the terminal response immediately.
         // replay is stored in a variable to avoid calling responseMapper.terminalResponse(record) multiple times, which could be inefficient.
         InvocationResponse replay = responseMapper.terminalResponse(executionRecord);
