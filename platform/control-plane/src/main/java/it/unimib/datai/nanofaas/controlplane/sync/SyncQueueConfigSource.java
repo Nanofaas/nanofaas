@@ -21,6 +21,25 @@ public interface SyncQueueConfigSource {
 
     int syncQueueRetryAfterSeconds();
 
+    /**
+     * The whole runtime-tunable set as one immutable snapshot.
+     *
+     * <p>Consumers that read more than one correlated field (admission reads
+     * {@code admissionEnabled} together with {@code maxEstimatedWait}) must read them
+     * through this method: a source that applies a patch atomically can then serve one
+     * published combination, so admission never decides on a partial value set. The
+     * default composes the per-field getters, which is exactly one published combination
+     * for immutable sources; mutable sources override it to return their atomic record.
+     */
+    default SyncQueueRuntimeDefaults syncQueueRuntimeDefaults() {
+        return new SyncQueueRuntimeDefaults(
+                syncQueueEnabled(),
+                syncQueueAdmissionEnabled(),
+                syncQueueMaxEstimatedWait(),
+                syncQueueMaxQueueWait(),
+                syncQueueRetryAfterSeconds());
+    }
+
     static SyncQueueConfigSource fixed(SyncQueueRuntimeDefaults defaults) {
         return new SyncQueueConfigSource() {
             @Override

@@ -21,8 +21,13 @@ public class SyncQueueAdmissionController {
             return SyncQueueAdmissionResult.rejected(SyncQueueRejectReason.DEPTH, Double.POSITIVE_INFINITY);
         }
         double estWaitSeconds = estimator.estimateWaitSeconds(functionName, depth, now);
-        long maxWaitSeconds = configSource.syncQueueMaxEstimatedWait().toSeconds();
-        if (configSource.syncQueueAdmissionEnabled() && (maxWaitSeconds == 0 || estWaitSeconds > maxWaitSeconds)) {
+        // Read both correlated runtime settings from ONE published snapshot so a
+        // concurrent runtime-config apply/restore can never leave this decision on a
+        // partial combination (new admissionEnabled with a stale maxEstimatedWait, or
+        // vice versa).
+        var runtime = configSource.syncQueueRuntimeDefaults();
+        long maxWaitSeconds = runtime.maxEstimatedWait().toSeconds();
+        if (runtime.admissionEnabled() && (maxWaitSeconds == 0 || estWaitSeconds > maxWaitSeconds)) {
             return SyncQueueAdmissionResult.rejected(SyncQueueRejectReason.EST_WAIT, estWaitSeconds);
         }
         return SyncQueueAdmissionResult.accepted(estWaitSeconds);

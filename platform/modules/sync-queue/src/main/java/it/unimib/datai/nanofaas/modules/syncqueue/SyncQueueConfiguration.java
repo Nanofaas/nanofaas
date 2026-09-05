@@ -16,7 +16,6 @@ import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
 import it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -79,8 +78,13 @@ public class SyncQueueConfiguration {
         return new MutableSyncQueueConfigSource(props);
     }
 
+    // Unconditional: the scheduler must exist from module load even when admission is
+    // disabled at startup, because the runtime flag (MutableSyncQueueConfigSource) can
+    // switch the queue on at runtime, and work admitted before a runtime deactivation -
+    // including retries re-enqueued by the completion path - must keep draining. Its
+    // worker idles (parks on the queue's work signal, bounded by a safety timeout) when
+    // there is nothing to dispatch, so an always-on scheduler costs nothing while idle.
     @Bean
-    @ConditionalOnProperty(prefix = "sync-queue", name = "enabled", havingValue = "true")
     SyncScheduler syncScheduler(InvocationEnqueuer enqueuer,
                                 SyncQueueService syncQueueService,
                                 InvocationService invocationService,

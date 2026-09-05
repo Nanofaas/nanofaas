@@ -37,9 +37,10 @@ class SyncQueueContextTest {
     }
 
     @Test
-    void theSchedulerExistsOnlyWhileTheModuleIsEnabled() {
-        // The one bean here behind @ConditionalOnProperty: without it nothing drains
-        // the queue, and the symptom is invocations that simply never dispatch.
+    void theSchedulerIsCreatedWheneverTheModuleIsLoaded() {
+        // A4: the draining scheduler is created from module load (not gated on
+        // sync-queue.enabled, which is runtime-mutable). Without it nothing drains the
+        // queue, and the symptom is invocations that simply never dispatch.
         assertThat(context.getBeansOfType(SyncScheduler.class)).hasSize(1);
     }
 }

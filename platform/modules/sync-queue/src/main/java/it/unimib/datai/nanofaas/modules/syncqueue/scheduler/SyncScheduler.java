@@ -22,6 +22,16 @@ public class SyncScheduler implements SmartLifecycle {
     private static final Logger log = LoggerFactory.getLogger(SyncScheduler.class);
     private static final String COMPONENT_NAME = "Sync scheduler";
 
+    /**
+     * How long the worker parks on the queue's work signal after finding the queue
+     * empty. New work wakes it immediately via {@code enqueueOrThrow}'s notification,
+     * so this timeout is a safety bound (spurious wakeups, shutdown detection), not the
+     * dispatch-latency budget. It deliberately is not a tight poll: the scheduler is
+     * created even while admission is disabled, and an idle worker must stay dormant
+     * rather than wake the CPU on a short timer.
+     */
+    private static final long EMPTY_QUEUE_AWAIT_MS = 500L;
+
     private final InvocationEnqueuer enqueuer;
     private final SyncQueueService queue;
     private final Consumer<InvocationTask> dispatch;
@@ -140,7 +150,7 @@ public class SyncScheduler implements SmartLifecycle {
             if (queue.peekReady(now) == null) {
                 long idleStarted = System.nanoTime();
                 blockedBackoffMs = tickMs;
-                queue.awaitWork(tickMs);
+                queue.awaitWork(EMPTY_QUEUE_AWAIT_MS);
                 if (diagnostics != null) {
                     diagnostics.recordSchedulerIdleDuration(System.nanoTime() - idleStarted);
                 }
