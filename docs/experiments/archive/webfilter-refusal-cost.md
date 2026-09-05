@@ -79,6 +79,42 @@ grandezza sopra il segnale che `refusal-cost.md` aveva già giudicato troppo
 piccolo per Azure, e potenzialmente sopra il rumore CFS se la corsa satura
 davvero un core.
 
+## Il percorso accettato: quanto costa alle richieste normali
+
+Tutto quanto sopra misura il costo del **rifiuto**. Ma il filtro gira su
+*ogni* richiesta a `:invoke`/`:enqueue`, accettata o no — e sulla richiesta
+accettata fa qualcosa che il vecchio codice non faceva affatto: un controllo
+`HttpMethod` e due `PathPattern.matches()`, prima ancora di chiamare
+`rateLimiter.allow()`. Il vecchio `enforceRateLimit()` girava dentro il
+metodo del controller, che aveva già instradato la richiesta solo per essere
+stato invocato — nessun match di percorso era mai servito. Questo è un costo
+nuovo, mai misurato dal passo 0, sulla stragrande maggioranza del traffico
+(il caso comune, non l'eccezione).
+
+Stesso metodo, con una correzione applicata fin dall'inizio (isolare la
+costruzione dello scambio mock, il tranello già scoperto sopra): quattro
+corse indipendenti, confrontando `chain.filter(exchange)` diretto contro
+`filter.filter(exchange, chain)` con limite non esaurito.
+
+| corsa | sovraccarico per richiesta accettata |
+|---|---:|
+| 1 | +384 ns |
+| 2 | +419 ns |
+| 3 | +655 ns |
+| 4 | +102 ns |
+
+**Il segno regge — il filtro costa sempre qualcosa in più — ma l'ampiezza è
+troppo rumorosa per fidarsene alla cifra.** A differenza delle misure sul
+rifiuto, qui si sottraggono due numeri grandi (∼18-34 µs di scambio mock
+composito) per isolarne uno piccolo (centinaia di ns): il rumore di misura
+pesa proporzionalmente di più. Prendendo comunque il valore più alto delle
+quattro corse come limite superiore prudente — 655 ns — a 435 rps (il
+carico saturante di riferimento di questo piano, non i 590 rifiuti/s delle
+misure sopra, perché qui il denominatore è ogni richiesta, non solo i
+rifiuti): **0,028% di un core**. Un ordine di grandezza sotto la soglia che
+`refusal-cost.md` giudicava "pulizia, non prestazioni", e irrilevante anche
+nel caso peggiore misurato.
+
 ## Cosa corregge nel piano
 
 La sezione "Quanto vale" di Parte I §1 nel piano stimava il guadagno sync a
@@ -99,11 +135,13 @@ debolmente positivo ma debolmente negativo.
 
 ## Riprodurre
 
-Test temporaneo in `platform/control-plane/src/test`
-(`RefusalCostPasso0Test.java`, cancellato dopo l'uso, come da convenzione di
-`refusal-cost.md`). Stessa tecnica di quella nota per la profondità di
-stack; in più, la costruzione dello scambio mock va isolata e sottratta dal
-composito filtro+scambio, per la ragione spiegata sopra:
+Test temporanei in `platform/control-plane/src/test`
+(`RefusalCostPasso0Test.java` per il rifiuto,
+`RateLimitWebFilterAcceptedPathTest.java` per il percorso accettato,
+entrambi cancellati dopo l'uso, come da convenzione di `refusal-cost.md`).
+Stessa tecnica di quella nota per la profondità di stack; in più, la
+costruzione dello scambio mock va isolata e sottratta dal composito
+filtro+scambio, per la ragione spiegata sopra:
 
 ```java
 static Object deep(int n, Supplier<Object> make) {   // stack realistico

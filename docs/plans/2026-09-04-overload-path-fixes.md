@@ -65,6 +65,17 @@ Nessuna conclusione di agosto va data per valida senza rimisurarla.
 
 **Stato:** fatto — `RateLimitWebFilter` (`platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/RateLimitWebFilter.java`), scoped a `:invoke`/`:enqueue`, corpo drenato prima del 429. `RateLimitException` e il controllo in `InvocationService` sono stati rimossi. Vedi `docs/superpowers/plans/2026-09-04-rate-limit-webfilter.md`. Poiché il filtro corto-circuita prima che giri l'handler mapping di Spring, un 429 da rate limit viene registrato nella metrica `http.server.requests` con `uri=UNKNOWN` invece della rotta di invocazione — innocuo per gli strumenti esistenti (che filtrano solo su `status="429"`, non su `uri`), ma da tenere presente per chi in futuro volesse scomporre i rifiuti per rotta.
 
+**Valutazione prestazioni, 2026-09-05:** solo locale, non su Azure — vedi
+`docs/experiments/archive/webfilter-refusal-cost.md`. Copre due percorsi
+distinti: il **rifiuto** (passo 0 dell'Esperimento C — sync perde
+irrilevantemente, `:enqueue` vince nettamente) e la **richiesta accettata**
+(il caso comune: `HttpMethod` + due `PathPattern.matches()` su ogni
+invocazione, mai misurati dal passo 0) — sovraccarico positivo ma piccolo,
+al massimo ~0,03% di un core nelle quattro corse misurate, cifra rumorosa
+per la stessa ragione tecnica del passo 0 (si sottraggono due numeri grandi
+per isolarne uno piccolo). **La corsa Azure di Esperimento C resta l'unica
+valutazione end-to-end, sotto carico reale, non ancora fatta.**
+
 `RateLimiter.allow()` gira a `InvocationService.java:99,126` (chiamato da
 `invokeSyncReactive` e `invokeAsync`), dietro decode HTTP, deserializzazione
 Jackson del body e dispatch del controller. Ogni richiesta che finirà in 429
