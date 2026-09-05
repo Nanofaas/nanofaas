@@ -34,12 +34,17 @@ controlPlane:
     # four loops sharing a one-core quota, each too thin a wedge to avoid CFS
     # throttling. docs/experiments/overload-path-2026-09 (2026-09-05,
     # B-loop-cpu1) measured one loop against four at this exact quota: p99 5.4ms
-    # vs 19.7ms, shed 0.05% vs 0.46%, on the same jvm-c2 build. Not derived from
-    # resources.limits.cpu above because Kubernetes CPU quantities (plain
-    # cores, "500m", fractional) don't reduce to an integer worker count by any
-    # single rule - if you change the CPU limit, change this to match its
-    # integer part; below one whole core the lever stops doing anything; the
-    # plan's own words for why in Part I.2 of the overload-path-fixes plan.
+    # vs 19.7ms, shed 0.05% vs 0.46%, on the same jvm-c2 build. This matches
+    # the general rule for sizing worker/event-loop threads under a CPU quota
+    # (documented for Envoy's own worker-thread model, and for JVM thread pools
+    # generally - reactor-netty's own docs are silent on Kubernetes/cgroups):
+    # size to the quota granted, not the host's core count, rounding UP for a
+    # fractional limit rather than down - a single thread can't use more than
+    # one core no matter the quota, so under-provisioning wastes headroom the
+    # quota would otherwise allow. Not derived from resources.limits.cpu above
+    # because Kubernetes CPU quantities (plain cores, "500m", fractional)
+    # don't reduce to an integer worker count by one parsing rule in Helm - if
+    # you change the CPU limit, change this to match, rounding up.
     ioWorkerCount: 1
   # Kubernetes' bare defaults (timeoutSeconds: 1, failureThreshold: 3, periodSeconds: 10)
   # give a GC pause under memory pressure a 3-second window before three strikes call it

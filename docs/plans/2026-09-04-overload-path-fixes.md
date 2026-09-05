@@ -155,8 +155,15 @@ Un event loop solo non può superare una quota da un core, quindi non viene mai
 strozzato. Stesso throughput, servizio continuo, e niente context switching fra
 quattro thread su una CPU.
 
-**Cosa fare:** impostare `-Dreactor.netty.ioWorkerCount` alla parte intera della
-quota CPU. È una system property: nessun codice.
+**Cosa fare:** impostare `-Dreactor.netty.ioWorkerCount` alla quota CPU,
+**arrotondata per eccesso** se frazionaria (una quota di 1,5 core vuole 2
+worker, non 1 — un singolo thread non supera mai un core di lavoro,
+qualunque sia la quota disponibile; è la stessa regola che le guide di
+sizing dei worker thread di Envoy danno per lo stesso problema, e che
+questo progetto non aveva mai scritto esplicitamente prima). È una system
+property: nessun codice. **Fatto per il chart Helm** (`controlPlane.jvm.
+ioWorkerCount`, 2026-09-05) con arrotondamento manuale, non automatico —
+vedi il commento in `values.yaml` per il perché.
 
 Prima sistemare `deploy/k8s/control-plane-deployment.yaml:33`, o saltarlo lì:
 concede `500m`, e un singolo thread che gira continuo ne vuole uno intero —
