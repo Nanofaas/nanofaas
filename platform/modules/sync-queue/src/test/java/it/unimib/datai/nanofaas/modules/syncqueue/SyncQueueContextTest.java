@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.modules.syncqueue;
 
 import it.unimib.datai.nanofaas.controlplane.ControlPlaneApplication;
+import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncScheduler;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController;
@@ -42,5 +43,12 @@ class SyncQueueContextTest {
         // sync-queue.enabled, which is runtime-mutable). Without it nothing drains the
         // queue, and the symptom is invocations that simply never dispatch.
         assertThat(context.getBeansOfType(SyncScheduler.class)).hasSize(1);
+    }
+
+    @Test
+    void theModuleEnqueuerIsTheOnlyOne() {
+        // See AsyncQueueContextTest: the core fallback used to be registered alongside the
+        // module's own, saved only by the module's @Primary.
+        assertThat(context.getBeansOfType(InvocationEnqueuer.class)).hasSize(1);
     }
 }

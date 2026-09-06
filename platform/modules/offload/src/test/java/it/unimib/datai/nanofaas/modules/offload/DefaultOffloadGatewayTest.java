@@ -349,6 +349,29 @@ class DefaultOffloadGatewayTest {
     }
 
     @Test
+    void invokeRemote_contentCodingHeadersDescribeTheEnvelopeAndAreNotForwarded() throws InterruptedException {
+        server.enqueue(successEnvelope());
+        FunctionSpec spec = spec("echo", null, 5000);
+
+        // Same class as content-type/content-length: these describe the caller's original
+        // body, not the JSON envelope this hop actually sends. Forwarding content-encoding
+        // labels a plain envelope as compressed, and accept-encoding invites a compressed
+        // response the offload client is not built to decode.
+        gateway().invokeRemote(task(spec, Map.of(
+                        "x-tenant", "acme",
+                        "content-encoding", "gzip",
+                        "accept-encoding", "gzip, br",
+                        "expect", "100-continue")),
+                OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS).block();
+
+        RecordedRequest recorded = server.takeRequest();
+        assertThat(recorded.getHeader("content-encoding")).isNull();
+        assertThat(recorded.getHeader("expect")).isNull();
+        assertThat(recorded.getHeaders().values("accept-encoding")).doesNotContain("gzip, br");
+        assertThat(recorded.getHeader("x-tenant")).isEqualTo("acme");
+    }
+
+    @Test
     void invokeRemote_reservedHeadersCannotOverrideGatewayOwnedHeaders() throws InterruptedException {
         server.enqueue(successEnvelope());
         FunctionSpec spec = spec("guarded", null, 5000);

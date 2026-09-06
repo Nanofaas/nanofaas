@@ -37,7 +37,8 @@ public class DefaultOffloadGateway implements OffloadGateway {
      * gateway forwards the caller's application headers as real HTTP headers on the second
      * hop. This set keeps that copy away from (a) transport framing the HTTP client owns —
      * {@code host}, {@code content-length}, and above all {@code content-type}, which must
-     * keep describing the JSON envelope rather than the caller's original body; (b) headers
+     * keep describing the JSON envelope rather than the caller's original body — framing,
+     * content negotiation AND content coding all belong to this hop's own message; (b) headers
      * this gateway sets itself and that dedicated handling must keep control of — the
      * offload-hop marker and the tracing headers; and (c) the reserved headers the receiving
      * control plane binds to dedicated parameters. The list intentionally mirrors
@@ -52,6 +53,11 @@ public class DefaultOffloadGateway implements OffloadGateway {
     private static final Set<String> EXCLUDED_FORWARD_HEADERS = Set.of(
             "content-length", "content-type", "host", "transfer-encoding",
             "accept", "user-agent",
+            // Same class, and previously missed: content-encoding would label a plain JSON
+            // envelope as compressed, accept-encoding would invite a response body this
+            // client is not configured to decode, and expect belongs to the caller's own
+            // exchange. Inert only while server compression happens to be off everywhere.
+            "content-encoding", "accept-encoding", "expect",
             "x-execution-id", "x-trace-id", "x-dispatch-attempt", "x-timeout-ms",
             "x-nanofaas-offload-hop", "idempotency-key", "traceparent", "tracestate");
 

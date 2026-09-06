@@ -32,4 +32,14 @@ class AsyncQueueContextTest {
         assertThat(context.getBeansOfType(QueueManager.class)).hasSize(1);
         assertThat(context.getBean(InvocationEnqueuer.class).enabled()).isTrue();
     }
+
+    @Test
+    void theModuleEnqueuerIsTheOnlyOne() {
+        // The core default is @ConditionalOnMissingBean, but it used to live in a
+        // component-scanned @Configuration — evaluated before any auto-configuration, so the
+        // condition never saw this module's bean and both were registered. It only worked
+        // because the module marks its own @Primary; a future module that forgot to would fail
+        // the context outright, and meanwhile every queue profile carried a dead retry pool.
+        assertThat(context.getBeansOfType(InvocationEnqueuer.class)).hasSize(1);
+    }
 }
