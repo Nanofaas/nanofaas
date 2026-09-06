@@ -85,7 +85,7 @@
       }
     },
     {
-      "title": "Latency Avg (ms, dispatch->response)",
+      "title": "Latency Avg (ms)",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -96,12 +96,12 @@
       "targets": [
         {
           "expr": "1000 * (sum by (function) (max by (function, instance) (rate(function_latency_ms_seconds_sum{function=~\"$function\"}[1m]))) / clamp_min(sum by (function) (max by (function, instance) (rate(function_latency_ms_seconds_count{function=~\"$function\"}[1m]))), 0.001))",
-          "legendFormat": "{{function}} avg",
+          "legendFormat": "{{function}} service (attempt)",
           "refId": "A"
         },
         {
           "expr": "1000 * (sum by (function) (max by (function, instance) (rate(function_e2e_latency_ms_seconds_sum{function=~\"$function\"}[1m]))) / clamp_min(sum by (function) (max by (function, instance) (rate(function_e2e_latency_ms_seconds_count{function=~\"$function\"}[1m]))), 0.001))",
-          "legendFormat": "{{function}} e2e-avg",
+          "legendFormat": "{{function}} e2e (invocation)",
           "refId": "B"
         }
       ],
@@ -115,10 +115,11 @@
           }
         },
         "overrides": []
-      }
+      },
+      "description": "Two different intervals, deliberately different sample counts. function_e2e_latency_ms is the whole invocation from its original admission, one sample for every admitted invocation whatever concluded it (retries and their waits included). function_latency_ms is one attempt's dispatch-to-completion and omits timed-out and expired attempts entirely, so it runs optimistic under load. See docs/observability.md."
     },
     {
-      "title": "Latency p95 / p99 (ms)",
+      "title": "Service time p95 / p99 per attempt (ms)",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -153,7 +154,8 @@
           }
         },
         "overrides": []
-      }
+      },
+      "description": "Per-attempt service time and queue wait. Excludes attempts that timed out or expired without an observed completion; read function_e2e_latency_ms for what a caller experienced. See docs/observability.md."
     },
     {
       "title": "Queue Depth / InFlight / Effective Concurrency",

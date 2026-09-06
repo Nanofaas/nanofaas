@@ -153,6 +153,42 @@ toggles of one running instance.
 registered route is present in the composed document for the module
 selection under test, so contract and routes cannot drift.
 
+## Retries without a queue module
+
+Retries do not depend on a queue module. With none loaded, the core hands the
+next attempt to a small bounded pool (2 core / 8 max threads, 256 queued) instead
+of leaving the record parked in `QUEUED` forever, which is what it used to do.
+The retry policy itself is unchanged: `maxRetries` and the retryable-error rules
+are the same in every profile.
+
+The pool is a fallback, not a queue: it does not enable the asynchronous
+`:enqueue` path, which still answers `501` without the `async-queue` module. If
+the pool cannot accept a retry (it is saturated), the invocation concludes as a
+terminal queue-full error rather than being silently dropped. The sizing is a
+compile-time constant with no configuration knob.
+
+## Abandoned executions and administrative expiry
+
+An execution whose dispatch outcome never arrives — a runtime that died mid-call,
+a callback that was lost — is not left holding its dispatch slot forever. When a
+record exceeds its maximum lifetime the control plane closes it administratively:
+the slot is released, anyone waiting on the shared future is answered, and the
+execution becomes terminal with the error code `EXECUTION_EXPIRED`:
+
+```json
+{"code": "EXECUTION_EXPIRED",
+ "message": "Execution exceeded its maximum lifetime before a dispatch outcome arrived"}
+```
+
+`GET /v1/executions/{id}` reports this like any other terminal error. It marks an
+outcome the platform fabricated because the real one never came, as opposed to a
+genuine failure the function reported — worth distinguishing when reading error
+rates.
+
+Dispatch slots bind **local** dispatch only. An offloaded invocation never
+acquires one on this plane, so a remote conclusion never releases a slot it did
+not take.
+
 ## Idempotency and outcome retention
 
 A request may carry an `Idempotency-Key` header on `:invoke` and `:enqueue`.

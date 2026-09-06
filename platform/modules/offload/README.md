@@ -17,6 +17,28 @@ Design spec: `docs/superpowers/specs/2026-07-17-offload-module-design.md`.
 A request received via offload (header `X-NanoFaaS-Offload-Hop`) is never
 re-offloaded (single hop).
 
+## What crosses the hop
+
+The caller's application headers are forwarded as **real HTTP headers** on the
+second hop, so a handler on the remote plane sees them exactly as a local one
+would. Be aware of what that means operationally: any header the caller sent —
+`authorization` and `cookie` included — is visible to the remote control plane
+and to anything between the two planes. This platform has no authentication and
+does not require TLS between planes, so treat the link as trusted infrastructure
+or terminate TLS yourself.
+
+Not forwarded:
+
+| Class | Headers |
+|---|---|
+| Describe this hop's own message, not the caller's body | `content-type`, `content-length`, `content-encoding`, `accept`, `accept-encoding`, `transfer-encoding`, `expect`, `host`, `user-agent` |
+| Owned by the gateway | `x-nanofaas-offload-hop`, `x-trace-id`, `traceparent`, `tracestate`, `x-execution-id`, `x-dispatch-attempt`, `x-timeout-ms`, `idempotency-key` |
+| Hop-by-hop (RFC 9110) | `connection`, `keep-alive`, `proxy-connection`, `te`, `trailer`, `upgrade`, `proxy-*` |
+
+Headers a caller nominates hop-by-hop through its own `Connection` field are
+stripped at the **first** hop, in the controller, so they never reach a handler
+or this gateway.
+
 ## Configuration
 
 ```yaml

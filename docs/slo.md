@@ -35,12 +35,20 @@ numbers look fine — see `docs/observability.md` → Perf Regression Coverage.
 
 | Concern | Metric |
 |---|---|
-| Latency | `function_latency_ms{function}` |
+| Latency (what the caller experienced) | `function_e2e_latency_ms{function}` |
+| Latency (runtime service time per attempt) | `function_latency_ms{function}` |
 | Cold start | `function_cold_start_ms{function}` |
 | Queue depth | `function_queue_depth{function}` |
 | In-flight / concurrency | `function_inFlight{function}`, `function_effective_concurrency{function}` |
 | Success/error | `function_success_total{function}`, `function_error_total{function}` |
 | Retry | `function_retry_total{function}` |
+
+An SLO on latency should read `function_e2e_latency_ms`: it covers the whole
+invocation including retries and their waits, and it has a sample for every
+admitted invocation. `function_latency_ms` measures a single attempt and omits
+timed-out and expired ones entirely, which biases it optimistically exactly
+under the overload an SLO exists to catch. See `docs/observability.md` →
+"What the three duration timers actually sample".
 
 ## How to measure
 

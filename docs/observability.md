@@ -12,9 +12,39 @@
 - function_error_total{function}
 - function_retry_total{function}
 - function_latency_ms{function}
+- function_e2e_latency_ms{function}
+- function_queue_wait_ms{function}
 - function_cold_start_ms{function}
 - scheduler_tick_ms
 - dispatcher_k8s_latency_ms
+
+#### What the three duration timers actually sample
+
+These three are easy to confuse, and they deliberately do NOT have the same
+sample count. All are measured on monotonic time, so a clock step between
+admission and completion cannot fabricate a duration.
+
+| Metric | Interval | Recorded for |
+|---|---|---|
+| `function_e2e_latency_ms` | original admission → the invocation's conclusion | every admitted invocation, **exactly once**, whatever concluded it |
+| `function_latency_ms` | this attempt's dispatch → its observed completion | only attempts that produced an observed completion |
+| `function_queue_wait_ms` | this attempt's enqueue → its dispatch | only attempts that were dispatched |
+
+The end-to-end timer measures the *invocation*, so retries and the waits between
+them are inside it, and the interval starts at the ORIGINAL admission — a retry
+does not restart the clock. It is recorded once per invocation on every terminal
+policy: normal completion, a sync caller's timeout, a queue-wait timeout, an
+administrative expiry, an offloaded call concluded by the remote plane, and a
+function removed while its work was still queued.
+
+`function_latency_ms` measures the *attempt*, not the invocation, and it is
+censored on purpose: an invocation that timed out or expired while its dispatch
+was still in flight records no service-time sample at all, because the attempt
+never produced one and a truncated value would read as a fast success. So
+`function_latency_ms` has fewer samples than `function_e2e_latency_ms` under
+load, and the gap is not a bug — it is the censored population. Read
+`function_e2e_latency_ms` for what a caller experienced, and `function_latency_ms`
+only for how long the runtime took on the attempts it finished.
 
 `async-queue` and `sync-queue` are alternative providers of the four common
 per-function workload gauges above. Dashboards, HPA rules, and autoscaling

@@ -13,7 +13,30 @@ via a Docker-compatible CLI, no Kubernetes required.
 - `EphemeralPortAllocator` and `HttpEndpointProbe` — port assignment and
   readiness polling for each instance.
 - `RoundRobinFunctionProxy` (`ManagedFunctionProxyFactory`) — load-balances
-  invocations across the instances of a function.
+  invocations across the instances of a function, concurrently and under a
+  bound (see below).
+
+## Proxy behaviour and its outcomes
+
+The proxy serves invocations concurrently on virtual threads, under an admission
+bound derived from the function itself: `replicas x spec.concurrency`. That
+tracks the platform's own per-replica concurrency ceiling, so governed traffic is
+never rejected here while a burst beyond that ceiling still gets a defined answer
+instead of unbounded queueing. Health checks are never subject to the bound.
+
+| Condition | Status |
+|---|---|
+| Admission bound already full | `503` — "Too many concurrent invocations" |
+| Cannot connect to a replica | `502` |
+| Replica accepted but did not answer within the hop timeout | `504` |
+| Proxy closed, or no healthy backend | `503` |
+
+The single-hop timeout is the **function's own** `timeoutMs`, not a fixed value:
+this hop is where the function actually runs, so a smaller constant would cut a
+call the caller still considers in budget. Both the timeout and the admission
+bound are refreshed whenever the replica set changes *and* whenever the function
+is patched (`PATCH /v1/functions/{name}`) — a spec update reaches the proxy
+through the provider, so a raised timeout takes effect without redeploying.
 
 ## Configuration (`nanofaas.container-local.*`)
 
