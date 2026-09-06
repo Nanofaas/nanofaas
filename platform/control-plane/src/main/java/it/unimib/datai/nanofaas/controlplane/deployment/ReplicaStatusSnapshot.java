@@ -45,6 +45,17 @@ public final class ReplicaStatusSnapshot {
     /** How many slow provider refreshes may run at once before the rest queue. */
     public static final int DEFAULT_REFRESH_CONCURRENCY = 2;
 
+    /**
+     * How far past the TTL a last-known-good value may still be served while refreshes keep
+     * failing. Past it the failure is the answer.
+     *
+     * <p>Deliberately shorter than the autoscaler's progress window: a frozen value replayed for a
+     * whole window is indistinguishable from a rollout making no progress, and would be reconciled
+     * down as a stuck one. Bounding the age below that window means a dead read path can never
+     * masquerade as a stuck rollout — it makes the scaler skip the cycle instead.
+     */
+    public static final Duration DEFAULT_MAX_STALE = Duration.ofSeconds(15);
+
     private static final Executor DEFAULT_REFRESH_EXECUTOR = Executors.newFixedThreadPool(
             DEFAULT_REFRESH_CONCURRENCY, runnable -> {
                 Thread thread = new Thread(runnable, "nanofaas-replica-snapshot-refresh");
@@ -56,6 +67,7 @@ public final class ReplicaStatusSnapshot {
     private final AtomicLong generationSequence = new AtomicLong();
     private final InstantSource clock;
     private final Duration ttl;
+    private final Duration maxStale;
     private final Executor refreshExecutor;
 
     public ReplicaStatusSnapshot(InstantSource clock, Duration ttl, Executor refreshExecutor) {
@@ -67,6 +79,7 @@ public final class ReplicaStatusSnapshot {
         }
         this.clock = clock;
         this.ttl = ttl;
+        this.maxStale = DEFAULT_MAX_STALE;
         this.refreshExecutor = refreshExecutor;
     }
 
@@ -97,9 +110,18 @@ public final class ReplicaStatusSnapshot {
             if (status != null && !isExpired(entry.fetchedAt)) {
                 return status;
             }
-            if (status != null) {
+            if (status != null && !isTooStale(entry.fetchedAt)) {
                 startRefreshLocked(entry, target, fetcher);
                 return status;
+            }
+            if (status != null) {
+                // Past the stale bound the cached value is no longer a defensible reading of
+                // reality. Drop it and let the caller see whatever the provider actually does:
+                // a genuine failure is more useful than a confidently wrong replica count.
+                log.warn("Replica status for {} is older than the {} stale bound; refusing to serve it",
+                        target.functionName(), maxStale);
+                entry.status = null;
+                entry.fetchedAt = null;
             }
         }
         return refreshSynchronously(entry, target, fetcher);
@@ -164,16 +186,30 @@ public final class ReplicaStatusSnapshot {
         submitFetch(entry, target, capturedGeneration, future, fetcher);
     }
 
+    /**
+     * Runs the fetch on the CALLING thread rather than the shared background pool, still
+     * single-flight: a refresh already in flight for this generation is joined instead of
+     * duplicated. The callers here are wake-up, lifecycle and cold reads — latency-critical paths
+     * that already run on their own bounded executors. Routing them through the small background
+     * pool put them behind slow periodic refreshes, and behind the unauthenticated replicas
+     * endpoint that shares it, narrowing the cold-start path instead of widening it.
+     */
     private ReplicaStatus refreshSynchronously(Entry entry, ManagedDeploymentTarget target, Fetcher fetcher) {
         CompletableFuture<ReplicaStatus> future;
+        boolean fetchHere = false;
+        long capturedGeneration;
         synchronized (entry) {
-            long capturedGeneration = entry.generation;
+            capturedGeneration = entry.generation;
             if (entry.inFlight == null || entry.inFlight.isDone()) {
-                CompletableFuture<ReplicaStatus> fresh = new CompletableFuture<>();
-                entry.inFlight = fresh;
-                submitFetch(entry, target, capturedGeneration, fresh, fetcher);
+                future = new CompletableFuture<>();
+                entry.inFlight = future;
+                fetchHere = true;
+            } else {
+                future = entry.inFlight;
             }
-            future = entry.inFlight;
+        }
+        if (fetchHere) {
+            fetchAndApply(entry, target, capturedGeneration, future, fetcher);
         }
         return joinResult(future);
     }
@@ -194,6 +230,9 @@ public final class ReplicaStatusSnapshot {
         try {
             status = fetcher.fetch(target);
         } catch (Throwable failure) {
+            // Nobody subscribes to this future on the stale-while-revalidate path, so without a
+            // log a provider that has been failing for hours leaves no trace anywhere.
+            log.warn("Replica status refresh failed for {}", target.functionName(), failure);
             result.completeExceptionally(failure);
             return;
         }
@@ -210,6 +249,10 @@ public final class ReplicaStatusSnapshot {
 
     private boolean isExpired(Instant fetchedAt) {
         return !clock.instant().isBefore(fetchedAt.plus(ttl));
+    }
+
+    private boolean isTooStale(Instant fetchedAt) {
+        return !clock.instant().isBefore(fetchedAt.plus(ttl).plus(maxStale));
     }
 
     private static ReplicaStatus joinResult(CompletableFuture<ReplicaStatus> future) {

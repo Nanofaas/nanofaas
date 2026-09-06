@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 class ReplicaStatusSnapshotTest {
 
@@ -285,6 +286,69 @@ class ReplicaStatusSnapshotTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new ReplicaStatusSnapshot(clock.instantSource(), Duration.ofMillis(-1), Runnable::run))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void read_stopsServingALastKnownGoodValueOnceItIsOlderThanTheStaleBound() {
+        // A silently failing refresh used to leave read() serving the same value forever, with no
+        // upper bound on its age and no signal anywhere. Past the bound the failure is the answer:
+        // the autoscaler's per-function catch skips that cycle rather than deciding on a frozen
+        // tuple, which is also what keeps a dead read path from reading as a stuck rollout.
+        MutableInstantSource clock = new MutableInstantSource(0);
+        ReplicaStatusSnapshot snapshot = snapshot(clock, Runnable::run);
+        ReplicaStatusSnapshot.Fetcher failing = t -> {
+            throw new IllegalStateException("provider down");
+        };
+
+        assertThat(snapshot.read(TARGET, t -> new ReplicaStatus(3, 3))).isEqualTo(new ReplicaStatus(3, 3));
+
+        // Inside the bound: expired, but the last-known-good value is still the better answer.
+        clock.advanceMillis(TTL.toMillis() + 1);
+        assertThat(snapshot.read(TARGET, failing)).isEqualTo(new ReplicaStatus(3, 3));
+
+        // Past it: no longer a defensible reading of reality.
+        clock.advanceMillis(ReplicaStatusSnapshot.DEFAULT_MAX_STALE.toMillis());
+        assertThatThrownBy(() -> snapshot.read(TARGET, failing))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("provider down");
+    }
+
+    @Test
+    void read_recoversAsSoonAsTheProviderAnswersAgain() {
+        MutableInstantSource clock = new MutableInstantSource(0);
+        ReplicaStatusSnapshot snapshot = snapshot(clock, Runnable::run);
+        snapshot.read(TARGET, t -> new ReplicaStatus(3, 3));
+
+        clock.advanceMillis(TTL.toMillis() + ReplicaStatusSnapshot.DEFAULT_MAX_STALE.toMillis() + 1);
+        assertThatThrownBy(() -> snapshot.read(TARGET, t -> {
+            throw new IllegalStateException("provider down");
+        })).isInstanceOf(IllegalStateException.class);
+
+        assertThat(snapshot.read(TARGET, t -> new ReplicaStatus(5, 5))).isEqualTo(new ReplicaStatus(5, 5));
+    }
+
+    @Test
+    void refresh_doesNotQueueBehindTheSharedBackgroundRefreshPool() throws Exception {
+        // Wake-up and lifecycle reads are forced-fresh and latency-critical. Routing them through
+        // the small background pool put them behind slow periodic refreshes — and behind the
+        // unauthenticated replicas endpoint, which shares it. A saturated pool must not delay them.
+        MutableInstantSource clock = new MutableInstantSource(0);
+        CountDownLatch poolOccupied = new CountDownLatch(1);
+        CountDownLatch releasePool = new CountDownLatch(1);
+        try (ExecutorService pool = Executors.newFixedThreadPool(1)) {
+            ReplicaStatusSnapshot snapshot = snapshot(clock, pool);
+            pool.execute(() -> {
+                poolOccupied.countDown();
+                await(releasePool);
+            });
+            assertThat(poolOccupied.await(1, TimeUnit.SECONDS)).isTrue();
+
+            ReplicaStatus fresh = assertTimeoutPreemptively(Duration.ofSeconds(2),
+                    () -> snapshot.refresh(TARGET, t -> new ReplicaStatus(4, 4)));
+
+            assertThat(fresh).isEqualTo(new ReplicaStatus(4, 4));
+            releasePool.countDown();
+        }
     }
 
     private static ReplicaStatusSnapshot snapshot(MutableInstantSource clock, Executor executor) {

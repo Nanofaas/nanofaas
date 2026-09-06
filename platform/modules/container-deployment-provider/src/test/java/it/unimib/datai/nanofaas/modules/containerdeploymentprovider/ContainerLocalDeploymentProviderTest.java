@@ -75,6 +75,44 @@ class ContainerLocalDeploymentProviderTest {
     }
 
     @Test
+    void updateSpec_pushesTheNewTimeoutAndConcurrencyToTheProxy() {
+        RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
+        RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
+        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                adapter,
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
+                new ReadyEndpointProbe(),
+                new FixedPortAllocator(19001, 19002),
+                functionName -> proxy
+        );
+        provider.provision(spec("echo", 2));
+
+        // A PATCH raises the function's own timeout and per-replica concurrency. The proxy is
+        // where this hop actually runs: keeping the provisioning-time values would cut the call
+        // at 30 s while the caller is still well inside its new budget — the fixed-timeout 504
+        // this provider was changed to stop producing.
+        provider.updateSpec(spec("echo", 2, null, 120_000, 8));
+
+        assertThat(proxy.singleHopTimeout()).isEqualTo(Duration.ofMillis(120_000));
+        assertThat(proxy.maxInFlight()).isEqualTo(16);
+    }
+
+    @Test
+    void updateSpec_ofAnUnknownFunctionIsIgnored() {
+        RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
+        RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
+        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                adapter,
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
+                new ReadyEndpointProbe(),
+                new FixedPortAllocator(19001, 19002),
+                functionName -> proxy
+        );
+
+        assertThat(catchThrowable(() -> provider.updateSpec(spec("never-provisioned", 1)))).isNull();
+    }
+
+    @Test
     void setReplicas_refreshesAdmissionBoundAndKeepsFunctionTimeout() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
@@ -603,14 +641,19 @@ class ContainerLocalDeploymentProviderTest {
     }
 
     private static FunctionSpec spec(String name, int minReplicas, ResourceSpec resources) {
+        return spec(name, minReplicas, resources, 30_000, 4);
+    }
+
+    private static FunctionSpec spec(String name, int minReplicas, ResourceSpec resources,
+                                     int timeoutMs, int concurrency) {
         return new FunctionSpec(
                 name,
                 "img:latest",
                 List.of("java", "-jar", "app.jar"),
                 new LinkedHashMap<>(Map.of("APP_MODE", "dev")),
                 resources,
-                30_000,
-                4,
+                timeoutMs,
+                concurrency,
                 100,
                 3,
                 null,

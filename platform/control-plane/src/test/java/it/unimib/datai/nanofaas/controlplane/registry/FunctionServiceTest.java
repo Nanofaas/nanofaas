@@ -27,6 +27,8 @@ import tools.jackson.databind.ObjectMapper;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -351,11 +353,12 @@ class FunctionServiceTest {
     }
 
     @Test
-    void update_appliesConcurrencyWithoutTouchingTheDeployment() {
+    void update_appliesConcurrencyWithoutRedeployingTheFunction() {
         when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
         service.register(new FunctionSpec("fn", "img:latest", null, null, null,
                 null, 4, null, null, null, ExecutionMode.DEPLOYMENT, null, null, null));
         reset(provider);
+        when(provider.backendId()).thenReturn("k8s");
 
         Optional<RegisteredFunction> updated = service.update("fn",
                 new FunctionUpdateRequest(16, null, null, null));
@@ -365,7 +368,13 @@ class FunctionServiceTest {
         assertEquals("k8s", updated.get().deploymentMetadata().deploymentBackend());
         assertEquals("http://fn-svc:8080", updated.get().spec().endpointUrl());
         assertEquals(16, registry.get("fn").orElseThrow().concurrency());
-        verifyNoInteractions(provider);
+        // A PATCH tunes the running deployment; it must never tear it down and rebuild it.
+        verify(provider, never()).provision(any());
+        verify(provider, never()).deprovision(any());
+        verify(provider, never()).reconcile(any(), anyInt(), any());
+        // But the new tuning does have to reach the backend, or the deployment keeps enforcing
+        // the values it was provisioned with.
+        verify(provider).updateSpec(argThat(spec -> spec.concurrency() == 16));
     }
 
     @Test

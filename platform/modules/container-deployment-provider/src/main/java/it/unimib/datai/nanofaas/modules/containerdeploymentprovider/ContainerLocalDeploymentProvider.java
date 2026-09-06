@@ -147,6 +147,25 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
     }
 
     @Override
+    public void updateSpec(FunctionSpec spec) {
+        ReentrantLock lock = locks.get(spec.name());
+        if (lock == null) {
+            return;
+        }
+        lock.lock();
+        try {
+            FunctionState state = states.get(spec.name());
+            if (state == null) {
+                return;
+            }
+            state.spec = spec;
+            pushProxyConfig(state);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    @Override
     public void deprovision(String functionName) {
         ReentrantLock lock = locks.computeIfAbsent(functionName, k -> new ReentrantLock());
         lock.lock();
@@ -423,7 +442,9 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
     }
 
     private static final class FunctionState {
-        private final FunctionSpec spec;
+        // Replaced on a spec update: the proxy's timeout and admission bound are derived from it,
+        // so a snapshot frozen at provisioning time would outlive every later PATCH.
+        private volatile FunctionSpec spec;
         private final ManagedFunctionProxy proxy;
         private final LinkedHashMap<Integer, ReplicaState> replicas = new LinkedHashMap<>();
 

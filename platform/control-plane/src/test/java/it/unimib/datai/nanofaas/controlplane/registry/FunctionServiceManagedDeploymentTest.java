@@ -21,6 +21,7 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -160,6 +161,34 @@ class FunctionServiceManagedDeploymentTest {
                 argThat(spec -> spec.name().equals("fn")),
                 eq(5),
                 eq(deploymentObjects));
+    }
+
+    @Test
+    void update_ofADeploymentFunction_pushesTheNewSpecToItsBackend() {
+        ManagedDeploymentProvider provider = provider("k8s");
+        when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080/invoke", "k8s"));
+        FunctionService service = serviceWithProviders(provider);
+        service.register(deploymentSpec("fn", null));
+
+        service.update("fn", new FunctionUpdateRequest(8, 120_000, null, null));
+
+        // Whatever the backend derived from the spec at provisioning time — the container proxy's
+        // single-hop timeout and admission bound — has to follow the PATCH, or the deployment keeps
+        // enforcing the values it was born with while the caller believes the new ones.
+        verify(provider).updateSpec(argThat(spec ->
+                spec.name().equals("fn") && spec.timeoutMs() == 120_000 && spec.concurrency() == 8));
+    }
+
+    @Test
+    void update_ofANonDeploymentFunction_touchesNoBackend() {
+        ManagedDeploymentProvider provider = provider("k8s");
+        when(provider.supports(any())).thenReturn(false);
+        FunctionService service = serviceWithProviders(provider);
+        service.register(deploymentSpec("fn", "http://external:8080/invoke")); // degrades to EXTERNAL
+
+        service.update("fn", new FunctionUpdateRequest(8, 120_000, null, null));
+
+        verify(provider, never()).updateSpec(any());
     }
 
     private FunctionService serviceWithProviders(ManagedDeploymentProvider... providers) {

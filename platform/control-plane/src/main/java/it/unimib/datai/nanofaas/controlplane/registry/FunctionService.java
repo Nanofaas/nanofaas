@@ -141,6 +141,12 @@ public class FunctionService {
             FunctionSpec updatedSpec = resolver.resolve(request.applyTo(existing.spec()));
             RegisteredFunction updated = new RegisteredFunction(updatedSpec, existing.deploymentMetadata());
             registry.put(updated);
+            // A managed backend derived its runtime tuning from the spec it was provisioned with;
+            // the container proxy's single-hop timeout and admission bound are exactly that. Without
+            // this the deployment keeps enforcing the original values while the caller believes the
+            // patched ones — a 30 s hop cut on a function the operator just gave 120 s.
+            managedDeploymentTarget(updated).ifPresent(target ->
+                    managedDeploymentCoordinator.requireProvider(target).updateSpec(updatedSpec));
             // ponytail: no rollback on listener failure — the registration rollback path deletes the
             // function's queue, which is far worse than a listener missing one update. Listeners are
             // idempotent, so replaying the same PATCH converges.
