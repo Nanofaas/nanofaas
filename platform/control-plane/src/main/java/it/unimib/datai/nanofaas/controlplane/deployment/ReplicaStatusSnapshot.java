@@ -236,13 +236,25 @@ public final class ReplicaStatusSnapshot {
             result.completeExceptionally(failure);
             return;
         }
+        boolean applied;
         synchronized (entry) {
-            if (entry.generation == capturedGeneration && target.backendId().equals(entry.backendId)) {
+            applied = entry.generation == capturedGeneration && target.backendId().equals(entry.backendId);
+            if (applied) {
                 entry.status = status;
                 entry.fetchedAt = clock.instant();
             }
             // Otherwise a newer generation (removal, re-registration or target change) owns this
             // entry now: the stale in-flight refresh must not overwrite it.
+        }
+        if (!applied) {
+            // The guard protected the cache, but a caller blocked on this future would still have
+            // been handed the old incarnation's replica count. A forced-fresh read that spans a
+            // deprovision and re-registration must fail rather than answer for a function that no
+            // longer exists in that form; the caller's next read starts from the new generation.
+            result.completeExceptionally(new IllegalStateException(
+                    "Replica status for " + target.functionName()
+                            + " was superseded by a newer generation while it was being fetched"));
+            return;
         }
         result.complete(status);
     }

@@ -121,6 +121,34 @@ class InvocationControllerTest {
     }
 
     @Test
+    void invokeSync_everyConnectionHeaderIsConsultedNotJustTheFirst() {
+        InvocationResponse response = new InvocationResponse("exec-hdr2", "success", "out", null);
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
+                .thenReturn(Mono.just(SyncInvocation.local(response)));
+
+        // RFC 9110 allows the field to be sent more than once; the nominations are the union.
+        // Reading only the first left the rest crossing to the handler and, through an offload
+        // hop, to a remote plane — a hole in the very mechanism that strips them.
+        webClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("Connection", "X-First-Hop")
+                .header("Connection", "X-Second-Hop")
+                .header("X-First-Hop", "one")
+                .header("X-Second-Hop", "two")
+                .header("X-Tenant", "acme")
+                .bodyValue(new InvocationRequest("payload", Map.of()))
+                .exchange()
+                .expectStatus().isOk();
+
+        ArgumentCaptor<InvocationRequest> captor = ArgumentCaptor.forClass(InvocationRequest.class);
+        verify(invocationService).invokeSyncReactive(eq("echo"), captor.capture(), eq(null), eq(null), eq(null), any());
+        assertThat(captor.getValue().headers())
+                .containsEntry("x-tenant", "acme")
+                .doesNotContainKeys("connection", "x-first-hop", "x-second-hop");
+    }
+
+    @Test
     void invokeSync_callerCannotForgeHeadersViaBody() {
         InvocationResponse response = new InvocationResponse("exec-forge", "success", "out", null);
         when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))

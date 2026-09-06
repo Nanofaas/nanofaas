@@ -81,9 +81,9 @@ class SyncQueueRuntimeActivationRegressionTest {
             // startup. Previously this bean was @ConditionalOnProperty(sync-queue.enabled)
             // and never came into existence for a runtime-only activation.
             SyncScheduler scheduler = context.getBean(SyncScheduler.class);
-            if (!scheduler.isRunning()) {
-                scheduler.start();
-            }
+        // A refreshed context auto-starts SmartLifecycle beans; asserting that is the point,
+        // a "start it if it isn't running" guard would make the next assertion unfalsifiable.
+        assertThat(scheduler.isRunning()).isTrue();
             assertThat(scheduler.isRunning())
                     .as("the module-loaded scheduler must be running so a runtime "
                             + "activation is drained without a restart")

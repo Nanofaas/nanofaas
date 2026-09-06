@@ -363,7 +363,9 @@ public class ExecutionCompletionHandler {
                 currentTask.request(),
                 null,  // No idempotency key for retry - retry is internal
                 currentTask.traceId(),
-                Instant.now(),
+                // The record's own clock, not Instant.now(): under a steered clock a retry task
+                // stamped from the system clock is the one inconsistent timestamp in the record.
+                executionRecord.now(),
                 currentTask.attempt() + 1,
                 currentTask.kind()
         );
@@ -371,18 +373,19 @@ public class ExecutionCompletionHandler {
         try {
             InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, executionRecord);
             return null;
-        } catch (QueueFullException _) {
-            log.warn("Retry queue full for execution {}, completing with error", executionRecord.executionId());
-            return retryExhaustedUnderLock(executionRecord, functionName, result);
         } catch (RuntimeException ex) {
-            // Belt-and-braces: enqueueOrThrow only ever throws QueueFullException on its
-            // own account, but the enqueuer it wraps is pluggable (queue-backed, sync-queue,
-            // executor-backed, or a future implementation) and scheduling a retry is exactly
-            // the kind of call whose failure must never leave the record parked in QUEUED
-            // with nothing left that will ever complete it. Any other exception surfacing
-            // from the scheduling attempt gets the same terminal treatment as a full queue.
-            log.warn("Retry scheduling failed for execution {}, completing with error: {}",
-                    executionRecord.executionId(), ex.toString());
+            // QueueFullException is the expected refusal; anything else is belt-and-braces.
+            // enqueueOrThrow only throws QueueFullException on its own account, but the enqueuer
+            // it wraps is pluggable (queue-backed, sync-queue, executor-backed, or a future
+            // implementation) and scheduling a retry is exactly the kind of call whose failure
+            // must never leave the record parked in QUEUED with nothing left to complete it.
+            // Both get the same terminal treatment; only the log line differs.
+            if (ex instanceof QueueFullException) {
+                log.warn("Retry queue full for execution {}, completing with error", executionRecord.executionId());
+            } else {
+                log.warn("Retry scheduling failed for execution {}, completing with error: {}",
+                        executionRecord.executionId(), ex.toString());
+            }
             return retryExhaustedUnderLock(executionRecord, functionName, result);
         }
     }

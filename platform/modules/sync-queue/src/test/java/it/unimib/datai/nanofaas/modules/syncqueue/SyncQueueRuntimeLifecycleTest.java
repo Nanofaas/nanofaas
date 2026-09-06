@@ -91,9 +91,9 @@ class SyncQueueRuntimeLifecycleTest {
             assertThat(context).hasNotFailed();
 
             SyncScheduler scheduler = context.getBean(SyncScheduler.class);
-            if (!scheduler.isRunning()) {
-                scheduler.start();
-            }
+        // A refreshed context auto-starts SmartLifecycle beans; asserting that is the point,
+        // a "start it if it isn't running" guard would make the next assertion unfalsifiable.
+        assertThat(scheduler.isRunning()).isTrue();
             assertThat(scheduler.isRunning()).isTrue();
 
             MutableSyncQueueConfigSource configSource = context.getBean(MutableSyncQueueConfigSource.class);

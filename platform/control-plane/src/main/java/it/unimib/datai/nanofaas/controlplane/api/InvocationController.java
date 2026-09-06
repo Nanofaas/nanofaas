@@ -21,6 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.MultiValueMap;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
@@ -65,13 +66,18 @@ public class InvocationController {
      * offloaded, they must not reach the offload gateway, which only ever sees this map.
      */
     private static InvocationRequest withCallerHeaders(InvocationRequest request,
-                                                       Map<String, String> rawHeaders) {
+                                                       MultiValueMap<String, String> rawHeaders) {
         Set<String> connectionNominated = connectionNominatedHeaders(rawHeaders);
         Map<String, String> filtered = new LinkedHashMap<>();
-        rawHeaders.forEach((name, value) -> {
+        rawHeaders.forEach((name, values) -> {
+            if (name == null || values.isEmpty()) {
+                return;
+            }
             String key = name.toLowerCase(Locale.ROOT);
             if (!EXCLUDED_REQUEST_HEADERS.contains(key) && !connectionNominated.contains(key)) {
-                filtered.put(key, value);
+                // Application headers stay single-valued, as they were: the first value wins.
+                // Only the Connection nominations need every occurrence, and they are read above.
+                filtered.put(key, values.getFirst());
             }
         });
         return new InvocationRequest(request.input(), request.metadata(), filtered);
@@ -84,24 +90,27 @@ public class InvocationController {
      * headers so they do not leak to the handler (or, through an offload hop, to a remote
      * plane) as if they were ordinary application headers.
      */
-    private static Set<String> connectionNominatedHeaders(Map<String, String> rawHeaders) {
-        String connection = null;
-        for (Map.Entry<String, String> entry : rawHeaders.entrySet()) {
-            if (entry.getKey() != null && "connection".equalsIgnoreCase(entry.getKey())) {
-                connection = entry.getValue();
-                break;
-            }
-        }
-        if (connection == null || connection.isBlank()) {
-            return Set.of();
-        }
+    private static Set<String> connectionNominatedHeaders(MultiValueMap<String, String> rawHeaders) {
         Set<String> nominated = new HashSet<>();
-        for (String token : connection.split(",")) {
-            String trimmed = token.strip().toLowerCase(Locale.ROOT);
-            if (!trimmed.isEmpty()) {
-                nominated.add(trimmed);
+        rawHeaders.forEach((name, values) -> {
+            if (name == null || !"connection".equalsIgnoreCase(name)) {
+                return;
             }
-        }
+            // RFC 9110 allows the field to be sent more than once; the nominations are the
+            // union of every occurrence. Consulting only the first left the rest crossing to
+            // the handler as ordinary application headers.
+            for (String value : values) {
+                if (value == null) {
+                    continue;
+                }
+                for (String token : value.split(",")) {
+                    String trimmed = token.strip().toLowerCase(Locale.ROOT);
+                    if (!trimmed.isEmpty()) {
+                        nominated.add(trimmed);
+                    }
+                }
+            }
+        });
         return nominated;
     }
 
@@ -115,7 +124,7 @@ public class InvocationController {
             @RequestHeader(value = "X-NanoFaaS-Offload-Hop", required = false) String offloadHop,
             @RequestHeader(value = "traceparent", required = false) String traceparent,
             @RequestHeader(value = "tracestate", required = false) String tracestate,
-            @RequestHeader Map<String, String> allHeaders) {
+            @RequestHeader MultiValueMap<String, String> allHeaders) {
         OffloadContext offloadContext = new OffloadContext(offloadHop != null, traceparent, tracestate);
         InvocationRequest requestWithHeaders = withCallerHeaders(request, allHeaders);
         // defer: a synchronously thrown service exception must flow through onErrorResume
@@ -181,7 +190,7 @@ public class InvocationController {
             @RequestBody @Valid InvocationRequest request,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestHeader(value = "X-Trace-Id", required = false) String traceId,
-            @RequestHeader Map<String, String> allHeaders) {
+            @RequestHeader MultiValueMap<String, String> allHeaders) {
         InvocationRequest requestWithHeaders = withCallerHeaders(request, allHeaders);
         return Mono.fromCallable(() -> invocationService.invokeAsync(name, requestWithHeaders, idempotencyKey, traceId))
                 .subscribeOn(Schedulers.boundedElastic())

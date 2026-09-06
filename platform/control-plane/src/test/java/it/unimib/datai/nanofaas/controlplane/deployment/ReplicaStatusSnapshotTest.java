@@ -66,7 +66,10 @@ class ReplicaStatusSnapshotTest {
 
             await(secondFetchDone);
             assertThat(fetches).hasValue(2);
-            assertThat(snapshot.read(TARGET, fetcher)).isEqualTo(new ReplicaStatus(2, 2));
+            // The latch is counted down INSIDE the fetcher, before it returns, so the refreshed
+            // value has not necessarily been applied yet. Poll for it rather than assuming the
+            // countdown ordered the store.
+            assertThat(readUntil(snapshot, fetcher, new ReplicaStatus(2, 2))).isTrue();
         }
     }
 
@@ -351,8 +354,47 @@ class ReplicaStatusSnapshotTest {
         }
     }
 
+    @Test
+    void refresh_doesNotHandBackAValueTheGenerationGuardRejected() throws Exception {
+        // The guard keeps a superseded fetch out of the CACHE, but a caller blocked on that same
+        // fetch was still handed the old incarnation's replica count. A forced-fresh read spanning
+        // a deprovision and re-registration must fail rather than answer for a function that no
+        // longer exists in that form.
+        MutableInstantSource clock = new MutableInstantSource(0);
+        CountDownLatch fetchEntered = new CountDownLatch(1);
+        CountDownLatch releaseFetch = new CountDownLatch(1);
+        try (ExecutorService caller = Executors.newSingleThreadExecutor()) {
+            ReplicaStatusSnapshot snapshot = snapshot(clock, Runnable::run);
+            var pending = caller.submit(() -> snapshot.refresh(TARGET, t -> {
+                fetchEntered.countDown();
+                await(releaseFetch);
+                return new ReplicaStatus(9, 9);
+            }));
+
+            assertThat(fetchEntered.await(1, TimeUnit.SECONDS)).isTrue();
+            snapshot.invalidate(TARGET.functionName());
+            releaseFetch.countDown();
+
+            assertThatThrownBy(pending::get).hasRootCauseInstanceOf(IllegalStateException.class);
+        }
+    }
+
     private static ReplicaStatusSnapshot snapshot(MutableInstantSource clock, Executor executor) {
         return new ReplicaStatusSnapshot(clock.instantSource(), TTL, executor);
+    }
+
+    /** Polls a cached read until it reports the expected value, or the bound elapses. */
+    private static boolean readUntil(ReplicaStatusSnapshot snapshot,
+                                     ReplicaStatusSnapshot.Fetcher fetcher,
+                                     ReplicaStatus expected) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (System.nanoTime() < deadline) {
+            if (expected.equals(snapshot.read(TARGET, fetcher))) {
+                return true;
+            }
+            Thread.onSpinWait();
+        }
+        return false;
     }
 
     private static void await(CountDownLatch latch) {

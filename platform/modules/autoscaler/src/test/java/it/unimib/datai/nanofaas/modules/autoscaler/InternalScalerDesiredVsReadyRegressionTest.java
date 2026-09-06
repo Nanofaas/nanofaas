@@ -113,7 +113,7 @@ class InternalScalerDesiredVsReadyRegressionTest {
         int lastCommandedTarget = replicaCounts.getAllValues().get(replicaCounts.getAllValues().size() - 1);
         assertThat(firstCommandedTarget).isEqualTo(10);
 
-        // BUG (still reproduces on current code): round 2 recomputes from readyReplicas=2
+        // BUG (reproduced on the pre-fix code; M2 closed it): round 2 recomputes from readyReplicas=2
         // (ceil(2.0*2)=4) and calls it a scale-up (4 > 2), overwriting the real target of 10
         // with 4 -- an unintended scale-DOWN mid-rollout despite unchanged load pressure.
         assertThat(lastCommandedTarget)

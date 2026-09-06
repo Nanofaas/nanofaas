@@ -4,9 +4,12 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.function.LongSupplier;
 
 public final class FunctionCapacityRegistry implements WorkloadCapacityController {
+    private static final Logger log = LoggerFactory.getLogger(FunctionCapacityRegistry.class);
     private final LongSupplier nanoTime;
     private final ConcurrentHashMap<String, Entry> entries = new ConcurrentHashMap<>();
     private final Set<Consumer<String>> capacityListeners = ConcurrentHashMap.newKeySet();
@@ -150,7 +153,16 @@ public final class FunctionCapacityRegistry implements WorkloadCapacityControlle
         // and the scheduler's scan path acquires this registry lock while holding the queue
         // monitor, so notifying under the registry lock would invert that order.
         if (opened) {
-            capacityListeners.forEach(listener -> listener.accept(functionName));
+            for (Consumer<String> listener : capacityListeners) {
+                try {
+                    listener.accept(functionName);
+                } catch (RuntimeException ex) {
+                    // This runs inside the concurrency governor's setEffectiveConcurrency loop.
+                    // One misbehaving subscriber must not abort the loop and leave the remaining
+                    // functions without their capacity update.
+                    log.warn("Capacity listener failed for function {}", functionName, ex);
+                }
+            }
         }
     }
 

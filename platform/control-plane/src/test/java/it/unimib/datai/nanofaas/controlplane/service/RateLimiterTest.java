@@ -36,20 +36,19 @@ class RateLimiterTest {
 
     @SuppressWarnings("java:S2925") // clock advancement: the fixed sleep must cross the 1s rate-limit window boundary so the window resets
     @Test
-    void allow_afterWindowReset_allowsAgain() throws InterruptedException {
-        RateLimiter limiter = new RateLimiter();
+    void allow_afterWindowReset_allowsAgain() {
+        // Steered clock, not a 1.1 s sleep: the window boundary is the thing under test, so it
+        // should be crossed exactly rather than waited out.
+        MutableClock clock = new MutableClock(1_000L);
+        RateLimiter limiter = new RateLimiter(clock);
         limiter.setMaxPerSecond(5);
 
-        // Exhaust limit
         for (int i = 0; i < 5; i++) {
             limiter.allow();
         }
         assertThat(limiter.allow()).isFalse();
 
-        // Wait for window to reset
-        Thread.sleep(1100);
-
-        // Should allow again
+        clock.advanceSeconds(1);
         assertThat(limiter.allow()).isTrue();
     }
 
@@ -94,53 +93,6 @@ class RateLimiterTest {
     }
 
     @SuppressWarnings("java:S2925") // deliberate delay to spread concurrent calls across the 1s window: rate-limit semantics depend on real time
-    @Test
-    void allow_concurrentWindowReset_maintainsCorrectCount() throws Exception {
-        int maxPerSecond = 50;
-        RateLimiter limiter = new RateLimiter();
-        limiter.setMaxPerSecond(maxPerSecond);
-
-        AtomicInteger totalAllowed = new AtomicInteger(0);
-        AtomicInteger violations = new AtomicInteger(0);
-
-        int numThreads = 20;
-        CountDownLatch startLatch = new CountDownLatch(1);
-        CountDownLatch endLatch = new CountDownLatch(numThreads);
-
-        for (int i = 0; i < numThreads; i++) {
-            new Thread(() -> {
-                try {
-                    startLatch.await();
-                    long lastSecond = -1;
-
-                    for (int j = 0; j < 100; j++) {
-                        long currentSecond = System.currentTimeMillis() / 1000;
-                        if (currentSecond != lastSecond) {
-                            lastSecond = currentSecond;
-                        }
-
-                        if (limiter.allow()) {
-                            totalAllowed.incrementAndGet();
-                        }
-
-                        // Small delay to spread across time
-                        Thread.sleep(1);
-                    }
-                } catch (InterruptedException _) {
-                    Thread.currentThread().interrupt();
-                } finally {
-                    endLatch.countDown();
-                }
-            }).start();
-        }
-
-        startLatch.countDown();
-        endLatch.await();
-
-        // No violations should occur
-        assertThat(violations.get()).isZero();
-    }
-
     /**
      * Regression coverage for the concurrent defect called out at the end of
      * docs/control-plane-review-2026-09-05.md ("Un ulteriore difetto concorrente e' in

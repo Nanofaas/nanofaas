@@ -73,7 +73,7 @@ public class ExecutionStore {
      * archiviare l'esito - non lo store, che di slot e future condivise non sa
      * nulla al di fuori del record stesso.
      */
-    private volatile Consumer<ExecutionRecord> expiryListener = record -> { };
+    private final List<Consumer<ExecutionRecord>> expiryListeners = new CopyOnWriteArrayList<>();
 
     /**
      * Chi va avvertito quando un record terminale viene archiviato con
@@ -126,7 +126,7 @@ public class ExecutionStore {
                     // REPLACED non si applica: nessun path fa put() due volte sullo
                     // stesso id. Solo EXPIRED e' lo sfratto che nessuno ha deciso.
                     if (cause == RemovalCause.EXPIRED && executionRecord != null) {
-                        expiryListener.accept(executionRecord);
+                        notifyExpiry(executionRecord);
                     }
                 })
                 .build();
@@ -139,12 +139,14 @@ public class ExecutionStore {
     }
 
     /**
-     * Registra chi chiude un dispatch abbandonato quando {@code maxLifetime}
+     * Additivo, come {@link #onTerminal}.
+     *
+     * <p>Registra chi chiude un dispatch abbandonato quando {@code maxLifetime}
      * scade da solo. Non additivo: l'ultima registrazione vince, come per ogni
      * singleton Spring che si registra una volta sola all'avvio.
      */
     public void onAdministrativeExpiry(Consumer<ExecutionRecord> listener) {
-        this.expiryListener = Objects.requireNonNull(listener, "listener");
+        expiryListeners.add(Objects.requireNonNull(listener, "listener"));
     }
 
     /**
@@ -209,15 +211,26 @@ public class ExecutionStore {
         // qui che parte la ritenzione terminale della chiave. Invertire l'ordine
         // riaprirebbe la finestra in cui la chiave e' gia' terminale mentre l'esito
         // non e' ancora visibile ai replay.
-        for (Consumer<ExecutionRecord> listener : terminalListeners) {
+        notifyAll(terminalListeners, executionRecord, "Terminal");
+    }
+
+    private void notifyExpiry(ExecutionRecord executionRecord) {
+        notifyAll(expiryListeners, executionRecord, "Administrative-expiry");
+    }
+
+    /**
+     * I listener sono collaboratori indipendenti registrati da bean diversi, in un ordine che
+     * decide Spring. Se uno fallisce, gli altri devono comunque girare: perdere la transizione
+     * terminale della chiave di idempotenza perche' e' saltata una metrica riaprirebbe in
+     * silenzio la finestra di riesecuzione.
+     */
+    private static void notifyAll(List<Consumer<ExecutionRecord>> listeners,
+                                  ExecutionRecord executionRecord, String kind) {
+        for (Consumer<ExecutionRecord> listener : listeners) {
             try {
                 listener.accept(executionRecord);
             } catch (RuntimeException ex) {
-                // I listener sono collaboratori indipendenti registrati da bean diversi, in un
-                // ordine che decide Spring. Se uno fallisce, gli altri devono comunque girare:
-                // perdere la transizione terminale della chiave di idempotenza perche' e' saltata
-                // una metrica riaprirebbe in silenzio la finestra di riesecuzione.
-                log.warn("Terminal listener failed for execution {}", executionRecord.executionId(), ex);
+                log.warn("{} listener failed for execution {}", kind, executionRecord.executionId(), ex);
             }
         }
     }

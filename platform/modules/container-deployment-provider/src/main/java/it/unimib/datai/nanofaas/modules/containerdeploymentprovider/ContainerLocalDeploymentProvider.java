@@ -132,7 +132,13 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
                     }
                 }
                 createMissingReplicas(state, desiredReplicas, createdDuringReconcile);
-                states.put(spec.name(), state);
+                // Unreachable today (both callers reconcile onto an absent entry), but a leaked
+                // proxy now costs an HttpServer, a virtual-thread executor and an HttpClient with
+                // its own selector threads — too much to leave to the callers staying that way.
+                FunctionState replaced = states.put(spec.name(), state);
+                if (replaced != null && replaced.proxy != proxy) {
+                    safeClose(replaced.proxy);
+                }
                 return new ProvisionResult(proxy.endpointUrl(), backendId(), deploymentObjects(spec.name()));
             } catch (RuntimeException failure) {
                 for (String createdName : createdDuringReconcile) {

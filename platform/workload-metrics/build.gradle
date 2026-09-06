@@ -12,6 +12,8 @@ dependencyManagement {
 dependencies {
     implementation project(':common')
     implementation 'io.micrometer:micrometer-core'
+    // A failing capacity listener is logged rather than propagated into the governor loop.
+    implementation 'org.slf4j:slf4j-api'
 
     testImplementation 'org.junit.jupiter:junit-jupiter:6.0.3'
     testImplementation 'org.assertj:assertj-core:3.26.3'

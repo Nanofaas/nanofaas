@@ -240,6 +240,27 @@ class SyncQueueServiceTest {
     }
 
     @Test
+    void awaitWakeup_returnsImmediatelyWhenTheEpochMovedBeforeTheWait() {
+        // The whole point of the epoch discipline: a waiter reads the epoch BEFORE scanning, and
+        // if a wake-up event fires in the gap between that scan and the park, the park must not
+        // happen at all. Everything else in this file proves the epoch advances; this proves the
+        // consuming half — without it a lost signal costs a full safety-bound wait.
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
+        );
+        SyncQueueService service = createService(props, new ExecutionStore(),
+                new WaitEstimator(Duration.ofSeconds(30), 3),
+                new SyncQueueMetrics(new SimpleMeterRegistry()), Clock.systemUTC());
+        service.registerFunction("fn", 1);
+
+        long observedEpoch = service.wakeupEpoch();
+        service.enqueueOrThrow(task("fn", "e1")); // the signal the waiter is about to miss
+
+        assertTimeoutPreemptively(Duration.ofMillis(500),
+                () -> service.awaitWakeup(30_000, observedEpoch));
+    }
+
+    @Test
     void awaitWakeup_unblocksWhenTaskIsEnqueued() throws Exception {
         SyncQueueProperties props = new SyncQueueProperties(
                 true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3

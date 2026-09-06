@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -52,6 +53,7 @@ class SyncSchedulerWakeupTest {
 
     @BeforeEach
     void setUp() {
+        snapshotForeignSchedulerThreads();
         store = new ExecutionStore();
         capacity = new FunctionCapacityRegistry();
         queue = newQueue(store, capacity);
@@ -227,13 +229,35 @@ class SyncSchedulerWakeupTest {
         return thread;
     }
 
+    /**
+     * The scheduler thread belonging to THIS test's scheduler.
+     *
+     * <p>Matching on the name prefix alone is not enough: the module's Spring tests leave cached
+     * application contexts behind, and a {@code SyncScheduler} bean started in one of them keeps
+     * its own worker parked in TIMED_WAITING for the life of the JVM. Picking that thread made
+     * "the worker exits after stop()" fail against a thread this test never started — green in
+     * isolation, red in the full suite. Only threads that did not exist before this test started
+     * its scheduler are candidates.
+     */
     private Thread findSchedulerThread() {
         for (Thread t : Thread.getAllStackTraces().keySet()) {
-            if (t.getName().startsWith("nanofaas-sync-scheduler")) {
+            if (t.getName().startsWith("nanofaas-sync-scheduler") && !preExistingSchedulerThreads.contains(t)) {
                 return t;
             }
         }
         return null;
+    }
+
+    /** Scheduler threads already alive (foreign, usually from a cached Spring context) before setUp. */
+    private final Set<Thread> preExistingSchedulerThreads = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+
+    private void snapshotForeignSchedulerThreads() {
+        preExistingSchedulerThreads.clear();
+        for (Thread t : Thread.getAllStackTraces().keySet()) {
+            if (t.getName().startsWith("nanofaas-sync-scheduler")) {
+                preExistingSchedulerThreads.add(t);
+            }
+        }
     }
 
     private static void awaitTrue(java.util.function.BooleanSupplier condition) throws InterruptedException {

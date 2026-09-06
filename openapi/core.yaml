@@ -692,9 +692,15 @@ components:
         startedAt:
           type: string
           format: date-time
+          description: |
+            When the invocation was ADMITTED, not when a runtime first ran it. It is set as
+            soon as the execution exists, so a `queued` execution already reports it, and it
+            does not move when an internal retry starts a new attempt — the invocation began
+            once. Use `finishedAt - startedAt` for what the caller experienced end to end.
         finishedAt:
           type: string
           format: date-time
+          description: When the invocation reached a terminal state. Absent until then.
         output:
           description: |
             JSON output. Present on success for asynchronous and idempotency-keyed
