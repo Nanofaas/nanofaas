@@ -20,11 +20,23 @@ macchina di sviluppo. È deliberato e va dichiarato leggendo i numeri.
 | Raccolta Prometheus, p99 lato client, CPU/allocazioni per successo | no | NanoLab (§8) |
 | Soak che attraversa le finestre di ritenzione | no | NanoLab (§8) |
 
-Motivo dell'esclusione: in questa sessione non esistono né il checkout
-`../nanolab` né `k6`. Un numero end-to-end prodotto senza quella infrastruttura
-non sarebbe confrontabile con la baseline della campagna precedente, e §8 chiede
-esplicitamente «baseline e candidato nella stessa matrice e sulla stessa
-infrastruttura».
+**Correzione (2026-09-07).** La prima stesura di questo README diceva che
+NanoLab non fosse disponibile. Era falso, e l'errore merita di restare scritto:
+il controllo era `ls ../nanolab` eseguito con la working directory dentro il
+*worktree*, dove risolve a `.claude/worktrees/nanolab`. Il `../nanolab` di
+CLAUDE.md presuppone la root del repo. NanoLab sta in
+`/home/michele/Documenti/nanolab`, funziona, e ha il comando `compare` con
+`--repetitions 3` di default — esattamente ciò che §8 prescrive. Anche Multipass
+è installato, quindi la riga Kubernetes di §7 è eseguibile.
+
+Resta vero che manca `k6` (non sul PATH né nel checkout), usato da alcuni
+scenari `concurrency-openloop-*`; e resta vera la distinzione di metodo: questi
+banchi sono confronti isolati in-JVM, non misure end-to-end.
+
+Una nota di procedura per chi continuerà: `compare` confronta *varianti di build*
+(jvm, g1, c2, native) dello stesso checkout. Per il confronto che §8 chiede fra
+**baseline e candidato** — due revisioni del codice — servono due esecuzioni di
+`run` su due revisioni, non un `compare`.
 
 ## Come leggere i numeri
 
