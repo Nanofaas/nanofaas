@@ -351,3 +351,75 @@ verifichi più il governor. È una scelta di copertura, non di correttezza.
 
 **Finché non è ritarato, quello scenario non verifica più il governor su questa
 macchina.** È una perdita di copertura reale, e va detta.
+
+---
+
+## §8 — Baseline contro candidato
+
+Prima esecuzione del protocollo di §8 su questo branch. Driver:
+`compare-baseline-candidate.sh`; dati grezzi per cella in
+`raw/compare-concurrency-cycle-container/`.
+
+**Bracci.** baseline `e35405ee` (il punto di rilascio v0.20.0, pre-branch)
+contro candidato = tip del branch.
+
+**Protocollo.** Tre ripetizioni per braccio, **ordine alternato** dentro la
+ripetizione (A,B,A,B,A,B) e non due blocchi: se la macchina deriva a metà
+campagna, deriva per entrambi i bracci invece di penalizzare il secondo. Stessa
+macchina (la DGX Spark del README), stesso scenario, stesso harness, stesso
+corpus — verificato che `performance-medium.json` esista anche alla baseline,
+altrimenti i due bracci non avrebbero ricevuto lo stesso carico.
+
+Scenario: `concurrency-cycle-container` nella versione ritarata (payload medium,
+2 core, budget scalato). Attraversa proxy container, sync queue, governor di
+concorrenza e le metriche di M1.
+
+### Risultati (mediana, [min–max] su 3 ripetizioni)
+
+| metrica | baseline `e35405ee` | candidato | delta |
+|---|---|---|---|
+| throughput | 350,1 req/s [346,3–366,7] | **849,9** [845,0–862,5] | **+142,7%** |
+| p50 | 113,2 ms [107,2–113,7] | **39,9** [39,1–39,9] | **−64,7%** |
+| p95 | 143,9 ms [142,1–145,2] | **68,6** [68,4–68,8] | **−52,4%** |
+| p99 | 152,7 ms [152,5–154,1] | **77,6** [77,5–78,4] | **−49,1%** |
+| richieste servite | 135–143k | 330–336k | |
+| governor busy floor | 2, 2, 3 | 5, 5, 5 | |
+| asserzioni scenario | fallite (3/3) | superate (3/3) | |
+
+**La dispersione non si sovrappone su nessuna metrica**: il massimo del
+candidato è sempre lontano dal minimo della baseline. Con tre ripetizioni per
+braccio è quanto di più netto si possa chiedere a questa scala.
+
+### Contro le soglie di §8
+
+- *«regressioni funzionali ammesse zero»* — il candidato supera tutte le
+  asserzioni dello scenario in 3 run su 3; la baseline in nessuno.
+- *«almeno 10% sulla metrica bersaglio, nessun peggioramento oltre il 5% di
+  throughput utile o p99»* — +142,7% di throughput e −49,1% di p99. Nessuna
+  metrica peggiora.
+
+### Come leggerlo, e come non leggerlo
+
+**Il `fail` della baseline non significa «la baseline era rotta».** Le soglie di
+questo scenario sono tarate sul candidato: la baseline le manca perché è più
+lenta, non perché sbagli qualcosa. Il confronto valido sono i numeri, non i
+verdetti — ed è il motivo per cui il driver archivia una cella che fallisce le
+asserzioni invece di fermare la coda, come faceva nella sua prima versione.
+
+**Il governor più basso della baseline non è un governor migliore.** Scende a 2
+contro i 5 del candidato perché deve rinunciare a molta più concorrenza per
+reggere lo stesso carico. Il limite più alto del candidato è il segno che
+sostiene più lavoro in parallelo.
+
+**Questo è il delta dell'INTERO branch**, non di un singolo intervento — che è
+ciò che «baseline contro candidato» significa per una decisione di rilascio, ma
+non soddisfa il *«variare un solo intervento per volta»* di §8. L'attribuzione
+per intervento viene dalla bisezione della sezione precedente: P1 è la causa
+dominante, misurata isolatamente a +295% di throughput.
+
+### Limiti
+
+Una sola macchina, un solo scenario, tre ripetizioni. Non copre i profili ASYNC,
+il replay con chiavi, i payload piccoli, gli errori/retry, né il soak che
+attraversa le finestre di ritenzione — tutte righe che §8 elenca e che restano
+da fare.

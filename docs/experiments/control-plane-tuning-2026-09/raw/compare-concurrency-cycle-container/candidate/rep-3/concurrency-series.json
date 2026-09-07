@@ -1,0 +1,1931 @@
+{
+  "function": "word-stats-java",
+  "dip": {
+    "peak_before": 8,
+    "trough": 5,
+    "recovery_after": 6
+  },
+  "errors": [],
+  "samples": [
+    {
+      "elapsed_seconds": 0.0,
+      "effective_concurrency": 8,
+      "in_flight": 0,
+      "mean_latency_ms": null,
+      "throughput_rps": null,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": null,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 2.143,
+      "effective_concurrency": 4,
+      "in_flight": 1,
+      "mean_latency_ms": 16.26,
+      "throughput_rps": 41.5,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.06,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 4.18,
+      "effective_concurrency": 4,
+      "in_flight": 0,
+      "mean_latency_ms": 12.5,
+      "throughput_rps": 60.4,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 6.224,
+      "effective_concurrency": 5,
+      "in_flight": 1,
+      "mean_latency_ms": 9.95,
+      "throughput_rps": 71.9,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 8.261,
+      "effective_concurrency": 5,
+      "in_flight": 0,
+      "mean_latency_ms": 6.65,
+      "throughput_rps": 100.1,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 10.288,
+      "effective_concurrency": 6,
+      "in_flight": 1,
+      "mean_latency_ms": 6.01,
+      "throughput_rps": 105.6,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 12.316,
+      "effective_concurrency": 6,
+      "in_flight": 1,
+      "mean_latency_ms": 6.15,
+      "throughput_rps": 105.0,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 14.343,
+      "effective_concurrency": 6,
+      "in_flight": 0,
+      "mean_latency_ms": 5.53,
+      "throughput_rps": 113.9,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 16.372,
+      "effective_concurrency": 7,
+      "in_flight": 1,
+      "mean_latency_ms": 5.35,
+      "throughput_rps": 117.8,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 18.402,
+      "effective_concurrency": 7,
+      "in_flight": 1,
+      "mean_latency_ms": 4.93,
+      "throughput_rps": 126.1,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 20.447,
+      "effective_concurrency": 8,
+      "in_flight": 0,
+      "mean_latency_ms": 4.74,
+      "throughput_rps": 126.7,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 22.475,
+      "effective_concurrency": 8,
+      "in_flight": 0,
+      "mean_latency_ms": 4.48,
+      "throughput_rps": 132.2,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 24.504,
+      "effective_concurrency": 8,
+      "in_flight": 1,
+      "mean_latency_ms": 4.9,
+      "throughput_rps": 125.6,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 26.535,
+      "effective_concurrency": 8,
+      "in_flight": 1,
+      "mean_latency_ms": 4.99,
+      "throughput_rps": 125.1,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 28.565,
+      "effective_concurrency": 8,
+      "in_flight": 1,
+      "mean_latency_ms": 4.47,
+      "throughput_rps": 134.5,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 30.595,
+      "effective_concurrency": 8,
+      "in_flight": 0,
+      "mean_latency_ms": 4.28,
+      "throughput_rps": 137.5,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 32.627,
+      "effective_concurrency": 8,
+      "in_flight": 1,
+      "mean_latency_ms": 4.44,
+      "throughput_rps": 133.4,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 34.665,
+      "effective_concurrency": 8,
+      "in_flight": 1,
+      "mean_latency_ms": 4.32,
+      "throughput_rps": 137.4,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 36.704,
+      "effective_concurrency": 8,
+      "in_flight": 1,
+      "mean_latency_ms": 4.48,
+      "throughput_rps": 133.4,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 38.741,
+      "effective_concurrency": 8,
+      "in_flight": 0,
+      "mean_latency_ms": 4.78,
+      "throughput_rps": 128.6,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 40.778,
+      "effective_concurrency": 8,
+      "in_flight": 1,
+      "mean_latency_ms": 4.62,
+      "throughput_rps": 130.1,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 42.815,
+      "effective_concurrency": 8,
+      "in_flight": 0,
+      "mean_latency_ms": 4.61,
+      "throughput_rps": 130.1,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 44.852,
+      "effective_concurrency": 8,
+      "in_flight": 0,
+      "mean_latency_ms": 4.64,
+      "throughput_rps": 131.1,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 46.889,
+      "effective_concurrency": 8,
+      "in_flight": 0,
+      "mean_latency_ms": 4.39,
+      "throughput_rps": 135.0,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 48.927,
+      "effective_concurrency": 8,
+      "in_flight": 1,
+      "mean_latency_ms": 4.15,
+      "throughput_rps": 138.4,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 50.965,
+      "effective_concurrency": 8,
+      "in_flight": 1,
+      "mean_latency_ms": 4.36,
+      "throughput_rps": 138.9,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 53.027,
+      "effective_concurrency": 8,
+      "in_flight": 1,
+      "mean_latency_ms": 4.39,
+      "throughput_rps": 134.3,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 55.067,
+      "effective_concurrency": 8,
+      "in_flight": 0,
+      "mean_latency_ms": 3.64,
+      "throughput_rps": 155.4,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 57.098,
+      "effective_concurrency": 8,
+      "in_flight": 1,
+      "mean_latency_ms": 2.55,
+      "throughput_rps": 208.7,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 59.129,
+      "effective_concurrency": 8,
+      "in_flight": 1,
+      "mean_latency_ms": 2.92,
+      "throughput_rps": 190.0,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 61.16,
+      "effective_concurrency": 8,
+      "in_flight": 1,
+      "mean_latency_ms": 2.7,
+      "throughput_rps": 348.6,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.01,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 63.19,
+      "effective_concurrency": 8,
+      "in_flight": 6,
+      "mean_latency_ms": 3.65,
+      "throughput_rps": 824.9,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 65.212,
+      "effective_concurrency": 8,
+      "in_flight": 6,
+      "mean_latency_ms": 7.42,
+      "throughput_rps": 838.1,
+      "queue_depth": 1,
+      "mean_queue_wait_ms": 0.22,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 67.234,
+      "effective_concurrency": 8,
+      "in_flight": 8,
+      "mean_latency_ms": 7.35,
+      "throughput_rps": 985.3,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 1.96,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 69.263,
+      "effective_concurrency": 8,
+      "in_flight": 8,
+      "mean_latency_ms": 9.02,
+      "throughput_rps": 825.9,
+      "queue_depth": 8,
+      "mean_queue_wait_ms": 5.67,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 71.3,
+      "effective_concurrency": 7,
+      "in_flight": 7,
+      "mean_latency_ms": 9.44,
+      "throughput_rps": 752.9,
+      "queue_depth": 11,
+      "mean_queue_wait_ms": 11.25,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 73.338,
+      "effective_concurrency": 7,
+      "in_flight": 7,
+      "mean_latency_ms": 9.29,
+      "throughput_rps": 707.2,
+      "queue_depth": 14,
+      "mean_queue_wait_ms": 17.29,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 75.367,
+      "effective_concurrency": 6,
+      "in_flight": 6,
+      "mean_latency_ms": 8.06,
+      "throughput_rps": 800.3,
+      "queue_depth": 20,
+      "mean_queue_wait_ms": 19.22,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 77.398,
+      "effective_concurrency": 6,
+      "in_flight": 6,
+      "mean_latency_ms": 6.9,
+      "throughput_rps": 805.5,
+      "queue_depth": 20,
+      "mean_queue_wait_ms": 23.79,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 79.438,
+      "effective_concurrency": 6,
+      "in_flight": 6,
+      "mean_latency_ms": 7.13,
+      "throughput_rps": 778.9,
+      "queue_depth": 24,
+      "mean_queue_wait_ms": 29.89,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 81.477,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 5.55,
+      "throughput_rps": 873.2,
+      "queue_depth": 31,
+      "mean_queue_wait_ms": 30.12,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 83.514,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 5.04,
+      "throughput_rps": 896.6,
+      "queue_depth": 31,
+      "mean_queue_wait_ms": 33.35,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 85.544,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.97,
+      "throughput_rps": 903.6,
+      "queue_depth": 35,
+      "mean_queue_wait_ms": 37.19,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 87.573,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.85,
+      "throughput_rps": 922.2,
+      "queue_depth": 40,
+      "mean_queue_wait_ms": 39.57,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 89.601,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 5.0,
+      "throughput_rps": 894.8,
+      "queue_depth": 41,
+      "mean_queue_wait_ms": 43.87,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 91.631,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.96,
+      "throughput_rps": 907.8,
+      "queue_depth": 41,
+      "mean_queue_wait_ms": 47.48,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 93.664,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.82,
+      "throughput_rps": 929.3,
+      "queue_depth": 42,
+      "mean_queue_wait_ms": 46.2,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 95.695,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.98,
+      "throughput_rps": 907.1,
+      "queue_depth": 42,
+      "mean_queue_wait_ms": 46.79,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 97.733,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.79,
+      "throughput_rps": 936.5,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 46.31,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 99.771,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.86,
+      "throughput_rps": 924.4,
+      "queue_depth": 40,
+      "mean_queue_wait_ms": 46.18,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 101.832,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.88,
+      "throughput_rps": 914.4,
+      "queue_depth": 42,
+      "mean_queue_wait_ms": 46.72,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 103.862,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.93,
+      "throughput_rps": 911.1,
+      "queue_depth": 41,
+      "mean_queue_wait_ms": 46.63,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 105.894,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.78,
+      "throughput_rps": 929.2,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 46.09,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 107.924,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.98,
+      "throughput_rps": 917.4,
+      "queue_depth": 43,
+      "mean_queue_wait_ms": 47.49,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 109.966,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.82,
+      "throughput_rps": 927.7,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 45.89,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 112.007,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.98,
+      "throughput_rps": 901.2,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 47.49,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 114.047,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.76,
+      "throughput_rps": 937.2,
+      "queue_depth": 44,
+      "mean_queue_wait_ms": 45.92,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 116.077,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.8,
+      "throughput_rps": 929.0,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 46.13,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 118.113,
+      "effective_concurrency": 5,
+      "in_flight": 4,
+      "mean_latency_ms": 4.93,
+      "throughput_rps": 908.7,
+      "queue_depth": 41,
+      "mean_queue_wait_ms": 46.71,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 120.171,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.74,
+      "throughput_rps": 944.6,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 45.78,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 122.202,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.93,
+      "throughput_rps": 911.9,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 46.47,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 124.252,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.78,
+      "throughput_rps": 940.2,
+      "queue_depth": 41,
+      "mean_queue_wait_ms": 46.25,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 126.292,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.89,
+      "throughput_rps": 905.6,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 46.61,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 128.322,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 5.17,
+      "throughput_rps": 881.0,
+      "queue_depth": 41,
+      "mean_queue_wait_ms": 49.07,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 130.352,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.73,
+      "throughput_rps": 951.7,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 45.41,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 132.391,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.74,
+      "throughput_rps": 930.9,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 45.4,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 134.421,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.85,
+      "throughput_rps": 937.7,
+      "queue_depth": 44,
+      "mean_queue_wait_ms": 46.22,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 136.46,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.75,
+      "throughput_rps": 945.1,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 45.37,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 138.501,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.89,
+      "throughput_rps": 918.1,
+      "queue_depth": 42,
+      "mean_queue_wait_ms": 46.24,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 140.539,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.72,
+      "throughput_rps": 950.7,
+      "queue_depth": 41,
+      "mean_queue_wait_ms": 45.48,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 142.576,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.89,
+      "throughput_rps": 913.9,
+      "queue_depth": 44,
+      "mean_queue_wait_ms": 46.63,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 144.605,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.89,
+      "throughput_rps": 926.6,
+      "queue_depth": 43,
+      "mean_queue_wait_ms": 46.24,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 146.641,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.81,
+      "throughput_rps": 927.6,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 46.29,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 148.673,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.88,
+      "throughput_rps": 933.6,
+      "queue_depth": 43,
+      "mean_queue_wait_ms": 46.01,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 150.73,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.83,
+      "throughput_rps": 919.3,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 46.46,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 152.761,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.97,
+      "throughput_rps": 905.4,
+      "queue_depth": 42,
+      "mean_queue_wait_ms": 47.33,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 154.792,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.9,
+      "throughput_rps": 919.9,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 46.27,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 156.83,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 5.09,
+      "throughput_rps": 885.9,
+      "queue_depth": 44,
+      "mean_queue_wait_ms": 48.91,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 158.867,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.86,
+      "throughput_rps": 921.7,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 46.31,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 160.897,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.87,
+      "throughput_rps": 914.8,
+      "queue_depth": 42,
+      "mean_queue_wait_ms": 46.27,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 162.928,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.99,
+      "throughput_rps": 907.9,
+      "queue_depth": 41,
+      "mean_queue_wait_ms": 47.53,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 164.957,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.89,
+      "throughput_rps": 922.3,
+      "queue_depth": 40,
+      "mean_queue_wait_ms": 46.82,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 166.994,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.87,
+      "throughput_rps": 933.5,
+      "queue_depth": 43,
+      "mean_queue_wait_ms": 46.22,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 169.054,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.89,
+      "throughput_rps": 908.3,
+      "queue_depth": 42,
+      "mean_queue_wait_ms": 46.77,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 171.085,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.86,
+      "throughput_rps": 920.5,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 46.37,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 173.114,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.83,
+      "throughput_rps": 933.2,
+      "queue_depth": 41,
+      "mean_queue_wait_ms": 45.67,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 175.143,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.75,
+      "throughput_rps": 945.9,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 45.86,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 177.181,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.89,
+      "throughput_rps": 909.9,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 46.67,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 179.208,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.89,
+      "throughput_rps": 923.3,
+      "queue_depth": 44,
+      "mean_queue_wait_ms": 46.13,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 181.24,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.84,
+      "throughput_rps": 941.0,
+      "queue_depth": 42,
+      "mean_queue_wait_ms": 46.76,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 183.304,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.89,
+      "throughput_rps": 907.6,
+      "queue_depth": 41,
+      "mean_queue_wait_ms": 46.24,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 185.343,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.84,
+      "throughput_rps": 926.3,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 46.68,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 187.378,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.83,
+      "throughput_rps": 928.2,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 46.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 189.407,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.73,
+      "throughput_rps": 949.5,
+      "queue_depth": 42,
+      "mean_queue_wait_ms": 44.95,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 191.444,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.75,
+      "throughput_rps": 944.1,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 45.8,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 193.478,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.83,
+      "throughput_rps": 926.2,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 45.88,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 195.508,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 5.01,
+      "throughput_rps": 906.6,
+      "queue_depth": 41,
+      "mean_queue_wait_ms": 47.37,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 197.545,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.86,
+      "throughput_rps": 937.2,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 46.47,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 199.613,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.89,
+      "throughput_rps": 910.1,
+      "queue_depth": 42,
+      "mean_queue_wait_ms": 46.38,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 201.651,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.84,
+      "throughput_rps": 926.7,
+      "queue_depth": 43,
+      "mean_queue_wait_ms": 46.31,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 203.677,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.8,
+      "throughput_rps": 932.9,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 45.88,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 205.708,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.88,
+      "throughput_rps": 925.3,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 46.08,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 207.744,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.87,
+      "throughput_rps": 924.8,
+      "queue_depth": 41,
+      "mean_queue_wait_ms": 46.74,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 209.782,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.85,
+      "throughput_rps": 916.8,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 46.32,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 211.811,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.96,
+      "throughput_rps": 913.5,
+      "queue_depth": 42,
+      "mean_queue_wait_ms": 46.77,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 213.838,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.88,
+      "throughput_rps": 921.0,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 46.98,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 215.865,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.94,
+      "throughput_rps": 912.3,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 47.09,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 217.93,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.93,
+      "throughput_rps": 910.0,
+      "queue_depth": 43,
+      "mean_queue_wait_ms": 46.89,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 219.959,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.87,
+      "throughput_rps": 925.5,
+      "queue_depth": 44,
+      "mean_queue_wait_ms": 46.44,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 221.991,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.81,
+      "throughput_rps": 922.1,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 46.03,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 224.018,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.88,
+      "throughput_rps": 931.3,
+      "queue_depth": 40,
+      "mean_queue_wait_ms": 46.26,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 226.046,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.94,
+      "throughput_rps": 909.8,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 47.49,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 228.078,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 5.01,
+      "throughput_rps": 901.2,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 47.71,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 230.116,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.89,
+      "throughput_rps": 927.4,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 46.65,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 232.173,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 5.22,
+      "throughput_rps": 853.6,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 49.61,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 234.2,
+      "effective_concurrency": 5,
+      "in_flight": 4,
+      "mean_latency_ms": 4.15,
+      "throughput_rps": 1075.2,
+      "queue_depth": 43,
+      "mean_queue_wait_ms": 39.06,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 236.231,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.03,
+      "throughput_rps": 1095.0,
+      "queue_depth": 41,
+      "mean_queue_wait_ms": 39.46,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 238.261,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.33,
+      "throughput_rps": 1029.1,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 41.38,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 240.291,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.05,
+      "throughput_rps": 1080.3,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 38.72,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 242.322,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.01,
+      "throughput_rps": 1125.1,
+      "queue_depth": 41,
+      "mean_queue_wait_ms": 38.12,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 244.354,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.03,
+      "throughput_rps": 1102.8,
+      "queue_depth": 42,
+      "mean_queue_wait_ms": 38.48,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 246.394,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.89,
+      "throughput_rps": 1157.4,
+      "queue_depth": 44,
+      "mean_queue_wait_ms": 37.48,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 248.467,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.88,
+      "throughput_rps": 1114.1,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 37.18,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 250.499,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.03,
+      "throughput_rps": 1104.4,
+      "queue_depth": 41,
+      "mean_queue_wait_ms": 38.05,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 252.534,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.92,
+      "throughput_rps": 1124.7,
+      "queue_depth": 44,
+      "mean_queue_wait_ms": 38.14,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 254.566,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.95,
+      "throughput_rps": 1109.9,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 38.1,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 256.596,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.02,
+      "throughput_rps": 1113.0,
+      "queue_depth": 42,
+      "mean_queue_wait_ms": 37.96,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 258.633,
+      "effective_concurrency": 5,
+      "in_flight": 4,
+      "mean_latency_ms": 3.94,
+      "throughput_rps": 1113.9,
+      "queue_depth": 40,
+      "mean_queue_wait_ms": 38.33,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 260.664,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.97,
+      "throughput_rps": 1113.2,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 38.23,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 262.702,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.02,
+      "throughput_rps": 1108.0,
+      "queue_depth": 41,
+      "mean_queue_wait_ms": 38.18,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 264.741,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.96,
+      "throughput_rps": 1114.9,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 38.39,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 266.83,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.99,
+      "throughput_rps": 1108.6,
+      "queue_depth": 41,
+      "mean_queue_wait_ms": 38.02,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 268.86,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.94,
+      "throughput_rps": 1118.7,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 37.94,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 270.887,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.96,
+      "throughput_rps": 1105.5,
+      "queue_depth": 45,
+      "mean_queue_wait_ms": 37.96,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 272.915,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.98,
+      "throughput_rps": 1126.3,
+      "queue_depth": 40,
+      "mean_queue_wait_ms": 37.53,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 274.945,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.97,
+      "throughput_rps": 1111.2,
+      "queue_depth": 39,
+      "mean_queue_wait_ms": 37.69,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 276.978,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.0,
+      "throughput_rps": 1098.4,
+      "queue_depth": 43,
+      "mean_queue_wait_ms": 36.61,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 279.007,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.13,
+      "throughput_rps": 1095.4,
+      "queue_depth": 38,
+      "mean_queue_wait_ms": 37.08,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 281.057,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.02,
+      "throughput_rps": 1090.9,
+      "queue_depth": 38,
+      "mean_queue_wait_ms": 35.44,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 283.087,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.04,
+      "throughput_rps": 1075.2,
+      "queue_depth": 40,
+      "mean_queue_wait_ms": 35.1,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 285.116,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.0,
+      "throughput_rps": 1121.1,
+      "queue_depth": 35,
+      "mean_queue_wait_ms": 33.99,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 287.154,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.99,
+      "throughput_rps": 1108.9,
+      "queue_depth": 36,
+      "mean_queue_wait_ms": 32.89,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 289.188,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.99,
+      "throughput_rps": 1087.0,
+      "queue_depth": 38,
+      "mean_queue_wait_ms": 32.38,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 291.22,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.02,
+      "throughput_rps": 1113.1,
+      "queue_depth": 33,
+      "mean_queue_wait_ms": 31.84,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 293.25,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.93,
+      "throughput_rps": 1126.3,
+      "queue_depth": 32,
+      "mean_queue_wait_ms": 30.28,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 295.282,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.9,
+      "throughput_rps": 1117.9,
+      "queue_depth": 35,
+      "mean_queue_wait_ms": 29.56,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 297.339,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.1,
+      "throughput_rps": 1092.4,
+      "queue_depth": 33,
+      "mean_queue_wait_ms": 30.02,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 299.371,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.89,
+      "throughput_rps": 1125.1,
+      "queue_depth": 34,
+      "mean_queue_wait_ms": 27.92,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 301.4,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.14,
+      "throughput_rps": 1078.1,
+      "queue_depth": 30,
+      "mean_queue_wait_ms": 28.26,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 303.43,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.94,
+      "throughput_rps": 1123.3,
+      "queue_depth": 30,
+      "mean_queue_wait_ms": 27.42,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 305.467,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.92,
+      "throughput_rps": 1120.9,
+      "queue_depth": 31,
+      "mean_queue_wait_ms": 25.95,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 307.497,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.95,
+      "throughput_rps": 1121.0,
+      "queue_depth": 28,
+      "mean_queue_wait_ms": 25.32,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 309.536,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.49,
+      "throughput_rps": 1243.2,
+      "queue_depth": 27,
+      "mean_queue_wait_ms": 22.34,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 311.573,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.01,
+      "throughput_rps": 1097.1,
+      "queue_depth": 29,
+      "mean_queue_wait_ms": 24.18,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 313.603,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.02,
+      "throughput_rps": 1102.3,
+      "queue_depth": 25,
+      "mean_queue_wait_ms": 23.87,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 315.667,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.98,
+      "throughput_rps": 1102.3,
+      "queue_depth": 27,
+      "mean_queue_wait_ms": 22.74,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 317.697,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.06,
+      "throughput_rps": 1089.1,
+      "queue_depth": 25,
+      "mean_queue_wait_ms": 22.1,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 319.727,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.94,
+      "throughput_rps": 1118.2,
+      "queue_depth": 22,
+      "mean_queue_wait_ms": 21.35,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 321.759,
+      "effective_concurrency": 5,
+      "in_flight": 4,
+      "mean_latency_ms": 3.98,
+      "throughput_rps": 1117.7,
+      "queue_depth": 21,
+      "mean_queue_wait_ms": 20.27,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 323.8,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.03,
+      "throughput_rps": 1098.2,
+      "queue_depth": 21,
+      "mean_queue_wait_ms": 19.79,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 325.84,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.91,
+      "throughput_rps": 1130.2,
+      "queue_depth": 20,
+      "mean_queue_wait_ms": 18.92,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 327.879,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.06,
+      "throughput_rps": 1102.5,
+      "queue_depth": 22,
+      "mean_queue_wait_ms": 18.26,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 329.933,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.94,
+      "throughput_rps": 1112.6,
+      "queue_depth": 22,
+      "mean_queue_wait_ms": 17.64,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 331.962,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.02,
+      "throughput_rps": 1105.2,
+      "queue_depth": 19,
+      "mean_queue_wait_ms": 16.89,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 334.0,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.96,
+      "throughput_rps": 1109.7,
+      "queue_depth": 18,
+      "mean_queue_wait_ms": 15.7,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 336.029,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.96,
+      "throughput_rps": 1115.3,
+      "queue_depth": 14,
+      "mean_queue_wait_ms": 15.56,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 338.06,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.92,
+      "throughput_rps": 1125.7,
+      "queue_depth": 18,
+      "mean_queue_wait_ms": 14.42,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 340.095,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.05,
+      "throughput_rps": 1093.9,
+      "queue_depth": 13,
+      "mean_queue_wait_ms": 14.04,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 342.135,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.95,
+      "throughput_rps": 1116.3,
+      "queue_depth": 13,
+      "mean_queue_wait_ms": 13.14,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 344.167,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.01,
+      "throughput_rps": 1101.5,
+      "queue_depth": 16,
+      "mean_queue_wait_ms": 12.48,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 346.218,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.03,
+      "throughput_rps": 1098.2,
+      "queue_depth": 13,
+      "mean_queue_wait_ms": 11.89,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 348.248,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.93,
+      "throughput_rps": 1131.8,
+      "queue_depth": 11,
+      "mean_queue_wait_ms": 10.82,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 350.287,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.01,
+      "throughput_rps": 1085.7,
+      "queue_depth": 13,
+      "mean_queue_wait_ms": 10.35,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 352.324,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.98,
+      "throughput_rps": 1128.2,
+      "queue_depth": 10,
+      "mean_queue_wait_ms": 9.42,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 354.353,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.92,
+      "throughput_rps": 1124.4,
+      "queue_depth": 10,
+      "mean_queue_wait_ms": 8.6,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 356.382,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.98,
+      "throughput_rps": 1103.4,
+      "queue_depth": 11,
+      "mean_queue_wait_ms": 7.96,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 358.41,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.09,
+      "throughput_rps": 1094.9,
+      "queue_depth": 5,
+      "mean_queue_wait_ms": 7.58,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 360.44,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.99,
+      "throughput_rps": 1107.1,
+      "queue_depth": 8,
+      "mean_queue_wait_ms": 6.67,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 362.47,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.99,
+      "throughput_rps": 1111.5,
+      "queue_depth": 9,
+      "mean_queue_wait_ms": 5.9,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 364.507,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.06,
+      "throughput_rps": 1088.6,
+      "queue_depth": 4,
+      "mean_queue_wait_ms": 5.22,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 366.544,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.95,
+      "throughput_rps": 1118.8,
+      "queue_depth": 4,
+      "mean_queue_wait_ms": 4.38,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 368.576,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.93,
+      "throughput_rps": 1117.0,
+      "queue_depth": 6,
+      "mean_queue_wait_ms": 3.59,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 370.604,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.05,
+      "throughput_rps": 1103.8,
+      "queue_depth": 5,
+      "mean_queue_wait_ms": 3.09,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 372.636,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 4.01,
+      "throughput_rps": 1105.9,
+      "queue_depth": 1,
+      "mean_queue_wait_ms": 2.3,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 374.665,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.88,
+      "throughput_rps": 1117.5,
+      "queue_depth": 4,
+      "mean_queue_wait_ms": 1.57,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 376.693,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.91,
+      "throughput_rps": 1097.6,
+      "queue_depth": 3,
+      "mean_queue_wait_ms": 1.27,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 378.748,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.77,
+      "throughput_rps": 1063.7,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.87,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 380.78,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.56,
+      "throughput_rps": 1052.4,
+      "queue_depth": 1,
+      "mean_queue_wait_ms": 0.5,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 382.823,
+      "effective_concurrency": 5,
+      "in_flight": 5,
+      "mean_latency_ms": 3.24,
+      "throughput_rps": 1038.5,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.2,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 384.852,
+      "effective_concurrency": 5,
+      "in_flight": 2,
+      "mean_latency_ms": 2.48,
+      "throughput_rps": 1056.8,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 386.881,
+      "effective_concurrency": 6,
+      "in_flight": 2,
+      "mean_latency_ms": 2.41,
+      "throughput_rps": 890.7,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.01,
+      "rejected": 0.0
+    },
+    {
+      "elapsed_seconds": 388.917,
+      "effective_concurrency": 6,
+      "in_flight": 3,
+      "mean_latency_ms": 2.5,
+      "throughput_rps": 698.5,
+      "queue_depth": 0,
+      "mean_queue_wait_ms": 0.0,
+      "rejected": 0.0
+    }
+  ]
+}

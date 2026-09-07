@@ -1,0 +1,216 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "error": null,
+  "started_at": "2026-09-07T16:35:29.885741+00:00",
+  "ended_at": "2026-09-07T16:44:00.045785+00:00",
+  "git_commit": "c0dba4b8db8ccdf81751b981c1959421e8cb1143",
+  "git_dirty": false,
+  "git_diff_sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+  "git_status": [],
+  "scenario": {
+    "source": "packages/nanolab/scenarios-v2/concurrency-cycle-container.yaml",
+    "config": {
+      "workflow": "loadtest",
+      "backend": "container",
+      "build": "docker",
+      "functions": [
+        "word-stats-java"
+      ],
+      "resources": {
+        "word-stats-java": {
+          "requests": {
+            "cpu": 1.0,
+            "memoryMiB": 256
+          },
+          "limits": {
+            "cpu": 2.0,
+            "memoryMiB": 512
+          }
+        }
+      },
+      "payloadProfile": "medium",
+      "handlerEnvelope": false,
+      "asyncLoad": false,
+      "persistentRecovery": false,
+      "autoscaling": false,
+      "concurrencyControl": true,
+      "concurrencyMode": "ADAPTIVE_PER_POD",
+      "loadProfile": "cycle",
+      "asyncShare": null,
+      "idemShare": null,
+      "controlPlaneRuntime": "jvm",
+      "autoscalingStrategy": "INTERNAL",
+      "hpaScaleToZero": false,
+      "controlPlaneVariant": null,
+      "loadScale": 1.0,
+      "loadVus": null,
+      "release": null
+    }
+  },
+  "environment": {
+    "source": "packages/nanolab/environments/local.yaml",
+    "config": {
+      "provider": "local",
+      "roles": {},
+      "azure": null,
+      "proxmox": null
+    }
+  },
+  "tasks": [
+    {
+      "task_id": "001.acquire-local-registry",
+      "title": "Acquire local registry",
+      "status": "passed",
+      "duration_seconds": 0.241,
+      "detail": ""
+    },
+    {
+      "task_id": "002.acquire-docker-compose-project-nanofaas-loadtest/clear-any-previous-nanofaas-loadtest-state",
+      "title": "Clear any previous nanofaas-loadtest state",
+      "status": "passed",
+      "duration_seconds": 0.078,
+      "detail": ""
+    },
+    {
+      "task_id": "002.acquire-docker-compose-project-nanofaas-loadtest/deploy-docker-compose-project-nanofaas-loadtest",
+      "title": "Deploy Docker Compose project nanofaas-loadtest",
+      "status": "passed",
+      "duration_seconds": 71.33,
+      "detail": ""
+    },
+    {
+      "task_id": "002.acquire-docker-compose-project-nanofaas-loadtest/wait-for-docker-compose-project-nanofaas-loadtest",
+      "title": "Wait for Docker Compose project nanofaas-loadtest",
+      "status": "passed",
+      "duration_seconds": 3.547,
+      "detail": ""
+    },
+    {
+      "task_id": "002.acquire-docker-compose-project-nanofaas-loadtest",
+      "title": "Acquire Docker Compose project nanofaas-loadtest",
+      "status": "passed",
+      "duration_seconds": 74.956,
+      "detail": ""
+    },
+    {
+      "task_id": "003.build-application-artifact-word-stats-java",
+      "title": "Build application artifact: word-stats-java",
+      "status": "passed",
+      "duration_seconds": 1.941,
+      "detail": ""
+    },
+    {
+      "task_id": "004.build-image-word-stats-java",
+      "title": "Build image word-stats-java",
+      "status": "passed",
+      "duration_seconds": 0.75,
+      "detail": ""
+    },
+    {
+      "task_id": "005.push-image-127-0-0-1-5000-nanofaas-java-word-stats-e2e",
+      "title": "Push image 127.0.0.1:5000/nanofaas/java-word-stats:e2e",
+      "status": "passed",
+      "duration_seconds": 2.052,
+      "detail": ""
+    },
+    {
+      "task_id": "006.acquire-word-stats-java",
+      "title": "Acquire word-stats-java",
+      "status": "passed",
+      "duration_seconds": 3.244,
+      "detail": ""
+    },
+    {
+      "task_id": "007.run-the-load-test/check-k6-is-usable",
+      "title": "Check k6 is usable",
+      "status": "passed",
+      "duration_seconds": 0.022,
+      "detail": ""
+    },
+    {
+      "task_id": "007.run-the-load-test/prepare-the-run-directory",
+      "title": "Prepare the run directory",
+      "status": "passed",
+      "duration_seconds": 0.002,
+      "detail": ""
+    },
+    {
+      "task_id": "007.run-the-load-test/run-k6",
+      "title": "Run k6",
+      "status": "passed",
+      "duration_seconds": 393.599,
+      "detail": ""
+    },
+    {
+      "task_id": "007.run-the-load-test/verify-concurrency-governor",
+      "title": "Verify concurrency governor",
+      "status": "passed",
+      "duration_seconds": 0.002,
+      "detail": ""
+    },
+    {
+      "task_id": "007.run-the-load-test/capture-prometheus-snapshot",
+      "title": "Capture Prometheus snapshot",
+      "status": "passed",
+      "duration_seconds": 28.53,
+      "detail": ""
+    },
+    {
+      "task_id": "007.run-the-load-test/write-the-report",
+      "title": "Write the report",
+      "status": "passed",
+      "duration_seconds": 0.013,
+      "detail": ""
+    },
+    {
+      "task_id": "007.run-the-load-test/write-the-summary",
+      "title": "Write the summary",
+      "status": "passed",
+      "duration_seconds": 0.003,
+      "detail": ""
+    },
+    {
+      "task_id": "007.run-the-load-test/evaluate-the-thresholds",
+      "title": "Evaluate the thresholds",
+      "status": "passed",
+      "duration_seconds": 0.0,
+      "detail": ""
+    },
+    {
+      "task_id": "007.run-the-load-test/write-the-concurrency-report",
+      "title": "Write the concurrency report",
+      "status": "passed",
+      "duration_seconds": 0.717,
+      "detail": ""
+    },
+    {
+      "task_id": "007.run-the-load-test",
+      "title": "Run the load test",
+      "status": "passed",
+      "duration_seconds": 422.889,
+      "detail": ""
+    },
+    {
+      "task_id": "008.release-word-stats-java",
+      "title": "Release word-stats-java",
+      "status": "passed",
+      "duration_seconds": 0.492,
+      "detail": ""
+    },
+    {
+      "task_id": "009.release-docker-compose-project-nanofaas-loadtest",
+      "title": "Release Docker Compose project nanofaas-loadtest",
+      "status": "passed",
+      "duration_seconds": 3.209,
+      "detail": ""
+    },
+    {
+      "task_id": "010.release-local-registry",
+      "title": "Release local registry",
+      "status": "passed",
+      "duration_seconds": 0.232,
+      "detail": ""
+    }
+  ]
+}
