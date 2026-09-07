@@ -38,6 +38,32 @@ Una nota di procedura per chi continuerà: `compare` confronta *varianti di buil
 **baseline e candidato** — due revisioni del codice — servono due esecuzioni di
 `run` su due revisioni, non un `compare`.
 
+## La macchina
+
+Tutte le misure di questa campagna vengono da **una sola macchina**, una NVIDIA
+DGX Spark:
+
+| | |
+|---|---|
+| architettura | aarch64 (ARM) |
+| CPU | 20 core, Cortex-X925 + Cortex-A725 |
+| memoria | 121 GB |
+| OS / kernel | Ubuntu 24.04.4 LTS, Linux 6.17.0-nvidia |
+| Docker | 29.2.1 (arm64) |
+
+Va detto per due motivi, e nessuno dei due è formale.
+
+**Non è x86.** Nessuno di questi numeri è direttamente confrontabile con una CI
+o un runner x86: cambiano i tempi assoluti e cambia il costo relativo di JIT,
+allocazione e syscall.
+
+**È veloce.** I core X925 sono di fascia alta, e questo ha già cambiato l'esito
+di un esperimento: `concurrency-cycle-container` non riusciva a degradare la
+funzione perché su questo hardware il lavoro offerto era troppo poco (vedi la
+sezione E2E in RISULTATI.md). Un risultato «la piattaforma non degrada sotto
+carico» su questa macchina può voler dire che il carico era leggero, non che la
+piattaforma sia robusta.
+
 ## Come leggere i numeri
 
 Ogni braccio gira `REPS` ripetizioni **alternate** (A,B,A,B,…) nello stesso
