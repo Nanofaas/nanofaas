@@ -171,7 +171,29 @@ public class Metrics {
         }
     }
 
+    /**
+     * I meter di una funzione, o {@code null} se e' stata rimossa.
+     *
+     * <p>Il caso comune - funzione gia' registrata e viva - non prende nessun lock. Prima lo
+     * prendeva sempre, ed era un monitor GLOBALE condiviso da tutte le funzioni su un percorso
+     * che ogni invocazione attraversa sei volte (dispatch, esito, tre timer, la loro lookup).
+     * Misurato: 223 ns per operazione con un thread, 2.638 ns con otto — il costo per
+     * operazione cresceva col numero di thread invece di restare piatto, che e' la firma di
+     * una serializzazione, non di un costo
+     * (docs/experiments/control-plane-tuning-2026-09/RISULTATI.md).
+     *
+     * <p>Il lock resta sul percorso lento, dove serve davvero: la prima registrazione e la
+     * corsa con {@link #removeFunction}. L'invariante che protegge - una funzione rimossa non
+     * ri-registra i suoi meter - vale ancora, perche' la registrazione avviene solo li' dentro.
+     * Una lettura veloce che afferra i meter un istante prima della rimozione incrementa un
+     * contatore che sta per essere deregistrato: quel campione si perde, ed e' un prezzo
+     * accettabile per non serializzare ogni invocazione della piattaforma.
+     */
     private FunctionMeters metersOrNull(String function) {
+        FunctionMeters registered = meters.get(function);
+        if (registered != null) {
+            return registered;
+        }
         synchronized (functionStateMonitor) {
             if (removedFunctions.contains(function)) {
                 return null;

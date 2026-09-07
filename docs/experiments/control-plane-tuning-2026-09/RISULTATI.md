@@ -228,3 +228,54 @@ Non l'ho fatto: le richieste vive stanno in `inFlight`, già limitato da
 quella struttura sia il problema. Aggiungerne uno senza misura sarebbe
 esattamente ciò che questa fase esiste per evitare. Il soak lungo che
 attraverserebbe le finestre di ritenzione richiede §8 su NanoLab.
+
+---
+
+## T4 — Diagnostica: costo dei meter sul percorso caldo
+
+**Bersaglio.** Profilare registrazione e lettura dei meter sul percorso caldo;
+spostare fuori dai lock ciò che non serve all'atomicità. L'accettazione è
+esplicita: **stessa osservabilità nei due bracci**, e non attribuire un guadagno
+all'eliminazione di metriche che guidano governor o scaler.
+
+Qui non è stata rimossa nessuna metrica: stessi meter, stessi valori.
+
+### Il difetto
+
+`Metrics.metersOrNull` prendeva un `synchronized` su un monitor **globale**,
+condiviso da tutte le funzioni, a ogni chiamata. Un'invocazione lo attraversa sei
+volte: `dispatch`, l'esito, e la `timers(fn)` che precede i tre campioni di
+durata. Il lock serve a rendere atomica la rimozione rispetto alla registrazione
+— cosa che riguarda il percorso lento, non quello comune.
+
+### Misura (`raw/T4-metrics-before.json`, `raw/T4-metrics-after.json`)
+
+ns per operazione del percorso caldo, 32 funzioni:
+
+| thread | prima | dopo | |
+|---|---|---|---|
+| 1 | 223 | 202 | −9% |
+| 2 | 885 | 268 | **−70%** |
+| 4 | 2.058 | 928 | −55% |
+| 8 | 2.638 | 786 | **−70%** |
+
+Prima il costo *per operazione* cresceva con il numero di thread — 12× fra 1 e 8.
+Non è un costo, è una serializzazione: il lavoro non aumenta, aumenta l'attesa.
+
+### Decisione. **ADOTTATO**
+
+Il caso comune (funzione registrata e viva) è una `ConcurrentHashMap.get` senza
+lock. Il lock resta sul percorso lento: prima registrazione e corsa con
+`removeFunction`. L'invariante che protegge — una funzione rimossa non
+ri-registra i suoi meter — vale ancora, perché la registrazione avviene solo lì
+dentro, ed è già coperta da
+`MetricsTest.removedFunction_doesNotRecreateMetersUntilRegisteredAgain`.
+
+Prezzo accettato e documentato: una lettura veloce che afferra i meter un istante
+prima della rimozione incrementa un contatore che sta per essere deregistrato, e
+quel campione si perde. Serializzare ogni invocazione della piattaforma per non
+perderlo sarebbe un pessimo scambio.
+
+La crescita residua (202 → 786 ns) è nei meter di Micrometer stessi, che
+contendono quando più thread toccano la stessa funzione: è inerente allo
+strumento, non al nostro lock.

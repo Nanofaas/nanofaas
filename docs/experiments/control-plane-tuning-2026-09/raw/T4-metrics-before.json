@@ -1,0 +1,10 @@
+{
+  "bench": "T4MetricsBench",
+  "params": {"functions": 32, "opsPerThread": 200000, "reps": 5},
+  "hot_path_ns_per_op": {
+    "threads-1": {"median": 223, "min": 223, "max": 266},
+    "threads-2": {"median": 885, "min": 440, "max": 1229},
+    "threads-4": {"median": 2058, "min": 1728, "max": 2608},
+    "threads-8": {"median": 2638, "min": 2427, "max": 2916}
+  }
+}
