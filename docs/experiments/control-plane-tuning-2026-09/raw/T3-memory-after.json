@@ -1,0 +1,15 @@
+{
+  "bench": "T3MemoryBench",
+  "params": {"outcomes": 20000},
+  "arms": {
+    "payload-128B": {"retained_mb": 6, "per_outcome_bytes": 656, "stored": 10357},
+    "payload-4096B": {"retained_mb": 5, "per_outcome_bytes": 10197, "stored": 553},
+    "payload-65536B": {"retained_mb": 6, "per_outcome_bytes": 208546, "stored": 35}
+  },
+  "weigher_ns_per_call": {
+    "string-128B": 10,
+    "string-4096B": 2,
+    "string-65536B": 2,
+    "map-64-entries": 105
+  }
+}

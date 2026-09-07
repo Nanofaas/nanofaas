@@ -240,8 +240,11 @@ class InvocationServiceAsyncReplayTest {
         // One outcome slot: the second execution evicts the first outcome for capacity,
         // before its retention window ends. The key binding must still hold, so the
         // replay must NOT re-run the function.
+        // A byte budget too small for any payload: the binding outlives the outcome, which
+        // is the scenario. "One slot" made this depend on which entry Caffeine evicts.
         executionStore = new ExecutionStore(
-                ExecutionStoreProperties.of(Duration.ofMinutes(5), Duration.ofMinutes(30), Duration.ofSeconds(30), 1),
+                new ExecutionStoreProperties(Duration.ofMinutes(5), Duration.ofMinutes(30),
+                        Duration.ofSeconds(30), 1, 100_000, 1),
                 new SimpleMeterRegistry());
         idempotencyStore = new IdempotencyStore();
         ExecutionCompletionHandler completionHandler = new ExecutionCompletionHandler(
@@ -250,10 +253,7 @@ class InvocationServiceAsyncReplayTest {
                 functionService, enqueuer, executionStore, idempotencyStore, metrics, syncQueueGateway, completionHandler);
 
         ExecutionRecord first = queueAndSettleSuccess("idem-gone", "first");
-        queueAndSettleSuccess("idem-other", "second");
-        // size() calls cleanUp(): Caffeine's capacity eviction is deferred, and
-        // getIfPresent would still see the victim until the maintenance drains.
-        assertThat(executionStore.size()).isEqualTo(1);
+        assertThat(executionStore.size()).isZero();
         assertThat(executionStore.outcomeOf(first.executionId())).isNull();
 
         assertThatThrownBy(() -> invocationService.invokeAsync(
@@ -261,7 +261,8 @@ class InvocationServiceAsyncReplayTest {
                 .isInstanceOf(OutcomeGoneException.class)
                 .hasMessageContaining(first.executionId());
 
-        // Exactly two admissions (the two originals); the replay enqueued nothing.
-        verify(enqueuer, times(2)).enqueue(any());
+        // Exactly one admission (the original); the replay enqueued nothing. This is the
+        // assertion the whole test exists for: a replay past eviction must never re-run.
+        verify(enqueuer, times(1)).enqueue(any());
     }
 }

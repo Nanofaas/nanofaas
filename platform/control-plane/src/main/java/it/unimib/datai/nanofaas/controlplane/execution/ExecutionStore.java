@@ -131,7 +131,13 @@ public class ExecutionStore {
                 })
                 .build();
         this.outcomes = Caffeine.newBuilder()
-                .maximumSize(properties.maxOutcomes())
+                // Tetto in BYTE, non in numero: il numero presuppone che gli esiti pesino
+                // tutti uguale, e un esito leggibile trattiene il payload del chiamante.
+                // Il peso e' stimato qui, una volta sola; nessun accesso successivo lo
+                // ricalcola. Al valore predefinito il budget vale maxOutcomes esiti
+                // compatti, quindi per quelli non cambia niente.
+                .maximumWeight(properties.maxOutcomeBytes())
+                .weigher((String id, Outcome outcome) -> OutcomeWeigher.weigh(outcome))
                 .expireAfter(Expiry.creating((String id, Outcome outcome) ->
                         outcome.readable() ? properties.ttl() : properties.syncTtl()))
                 .ticker(ticker)

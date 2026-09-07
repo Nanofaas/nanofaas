@@ -57,7 +57,8 @@ class IdempotentRetentionContractTest {
 
     private void rebuild(ExecutionStoreProperties props, long maxKeys) {
         ExecutionStoreProperties keyProps = new ExecutionStoreProperties(
-                props.ttl(), props.maxLifetime(), props.syncTtl(), props.maxOutcomes(), maxKeys);
+                props.ttl(), props.maxLifetime(), props.syncTtl(), props.maxOutcomes(), maxKeys,
+                props.maxOutcomeBytes());
         this.executions = new ExecutionStore(props, ticker);
         this.keys = new IdempotencyStore(keyProps, ticker);
         this.factory = new InvocationExecutionFactory(executions, keys, new Metrics(new SimpleMeterRegistry()));
@@ -132,8 +133,12 @@ class IdempotentRetentionContractTest {
 
     @Test
     void capacityEvictionLeavesABindingThatRepliesGoneInsteadOfReinvoking() {
-        // One outcome slot: the second keyed execution evicts the first outcome.
-        rebuild(ExecutionStoreProperties.of(TTL, MAX_LIFETIME, SYNC_TTL, 1), 100_000);
+        // A byte budget too small for any outcome payload: nothing is retained, which is
+        // exactly the scenario under test — the binding outlives the payload. Expressing it
+        // as "one slot" made the test depend on which entry Caffeine picks as the victim,
+        // and with a weighted budget it can reject the newcomer instead of evicting the
+        // incumbent. That is Caffeine's business; A5's guarantee is not.
+        rebuild(new ExecutionStoreProperties(TTL, MAX_LIFETIME, SYNC_TTL, 1, 100_000, 1), 100_000);
 
         InvocationExecutionFactory.ExecutionLookup first =
                 factory.createOrReuseExecution("fn", spec(), request(), "k1", "trace-1", InvocationKind.SYNC);
@@ -142,15 +147,7 @@ class IdempotentRetentionContractTest {
         first.executionRecord().markSuccess("gone-soon");
         executions.settle(first.executionRecord());
 
-        InvocationExecutionFactory.ExecutionLookup second =
-                factory.createOrReuseExecution("fn", spec(), request(), "k2", "trace-2", InvocationKind.SYNC);
-        second.publishAdmission();
-        second.executionRecord().markSuccess("second");
-        executions.settle(second.executionRecord());
-
-        // size() calls cleanUp(): Caffeine's capacity eviction is deferred, and
-        // getIfPresent would still see the victim until the maintenance drains.
-        assertThat(executions.size()).isEqualTo(1);
+        assertThat(executions.size()).isZero();
         assertThat(executions.outcomeOf(firstId)).isNull();
 
         InvocationExecutionFactory.ExecutionLookup replay =
@@ -168,7 +165,7 @@ class IdempotentRetentionContractTest {
         // runs inline on the admitting thread, so the record is already terminal by
         // the time publishAdmission() is reached and the terminal listener has
         // already fired against a still-pending key.
-        rebuild(ExecutionStoreProperties.of(TTL, MAX_LIFETIME, SYNC_TTL, 1), 100_000);
+        rebuild(new ExecutionStoreProperties(TTL, MAX_LIFETIME, SYNC_TTL, 1, 100_000, 1), 100_000);
 
         InvocationExecutionFactory.ExecutionLookup first =
                 factory.createOrReuseExecution("fn", spec(), request(), "k1", "trace-1", InvocationKind.SYNC);
@@ -177,13 +174,7 @@ class IdempotentRetentionContractTest {
         executions.settle(first.executionRecord());
         first.publishAdmission();
 
-        InvocationExecutionFactory.ExecutionLookup second =
-                factory.createOrReuseExecution("fn", spec(), request(), "k2", "trace-2", InvocationKind.SYNC);
-        second.executionRecord().markSuccess("second");
-        executions.settle(second.executionRecord());
-        second.publishAdmission();
-
-        assertThat(executions.size()).isEqualTo(1);
+        assertThat(executions.size()).isZero();
         assertThat(executions.outcomeOf(firstId)).isNull();
 
         InvocationExecutionFactory.ExecutionLookup replay =

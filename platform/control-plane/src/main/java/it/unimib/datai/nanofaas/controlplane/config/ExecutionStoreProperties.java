@@ -19,11 +19,19 @@ import java.time.Duration;
  * anche sulle risposte sincrone, quindi {@code GET /v1/executions/{id}} e' una
  * promessa fatta anche a quei chiamanti.
  *
- * <p>{@code maxOutcomes}: il tetto che mancava. Le due durate qui sopra limitano
- * la ritenzione nel tempo ma non nel numero, quindi la memoria necessaria restava
- * proporzionale al tasso di arrivo - e un carico che raddoppia raddoppiava
- * l'heap, senza che nessuna manopola dicesse basta. Un esito compatto misura 116
- * byte, quindi il valore predefinito costa circa 12 MB al suo limite.
+ * <p>{@code maxOutcomeBytes}: il tetto in BYTE, che e' quello che conta davvero.
+ * Il tetto in numero ({@code maxOutcomes}) limita quanti esiti si tengono, non
+ * quanto pesano, e i due coincidono solo per gli esiti compatti da 116 byte su cui
+ * quel numero era stato tarato. Ma un esito *leggibile* - ASYNC o con chiave di
+ * idempotenza - trattiene il payload del chiamante: misurati 20.000 esiti da 64 KB
+ * occupano 1,28 GB, e al valore predefinito di 100.000 sarebbero circa 6 GB.
+ * Esattamente la forma del guasto del 2026-08-23 descritto qui sopra, che il solo
+ * tetto in numero non impedisce. Il peso di un esito viene stimato una volta sola
+ * all'inserimento, mai riserializzando il payload a ogni accesso.
+ *
+ * <p>Il valore predefinito e' {@code maxOutcomes x 116 byte}: al limite costa quanto
+ * costava prima, quindi per gli esiti compatti non cambia nulla, mentre i payload
+ * grandi vengono sfrattati per peso invece che accumularsi.
  *
  * <p>{@code maxLifetime}: tetto assoluto oltre il quale anche un'esecuzione non
  * terminale (incastrata) viene sfrattata, perche' non cresca senza fine.
@@ -34,22 +42,25 @@ public record ExecutionStoreProperties(
         Duration maxLifetime,
         Duration syncTtl,
         long maxOutcomes,
-        long maxKeys
+        long maxKeys,
+        long maxOutcomeBytes
 ) {
     private static final long DEFAULT_MAX_OUTCOMES = 100_000;
     private static final long DEFAULT_MAX_KEYS = 100_000;
+    /** Il peso di un esito compatto, la costante su cui il tetto in numero era tarato. */
+    public static final long COMPACT_OUTCOME_BYTES = 116;
 
     /**
      * Fabbrica, non costruttore: con due costruttori Spring smette di legare il
      * record per costruttore e cerca quello senza argomenti, che un record non ha.
      */
     public static ExecutionStoreProperties of(Duration ttl, Duration maxLifetime, Duration syncTtl) {
-        return new ExecutionStoreProperties(ttl, maxLifetime, syncTtl, DEFAULT_MAX_OUTCOMES, DEFAULT_MAX_KEYS);
+        return new ExecutionStoreProperties(ttl, maxLifetime, syncTtl, DEFAULT_MAX_OUTCOMES, DEFAULT_MAX_KEYS, 0);
     }
 
     /** Fabbrica, non costruttore: i test che costruiscono lo store con il solo tetto degli esiti. */
     public static ExecutionStoreProperties of(Duration ttl, Duration maxLifetime, Duration syncTtl, long maxOutcomes) {
-        return new ExecutionStoreProperties(ttl, maxLifetime, syncTtl, maxOutcomes, DEFAULT_MAX_KEYS);
+        return new ExecutionStoreProperties(ttl, maxLifetime, syncTtl, maxOutcomes, DEFAULT_MAX_KEYS, 0);
     }
 
     public ExecutionStoreProperties {
@@ -67,6 +78,9 @@ public record ExecutionStoreProperties(
         }
         if (maxKeys <= 0) {
             maxKeys = DEFAULT_MAX_KEYS;
+        }
+        if (maxOutcomeBytes <= 0) {
+            maxOutcomeBytes = maxOutcomes * COMPACT_OUTCOME_BYTES;
         }
         // Non ha senso tenere piu' a lungo cio' che nessuno puo' leggere.
         if (syncTtl.compareTo(ttl) > 0) {

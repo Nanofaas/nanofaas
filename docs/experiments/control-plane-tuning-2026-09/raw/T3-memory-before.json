@@ -1,0 +1,9 @@
+{
+  "bench": "T3MemoryBench",
+  "params": {"outcomes": 20000},
+  "arms": {
+    "payload-128B": {"retained_mb": 8, "per_outcome_bytes": 427, "stored": 20000},
+    "payload-4096B": {"retained_mb": 86, "per_outcome_bytes": 4518, "stored": 20000},
+    "payload-65536B": {"retained_mb": 1279, "per_outcome_bytes": 67098, "stored": 20000}
+  }
+}

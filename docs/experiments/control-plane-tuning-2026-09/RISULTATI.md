@@ -150,3 +150,81 @@ ricominciare da capo.
 `POLL_READY_MATCHING_SCAN_LIMIT` è 64 e non è configurabile. Non l'ho toccato:
 non ho una misura che dica che 64 sia il valore sbagliato, e cambiarlo senza
 misura sarebbe esattamente ciò che questa fase esiste per evitare.
+
+---
+
+## T3 — Memoria: budget ponderato dei payload
+
+**Bersaglio.** Un budget in byte oltre al tetto in numero; stimare il peso una
+volta sola, senza riserializzare il payload a ogni accesso.
+
+### Il rischio, misurato (`raw/T3-memory-before.json`)
+
+`application.yml` documentava il costo così: *«un esito compatto misura 116 byte,
+quindi questo tetto costa circa 12 MB»* con `max-outcomes: 100000`. È vero per un
+esito compatto. Ma A5 trattiene il payload per gli esiti **leggibili** (ASYNC o
+con chiave di idempotenza), e lì il payload è quello del chiamante.
+
+20.000 esiti leggibili, heap trattenuto dopo GC:
+
+| payload | heap | per esito |
+|---|---|---|
+| 128 B | 8 MB | 427 B |
+| 4 KB | 86 MB | 4.518 B |
+| 64 KB | **1.279 MB** | 67.098 B |
+
+Al valore predefinito di 100.000 sarebbero ~6 GB. È la stessa forma del guasto
+del 2026-08-23 che lo store cita nel proprio javadoc (1,05 GB, 50,6% del tempo in
+GC): il tetto in numero non lo impedisce.
+
+*Nota di metodo:* la prima versione di questa misura usava la **stessa** istanza
+di `String` per tutti gli esiti, e l'heap ne tratteneva una sola — i payload
+grandi sembravano gratis. Stesso genere di errore di T1: il banco non riproduceva
+ciò che fa il chiamante reale.
+
+### Dopo (`raw/T3-memory-after.json`). **ADOTTATO**
+
+`maximumWeight` + weigher, budget predefinito `max-outcomes × 116 byte`.
+
+| payload | prima | dopo | trattenuti |
+|---|---|---|---|
+| 128 B | 8 MB | 5 MB | 10.357 |
+| 4 KB | 86 MB | 3 MB | 553 |
+| 64 KB | **1.279 MB** | **6 MB** | 35 |
+
+L'heap è piatto al variare della dimensione del payload: è il punto. Il costo è
+che con payload grandi si trattengono meno esiti — chi vuole ritenzione più lunga
+alza `max-outcome-bytes`.
+
+### Costo del weigher
+
+| forma | ns per chiamata |
+|---|---|
+| stringa 128 B | 10 |
+| stringa 4 KB | 2 |
+| stringa 64 KB | 2 |
+| mappa, 64 voci | 105 |
+
+Una stringa da 64 KB costa quanto una da 128 B, perché la stima è `length()`,
+O(1): è esattamente il requisito «senza riserializzare il payload». La traversata
+di mappe e liste è limitata in ampiezza (256) e profondità (4), così un payload
+annidato in modo patologico costa come gli altri.
+
+### Effetto collaterale sui test, e cosa insegna
+
+Tre test esprimevano lo sfratto in *numero* (`max-outcomes: 1` = «uno slot»). Con
+un budget ponderato Caffeine può **rifiutare il nuovo** invece di sfrattare
+l'incumbent, quindi quei test dipendevano dalla scelta della vittima, che è
+affare di Caffeine. Riscritti con un budget in byte esplicito che rende la
+scena deterministica. La garanzia di A5 non cambia in nessuno dei due casi: o
+l'esito c'è e il replay lo serve, o non c'è e il replay risponde 410 — la
+funzione non rigira mai.
+
+### Non fatto, e perché
+
+L'accettazione di T3 nomina anche un *«budget di admission per richieste vive»*.
+Non l'ho fatto: le richieste vive stanno in `inFlight`, già limitato da
+`maxLifetime` e dagli slot di concorrenza, e non ho una misura che dica che
+quella struttura sia il problema. Aggiungerne uno senza misura sarebbe
+esattamente ciò che questa fase esiste per evitare. Il soak lungo che
+attraverserebbe le finestre di ritenzione richiede §8 su NanoLab.

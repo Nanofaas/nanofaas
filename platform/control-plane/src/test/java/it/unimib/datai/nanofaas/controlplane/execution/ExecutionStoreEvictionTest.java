@@ -131,7 +131,11 @@ class ExecutionStoreEvictionTest {
             store.settle(execution);
         }
 
-        assertThat(store.size()).isLessThanOrEqualTo(10);
+        // Il tetto e' in BYTE (10 esiti compatti di budget), quindi il numero trattenuto
+        // segue il peso del singolo esito invece di essere esattamente 10. Cio' che il
+        // test afferma - che il tetto limita la memoria dove l'orologio non arriva -
+        // vale comunque: 500 inserimenti, una dozzina trattenuti.
+        assertThat(store.size()).isLessThanOrEqualTo(15);
     }
 
     @Test

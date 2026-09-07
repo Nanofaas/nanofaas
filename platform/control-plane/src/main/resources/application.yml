@@ -61,6 +61,14 @@ nanofaas:
     # rifiutata (429) prima del dispatch; i replay delle chiavi gia' presenti restano
     # servibili. Dimensionarlo come `tasso di ammissioni con chiave x (maxLifetime + ttl)`.
     max-keys: 100000
+    # Il tetto in BYTE degli esiti trattenuti. Quello in numero qui sopra presuppone che
+    # pesino tutti uguale: vero per un esito compatto (116 byte), falso per un esito
+    # leggibile (ASYNC o con chiave), che trattiene il payload del chiamante. Misurati:
+    # 20.000 esiti da 64 KB occupano 1,28 GB, e a max-outcomes=100000 sarebbero circa 6 GB.
+    # Con il budget in byte l'heap resta piatto al variare della dimensione del payload.
+    # Predefinito (0 = derivato): max-outcomes x 116 byte, cioe' lo stesso costo di prima
+    # al limite. Alzarlo se si trattengono payload grandi e si vuole ritenzione piu' lunga.
+    max-outcome-bytes: 0
   defaults:
     timeoutMs: 30000
     concurrency: 4
