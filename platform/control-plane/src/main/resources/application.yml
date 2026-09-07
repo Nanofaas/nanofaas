@@ -69,6 +69,21 @@ nanofaas:
     # Predefinito (0 = derivato): max-outcomes x 116 byte, cioe' lo stesso costo di prima
     # al limite. Alzarlo se si trattengono payload grandi e si vuole ritenzione piu' lunga.
     max-outcome-bytes: 0
+  http-client:
+    # Il pool di connessioni del dispatch. Prima era il provider GLOBALE di Reactor
+    # Netty: nessun budget dichiarato, e soprattutto nessuno che lo chiudesse, quindi
+    # le connessioni sopravvivevano al context che le aveva aperte. Adesso e' un bean
+    # con un lifecycle, e questi tre numeri sono il budget.
+    #
+    # I default coincidono con quelli di Reactor Netty, di proposito: accorciare
+    # l'attesa di acquisizione sembrava un guadagno grosso, ma il dispatcher avvolge
+    # gia' la chiamata in .timeout(functionTimeout), che cancella anche l'acquisizione
+    # pendente. Rimisurato con quella cancellazione, 45 s / 5 s / 1 s sono
+    # indistinguibili, quindi il valore precedente resta
+    # (docs/experiments/control-plane-tuning-2026-09/RISULTATI.md).
+    max-connections: 500
+    pending-acquire-max-count: 0        # 0 = derivato: due volte max-connections
+    pending-acquire-timeout-ms: 45000
   defaults:
     timeoutMs: 30000
     concurrency: 4

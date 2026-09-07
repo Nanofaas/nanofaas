@@ -110,6 +110,8 @@ Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `Ex
 `platform/control-plane/src/main/resources/application.yml`:
 - `nanofaas.defaults.timeoutMs` (30000), `concurrency` (4), `queueSize` (100), `maxRetries` (3)
 - `nanofaas.rate.maxPerSecond` (1000000)
+- `nanofaas.execution-store.ttl`, `maxLifetime`, `syncTtl`, `max-outcomes` (100000), `max-keys` (100000), `max-outcome-bytes` (0 = `max-outcomes` × 116 B; the byte budget is what actually bounds heap, since a readable outcome retains the caller's payload)
+- `nanofaas.http-client.connectTimeoutMs` (5000), `readTimeoutMs` (30000), `maxInMemorySizeMb` (16), `max-connections` (500), `pending-acquire-max-count` (0 = 2 × max-connections), `pending-acquire-timeout-ms` (45000)
 - `nanofaas.deployment.default-backend`
 - `nanofaas.k8s.namespace`, `callbackUrl`
 - `nanofaas.container-local.runtime-adapter`, `bind-host`, `readiness-timeout`, `readiness-poll-interval`
