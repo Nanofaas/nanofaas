@@ -279,3 +279,75 @@ perderlo sarebbe un pessimo scambio.
 La crescita residua (202 → 786 ns) è nei meter di Micrometer stessi, che
 contendono quando più thread toccano la stessa funzione: è inerente allo
 strumento, non al nostro lock.
+
+---
+
+## E2E (§7): `concurrency-cycle-container` fallisce da P1 in poi — ed è un miglioramento
+
+Eseguibile solo dopo aver corretto NanoLab (vedi README: il load-test container
+richiedeva un environment locale, e l'executor locale rifiutava la `remote_dir`
+che lo step k6 chiedeva sempre).
+
+### Il sintomo
+
+```
+'word-stats-java' never gave concurrency back under load:
+floor while busy was 8, peak while idle was 8
+```
+
+Il verificatore classifica una lettura come *carica* quando `in_flight >=
+effective`, e pretende `loaded_floor < idle_peak`.
+
+### Bisezione
+
+| Revisione | Esito | `busy floor` |
+|---|---|---|
+| `e35405ee` pre-branch | ✅ 22/0 | — |
+| `06095a4d` A7 | ✅ | **4** (rerun: 5) |
+| `711d619f` **P1** | ❌ | 8 |
+| `72fee224` P2 | ❌ | 8 |
+| `36d48600` M1 | ❌ | 8 |
+| `cb22a4b0` M3 | ❌ | 8 |
+| tip post-remediation | ❌ | 8 |
+
+Il commit che ribalta l'esito è **P1**, «Make the container proxy concurrent and
+bounded». Le metriche di M1 non c'entrano: erano il primo sospetto e la
+bisezione le ha escluse.
+
+### Perché non è una regressione (`raw/e2e-k6-*.json`)
+
+| | A7 (pre-P1) | P1 |
+|---|---|---|
+| richieste | 334.270 | 1.320.957 |
+| throughput | 857 req/s | **3.387 req/s** (+295%) |
+| p50 | 44,00 ms | **9,69 ms** |
+| p95 | 60,01 ms | **14,52 ms** |
+| p99 | 76,29 ms | **35,83 ms** |
+
+Quattro volte il throughput a un quarto della latenza. `RoundRobinFunctionProxy`
+serializzava le invocazioni verso le repliche; P1 l'ha reso concorrente, ed era
+**quella serializzazione** il collo di bottiglia che degradava il tempo di
+servizio e dava al governor qualcosa a cui reagire.
+
+Con 8 richieste simultanee la funzione ora risponde in 1–3 ms senza degradare.
+Il controller ADAPTIVE osserva il degrado del *tempo di servizio*: non trovandone,
+tiene il limite al massimo — che è la decisione giusta. L'eccedenza si accumula
+nella sync queue, e l'attesa in coda non entra in `function_latency_ms`.
+
+Da notare anche il rovescio: A7 falliva le soglie k6 (p95 60 ms) in uno dei due
+run, mentre da P1 in poi l'SLO passa comodamente. Il governor regolava *perché*
+la piattaforma era lenta.
+
+### Decisione: nessuna modifica alla piattaforma
+
+Lo scenario asserisce una proprietà del governor la cui premessa era la lentezza
+del proxy. La premessa è caduta con il collo di bottiglia, di proposito.
+
+La ritaratura appartiene a NanoLab e **non è stata fatta qui**: cambiare il
+profilo di carico cambia cosa misura ogni confronto della campagna, inclusa la
+baseline `overload-path-2026-09`. Le opzioni sono due — carico più pesante (o
+funzione più lenta) perché lo scenario torni a saturare, oppure accettare che non
+verifichi più il governor. È una scelta di copertura, non di correttezza.
+
+**Finché non è ritarato, quello scenario non verifica più il governor su questa
+macchina.** È una perdita di copertura reale, e va detta.
