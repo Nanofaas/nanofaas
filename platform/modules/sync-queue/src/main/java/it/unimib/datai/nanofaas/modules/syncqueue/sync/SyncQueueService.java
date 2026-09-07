@@ -47,6 +47,21 @@ public class SyncQueueService implements SyncQueueGateway {
      */
     private long wakeSeq;
     private final SyncQueueAdmissionController admissionController;
+    /**
+     * Profondita' per funzione, mantenuta ai punti di mutazione della coda.
+     *
+     * <p>Prima era una scansione O(depth) sotto il monitor della coda, e il metrics source la
+     * chiama UNA VOLTA PER FUNZIONE a ogni scrape: con 51 funzioni e profondita' 200 un enqueue
+     * concorrente passava da 288 ns a 8.739 ns, 30 volte tanto, perche' l'ammissione aspettava
+     * un monitor preso da una lettura di metriche
+     * (docs/experiments/control-plane-tuning-2026-09/RISULTATI.md).
+     *
+     * <p>Le scritture restano dentro i blocchi {@code synchronized (queue)} gia' esistenti, cosi'
+     * la relazione fra chiusura, offer e contatori resta atomica; le letture non prendono il
+     * monitor, ed e' esattamente quello il guadagno.
+     */
+    private final ConcurrentHashMap<String, Integer> depthByFunction = new ConcurrentHashMap<>();
+
     private final Set<String> removedFunctions = ConcurrentHashMap.newKeySet();
     private final ConcurrentHashMap<String, LifecycleLock> lifecycleLocks = new ConcurrentHashMap<>();
     private final FunctionCapacityRegistry capacityRegistry;
@@ -196,7 +211,9 @@ public class SyncQueueService implements SyncQueueGateway {
                 metrics.rejected(task.functionName());
                 throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
             }
-            queue.addLast(new SyncQueueItem(task, now));
+            SyncQueueItem queued = new SyncQueueItem(task, now);
+            queue.addLast(queued);
+            countAdded(queued);
             metrics.registerFunction(task.functionName());
             metrics.admitted(task.functionName());
         }
@@ -277,16 +294,23 @@ public class SyncQueueService implements SyncQueueGateway {
         }
     }
 
-    // ponytail: O(depth) scan under the queue monitor, bounded by max-depth (200).
-    // Per-function counter maintained at the deque mutation sites if scrape cost shows up.
+    /**
+     * Profondita' della coda per una funzione. Lettura senza monitor: e' una metrica, e farle
+     * bloccare l'ammissione per essere esatta al nanosecondo sarebbe un pessimo scambio.
+     */
     public int queuedItems(String functionName) {
-        synchronized (queue) {
-            int count = 0;
-            for (SyncQueueItem item : queue) {
-                if (item.task().functionName().equals(functionName)) count++;
-            }
-            return count;
-        }
+        return depthByFunction.getOrDefault(functionName, 0);
+    }
+
+    /** Da chiamare SOLO sotto {@code synchronized (queue)}, insieme alla mutazione del deque. */
+    private void countAdded(SyncQueueItem item) {
+        depthByFunction.merge(item.task().functionName(), 1, Integer::sum);
+    }
+
+    /** Da chiamare SOLO sotto {@code synchronized (queue)}, insieme alla mutazione del deque. */
+    private void countRemoved(SyncQueueItem item) {
+        depthByFunction.computeIfPresent(item.task().functionName(),
+                (name, count) -> count <= 1 ? null : count - 1);
     }
 
     public SyncQueueItem peekReady(Instant now) {
@@ -301,6 +325,7 @@ public class SyncQueueService implements SyncQueueGateway {
                     return item;
                 }
                 queue.pollFirst();
+                countRemoved(item);
                 timedOut = item;
             }
             timeout(timedOut);
@@ -312,6 +337,9 @@ public class SyncQueueService implements SyncQueueGateway {
         SyncQueueItem item;
         synchronized (queue) {
             item = queue.pollFirst();
+            if (item != null) {
+                countRemoved(item);
+            }
         }
         if (item != null) {
             recordDequeued(item, now);
@@ -338,6 +366,7 @@ public class SyncQueueService implements SyncQueueGateway {
                 SyncQueueItem item = iterator.next();
                 if (isTimedOut(item, now)) {
                     iterator.remove();
+                    countRemoved(item);
                     timedOut.add(item);
                 } else if (selector.test(item.task())) {
                     selected = item;
@@ -354,6 +383,9 @@ public class SyncQueueService implements SyncQueueGateway {
         boolean removed;
         synchronized (queue) {
             removed = queue.remove(item);
+            if (removed) {
+                countRemoved(item);
+            }
         }
         if (!removed) {
             return false;
@@ -371,8 +403,10 @@ public class SyncQueueService implements SyncQueueGateway {
                 return false;
             }
             if (isTimedOut(item, now)) {
+                countRemoved(item);
                 timedOut = item;
             } else {
+                // Testa -> coda: la profondita' non cambia, quindi il contatore neppure.
                 queue.addLast(item);
             }
         }
@@ -390,6 +424,7 @@ public class SyncQueueService implements SyncQueueGateway {
                 return false;
             }
             if (isTimedOut(item, now)) {
+                countRemoved(item);
                 timedOut = item;
             } else {
                 queue.addLast(item);
@@ -402,6 +437,17 @@ public class SyncQueueService implements SyncQueueGateway {
         return rotated;
     }
 
+    /**
+     * Ruota la finestra di scansione un elemento alla volta, prendendo il monitor a ogni
+     * passo. Sembra sprecato — 1 + fino a 64 prese invece di una — e accorparle in un'unica
+     * sezione critica rende la rotazione 7,5 volte piu' veloce in isolamento (1105 -> 148 ns).
+     *
+     * <p>Misurato, pero', quell'accorpamento affama l'ammissione: un enqueue concorrente passa
+     * da ~1 us a 4-20 us, perche' invece di infilarsi fra due sezioni critiche corte deve
+     * aspettare che tutti i 64 elementi siano stati ruotati. La rotazione e' lavoro di
+     * manutenzione, l'ammissione e' il percorso del chiamante: le prese brevi sono la scelta
+     * giusta, non una svista. Vedi docs/experiments/control-plane-tuning-2026-09/RISULTATI.md.
+     */
     public boolean rotateReadyScanWindow(Instant now) {
         boolean changed = false;
         int remaining = Math.min(queuedItems(), POLL_READY_MATCHING_SCAN_LIMIT);
@@ -466,6 +512,7 @@ public class SyncQueueService implements SyncQueueGateway {
                 SyncQueueItem item = iterator.next();
                 if (item.task().functionName().equals(functionName)) {
                     iterator.remove();
+                    countRemoved(item);
                     removed.add(item);
                 }
             }

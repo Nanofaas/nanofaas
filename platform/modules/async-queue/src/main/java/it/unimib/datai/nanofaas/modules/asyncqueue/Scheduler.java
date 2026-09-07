@@ -19,7 +19,15 @@ import java.util.function.LongSupplier;
 public class Scheduler implements SmartLifecycle, WorkSignaler {
     private static final Logger log = LoggerFactory.getLogger(Scheduler.class);
     private static final String COMPONENT_NAME = "Scheduler";
-    private static final int MAX_BATCH_PER_FUNCTION = 2;
+    /**
+     * Quanti dispatch di seguito una funzione ottiene prima che il ciclo passi ad altre.
+     *
+     * <p>E' un compromesso fra costo di scheduling e equita': un batch piu' largo ammortizza
+     * il giro del ciclo su piu' dispatch, ma tiene piu' a lungo il turno di una funzione sola.
+     * Confrontati 2, 4, 8 e 16 — vedi
+     * docs/experiments/control-plane-tuning-2026-09/RISULTATI.md per la misura e la scelta.
+     */
+    static final int DEFAULT_MAX_BATCH_PER_FUNCTION = 2;
 
     private final QueueManager queueManager;
     private final InvocationService invocationService;
@@ -27,6 +35,7 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final Object lifecycleMonitor = new Object();
     private final AtomicReference<ExecutorService> executor = new AtomicReference<>();
+    private final int maxBatchPerFunction;
 
     private final BlockingQueue<String> activeFunctions = new LinkedBlockingQueue<>();
     private final Set<String> enqueuedFunctions = ConcurrentHashMap.newKeySet();
@@ -40,9 +49,18 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
     Scheduler(QueueManager queueManager,
               InvocationService invocationService,
               LongSupplier nanoTime) {
+        this(queueManager, invocationService, nanoTime, DEFAULT_MAX_BATCH_PER_FUNCTION);
+    }
+
+    /** Il batch e' iniettabile per poterlo confrontare; la produzione usa il default. */
+    Scheduler(QueueManager queueManager,
+              InvocationService invocationService,
+              LongSupplier nanoTime,
+              int maxBatchPerFunction) {
         this.queueManager = queueManager;
         this.invocationService = invocationService;
         this.nanoTime = nanoTime;
+        this.maxBatchPerFunction = Math.max(1, maxBatchPerFunction);
     }
 
     @PostConstruct
@@ -180,7 +198,7 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
         }
 
         int dispatched = 0;
-        while (running.get() && dispatched < MAX_BATCH_PER_FUNCTION) {
+        while (running.get() && dispatched < maxBatchPerFunction) {
             InvocationTask task = acquireNext(functionName, state);
             if (task == null) {
                 break;
@@ -200,7 +218,7 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
         }
 
         int queued = state.queued();
-        if (queued > 0 && dispatched == MAX_BATCH_PER_FUNCTION) {
+        if (queued > 0 && dispatched == maxBatchPerFunction) {
             queueManager.recordSchedulerBatchLimit(functionName);
         }
         if (queued > 0 && dispatched > 0 && state.canDispatch()) {

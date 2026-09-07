@@ -1,0 +1,10 @@
+{
+  "bench": "T2BatchBench",
+  "params": {"quietFunctions": 20, "hotTasks": 2000, "quietTasksEach": 5, "reps": 5},
+  "arms": {
+    "batch-2": {"wall_ms_median": 114, "quiet_wait_us_p99_median": 5},
+    "batch-4": {"wall_ms_median": 114, "quiet_wait_us_p99_median": 6},
+    "batch-8": {"wall_ms_median": 113, "quiet_wait_us_p99_median": 5},
+    "batch-16": {"wall_ms_median": 113, "quiet_wait_us_p99_median": 6}
+  }
+}

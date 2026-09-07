@@ -1,0 +1,9 @@
+{
+  "bench": "T2QueueBench",
+  "params": {"depth": 200, "quietFunctions": 50, "reps": 6},
+  "scrape_all_functions_ns": {"median": 317, "min": 229, "max": 1077, "runs": 6},
+  "rotate_scan_window_ns": {"median": 1108, "min": 1059, "max": 1110, "runs": 6},
+  "enqueue_uncontended_ns": {"median": 315, "min": 256, "max": 504, "runs": 6},
+  "enqueue_under_rotation_ns": {"median": 2274, "min": 834, "max": 4954, "runs": 6},
+  "enqueue_under_scrape_ns": {"median": 257, "min": 252, "max": 408, "runs": 6}
+}

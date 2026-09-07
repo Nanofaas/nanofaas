@@ -240,6 +240,50 @@ class SyncQueueServiceTest {
     }
 
     @Test
+    void perFunctionDepthTracksEveryMutationSite() {
+        // T2: queuedItems(fn) must stop being an O(depth) scan under the queue monitor, and
+        // the counter that replaces it is only worth anything if it survives every path that
+        // can move an item: admission, dispatch, rotation, queue-wait timeout, and the drain
+        // that a function removal performs.
+        Instant t0 = Instant.parse("2026-02-01T00:00:00Z");
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
+        );
+        ExecutionStore store = new ExecutionStore();
+        SyncQueueService service = createService(props, store,
+                new WaitEstimator(Duration.ofSeconds(30), 3),
+                new SyncQueueMetrics(new SimpleMeterRegistry()), Clock.fixed(t0, ZoneOffset.UTC));
+        service.registerFunction("a", 4);
+        service.registerFunction("b", 4);
+
+        service.enqueueOrThrow(task("a", "a1"));
+        service.enqueueOrThrow(task("a", "a2"));
+        service.enqueueOrThrow(task("b", "b1"));
+        assertEquals(2, service.queuedItems("a"));
+        assertEquals(1, service.queuedItems("b"));
+
+        // Dispatch removes one.
+        SyncQueueItem polled = service.pollReady(t0);
+        assertNotNull(polled);
+        assertEquals(1, service.queuedItems("a"));
+
+        // Rotation moves the head to the tail: the depth must not change.
+        assertTrue(service.rotateReadyScanWindow(t0));
+        assertEquals(1, service.queuedItems("a"));
+        assertEquals(1, service.queuedItems("b"));
+
+        // Removing a function drains its items.
+        service.removeFunctionState("b");
+        assertEquals(0, service.queuedItems("b"));
+        assertEquals(1, service.queuedItems("a"));
+
+        // A queue-wait timeout drops the rest.
+        service.peekReady(t0.plusSeconds(30));
+        assertEquals(0, service.queuedItems("a"));
+        assertEquals(0, service.queuedItems());
+    }
+
+    @Test
     void awaitWakeup_returnsImmediatelyWhenTheEpochMovedBeforeTheWait() {
         // The whole point of the epoch discipline: a waiter reads the epoch BEFORE scanning, and
         // if a wake-up event fires in the gap between that scan and the park, the park must not
