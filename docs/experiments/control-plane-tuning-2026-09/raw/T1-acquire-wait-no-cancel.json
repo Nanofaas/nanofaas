@@ -1,0 +1,25 @@
+{
+  "bench": "T1PoolBench", "cancelAtBudget": false,
+  "params": {"pool": 8, "concurrency": 64, "holdMs": 300, "budgetMs": 1000, "defaultAcquireWaitMs": 45000, "reps": 6},
+  "default-wait-45s": {
+    "p50_median_ms": 1506, "p95_median_ms": 2409, "max_median_ms": 2410,
+    "max_min_ms": 2408, "max_max_ms": 2411,
+    "within_budget": 144, "over_budget": 240, "failed": 0,
+    "backend_served": 384, "backend_work_wasted": 240,
+    "runs": 6
+  },
+  "shipped-default-5s": {
+    "p50_median_ms": 1505, "p95_median_ms": 2408, "max_median_ms": 2409,
+    "max_min_ms": 2408, "max_max_ms": 2412,
+    "within_budget": 144, "over_budget": 240, "failed": 0,
+    "backend_served": 384, "backend_work_wasted": 240,
+    "runs": 6
+  },
+  "budget-wait-1s": {
+    "p50_median_ms": 1000, "p95_median_ms": 1205, "max_median_ms": 1205,
+    "max_min_ms": 1204, "max_max_ms": 1205,
+    "within_budget": 144, "over_budget": 48, "failed": 192,
+    "backend_served": 192, "backend_work_wasted": 48,
+    "runs": 6
+  }
+}

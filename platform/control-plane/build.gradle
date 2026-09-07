@@ -114,3 +114,12 @@ tasks.named('bootBuildImage') {
         throw new GradleException('Native buildpacks are disabled; run scripts/native-java-image.sh control-plane instead')
     }
 }
+
+// Il classpath di test, per i banchi di misura fuori da Gradle
+// (docs/experiments/*/run.sh). Non e' un task di build: serve solo a evitare
+// che un banco debba indovinare dove stanno i jar.
+tasks.register('printTestClasspath') {
+    doLast {
+        println sourceSets.test.runtimeClasspath.asPath
+    }
+}
