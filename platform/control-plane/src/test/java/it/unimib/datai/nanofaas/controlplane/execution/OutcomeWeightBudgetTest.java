@@ -80,16 +80,30 @@ class OutcomeWeightBudgetTest {
     }
 
     @Test
-    void aDeeplyNestedPayloadCostsNoMoreThanTheTraversalBound() {
-        // A pathologically nested payload must not cost more than the others: the estimate
-        // is bounded in breadth and depth for exactly this reason.
+    void aPayloadBeyondTheTraversalBoundIsDeclinedNotPricedAtZero() {
+        // A payload nested deeper than the walk limit used to be priced at zero below the
+        // limit and retained under a tiny weight (finding R1). Now it is declined: the
+        // skipped remainder must not be silently under-priced.
         Map<String, Object> nested = Map.of("k", Map.of("k", Map.of("k", Map.of("k",
                 Map.of("k", Map.of("k", "x".repeat(4096)))))));
         ExecutionStore store = store(new ExecutionStoreProperties(TTL, TTL, TTL, 100_000, 100_000, 0));
 
         settle(store, "deep", nested);
 
-        assertThat(store.outcomeOf("deep")).isNotNull();
+        assertThat(store.outcomeOf("deep")).isNull();
+    }
+
+    @Test
+    void aPayloadWithinTheTraversalBoundIsRetained() {
+        // Four levels of nesting walk fine: the string at depth 4 is inside the limit, so
+        // its weight is known and the outcome is retained.
+        Map<String, Object> nested = Map.of("k", Map.of("k", Map.of("k", Map.of("k",
+                "x".repeat(4096)))));
+        ExecutionStore store = store(new ExecutionStoreProperties(TTL, TTL, TTL, 100_000, 100_000, 0));
+
+        settle(store, "shallow", nested);
+
+        assertThat(store.outcomeOf("shallow")).isNotNull();
     }
 
     private static ExecutionStore store(ExecutionStoreProperties props) {

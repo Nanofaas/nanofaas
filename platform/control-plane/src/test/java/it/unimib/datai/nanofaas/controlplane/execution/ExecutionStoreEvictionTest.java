@@ -198,12 +198,43 @@ class ExecutionStoreEvictionTest {
         assertThat(store.outcomeOf("exec").state()).isEqualTo(ExecutionState.SUCCESS);
     }
 
+    @Test
+    void aNotCacheableOutcomeIsDroppedButTheTerminalTransitionStillRuns() {
+        // A payload whose size cannot be bounded is declined by settle(): the outcome is
+        // not retained, but the terminal notification still runs, because the idempotency
+        // key's tombstone - not the payload - is what keeps a replay from re-invoking.
+        ExecutionStore store = store();
+        List<String> terminal = new java.util.ArrayList<>();
+        store.onTerminal(record -> terminal.add(record.executionId()));
+
+        ExecutionRecord record = asyncExecutionRecord("oversized");
+        store.put(record);
+        Object payload = "x";
+        for (int depth = 0; depth < 5; depth++) {
+            payload = List.of(payload);
+        }
+        record.markSuccess(payload);
+        store.settle(record);
+
+        assertThat(store.size()).isZero();
+        assertThat(store.outcomeOf("oversized")).isNull();
+        assertThat(terminal).containsExactly("oversized");
+    }
+
     private static ExecutionRecord executionRecord(String id) {
+        return executionRecord(id, InvocationKind.SYNC);
+    }
+
+    private static ExecutionRecord asyncExecutionRecord(String id) {
+        return executionRecord(id, InvocationKind.ASYNC);
+    }
+
+    private static ExecutionRecord executionRecord(String id, InvocationKind kind) {
         FunctionSpec spec = new FunctionSpec("fn", "img", List.of(), Map.of(), null,
                 1000, 1, 10, 0, null, ExecutionMode.LOCAL, RuntimeMode.HTTP, null, null, null);
         InvocationTask task = new InvocationTask(id, "fn", spec,
                 new InvocationRequest("payload", Map.of()), null, null, Instant.now(), 1,
-                InvocationKind.SYNC);
+                kind);
         return new ExecutionRecord(id, task);
     }
 }

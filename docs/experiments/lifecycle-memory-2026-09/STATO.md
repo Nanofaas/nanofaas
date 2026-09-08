@@ -218,3 +218,98 @@ New green matrix contract tests:
 
 - P02 — conservative, bounded outcome weighing (I6), then P03 (atomic key budget), P04 (single
   terminal owner / dedup), P05 (activate the R3 waiter-timeout behavior + offload finalization).
+
+## P02 — Conservative, bounded outcome weighing (this entry)
+
+**ID:** P02 — make the outcome byte weigher conservative and bounded (finding R1).
+
+**Revision / git state**
+
+- Branch: `control-plane-lifecycle-memory`.
+- HEAD at the time of this entry (BASE for P02): `c9f0cc46` (P01 commit).
+
+**Files changed**
+
+- `platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/OutcomeWeigher.java`
+  — rewritten: a weighing verdict that distinguishes *cacheable* (known weight) from *not cacheable*;
+  bounded depth/width/identity traversal with cycle/shared-reference and opaque-object detection;
+  saturating arithmetic; a `freeze` pass that deep-copies mutable containers into unmodifiable,
+  unshared structures; non-Latin-1 strings priced at 2 bytes/char.
+- `platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java`
+  — `settle` now freezes + weighs before inserting and declines to retain an outcome that is not
+  cacheable or whose weight alone exceeds the byte budget; the terminal notification still runs
+  either way (the key's tombstone is what keeps replay from re-invoking). Caffeine weigher bound to
+  `OutcomeWeigher.weightForCache`; `maximumOutcomeBytes` kept as a field.
+- `platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/config/ExecutionStoreProperties.java`
+  — javadoc corrected: `maxOutcomes` derives the default byte budget only; there is no separate
+  count cap. `COMPACT_OUTCOME_BYTES` doc updated.
+- `platform/control-plane/src/main/resources/application.yml` — `max-outcomes`/`max-outcome-bytes`
+  comments corrected to the derived-budget wording.
+- `platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/execution/OutcomeWeigherTest.java`
+  (new) — unit tests for depth/width/Unicode/cycle/shared/opaque/freeze-mutation/saturating/clamp.
+- `platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStoreEvictionTest.java`
+  — added `aNotCacheableOutcomeIsDroppedButTheTerminalTransitionStillRuns`.
+- `platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/execution/OutcomeWeightBudgetTest.java`
+  — the old `aDeeplyNestedPayloadCostsNoMoreThanTheTraversalBound` (which asserted the R1 defect as
+  desired behavior) is replaced by `aPayloadBeyondTheTraversalBoundIsDeclinedNotPricedAtZero` plus
+  `aPayloadWithinTheTraversalBoundIsRetained`.
+- `docs/experiments/lifecycle-memory-2026-09/STATO.md` (this file, appended).
+
+**Test commands and outcomes**
+
+R1 regression, RED on baseline (P00 established `expected: 0 but was: 31`; re-verified by stashing
+the P02 production change):
+
+```bash
+./gradlew :control-plane:test --tests '*R1OutcomeByteBudgetRegressionTest'
+# RED on baseline: 1 failed — AssertionFailedError at R1OutcomeByteBudgetRegressionTest.java:98
+# GREEN after P02: BUILD SUCCESSFUL
+```
+
+New weigher unit tests and the surrounding store tests:
+
+```bash
+./gradlew :control-plane:test \
+  --tests '*OutcomeWeigherTest' \
+  --tests '*ExecutionStoreEvictionTest' \
+  --tests '*OutcomeWeightBudgetTest' \
+  --tests '*R1OutcomeByteBudgetRegressionTest'
+# 33 tests completed, 0 failed
+```
+
+Full control-plane suite (run once before commit):
+
+```bash
+./gradlew :control-plane:test
+# 557 tests completed, 7 failed, 3 skipped — the 7 failures are the still-red P00 regressions
+# for R2/R3/R4/R7/R8 and direct admission (owned by P03–P10), none new from P02. R1 is green.
+```
+
+**Impact**
+
+- `node .gitnexus/run.cjs impact "OutcomeWeigher" --direction upstream --repo .` → `UNKNOWN` /
+  0 callers resolved (lambda reference not indexed); confirmed by text search: the only caller is
+  `ExecutionStore` (Caffeine weigher) plus the R1 test javadoc.
+- `node .gitnexus/run.cjs impact "ExecutionStore" --direction upstream --repo .` → ambiguous across
+  11 symbols; the platform path resolves to MEDIUM risk / 34 impacted (`HIGH` among the candidates).
+  `settle` callers (text search): `ExecutionCompletionHandler` (4 sites), `SyncQueueService` (2),
+  `AsyncQueueConfiguration` (1); `outcomeOf` read by `InvocationService` and `InvocationExecutionFactory`.
+- `node .gitnexus/run.cjs detect-changes --scope all --repo .` → 8 files / 22 symbols, risk `high`
+  (ExecutionStore + OutcomeWeigher as expected; the listing also includes the pre-existing
+  overload-path `STATO.md`/`run-queue-2.out` changes because the index is 3 commits behind HEAD —
+  those files are not part of this change and are not committed).
+
+**Measures / observations**
+
+- The 30 × 1 MiB deep case and the 256-nulls + 1 MiB wide case are now declined (`size() == 0` under
+  an 11,600-byte budget) instead of being retained at ~176/~112 bytes; the skipped subtrees are no
+  longer priced at zero.
+- The weigher still walks each outcome once at insertion and never re-serializes it; the ordinary
+  compact-string path is unchanged (`FIXED_OVERHEAD_BYTES` and per-char Latin-1 pricing preserved, so
+  `maxOutcomes` compact outcomes still fit the derived budget).
+- The weight is an estimate, not a measurement: the docs explicitly avoid promising an exact heap bound.
+
+**Next step**
+
+- P03 — atomic idempotency-key budget, then P04 (single terminal owner / dedup; closes the R2 window
+  the declined payload leaves), P05 (activate R3 waiter-timeout + offload finalization).

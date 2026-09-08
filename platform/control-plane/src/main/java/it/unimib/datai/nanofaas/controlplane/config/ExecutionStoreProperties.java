@@ -19,18 +19,19 @@ import java.time.Duration;
  * {@code GET /v1/executions/{id}} is a promise made to those callers as well.
  *
  * <p>{@code maxOutcomeBytes}: the cap in BYTES, which is what actually matters.
- * The count cap ({@code maxOutcomes}) bounds how many outcomes are kept, not how
- * much they weigh, and the two coincide only for the compact 116-byte outcomes
- * that number was calibrated on. But a *readable* outcome - ASYNC or
- * idempotency-keyed - retains the caller's payload: measured, 20,000 outcomes at
- * 64 KB occupy 1.28 GB, and at the default of 100,000 that would be roughly 6 GB.
- * Exactly the shape of the 2026-08-23 failure described above, which the count cap
- * alone does not prevent. An outcome's weight is estimated once at insertion,
- * never by re-serializing the payload on each access.
+ * This is the only bound the store enforces, with Caffeine's {@code maximumWeight};
+ * there is no separate count cap. {@code maxOutcomes} is used only to DERIVE the
+ * default byte budget ({@code maxOutcomes x COMPACT_OUTCOME_BYTES}) when
+ * {@code max-outcome-bytes} is not set explicitly, and is otherwise ignored. A
+ * *readable* outcome - ASYNC or idempotency-keyed - retains the caller's payload:
+ * measured, 20,000 outcomes at 64 KB occupy 1.28 GB, and a count-only budget would
+ * not prevent that. An outcome's weight is estimated once at insertion, never by
+ * re-serializing the payload on each access.
  *
  * <p>The default is {@code maxOutcomes x 116 bytes}: at the limit it costs what it
  * cost before, so nothing changes for compact outcomes, while large payloads are
- * evicted by weight instead of accumulating.
+ * evicted by weight instead of accumulating. Because the weight is an estimate, not
+ * a measurement, the default must not be read as an exact heap bound.
  *
  * <p>{@code maxLifetime}: the absolute ceiling past which even a non-terminal (stuck)
  * execution is evicted, so it cannot grow without end.
@@ -46,7 +47,7 @@ public record ExecutionStoreProperties(
 ) {
     private static final long DEFAULT_MAX_OUTCOMES = 100_000;
     private static final long DEFAULT_MAX_KEYS = 100_000;
-    /** A compact outcome's weight, the constant the count cap was calibrated on. */
+    /** A compact outcome's weight, the constant the default byte budget is derived from. */
     public static final long COMPACT_OUTCOME_BYTES = 116;
 
     /**

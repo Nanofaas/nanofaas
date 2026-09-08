@@ -51,9 +51,9 @@ nanofaas:
     sync-ttl: 30s
     # Absolute ceiling for a stuck execution (lost dispatch, callback that never arrived).
     max-lifetime: 30m
-    # The cap in COUNT, not only in time. Without it, memory stays proportional to the
-    # arrival rate: on 2026-08-23 that was 1.05 GB and 50.6% of the time in GC.
-    # A compact outcome measures 116 bytes, so this ceiling costs about 12 MB.
+    # Derives the default byte budget below (when max-outcome-bytes = 0): the number of
+    # compact 116-byte outcomes the store could hold before weighting was introduced.
+    # Not enforced on its own - the outcome cache is bounded in BYTES, not in count.
     max-outcomes: 100000
     # The count cap for idempotency keys (bindings and tombstones), kept separate from
     # the outcome budget: evicting an outcome for capacity must never evict the
@@ -61,11 +61,13 @@ nanofaas:
     # before the dispatch; replays of keys already present stay servable. Size it as
     # `keyed admission rate x (maxLifetime + ttl)`.
     max-keys: 100000
-    # The BYTE cap on retained outcomes. The count cap above assumes they all weigh the
-    # same: true for a compact outcome (116 bytes), false for a readable one (ASYNC or
-    # keyed), which retains the caller's payload. Measured: 20,000 outcomes at 64 KB
-    # occupy 1.28 GB, and at max-outcomes=100000 that would be roughly 6 GB. With the
-    # byte budget the heap stays flat as the payload size varies.
+    # The BYTE cap on retained outcomes - the only bound the outcome cache enforces. A
+    # count cap would assume they all weigh the same: true for a compact outcome
+    # (116 bytes), false for a readable one (ASYNC or keyed), which retains the
+    # caller's payload. Measured: 20,000 outcomes at 64 KB occupy 1.28 GB, and at
+    # max-outcomes=100000 that would be roughly 6 GB. With the byte budget the heap
+    # stays flat as the payload size varies. An outcome whose size cannot be bounded
+    # conservatively is declined (not retained) rather than silently under-priced.
     # Default (0 = derived): max-outcomes x 116 bytes, i.e. the same cost as before at
     # the limit. Raise it when retaining large payloads and wanting longer retention.
     max-outcome-bytes: 0

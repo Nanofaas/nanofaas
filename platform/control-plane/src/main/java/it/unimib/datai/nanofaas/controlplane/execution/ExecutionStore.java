@@ -61,6 +61,14 @@ public class ExecutionStore {
     private final Cache<String, Outcome> outcomes;
 
     /**
+     * The byte budget the {@link #outcomes} cache is capped at. Kept alongside the cache
+     * because {@link #settle} must compare an outcome's conservative weight against it
+     * before inserting: an outcome whose weight alone exceeds the budget is declined
+     * rather than admitted only to be evicted an instant later.
+     */
+    private final long maximumOutcomeBytes;
+
+    /**
      * Who is told when {@link #inFlight} evicts a record on its own, because
      * {@code maxLifetime} elapsed - not because someone archived it with
      * {@link #settle}.
@@ -107,6 +115,7 @@ public class ExecutionStore {
 
     /** Eviction tests move the clock instead of sleeping; public for the tests in the service package. */
     public ExecutionStore(ExecutionStoreProperties properties, Ticker ticker) {
+        this.maximumOutcomeBytes = properties.maxOutcomeBytes();
         this.inFlight = Caffeine.newBuilder()
                 .expireAfterWrite(properties.maxLifetime())
                 .ticker(ticker)
@@ -130,11 +139,12 @@ public class ExecutionStore {
         this.outcomes = Caffeine.newBuilder()
                 // A ceiling in BYTES, not in count: a count assumes every outcome weighs
                 // the same, and a readable outcome retains the caller's payload. The weight
-                // is estimated here, once; no later access recomputes it. At the default
-                // value the budget is worth maxOutcomes compact outcomes, so for those
-                // nothing changes.
+                // is estimated once, at insertion; no later access recomputes it. The
+                // weigher is conservative: an outcome whose size cannot be bounded is
+                // declined by settle() before it ever reaches this cache, so the weigher
+                // only ever prices outcomes the store already decided to retain.
                 .maximumWeight(properties.maxOutcomeBytes())
-                .weigher((String id, Outcome outcome) -> OutcomeWeigher.weigh(outcome))
+                .weigher(OutcomeWeigher::weightForCache)
                 .expireAfter(Expiry.creating((String id, Outcome outcome) ->
                         outcome.readable() ? properties.ttl() : properties.syncTtl()))
                 .ticker(ticker)
@@ -200,13 +210,24 @@ public class ExecutionStore {
      * modules, and some of them overlap (a dispatch that completes after the sync path
      * has already timed out). Calling it on a non-terminal record does nothing: the
      * record is still alive and {@code inFlight} must keep finding it.
+     *
+     * <p>Retention of the payload is decided here and separated from the caller's
+     * response: the caller has already been answered (synchronously, or will be by
+     * polling), and an outcome whose size cannot be bounded — or whose conservative
+     * weight alone exceeds the whole budget — is simply not retained. The terminal
+     * notification still runs either way, because the idempotency key's tombstone is
+     * what keeps a replay from re-invoking the function, and that must survive even
+     * when the payload does not.
      */
     public void settle(ExecutionRecord executionRecord) {
         if (!executionRecord.isTerminal()) {
             return;
         }
         String executionId = executionRecord.executionId();
-        outcomes.put(executionId, executionRecord.toOutcome());
+        OutcomeWeigher.FreezeResult frozen = OutcomeWeigher.freeze(executionId, executionRecord.toOutcome());
+        if (frozen != null && frozen.weight() <= maximumOutcomeBytes) {
+            outcomes.put(executionId, frozen.outcome());
+        }
         inFlight.invalidate(executionId);
         // After the archiving, and not before: only now is the outcome servable, and it
         // is from here that the key's terminal retention starts. Reversing the order

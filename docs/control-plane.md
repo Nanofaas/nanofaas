@@ -209,8 +209,8 @@ The key goes through three states, each with its own expiry derived from
   outcome-readability window.
 
 Dedup and payload retention are decoupled. When an outcome is evicted for
-capacity (`max-outcomes`) before its window ends, the terminal key survives as
-a light tombstone (execution id + expiry). A replay of that key does **not**
+capacity (`max-outcome-bytes`) before its window ends, the terminal key survives
+as a light tombstone (execution id + expiry). A replay of that key does **not**
 re-run the function: it returns an explicit `410 Gone` with the
 `X-Execution-Id` header, so the caller can tell "ran, but the answer is gone"
 from "never ran".
@@ -228,7 +228,8 @@ Relevant settings under `nanofaas.execution-store`:
 | `ttl` | `5m` | Terminal key retention and readable-outcome retention, from completion |
 | `sync-ttl` | `30s` | Retention of an unkeyed sync outcome (answer already handed back) |
 | `max-lifetime` | `30m` | Live key/execution ceiling for a stuck dispatch |
-| `max-outcomes` | `100000` | Outcome payload budget (capacity eviction) |
+| `max-outcomes` | `100000` | Derives the default byte budget (`x 116 B`); not enforced as a count cap |
+| `max-outcome-bytes` | `0` | Outcome byte budget (capacity eviction); `0` = derived from `max-outcomes` |
 | `max-keys` | `100000` | Key/tombstone budget (refuses new keyed admissions when exhausted) |
 
 ## Build metadata
