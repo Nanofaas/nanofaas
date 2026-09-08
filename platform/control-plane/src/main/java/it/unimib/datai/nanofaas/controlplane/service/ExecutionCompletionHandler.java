@@ -266,18 +266,43 @@ public class ExecutionCompletionHandler {
         // the capacity was released. For DEPLOYMENT this is the composed wake-up future.
         executionRecord.attachDispatchHandle(future);
 
-        // The attempt's own deadline (ADR 0001 §3.4, row 9): distinct from any single
-        // waiter's budget, it bounds this dispatch and feeds the retry policy below.
+        // The raw work's own completion is what releases a direct attempt's lease: a
+        // non-interruptible LOCAL handler keeps its capacity until the raw future actually
+        // ends, so a retry cannot acquire a fresh slot while the old handler still runs
+        // (invariant I4 / acceptance "no path bypasses the cap").
+        if (directLease != null) {
+            future.whenComplete((ignoredResult, ignoredError) -> directLease.release());
+        }
+
+        // The attempt's own deadline (ADR 0001 §3.4, row 9) is a separate clock from the raw
+        // transport. It is applied to a mirror of the raw future, never to the raw future
+        // itself, so when the deadline fires the raw future stays pending (and the direct
+        // lease stays held) for work that has not actually ended.
         long attemptDeadlineMs = task.functionSpec().timeoutMs();
-        CompletableFuture<DispatchResult> attempt = attemptDeadlineMs > 0
-                ? future.orTimeout(attemptDeadlineMs, TimeUnit.MILLISECONDS)
-                : future;
+        CompletableFuture<DispatchResult> attempt;
+        if (attemptDeadlineMs > 0) {
+            attempt = new CompletableFuture<>();
+            future.whenComplete((result, error) -> {
+                if (error != null) {
+                    attempt.completeExceptionally(error);
+                } else {
+                    attempt.complete(result);
+                }
+            });
+            attempt.orTimeout(attemptDeadlineMs, TimeUnit.MILLISECONDS);
+        } else {
+            attempt = future;
+        }
 
         attempt.whenComplete((dispatchResult, error) -> {
             if (error instanceof TimeoutException) {
-                // Attempt deadline exceeded: route through the retry policy as a
-                // timeout-classified failure. Local cancellation is best-effort here - for a
-                // non-interruptible LOCAL handler the slot stays held until the work ends.
+                // Attempt deadline elapsed: conclude the wait and feed the retry policy, but do
+                // not release the direct lease here. The raw future's own completion (registered
+                // above) releases it, so a non-interruptible LOCAL handler keeps its slot until
+                // its work actually ends and the retry cannot acquire a fresh slot meanwhile.
+                if (directLease != null) {
+                    executionRecord.takeDispatchLease();
+                }
                 completeExecution(task.executionId(),
                         DispatchResult.warm(InvocationResult.error("ATTEMPT_TIMEOUT", "Attempt deadline exceeded")),
                         attemptAtDispatch);
@@ -676,7 +701,8 @@ public class ExecutionCompletionHandler {
      * the lease it holds; a queue-dispatched attempt releases the name-based slot its
      * scheduler acquired; an attempt that never dispatched releases nothing - which is what
      * closes review finding R5 (a direct completion could steal a queued dispatch's slot).
-     * Called under the record monitor.
+     * Its accessors are individually synchronized, so it is safe both under the record
+     * monitor (the completion path) and outside it (administrative expiry).
      */
     private void releaseAttemptCapacity(ExecutionRecord executionRecord, int attempt, String functionName) {
         if (executionRecord.wasDirectAdmission()) {

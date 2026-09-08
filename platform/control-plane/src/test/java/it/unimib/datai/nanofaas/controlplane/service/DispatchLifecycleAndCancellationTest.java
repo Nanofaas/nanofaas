@@ -29,7 +29,9 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -115,6 +117,68 @@ class DispatchLifecycleAndCancellationTest {
         handler.dispatchDirect(task);
         assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
         assertThat(record.completion()).isDone();
+    }
+
+    @Test
+    void nonInterruptibleLocalHandlerKeepsItsSlotUntilTheWorkEnds() {
+        ExecutionStore store = new ExecutionStore();
+        FunctionCapacityRegistry capacity = new FunctionCapacityRegistry();
+        Metrics metrics = new Metrics(new SimpleMeterRegistry());
+        ExecutorService retryExecutor = it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerLifecycleSupport
+                .newBoundedExecutor("test-retry-held-slot", 2, 4, 32);
+
+        AtomicInteger dispatches = new AtomicInteger();
+        CompletableFuture<DispatchResult> handlerWork = new CompletableFuture<>();
+        LocalDispatcher local = new LocalDispatcher() {
+            @Override
+            public CompletableFuture<DispatchResult> dispatch(InvocationTask task) {
+                dispatches.incrementAndGet();
+                return handlerWork; // the non-interruptible handler: never ends until we say so
+            }
+        };
+
+        // Production wiring: the core-only retry enqueuer shares the capacity registry and
+        // dispatches through dispatchWithLease, so a retry must re-acquire a slot.
+        ExecutionCompletionHandler[] holder = new ExecutionCompletionHandler[1];
+        ExecutorBackedInvocationEnqueuer enqueuer = new ExecutorBackedInvocationEnqueuer(
+                (task, lease) -> holder[0].dispatchWithLease(task, lease), capacity, retryExecutor);
+        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, enqueuer,
+                new DispatcherRouter(local, null), metrics, null, capacity);
+        holder[0] = handler;
+
+        // timeoutMs=100 so the attempt deadline fires; concurrency=1; maxRetries=1.
+        FunctionSpec spec = new FunctionSpec("fn", "img", List.of(), Map.of(), null,
+                100, 1, 100, 1, null, ExecutionMode.LOCAL, null, null, null);
+        InvocationTask task = new InvocationTask("e1", "fn", spec,
+                new InvocationRequest("payload", Map.of()), null, null, Instant.now(), 1,
+                InvocationKind.SYNC);
+        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
+        store.put(record);
+
+        try {
+            handler.dispatchDirect(task);
+            assertThat(record.state()).isEqualTo(ExecutionState.RUNNING);
+            assertThat(dispatches.get()).isEqualTo(1);
+
+            // The attempt deadline fires and the retry policy runs, but the retry must not run
+            // a second handler while the first is still going: the lease is held, so the retry
+            // cannot acquire a fresh slot (acceptance "no path bypasses the cap").
+            await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
+                    assertThat(record.completion()).isDone());
+            assertThat(dispatches.get())
+                    .as("a retry must not run a second handler while the first still runs")
+                    .isEqualTo(1);
+            assertThat(capacity.inFlight("fn"))
+                    .as("the still-running handler keeps its slot")
+                    .isEqualTo(1);
+
+            // The handler finally ends: the raw work's completion releases the lease.
+            handlerWork.complete(DispatchResult.warm(InvocationResult.success("done")));
+            await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
+                    assertThat(capacity.inFlight("fn")).isZero());
+        } finally {
+            retryExecutor.shutdownNow();
+        }
     }
 
     @Test
