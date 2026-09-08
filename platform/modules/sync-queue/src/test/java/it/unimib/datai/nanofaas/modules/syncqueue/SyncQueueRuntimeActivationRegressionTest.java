@@ -29,9 +29,9 @@ import static org.mockito.Mockito.mock;
 
 /**
  * Regression coverage for review finding P1-5 (docs/control-plane-review-2026-09-05.md,
- * "Attivazione runtime della sync queue senza scheduler"), which the review only verified
- * statically ("percorso verificato staticamente, non avviato il contesto Spring per questa
- * prova"). This test starts the real Spring context to confirm the corrected behaviour.
+ * "Runtime activation of the sync queue with no scheduler"), which the review only verified
+ * statically ("the path was verified statically; the Spring context was not started for this
+ * check"). This test starts the real Spring context to confirm the corrected behaviour.
  *
  * <p>The scheduler is created when the sync-queue module is loaded, even if
  * {@code sync-queue.enabled=false} at boot (A4: the runtime flag only decides the path of

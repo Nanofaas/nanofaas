@@ -22,68 +22,66 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
 /**
- * Chi sta eseguendo, e cosa ne resta dopo.
+ * What is executing, and what is left of it afterwards.
  *
- * <p>Erano una struttura sola, e le due vite non si somigliano. Il 2026-08-26, in
- * un run a 1.093 ammissioni al secondo, {@code function_inFlight} arrivava a
- * <b>2</b> mentre lo store ne teneva <b>165.786</b>: il 99,999% di cio' che
- * conservava era postumo, e si portava dietro l'apparato del vivo - la future, il
- * task, la richiesta, il set dei tentativi rilasciati. Trentacinque oggetti per
- * record, cinque milioni e ottocentomila in tutto, che ogni raccolta completa
- * doveva attraversare.
+ * <p>These used to be one structure, and the two lives do not resemble each other.
+ * On 2026-08-26, in a run at 1,093 admissions per second, {@code function_inFlight}
+ * peaked at <b>2</b> while the store held <b>165,786</b>: 99.999% of what it kept
+ * was posthumous, and it dragged the apparatus of the living along with it - the
+ * future, the task, the request, the set of released attempts. Thirty-five objects
+ * per record, five million eight hundred thousand in total, every one of which a
+ * full collection had to walk.
  *
- * <p>Da qui in poi sono due. {@link #inFlight} tiene i record mutabili finche'
- * servono; {@link #outcomes} tiene {@link Outcome}, piatti e immutabili, per chi
- * puo' ancora chiederli.
+ * <p>From here on they are two. {@link #inFlight} holds the mutable records for as
+ * long as they are needed; {@link #outcomes} holds {@link Outcome}, flat and
+ * immutable, for whoever can still ask for them.
  *
- * <p>Entrambe sono Caffeine, come {@link IdempotencyStore} un file piu' in la'.
- * Al posto del janitor che ogni minuto attraversava l'intera mappa - 12,4 ms su
- * 166.000 record, e ogni oggetto della vecchia generazione toccato per nulla -
- * lo sfratto e' ammortizzato sulle scritture. E {@code maximumSize} e' il tetto
- * in spazio che qui e' sempre mancato: prima la ritenzione era dichiarata nel
- * tempo e illimitata nel numero, quindi la memoria cresceva col tasso di arrivo.
- * Il 2026-08-23 questo significava 1,05 GB, il 50,6% del tempo in GC e un probe
- * di liveness mancato tre volte di fila.
+ * <p>Both are Caffeine, like {@link IdempotencyStore} one file over. In place of the
+ * janitor that walked the whole map every minute - 12.4 ms over 166,000 records, and
+ * every old-generation object touched for nothing - eviction is amortised over the
+ * writes. And {@code maximumWeight} is the ceiling in space that was always missing
+ * here: retention used to be declared in time and unbounded in number, so memory grew
+ * with the arrival rate. On 2026-08-23 that meant 1.05 GB, 50.6% of the time in GC,
+ * and a liveness probe missed three times in a row.
  */
 @Component
 public class ExecutionStore {
     private static final Logger log = LoggerFactory.getLogger(ExecutionStore.class);
 
     /**
-     * Chi sta ancora eseguendo. Scade da solo dopo {@code maxLifetime}: e' cio'
-     * che sostituisce il ramo omonimo del vecchio janitor per le esecuzioni
-     * incastrate (dispatch perso, callback mai arrivata), ed e' anche la rete di
-     * sicurezza se una {@link #settle} venisse dimenticata su un percorso nuovo -
-     * il record scade invece di restare per sempre.
+     * What is still executing. Expires on its own after {@code maxLifetime}: this is
+     * what replaces the like-named branch of the old janitor for stuck executions
+     * (lost dispatch, callback that never arrived), and it is also the safety net if
+     * a {@link #settle} were forgotten on some new path - the record expires instead
+     * of staying forever.
      */
     private final Cache<String, ExecutionRecord> inFlight;
 
-    /** Cosa ne resta. Limitato in numero, e con scadenza decisa per voce. */
+    /** What is left of it. Bounded in space, with an expiry decided per entry. */
     private final Cache<String, Outcome> outcomes;
 
     /**
-     * Chi va avvertito quando {@link #inFlight} sfratta un record da solo, per
-     * {@code maxLifetime} scaduto - non perche' qualcuno lo ha archiviato con
+     * Who is told when {@link #inFlight} evicts a record on its own, because
+     * {@code maxLifetime} elapsed - not because someone archived it with
      * {@link #settle}.
      *
-     * <p>Di default nessuno: uno store usato senza registrare un ascoltatore si
-     * comporta come prima, sfratto silenzioso. {@code ExecutionCompletionHandler}
-     * si registra qui in produzione, perche' e' lui a sapere come chiudere un
-     * dispatch abbandonato - completare la future condivisa, rilasciare lo slot,
-     * archiviare l'esito - non lo store, che di slot e future condivise non sa
-     * nulla al di fuori del record stesso.
+     * <p>Nobody by default: a store used without registering a listener behaves as
+     * before, silent eviction. {@code ExecutionCompletionHandler} registers here in
+     * production, because it is the one that knows how to close an abandoned dispatch
+     * - complete the shared future, release the slot, archive the outcome - not the
+     * store, which knows nothing of slots and shared futures beyond the record itself.
      */
     private final List<Consumer<ExecutionRecord>> expiryListeners = new CopyOnWriteArrayList<>();
 
     /**
-     * Chi va avvertito quando un record terminale viene archiviato con
-     * {@link #settle} - l'istante da cui parte la ritenzione terminale della chiave
-     * di idempotenza. Di default nessuno. {@code InvocationExecutionFactory}
-     * registra qui {@code IdempotencyStore}, perche' il vincolo della chiave deve
-     * passare dallo stato "vivo" a quello "terminale" esattamente quando l'esito
-     * esce dai vivi, senza finestre in cui la stessa chiave torni acquisibile.
-     * {@code ExecutionCompletionHandler} registers the end-to-end conclusion here,
-     * because archiving is the only event common to EVERY terminal policy.
+     * Who is told when a terminal record is archived with {@link #settle} - the instant
+     * from which the terminal retention of the idempotency key starts. Nobody by
+     * default. {@code InvocationExecutionFactory} registers {@code IdempotencyStore}
+     * here, because the key's binding must move from the "live" state to the "terminal"
+     * one exactly when the outcome leaves the living, with no window in which the same
+     * key becomes claimable again. {@code ExecutionCompletionHandler} registers the
+     * end-to-end conclusion here, because archiving is the only event common to EVERY
+     * terminal policy.
      */
     private final List<Consumer<ExecutionRecord>> terminalListeners = new CopyOnWriteArrayList<>();
 
@@ -91,14 +89,14 @@ public class ExecutionStore {
         this(ExecutionStoreProperties.of(null, null, null));
     }
 
-    // @Autowired e' necessario: con due costruttori Spring sceglierebbe quello
-    // senza argomenti e ignorerebbe in silenzio le proprieta' configurate.
+    // @Autowired is required: with two constructors Spring would pick the no-argument
+    // one and silently ignore the configured properties.
     @Autowired
     public ExecutionStore(ExecutionStoreProperties properties, MeterRegistry registry) {
         this(properties);
-        // Quanto la piattaforma sta ricordando, e quanto sta davvero eseguendo.
-        // Fu la distanza fra questi due numeri a mostrare il problema: senza il
-        // secondo, il primo si poteva ancora scambiare per lavoro in corso.
+        // How much the platform is remembering, and how much it is actually executing.
+        // It was the distance between these two numbers that exposed the problem:
+        // without the second, the first could still be mistaken for work in progress.
         Gauge.builder("execution_store_size", outcomes::estimatedSize).register(registry);
         Gauge.builder("execution_in_flight_records", inFlight::estimatedSize).register(registry);
     }
@@ -107,35 +105,34 @@ public class ExecutionStore {
         this(properties, Ticker.systemTicker());
     }
 
-    /** Le prove di sfratto muovono l'orologio invece di dormire; public per i test nel package service. */
+    /** Eviction tests move the clock instead of sleeping; public for the tests in the service package. */
     public ExecutionStore(ExecutionStoreProperties properties, Ticker ticker) {
         this.inFlight = Caffeine.newBuilder()
                 .expireAfterWrite(properties.maxLifetime())
                 .ticker(ticker)
-                // Senza questo, Caffeine controlla la scadenza solo quando qualcosa
-                // tocca la cache - una get, una put, una cleanUp() esplicita. Un
-                // record incastrato per un dispatch perso, con nessuno che lo
-                // rilegge mai (un chiamante ASYNC che non interroga piu', o nessun
-                // chiamante affatto), restava scaduto ma vivo indefinitamente: lo
-                // slot di concorrenza che teneva non tornava mai al budget. Lo
-                // scheduler pianifica lo sfratto sul tempo reale, indipendente da
-                // qualunque traffico successivo sulla cache.
+                // Without this, Caffeine checks expiry only when something touches the
+                // cache - a get, a put, an explicit cleanUp(). A record stuck on a lost
+                // dispatch, with nobody ever reading it again (an ASYNC caller that stops
+                // polling, or no caller at all), stayed expired but alive indefinitely:
+                // the concurrency slot it held never returned to the budget. The scheduler
+                // plans the eviction on wall-clock time, independent of any later traffic
+                // on the cache.
                 .scheduler(Scheduler.systemScheduler())
                 .removalListener((String executionId, ExecutionRecord executionRecord, RemovalCause cause) -> {
-                    // EXPLICIT e' settle()/remove() - gia' gestito da chi le chiama.
-                    // REPLACED non si applica: nessun path fa put() due volte sullo
-                    // stesso id. Solo EXPIRED e' lo sfratto che nessuno ha deciso.
+                    // EXPLICIT is settle()/remove() - already handled by their callers.
+                    // REPLACED does not apply: no path calls put() twice on the same id.
+                    // Only EXPIRED is the eviction nobody decided.
                     if (cause == RemovalCause.EXPIRED && executionRecord != null) {
                         notifyExpiry(executionRecord);
                     }
                 })
                 .build();
         this.outcomes = Caffeine.newBuilder()
-                // Tetto in BYTE, non in numero: il numero presuppone che gli esiti pesino
-                // tutti uguale, e un esito leggibile trattiene il payload del chiamante.
-                // Il peso e' stimato qui, una volta sola; nessun accesso successivo lo
-                // ricalcola. Al valore predefinito il budget vale maxOutcomes esiti
-                // compatti, quindi per quelli non cambia niente.
+                // A ceiling in BYTES, not in count: a count assumes every outcome weighs
+                // the same, and a readable outcome retains the caller's payload. The weight
+                // is estimated here, once; no later access recomputes it. At the default
+                // value the budget is worth maxOutcomes compact outcomes, so for those
+                // nothing changes.
                 .maximumWeight(properties.maxOutcomeBytes())
                 .weigher((String id, Outcome outcome) -> OutcomeWeigher.weigh(outcome))
                 .expireAfter(Expiry.creating((String id, Outcome outcome) ->
@@ -145,11 +142,9 @@ public class ExecutionStore {
     }
 
     /**
-     * Additive, like {@link #onTerminal}.
-     *
-     * <p>Registra chi chiude un dispatch abbandonato quando {@code maxLifetime}
-     * scade da solo. Non additivo: l'ultima registrazione vince, come per ogni
-     * singleton Spring che si registra una volta sola all'avvio.
+     * Registers who closes an abandoned dispatch when {@code maxLifetime} elapses on
+     * its own. Additive, like {@link #onTerminal}: every collaborator interested in
+     * administrative expiry adds itself, and none can silence another.
      */
     public void onAdministrativeExpiry(Consumer<ExecutionRecord> listener) {
         expiryListeners.add(Objects.requireNonNull(listener, "listener"));
@@ -165,13 +160,13 @@ public class ExecutionStore {
         terminalListeners.add(Objects.requireNonNull(listener, "listener"));
     }
 
-    /** Quanti esiti sono archiviati adesso. */
+    /** How many outcomes are archived right now. */
     public int size() {
         outcomes.cleanUp();
         return (int) outcomes.estimatedSize();
     }
 
-    /** Quanti record stanno ancora eseguendo. */
+    /** How many records are still executing. */
     public int inFlightCount() {
         inFlight.cleanUp();
         return (int) inFlight.estimatedSize();
@@ -185,26 +180,26 @@ public class ExecutionStore {
         return Optional.ofNullable(inFlight.getIfPresent(executionId));
     }
 
-    /** Lettura sul percorso caldo, senza allocare un Optional. */
+    /** A read on the hot path, without allocating an Optional. */
     @Nullable
     public ExecutionRecord getOrNull(String executionId) {
         return inFlight.getIfPresent(executionId);
     }
 
-    /** L'esito archiviato, se l'esecuzione e' finita e qualcuno puo' ancora leggerla. */
+    /** The archived outcome, if the execution is over and someone can still read it. */
     @Nullable
     public Outcome outcomeOf(String executionId) {
         return outcomes.getIfPresent(executionId);
     }
 
     /**
-     * La transizione terminale: qui l'apparato del vivo muore, non 152 secondi dopo.
+     * The terminal transition: this is where the apparatus of the living dies, not
+     * 152 seconds later.
      *
-     * <p>Idempotente, perche' le sedi che la chiamano sono nove e sparse su tre
-     * moduli Gradle, e alcune si sovrappongono (un dispatch che completa dopo che
-     * il percorso sincrono e' gia' andato in timeout). Chiamarla su un record non
-     * terminale non fa nulla: il record e' ancora vivo e {@code inFlight} deve
-     * continuare a trovarlo.
+     * <p>Idempotent, because there are nine call sites spread over three Gradle
+     * modules, and some of them overlap (a dispatch that completes after the sync path
+     * has already timed out). Calling it on a non-terminal record does nothing: the
+     * record is still alive and {@code inFlight} must keep finding it.
      */
     public void settle(ExecutionRecord executionRecord) {
         if (!executionRecord.isTerminal()) {
@@ -213,10 +208,10 @@ public class ExecutionStore {
         String executionId = executionRecord.executionId();
         outcomes.put(executionId, executionRecord.toOutcome());
         inFlight.invalidate(executionId);
-        // Dopo l'archivio, e non prima: solo adesso l'esito e' servibile, ed e' da
-        // qui che parte la ritenzione terminale della chiave. Invertire l'ordine
-        // riaprirebbe la finestra in cui la chiave e' gia' terminale mentre l'esito
-        // non e' ancora visibile ai replay.
+        // After the archiving, and not before: only now is the outcome servable, and it
+        // is from here that the key's terminal retention starts. Reversing the order
+        // would reopen the window in which the key is already terminal while the outcome
+        // is not yet visible to replays.
         notifyAll(terminalListeners, executionRecord, "Terminal");
     }
 
@@ -225,10 +220,10 @@ public class ExecutionStore {
     }
 
     /**
-     * I listener sono collaboratori indipendenti registrati da bean diversi, in un ordine che
-     * decide Spring. Se uno fallisce, gli altri devono comunque girare: perdere la transizione
-     * terminale della chiave di idempotenza perche' e' saltata una metrica riaprirebbe in
-     * silenzio la finestra di riesecuzione.
+     * The listeners are independent collaborators registered by different beans, in an
+     * order Spring decides. If one fails, the others must still run: losing the terminal
+     * transition of the idempotency key because a metric threw would silently reopen the
+     * re-execution window.
      */
     private static void notifyAll(List<Consumer<ExecutionRecord>> listeners,
                                   ExecutionRecord executionRecord, String kind) {
@@ -246,7 +241,7 @@ public class ExecutionStore {
         outcomes.invalidate(executionId);
     }
 
-    /** Le prove deterministiche forzano la manutenzione invece di aspettarla. */
+    /** Deterministic tests force maintenance instead of waiting for it. */
     void cleanUp() {
         inFlight.cleanUp();
         outcomes.cleanUp();

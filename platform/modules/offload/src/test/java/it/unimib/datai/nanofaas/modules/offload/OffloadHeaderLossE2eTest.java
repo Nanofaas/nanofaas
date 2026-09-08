@@ -29,9 +29,9 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Regression coverage for review finding P2 ("L'offload perde gli header applicativi del
- * chiamante", docs/control-plane-review-2026-09-05.md), which the review verified only
- * statically ("Evidenza: statica"). It explicitly warns that a mock of the remote response
+ * Regression coverage for review finding P2 ("Offload loses the caller's application
+ * headers", docs/control-plane-review-2026-09-05.md), which the review verified only
+ * statically ("Evidence: static"). It explicitly warns that a mock of the remote response
  * would not catch this: it requires a real traversal of two control planes, so this test
  * follows the two-instance pattern of {@link OffloadPressureE2eTest}.
  *

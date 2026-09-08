@@ -40,34 +40,34 @@ class IdempotencyKeyLifetimeTest {
 
     @Test
     void aPublishedKeyLivesAsLongAsTheExecutionCanNotAsLongAsTheOutcome() {
-        // ttl 5 minuti, maxLifetime 30: la fase viva e' maxLifetime, non ttl.
+        // ttl 5 minutes, maxLifetime 30: the live phase is maxLifetime, not ttl.
         IdempotencyStore store = store(Duration.ofMinutes(5), Duration.ofMinutes(30));
         store.put("fn", "k", "exec-1");
 
-        // Sopravvive ben oltre il ttl: l'esecuzione puo' vivere fino a maxLifetime.
+        // It survives well past the ttl: the execution may live up to maxLifetime.
         advance(Duration.ofMinutes(6));
         assertThat(store.getExecutionId("fn", "k")).hasValue("exec-1");
 
-        // E sparisce solo con l'esecuzione, a maxLifetime dalla pubblicazione.
+        // And it disappears only with the execution, maxLifetime after publication.
         advance(Duration.ofMinutes(25));
         assertThat(store.getExecutionId("fn", "k")).isEmpty();
     }
 
     @Test
     void aTerminalKeyLivesTtlFromCompletionNotFromPublication() {
-        // Una chiave pubblicata a t=0 e archiviata a t=29m deve durare fino a t=34m,
-        // non fino al max(ttl, maxLifetime)=30m della vecchia derivazione.
+        // A key published at t=0 and archived at t=29m must last until t=34m, not until
+        // the old derivation's max(ttl, maxLifetime)=30m.
         IdempotencyStore store = store(Duration.ofMinutes(5), Duration.ofMinutes(30));
         store.put("fn", "k", "exec-1");
 
         advance(Duration.ofMinutes(29));
         store.markTerminal("fn", "k", "exec-1");
 
-        // t=31m: oltre il vecchio orizzonte, ma dentro la ritenzione terminale.
+        // t=31m: past the old horizon, but inside the terminal retention.
         advance(Duration.ofMinutes(2));
         assertThat(store.getExecutionId("fn", "k")).hasValue("exec-1");
 
-        // t=34m: scaduta la ritenzione terminale.
+        // t=34m: the terminal retention has expired.
         advance(Duration.ofMinutes(3).plusSeconds(1));
         assertThat(store.getExecutionId("fn", "k")).isEmpty();
     }
@@ -82,7 +82,7 @@ class IdempotencyKeyLifetimeTest {
 
         assertThat(store.getExecutionId("fn", "k")).hasValue("exec-1");
 
-        // Pending: la transizione non puo' scavalcare una rivendicazione in corso.
+        // Pending: the transition must not step over a claim in progress.
         IdempotencyStore.AcquireResult claim = store.acquireOrGet("fn", "k2");
         store.markTerminal("fn", "k2", "exec-2");
         assertThat(store.acquireOrGet("fn", "k2").state())
@@ -95,12 +95,12 @@ class IdempotencyKeyLifetimeTest {
         IdempotencyStore store = store(Duration.ofMinutes(5), Duration.ofMinutes(30));
         store.put("fn", "k", "exec-2");
 
-        // L'esecuzione sostituita si archivia in ritardo: il vincolo corrente non e' suo.
+        // The replaced execution archives late: the current binding is not its own.
         store.markTerminal("fn", "k", "exec-1");
 
         advance(Duration.ofMinutes(20));
         assertThat(store.getExecutionId("fn", "k"))
-                .as("il vincolo resta vivo con la ritenzione della sua esecuzione, non di quella sostituita")
+                .as("the binding lives on its own execution's retention, not the replaced one's")
                 .hasValue("exec-2");
     }
 
@@ -110,7 +110,7 @@ class IdempotencyKeyLifetimeTest {
         IdempotencyStore store = new IdempotencyStore(defaults, ticker);
         store.put("fn", "k", "exec-1");
 
-        // La fase viva copre almeno maxLifetime, e dopo markTerminal almeno ttl.
+        // The live phase covers at least maxLifetime, and after markTerminal at least ttl.
         advance(defaults.maxLifetime().dividedBy(2));
         assertThat(store.getExecutionId("fn", "k")).hasValue("exec-1");
         store.markTerminal("fn", "k", "exec-1");

@@ -56,18 +56,18 @@ public final class ReactiveInvocationCoordinator {
                                        FunctionSpec spec,
                                        Integer timeoutOverrideMs,
                                        OffloadContext offloadContext) {
-        // La chiave ha trovato un'esecuzione gia' finita: il record mutabile non
-        // esiste piu', ma l'esito che serve al replay si'. Trattenerlo e' il motivo
-        // per cui ExecutionRecord.toOutcome() conserva il payload per le esecuzioni con chiave.
+        // The key found an execution that is already over: the mutable record is gone,
+        // but the outcome the replay needs is not. Retaining it is why
+        // ExecutionRecord.toOutcome() keeps the payload for keyed executions.
         Outcome settled = lookup.settledOutcome();
         if (settled != null) {
             return Mono.just(SyncInvocation.local(
                     responseMapper.terminalResponse(lookup.settledExecutionId(), settled)));
         }
 
-        // L'esecuzione e' conclusa ma il payload del suo esito e' stato espulso: il
-        // replay non riesegue la funzione, torna 410 Gone. Va controllato prima di
-        // dereferenziare executionRecord, che la factory lascia null su questo ramo.
+        // The execution concluded but its outcome payload was evicted: the replay does
+        // not re-run the function, it returns 410 Gone. This must be checked before
+        // dereferencing executionRecord, which the factory leaves null on this branch.
         if (lookup.gone()) {
             return Mono.error(new OutcomeGoneException(lookup.settledExecutionId()));
         }
@@ -103,12 +103,11 @@ public final class ReactiveInvocationCoordinator {
                 })
                 .onErrorResume(java.util.concurrent.TimeoutException.class, ex -> {
                     executionRecord.markTimeout();
-                    // Marcato ma NON archiviato: il dispatch e' ancora in volo e
-                    // tiene uno slot di concorrenza. Archiviarlo adesso lo toglierebbe
-                    // dai vivi, e il completamento che arriva dopo non lo troverebbe
-                    // piu' per restituire quello slot. Archivia quel completamento,
-                    // che passa comunque di li'; se non arrivasse mai, ci pensa
-                    // maxLifetime.
+                    // Marked but NOT archived: the dispatch is still in flight and holds
+                    // a concurrency slot. Archiving it now would take it out of the living,
+                    // and the completion that arrives later would no longer find it to give
+                    // that slot back. That completion does the archiving, since it passes
+                    // through there anyway; if it never arrives, maxLifetime takes care of it.
                     metrics.timeout(executionRecord.task().functionName());
                     return Mono.just(new SyncInvocation(responseMapper.timeoutResponse(executionRecord), offloadedTarget.get()));
                 })
@@ -116,7 +115,7 @@ public final class ReactiveInvocationCoordinator {
                     log.warn("Execution {} completed exceptionally", executionRecord.executionId(), ex);
                     String message = ex.getMessage() != null ? ex.getMessage() : ex.toString();
                     InvocationResult failure = InvocationResult.error("EXECUTION_FAILED", message);
-                    // Stessa ragione del timeout qui sopra: lo slot prima dell'archivio.
+                    // Same reason as the timeout above: the slot before the archiving.
                     executionRecord.markError(failure.error());
                     metrics.error(executionRecord.task().functionName());
                     return Mono.just(new SyncInvocation(responseMapper.toResponse(executionRecord, failure), offloadedTarget.get()));

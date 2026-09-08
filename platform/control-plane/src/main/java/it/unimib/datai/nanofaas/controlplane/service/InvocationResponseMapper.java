@@ -59,10 +59,10 @@ public final class InvocationResponseMapper {
     }
 
     /**
-     * Il replay idempotente servito da un esito archiviato.
+     * The idempotent replay served from an archived outcome.
      *
-     * <p>Arriva qui solo un esito {@code readable}: e' proprio la chiave a renderlo
-     * tale, e {@link Outcome} trattiene il payload esattamente per questo caso.
+     * <p>Only a {@code readable} outcome gets here: it is the key itself that makes it
+     * readable, and {@link Outcome} retains the payload for exactly this case.
      */
     public InvocationResponse terminalResponse(String executionId, Outcome outcome) {
         if (outcome.state() == ExecutionState.TIMEOUT) {
@@ -74,11 +74,11 @@ public final class InvocationResponseMapper {
     }
 
     /**
-     * Lo stato di un'esecuzione finita.
+     * The status of a finished execution.
      *
-     * <p>Per un'esecuzione sincrona senza chiave {@code output} e' {@code null}:
-     * quel corpo e' gia' tornato al chiamante sulla sua connessione, e lo schema
-     * lo dichiara facoltativo con {@code null} fra i tipi ammessi.
+     * <p>For a keyless synchronous execution {@code output} is {@code null}: that body
+     * already went back to the caller on its own connection, and the schema declares the
+     * field optional with {@code null} among the admitted types.
      */
     public ExecutionStatus toStatus(String executionId, Outcome outcome) {
         return new ExecutionStatus(

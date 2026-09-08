@@ -24,9 +24,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * Regression coverage for the "Alta" priority optimization finding in
- * docs/control-plane-review-2026-09-05.md: "Conservare l'istante originale di ammissione
- * attraverso i retry" — {@code handleRetry} stamps the retry task with a brand-new
+ * Regression coverage for the "High" priority optimization finding in
+ * docs/control-plane-review-2026-09-05.md: "Keep the original admission instant across
+ * retries" — {@code handleRetry} stamps the retry task with a brand-new
  * {@code Instant.now()}, and {@code completeUnderLock} then computes queue-wait and e2e purely
  * from the *current* (i.e. last-attempt) task's {@code enqueuedAt}. A request that gets retried
  * therefore reports an e2e/queue-wait latency measured only from the last retry, silently

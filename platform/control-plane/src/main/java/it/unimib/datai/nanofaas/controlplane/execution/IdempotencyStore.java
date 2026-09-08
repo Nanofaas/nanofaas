@@ -17,35 +17,32 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentMap;
 
 /**
- * Il vincolo fra una chiave di idempotenza e l'esecuzione che ne risponde.
+ * The binding between an idempotency key and the execution that answers for it.
  *
- * <p>Una chiave vive in tre stati, ognuno con la sua scadenza:
+ * <p>A key lives in three states, each with its own expiry:
  * <ul>
- *   <li><b>pending</b> - una richiesta l'ha rivendicata e non l'ha ancora
- *       pubblicata. Scade dopo {@code maxLifetime}: e' il tetto di una
- *       rivendicazione abbandonata, non diverso da quello di un'esecuzione
- *       incastrata.</li>
- *   <li><b>published</b> - vincolata a un'esecuzione ancora viva. Scade dopo
- *       {@code maxLifetime}, lo stesso orizzonte di {@code ExecutionStore.inFlight}:
- *       la chiave e l'esecuzione muoiono insieme se il dispatch non torna.</li>
- *   <li><b>terminal</b> - l'esecuzione si e' archiviata ({@link #markTerminal}).
- *       Da qui parte la ritenzione terminale: {@code ttl} dal completamento, non
- *       dalla pubblicazione. E' questo stato a fare da tombstone quando l'esito
- *       viene espulso per capacita': il vincolo resta, il payload no.</li>
+ *   <li><b>pending</b> - a request has claimed it and not yet published it.
+ *       Expires after {@code maxLifetime}: the cap on an abandoned claim, no
+ *       different from the cap on a stuck execution.</li>
+ *   <li><b>published</b> - bound to an execution that is still live. Expires after
+ *       {@code maxLifetime}, the same horizon as {@code ExecutionStore.inFlight}:
+ *       key and execution die together when the dispatch never returns.</li>
+ *   <li><b>terminal</b> - the execution has archived ({@link #markTerminal}).
+ *       Terminal retention starts here: {@code ttl} from completion, not from
+ *       publication. This is the state that acts as a tombstone when the outcome
+ *       is evicted for capacity: the binding stays, the payload does not.</li>
  * </ul>
  *
- * <p>La scadenza per stato e' derivata dalle proprieta' dello store delle
- * esecuzioni, mai configurata per conto suo: la chiave e' utile solo finche' la
- * risposta che indica esiste, e una chiave che scade prima dell'esito fa girare la
- * funzione due volte in silenzio - esattamente il fallimento che la chiave esiste
- * per impedire.
+ * <p>The per-state expiry is derived from the execution store's properties and
+ * never configured on its own: a key is useful only while the answer it names
+ * exists, and a key that expires before its outcome silently runs the function
+ * twice — exactly the failure the key exists to prevent.
  *
- * <p>Il numero di chiavi e' limitato da {@code maxKeys}. A budget esaurito una
- * <b>nuova</b> ammissione con chiave viene rifiutata ({@code acquireOrGet} non
- * rivendica), ma i replay delle chiavi gia' presenti restano servibili: il tetto
- * non sfratta mai una chiave viva per fare spazio a una nuova, altrimenti un
- * successivo budget in byte potrebbe espellere silenziosamente la protezione di
- * deduplicazione.
+ * <p>The number of keys is bounded by {@code maxKeys}. With the budget exhausted a
+ * <b>new</b> keyed admission is refused ({@code acquireOrGet} does not claim), but
+ * replays of keys already held stay servable: the cap never evicts a live key to
+ * make room for a new one, or a later byte budget could silently evict the
+ * deduplication guarantee itself.
  */
 @Component
 public class IdempotencyStore {
@@ -79,10 +76,10 @@ public class IdempotencyStore {
         this.maxKeys = executions.maxKeys();
         long liveNanos = executions.maxLifetime().toNanos();
         long terminalNanos = executions.ttl().toNanos();
-        // Per stato, non una sola durata: una chiave pubblicata vive quanto puo' vivere
-        // l'esecuzione (maxLifetime), una terminale quanto l'esito resta leggibile (ttl).
+        // Per state, not one duration: a published key lives as long as the execution
+        // can (maxLifetime), a terminal one as long as the outcome stays readable (ttl).
         // expireAfterUpdate ricomputa al passaggio di stato, cosi' markTerminal riparte
-        // l'orologio dal completamento invece di ereditare il resto della fase viva.
+        // the clock from completion instead of inheriting the rest of the live phase.
         this.cache = Caffeine.newBuilder()
                 .expireAfter(new Expiry<String, StoredKey>() {
                     @Override
@@ -126,9 +123,9 @@ public class IdempotencyStore {
         while (true) {
             StoredKey existing = keys.get(composed);
             if (existing == null) {
-                // Il budget si controlla PRIMA di rivendicare, e mai sfrattando una chiave
-                // viva: a budget esaurito una nuova ammissione con chiave viene rifiutata,
-                // ma i replay delle chiavi gia' presenti continuano a trovare il loro esito.
+                // The budget is checked BEFORE claiming, and never by evicting a live key:
+                // with the budget exhausted a new keyed admission is refused, while replays
+                // of keys already held keep finding their outcome.
                 if (size() >= maxKeys) {
                     return AcquireResult.budgetExhausted();
                 }
@@ -147,16 +144,16 @@ public class IdempotencyStore {
     }
 
     /**
-     * Rivendica una chiave pubblicata il cui vincolo punta a un'esecuzione ormai
-     * sparita senza essersi mai conclusa (ammissione abbandonata dopo la
-     * pubblicazione, dispatch mai partito). Solo un vincolo <b>pubblicato</b> puo'
-     * essere rivendicato: un vincolo terminale e' il tombstone, e rivendicarlo
-     * riaprirebbe la finestra - chiusa da {@link #markTerminal} - in cui la stessa
-     * chiave torna acquisibile e la funzione gira due volte.
+     * Re-claims a published key whose binding points at an execution that has
+     * vanished without ever concluding (an admission abandoned after publication, a
+     * dispatch that never started). Only a <b>published</b> binding can be
+     * re-claimed: a terminal binding is the tombstone, and re-claiming it would
+     * reopen the window — closed by {@link #markTerminal} — in which the same key
+     * becomes claimable again and the function runs twice.
      *
-     * <p>Il CAS su {@code keys.replace} e' la vera guardia: se il vincolo e'
-     * cambiato fra la lettura e il replace (transito a terminale incluso), il
-     * replace fallisce e il loop rilegge.
+     * <p>The CAS on {@code keys.replace} is the real guard: if the binding changed
+     * between the read and the replace (a transition to terminal included), the
+     * replace fails and the loop re-reads.
      */
     public AcquireResult claimIfMatches(String functionName, String key, String expectedExecutionId) {
         String composed = compose(functionName, key);
@@ -202,12 +199,12 @@ public class IdempotencyStore {
     }
 
     /**
-     * La transizione al vincolo terminale, invocata dallo store delle esecuzioni
-     * quando un record si archivia. La ritenzione terminale parte da qui, non dalla
-     * pubblicazione, e chiude la finestra in cui la chiave sarebbe di nuovo
-     * acquisibile mentre l'esito e' ancora (o appena stato) servibile.
+     * The transition to the terminal binding, invoked by the execution store when a
+     * record archives. Terminal retention starts here, not at publication, and it
+     * closes the window in which the key would be claimable again while its outcome
+     * is still (or has just been) servable.
      *
-     * <p>Idempotente: su una chiave assente, pending o gia' terminale non fa nulla.
+     * <p>Idempotent: on a key that is absent, pending or already terminal it does nothing.
      *
      * <p>The transition happens only if the binding still points at
      * {@code expectedExecutionId}. Without that check, a replaced execution

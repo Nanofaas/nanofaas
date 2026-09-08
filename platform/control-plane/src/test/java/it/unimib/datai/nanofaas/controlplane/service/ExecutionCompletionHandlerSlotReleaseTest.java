@@ -223,17 +223,17 @@ class ExecutionCompletionHandlerSlotReleaseTest {
         store.put(executionRecord);
         executionRecord.markRunning();
 
-        // Il percorso sincrono esaurisce il suo budget mentre il dispatch e' ancora
-        // in volo: marca il record e basta. Archiviarlo qui lo toglierebbe dai vivi,
-        // e il completamento che arriva dopo non lo troverebbe piu' per restituire
-        // lo slot di concorrenza che quel dispatch sta ancora tenendo.
+        // The sync path exhausts its budget while the dispatch is still in flight: it
+        // marks the record and nothing more. Archiving it here would take it out of the
+        // living, and the completion arriving later would no longer find it to give back
+        // the concurrency slot that dispatch is still holding.
         executionRecord.markTimeout();
         assertThat(store.getOrNull("exec-timeout")).isNotNull();
 
         handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.success("tardi")));
 
         assertThat(enqueuer.releases()).isEqualTo(1);
-        // E solo adesso, a slot restituito, l'esito prende il posto del record.
+        // And only now, with the slot given back, does the outcome take the record's place.
         assertThat(store.getOrNull("exec-timeout")).isNull();
         assertThat(store.outcomeOf("exec-timeout")).isNotNull();
     }
@@ -248,17 +248,17 @@ class ExecutionCompletionHandlerSlotReleaseTest {
         store.put(executionRecord);
         executionRecord.markRunning();
 
-        // Il chiamante A esaurisce il suo budget. Il chiamante B - stessa chiave di
-        // idempotenza, stesso record, budget piu' largo - e' ancora sulla future.
+        // Caller A exhausts its budget. Caller B - same idempotency key, same record, a
+        // wider budget of its own - is still parked on the future.
         executionRecord.markTimeout();
 
-        handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.success("risposta vera")));
+        handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.success("the real answer")));
 
         assertThat(executionRecord.completion().isDone())
                 .as("B aspetterebbe invano fino al proprio timeout")
                 .isTrue();
-        assertThat(executionRecord.completion().join().output()).isEqualTo("risposta vera");
-        // Lo stato registrato non viene riscritto: e' l'invariante di sempre.
+        assertThat(executionRecord.completion().join().output()).isEqualTo("the real answer");
+        // The recorded state is not rewritten: that is the long-standing invariant.
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.TIMEOUT);
     }
 
@@ -267,14 +267,14 @@ class ExecutionCompletionHandlerSlotReleaseTest {
         ExecutionStore store = new ExecutionStore();
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
                 store, new CountingEnqueuer(), mock(DispatcherRouter.class), new Metrics(new SimpleMeterRegistry()));
-        InvocationTask task = task("exec-retry", "fn");  // maxRetries = 2 nella fixture
+        InvocationTask task = task("exec-retry", "fn");  // maxRetries = 2 in the fixture
         ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
         store.put(executionRecord);
         executionRecord.markRunning();
 
         handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.error("ERR", "primo tentativo")));
 
-        // Il record e' tornato in coda: la future non deve essere stata toccata.
+        // The record went back to the queue: the future must not have been touched.
         assertThat(executionRecord.completion().isDone()).isFalse();
         assertThat(store.getOrNull("exec-retry")).isNotNull();
     }

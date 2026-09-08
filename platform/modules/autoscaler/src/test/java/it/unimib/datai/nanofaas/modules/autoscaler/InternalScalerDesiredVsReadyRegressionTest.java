@@ -28,9 +28,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
 /**
- * Regression coverage for the "Alta" priority optimization finding in
- * docs/control-plane-review-2026-09-05.md: "Distinguere repliche desiderate e pronte
- * nell'autoscaler" — {@code InternalScaler.evaluateAndScale} feeds only the ready count into
+ * Regression coverage for the "High" priority optimization finding in
+ * docs/control-plane-review-2026-09-05.md: "Distinguish desired and ready replicas in the
+ * autoscaler" — {@code InternalScaler.evaluateAndScale} feeds only the ready count into
  * {@code ScalingDecisionCalculator} as "current replicas", then unconditionally overwrites the
  * deployment's desired replica count with the freshly computed recommendation instead of
  * reading desired and ready together from one {@code ReplicaStatus}. The review's literal

@@ -248,37 +248,36 @@ public class ExecutionCompletionHandler {
         boolean lateResultForTerminalRecord;
         synchronized (executionRecord) {
             completion = completeUnderLock(executionRecord, dispatchResult, completedAttempt);
-            // Il record era gia' terminale e questo risultato riguarda comunque il
-            // tentativo in corso: non c'e' nessuna FinalCompletion da pubblicare, ma
-            // la future condivisa e' ancora pendente e qualcuno potrebbe starci sopra.
-            // Il ramo di retry non entra qui - resetForRetry riporta a QUEUED - e un
-            // risultato arrivato per un tentativo vecchio nemmeno.
+            // The record was already terminal and this result concerns the current
+            // attempt anyway: there is no FinalCompletion to publish, but the shared
+            // future is still pending and someone may be parked on it. The retry branch
+            // does not reach here - resetForRetry puts the record back to QUEUED - and
+            // neither does a result that arrived for an older attempt.
             lateResultForTerminalRecord = completion == null
                     && executionRecord.isTerminal()
                     && (completedAttempt == null || executionRecord.task().attempt() == completedAttempt);
         }
         publishFinalCompletion(executionRecord, completion);
         if (lateResultForTerminalRecord) {
-            // Un timeout sincrono ha reso terminale il record mentre il dispatch era
-            // in volo. Lo stato registrato resta TIMEOUT - e' un invariante voluto e
-            // gia' coperto da un test - ma chi e' ancora in attesa sulla future
-            // condivisa, tipicamente un secondo chiamante con la stessa chiave di
-            // idempotenza che ha un budget suo, deve ricevere la risposta vera invece
-            // di aspettare invano fino al proprio timeout. complete() su una future
-            // gia' completata non fa nulla, quindi non puo' sovrascrivere niente.
+            // A sync timeout made the record terminal while the dispatch was still in
+            // flight. The recorded state stays TIMEOUT - a deliberate invariant, already
+            // covered by a test - but whoever is still waiting on the shared future,
+            // typically a second caller with the same idempotency key and a budget of its
+            // own, must get the real answer instead of waiting in vain until its own
+            // timeout. complete() on an already-completed future does nothing, so it
+            // cannot overwrite anything.
             //
-            // La conclusione end-to-end di questo timeout la registra il listener terminale
-            // dello store al settle qui sotto: il totale (ammissione -> timeout) e' reale e
-            // misurabile, il tempo di servizio no (il dispatch era ancora in volo), quindi
-            // si registra solo il totale, mai un campione di servizio censurato.
+            // The end-to-end conclusion of this timeout is recorded by the store's terminal
+            // listener at the settle below: the total (admission -> timeout) is real and
+            // measurable, the service time is not (the dispatch was still in flight), so
+            // only the total is recorded, never a censored service sample.
             executionRecord.completion().complete(dispatchResult.result());
         }
-        // Ultimo, e fuori dal monitor: completeUnderLock rilascia lo slot di dispatch
-        // anche quando trova il record gia' terminale (un timeout sincrono che ha
-        // marcato il record mentre il dispatch era ancora in volo), e archiviarlo
-        // prima lo renderebbe irreperibile proprio a quel passaggio - lo slot
-        // resterebbe preso per sempre. settle() ignora i record non terminali,
-        // quindi il ramo di retry resta intatto.
+        // Last, and outside the monitor: completeUnderLock releases the dispatch slot
+        // even when it finds the record already terminal (a sync timeout that marked the
+        // record while the dispatch was still in flight), and archiving it first would
+        // make it unreachable at exactly that step - the slot would stay taken forever.
+        // settle() ignores non-terminal records, so the retry branch is left intact.
         executionStore.settle(executionRecord);
     }
 

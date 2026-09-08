@@ -43,23 +43,23 @@ nanofaas:
     # Optional backend id to prefer when multiple managed deployment providers are available.
     default-backend: ""
   execution-store:
-    # Ritenzione di un esito che qualcuno puo' ancora leggere: un chiamante ASYNC,
-    # che dell'esecuzione ha solo l'id, o un retry che replica una chiave.
+    # Retention of an outcome someone can still read: an ASYNC caller, which holds
+    # nothing but the execution's id, or a retry replaying a key.
     ttl: 5m
-    # Ritenzione dell'esito di una sincrona senza chiave, la cui risposta e' gia'
-    # tornata sulla connessione del chiamante.
+    # Retention of the outcome of a keyless synchronous call, whose response has
+    # already gone back on the caller's connection.
     sync-ttl: 30s
-    # Tetto assoluto per un'esecuzione incastrata (dispatch perso, callback mai arrivata).
+    # Absolute ceiling for a stuck execution (lost dispatch, callback that never arrived).
     max-lifetime: 30m
-    # Il limite in NUMERO, non solo nel tempo. Senza, la memoria resta proporzionale
-    # al tasso di arrivo: il 2026-08-23 erano 1,05 GB e il 50,6% del tempo in GC.
-    # Un esito compatto misura 116 byte, quindi questo tetto costa circa 12 MB.
+    # The cap in COUNT, not only in time. Without it, memory stays proportional to the
+    # arrival rate: on 2026-08-23 that was 1.05 GB and 50.6% of the time in GC.
+    # A compact outcome measures 116 bytes, so this ceiling costs about 12 MB.
     max-outcomes: 100000
-    # Il tetto in numero per le chiavi di idempotenza (vincoli e tombstone), separato
-    # dal budget degli esiti: espellere un esito per capacita' non deve mai espellere
-    # la deduplicazione. A budget esaurito una NUOVA ammissione con chiave viene
-    # rifiutata (429) prima del dispatch; i replay delle chiavi gia' presenti restano
-    # servibili. Dimensionarlo come `tasso di ammissioni con chiave x (maxLifetime + ttl)`.
+    # The count cap for idempotency keys (bindings and tombstones), kept separate from
+    # the outcome budget: evicting an outcome for capacity must never evict the
+    # deduplication. Once the budget is exhausted a NEW keyed admission is refused (429)
+    # before the dispatch; replays of keys already present stay servable. Size it as
+    # `keyed admission rate x (maxLifetime + ttl)`.
     max-keys: 100000
     # The BYTE cap on retained outcomes. The count cap above assumes they all weigh the
     # same: true for a compact outcome (116 bytes), false for a readable one (ASYNC or

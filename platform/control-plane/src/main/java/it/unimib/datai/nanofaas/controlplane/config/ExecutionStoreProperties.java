@@ -5,19 +5,18 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import java.time.Duration;
 
 /**
- * Quanto lo store ricorda, e quanti ne ricorda.
+ * How long the store remembers, and how much of it.
  *
- * <p>{@code ttl}: ritenzione di un esito che qualcuno puo' ancora leggere - un
- * chiamante asincrono che interroga per id, o un retry che replica una chiave di
- * idempotenza. {@code syncTtl}: ritenzione dell'esito di un'esecuzione sincrona
- * senza chiave, la cui risposta e' gia' tornata sulla connessione del chiamante.
- * Breve, perche' allo stato stazionario lo store tiene `ritenzione x tasso di
- * ammissione`: misurato il 2026-08-23 erano 270.000 record e 1,05 GB di dati vivi
- * contro una generazione tenured da 1.002 MB, che teneva il collettore
- * permanentemente al limite - 50,6% del tempo in GC, pause da 2,851 s, e un probe
- * di liveness mancato tre volte di fila. Non zero: {@code X-Execution-Id} torna
- * anche sulle risposte sincrone, quindi {@code GET /v1/executions/{id}} e' una
- * promessa fatta anche a quei chiamanti.
+ * <p>{@code ttl}: retention of an outcome someone can still read - an asynchronous
+ * caller polling by id, or a retry replaying an idempotency key. {@code syncTtl}:
+ * retention of the outcome of a keyless synchronous execution, whose response has
+ * already gone back on the caller's connection. Short, because at steady state the
+ * store holds `retention x admission rate`: measured on 2026-08-23 that was 270,000
+ * records and 1.05 GB of live data against a 1,002 MB tenured generation, which kept
+ * the collector permanently at the limit - 50.6% of the time in GC, pauses of
+ * 2.851 s, and a liveness probe missed three times in a row. Not zero:
+ * {@code X-Execution-Id} comes back on synchronous responses too, so
+ * {@code GET /v1/executions/{id}} is a promise made to those callers as well.
  *
  * <p>{@code maxOutcomeBytes}: the cap in BYTES, which is what actually matters.
  * The count cap ({@code maxOutcomes}) bounds how many outcomes are kept, not how
@@ -33,8 +32,8 @@ import java.time.Duration;
  * cost before, so nothing changes for compact outcomes, while large payloads are
  * evicted by weight instead of accumulating.
  *
- * <p>{@code maxLifetime}: tetto assoluto oltre il quale anche un'esecuzione non
- * terminale (incastrata) viene sfrattata, perche' non cresca senza fine.
+ * <p>{@code maxLifetime}: the absolute ceiling past which even a non-terminal (stuck)
+ * execution is evicted, so it cannot grow without end.
  */
 @ConfigurationProperties(prefix = "nanofaas.execution-store")
 public record ExecutionStoreProperties(
@@ -51,14 +50,14 @@ public record ExecutionStoreProperties(
     public static final long COMPACT_OUTCOME_BYTES = 116;
 
     /**
-     * Fabbrica, non costruttore: con due costruttori Spring smette di legare il
-     * record per costruttore e cerca quello senza argomenti, che un record non ha.
+     * A factory, not a constructor: with two constructors Spring stops binding the
+     * record by constructor and looks for a no-argument one, which a record does not have.
      */
     public static ExecutionStoreProperties of(Duration ttl, Duration maxLifetime, Duration syncTtl) {
         return new ExecutionStoreProperties(ttl, maxLifetime, syncTtl, DEFAULT_MAX_OUTCOMES, DEFAULT_MAX_KEYS, 0);
     }
 
-    /** Fabbrica, non costruttore: i test che costruiscono lo store con il solo tetto degli esiti. */
+    /** A factory, not a constructor: for tests that build the store with the outcome cap alone. */
     public static ExecutionStoreProperties of(Duration ttl, Duration maxLifetime, Duration syncTtl, long maxOutcomes) {
         return new ExecutionStoreProperties(ttl, maxLifetime, syncTtl, maxOutcomes, DEFAULT_MAX_KEYS, 0);
     }
@@ -82,7 +81,7 @@ public record ExecutionStoreProperties(
         if (maxOutcomeBytes <= 0) {
             maxOutcomeBytes = maxOutcomes * COMPACT_OUTCOME_BYTES;
         }
-        // Non ha senso tenere piu' a lungo cio' che nessuno puo' leggere.
+        // There is no point keeping what nobody can read for any longer.
         if (syncTtl.compareTo(ttl) > 0) {
             syncTtl = ttl;
         }

@@ -33,7 +33,7 @@ class ColdStartTrackerTest {
 
         Thread.sleep(50); // simula esecuzione handler
 
-        // Il valore deve essere congelato: non deve cambiare dopo il mark
+        // The value must be frozen: it must not change after the mark
         long durationAfterHandler = tracker.initDurationMs();
         assertEquals(durationAtMark, durationAfterHandler,
                 "initDurationMs should be frozen at request arrival, not grow with handler time");

@@ -11,9 +11,9 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 @AnalyzeClasses(packages = "it.unimib.datai.nanofaas.modules.autoscaler..")
 class ArchitectureTest {
 
-    // R5': isolamento SPI. Un'estensione tra moduli è una decisione esplicita:
-    // aggiungere una riga not(resideInAPackage(...)) con commento per ogni coppia sanzionata
-    // (ArchUnit 1.4 ha rimosso ignoreDependency dal fluent API di base).
+    // R5': SPI isolation. A cross-module extension is an explicit decision: add one
+    // not(resideInAPackage(...)) line with a comment for every sanctioned pair
+    // (ArchUnit 1.4 removed ignoreDependency from the base fluent API).
     @ArchTest
     static final ArchRule does_not_depend_on_other_modules =
             noClasses()

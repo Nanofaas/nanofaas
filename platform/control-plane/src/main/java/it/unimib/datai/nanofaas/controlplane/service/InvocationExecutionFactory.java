@@ -28,9 +28,9 @@ public final class InvocationExecutionFactory {
         this.metrics = metrics;
         this.executionStore = executionStore;
         this.idempotencyStore = idempotencyStore;
-        // Quando un'esecuzione si archivia, la sua chiave passa al vincolo terminale:
-        // la ritenzione terminale parte dal completamento, non dalla pubblicazione.
-        // Il record porta ancora la chiave originale anche dopo un retry interno.
+        // When an execution archives, its key moves to the terminal binding: terminal
+        // retention starts at completion, not at publication. The record still carries
+        // the original key even after an internal retry.
         executionStore.onTerminal(record -> {
             if (record.idempotencyKey() != null) {
                 idempotencyStore.markTerminal(record.task().functionName(), record.idempotencyKey(),
@@ -69,7 +69,7 @@ public final class InvocationExecutionFactory {
                 continue;
             }
             if (acquire.state() == AcquireResult.State.BUDGET_EXHAUSTED) {
-                // Rifiutare PRIMA del dispatch, senza toccare le chiavi gia' presenti.
+                // Reject BEFORE the dispatch, without touching the keys already present.
                 throw new IdempotencyBudgetExhaustedException();
             }
 
@@ -82,31 +82,30 @@ public final class InvocationExecutionFactory {
                 return ExecutionLookup.existing(existing);
             }
 
-            // Finita e archiviata. Guardare solo fra i vivi la farebbe passare per una
-            // rivendicazione stantia, e la funzione girerebbe una seconda volta in
-            // silenzio: esattamente il fallimento che la chiave esiste per impedire.
+            // Finished and archived. Looking only among the living would make this pass
+            // for a stale claim, and the function would run a second time in silence:
+            // exactly the failure the key exists to prevent.
             Outcome settledOutcome = executionStore.outcomeOf(existingExecutionId);
             if (settledOutcome != null) {
                 metrics.replayed(functionName, kind);
                 return ExecutionLookup.settled(existingExecutionId, settledOutcome);
             }
 
-            // Vincolo TERMINALE che punta a un'esecuzione ne' viva ne' archiviata:
-            // l'esecuzione si e' conclusa e il payload del suo esito e' stato espulso
-            // per capacita' prima della fine della finestra. La garanzia di
-            // deduplicazione regge comunque - il tombstone e' la chiave stessa - quindi
-            // il replay NON riesegue la funzione: torna un esito esplicito di "non piu'
-            // disponibile" (HTTP 410).
+            // A TERMINAL binding pointing at an execution that is neither alive nor
+            // archived: the execution concluded and its outcome payload was evicted for
+            // capacity before the end of the window. The deduplication guarantee still
+            // holds - the tombstone is the key itself - so the replay does NOT re-run the
+            // function: it gets an explicit "no longer available" outcome (HTTP 410).
             if (acquire.terminal()) {
                 metrics.replayed(functionName, kind);
                 return ExecutionLookup.gone(existingExecutionId);
             }
 
-            // Vincolo PUBBLICATO che punta a un'esecuzione sparita senza essersi mai
-            // conclusa (ammissione abbandonata dopo la pubblicazione): rivendicazione
-            // stantia. Qui la chiave PUO' tornare acquisibile - la funzione non e'
-            // mai girata - quindi si rivendica e si costruisce una nuova esecuzione.
-            // La finestra che il tombstone chiude e' solo quella terminale qui sopra.
+            // A PUBLISHED binding pointing at an execution that vanished without ever
+            // concluding (an admission abandoned after publication): a stale claim. Here
+            // the key CAN become claimable again - the function never ran - so we re-claim
+            // it and build a new execution. The window the tombstone closes is only the
+            // terminal one above.
             AcquireResult reclaimed =
                     idempotencyStore.claimIfMatches(functionName, idempotencyKey, existingExecutionId);
             if (reclaimed.state() == AcquireResult.State.CLAIMED) {
@@ -116,8 +115,8 @@ public final class InvocationExecutionFactory {
             if (reclaimed.state() == AcquireResult.State.PENDING) {
                 parkPendingClaim();
             }
-            // MISSING o EXISTING: il vincolo e' cambiato nel frattempo (magari a
-            // terminale) - si rilegge dall'inizio del loop.
+            // MISSING or EXISTING: the binding changed in the meantime (perhaps to
+            // terminal) - re-read from the top of the loop.
         }
     }
 
@@ -240,14 +239,14 @@ public final class InvocationExecutionFactory {
             return new ExecutionLookup(executionRecord, false, null, null, null, null, null);
         }
 
-        /** Un'esecuzione con chiave gia' finita: c'e' solo l'esito da riconsegnare. */
+        /** A keyed execution that is already over: there is only the outcome to hand back. */
         private static ExecutionLookup settled(String executionId, Outcome outcome) {
             return new ExecutionLookup(null, false, null, null, null, null, null, outcome, executionId, false);
         }
 
         /**
-         * La chiave e' ancora vincolata a un'esecuzione conclusa, ma il payload del suo
-         * esito e' stato espulso per capacita'. Il replay non riesegue la funzione.
+         * The key is still bound to a concluded execution, but its outcome payload was
+         * evicted for capacity. The replay does not re-run the function.
          */
         private static ExecutionLookup gone(String executionId) {
             return new ExecutionLookup(null, false, null, null, null, null, null, null, executionId, true);
@@ -270,7 +269,7 @@ public final class InvocationExecutionFactory {
             return executionRecord;
         }
 
-        /** Non null solo quando la chiave ha trovato un'esecuzione gia' archiviata. */
+        /** Non-null only when the key found an execution that is already archived. */
         public Outcome settledOutcome() {
             return settledOutcome;
         }
@@ -279,7 +278,7 @@ public final class InvocationExecutionFactory {
             return settledExecutionId;
         }
 
-        /** Non null solo quando la chiave ha trovato un'esecuzione conclusa il cui payload e' stato espulso. */
+        /** Non-null only when the key found a concluded execution whose payload was evicted. */
         public boolean gone() {
             return gone;
         }

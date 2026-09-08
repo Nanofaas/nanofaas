@@ -1,183 +1,183 @@
-# Piano di correzione e ottimizzazione del control plane
+# Control-plane correction and optimisation plan
 
-**Data:** 2026-09-05. **Stato:** proposto, implementazione non avviata da questo piano.
+**Date:** 2026-09-05. **Status:** proposed; implementation not started from this plan.
 
-Riferimento: [analisi del control plane e dei moduli](../control-plane-review-2026-09-05.md). Il piano copre tutti i problemi e i suggerimenti del report, compresi rate limiter, metriche dei retry e autoscaling. Ogni attività termina con codice verificato, documentazione pertinente e risultati riproducibili; le ottimizzazioni cambiano i default solo quando il beneficio è misurato.
+Reference: [control-plane and module analysis](../control-plane-review-2026-09-05.md). The plan covers every problem and suggestion in the report, rate limiter, retry metrics and autoscaling included. Every task ends with verified code, relevant documentation and reproducible results; optimisations change defaults only when the benefit is measured.
 
-Il [piano sul sovraccarico del 4 settembre](2026-09-04-overload-path-fixes.md) documenta già interventi su WebFilter, JIT ed event loop. Verificarne lo stato nel checkout usato per la baseline e mantenerne fisse le impostazioni durante i confronti di questo piano. L'eventuale esperimento Azure C resta nel piano originale: non è un prerequisito per correggere questi bug.
+The [overload plan of 4 September](2026-09-04-overload-path-fixes.md) already documents work on the WebFilter, JIT and event loop. Check its status in the checkout used for the baseline and keep its settings fixed during this plan's comparisons. The possible Azure experiment C stays in the original plan: it is not a prerequisite for fixing these bugs.
 
-## 1. Risultati attesi e vincoli
+## 1. Expected results and constraints
 
-- Replay idempotenti coerenti per chiamate sincrone e asincrone, prima e dopo l'archiviazione.
-- Ogni invocazione ammessa raggiunge un esito; timeout, errori di scheduling e callback tardivi non lasciano risorse locali irrecuperabili.
-- Uno slot viene rilasciato al massimo una volta per tentativo e alla generazione della funzione che lo ha acquisito.
-- Retry configurabili anche senza moduli di coda; default invariato a tre retry oltre al primo tentativo.
-- Attivazione/disattivazione runtime della sync queue senza lavoro abbandonato.
-- Proxy container concorrente, code e memoria limitate, health utilizzabile sotto carico.
-- Metriche attendibili per governare concorrenza e repliche.
-- Più invocazioni riuscite entro lo SLO a parità di risorse, senza ottenere throughput soltanto aumentando timeout o code.
+- Coherent idempotent replays for synchronous and asynchronous calls, before and after archiving.
+- Every admitted invocation reaches an outcome; timeouts, scheduling errors and late callbacks leave no unrecoverable local resources.
+- A slot is released at most once per attempt, and against the function generation that acquired it.
+- Retries configurable even without queue modules; default unchanged at three retries beyond the first attempt.
+- Runtime activation/deactivation of the sync queue with no abandoned work.
+- A concurrent container proxy, bounded queues and memory, health usable under load.
+- Trustworthy metrics for governing concurrency and replicas.
+- More successful invocations within the SLO at equal resources, without obtaining throughput merely by raising timeouts or queues.
 
-Restano i vincoli del progetto: un control plane con stato in memoria, scheduler dedicato, Java 25, supporto native image e nessuna autenticazione aggiunta. Il piano non introduce persistenza distribuita o garanzie di deduplicazione attraverso un riavvio.
+The project's constraints remain: a control plane with in-memory state, a dedicated scheduler, Java 25, native-image support and no added authentication. The plan introduces neither distributed persistence nor deduplication guarantees across a restart.
 
-## 2. Preparazione e baseline — attività A0
+## 2. Preparation and baseline — task A0
 
-**Consegna:** baseline versionata e riproduzioni dei difetti.
+**Deliverable:** a versioned baseline and reproductions of the defects.
 
-1. Registrare commit, stato del workspace, moduli selezionati, configurazione JVM/native, CPU, memoria, payload e backend. Non includere modifiche estranee nelle patch.
-2. Rendere disponibile GitNexus e creare l'indice locale mancante. Se esiste già un indice, controllarne la freschezza e preservare eventuali embeddings. Prima di modificare ogni simbolo eseguire l'impact upstream e riportare chiamanti diretti, processi coinvolti e rischio; segnalare HIGH/CRITICAL prima degli edit. Per estrazioni o spostamenti aggiungere context, per rinomine usare rename con anteprima.
-3. Trasferire le riproduzioni utili di `/tmp/nanofaas-audit-0905/` in test di regressione nei moduli proprietari. Se i file temporanei non esistono più, ricostruirle dagli scenari del report. Ogni test di bug deve fallire sulla base e passare dopo il fix.
-4. Confermare in test i rilievi ancora statici: attivazione runtime della coda, perdita degli header offload, race del rate limiter, metriche dei retry e scaling durante startup.
-5. Raccogliere una baseline locale breve prima dei fix. Dopo le correzioni funzionali raccogliere una seconda baseline: sarà il riferimento per il tuning, perché correggere retry e contabilizzazione può cambiare il lavoro effettivamente svolto.
+1. Record the commit, the workspace state, the selected modules, the JVM/native configuration, CPU, memory, payload and backend. Do not include unrelated changes in the patches.
+2. Make GitNexus available and create the missing local index. If an index already exists, check its freshness and preserve any embeddings. Before modifying each symbol run the upstream impact and report direct callers, processes involved and risk; flag HIGH/CRITICAL before the edits. For extractions or moves add context; for renames use rename with a preview.
+3. Move the useful reproductions from `/tmp/nanofaas-audit-0905/` into regression tests in the owning modules. If the temporary files no longer exist, rebuild them from the report's scenarios. Every bug test must fail on the base and pass after the fix.
+4. Confirm in tests the findings that are still static: runtime activation of the queue, offload header loss, the rate limiter race, retry metrics and scaling during startup.
+5. Collect a short local baseline before the fixes. After the functional corrections collect a second baseline: it will be the reference for tuning, because fixing retries and accounting can change the work actually performed.
 
-Non serve completare la matrice di performance per iniziare i fix. Evitare test di concorrenza basati su sleep fragili: usare ticker, clock controllabili, latch e completamenti pilotati. I tempi wall-clock restano nei benchmark, non nelle asserzioni funzionali della CI.
+The performance matrix does not have to be complete before the fixes start. Avoid concurrency tests built on fragile sleeps: use tickers, steerable clocks, latches and driven completions. Wall-clock times stay in the benchmarks, not in CI's functional assertions.
 
-## 3. Correzioni funzionali
+## 3. Functional corrections
 
-### A1 — Replay asincrono archiviato
+### A1 — Archived asynchronous replay
 
-**Ambito:** `InvocationService`, `InvocationExecutionFactory`, `InvocationResponseMapper`, test del servizio e del controller. **Dipendenza:** A0.
+**Scope:** `InvocationService`, `InvocationExecutionFactory`, `InvocationResponseMapper`, service and controller tests. **Depends on:** A0.
 
-Gestire `settledOutcome` in `invokeAsync` prima di dereferenziare il record, riusando il mapping già disponibile per gli esiti archiviati. Conservare la semantica HTTP esistente di `:enqueue`, lo stesso execution ID, il risultato e l'envelope; non reinserire un task per un replay.
+Handle `settledOutcome` in `invokeAsync` before dereferencing the record, reusing the mapping already available for archived outcomes. Preserve `:enqueue`'s existing HTTP semantics, the same execution ID, the result and the envelope; do not re-file a task for a replay.
 
-**Accettazione:** success, error e timeout già archiviati vengono restituiti senza NPE. Un replay concorrente alla transizione live→settled non genera una seconda esecuzione. Il contatore di ammissione non aumenta per il replay e il dispatch avviene una sola volta.
+**Acceptance:** already-archived successes, errors and timeouts are returned with no NPE. A replay concurrent with the live→settled transition does not produce a second execution. The admission counter does not increase for the replay, and the dispatch happens exactly once.
 
-### A2 — Proprietà dello slot e scadenza delle esecuzioni
+### A2 — Slot ownership and execution expiry
 
-**Ambito:** `ExecutionStore`, `ExecutionRecord`, `ExecutionCompletionHandler`, scheduler, enqueuer e registro di capacità in `workload-metrics`. **Dipendenza:** A0. È l'intervento con maggiore accoppiamento; mantenerlo in una PR dedicata.
+**Scope:** `ExecutionStore`, `ExecutionRecord`, `ExecutionCompletionHandler`, scheduler, enqueuer and the capacity registry in `workload-metrics`. **Depends on:** A0. This is the most coupled piece of work; keep it in a dedicated PR.
 
-Introdurre un oggetto leggero che rappresenti lo slot acquisito per uno specifico tentativo e una specifica generazione della funzione. Il callback del dispatch conserva tale riferimento e può effettuare un rilascio idempotente anche se lo store non contiene più il record. I percorsi che non acquisiscono slot, come l'offload, non devono rilasciarne.
+Introduce a lightweight object representing the slot acquired for a specific attempt and a specific function generation. The dispatch callback keeps that reference and can perform an idempotent release even if the store no longer contains the record. Paths that acquire no slot, such as offload, must not release one.
 
-Separare tre eventi: fine dell'attesa di un chiamante, fine del tentativo di dispatch locale e scadenza amministrativa dell'invocazione. Un timeout del singolo waiter non cancella la future condivisa da altri chiamanti idempotenti. La scadenza amministrativa conclude i waiter ancora pendenti, archivia l'esito previsto e avvia la cancellazione/chiusura del dispatch locale. Prevedere una scadenza attiva, non dipendente soltanto dall'attività opportunistica della cache.
+Separate three events: the end of a caller's wait, the end of the local dispatch attempt, and the administrative expiry of the invocation. A single waiter's timeout must not cancel the future shared by other idempotent callers. Administrative expiry concludes the waiters still pending, archives the expected outcome and starts the cancellation/shutdown of the local dispatch. Provide an active expiry, not one that depends solely on the cache's opportunistic activity.
 
-La cancellazione HTTP non prova che il backend abbia smesso di eseguire la funzione: documentare gli slot come limite dei dispatch locali, senza promettere un limite assoluto al lavoro remoto dopo disconnessione. Per un eventuale limite remoto rigoroso serve cooperazione del runtime, fuori dal fix minimo. Non trattare la sola eviction del record come una prova di fine del dispatch.
+HTTP cancellation is no proof that the backend stopped executing the function: document slots as a limit on local dispatches, without promising an absolute limit on remote work after a disconnect. A strict remote limit would need runtime cooperation, outside the minimal fix. Do not treat the record's eviction alone as proof the dispatch ended.
 
-**Accettazione:** dopo conclusione o scadenza dei tentativi locali non rimangono slot trattenuti né future pendenti; completamenti duplicati non rendono negativo il conteggio. Coprire scadenza prima/dopo il completamento, task scaduto ancora in coda, callback vecchio durante retry, rimozione e nuova registrazione dello stesso nome, errori di submission e shutdown. Verificare che un callback della vecchia generazione non liberi uno slot della nuova.
+**Acceptance:** after local attempts conclude or expire, no slots stay held and no futures stay pending; duplicate completions do not drive the count negative. Cover expiry before/after completion, a task that expired while still queued, an old callback during a retry, removal and re-registration of the same name, submission errors and shutdown. Verify that a callback from the old generation does not free a slot of the new one.
 
-### A3 — Retry utilizzabili senza coda
+### A3 — Retries usable without a queue
 
-**Ambito:** completamento, contratto `InvocationEnqueuer` e implementazioni no-op/async/sync. **Dipendenza:** A2.
+**Scope:** completion, the `InvocationEnqueuer` contract and the no-op/async/sync implementations. **Depends on:** A2.
 
-Separare la capacità di pianificare un retry dalla disponibilità dell'endpoint asincrono: `enabled()` non deve rappresentare entrambe. Conservare i retry sulle code esistenti; nel profilo senza coda pianificare il prossimo tentativo con un executor gestito e risorse limitate, evitando ricorsione quando la future completa subito. Le eccezioni nella pianificazione devono produrre un esito terminale osservabile.
+Separate the ability to schedule a retry from the availability of the asynchronous endpoint: `enabled()` must not represent both. Keep retries on the existing queues; in the queueless profile schedule the next attempt with a managed executor and bounded resources, avoiding recursion when the future completes immediately. Exceptions during scheduling must produce an observable terminal outcome.
 
-Mantenere `maxRetries` e la policy attuale degli errori ripetibili in questa PR. Un eventuale backoff con jitter richiede una misura separata e una definizione esplicita del budget temporale; non introdurlo implicitamente insieme al fix.
+Keep `maxRetries` and the current retryable-error policy in this PR. Backoff with jitter would need a separate measurement and an explicit definition of the time budget; do not introduce it implicitly alongside the fix.
 
-**Accettazione:** errore→successo e fallimento definitivo con 0, 1 e 3 retry, in tutti e tre i profili di coda. Con 3 retry si hanno al massimo 4 tentativi. Coda piena, executor in shutdown ed eccezioni di enqueue terminano la richiesta senza stato QUEUED orfano. L'API `:enqueue` resta indisponibile dove non prevista.
+**Acceptance:** error→success and definitive failure with 0, 1 and 3 retries, in all three queue profiles. With 3 retries there are at most 4 attempts. A full queue, an executor in shutdown and enqueue exceptions terminate the request with no orphaned QUEUED state. The `:enqueue` API stays unavailable where it is not provided.
 
-### A4 — Lifecycle runtime della sync queue
+### A4 — Runtime lifecycle of the sync queue
 
-**Ambito:** configurazione e scheduler sync, sorgente mutabile, estensione runtime-config. **Dipendenza:** A0; integrazione con A2/A3 prima del rilascio.
+**Scope:** sync configuration and scheduler, the mutable source, the runtime-config extension. **Depends on:** A0; integrate with A2/A3 before release.
 
-Creare lo scheduler quando il modulo è caricato, anche se l'ammissione in coda è inizialmente disabilitata. Tenere il worker dormiente senza polling continuo quando non ha lavoro. Il flag runtime decide il percorso delle nuove invocazioni; alla disattivazione il lavoro già ammesso continua a essere drenato. I retry di quel lavoro seguono una policy esplicita e non vengono abbandonati.
+Create the scheduler when the module is loaded, even if queue admission starts disabled. Keep the worker asleep, without continuous polling, when it has no work. The runtime flag decides the path of new invocations; on deactivation, work already admitted keeps draining. Retries of that work follow an explicit policy and are not abandoned.
 
-Pubblicare le impostazioni runtime correlate tramite un unico snapshot immutabile, così che admission e scheduler non osservino una combinazione parziale di valori durante apply/restore. Conservare revisioni e rollback del servizio runtime-config.
+Publish the related runtime settings through a single immutable snapshot, so that admission and scheduler never observe a partial combination of values during apply/restore. Preserve the runtime-config service's revisions and rollback.
 
-**Accettazione:** avvio false→true con dispatch riuscito, true→false con coda e dispatch in corso, riattivazione, update rifiutato e rollback. Verificare un contesto Spring reale, non soltanto la mutazione del bean di configurazione.
+**Acceptance:** boot false→true with a successful dispatch, true→false with a queue and a dispatch in progress, reactivation, a rejected update and rollback. Verify with a real Spring context, not merely by mutating the configuration bean.
 
-### A5 — Ritenzione idempotente e recupero dell'esito
+### A5 — Idempotency retention and outcome recovery
 
-**Ambito:** store delle chiavi e delle esecuzioni, factory, finalizzazione, API e documentazione. **Dipendenze:** A1 e A2.
+**Scope:** the key and execution stores, the factory, finalisation, the API and documentation. **Depends on:** A1 and A2.
 
-Vincolare la chiave all'esecuzione per tutta la sua vita e far partire la ritenzione terminale dal completamento. La pubblicazione della chiave, l'archiviazione dell'esito e la transizione al vincolo terminale devono impedire finestre in cui la stessa chiave sia nuovamente acquisibile. La cleanup delle chiavi pending deve essere legata alla conclusione o all'abbandono dell'ammissione.
+Bind the key to the execution for its whole life, and start terminal retention at completion. Publishing the key, archiving the outcome and transitioning to the terminal binding must leave no window in which the same key becomes claimable again. Cleanup of pending keys must be tied to the conclusion or the abandonment of the admission.
 
-Separare la garanzia di deduplicazione dalla conservazione del payload. Decisione proposta: se l'esito viene espulso per capacità prima della fine della finestra, conservare un tombstone leggero con execution ID e scadenza. Il replay non riesegue la funzione e restituisce un errore esplicito di esito non più disponibile, proposto come HTTP 410. Questa è una variazione di contratto da implementare con OpenAPI, mapping e test, non un comportamento già presente.
+Separate the deduplication guarantee from payload retention. Proposed decision: if the outcome is evicted for capacity before the end of the window, keep a lightweight tombstone with the execution ID and an expiry. The replay does not re-run the function and returns an explicit "outcome no longer available" error, proposed as HTTP 410. This is a contract change to be implemented with OpenAPI, mapping and tests, not behaviour that already exists.
 
-Limitare anche il numero di vincoli/tombstone: a budget esaurito rifiutare nuove ammissioni con chiave prima del dispatch, mantenendo servibili i replay esistenti. Il successivo budget in byte non deve espellere silenziosamente la protezione di deduplicazione.
+Bound the number of bindings/tombstones too: with the budget exhausted, refuse new keyed admissions before the dispatch, keeping existing replays servable. The later byte budget must not silently evict the deduplication protection.
 
-**Accettazione:** test con tempo controllato per esecuzione lunga più TTL terminale, retry interni, eviction per capacità, budget chiavi esaurito e richieste concorrenti. Un replay entro la finestra non produce mai un nuovo dispatch, anche quando il payload non è più recuperabile. Dopo la scadenza documentata una nuova esecuzione è consentita.
+**Acceptance:** tests with a controlled clock for a long execution plus terminal TTL, internal retries, eviction for capacity, an exhausted key budget and concurrent requests. A replay inside the window never produces a new dispatch, even when the payload is no longer recoverable. After the documented expiry a new execution is allowed.
 
-### A6 — Header applicativi attraverso l'offload
+### A6 — Application headers across offload
 
-**Ambito:** `DefaultOffloadGateway`, policy degli header e test HTTP con due control plane. **Dipendenza:** A0.
+**Scope:** `DefaultOffloadGateway`, the header policy and an HTTP test with two control planes. **Depends on:** A0.
 
-Trasferire gli header applicativi consentiti anche come header HTTP del secondo hop, perché il control plane remoto ricostruisce `InvocationRequest.headers` dal trasporto. Escludere header riservati, hop-by-hop e quelli nominati dal campo `Connection`; preservare la gestione dedicata di tracing e offload-hop. Il Content-Type del trasporto deve continuare a descrivere l'envelope JSON.
+Transfer the allowed application headers as HTTP headers of the second hop too, because the remote control plane rebuilds `InvocationRequest.headers` from the transport. Exclude reserved and hop-by-hop headers and those named by the `Connection` field; preserve the dedicated handling of tracing and offload-hop. The transport's Content-Type must keep describing the JSON envelope.
 
-**Accettazione:** un handler riceve lo stesso `x-tenant` locale e offloaded; header riservati non possono sovrascrivere quelli del gateway; tracing e prevenzione del re-offload continuano a funzionare. Verificare la ricostruzione della richiesta sul secondo control plane, non soltanto gli header del WebClient in uscita.
+**Acceptance:** a handler receives the same `x-tenant` locally and offloaded; reserved headers cannot overwrite the gateway's own; tracing and re-offload prevention keep working. Verify the request's reconstruction on the second control plane, not merely the outgoing WebClient's headers.
 
-### A7 — Rate limiter coerente al cambio di finestra
+### A7 — A rate limiter coherent across the window change
 
-**Ambito:** `RateLimiter` e suoi test; conservare il WebFilter già introdotto. **Dipendenza:** A0.
+**Scope:** `RateLimiter` and its tests; keep the WebFilter already introduced. **Depends on:** A0.
 
-Rappresentare finestra e conteggio con un unico stato aggiornato atomicamente tramite CAS. Usare un riferimento temporale controllabile per verificare i confini; evitare un'allocazione obbligatoria per ogni richiesta se è possibile mantenere lo stato compatto. Conservare la semantica a finestre e gli aggiornamenti runtime del limite.
+Represent window and count as a single state updated atomically via CAS. Use a steerable time reference to verify the boundaries; avoid a mandatory allocation per request if the state can stay compact. Preserve the windowed semantics and runtime updates of the limit.
 
-**Accettazione:** interleaving controllato fra cambio finestra e richieste concorrenti, nessuna ammissione persa dal conteggio. Documentare che due finestre adiacenti possono comunque ammettere un burst: non è un token bucket. Misurare costo per ammissione/rifiuto e contesa prima e dopo.
+**Acceptance:** a controlled interleaving of window change and concurrent requests, with no admission lost from the count. Document that two adjacent windows can still admit a burst: this is not a token bucket. Measure cost per admission/refusal and contention before and after.
 
-## 4. Rimozione dei colli di bottiglia confermati
+## 4. Removing the confirmed bottlenecks
 
-### P1 — Proxy container concorrente e limitato
+### P1 — A concurrent, bounded container proxy
 
-**Ambito:** `RoundRobinFunctionProxy`, factory, proprietà del provider e lifecycle. **Dipendenza:** A0; verifica integrata dopo A2/A3.
+**Scope:** `RoundRobinFunctionProxy`, the factory, the provider's properties and lifecycle. **Depends on:** A0; integrated verification after A2/A3.
 
-Prima implementazione: executor a virtual thread con chiusura esplicita, admission non bloccante con limite al numero di richieste di invocazione e rifiuto definito quando esaurito. Evitare di parcheggiare un numero illimitato di richieste su un semaforo. Health non deve consumare gli stessi permessi delle invocazioni. Chiudere exchange, client e executor anche su errori e shutdown.
+First implementation: a virtual-thread executor with explicit shutdown, non-blocking admission with a cap on the number of invocation requests and a defined refusal once exhausted. Avoid parking an unbounded number of requests on a semaphore. Health must not consume the same permits as invocations. Close exchanges, client and executor on errors and shutdown too.
 
-Propagare al proxy una policy di timeout coerente con la funzione al provisioning e agli aggiornamenti; eliminare il valore fisso di 30 secondi. Verificare separatamente durata del singolo hop e budget complessivo del chiamante. Un proxy interamente non bloccante resta un'alternativa successiva solo se il profilo mostra un limite della soluzione più piccola.
+Propagate a timeout policy coherent with the function to the proxy at provisioning and on updates; remove the fixed 30-second value. Verify the single hop's duration and the caller's overall budget separately. A fully non-blocking proxy stays a later alternative, only if the profile shows a limit of the smaller solution.
 
-**Accettazione:** il test con backend bloccato su latch deve osservare più richieste in volo prima di liberarlo; con 4 permessi e 4 richieste il massimo osservato deve essere 4. Testare saturazione, health, cambio backend, timeout maggiore di 30 secondi con tempo/test appropriato, disconnessione e shutdown. Ripetere il benchmark del report senza trasformare i suoi 284/827 ms in soglie CI.
+**Acceptance:** the test with a backend blocked on a latch must observe several requests in flight before releasing it; with 4 permits and 4 requests the observed maximum must be 4. Test saturation, health, backend change, a timeout longer than 30 seconds with appropriate time/test control, disconnection and shutdown. Repeat the report's benchmark without turning its 284/827 ms into CI thresholds.
 
-### P2 — Risveglio sync al rilascio di capacità
+### P2 — Sync wake-up on capacity release
 
-**Ambito:** `SyncScheduler`, `SyncQueueService`, notifiche da capacità/enqueuer. **Dipendenze:** A2 e A4.
+**Scope:** `SyncScheduler`, `SyncQueueService`, notifications from capacity/enqueuer. **Depends on:** A2 and A4.
 
-Sostituire il backoff tramite sleep con attesa notificabile su lavoro o capacità disponibile, conservando un timeout di sicurezza per scadenze e recupero. Notificare anche incrementi di capacità dal governor, registrazione e cambi runtime rilevanti. Usare un predicato o una sequenza di notifiche per evitare segnali persi fra controllo e attesa.
+Replace the sleep-based backoff with a notifiable wait on available work or capacity, keeping a safety timeout for expiries and recovery. Notify capacity increases from the governor, registrations and relevant runtime changes too. Use a predicate or a notification sequence to avoid signals lost between the check and the wait.
 
-**Accettazione:** rilascio di uno slot risveglia il worker senza attendere il vecchio backoff; nessun busy loop a coda vuota o capacità zero; stop interrompe l'attesa. Preservare avanzamento delle funzioni non sature quando altre occupano la testa della coda. Misurare ritardo rilascio→dispatch, p99 queue wait e CPU idle.
+**Acceptance:** releasing a slot wakes the worker without waiting for the old backoff; no busy loop on an empty queue or at zero capacity; stop interrupts the wait. Preserve progress for non-saturated functions when others occupy the head of the queue. Measure release→dispatch delay, p99 queue wait and idle CPU.
 
-## 5. Metriche e regolazione della capacità
+## 5. Metrics and capacity regulation
 
-### M1 — Tempi dell'invocazione separati dai tempi del tentativo
+### M1 — Invocation times separated from attempt times
 
-**Ambito:** task/record, completamento, metriche, letture SOJOURN/adaptive. **Dipendenze:** A2 e A3. **Prima del tuning dei controller.**
+**Scope:** task/record, completion, metrics, SOJOURN/adaptive readings. **Depends on:** A2 and A3. **Before tuning the controllers.**
 
-Conservare un istante originale di ammissione che non venga sostituito al retry; usare tempo monotono per le durate e wall-clock per gli istanti esposti nell'API. Definire separatamente attesa di ogni tentativo, tempo di servizio e durata totale dell'invocazione. Registrare una sola conclusione end-to-end per invocazione, inclusi errori e timeout secondo la policy terminale; i timeout dei singoli waiter restano una misura distinta.
+Keep an original admission instant that is not replaced on retry; use monotonic time for durations and wall-clock for the instants exposed in the API. Define separately each attempt's wait, the service time and the invocation's total duration. Record exactly one end-to-end conclusion per invocation, errors and timeouts included per the terminal policy; individual waiter timeouts stay a distinct measurement.
 
-Verificare i consumatori prima di cambiare le serie esistenti. Se il significato di una metrica cambia in modo incompatibile, introdurre una serie esplicita e aggiornare SOJOURN, dashboard e query nella stessa consegna. Non trattare una durata censurata dal timeout come un campione di successo veloce.
+Check the consumers before changing existing series. If a metric's meaning changes incompatibly, introduce an explicit series and update SOJOURN, dashboards and queries in the same delivery. Do not treat a duration censored by the timeout as a fast-success sample.
 
-**Accettazione:** durata totale con retry include tutti i tentativi e le attese; nessun doppio campione su callback tardivi/duplicati. Testare la risposta dei controller a mix di successi, retry e timeout, oltre al solo valore del timer.
+**Acceptance:** the total duration with retries includes every attempt and wait; no double sample on late/duplicate callbacks. Test the controllers' response to a mix of successes, retries and timeouts, not just the timer's value.
 
-### M2 — Scaling consapevole delle repliche già richieste
+### M2 — Scaling aware of replicas already requested
 
-**Ambito:** `InternalScaler`, calcolatore, provider e coordinatore deployment. **Dipendenza:** A0; validazione con M1 e governor.
+**Scope:** `InternalScaler`, the calculator, the provider and the deployment coordinator. **Depends on:** A0; validate with M1 and the governor.
 
-Leggere desiderate e pronte da uno stesso `ReplicaStatus`. Preservare la semantica delle metriche nella formula; confrontare il nuovo comando con il target già richiesto, non etichettare ogni aumento rispetto alle sole ready come scale-up. Una raccomandazione intermedia durante startup non deve ridurre un target più alto ancora in corso. Applicare downscale solo con un segnale esplicito, cooldown e protezione wake-up rispettati.
+Read desired and ready from the same `ReplicaStatus`. Preserve the metrics' semantics in the formula; compare the new command with the target already requested, rather than labelling every increase over the ready count alone a scale-up. An intermediate recommendation during startup must not reduce a higher target still in progress. Apply a downscale only with an explicit signal, with cooldown and wake-up protection respected.
 
-**Accettazione:** caso 10 desiderate/2 pronte/raccomandazione 4 senza riduzione involontaria, zero repliche, min/max, startup lento o fallito, rollout, cooldown e rimozione concorrente. Non bloccare indefinitamente un downscale reale a causa di repliche mai diventate ready: prevedere e testare la gestione del mancato progresso.
+**Acceptance:** the case of 10 desired/2 ready/recommendation 4 with no unintended reduction, zero replicas, min/max, a slow or failed startup, rollout, cooldown and concurrent removal. Do not block a real downscale indefinitely because of replicas that never became ready: provide and test handling for the lack of progress.
 
-### M3 — Snapshot condiviso delle repliche
+### M3 — Shared replica snapshot
 
-**Ambito:** coordinatore deployment, autoscaler, concurrency governor e provider. **Dipendenza:** M2.
+**Scope:** the deployment coordinator, the autoscaler, the concurrency governor and the provider. **Depends on:** M2.
 
-Prima soluzione: snapshot condiviso con timestamp, TTL esplicito e singola richiesta di refresh per funzione/generazione. Invalidare dopo modifica del target, rimozione e nuova registrazione. Uno stato scaduto o una GET fallita non deve essere interpretato come zero repliche. Wake-up e lifecycle mantengono la possibilità di ottenere una lettura fresca.
+First solution: a shared snapshot with a timestamp, an explicit TTL and a single refresh request per function/generation. Invalidate after a target change, removal and re-registration. A stale state or a failed GET must not be read as zero replicas. Wake-up and lifecycle keep the ability to obtain a fresh read.
 
-Isolare i refresh lenti con concorrenza limitata e impedire applicazioni fuori ordine. Passare a watch/informer Kubernetes solo se la frequenza di polling o la latenza misurata lo richiedono.
+Isolate slow refreshes with bounded concurrency and prevent out-of-order applications. Move to Kubernetes watch/informers only if the polling frequency or the measured latency demands it.
 
-**Accettazione:** meno chiamate API duplicate per ciclo, freshness entro il limite scelto, una funzione lenta non blocca le altre e nessun aggiornamento della vecchia generazione. Misurare numero di GET, durata dei cicli e tempo di reazione allo scaling.
+**Acceptance:** fewer duplicate API calls per cycle, freshness within the chosen limit, one slow function does not block the others, and no updates from the old generation. Measure the number of GETs, cycle duration and scaling reaction time.
 
-## 6. Tuning guidato dalle misure
+## 6. Measurement-driven tuning
 
-Queste attività producono prima un profilo e un confronto isolato. Se il beneficio non emerge oltre la variabilità della baseline, documentare il risultato e conservare l'implementazione/default precedente.
+These tasks first produce a profile and an isolated comparison. If the benefit does not emerge above the baseline's variability, document the result and keep the previous implementation/default.
 
-| ID | Ambito e implementazione proposta | Dipendenze e accettazione |
+| ID | Scope and proposed implementation | Dependencies and acceptance |
 | --- | --- | --- |
-| T1 | Pool HTTP: proprietà per connessioni, numero massimo di acquisizioni pendenti e timeout di acquisizione; provider condiviso con lifecycle esplicito. Coordinare budget dei pool per destinazione con admission e concorrenza, considerando traffico dispatch e offload. | Dopo A2/A3 e P1. Carico su una e molte destinazioni, backend lento e pool esaurito: nessuna attesa senza limite o esplosione dei retry. Miglioramento di acquisizione/p99 senza crescita incontrollata di connessioni e memoria. |
-| T2 | Code: profilare monitor e scansioni; mantenere contatori per funzione nei punti di mutazione della sync queue. Rendere configurabile il batch async, confrontando 2, 4, 8 e 16. Ridurre i lock sovrapposti solo se il profilo ne dimostra il costo e resta atomica la relazione fra chiusura, offer e contatori. | Dopo P2 e M1. Misurare throughput, CPU/allocazioni e p99 per funzione, includendo una funzione molto attiva e molte poco attive. Nessuna starvation o regressione di remove/re-register. La sostituzione del deque globale è un secondo passo, non una premessa. |
-| T3 | Memoria: aggiungere un budget ponderato dei payload degli esiti oltre al limite di conteggio e budget di admission per richieste vive. Stimare il peso una sola volta senza riserializzare il payload a ogni accesso. Includere output, header e overhead; mantenere margine per memoria nativa e strutture condivise. | Dopo A5. Payload piccoli/grandi, ASYNC/keyed, lungo soak e pressione: ritenzione e deduplicazione rispettate, heap/RSS stabilizzati, costo del weigher misurato. Il budget stimato non è una garanzia di limite esatto dell'heap. |
-| T4 | Diagnostica: profilare registrazione/lettura dei meter e costo delle sonde sul percorso caldo; riusare i profili metrici esistenti, spostare fuori dai lock i callback e le operazioni non necessarie all'atomicità. | Dopo M1. Confronto con la stessa osservabilità nei due bracci; non attribuire un guadagno alla sola eliminazione di metriche che guidano governor o scaler. |
+| T1 | HTTP pool: properties for connections, the maximum number of pending acquisitions and the acquisition timeout; a shared provider with an explicit lifecycle. Coordinate the per-destination pool budgets with admission and concurrency, accounting for dispatch and offload traffic. | After A2/A3 and P1. Load on one and on many destinations, a slow backend and an exhausted pool: no unbounded wait and no retry explosion. An improvement in acquisition/p99 without uncontrolled growth of connections and memory. |
+| T2 | Queues: profile monitors and scans; keep per-function counters at the sync queue's mutation points. Make the async batch configurable, comparing 2, 4, 8 and 16. Reduce overlapping locks only if the profile proves their cost and the relation between closure, offer and counters stays atomic. | After P2 and M1. Measure throughput, CPU/allocations and p99 per function, including one very active function and many quiet ones. No starvation and no remove/re-register regression. Replacing the global deque is a second step, not a premise. |
+| T3 | Memory: add a weighted budget for outcome payloads beyond the count cap, plus an admission budget for live requests. Estimate the weight once, without re-serializing the payload on each access. Include output, headers and overhead; keep headroom for native memory and shared structures. | After A5. Small/large payloads, ASYNC/keyed, a long soak and pressure: retention and deduplication respected, heap/RSS stabilised, the weigher's cost measured. An estimated budget is not a guarantee of an exact heap limit. |
+| T4 | Diagnostics: profile meter registration/reads and probe cost on the hot path; reuse the existing metric profiles, and move callbacks and operations not needed for atomicity outside the locks. | After M1. Compare with the same observability in both arms; do not attribute a gain merely to removing metrics that drive the governor or the scaler. |
 
-## 7. Matrice di validazione
+## 7. Validation matrix
 
-Async queue e sync queue sono alternative dichiarate nei descrittori: provarle in build distinte, non selezionarle insieme. Autoscaler e concurrency-control richiedono un modulo di coda.
+Async queue and sync queue are declared alternatives in the descriptors: test them in distinct builds, do not select them together. Autoscaler and concurrency-control require a queue module.
 
-| Profilo | Verifiche richieste |
+| Profile | Required checks |
 | --- | --- |
-| Nessun modulo di coda | Invocazione diretta, retry e cleanup; `:enqueue` indisponibile. |
-| Async queue | Replay ASYNC, saturazione, retry, fairness, rimozione delle funzioni. |
-| Sync queue + runtime-config | Lifecycle runtime, timeout di coda, risvegli, drain e rollback. |
-| Una coda + autoscaler + concurrency-control | Scaling con ready diverse da desired; comportamento dei controller con metriche corrette. |
-| Una coda + offload | Header attraverso due control plane, successo/errore/timeout e assenza di rilasci di slot mai acquisiti. |
-| Container provider | Proxy concorrente, limiti, health, timeout, cambio repliche e teardown. |
-| Kubernetes provider | Lifecycle e scaling tramite gli scenari NanoLab; nessun provisioning aggiunto ai test NanoFaaS. |
-| JVM e native | Build/AOT e smoke dei profili modificati; benchmark della variante effettivamente distribuita. |
+| No queue module | Direct invocation, retries and cleanup; `:enqueue` unavailable. |
+| Async queue | ASYNC replay, saturation, retries, fairness, function removal. |
+| Sync queue + runtime-config | Runtime lifecycle, queue timeout, wake-ups, drain and rollback. |
+| One queue + autoscaler + concurrency-control | Scaling with ready different from desired; controller behaviour with corrected metrics. |
+| One queue + offload | Headers across two control planes, success/error/timeout, and no release of slots never acquired. |
+| Container provider | Concurrent proxy, limits, health, timeout, replica change and teardown. |
+| Kubernetes provider | Lifecycle and scaling through the NanoLab scenarios; no provisioning added to the NanoFaaS tests. |
+| JVM and native | Build/AOT and smoke of the modified profiles; benchmark the variant actually shipped. |
 
-Comandi di partenza, da restringere ai test interessati durante ogni PR:
+Starting commands, to be narrowed to the affected tests during each PR:
 
 ```bash
 ./gradlew :control-plane:test -PcontrolPlaneModules=none
@@ -186,35 +186,35 @@ Comandi di partenza, da restringere ai test interessati durante ogni PR:
 ./gradlew :control-plane-modules:container-deployment-provider:test -PcontrolPlaneModules=container-deployment-provider
 ```
 
-Per gli altri profili aggiungere i moduli espliciti e i rispettivi task `:control-plane-modules:<id>:test`. Eseguire build e controlli di contratto/AOT pertinenti prima dell'integrazione finale. Alcuni test richiedono un runtime container; registrare sempre eseguiti, saltati e motivi. Per E2E riusare `deployment-lifecycle-container` e `deployment-lifecycle-k8s` dal checkout NanoLab con `NANOFAAS_ROOT` impostato. Eventuali estensioni agli scenari appartengono a quel repository e vanno consegnate separatamente.
+For the other profiles add the explicit modules and their `:control-plane-modules:<id>:test` tasks. Run the relevant build and contract/AOT checks before the final integration. Some tests need a container runtime; always record what ran, what was skipped and why. For E2E reuse `deployment-lifecycle-container` and `deployment-lifecycle-k8s` from the NanoLab checkout with `NANOFAAS_ROOT` set. Any extensions to the scenarios belong to that repository and are delivered separately.
 
-## 8. Protocollo di misura e criteri di promozione
+## 8. Measurement protocol and promotion criteria
 
-Usare il workflow compare e la raccolta Prometheus già disponibili in NanoLab. Ogni confronto include baseline e candidato nella stessa matrice e sulla stessa infrastruttura, almeno tre ripetizioni per braccio con ordine alternato. Registrare warm-up, durata e dispersione; aumentare le ripetizioni solo quando il risultato resta inconcludente.
+Use the compare workflow and the Prometheus collection already available in NanoLab. Every comparison includes baseline and candidate in the same matrix and on the same infrastructure, at least three repetitions per arm with alternated order. Record warm-up, duration and dispersion; increase the repetitions only when the result stays inconclusive.
 
-Variare un solo intervento per volta. Coprire carico sotto saturazione, vicino al limite e sovraccarico; SYNC e ASYNC dove supportati; senza chiavi e con replay; payload piccoli e grandi; funzioni veloci insieme a lente; errori/retry. Le prove di capacità mantengono le repliche fisse, poi una matrice distinta misura l'autoscaling. Separare smoke brevi e soak sufficientemente lunghi da attraversare le finestre di ritenzione configurate.
+Vary one intervention at a time. Cover load below saturation, near the limit and in overload; SYNC and ASYNC where supported; without keys and with replays; small and large payloads; fast functions alongside slow ones; errors/retries. Capacity runs keep the replicas fixed, and a separate matrix then measures autoscaling. Separate short smokes from soaks long enough to cross the configured retention windows.
 
-Metriche decisive: successi entro SLO al secondo, latenza client p50/p95/p99, 429 e timeout, tentativi per invocazione, latenza di coda, ritardo di risveglio, attesa nel pool HTTP, slot occupati, CPU per successo, allocazioni per successo, heap/RSS, GC e throttling CFS. Per ASYNC misurare fino al completamento, non fermarsi alla risposta 202. Conservare offerte, ammesse, rifiutate e concluse separatamente.
+Decisive metrics: successes within SLO per second, client latency p50/p95/p99, 429s and timeouts, attempts per invocation, queue latency, wake-up delay, HTTP pool wait, occupied slots, CPU per success, allocations per success, heap/RSS, GC and CFS throttling. For ASYNC measure through to completion, do not stop at the 202 response. Keep offered, admitted, refused and concluded separately.
 
-**Soglie iniziali proposte:** regressioni funzionali ammesse zero; per puro tuning, obiettivo di almeno 10% sulla metrica bersaglio e nessun peggioramento superiore al 5% di throughput utile o p99 negli scenari di controllo. Sono criteri sperimentali da confrontare con il rumore misurato, non promesse di risultato o soglie CI wall-clock. Un fix di correttezza resta necessario anche se costa CPU: il costo deve essere riportato e ottimizzato senza annullare il fix.
+**Proposed initial thresholds:** zero functional regressions admitted; for pure tuning, a target of at least 10% on the target metric and no worsening beyond 5% of useful throughput or p99 in the control scenarios. These are experimental criteria to be compared with the measured noise, not promises of a result nor wall-clock CI thresholds. A correctness fix stays necessary even if it costs CPU: the cost must be reported and optimised without undoing the fix.
 
-## 9. Sequenza di consegna e chiusura
+## 9. Delivery sequence and closure
 
-| Fase | Attività | Condizione per procedere |
+| Phase | Tasks | Condition to proceed |
 | --- | --- | --- |
-| 0 | A0 | Baseline identificata, riproduzioni e indice disponibili per gli edit. |
-| 1 | A1, A2, A3, A4, A5 | Invocazioni, slot, retry, replay e transizioni runtime verificati nei profili interessati. |
-| 2 | A6, A7, P1, P2 | Offload e rate limit corretti; serializzazione del proxy e attesa non notificabile eliminate. |
-| 3 | M1, M2, M3 | Metriche affidabili e capacità regolata senza confondere target e ready. Nuova baseline dopo i fix. |
-| 4 | T1, T2, T3, T4 | Ogni cambiamento sostenuto da un confronto riproducibile, oppure archiviato come non conveniente. |
-| 5 | Matrice integrata, documentazione e rilascio | Nessuna perdita di slot, duplicazione idempotente o regressione di contratto; prove operative registrate. |
+| 0 | A0 | Baseline identified, reproductions and index available for the edits. |
+| 1 | A1, A2, A3, A4, A5 | Invocations, slots, retries, replays and runtime transitions verified in the affected profiles. |
+| 2 | A6, A7, P1, P2 | Offload and rate limiting corrected; the proxy's serialisation and the non-notifiable wait removed. |
+| 3 | M1, M2, M3 | Metrics reliable and capacity regulated without confusing target and ready. A new baseline after the fixes. |
+| 4 | T1, T2, T3, T4 | Every change backed by a reproducible comparison, or filed as not worthwhile. |
+| 5 | Integrated matrix, documentation and release | No slot loss, idempotency duplication or contract regression; operational evidence recorded. |
 
-Ogni ID è una unità di lavoro verificabile, preferibilmente una PR piccola; T2/T3 e A2 possono richiedere più PR, ciascuna con invarianti preservati. L'ordine sopra non richiede agenti paralleli. Prima di ciascuna PR verificare nuovamente le dipendenze nel codice corrente, perché i primi fix cambieranno i simboli da modificare nei successivi.
+Every ID is a verifiable unit of work, preferably a small PR; T2/T3 and A2 may need several PRs, each preserving the invariants. The order above does not require parallel agents. Before each PR, re-check the dependencies in the current code, because the first fixes will change the symbols to modify in the later ones.
 
-Aggiornare `docs/control-plane.md`, README dei moduli e documentazione delle metriche/configurazioni dove cambia il comportamento. Modificare `openapi/core.yaml` o il frammento di modulo per nuovi esiti/parametri, senza editare l'OpenAPI generata. Aggiornare Helm/Compose per le proprietà effettivamente introdotte e mantenerne i default allineati all'applicazione.
+Update `docs/control-plane.md`, the module READMEs and the metrics/configuration documentation wherever behaviour changes. Change `openapi/core.yaml` or the module fragment for new outcomes/parameters, without editing the generated OpenAPI. Update Helm/Compose for the properties actually introduced and keep their defaults aligned with the application.
 
-Prima di ogni commit eseguire `gitnexus_detect_changes`, controllare simboli e processi attesi e aggiornare i dipendenti diretti; dopo i refactor verificare lo scope completo. Dopo il commit aggiornare l'indice preservando gli embeddings esistenti.
+Before every commit run `gitnexus_detect_changes`, check the expected symbols and processes and update the direct dependents; after refactors verify the complete scope. After the commit update the index, preserving the existing embeddings.
 
-Conservare risultati grezzi e sintesi in una nuova directory di esperimenti, senza sovrascrivere la coda di sovraccarico già presente. Per ciascuna ottimizzazione annotare configurazione precedente e procedura di ripristino. Un rollback che riavvia il control plane perde lo stato in memoria: verificarne l'impatto operativo prima del rilascio e preferire, per il tuning, proprietà che consentano di ripristinare i valori senza riavvio quando supportato.
+Keep raw results and summaries in a new experiments directory, without overwriting the overload queue already present. For each optimisation note the previous configuration and the restore procedure. A rollback that restarts the control plane loses the in-memory state: check its operational impact before release and prefer, for tuning, properties that allow values to be restored without a restart where supported.
 
-Il piano è completato quando tutti i fix hanno test di regressione integrati, ogni suggerimento di performance ha un'implementazione misurata o un esito motivato di non adozione, e la matrice finale riporta esplicitamente copertura e limiti delle verifiche.
+The plan is complete when every fix has an integrated regression test, every performance suggestion has either a measured implementation or a justified non-adoption outcome, and the final matrix explicitly reports the coverage and limits of the checks.

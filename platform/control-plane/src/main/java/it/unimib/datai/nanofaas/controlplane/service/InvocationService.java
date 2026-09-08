@@ -138,8 +138,9 @@ public class InvocationService {
             return responseMapper.terminalResponse(lookup.settledExecutionId(), settled);
         }
 
-        // Esito espulso per capacita': il replay non riesegue la funzione, torna 410.
-        // Come per il ramo sync, va controllato prima di dereferenziare executionRecord.
+        // Outcome evicted for capacity: the replay does not re-run the function, it
+        // returns 410. As on the sync branch, this must be checked before dereferencing
+        // executionRecord.
         if (lookup.gone()) {
             throw new OutcomeGoneException(lookup.settledExecutionId());
         }
@@ -170,7 +171,7 @@ public class InvocationService {
         if (live != null) {
             return Optional.of(responseMapper.toStatus(live));
         }
-        // Finita: il record mutabile non c'e' piu', l'esito si'.
+        // Finished: the mutable record is gone, the outcome is not.
         Outcome outcome = executionStore.outcomeOf(executionId);
         return outcome == null
                 ? Optional.empty()

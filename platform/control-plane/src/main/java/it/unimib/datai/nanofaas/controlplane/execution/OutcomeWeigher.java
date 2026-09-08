@@ -52,8 +52,8 @@ final class OutcomeWeigher {
         if (outcome.error() != null) {
             total += estimate(outcome.error().code(), 0) + estimate(outcome.error().message(), 0);
         }
-        // Il peso di Caffeine e' un int, e un esito non puo' pesare zero o l'eviction
-        // per peso non avrebbe modo di sfrattarlo.
+        // Caffeine's weight is an int, and an outcome cannot weigh zero or weight-based
+        // eviction would have no way to evict it.
         return (int) Math.max(1, Math.min(Integer.MAX_VALUE, total));
     }
 

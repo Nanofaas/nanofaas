@@ -19,19 +19,19 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Cosa lo store conserva, e per chi.
+ * What the store keeps, and for whom.
  *
- * <p>Allo stato stazionario lo store tiene `ritenzione x tasso di ammissione`, e
- * un solo orologio per ogni esecuzione fece 270.000 record e 1,05 GB di dati vivi
- * contro una tenured da 1.002 MB il 2026-08-23: il collettore permanentemente al
- * limite, il 50,6% del tempo in GC, pause da 2,851 s, e il container ucciso da un
- * probe di liveness a cui non riusciva piu' a rispondere. Tutto trattenuto per
- * lettori che, per il traffico sincrono semplice, non esistono: la risposta e'
- * tornata sulla connessione che il chiamante aveva in mano.
+ * <p>At steady state the store holds `retention x admission rate`, and a single clock
+ * for every execution produced 270,000 records and 1.05 GB of live data against a
+ * 1,002 MB tenured generation on 2026-08-23: the collector permanently at the limit,
+ * 50.6% of the time in GC, pauses of 2.851 s, and the container killed by a liveness
+ * probe it could no longer answer. All of it retained for readers that, for plain
+ * synchronous traffic, do not exist: the response went back on the connection the
+ * caller was holding.
  *
- * <p>Da qui la seconda regola, misurata il 2026-08-26: chi non ha lettori non si
- * porta dietro nemmeno il payload. Un esito completo pesa 4.916 byte con una
- * risposta da 4 KB; senza payload ne pesa 116, quale che sia la risposta.
+ * <p>Hence the second rule, measured on 2026-08-26: what has no readers does not carry
+ * the payload either. A complete outcome weighs 4,916 bytes with a 4 KB response;
+ * without the payload it weighs 116, whatever the response was.
  */
 class RetentionFollowsTheReaderTest {
 
@@ -70,7 +70,7 @@ class RetentionFollowsTheReaderTest {
 
         advance(SYNC_TTL.plusSeconds(1));
 
-        // GET /v1/executions/{id} e' la sua unica strada verso il risultato.
+        // GET /v1/executions/{id} is its only route to the result.
         assertThat(store.outcomeOf("queued-work")).isNotNull();
 
         advance(TTL);
@@ -93,11 +93,10 @@ class RetentionFollowsTheReaderTest {
         ExecutionRecord execution = new ExecutionRecord("retried", task("retried", InvocationKind.SYNC, "order-8821", 1));
         store.put(execution);
 
-        // ExecutionCompletionHandler costruisce il task di retry SENZA la chiave -
-        // il retry e' interno e non deve rivendicarla di nuovo. Letta dal task
-        // corrente, la ritenzione declasserebbe proprio le esecuzioni che hanno
-        // avuto problemi, e un client che replica la sua chiave non troverebbe
-        // nulla e verrebbe addebitato due volte.
+        // ExecutionCompletionHandler builds the retry task WITHOUT the key - the retry
+        // is internal and must not claim it again. Read from the current task, retention
+        // would demote exactly the executions that had trouble, and a client replaying
+        // its key would find nothing and be charged twice.
         execution.resetForRetry(task("retried", InvocationKind.SYNC, null, 2));
         execution.markSuccess("done");
         store.settle(execution);
@@ -140,8 +139,8 @@ class RetentionFollowsTheReaderTest {
         ExecutionStore store = store();
         store.settle(settled(store, "keyed", InvocationKind.SYNC, "order-8821"));
 
-        // Servire un replay vuoto sarebbe la doppia esecuzione che la chiave
-        // esiste per impedire, non una degradazione.
+        // Serving an empty replay would be the double execution the key exists to
+        // prevent, not a degradation.
         assertThat(store.outcomeOf("keyed").output()).isEqualTo("done");
     }
 
@@ -150,13 +149,13 @@ class RetentionFollowsTheReaderTest {
         ExecutionStore store = store();
         ExecutionRecord execution = new ExecutionRecord("failed", task("failed", InvocationKind.SYNC, null, 1));
         execution.markRunning();
-        execution.markError(new it.unimib.datai.nanofaas.common.model.ErrorInfo("BOOM", "esploso"));
+        execution.markError(new it.unimib.datai.nanofaas.common.model.ErrorInfo("BOOM", "blew up"));
         store.put(execution);
         store.settle(execution);
 
         Outcome outcome = store.outcomeOf("failed");
-        // Due stringhe: l'unica cosa che ha senso rileggere se la connessione e'
-        // caduta prima del corpo della risposta.
+        // Two strings: the only thing worth re-reading if the connection dropped before
+        // the response body.
         assertThat(outcome.error().code()).isEqualTo("BOOM");
         assertThat(outcome.startedAt()).isNotNull();
         assertThat(outcome.finishedAt()).isNotNull();

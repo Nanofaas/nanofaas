@@ -18,12 +18,12 @@ import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.sli
 @AnalyzeClasses(packages = "it.unimib.datai.nanofaas.controlplane..")
 class CoreArchitectureTest {
 
-    // R1: il core non deve contenere cicli tra i suoi package top-level.
+    // R1: the core must contain no cycles between its top-level packages.
     @ArchTest
     static final ArchRule core_packages_are_free_of_cycles =
             slices().matching("..controlplane.(*)..").should().beFreeOfCycles();
 
-    // R2: api è l'entry point: le classi fuori da api non devono dipendere da api.
+    // R2: api is the entry point: classes outside api must not depend on api.
     @ArchTest
     static final ArchRule api_is_the_only_entry_point =
             noClasses()
@@ -31,7 +31,7 @@ class CoreArchitectureTest {
                     .should().dependOnClassesThat().resideInAPackage("..controlplane.api..")
                     .as("the api layer is the entry point: lower layers must not reach back into it");
 
-    // R3: il core non dipende mai dai moduli (optionalità SPI: il core funziona senza).
+    // R3: the core never depends on the modules (SPI optionality: the core works without them).
     @ArchTest
     static final ArchRule core_does_not_depend_on_modules =
             noClasses()
@@ -39,7 +39,7 @@ class CoreArchitectureTest {
                     .should().dependOnClassesThat().resideInAPackage("..modules..")
                     .as("the core must work without optional modules (SPI)");
 
-    // R4: la direzione è api -> service -> dispatch: i layer bassi non risalgono a service.
+    // R4: the direction is api -> service -> dispatch: lower layers must not reach back into service.
     @ArchTest
     static final ArchRule lower_layers_do_not_depend_on_service =
             noClasses()
@@ -50,8 +50,8 @@ class CoreArchitectureTest {
                     .should().dependOnClassesThat().resideInAPackage("..controlplane.service..")
                     .as("dispatch, execution and deployment must not depend on service");
 
-    // R6: il namespace controlplane appartiene al core — le classi che vi risiedono
-    // devono avere il class file sotto platform/control-plane/.
+    // R6: the controlplane namespace belongs to the core — classes residing in it must
+    // have their class file under platform/control-plane/.
     @ArchTest
     static final ArchRule controlplane_namespace_is_owned_by_core =
             classes()

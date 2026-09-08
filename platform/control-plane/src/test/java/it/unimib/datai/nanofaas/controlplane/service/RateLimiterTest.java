@@ -95,7 +95,7 @@ class RateLimiterTest {
     @SuppressWarnings("java:S2925") // deliberate delay to spread concurrent calls across the 1s window: rate-limit semantics depend on real time
     /**
      * Regression coverage for the concurrent defect called out at the end of
-     * docs/control-plane-review-2026-09-05.md ("Un ulteriore difetto concorrente e' in
+     * docs/control-plane-review-2026-09-05.md ("A further concurrency defect is in
      * RateLimiter.allow"), originally verified there only by reading the source and first
      * reproduced by task A0. The defect was that {@link RateLimiter#allow()} updated the
      * window and reset the counter as two separate, non-atomic operations:

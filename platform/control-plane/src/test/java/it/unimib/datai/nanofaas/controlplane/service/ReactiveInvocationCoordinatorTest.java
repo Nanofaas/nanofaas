@@ -54,9 +54,9 @@ class ReactiveInvocationCoordinatorTest {
 
         coordinator.invoke(lookup, spec, 50).block();
 
-        // Il dispatch tiene ancora uno slot di concorrenza, e chi lo restituisce e'
-        // il completamento, che cerca il record fra i vivi. Archiviarlo qui lo
-        // renderebbe irreperibile e lo slot resterebbe preso per sempre.
+        // The dispatch still holds a concurrency slot, and the one that gives it back is
+        // the completion, which looks for the record among the living. Archiving it here
+        // would make it unreachable and the slot would stay taken forever.
         assertThat(executionStore.getOrNull(executionId)).isNotNull();
         assertThat(executionStore.outcomeOf(executionId)).isNull();
     }

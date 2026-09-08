@@ -147,24 +147,23 @@ public class ExecutionRecord {
     }
 
     /**
-     * L'esito da archiviare, applicando la regola del lettore.
+     * The outcome to archive, applying the reader rule.
      *
-     * <p>Se qualcuno puo' ancora chiedere il risultato - un chiamante ASYNC, che
-     * dell'esecuzione ha solo l'id, o un retry che replica una chiave di
-     * idempotenza - l'esito e' completo: {@code ReactiveInvocationCoordinator}
-     * legge {@code output} per servire quel replay, e servirlo vuoto sarebbe la
-     * doppia esecuzione che la chiave esiste per impedire.
+     * <p>If anyone can still ask for the result - an ASYNC caller, who holds nothing
+     * but the execution's id, or a retry replaying an idempotency key - the outcome is
+     * complete: {@code ReactiveInvocationCoordinator} reads {@code output} to serve that
+     * replay, and serving it empty would be the double execution the key exists to
+     * prevent.
      *
-     * <p>Altrimenti il payload non viene trattenuto affatto. Un chiamante sincrono
-     * senza chiave l'ha gia' ricevuto nel corpo della risposta di {@code :invoke}:
-     * tenerne una seconda copia costa 4.916 byte per record con una risposta da
-     * 4 KB, contro i 116 di questo esito. L'errore resta sempre - due stringhe -
-     * perche' e' l'unica cosa che ha senso rileggere se la connessione e' caduta
-     * prima del corpo.
+     * <p>Otherwise the payload is not retained at all. A synchronous caller without a
+     * key has already received it in the body of the {@code :invoke} response: keeping a
+     * second copy costs 4,916 bytes per record with a 4 KB response, against the 116 of
+     * this outcome. The error is always kept - two strings - because it is the only thing
+     * worth re-reading if the connection dropped before the body.
      *
-     * <p>Legge i campi direttamente invece di passare da {@link #snapshot()}: il
-     * percorso di completamento non alloca uno Snapshot, e non e' il caso di
-     * cominciare adesso per poi buttarlo via subito dopo.
+     * <p>Reads the fields directly instead of going through {@link #snapshot()}: the
+     * completion path allocates no Snapshot, and there is no reason to start now only to
+     * throw it away immediately afterwards.
      */
     public synchronized Outcome toOutcome() {
         return new Outcome(

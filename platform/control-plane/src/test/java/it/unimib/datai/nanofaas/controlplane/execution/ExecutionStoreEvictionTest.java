@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** La meccanica delle due strutture: chi sta dove, e quando se ne va. */
+/** The mechanics of the two structures: what sits where, and when it leaves. */
 class ExecutionStoreEvictionTest {
 
     private static final Duration TTL = Duration.ofMinutes(5);
@@ -61,8 +61,8 @@ class ExecutionStoreEvictionTest {
 
         store.settle(execution);
 
-        // E' questo il punto di tutto il lavoro: l'apparato del vivo - la future,
-        // il task, la richiesta, il set dei tentativi - smette di essere raggiungibile.
+        // This is the point of the whole exercise: the apparatus of the living - the
+        // future, the task, the request, the set of attempts - stops being reachable.
         assertThat(store.getOrNull("done")).isNull();
         assertThat(store.outcomeOf("done")).isNotNull();
         assertThat(store.inFlightCount()).isZero();
@@ -84,8 +84,8 @@ class ExecutionStoreEvictionTest {
 
     @Test
     void settleIsIdempotent() {
-        // Le sedi che la chiamano sono nove su tre moduli, e alcune si sovrappongono:
-        // un dispatch che completa dopo che il percorso sincrono e' gia' andato in timeout.
+        // There are nine call sites across three modules, and some of them overlap: a
+        // dispatch that completes after the sync path has already timed out.
         ExecutionStore store = store();
         ExecutionRecord execution = executionRecord("twice");
         store.put(execution);
@@ -100,7 +100,7 @@ class ExecutionStoreEvictionTest {
     @Test
     void aStuckRecordExpiresAfterMaxLifetime() {
         ExecutionStore store = store();
-        store.put(executionRecord("stuck-queued")); // non transita mai: dispatch perso
+        store.put(executionRecord("stuck-queued")); // never transitions: lost dispatch
 
         advance(MAX_LIFETIME.plusSeconds(1));
 
@@ -119,9 +119,8 @@ class ExecutionStoreEvictionTest {
 
     @Test
     void theOutcomeCapBoundsMemoryWhereTheClockCannot() {
-        // La ritenzione dichiarata nel tempo lascia crescere la memoria col tasso
-        // di arrivo: e' cosi' che il 2026-08-23 si arrivo' a 1,05 GB. Il tetto in
-        // numero e' la manopola che allora non esisteva.
+        // Retention declared in time lets memory grow with the arrival rate: that is how
+        // 2026-08-23 reached 1.05 GB. The capacity cap is the knob that did not exist then.
         ExecutionStore store = store(ExecutionStoreProperties.of(TTL, MAX_LIFETIME, SYNC_TTL, 10));
 
         for (int i = 0; i < 500; i++) {
@@ -131,10 +130,10 @@ class ExecutionStoreEvictionTest {
             store.settle(execution);
         }
 
-        // Il tetto e' in BYTE (10 esiti compatti di budget), quindi il numero trattenuto
-        // segue il peso del singolo esito invece di essere esattamente 10. Cio' che il
-        // test afferma - che il tetto limita la memoria dove l'orologio non arriva -
-        // vale comunque: 500 inserimenti, una dozzina trattenuti.
+        // The cap is in BYTES (a budget of 10 compact outcomes), so the number retained
+        // follows the weight of the individual outcome instead of being exactly 10. What
+        // the test asserts - that the cap bounds memory where the clock cannot - holds
+        // regardless: 500 insertions, about a dozen retained.
         assertThat(store.size()).isLessThanOrEqualTo(15);
     }
 

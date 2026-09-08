@@ -6,19 +6,17 @@ import java.time.Instant;
 import java.util.Map;
 
 /**
- * Cio' che resta di un'esecuzione finita, e nient'altro.
+ * What is left of a finished execution, and nothing else.
  *
- * <p>Un {@link ExecutionRecord} terminale trattiene 35 oggetti e 1.330 byte
- * (misurati il 2026-08-26 su 200.000 record): la future, il task, la richiesta,
- * cinque {@link Instant}, un {@code HashSet} per contenere {@code {0}}. Ne serve
- * uno solo, e per due soli motivi: rispondere a {@code GET /v1/executions/{id}} e
- * servire il replay di una chiave di idempotenza. Questo record e' esattamente
- * quei due motivi: 4 oggetti, 116 byte.
+ * <p>A terminal {@link ExecutionRecord} retains 35 objects and 1,330 bytes (measured
+ * on 2026-08-26 over 200,000 records): the future, the task, the request, five
+ * {@link Instant}s, a {@code HashSet} to hold {@code {0}}. Only one is needed, and for
+ * only two reasons: answering {@code GET /v1/executions/{id}} and serving the replay of
+ * an idempotency key. This record is exactly those two reasons: 4 objects, 116 bytes.
  *
- * <p>I tempi sono {@code long} e non {@code Instant} perche' cinque oggetti per
- * record, moltiplicati per le centinaia di migliaia che lo store tiene in volo,
- * sono la meta' del suo peso. Zero significa assente: nessuna esecuzione comincia
- * davvero all'epoch.
+ * <p>The times are {@code long} and not {@link Instant} because five objects per record,
+ * multiplied by the hundreds of thousands the store keeps in flight, are half its weight.
+ * Zero means absent: no execution really begins at the epoch.
  */
 public record Outcome(
         ExecutionState state,
@@ -33,10 +31,10 @@ public record Outcome(
         boolean coldStart,
         boolean readable
 ) {
-    /** Nessuno status HTTP e' 0, e nessuna esecuzione inizia all'epoch. */
+    /** No HTTP status is 0, and no execution begins at the epoch. */
     static final int NO_STATUS = 0;
     static final long ABSENT = 0L;
-    /** -1, non 0: una init da 0 ms e' un valore legittimo. */
+    /** -1, not 0: a 0 ms init is a legitimate value. */
     static final long NO_INIT = -1L;
 
     static long epochMilli(Instant instant) {
