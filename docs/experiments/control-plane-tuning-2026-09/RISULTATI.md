@@ -423,3 +423,80 @@ Una sola macchina, un solo scenario, tre ripetizioni. Non copre i profili ASYNC,
 il replay con chiavi, i payload piccoli, gli errori/retry, né il soak che
 attraversa le finestre di ritenzione — tutte righe che §8 elenca e che restano
 da fare.
+
+---
+
+## Esperimento A — quanta RAM serve adesso
+
+Ripresa dell'esperimento A del piano precedente
+(`docs/plans/2026-09-04-overload-path-fixes.md`), stavolta come confronto
+baseline-contro-candidato sulla **stessa macchina**. Dati in `raw/expA-memory/`.
+
+Scenari `runtime-comparison-mem{512,1024}`, variante `jvm-c2`, 3 ripetizioni per
+cella, Multipass + k3s sulla DGX Spark. CPU fissata a 2 core dallo scenario per
+isolare l'asse memoria dal ginocchio CPU.
+
+### Risultato principale: 512 MB non bastano, e non è nuovo
+
+A 512 MB il control plane viene **`OOMKilled`** — verificato direttamente sul
+pod: `Last State: Terminated / Reason: OOMKilled / Exit Code: 137`,
+`Restart Count: 6`, limite `512Mi`. Non un'inferenza dai tempi di uptime.
+
+| | fallimenti k6 | uptime a fine run |
+|---|---|---|
+| baseline `e35405ee` @512 | 3,0% · 10,6% · 42,6% | 169 / 140 / 223 s |
+| candidato @512 | 17,9% · 35,4% · 25,0% | 74 / 50 / 103 s |
+| baseline @1024 | 0% · 0% · 0% | 508 / 1023 / 1543 s |
+| candidato @1024 | 2,9% · 0% · 0% | 515 / 1040 / 1565 s |
+
+**Entrambe le revisioni muoiono a 512 MB**, con intervalli di fallimento
+sovrapposti. Non è una regressione del branch: la campagna precedente mostrava
+già uptime di 48–170 s a quel tetto, cioè gli stessi riavvii, mai registrati
+come tali.
+
+### Il throughput identico non significa "va bene"
+
+Le due celle riportano 435,1 req/s entrambe. È un profilo **open-loop**: quella è
+la frequenza *offerta* dal generatore, non quella servita. Il segnale vero è il
+tasso di fallimento.
+
+### Una trappola nei dati, segnalata perché è facile caderci
+
+`function_success_total.delta` dà −91% per mem512, che è **falso**: il contatore
+si azzera a ogni riavvio del pod. Con throughput identico e zero errori registrati
+quel numero era incompatibile, e il controllo incrociato con `http_reqs` lo ha
+smascherato. Ogni metrica cumulativa del control plane è inaffidabile su un run
+in cui il processo riparte.
+
+### Il consumo di RAM è cresciuto? Non lo sappiamo
+
+A 1024 MB, dove nessuno dei due bracci muore:
+
+| metrica | baseline | candidato | delta mediana |
+|---|---|---|---|
+| heap min MB | 49,9 [38,6–73,2] | 177,5 [42,5–345,0] | +256% |
+| heap finale MB | 249 [135–457] | 441 [287–582] | +77% |
+| heap max MB | 466 [266–486] | 488 [483–641] | +5% |
+| CPU max | 0,38 | 0,36 | −6% |
+
+Le mediane puntano in alto, ma **la dispersione le divora**: l'intervallo del
+candidato contiene interamente quello della baseline. E `heap min` è il minimo
+dei campioni scrapati, quindi un proxy rumoroso del live set.
+
+Indizio contrario: se il candidato avesse bisogno di più memoria, a 512 MB
+dovrebbe fallire distintamente prima della baseline. Non lo fa.
+
+**Registrato come domanda aperta in
+[#207](https://github.com/miciav/nanofaas/issues/207)**, con il disegno del soak
+che la risolverebbe: ~90 minuti per braccio per attraversare più volte le
+finestre di ritenzione (`ttl 5m`, `max-lifetime 30m`), campionando l'heap **dopo
+GC forzata** invece del minimo scrapato, più i contatori dello store e l'RSS del
+container.
+
+### Esperimento B: non eseguito
+
+`runtime-comparison-cpu1` con 4 varianti (`jvm`, `jvm-c2`, `jvm-loop1`,
+`jvm-c2-loop1`) × 3 ripetizioni = 12 celle, ognuna con build di immagine nella
+VM. Le varianti `*-loop1` che la vecchia `queue.tsv` segnalava come assenti da
+NanoLab **ora esistono** (`control_plane_variants.py`), quindi il blocco è
+rimosso: resta solo il costo.
