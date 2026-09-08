@@ -313,3 +313,96 @@ Full control-plane suite (run once before commit):
 
 - P03 — atomic idempotency-key budget, then P04 (single terminal owner / dedup; closes the R2 window
   the declined payload leaves), P05 (activate R3 waiter-timeout + offload finalization).
+
+## P03 — Atomic idempotency-key budget (this entry)
+
+**ID:** P03 — make `maxKeys` an atomic admission reservation, not a check-then-insert (finding R7).
+
+**Revision / git state**
+
+- Branch: `control-plane-lifecycle-memory`.
+- HEAD at the time of this entry (BASE for P03): `7828641b` (P02 commit).
+
+**Files changed**
+
+- `platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStore.java`
+  — the budget is now an atomic reservation. `acquireOrGet` reserves a slot with a CAS on an
+  `AtomicLong` (`occupied`) before inserting a new binding, instead of `size() >= maxKeys` then
+  `putIfAbsent`. A claim that loses the `putIfAbsent` race returns its reservation and re-reads.
+  Every entry owns exactly one slot, tied to the composed key, released exactly once: the Caffeine
+  removal listener releases on `EXPIRED` only (its notifications for explicit remove/replace are
+  buffered, not synchronous), while `abandonClaim` and `clear()` release in code. `put` (insertion
+  helper) reserves for a new key and throws `IllegalStateException` at cap. Added
+  `Scheduler.systemScheduler()` so expired entries evict (and release their slot) without traffic.
+  New unlabeled metrics: `idempotency_keys_held` now reads the reservation counter (no `cleanUp()`
+  on the scrape path) and a new `idempotency_key_budget_rejections` FunctionCounter.
+- `platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyKeyBudgetTest.java`
+  (new) — 7 tests: same-key concurrent claims → one owner; concurrent abandon+expiry never make the
+  quota negative and free slots for new claims; replay at saturation; replace/reclaim of one
+  association never double-consumes; abandon releases once and the slot is reusable; shutdown
+  releases every slot; refusals are counted unlabeled.
+- `docs/experiments/lifecycle-memory-2026-09/STATO.md` (this file, appended).
+
+**Test commands and outcomes**
+
+R7 regression, RED on baseline (P00 established `claimed 16 (expected 1)` with `maxKeys=1`):
+
+```bash
+./gradlew :control-plane:test --tests '*R7KeyBudgetAtomicityRegressionTest'
+# RED on baseline: 1 failed — AssertionFailedError (16 distinct claims admitted, expected 1)
+# GREEN after P03: BUILD SUCCESSFUL
+```
+
+New budget tests plus the surrounding store/lifetime tests:
+
+```bash
+./gradlew :control-plane:test \
+  --tests '*R7KeyBudgetAtomicityRegressionTest' \
+  --tests '*IdempotencyKeyBudgetTest' \
+  --tests '*IdempotencyStoreTest' \
+  --tests '*IdempotencyKeyLifetimeTest'
+# 27 tests completed, 0 failed
+```
+
+Full control-plane suite (run once before commit):
+
+```bash
+./gradlew :control-plane:test --no-parallel
+# 565 tests completed, 6 failed, 3 skipped — the 6 failures are the still-red P00 regressions
+# for R2/R3/R4/R8 (x2) and direct admission (owned by P04–P10), none new from P03. R7 is green.
+```
+
+**Impact**
+
+- `node .gitnexus/run.cjs impact "IdempotencyStore" --direction upstream --repo .` → ambiguous (13
+  symbols, including the decompiled staging snapshot); the platform path resolves to CRITICAL
+  (`riskSharedAxes: LOW`), 23 impacted, direct callers `InvocationService` (constructor) and
+  `InvocationExecutionFactory` (`ExecutionLookup`, `createClaimedRecord`). Confirmed by text search:
+  the only production callers are `InvocationService` and `InvocationExecutionFactory`; the specific
+  methods changed (`acquireOrGet`, `claimIfMatches`, `publishClaim`, `abandonClaim`, `markTerminal`,
+  `put`) are called only by `InvocationExecutionFactory` and tests.
+- `node .gitnexus/run.cjs impact "InvocationExecutionFactory" --direction upstream --repo .` →
+  CRITICAL (`riskSharedAxes: MEDIUM`), 13 impacted, direct `InvocationService` constructor.
+  `InvocationExecutionFactory` itself was NOT modified by P03 (the budget change is internal to
+  `IdempotencyStore`), so the CRITICAL is the store's own, not a new edit risk.
+- `node .gitnexus/run.cjs detect-changes --scope all --repo .` → 3 files / 27 symbols, risk `medium`;
+  affected flows `acquireOrGet`, `claimIfMatches`, `publishClaim`. The listing includes the
+  pre-existing overload-path `STATO.md` (not committed) because the index lags HEAD.
+
+**Measures / observations**
+
+- The Caffeine removal listener is NOT synchronous for explicit removals: `asMap().remove(key,value)`
+  and `invalidateAll()` buffer their `EXPLICIT` notification and flush it later, while `EXPIRED` is
+  flushed synchronously by `cleanUp()`. Verified with a standalone probe (Caffeine 3.2.3). The design
+  therefore releases in code for `abandonClaim`/`clear()` and lets the listener own only `EXPIRED`,
+  so no slot is released twice and none is missed.
+- `idempotency_keys_held` now reads the reservation counter instead of `size()` (which called
+  `cleanUp()` on the scrape path); `idempotency_key_budget_rejections` is a plain, unlabeled counter.
+- The one-off flaky full-suite run (a custom-ticker + scheduler maintenance race in the expiry
+  observation, not a reservation bug) was made deterministic by draining expired entries with a
+  bounded maintenance poll; no `sleep` is used as proof of ordering.
+
+**Next step**
+
+- P04 — single terminal owner / dedup (closes the R2 window the declined payload leaves), then P05
+  (activate R3 waiter-timeout + offload finalization).

@@ -3,9 +3,13 @@ package it.unimib.datai.nanofaas.controlplane.execution;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.Expiry;
+import com.github.benmanes.caffeine.cache.RemovalCause;
+import com.github.benmanes.caffeine.cache.Scheduler;
 import com.github.benmanes.caffeine.cache.Ticker;
+import io.micrometer.core.instrument.FunctionCounter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -15,6 +19,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * The binding between an idempotency key and the execution that answers for it.
@@ -38,17 +43,43 @@ import java.util.concurrent.ConcurrentMap;
  * exists, and a key that expires before its outcome silently runs the function
  * twice — exactly the failure the key exists to prevent.
  *
- * <p>The number of keys is bounded by {@code maxKeys}. With the budget exhausted a
- * <b>new</b> keyed admission is refused ({@code acquireOrGet} does not claim), but
- * replays of keys already held stay servable: the cap never evicts a live key to
- * make room for a new one, or a later byte budget could silently evict the
- * deduplication guarantee itself.
+ * <p>The number of keys is bounded by {@code maxKeys}. The budget is an <b>atomic
+ * reservation</b>, not a size read: a new claim reserves its slot before it creates
+ * a binding, so distinct keys cannot all observe spare capacity and then all insert
+ * (finding R7). A claim that loses its insert race returns the reservation. Replays
+ * of a key already held never touch the budget, so saturation never blocks them,
+ * and the cap never evicts a live key to make room for a new one either.
+ *
+ * <p>Every entry owns exactly one slot, tied to the entry's identity (the composed
+ * key), not to any one of its states. A pending→published→terminal transition
+ * replaces the value in place and keeps the same slot; the slot returns to the
+ * budget exactly once, when the entry finally leaves the cache — explicit remove,
+ * abandon, expiry or shutdown. The Caffeine removal listener releases the slot on
+ * expiry only (its notifications are otherwise buffered, not synchronous); explicit
+ * removals release in code, so a replacement is never a release and no slot is ever
+ * returned twice.
  */
 @Component
 public class IdempotencyStore {
     private final Cache<String, StoredKey> cache;
     private final ConcurrentMap<String, StoredKey> keys;
     private final long maxKeys;
+
+    /**
+     * How many slots are reserved right now: entries in the cache plus claims that
+     * have reserved but not yet inserted. Incremented by {@link #reserve()} before a
+     * new binding is created; decremented by {@link #releaseOne()} when a claim loses
+     * its insert race or an explicit remove happens in code, and by the removal
+     * listener when an entry expires. This counter — not a {@code size()} read — is
+     * what {@link #acquireOrGet} compares against {@code maxKeys}.
+     */
+    private final AtomicLong occupied = new AtomicLong();
+
+    /**
+     * How many new keyed admissions were refused because the budget was exhausted.
+     * A plain counter, exposed without labels for execution id or user key.
+     */
+    private final AtomicLong rejections = new AtomicLong();
 
     public IdempotencyStore() {
         this(ExecutionStoreProperties.of(null, null, null));
@@ -57,10 +88,16 @@ public class IdempotencyStore {
     @Autowired
     public IdempotencyStore(ExecutionStoreProperties executions, MeterRegistry registry) {
         this(executions);
-        // Whether keys are released on schedule is otherwise invisible until the heap
-        // says so: a run at 843 requests a second with 5% of them keyed files roughly
-        // 19,000. A supplier gauge, read at scrape time, nothing on the invocation path.
-        Gauge.builder("idempotency_keys_held", this::size).register(registry);
+        // Occupancy and refusals are otherwise invisible until the heap says so. A
+        // supplier gauge, read at scrape time, nothing on the invocation path. Both
+        // read the reservation counter directly: no cleanUp() of the whole cache, and
+        // no labels that would leak an execution id or a user key.
+        Gauge.builder("idempotency_keys_held", occupied, AtomicLong::doubleValue)
+                .description("Number of idempotency-key slots currently reserved")
+                .register(registry);
+        FunctionCounter.builder("idempotency_key_budget_rejections", rejections, AtomicLong::doubleValue)
+                .description("Idempotency-key admissions refused because the key budget was exhausted")
+                .register(registry);
     }
 
     /** Test convenience: one lifetime for both the live and terminal phases. */
@@ -78,7 +115,7 @@ public class IdempotencyStore {
         long terminalNanos = executions.ttl().toNanos();
         // Per state, not one duration: a published key lives as long as the execution
         // can (maxLifetime), a terminal one as long as the outcome stays readable (ttl).
-        // expireAfterUpdate ricomputa al passaggio di stato, cosi' markTerminal riparte
+        // expireAfterUpdate recomputes on the state transition, so markTerminal restarts
         // the clock from completion instead of inheriting the rest of the live phase.
         this.cache = Caffeine.newBuilder()
                 .expireAfter(new Expiry<String, StoredKey>() {
@@ -97,7 +134,23 @@ public class IdempotencyStore {
                         return currentDuration;
                     }
                 })
+                // Expired entries are evicted on a maintenance schedule, not only when
+                // someone happens to touch them: a slot abandoned by a key nobody replays
+                // must return to the budget without waiting for traffic on that same key.
+                // The removal listener then releases each evicted entry's slot exactly once.
+                .scheduler(Scheduler.systemScheduler())
                 .ticker(ticker)
+                .removalListener((String key, StoredKey value, RemovalCause cause) -> {
+                    // The listener handles ONLY expiry. Its notifications for an explicit
+                    // remove or a replace are buffered, not synchronous, so those paths
+                    // release in code (abandonClaim, clear) or are not a release at all
+                    // (REPLACED: the same entry lives on in another state). Expiry has no
+                    // code path of its own, so the listener is its one release; it is
+                    // flushed by cleanUp() and by the scheduler's maintenance.
+                    if (cause == RemovalCause.EXPIRED && value != null) {
+                        occupied.decrementAndGet();
+                    }
+                })
                 .build();
         this.keys = cache.asMap();
     }
@@ -114,32 +167,59 @@ public class IdempotencyStore {
         return Optional.of(stored.executionId());
     }
 
+    /**
+     * Inserts a published binding directly. A <b>new</b> key reserves its slot first,
+     * like every other insertion path, so every entry owns exactly one slot and the
+     * removal listener can release it exactly once. Replacing an existing key keeps
+     * the slot ({@code REPLACED} is not a release).
+     */
     public void put(String functionName, String key, String executionId) {
-        keys.put(compose(functionName, key), StoredKey.published(executionId));
+        String composed = compose(functionName, key);
+        while (true) {
+            StoredKey existing = keys.get(composed);
+            if (existing != null) {
+                StoredKey published = StoredKey.published(executionId);
+                if (keys.replace(composed, existing, published)) {
+                    return;
+                }
+                continue;
+            }
+            if (!reserve()) {
+                throw new IllegalStateException("Idempotency key budget of " + maxKeys + " is exhausted");
+            }
+            if (keys.putIfAbsent(composed, StoredKey.published(executionId)) == null) {
+                return;
+            }
+            releaseOne();
+        }
     }
 
     public AcquireResult acquireOrGet(String functionName, String key) {
         String composed = compose(functionName, key);
         while (true) {
             StoredKey existing = keys.get(composed);
-            if (existing == null) {
-                // The budget is checked BEFORE claiming, and never by evicting a live key:
-                // with the budget exhausted a new keyed admission is refused, while replays
-                // of keys already held keep finding their outcome.
-                if (size() >= maxKeys) {
-                    return AcquireResult.budgetExhausted();
+            if (existing != null) {
+                if (existing.pending()) {
+                    return AcquireResult.pending();
                 }
-                String token = pendingToken();
-                StoredKey pending = StoredKey.pending(token);
-                if (keys.putIfAbsent(composed, pending) == null) {
-                    return AcquireResult.claimed(token);
-                }
-                continue;
+                return AcquireResult.existing(existing.executionId(), existing.terminal());
             }
-            if (existing.pending()) {
-                return AcquireResult.pending();
+            // Reserve the slot atomically BEFORE creating a new binding. The old
+            // check-then-insert of a size() read is gone: N distinct keys cannot all
+            // observe spare capacity and then all insert, because at most maxKeys
+            // reservations succeed. The reservation is returned if the putIfAbsent below
+            // loses a race to a concurrent claimant (whose entry already owns the slot).
+            if (!reserve()) {
+                rejections.incrementAndGet();
+                return AcquireResult.budgetExhausted();
             }
-            return AcquireResult.existing(existing.executionId(), existing.terminal());
+            String token = pendingToken();
+            StoredKey pending = StoredKey.pending(token);
+            if (keys.putIfAbsent(composed, pending) == null) {
+                return AcquireResult.claimed(token);
+            }
+            releaseOne();
+            // Lost the race: an association now exists; the loop re-reads it.
         }
     }
 
@@ -153,7 +233,8 @@ public class IdempotencyStore {
      *
      * <p>The CAS on {@code keys.replace} is the real guard: if the binding changed
      * between the read and the replace (a transition to terminal included), the
-     * replace fails and the loop re-reads.
+     * replace fails and the loop re-reads. Re-claiming replaces the value in place,
+     * so it is the same association and does not consume a second slot.
      */
     public AcquireResult claimIfMatches(String functionName, String key, String expectedExecutionId) {
         String composed = compose(functionName, key);
@@ -194,7 +275,12 @@ public class IdempotencyStore {
         String composed = compose(functionName, key);
         StoredKey existing = keys.get(composed);
         if (existing != null && existing.pending() && existing.executionId().equals(claimToken)) {
-            keys.remove(composed, existing);
+            // The removal listener is not synchronous for an explicit remove, so the slot
+            // is released here, exactly once, in the same step that removes the entry.
+            // (A claim already evicted for expiry was released by the EXPIRED listener.)
+            if (keys.remove(composed, existing)) {
+                releaseOne();
+            }
         }
     }
 
@@ -238,12 +324,51 @@ public class IdempotencyStore {
         return keys.size();
     }
 
+    /** How many slots are reserved right now. Package-private: for the tests in this package. */
+    long occupied() {
+        return occupied.get();
+    }
+
+    /** How many new keyed admissions have been refused. Package-private: for the tests in this package. */
+    long rejections() {
+        return rejections.get();
+    }
+
+    /**
+     * Empties the store and returns every slot to the budget. This is the shutdown /
+     * drain hook: after it, nothing is occupied and new claims are admitted again.
+     * The removal listener does not fire synchronously for {@code invalidateAll()},
+     * so the counter is reset here, in the same step that discards the entries.
+     */
+    @PreDestroy
+    public void clear() {
+        cache.invalidateAll();
+        occupied.set(0);
+    }
+
     private String compose(String functionName, String key) {
         return functionName + ":" + key;
     }
 
     private String pendingToken() {
         return "pending:" + Instant.now().toEpochMilli() + ":" + System.nanoTime();
+    }
+
+    /** Atomically reserves one slot if any is left; false once the budget is exhausted. */
+    private boolean reserve() {
+        while (true) {
+            long current = occupied.get();
+            if (current >= maxKeys) {
+                return false;
+            }
+            if (occupied.compareAndSet(current, current + 1)) {
+                return true;
+            }
+        }
+    }
+
+    private void releaseOne() {
+        occupied.decrementAndGet();
     }
 
     public record AcquireResult(State state, String executionIdOrToken, boolean terminal) {
