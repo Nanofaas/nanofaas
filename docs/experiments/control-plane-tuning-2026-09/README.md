@@ -1,84 +1,80 @@
-# Campagna: tuning guidato dalle misure (piano §6, attività T1–T4)
+# Campaign: measurement-driven tuning (plan §6, activities T1–T4)
 
-Campagna della fase 4 del piano
+Phase-4 campaign of the plan
 `docs/plans/2026-09-05-control-plane-correctness-and-performance.md`.
-Non sovrascrive `overload-path-2026-09`, che resta la campagna precedente.
+It does not overwrite `overload-path-2026-09`, which remains the earlier campaign.
 
-## Cosa misura, e cosa NO
+## What it measures, and what it does NOT
 
-Il piano §6 chiede, per ogni attività T, **prima un profilo e un confronto
-isolato**; §8 chiede in aggiunta una campagna end-to-end su infrastruttura
-condivisa, con raccolta Prometheus e workflow *compare* di NanoLab.
+Plan §6 asks each T activity for **a profile and an isolated comparison first**;
+§8 additionally asks for an end-to-end campaign on shared infrastructure, with
+Prometheus collection and NanoLab's *compare* workflow.
 
-Questa campagna copre **solo il primo**: confronti isolati, in-JVM, sulla
-macchina di sviluppo. È deliberato e va dichiarato leggendo i numeri.
+This campaign covers **both**, in that order — but the isolated comparisons are
+in-JVM on the development machine, and that is deliberate and must be stated when
+reading the numbers.
 
-| | Coperto qui | Dove va fatto |
+| | Covered here | Where it belongs |
 |---|---|---|
-| Profilo e confronto isolato di un intervento | sì | qui |
-| Matrice end-to-end, 3 ripetizioni/braccio, ordine alternato | no | NanoLab (§8) |
-| Raccolta Prometheus, p99 lato client, CPU/allocazioni per successo | no | NanoLab (§8) |
-| Soak che attraversa le finestre di ritenzione | no | NanoLab (§8) |
+| Profile and isolated comparison of an intervention | yes | here |
+| End-to-end matrix, 3 repetitions/arm, alternated order | yes, one scenario | NanoLab (§8) |
+| Prometheus collection, client-side p99, CPU/allocations per success | partial | NanoLab (§8) |
+| Soak crossing the retention windows | no | NanoLab (§8), see issue #207 |
 
-**Correzione (2026-09-07).** La prima stesura di questo README diceva che
-NanoLab non fosse disponibile. Era falso, e l'errore merita di restare scritto:
-il controllo era `ls ../nanolab` eseguito con la working directory dentro il
-*worktree*, dove risolve a `.claude/worktrees/nanolab`. Il `../nanolab` di
-CLAUDE.md presuppone la root del repo. NanoLab sta in
-`/home/michele/Documenti/nanolab`, funziona, e ha il comando `compare` con
-`--repetitions 3` di default — esattamente ciò che §8 prescrive. Anche Multipass
-è installato, quindi la riga Kubernetes di §7 è eseguibile.
+**Correction (2026-09-07).** The first draft of this README said NanoLab was not
+available, and concluded that §8 and §7's Kubernetes row were not executable
+here. Both were wrong. The check was `ls ../nanolab` run with the working
+directory inside the *worktree*, where it resolves to `.claude/worktrees/nanolab`;
+CLAUDE.md's `../nanolab` assumes the repo root. It lives at
+`/home/michele/Documenti/nanolab`, works, and exposes `compare` with
+`--repetitions 3` by default — exactly what §8 prescribes. Multipass is installed
+too. The error is kept here rather than quietly fixed.
 
-Resta vero che manca `k6` (non sul PATH né nel checkout), usato da alcuni
-scenari `concurrency-openloop-*`; e resta vera la distinzione di metodo: questi
-banchi sono confronti isolati in-JVM, non misure end-to-end.
+A procedural note for whoever continues: `compare` varies *build flavours* of one
+checkout. The baseline-versus-candidate comparison §8 asks for — two code
+revisions — needs two `run` invocations instead, which is what
+`compare-baseline-candidate.sh` does.
 
-Una nota di procedura per chi continuerà: `compare` confronta *varianti di build*
-(jvm, g1, c2, native) dello stesso checkout. Per il confronto che §8 chiede fra
-**baseline e candidato** — due revisioni del codice — servono due esecuzioni di
-`run` su due revisioni, non un `compare`.
+## The machine
 
-## La macchina
-
-Tutte le misure di questa campagna vengono da **una sola macchina**, una NVIDIA
-DGX Spark:
+Every measurement in this campaign comes from **one machine**, an NVIDIA DGX Spark:
 
 | | |
 |---|---|
-| architettura | aarch64 (ARM) |
-| CPU | 20 core, Cortex-X925 + Cortex-A725 |
-| memoria | 121 GB |
+| architecture | aarch64 (ARM) |
+| CPU | 20 cores, Cortex-X925 + Cortex-A725 |
+| memory | 121 GB |
 | OS / kernel | Ubuntu 24.04.4 LTS, Linux 6.17.0-nvidia |
 | Docker | 29.2.1 (arm64) |
 
-Va detto per due motivi, e nessuno dei due è formale.
+Worth stating for two reasons, neither of them ceremonial.
 
-**Non è x86.** Nessuno di questi numeri è direttamente confrontabile con una CI
-o un runner x86: cambiano i tempi assoluti e cambia il costo relativo di JIT,
-allocazione e syscall.
+**It is not x86.** None of these numbers transfers directly to a CI runner or an
+x86 host: absolute timings change, and so does the relative cost of JIT,
+allocation and syscalls.
 
-**È veloce.** I core X925 sono di fascia alta, e questo ha già cambiato l'esito
-di un esperimento: `concurrency-cycle-container` non riusciva a degradare la
-funzione perché su questo hardware il lavoro offerto era troppo poco (vedi la
-sezione E2E in RISULTATI.md). Un risultato «la piattaforma non degrada sotto
-carico» su questa macchina può voler dire che il carico era leggero, non che la
-piattaforma sia robusta.
+**It is fast.** The X925 cores are high-end, and that has already changed an
+outcome: `concurrency-cycle-container` could not degrade the function because the
+offered work was too small for these cores (see the E2E section in RESULTS.md).
+On this machine, "the platform does not degrade under load" can mean the load was
+light, not that the platform is robust.
 
-## Come leggere i numeri
+## How to read the numbers
 
-Ogni braccio gira `REPS` ripetizioni **alternate** (A,B,A,B,…) nello stesso
-processo, dopo warm-up, e riporta mediana e IQR — non la media, che una singola
-pausa GC sposta. Un intervento viene adottato solo se il miglioramento supera
-la dispersione misurata della baseline; altrimenti si documenta l'esito
-negativo e si tiene l'implementazione precedente (§6).
+Each arm runs `REPS` **alternated** repetitions (A,B,A,B,…) in the same process,
+after warm-up, and reports the median and spread — not the mean, which a single
+GC pause moves. An intervention is adopted only when the improvement exceeds the
+measured dispersion of the baseline; otherwise the negative result is documented
+and the previous implementation kept (§6).
 
-Le soglie di §8 (10% sulla metrica bersaglio, nessun peggioramento > 5%) sono
-criteri sperimentali, non soglie CI: **nessuna misura di questa campagna
-diventa un test wall-clock**. Le garanzie strutturali restano nei test.
+§8's thresholds (10% on the target metric, no worsening beyond 5%) are
+experimental criteria, not CI gates: **no measurement in this campaign becomes a
+wall-clock test**. Structural guarantees stay in the test suite.
 
-## Struttura
+## Layout
 
-- `bench/` — sorgenti dei banchi, uno per attività
-- `raw/` — output grezzo per esecuzione, in JSON
-- `run.sh` — esegue un banco contro il classpath del control-plane
-- `RISULTATI.md` — esito e decisione per ciascuna T
+- `bench/` — benchmark sources, one per activity
+- `raw/` — raw output per run, as JSON
+- `run.sh` — runs a benchmark against the control-plane classpath
+- `compare-baseline-candidate.sh` — the §8 driver: two revisions, alternated
+- `RESULTS.md` — outcome and decision for each activity

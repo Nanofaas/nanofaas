@@ -209,14 +209,14 @@ public class IdempotencyStore {
      *
      * <p>Idempotente: su una chiave assente, pending o gia' terminale non fa nulla.
      *
-     * <p>La transizione avviene solo se il vincolo punta ancora a
-     * {@code expectedExecutionId}. Senza questo confronto un'esecuzione sostituita
-     * (abbandonata dopo la pubblicazione e poi rivendicata da un replay) che si
-     * archivia in ritardo marcherebbe terminale il vincolo della NUOVA esecuzione:
-     * la ritenzione terminale partirebbe dall'istante sbagliato e non ripartirebbe
-     * piu', perche' il {@code settle()} della nuova troverebbe la chiave gia'
-     * terminale. La chiave potrebbe cosi' scadere mentre il suo esito e' ancora
-     * servibile, riaprendo la finestra di riesecuzione che il tombstone chiude.
+     * <p>The transition happens only if the binding still points at
+     * {@code expectedExecutionId}. Without that check, a replaced execution
+     * (abandoned after publication and then re-claimed by a replay) settling late
+     * would mark the NEW execution's binding terminal: terminal retention would
+     * start at the wrong instant and never restart, because the new execution's
+     * {@code settle()} would find the key already terminal. The key could then
+     * expire while its outcome is still servable, reopening the re-execution
+     * window the tombstone closes.
      */
     public void markTerminal(String functionName, String idempotencyKey, String expectedExecutionId) {
         if (idempotencyKey == null || idempotencyKey.isBlank() || expectedExecutionId == null) {

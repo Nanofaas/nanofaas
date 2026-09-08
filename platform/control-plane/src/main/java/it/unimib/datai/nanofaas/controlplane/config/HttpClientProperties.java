@@ -23,7 +23,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * a 5 s and a 1 s acquisition timeout are indistinguishable — same useful throughput, same
  * wasted work, same p95. The tuning was therefore NOT adopted, per the plan's rule that an
  * intervention whose benefit does not exceed baseline variability keeps the previous
- * default. See docs/experiments/control-plane-tuning-2026-09/RISULTATI.md.
+ * default. See docs/experiments/control-plane-tuning-2026-09/RESULTS.md.
  *
  * <p>The property still exists because the cancellation that makes the timeout irrelevant
  * is a property of the caller, not of the pool: a future dispatch path that forgets to

@@ -48,17 +48,17 @@ public class SyncQueueService implements SyncQueueGateway {
     private long wakeSeq;
     private final SyncQueueAdmissionController admissionController;
     /**
-     * Profondita' per funzione, mantenuta ai punti di mutazione della coda.
+     * Per-function depth, maintained at the queue's mutation points.
      *
-     * <p>Prima era una scansione O(depth) sotto il monitor della coda, e il metrics source la
-     * chiama UNA VOLTA PER FUNZIONE a ogni scrape: con 51 funzioni e profondita' 200 un enqueue
-     * concorrente passava da 288 ns a 8.739 ns, 30 volte tanto, perche' l'ammissione aspettava
-     * un monitor preso da una lettura di metriche
-     * (docs/experiments/control-plane-tuning-2026-09/RISULTATI.md).
+     * <p>It used to be an O(depth) scan under the queue monitor, and the metrics source calls
+     * it ONCE PER FUNCTION on every scrape: with 51 functions and depth 200 a concurrent
+     * enqueue went from 288 ns to 8,739 ns, thirty times as much, because admission was
+     * waiting on a monitor held by a metrics read
+     * (docs/experiments/control-plane-tuning-2026-09/RESULTS.md).
      *
-     * <p>Le scritture restano dentro i blocchi {@code synchronized (queue)} gia' esistenti, cosi'
-     * la relazione fra chiusura, offer e contatori resta atomica; le letture non prendono il
-     * monitor, ed e' esattamente quello il guadagno.
+     * <p>Writes stay inside the existing {@code synchronized (queue)} blocks, so the
+     * relationship between closure, offer and counters stays atomic; reads do not take the
+     * monitor, and that is exactly the gain.
      */
     private final ConcurrentHashMap<String, Integer> depthByFunction = new ConcurrentHashMap<>();
 
@@ -295,19 +295,19 @@ public class SyncQueueService implements SyncQueueGateway {
     }
 
     /**
-     * Profondita' della coda per una funzione. Lettura senza monitor: e' una metrica, e farle
-     * bloccare l'ammissione per essere esatta al nanosecondo sarebbe un pessimo scambio.
+     * The queue depth for one function. Read without the monitor: it is a metric, and making
+     * it block admission to be nanosecond-exact would be a bad trade.
      */
     public int queuedItems(String functionName) {
         return depthByFunction.getOrDefault(functionName, 0);
     }
 
-    /** Da chiamare SOLO sotto {@code synchronized (queue)}, insieme alla mutazione del deque. */
+    /** Call ONLY under {@code synchronized (queue)}, together with the deque mutation. */
     private void countAdded(SyncQueueItem item) {
         depthByFunction.merge(item.task().functionName(), 1, Integer::sum);
     }
 
-    /** Da chiamare SOLO sotto {@code synchronized (queue)}, insieme alla mutazione del deque. */
+    /** Call ONLY under {@code synchronized (queue)}, together with the deque mutation. */
     private void countRemoved(SyncQueueItem item) {
         depthByFunction.computeIfPresent(item.task().functionName(),
                 (name, count) -> count <= 1 ? null : count - 1);
@@ -406,7 +406,7 @@ public class SyncQueueService implements SyncQueueGateway {
                 countRemoved(item);
                 timedOut = item;
             } else {
-                // Testa -> coda: la profondita' non cambia, quindi il contatore neppure.
+                // Head -> tail: the depth does not change, so neither does the counter.
                 queue.addLast(item);
             }
         }
@@ -438,15 +438,15 @@ public class SyncQueueService implements SyncQueueGateway {
     }
 
     /**
-     * Ruota la finestra di scansione un elemento alla volta, prendendo il monitor a ogni
-     * passo. Sembra sprecato — 1 + fino a 64 prese invece di una — e accorparle in un'unica
-     * sezione critica rende la rotazione 7,5 volte piu' veloce in isolamento (1105 -> 148 ns).
+     * Rotates the scan window one item at a time, taking the monitor at every step. It looks
+     * wasteful — 1 + up to 64 acquisitions instead of one — and collapsing them into a single
+     * critical section makes the rotation 7.5 times faster in isolation (1105 -> 148 ns).
      *
-     * <p>Misurato, pero', quell'accorpamento affama l'ammissione: un enqueue concorrente passa
-     * da ~1 us a 4-20 us, perche' invece di infilarsi fra due sezioni critiche corte deve
-     * aspettare che tutti i 64 elementi siano stati ruotati. La rotazione e' lavoro di
-     * manutenzione, l'ammissione e' il percorso del chiamante: le prese brevi sono la scelta
-     * giusta, non una svista. Vedi docs/experiments/control-plane-tuning-2026-09/RISULTATI.md.
+     * <p>Measured, however, that collapse starves admission: a concurrent enqueue goes from
+     * ~1 us to 4-20 us, because instead of slipping between two short critical sections it
+     * has to wait for all 64 items to be rotated. Rotation is maintenance work, admission is
+     * the caller's path: short acquisitions are the right choice, not an oversight. See
+     * docs/experiments/control-plane-tuning-2026-09/RESULTS.md.
      */
     public boolean rotateReadyScanWindow(Instant now) {
         boolean changed = false;

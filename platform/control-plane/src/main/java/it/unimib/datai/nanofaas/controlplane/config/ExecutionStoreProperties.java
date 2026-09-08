@@ -19,19 +19,19 @@ import java.time.Duration;
  * anche sulle risposte sincrone, quindi {@code GET /v1/executions/{id}} e' una
  * promessa fatta anche a quei chiamanti.
  *
- * <p>{@code maxOutcomeBytes}: il tetto in BYTE, che e' quello che conta davvero.
- * Il tetto in numero ({@code maxOutcomes}) limita quanti esiti si tengono, non
- * quanto pesano, e i due coincidono solo per gli esiti compatti da 116 byte su cui
- * quel numero era stato tarato. Ma un esito *leggibile* - ASYNC o con chiave di
- * idempotenza - trattiene il payload del chiamante: misurati 20.000 esiti da 64 KB
- * occupano 1,28 GB, e al valore predefinito di 100.000 sarebbero circa 6 GB.
- * Esattamente la forma del guasto del 2026-08-23 descritto qui sopra, che il solo
- * tetto in numero non impedisce. Il peso di un esito viene stimato una volta sola
- * all'inserimento, mai riserializzando il payload a ogni accesso.
+ * <p>{@code maxOutcomeBytes}: the cap in BYTES, which is what actually matters.
+ * The count cap ({@code maxOutcomes}) bounds how many outcomes are kept, not how
+ * much they weigh, and the two coincide only for the compact 116-byte outcomes
+ * that number was calibrated on. But a *readable* outcome - ASYNC or
+ * idempotency-keyed - retains the caller's payload: measured, 20,000 outcomes at
+ * 64 KB occupy 1.28 GB, and at the default of 100,000 that would be roughly 6 GB.
+ * Exactly the shape of the 2026-08-23 failure described above, which the count cap
+ * alone does not prevent. An outcome's weight is estimated once at insertion,
+ * never by re-serializing the payload on each access.
  *
- * <p>Il valore predefinito e' {@code maxOutcomes x 116 byte}: al limite costa quanto
- * costava prima, quindi per gli esiti compatti non cambia nulla, mentre i payload
- * grandi vengono sfrattati per peso invece che accumularsi.
+ * <p>The default is {@code maxOutcomes x 116 bytes}: at the limit it costs what it
+ * cost before, so nothing changes for compact outcomes, while large payloads are
+ * evicted by weight instead of accumulating.
  *
  * <p>{@code maxLifetime}: tetto assoluto oltre il quale anche un'esecuzione non
  * terminale (incastrata) viene sfrattata, perche' non cresca senza fine.
@@ -47,7 +47,7 @@ public record ExecutionStoreProperties(
 ) {
     private static final long DEFAULT_MAX_OUTCOMES = 100_000;
     private static final long DEFAULT_MAX_KEYS = 100_000;
-    /** Il peso di un esito compatto, la costante su cui il tetto in numero era tarato. */
+    /** A compact outcome's weight, the constant the count cap was calibrated on. */
     public static final long COMPACT_OUTCOME_BYTES = 116;
 
     /**

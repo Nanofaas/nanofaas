@@ -1,18 +1,18 @@
 package it.unimib.datai.nanofaas.controlplane.execution;
 
-// T3 — memoria: il tetto degli esiti e' in NUMERO, non in byte.
+// T3 - memory: the outcome cap is a COUNT, not a byte budget.
 //
-// application.yml documenta il costo cosi': "Un esito compatto misura 116 byte,
-// quindi questo tetto costa circa 12 MB" con max-outcomes=100000. E' vero per un
-// esito compatto. Ma A5 trattiene il payload per gli esiti *leggibili* (ASYNC o
-// con chiave di idempotenza), e li' il payload e' quello che il chiamante ha
-// mandato: 100.000 esiti da 64 KB non sono 12 MB.
+// application.yml prices it as "a compact outcome measures 116 bytes, so this cap
+// costs about 12 MB" with max-outcomes=100000. True for a compact outcome. But A5
+// retains the payload for *readable* outcomes (ASYNC or idempotency-keyed), and
+// there the payload is whatever the caller sent: 100,000 outcomes at 64 KB are
+// not 12 MB.
 //
-// Sta nel package dello store perche' il costruttore che prende le proprieta' senza
-// MeterRegistry e' package-private.
+// It lives in the store's package because the constructor taking properties
+// without a MeterRegistry is package-private.
 //
-// Misura: heap trattenuto dopo GC con N esiti leggibili di payload crescente, e
-// costo di stimarne il peso una volta sola all'inserimento.
+// Measures: heap retained after GC with N readable outcomes of growing payload,
+// and the cost of estimating their weight once at insertion.
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -26,7 +26,7 @@ import java.util.Map;
 
 public class T3MemoryBench {
 
-    static final int OUTCOMES = 20_000;      // scala ridotta: 100k x 64KB non ci sta, ed e' il punto
+    static final int OUTCOMES = 20_000;      // reduced scale: 100k x 64KB does not fit, which is the point
     static final int[] PAYLOAD_BYTES = {128, 4096, 65536};
 
     public static void main(String[] args) throws Exception {
@@ -62,11 +62,11 @@ public class T3MemoryBench {
 
         long before = usedHeap();
         for (int i = 0; i < OUTCOMES; i++) {
-            // Un'istanza NUOVA per esito: riusare la stessa String farebbe trattenere
-            // all'heap un solo payload condiviso da tutti, e la misura direbbe che i
-            // payload grandi non costano nulla. E' l'errore che questa misura faceva.
+            // A NEW instance per outcome: reusing the same String would leave the heap
+            // holding a single payload shared by all, and the measurement would say
+            // large payloads cost nothing. That is the mistake this benchmark made.
             String payload = new String(template);
-            // ASYNC: readableAfterFinishing, quindi il payload viene trattenuto.
+            // ASYNC: readableAfterFinishing, so the payload is retained.
             ExecutionRecord record = new ExecutionRecord("exec-" + i, task("fn", "exec-" + i));
             store.put(record);
             record.markSuccess(payload);
@@ -78,7 +78,7 @@ public class T3MemoryBench {
         return new long[]{retained, stored == 0 ? 0 : retained / stored, stored};
     }
 
-    /** Costo di stimare il peso una volta: e' cio' che si paga a ogni inserimento. */
+    /** The cost of estimating the weight once: what every insertion pays. */
     static long weighCost(Object output) {
         Outcome outcome = outcomeWith(output);
         for (int i = 0; i < 20_000; i++) {

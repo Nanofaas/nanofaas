@@ -1,177 +1,176 @@
-**Esito della campagna correttezza e prestazioni del control plane — settembre 2026**
+**Outcome of the control-plane correctness and performance campaign — September 2026**
 
-Terzo documento di una trilogia: [la revisione](control-plane-review-2026-09-05.md)
-trovò i problemi, [il piano](plans/2026-09-05-control-plane-correctness-and-performance.md)
-decise cosa farne, questo registra **cosa è successo davvero** — comprese le cose
-che il piano non prevedeva e le decisioni prese contro l'intuizione iniziale.
+Third of a trio: [the review](control-plane-review-2026-09-05.md) found the
+problems, [the plan](plans/2026-09-05-control-plane-correctness-and-performance.md)
+decided what to do about them, and this records **what actually happened** —
+including the parts the plan did not foresee and the decisions taken against the
+initial intuition.
 
-Non ripete ciò che la storia Git già racconta (chi ha cambiato cosa, quando).
-Conserva il *perché*, che il codice non può portare: le alternative scartate, le
-misure che hanno smentito una tesi ragionevole, e le domande rimaste aperte.
+It does not repeat what Git history already carries (who changed what, when). It
+keeps the *why*, which code cannot: the alternatives discarded, the measurements
+that refuted a reasonable thesis, and the questions left open.
 
-Rilasciato come **v0.21.0**.
+Released as **v0.21.0**.
 
 ---
 
-## 1. Il difetto peggiore, e perché nessuno l'aveva visto
+## 1. The worst defect, and why nobody had seen it
 
-Un replay con chiave di idempotenza, dopo l'espulsione del payload per capacità,
-**rieseguiva la funzione** invece di rispondere `410`. Cioè esattamente la
-garanzia che la chiave esiste per dare.
+A replay carrying an idempotency key, after its outcome payload had been evicted
+for capacity, **re-invoked the function** instead of answering `410`. That is
+precisely the guarantee the key exists to give.
 
-Il meccanismo: `InvocationEnqueueSupport.admitIfNew` dispaccia **prima** e
-pubblica la rivendicazione **dopo**. Se l'esecuzione si conclude dentro l'azione
-di ammissione, `markTerminal` trova la chiave ancora `pending` e non fa nulla per
-design; la rivendicazione pubblicata subito dopo resta non terminale per sempre.
+The mechanism: `InvocationEnqueueSupport.admitIfNew` dispatches **first** and
+publishes the claim **after**. When the execution settles inside that admission
+action, `markTerminal` finds the key still `pending` and no-ops by design; the
+claim published immediately afterwards then stays non-terminal forever.
 
-Nel profilo senza moduli di coda non è una corsa ma un **comportamento
-deterministico**: `admitLocally` dispaccia inline su una future già completa.
+In the no-queue profile this is not a race but **deterministic behaviour**:
+`admitLocally` dispatches inline on an already-completed future.
 
-Perché era sfuggito: ogni test della ritenzione idempotente chiamava
-`publishAdmission()` *prima* di concludere l'esecuzione — l'ordine inverso a
-quello di produzione. Costruivano a mano la sequenza felice, e nessuno esercitava
-quella reale.
+Why it escaped: every idempotent-retention test called `publishAdmission()`
+*before* settling the execution — the reverse of the production order. They built
+the happy sequence by hand, and none exercised the real one.
 
-> **Lezione riusabile.** Quando un test costruisce a mano l'ordine delle
-> operazioni, verificare che sia l'ordine che la produzione produce. Qui bastava
-> confrontare il test con `admitIfNew`.
+> **Reusable lesson.** When a test constructs the order of operations by hand,
+> check that it is the order production actually produces. Here, comparing the
+> test against `admitIfNew` was enough.
 
-## 2. Le metriche che alimentano un anello di controllo
+## 2. Metrics that feed a control loop
 
-M1 aveva ridefinito la conclusione end-to-end, ma quattro percorsi terminali non
-la registravano affatto: timeout della coda sincrona, funzione rimossa mentre il
-lavoro era accodato, e le due conclusioni dell'offload.
+M1 had redefined the end-to-end conclusion, but four terminal paths recorded none
+at all: the sync queue's wait timeout, a function removed while its work was
+queued, and both offload conclusions.
 
-Non è una lacuna di copertura: quelle sono **precisamente le popolazioni di
-sovraccarico**, e `SojournConcurrencyController` regola la concorrenza su quel
-timer. Censurarle gli faceva vedere un sojourn ottimisticamente basso proprio
-quando doveva reagire.
+This is not a coverage gap. Those are **exactly the overload populations**, and
+`SojournConcurrencyController` steers concurrency from that timer. Censoring them
+made it read an optimistically low sojourn precisely when it had to react.
 
-La correzione non aggiunge chiamate ai singoli percorsi: aggancia la conclusione
-al **listener terminale dello store**, l'unico evento comune a ogni politica
-terminale — e il modulo sync-queue, che possiede due di quei percorsi, non ha
-nemmeno accesso al completion handler. Un percorso terminale futuro è coperto
-senza che nessuno se ne ricordi.
+The fix does not add calls to the individual paths: it hangs the conclusion off
+the **store's terminal listener**, the only event common to every terminal
+policy — and the sync-queue module, which owns two of those paths, has no access
+to the completion handler at all. A future terminal path is covered without
+anyone having to remember it.
 
-## 3. Tre interventi di tuning su sei sono stati respinti
+## 3. Three of six tuning interventions were rejected
 
-È l'esito più utile della fase 4, e il piano lo prescrive: se il beneficio non
-emerge oltre la variabilità misurata, si documenta e si conserva il default.
-Dettaglio completo e dati grezzi in
-[`experiments/control-plane-tuning-2026-09/`](experiments/control-plane-tuning-2026-09/RISULTATI.md).
+This is the most useful result of the tuning phase, and the plan prescribes it:
+when the benefit does not exceed measured variability, document it and keep the
+previous default. Full detail and raw data in
+[`experiments/control-plane-tuning-2026-09/`](experiments/control-plane-tuning-2026-09/RESULTS.md).
 
-| Intervento | Esito | Il numero che ha deciso |
+| Intervention | Outcome | The number that decided it |
 |---|---|---|
-| Provider HTTP esplicito con lifecycle | adottato | non prestazionale: il provider globale non veniva **mai** chiuso |
-| Timeout di acquisizione più corto | **respinto** | con la cancellazione del dispatcher, 45 s / 5 s / 1 s indistinguibili |
-| Contatori di profondità per funzione | adottato | enqueue sotto scrape 8.739 → 305 ns |
-| Rotazione a monitor unico | **respinto** | rotazione 7,5× più veloce, ma enqueue concorrente 2–9× più lento |
-| Batch async 4/8/16 | **respinto** | indistinguibile da 2 su throughput e p99 |
-| Budget degli esiti in byte | adottato | heap 1.279 → 6 MB con payload da 64 KB |
-| Lock globale delle metriche fuori dal percorso caldo | adottato | 8 thread: 2.638 → 786 ns |
+| Explicit HTTP provider with a lifecycle | adopted | not a performance case: the global provider was **never** disposed |
+| Shorter acquisition timeout | **rejected** | with the dispatcher's cancellation, 45 s / 5 s / 1 s are indistinguishable |
+| Per-function queue depth counters | adopted | enqueue under scrape 8,739 → 305 ns |
+| Single-monitor rotation | **rejected** | rotation 7.5× faster, concurrent enqueue 2–9× slower |
+| Async batch 4/8/16 | **rejected** | indistinguishable from 2 on throughput and p99 |
+| Outcome budget in bytes | adopted | heap 1,279 → 6 MB with 64 KB payloads |
+| Global metrics lock off the hot path | adopted | 8 threads: 2,638 → 786 ns |
 
-Due meritano una nota, perché il ragionamento vale più del verdetto.
+Two deserve a note, because the reasoning outlives the verdict.
 
-**La rotazione a monitor unico** sembra un'ottimizzazione ovvia: 65 prese del
-monitor invece di una. Accorparle rende la rotazione 7,5 volte più veloce **e
-affama l'ammissione**, che non può più infilarsi fra due sezioni critiche corte.
-La rotazione è manutenzione, l'ammissione è il percorso del chiamante. Il
-javadoc ora lo spiega, perché non venga "ottimizzata" di nuovo.
+**Single-monitor rotation** looks like an obvious win: 65 monitor acquisitions
+instead of one. Collapsing them makes the rotation 7.5 times faster **and starves
+admission**, which can no longer interleave between short critical sections.
+Rotation is maintenance; admission is the caller's path. The javadoc now says so,
+to stop it being "optimised" again.
 
-**Il budget degli esiti** era documentato come «circa 12 MB» — vero per un esito
-compatto da 116 byte, falso per un esito *leggibile* che trattiene il payload del
-chiamante. Misurati, 20.000 esiti da 64 KB occupano **1,28 GB**, e al valore
-predefinito di 100.000 sarebbero ~6 GB: la stessa forma del guasto del 2026-08-23
-che lo store cita nel proprio javadoc, e che il tetto in numero non impedisce.
+**The outcome budget** was documented as "about 12 MB" — true for a compact
+116-byte outcome, false for a *readable* one that retains the caller's payload.
+Measured, 20,000 outcomes at 64 KB hold **1.28 GB**, and at the shipped default
+of 100,000 that would be roughly 6 GB: the same shape as the 2026-08-23 incident
+the store cites in its own javadoc, and one the count cap does not prevent.
 
-## 4. Il reperto che solo il carico reale poteva mostrare
+## 4. The finding only real load could show
 
-Lo scenario `concurrency-cycle-container` falliva. Bisezione su sette revisioni:
-il commit che ribalta l'esito è **P1**, «proxy container concorrente».
+The `concurrency-cycle-container` scenario was failing. Bisected across seven
+revisions, the commit that flips the outcome is **P1**, "concurrent container
+proxy".
 
-Non era una regressione. P1 ha reso concorrente `RoundRobinFunctionProxy`, e
-**quella serializzazione era il degrado a cui il governor reagiva**: 857 → 3.387
-req/s, p95 60,01 → 14,52 ms. Con otto richieste concorrenti la funzione risponde
-in 1-3 ms senza degradare, quindi il governor tiene il massimo — correttamente —
-e lo scenario legge quel comportamento corretto come fallimento.
+It was not a regression. P1 made `RoundRobinFunctionProxy` concurrent, and **that
+serialization was the degradation the governor had been reacting to**: 857 →
+3,387 req/s, p95 60.01 → 14.52 ms. At eight concurrent requests the function now
+answers in 1–3 ms without degrading, so the governor holds its ceiling —
+correctly — and the scenario reads that correct behaviour as a failure.
 
-> **Tre reviewer, 536 test unitari e l'intera matrice di validazione non
-> l'avevano visto**, perché nessuno di quei controlli mette il control plane
-> sotto carico reale. È l'argomento più forte a favore delle sezioni 7 e 8 del
-> piano.
+> **Three reviewers, 536 unit tests and the whole validation matrix had not seen
+> it**, because none of those checks puts the control plane under real load. It
+> is the strongest argument for sections 7 and 8 of the plan.
 
-Il rovescio, altrettanto istruttivo: prima di P1 lo scenario **falliva le soglie
-SLO** (p95 60 ms) mentre il governor regolava. Il governor regolava *perché* la
-piattaforma era lenta.
+The mirror image is just as instructive: before P1 the scenario **failed the SLO
+thresholds** (p95 60 ms) while the governor regulated. The governor regulated
+*because* the platform was slow.
 
-## 5. Due errori di misura, con la stessa radice
+## 5. Two measurement errors with one root cause
 
-Entrambi hanno prodotto numeri grandi, coerenti e **sbagliati**.
+Both produced large, coherent, **wrong** numbers.
 
-**T1.** Il primo banco misurava 62% di lavoro backend sprecato e p95 doppia del
-budget. Ma non cancellava mai la richiesta, mentre `ExternalDispatcher` la avvolge
-in `.timeout(functionTimeout)`, che cancella anche l'acquisizione pendente.
-Rimisurato, il guadagno spariva del tutto — e il default precedente è rimasto.
+**T1.** The first harness measured 62% of backend work wasted and a p95 at twice
+the budget. But it never cancelled the request, while `ExternalDispatcher` wraps
+it in `.timeout(functionTimeout)`, which cancels the pending acquisition too.
+Re-measured, the gain disappeared entirely — and the previous default stayed.
 
-**T3.** Il primo banco riusava la stessa istanza di `String` per tutti gli esiti:
-l'heap ne teneva una sola, e i payload grandi sembravano gratis.
+**T3.** The first harness reused one `String` instance for every outcome: the
+heap held a single payload, and large ones looked free.
 
-> **Lezione riusabile.** Prima di misurare un intervento, riprodurre ciò che il
-> chiamante reale fa alla chiamata. Entrambi i run sono conservati in `raw/`,
-> quello confutato incluso, perché il motivo per cui era sbagliato è la parte che
-> serve di nuovo.
+> **Reusable lesson.** Before measuring an intervention, reproduce what the real
+> caller does to the call. Both runs are kept under `raw/`, the refuted one
+> included, because the reason it was wrong is the part needed again.
 
-## 6. Il confronto baseline contro candidato
+## 6. Baseline against candidate
 
-Tre ripetizioni per braccio, ordine alternato, stessa macchina (NVIDIA DGX Spark,
-aarch64), stesso scenario, stesso corpus.
+Three repetitions per arm, alternated, same machine (NVIDIA DGX Spark, aarch64),
+same scenario, same corpus.
 
-| metrica | v0.20.0 | v0.21.0 | delta |
+| metric | v0.20.0 | v0.21.0 | delta |
 |---|---|---|---|
-| throughput | 350,1 req/s [346,3–366,7] | 849,9 [845,0–862,5] | **+142,7%** |
-| p50 | 113,2 ms | 39,9 | −64,7% |
-| p95 | 143,9 ms | 68,6 | −52,4% |
-| p99 | 152,7 ms | 77,6 | −49,1% |
+| throughput | 350.1 req/s [346.3–366.7] | 849.9 [845.0–862.5] | **+142.7%** |
+| p50 | 113.2 ms | 39.9 | −64.7% |
+| p95 | 143.9 ms | 68.6 | −52.4% |
+| p99 | 152.7 ms | 77.6 | −49.1% |
 
-La dispersione non si sovrappone su nessuna metrica.
+No dispersion overlap on any metric.
 
-Due letture da non capovolgere. Il `fail` della baseline **non** dice che fosse
-rotta: le soglie sono tarate sul candidato e la baseline le manca perché è più
-lenta. E il governor più basso della baseline (2 contro 5) **non** è un governor
-migliore: deve rinunciare a più concorrenza per reggere lo stesso carico.
+Two readings not to get backwards. The baseline's failure does **not** mean it
+was broken: the thresholds are calibrated for the candidate and it misses them by
+being slower. And the baseline's lower governor floor (2 against 5) is **not** a
+better governor: it has to give up more concurrency to survive the same load.
 
-## 7. Cosa resta aperto
+## 7. What remains open
 
-- **Il consumo di RAM è cresciuto?** Non lo sappiamo. Le mediane puntano in alto
-  ma la dispersione le divora, e `heap min` è un proxy rumoroso del live set.
-  Registrato in [#207](https://github.com/miciav/nanofaas/issues/207) con il
-  disegno del soak che lo deciderebbe.
-- **512 MB non bastano** al control plane sotto il profilo di confronto:
-  `OOMKilled` verificato sul pod. Non è nuovo — la campagna precedente mostrava
-  già gli stessi riavvii, mai registrati come tali.
-- **Righe della sezione 7 non eseguite**: provider Kubernetes, build native vera
-  e smoke. Eseguibili, non eseguite.
-- **Sezione 8 parziale**: mancano i profili ASYNC, il replay con chiavi, i payload
-  piccoli, gli errori/retry e il soak lungo.
-- **Esperimento B** del piano precedente (JIT ed event loop): non eseguito, 12
-  celle con build di immagine nella VM. Le varianti `jvm-loop1` e `jvm-c2-loop1`
-  che allora mancavano da NanoLab **ora esistono**: resta solo il costo.
+- **Did RAM usage grow?** We do not know. The medians point up but the dispersion
+  swamps them, and `heap min` is a noisy proxy for the live set. Recorded in
+  [#207](https://github.com/miciav/nanofaas/issues/207) with the soak design that
+  would settle it.
+- **512 MB is not enough** for the control plane under the comparison profile:
+  `OOMKilled`, verified on the pod. Not new — the earlier campaign already showed
+  the same restarts without recording them as such.
+- **Section 7 rows not executed**: the Kubernetes provider, and a real native
+  build plus smoke. Executable, not executed.
+- **Section 8 partial**: missing the ASYNC profiles, keyed replay, small payloads,
+  errors/retries, and the long soak.
+- **Experiment B** from the previous plan (JIT and event loops): not run, 12 cells
+  each with an image build inside the VM. The `jvm-loop1` and `jvm-c2-loop1`
+  variants that were then missing from NanoLab **now exist**; only the cost
+  remains.
 
-## 8. Una nota sul metodo
+## 8. A note on method
 
-Metà delle correzioni di questa campagna nasce da revisioni del codice, l'altra
-metà da misure. Le due non sono intercambiabili, e si sono trovate a vicenda i
-punti ciechi.
+Half the fixes in this campaign came from code review, the other half from
+measurement. The two are not interchangeable, and each found the other's blind
+spots.
 
-Le revisioni hanno trovato il difetto di idempotenza, la censura delle metriche e
-il `PATCH` che non raggiungeva il proxy — tutte cose invisibili a un benchmark,
-perché il sistema *sembra* funzionare.
+Review found the idempotency defect, the censored metrics and the `PATCH` that
+never reached the proxy — all invisible to a benchmark, because the system
+*appears* to work.
 
-Il carico reale ha trovato ciò che le revisioni non potevano: che un intervento
-di prestazioni aveva reso obsoleto lo scenario che doveva verificarlo. Nessuna
-lettura del codice lo avrebbe mostrato.
+Real load found what review could not: that a performance change had made
+obsolete the very scenario meant to verify it. No amount of reading the code
+would have shown that.
 
-E in due casi su tre le misure hanno **smentito** l'intuizione di partenza. Una
-manopola che sembrava ovvia non serviva a nulla; un'ottimizzazione evidente
-peggiorava il percorso che conta. Vale la pena ricordarlo la prossima volta che
-un cambiamento sembra troppo ovvio per essere misurato.
+And in two cases out of three, measurement **refuted** the starting intuition. A
+knob that looked obvious bought nothing; an evident optimisation made the path
+that matters worse. Worth remembering the next time a change seems too obvious to
+measure.

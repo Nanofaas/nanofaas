@@ -81,9 +81,9 @@ public class ExecutionStore {
      * di idempotenza. Di default nessuno. {@code InvocationExecutionFactory}
      * registra qui {@code IdempotencyStore}, perche' il vincolo della chiave deve
      * passare dallo stato "vivo" a quello "terminale" esattamente quando l'esito
-     * esce dai vivi, senza finestre in cui la stessa chiave torni acquisibile;
-     * {@code ExecutionCompletionHandler} registra la conclusione end-to-end, perche'
-     * archiviarsi e' l'unico evento comune a OGNI politica terminale.
+     * esce dai vivi, senza finestre in cui la stessa chiave torni acquisibile.
+     * {@code ExecutionCompletionHandler} registers the end-to-end conclusion here,
+     * because archiving is the only event common to EVERY terminal policy.
      */
     private final List<Consumer<ExecutionRecord>> terminalListeners = new CopyOnWriteArrayList<>();
 
@@ -145,7 +145,7 @@ public class ExecutionStore {
     }
 
     /**
-     * Additivo, come {@link #onTerminal}.
+     * Additive, like {@link #onTerminal}.
      *
      * <p>Registra chi chiude un dispatch abbandonato quando {@code maxLifetime}
      * scade da solo. Non additivo: l'ultima registrazione vince, come per ogni
@@ -156,10 +156,10 @@ public class ExecutionStore {
     }
 
     /**
-     * Registra chi va avvertito quando un'esecuzione si archivia. Additivo: ogni
-     * collaboratore interessato al momento terminale si aggiunge, e nessuno puo'
-     * silenziare l'altro. Prima era uno slot singolo "l'ultimo vince", e bastava un
-     * secondo costruttore a far sparire in silenzio la transizione della chiave.
+     * Registers a listener to be told when an execution archives. Additive: every
+     * collaborator interested in the terminal moment adds itself, and none can
+     * silence another. It used to be a single last-wins slot, where a second
+     * constructor was enough to make the key transition disappear in silence.
      */
     public void onTerminal(Consumer<ExecutionRecord> listener) {
         terminalListeners.add(Objects.requireNonNull(listener, "listener"));

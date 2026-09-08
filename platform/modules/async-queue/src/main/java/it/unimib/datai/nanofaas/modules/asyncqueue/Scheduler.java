@@ -20,12 +20,12 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
     private static final Logger log = LoggerFactory.getLogger(Scheduler.class);
     private static final String COMPONENT_NAME = "Scheduler";
     /**
-     * Quanti dispatch di seguito una funzione ottiene prima che il ciclo passi ad altre.
+     * How many consecutive dispatches one function gets before the loop moves on.
      *
-     * <p>E' un compromesso fra costo di scheduling e equita': un batch piu' largo ammortizza
-     * il giro del ciclo su piu' dispatch, ma tiene piu' a lungo il turno di una funzione sola.
-     * Confrontati 2, 4, 8 e 16 — vedi
-     * docs/experiments/control-plane-tuning-2026-09/RISULTATI.md per la misura e la scelta.
+     * <p>A trade-off between scheduling cost and fairness: a wider batch amortises the loop
+     * pass over more dispatches, but holds one function's turn for longer. 2, 4, 8 and 16 were
+     * compared — see docs/experiments/control-plane-tuning-2026-09/RESULTS.md for the
+     * measurement and the decision.
      */
     static final int DEFAULT_MAX_BATCH_PER_FUNCTION = 2;
 
@@ -52,7 +52,7 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
         this(queueManager, invocationService, nanoTime, DEFAULT_MAX_BATCH_PER_FUNCTION);
     }
 
-    /** Il batch e' iniettabile per poterlo confrontare; la produzione usa il default. */
+    /** The batch is injectable so it can be compared; production uses the default. */
     Scheduler(QueueManager queueManager,
               InvocationService invocationService,
               LongSupplier nanoTime,

@@ -1,20 +1,20 @@
 package it.unimib.datai.nanofaas.modules.asyncqueue;
 
-// T2 — batch dello scheduler async: confronto fra 2, 4, 8, 16.
+// T2 - async scheduler batch: comparing 2, 4, 8, 16.
 //
-// Sta nel package dello scheduler perche' il batch e' un parametro package-private:
-// esporlo come proprieta' PRIMA di sapere se conviene cambiarlo sarebbe il contrario
-// di quello che chiede il piano.
+// It lives in the scheduler's package because the batch is a package-private
+// parameter: exposing it as a property BEFORE knowing whether changing it pays
+// would be the opposite of what the plan asks.
 //
-// Il batch e' il numero di dispatch consecutivi che una funzione ottiene prima
-// che il ciclo passi ad altre. Piu' largo = meno giri di ciclo per dispatch
-// (throughput), ma il turno di una funzione dura di piu' (equita').
+// The batch is how many consecutive dispatches one function gets before the loop
+// moves on. Wider = fewer loop passes per dispatch (throughput), but one
+// function's turn lasts longer (fairness).
 //
-// Forma dell'accettazione: una funzione molto attiva insieme a molte poco
-// attive. Si misurano entrambe le facce:
-//   - throughput: dispatch al secondo complessivi
-//   - equita': quanto aspetta una funzione poco attiva prima del suo dispatch
-//              (e' la metrica che un batch largo peggiora)
+// The acceptance's shape: one very active function among many quiet ones. Both
+// faces are measured:
+//   - throughput: total dispatches per second
+//   - fairness: how long a quiet function waits before its dispatch
+//               (the metric a wide batch is expected to worsen)
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -38,21 +38,21 @@ public class T2BatchBench {
     static final int[] BATCHES = {2, 4, 8, 16};
     static final int QUIET_FUNCTIONS = 20;
     static final int HOT_TASKS = 2000;
-    static final int QUIET_TASKS = 5;      // per funzione poco attiva
+    static final int QUIET_TASKS = 5;      // per quiet function
     static final int REPS = 5;
     /**
-     * Costo di un dispatch. Con un dispatch istantaneo il batch non puo' contare: non c'e'
-     * mai una coda su cui il turno di una funzione tolga spazio alle altre, e i quattro
-     * bracci risultano indistinguibili misurando solo il rumore del ciclo.
+     * The cost of a dispatch. With an instant dispatch the batch cannot matter: there is
+     * never a queue on which one function's turn takes room from the others, and the four
+     * arms come out indistinguishable, measuring only the loop's noise.
      */
     static final long DISPATCH_COST_NANOS = 50_000;
-    static final int CONCURRENCY = 8;      // slot per funzione
+    static final int CONCURRENCY = 8;      // slots per function
 
     public static void main(String[] args) throws Exception {
         Map<Integer, List<long[]>> results = new java.util.LinkedHashMap<>();
         for (int b : BATCHES) results.put(b, new ArrayList<>());
 
-        // Warm-up, poi ripetizioni con i bracci alternati.
+        // Warm-up, then repetitions with the arms alternated.
         for (int b : BATCHES) round(b);
         for (int r = 0; r < REPS; r++) {
             for (int b : BATCHES) {
@@ -79,7 +79,7 @@ public class T2BatchBench {
         System.exit(0);
     }
 
-    /** @return [wallMs, quietWaitP99Ms] */
+    /** @return [wallMs, quietWaitP99Us] */
     static long[] round(int batch) throws Exception {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         QueueManager queueManager = new QueueManager(registry);
@@ -108,7 +108,7 @@ public class T2BatchBench {
         }).when(service).dispatch(org.mockito.ArgumentMatchers.any());
 
         Scheduler scheduler = new Scheduler(queueManager, service, System::nanoTime, batch);
-        // Senza questo la coda non sveglia mai il ciclo e non parte nessun dispatch.
+        // Without this the queue never wakes the loop and no dispatch starts.
         queueManager.setWorkSignaler(scheduler);
         for (int i = 0; i < QUIET_FUNCTIONS; i++) {
             queueManager.getOrCreate(spec("quiet-" + i));
@@ -139,7 +139,7 @@ public class T2BatchBench {
         return new long[]{wallMs, p99};
     }
 
-    /** Attesa attiva: un sleep avrebbe una granularita' piu' grossa del costo simulato. */
+    /** Busy wait: a sleep would be coarser than the simulated cost. */
     static void busyFor(long nanos) {
         long deadline = System.nanoTime() + nanos;
         while (System.nanoTime() < deadline) {

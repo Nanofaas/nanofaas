@@ -61,28 +61,28 @@ nanofaas:
     # rifiutata (429) prima del dispatch; i replay delle chiavi gia' presenti restano
     # servibili. Dimensionarlo come `tasso di ammissioni con chiave x (maxLifetime + ttl)`.
     max-keys: 100000
-    # Il tetto in BYTE degli esiti trattenuti. Quello in numero qui sopra presuppone che
-    # pesino tutti uguale: vero per un esito compatto (116 byte), falso per un esito
-    # leggibile (ASYNC o con chiave), che trattiene il payload del chiamante. Misurati:
-    # 20.000 esiti da 64 KB occupano 1,28 GB, e a max-outcomes=100000 sarebbero circa 6 GB.
-    # Con il budget in byte l'heap resta piatto al variare della dimensione del payload.
-    # Predefinito (0 = derivato): max-outcomes x 116 byte, cioe' lo stesso costo di prima
-    # al limite. Alzarlo se si trattengono payload grandi e si vuole ritenzione piu' lunga.
+    # The BYTE cap on retained outcomes. The count cap above assumes they all weigh the
+    # same: true for a compact outcome (116 bytes), false for a readable one (ASYNC or
+    # keyed), which retains the caller's payload. Measured: 20,000 outcomes at 64 KB
+    # occupy 1.28 GB, and at max-outcomes=100000 that would be roughly 6 GB. With the
+    # byte budget the heap stays flat as the payload size varies.
+    # Default (0 = derived): max-outcomes x 116 bytes, i.e. the same cost as before at
+    # the limit. Raise it when retaining large payloads and wanting longer retention.
     max-outcome-bytes: 0
   http-client:
-    # Il pool di connessioni del dispatch. Prima era il provider GLOBALE di Reactor
-    # Netty: nessun budget dichiarato, e soprattutto nessuno che lo chiudesse, quindi
-    # le connessioni sopravvivevano al context che le aveva aperte. Adesso e' un bean
-    # con un lifecycle, e questi tre numeri sono il budget.
+    # The dispatch connection pool. It used to be Reactor Netty's GLOBAL provider:
+    # no stated budget and, above all, nobody to dispose it, so its connections
+    # outlived the context that opened them. It is now a bean with a lifecycle, and
+    # these three numbers are its budget.
     #
-    # I default coincidono con quelli di Reactor Netty, di proposito: accorciare
-    # l'attesa di acquisizione sembrava un guadagno grosso, ma il dispatcher avvolge
-    # gia' la chiamata in .timeout(functionTimeout), che cancella anche l'acquisizione
-    # pendente. Rimisurato con quella cancellazione, 45 s / 5 s / 1 s sono
-    # indistinguibili, quindi il valore precedente resta
-    # (docs/experiments/control-plane-tuning-2026-09/RISULTATI.md).
+    # The defaults match Reactor Netty's on purpose: shortening the acquisition wait
+    # looked like a large win, but the dispatcher already wraps the call in
+    # .timeout(functionTimeout), which cancels the pending acquisition too.
+    # Re-measured with that cancellation, 45 s / 5 s / 1 s are indistinguishable, so
+    # the previous value stands
+    # (docs/experiments/control-plane-tuning-2026-09/RESULTS.md).
     max-connections: 500
-    pending-acquire-max-count: 0        # 0 = derivato: due volte max-connections
+    pending-acquire-max-count: 0        # 0 = derived: twice max-connections
     pending-acquire-timeout-ms: 45000
   defaults:
     timeoutMs: 30000

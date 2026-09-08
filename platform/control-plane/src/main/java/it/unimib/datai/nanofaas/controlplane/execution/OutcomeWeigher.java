@@ -6,38 +6,39 @@ import java.util.Collection;
 import java.util.Map;
 
 /**
- * Stima quanto heap trattiene un esito, una volta sola, al momento dell'inserimento.
+ * Estimates how much heap an outcome retains, once, at insertion time.
  *
- * <p>Il tetto in numero degli esiti presuppone che pesino tutti uguale. Per un esito
- * compatto e' vero (116 byte); per un esito <i>leggibile</i>, che trattiene il payload
- * del chiamante, no: 20.000 esiti da 64 KB misurano 1,28 GB
- * (docs/experiments/control-plane-tuning-2026-09/RISULTATI.md).
+ * <p>The count cap on outcomes assumes they all weigh the same. For a compact outcome
+ * that holds (116 bytes); for a <i>readable</i> one, which retains the caller's payload,
+ * it does not: 20,000 outcomes at 64 KB measure 1.28 GB
+ * (docs/experiments/control-plane-tuning-2026-09/RESULTS.md).
  *
- * <p>Il peso e' una <b>stima</b>, non una misura: attraversa la struttura una volta e
- * non riserializza mai il payload — riserializzarlo a ogni accesso costerebbe piu' della
- * memoria che fa risparmiare. La traversata e' limitata in ampiezza e profondita': un
- * payload annidato in modo patologico deve costare come gli altri, non piu' degli altri.
+ * <p>The weight is an <b>estimate</b>, not a measurement: it walks the structure once and
+ * never re-serializes the payload — re-serializing on every access would cost more than
+ * the memory it saves. The walk is bounded in breadth and depth: a pathologically nested
+ * payload must cost like the others, not more than them.
  *
- * <p>Un esito il cui peso stimato superi da solo l'intero budget non puo' essere trattenuto:
- * Caffeine lo ammette e lo sfratta subito. La garanzia di A5 regge comunque - la chiave resta
- * come tombstone e il replay risponde 410 invece di rieseguire la funzione - ma il payload non
- * e' recuperabile. Con il budget predefinito (11,6 MB) serve un singolo esito da 11 MB per
- * arrivarci; chi trattiene payload cosi' grandi deve alzare {@code max-outcome-bytes}.
+ * <p>An outcome whose estimated weight alone exceeds the whole budget cannot be retained:
+ * Caffeine admits it and evicts it immediately. A5's guarantee still holds — the key
+ * remains as a tombstone and the replay answers 410 rather than re-invoking the function —
+ * but the payload is unrecoverable. With the default budget (11.6 MB) that needs a single
+ * 11 MB outcome; anyone retaining payloads that large must raise
+ * {@code max-outcome-bytes}.
  */
 final class OutcomeWeigher {
 
     /**
-     * Overhead strutturale dell'oggetto Outcome: header dell'oggetto, i campi primitivi e
-     * i riferimenti, senza payload ne' header HTTP. Scelto perche' un esito compatto - un
-     * output piccolo e nient'altro - pesi complessivamente intorno ai
-     * {@link ExecutionStoreProperties#COMPACT_OUTCOME_BYTES} byte su cui il tetto in numero
-     * era tarato: al budget predefinito ne entrano quanti ne entravano prima.
+     * Structural overhead of the Outcome object: object header, primitive fields and
+     * references, without the payload or the HTTP headers. Chosen so that a compact
+     * outcome — a small output and nothing else — weighs about the
+     * {@link ExecutionStoreProperties#COMPACT_OUTCOME_BYTES} bytes the count cap was
+     * calibrated on: at the default budget, as many fit as fitted before.
      */
     private static final int FIXED_OVERHEAD_BYTES = 96;
     private static final int REFERENCE_BYTES = 16;
     private static final int MAX_DEPTH = 4;
     private static final int MAX_ELEMENTS = 256;
-    /** Costo attribuito a un oggetto che non sappiamo attraversare. */
+    /** Cost attributed to an object we cannot walk. */
     private static final int OPAQUE_BYTES = 64;
 
     private OutcomeWeigher() {
@@ -61,10 +62,10 @@ final class OutcomeWeigher {
             return 0;
         }
         return switch (value) {
-            // Le stringhe compatte usano un byte per carattere Latin-1: la lunghezza e'
-            // la stima giusta, non il doppio.
-            // Senza sommare il riferimento: un esito compatto deve restare compatto, e
-            // l'overhead dell'oggetto e' gia' contato una volta in FIXED_OVERHEAD_BYTES.
+            // Compact strings use one byte per Latin-1 character: the length is the
+            // right estimate, not twice it.
+            // Without adding the reference: a compact outcome must stay compact, and the
+            // object overhead is already counted once in FIXED_OVERHEAD_BYTES.
             case String s -> s.length();
             case byte[] bytes -> REFERENCE_BYTES + bytes.length;
             case Number _, Boolean _, Character _ -> REFERENCE_BYTES;

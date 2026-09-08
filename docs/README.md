@@ -35,7 +35,7 @@
 | [SonarQube analysis](sonarqube.md) | On-demand local analysis via `scripts/sonar.sh` |
 | [Image releases](operations/image-releases.md) | The 52-cell matrix, tag policy, and paid Azure release flow |
 | [Release performance](performance/history.md) | Per-release benchmark records (also under `performance/releases/`) |
-| [Control-plane outcome 2026-09](control-plane-outcome-2026-09.md) | Cosa ha prodotto la campagna correttezza+prestazioni di v0.21.0: difetti chiusi, tuning respinto con la misura che lo ha respinto, e domande aperte |
+| [Control-plane outcome 2026-09](control-plane-outcome-2026-09.md) | What the v0.21.0 correctness+performance campaign produced: defects closed, tuning rejected with the measurement that rejected it, and open questions |
 
 ## Reference
 

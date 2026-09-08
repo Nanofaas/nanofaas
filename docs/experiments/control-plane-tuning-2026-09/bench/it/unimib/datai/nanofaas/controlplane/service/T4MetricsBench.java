@@ -1,15 +1,14 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
-// T4 — diagnostica: costo dei meter sul percorso caldo.
+// T4 - diagnostics: meter cost on the hot path.
 //
-// Metrics.metersOrNull prende un synchronized su un monitor GLOBALE a ogni
-// chiamata - dispatch, success, error, e ogni timers(fn) - condiviso da tutte le
-// funzioni. Il lock serve a rendere atomica la rimozione rispetto alla
-// registrazione; il caso comune (funzione esistente e non rimossa) non ne ha
-// bisogno.
+// Metrics.metersOrNull takes a synchronized block on a GLOBAL monitor on every
+// call - dispatch, success, error, and every timers(fn) - shared by all
+// functions. The lock exists to make removal atomic against registration; the
+// common case (an existing, non-removed function) does not need it.
 //
-// Accettazione di T4: stessa osservabilita' nei due bracci. Qui non si toglie
-// nessuna metrica: si misura solo quanto costa registrarla e leggerla.
+// T4's acceptance: the same observability in both arms. No metric is removed
+// here: this only measures what registering and reading one costs.
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import java.util.ArrayList;
@@ -48,7 +47,7 @@ public class T4MetricsBench {
         System.exit(0);
     }
 
-    /** ns per operazione del percorso caldo (un dispatch + un esito + un campione di timer). */
+    /** ns per hot-path operation (one dispatch + one outcome + the timer samples). */
     static long measure(int threads) throws Exception {
         Metrics metrics = new Metrics(new SimpleMeterRegistry());
         String[] names = new String[FUNCTIONS];
@@ -89,7 +88,7 @@ public class T4MetricsBench {
         return totalNanos.get() / ((long) threads * OPS_PER_THREAD);
     }
 
-    /** Cio' che una invocazione fa davvero: un dispatch, un esito, tre campioni di durata. */
+    /** What an invocation actually does: a dispatch, an outcome, three duration samples. */
     static void hotPath(Metrics metrics, String function) {
         metrics.dispatch(function);
         metrics.success(function);

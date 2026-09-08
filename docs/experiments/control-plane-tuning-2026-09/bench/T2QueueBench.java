@@ -1,17 +1,18 @@
-// T2 — code: profilo di monitor e scansioni sul codice REALE (SyncQueueService).
+// T2 - queues: profiling monitors and scans against the REAL code
+// (SyncQueueService).
 //
-// Forma richiesta dall'accettazione: una funzione molto attiva insieme a molte
-// poco attive. E' la forma in cui i due costi sospetti mordono davvero:
+// The shape the acceptance asks for: one very active function among many quiet
+// ones. It is the shape in which the two suspect costs actually bite:
 //
-//   1) queuedItems(functionName) e' una scansione O(depth) sotto il monitor della
-//      coda, e SyncQueueWorkloadMetricsSource la chiama PER FUNZIONE a ogni
-//      scrape: costo O(funzioni x profondita') con il monitor preso ogni volta.
-//   2) rotateReadyScanWindow prende il monitor 1 + fino a 64 volte (una per
-//      rotateReadyHead), su un percorso che P2 ha reso piu' caldo.
+//   1) queuedItems(functionName) is an O(depth) scan under the queue monitor, and
+//      SyncQueueWorkloadMetricsSource calls it PER FUNCTION on every scrape:
+//      O(functions x depth) with the monitor taken every time.
+//   2) rotateReadyScanWindow takes the monitor 1 + up to 64 times (once per
+//      rotateReadyHead), on a path P2 made hotter.
 //
-// Non confronta due implementazioni: misura quanto costano oggi, e quanto
-// disturbano l'enqueue in concorrenza. Se il costo non si vede, l'intervento
-// non si fa (piano §6).
+// It does not compare two implementations: it measures what they cost today, and
+// how much they disturb a concurrent enqueue. If the cost does not show, the
+// intervention is not made (plan section 6).
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -36,8 +37,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class T2QueueBench {
 
-    static final int DEPTH = 200;          // max-depth di default
-    static final int QUIET_FUNCTIONS = 50; // molte funzioni poco attive
+    static final int DEPTH = 200;          // the default max-depth
+    static final int QUIET_FUNCTIONS = 50; // many quiet functions
     static final int SCRAPE_ROUNDS = 2000;
     static final int ROTATE_ROUNDS = 2000;
     static final int WARMUP = 200;
@@ -58,7 +59,7 @@ public class T2QueueBench {
             long quiet = timeEnqueue(queue, false, false);
             long c = timeEnqueue(queue, true, false);
             long withScrape = timeEnqueue(queue, false, true);
-            if (i > 0) { // il primo giro e' warm-up
+            if (i > 0) { // the first pass is warm-up
                 scrape.add(new long[]{s});
                 rotate.add(new long[]{r});
                 baseline.add(new long[]{quiet});
@@ -81,7 +82,7 @@ public class T2QueueBench {
         System.exit(0);
     }
 
-    /** Uno scrape completo: queuedItems(fn) per ogni funzione, come fa il metrics source. */
+    /** A full scrape: queuedItems(fn) for every function, as the metrics source does. */
     static long timeScrape(SyncQueueService queue) {
         List<String> names = names();
         for (int i = 0; i < WARMUP; i++) {
@@ -103,9 +104,10 @@ public class T2QueueBench {
     }
 
     /**
-     * Costo di un enqueue da solo, con un rotatore concorrente, o con uno scraper
-     * concorrente. La differenza fra i tre e' la contesa sul monitor che
-     * l'intervento ridurrebbe; il costo isolato da solo non direbbe nulla.
+     * The cost of an enqueue alone, with a concurrent rotator, or with a
+     * concurrent scraper. The difference between the three is the monitor
+     * contention the intervention would reduce; the isolated cost alone says
+     * nothing.
      */
     static long timeEnqueue(SyncQueueService queue, boolean withRotator, boolean withScraper) throws Exception {
         AtomicBoolean stop = new AtomicBoolean();
@@ -129,12 +131,12 @@ public class T2QueueBench {
         int ops = 2000;
         long start = System.nanoTime();
         for (int i = 0; i < ops; i++) {
-            // La coda e' piena: enqueueOrThrow rifiuta, ma prende comunque il monitor
-            // ed e' quello il costo che interessa.
+            // The queue is full: enqueueOrThrow refuses, but still takes the monitor,
+            // and that is the cost of interest.
             try {
                 queue.enqueueOrThrow(task("hot", "probe-" + i));
             } catch (RuntimeException _) {
-                // rifiuto atteso a coda piena
+                // expected refusal on a full queue
             }
         }
         long elapsed = (System.nanoTime() - start) / ops;
@@ -165,7 +167,7 @@ public class T2QueueBench {
         return queue;
     }
 
-    /** Una funzione calda domina la coda; le altre hanno un elemento a testa. */
+    /** One hot function dominates the queue; the others hold one item each. */
     static void fill(SyncQueueService queue) {
         for (int i = 0; i < QUIET_FUNCTIONS; i++) {
             queue.enqueueOrThrow(task("quiet-" + i, "q-" + i));

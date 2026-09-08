@@ -1,25 +1,25 @@
-// T1 — pool HTTP: profilo e confronto isolato.
+// T1 - HTTP pool: profile and isolated comparison.
 //
-// Domanda: con un backend lento e il pool esaurito, quanto aspetta una richiesta
-// che non riesce ad acquisire una connessione, e che cosa riceve il chiamante?
+// Question: with a slow backend and an exhausted pool, how long does a request
+// that cannot acquire a connection wait, and what does the caller get?
 //
-// I due bracci hanno la STESSA capacita' (stesso maxConnections): l'unica
-// variabile e' che cosa succede alle richieste in eccesso. Confrontare il pool
-// globale (~500 connessioni/host) con un pool piccolo misurerebbe la capacita',
-// non l'intervento.
+// The arms have the SAME capacity (same maxConnections): the only variable is
+// what happens to the surplus requests. Comparing the global pool (~500
+// connections/host) against a small one would measure capacity, not the
+// intervention.
 //
-// Bracci alternati (A,B,A,B,...) nello stesso processo, dopo warm-up:
-//   A = "default-wait" — pendingAcquireTimeout al default di Reactor Netty (45 s),
-//                        cioe' il comportamento effettivo di oggi.
-//   B = "budget-wait"  — pendingAcquireTimeout pari al budget della funzione.
+// Alternated arms (A,B,A,B,...) in one process, after warm-up:
+//   A = "default-wait" - pendingAcquireTimeout at Reactor Netty's default (45 s),
+//                        i.e. today's effective behaviour.
+//   B = "budget-wait"  - pendingAcquireTimeout equal to the function's budget.
 //
-// Il backend risponde dopo HOLD_MS, cosi' le connessioni restano occupate e le
-// richieste in eccesso finiscono in coda di acquisizione.
+// The backend answers after HOLD_MS, so connections stay busy and the surplus
+// requests end up in the acquisition queue.
 //
-// CANCEL riproduce cio' che fa ExternalDispatcher: .timeout(budget) sul Mono, che
-// CANCELLA l'upstream e con esso l'acquisizione pendente. Senza questo il banco
-// misurerebbe uno scenario che la produzione non ha - ed e' esattamente l'errore
-// che la prima versione di questo banco faceva.
+// CANCEL reproduces what ExternalDispatcher does: .timeout(budget) on the Mono,
+// which CANCELS upstream and with it the pending acquisition. Without it the
+// harness measures a scenario production does not have - which is exactly the
+// mistake the first version of this benchmark made.
 import com.sun.net.httpserver.HttpServer;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
@@ -38,22 +38,22 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class T1PoolBench {
 
-    /** Quante richieste il backend ha davvero servito: capacita' spesa, utile o no. */
+    /** How many requests the backend actually served: capacity spent, useful or not. */
     static final AtomicInteger backendServed = new AtomicInteger();
 
-    static final int POOL = 8;              // connessioni concesse, UGUALE nei due bracci
-    static final int CONCURRENCY = 64;      // richieste simultanee: 8x il pool
-    static final long HOLD_MS = 300;        // quanto il backend tiene la connessione
-    static final long BUDGET_MS = 1000;     // budget della funzione: il limite che conta
-    static final long SHIPPED_ACQUIRE_WAIT_MS = 5000; // il default adottato (= connectTimeoutMs)
-    static final long DEFAULT_ACQUIRE_WAIT_MS = 45_000; // default di Reactor Netty
+    static final int POOL = 8;              // connections granted, THE SAME in both arms
+    static final int CONCURRENCY = 64;      // concurrent requests: 8x the pool
+    static final long HOLD_MS = 300;        // how long the backend holds the connection
+    static final long BUDGET_MS = 1000;     // the function's budget: the limit that matters
+    static final long SHIPPED_ACQUIRE_WAIT_MS = 5000; // the shipped default (= connectTimeoutMs)
+    static final long DEFAULT_ACQUIRE_WAIT_MS = 45_000; // Reactor Netty's default
     static final int REPS = 6;              // ripetizioni per braccio
     static final int WARMUP = 2;
 
     public static void main(String[] args) throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        // Thread daemon: un pool non-daemon tiene viva la JVM dopo la fine del banco e
-        // l'output resta nel buffer di System.out senza mai arrivare.
+        // Daemon threads: a non-daemon pool keeps the JVM alive after the benchmark
+        // ends, and the output stays in System.out's buffer without ever arriving.
         ExecutorService serverPool = Executors.newFixedThreadPool(64, r -> {
             Thread t = new Thread(r, "bench-backend");
             t.setDaemon(true);
@@ -87,7 +87,7 @@ public class T1PoolBench {
             round(client(BUDGET_MS), url, cancel);
         }
         for (int i = 0; i < REPS; i++) {
-            // Ordine alternato: una deriva della macchina colpisce i bracci allo stesso modo.
+            // Alternated order: a drift of the machine hits the arms equally.
             global.add(round(client(DEFAULT_ACQUIRE_WAIT_MS), url, cancel));
             shipped.add(round(client(SHIPPED_ACQUIRE_WAIT_MS), url, cancel));
             bounded.add(round(client(BUDGET_MS), url, cancel));
@@ -107,7 +107,7 @@ public class T1PoolBench {
         System.out.println();
         System.out.println("}");
         System.out.flush();
-        // I pool di Reactor Netty restano vivi; il banco ha finito, quindi si chiude.
+        // Reactor Netty's pools stay alive; the benchmark is done, so exit.
         System.exit(0);
     }
 
@@ -138,7 +138,7 @@ public class T1PoolBench {
             long issued = System.nanoTime();
             Mono<String> call = client.get().uri(url).responseContent().aggregate().asString();
             if (cancelAtBudget) {
-                // Come il dispatcher: allo scadere del budget la richiesta viene cancellata.
+                // Like the dispatcher: when the budget expires the request is cancelled.
                 call = call.timeout(Duration.ofMillis(BUDGET_MS));
             }
             call
@@ -163,8 +163,8 @@ public class T1PoolBench {
         done.await();
         long wallMs = (System.nanoTime() - start) / 1_000_000;
 
-        // Il backend puo' continuare a ricevere richieste gia' accodate dopo che il
-        // chiamante ha rinunciato: e' esattamente la capacita' spesa per nessuno.
+        // The backend can keep receiving already-queued requests after the caller
+        // gave up: that is exactly the capacity spent on nobody.
         Thread.sleep(HOLD_MS * 2);
         Arrays.sort(latencies);
         return new Result(

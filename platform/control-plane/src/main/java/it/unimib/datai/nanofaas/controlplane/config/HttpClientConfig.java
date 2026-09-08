@@ -39,7 +39,7 @@ public class HttpClientConfig {
      *       never cancelled, and {@code ExternalDispatcher} does cancel (it wraps the call in
      *       {@code .timeout(functionTimeout)}, which cancels the pending acquisition too). With
      *       cancellation the value makes no measurable difference, so the tuning was not
-     *       adopted — see docs/experiments/control-plane-tuning-2026-09/RISULTATI.md.</li>
+     *       adopted — see docs/experiments/control-plane-tuning-2026-09/RESULTS.md.</li>
      * </ul>
      *
      * <p>{@code destroyMethod} gives the pool the explicit lifecycle it lacked: the global

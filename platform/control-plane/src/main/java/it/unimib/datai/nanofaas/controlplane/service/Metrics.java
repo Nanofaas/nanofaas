@@ -172,22 +172,22 @@ public class Metrics {
     }
 
     /**
-     * I meter di una funzione, o {@code null} se e' stata rimossa.
+     * A function's meters, or {@code null} if it has been removed.
      *
-     * <p>Il caso comune - funzione gia' registrata e viva - non prende nessun lock. Prima lo
-     * prendeva sempre, ed era un monitor GLOBALE condiviso da tutte le funzioni su un percorso
-     * che ogni invocazione attraversa sei volte (dispatch, esito, tre timer, la loro lookup).
-     * Misurato: 223 ns per operazione con un thread, 2.638 ns con otto — il costo per
-     * operazione cresceva col numero di thread invece di restare piatto, che e' la firma di
-     * una serializzazione, non di un costo
-     * (docs/experiments/control-plane-tuning-2026-09/RISULTATI.md).
+     * <p>The common case — an already registered, live function — takes no lock. It used to
+     * take one always, and it was a GLOBAL monitor shared by every function, on a path each
+     * invocation crosses six times (dispatch, outcome, three timers, and their lookup).
+     * Measured: 223 ns per operation on one thread, 2,638 ns on eight — the per-operation cost
+     * grew with the thread count instead of staying flat, which is the signature of a
+     * serialization, not of a cost
+     * (docs/experiments/control-plane-tuning-2026-09/RESULTS.md).
      *
-     * <p>Il lock resta sul percorso lento, dove serve davvero: la prima registrazione e la
-     * corsa con {@link #removeFunction}. L'invariante che protegge - una funzione rimossa non
-     * ri-registra i suoi meter - vale ancora, perche' la registrazione avviene solo li' dentro.
-     * Una lettura veloce che afferra i meter un istante prima della rimozione incrementa un
-     * contatore che sta per essere deregistrato: quel campione si perde, ed e' un prezzo
-     * accettabile per non serializzare ogni invocazione della piattaforma.
+     * <p>The lock stays on the slow path, where it is actually needed: first registration and
+     * the race with {@link #removeFunction}. The invariant it protects — a removed function
+     * does not re-register its meters — still holds, because registration happens only in
+     * there. A fast read that grabs the meters an instant before removal increments a counter
+     * about to be deregistered: that sample is lost, and it is an acceptable price for not
+     * serializing every invocation on the platform.
      */
     private FunctionMeters metersOrNull(String function) {
         FunctionMeters registered = meters.get(function);

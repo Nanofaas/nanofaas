@@ -1,24 +1,24 @@
 #!/bin/bash
-# §8: baseline contro candidato, stessa matrice e stessa infrastruttura.
+# Section 8: baseline against candidate, same matrix and same infrastructure.
 #
-#   ./compare-baseline-candidate.sh [ripetizioni]
+#   ./compare-baseline-candidate.sh [repetitions]
 #
-# Due revisioni di nanoFaaS, lo stesso scenario, la stessa macchina, ordine
-# ALTERNATO (A,B,A,B,...) perche' una deriva della macchina colpisca i due bracci
-# allo stesso modo invece di concentrarsi su quello eseguito per secondo.
+# Two nanoFaaS revisions, the same scenario, the same machine, ALTERNATED order
+# (A,B,A,B,...) so that a drift of the machine hits both arms equally instead of
+# concentrating on whichever ran second.
 #
-# Ogni cella archivia i propri artefatti prima della successiva: NanoLab scrive
-# sempre in runs/latest e il run seguente lo sovrascrive.
+# Each cell archives its own artefacts before the next one starts: NanoLab always
+# writes to runs/latest, and the following run overwrites it.
 #
-# Una cella che PRODUCE un sommario k6 e' un dato valido anche se lo scenario ha
-# fallito le proprie asserzioni. In un confronto baseline-contro-candidato la
-# baseline puo' legittimamente non superare una soglia tarata sul candidato: e' il
-# risultato, non un guasto, e fermarsi li' renderebbe impossibile misurare proprio
-# gli attraversamenti di soglia che questa campagna esiste per trovare. Le soglie
-# sono un cancello CI; §8 confronta i numeri.
+# A cell that PRODUCES a k6 summary is valid data even when the scenario failed
+# its own assertions. In a baseline-versus-candidate comparison the baseline may
+# legitimately miss a threshold calibrated for the candidate: that is the result,
+# not a fault, and stopping there would make the very threshold crossings this
+# campaign exists to find unmeasurable. Thresholds are a CI gate; section 8
+# compares the numbers.
 #
-# Si ferma invece quando una cella non produce dati: quello e' un guasto
-# infrastrutturale, e mezza matrice che sembra completa e' peggio di nessuna.
+# It does stop when a cell produces no data: that is an infrastructure failure,
+# and half a matrix that looks complete is worse than none.
 set -uo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -42,19 +42,19 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "[compare] baseline=$BASELINE_REV candidato=$CANDIDATE_REV scenario=$SCENARIO ripetizioni=$REPS"
+echo "[compare] baseline=$BASELINE_REV candidate=$CANDIDATE_REV scenario=$SCENARIO repetitions=$REPS"
 git -C "$NANOFAAS" worktree add "$WORKTREES/baseline" "$BASELINE_REV" --detach >/dev/null || exit 1
 git -C "$NANOFAAS" worktree add "$WORKTREES/candidate" "$CANDIDATE_REV" --detach >/dev/null || exit 1
 
 cell() {
-    # Assegnazioni separate: bash espande TUTTE le parole di `local` prima di
-    # eseguirlo, quindi "$OUT/$arm/..." sulla stessa riga leggerebbe un $arm ancora
-    # non definito - e con `set -u` la coda muore prima della prima cella.
+    # Separate assignments: bash expands ALL the words of `local` before running
+    # it, so "$OUT/$arm/..." on the same line would read an $arm that is not yet
+    # defined - and under `set -u` the queue dies before the first cell.
     local arm=$1
     local rep=$2
     local dir="$OUT/$arm/rep-$rep"
     if [ -f "$dir/k6-summary.json" ]; then
-        echo "[compare] $arm rep $rep gia' archiviato, salto"
+        echo "[compare] $arm rep $rep already archived, skipping"
         return 0
     fi
     echo "[compare] $arm rep $rep ..."
@@ -68,23 +68,23 @@ cell() {
         cp "$NANOLAB/packages/nanolab/runs/latest/$f" "$dir/" 2>/dev/null
     done
     if [ ! -f "$dir/k6-summary.json" ]; then
-        echo "[compare] $arm rep $rep senza dati (exit $status); coda interrotta"
+        echo "[compare] $arm rep $rep produced no data (exit $status); queue stopped"
         return 1
     fi
     if [ "$status" -ne 0 ]; then
-        echo "[compare] $arm rep $rep: asserzioni non superate (exit $status), dati archiviati"
+        echo "[compare] $arm rep $rep: assertions not met (exit $status), data archived"
     fi
 }
 
 for rep in $(seq 1 "$REPS"); do
-    # Alternato dentro la ripetizione, non due blocchi: se la macchina rallenta a
-    # meta' campagna, rallenta per entrambi i bracci e non solo per il secondo.
+    # Alternated within the repetition, not two blocks: if the machine slows down
+    # mid-campaign, it slows for both arms and not only for the second.
     cell baseline "$rep" || exit 1
-    # Il teardown del compose rilascia il registry in modo asincrono; partire subito
-    # ha gia' prodotto un "connection refused" sul push della cella successiva.
+    # The compose teardown releases the registry asynchronously; starting at once
+    # has already produced a "connection refused" on the next cell's push.
     sleep 10
     cell candidate "$rep" || exit 1
     sleep 10
 done
 
-echo "[compare] completata: $OUT"
+echo "[compare] complete: $OUT"
