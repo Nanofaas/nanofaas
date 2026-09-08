@@ -1,0 +1,15 @@
+Revision: 1d9e2f5518c21641be2e791cca9a952ca4128d34
+Production source files compiled: 133
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+WAITER: short=timeout long=success/real answer replay=timeout/null archived=TIMEOUT
+OFFLOAD: live=1 sharedFutureDone=false ownerDone=false archived=null
+WEIGHT: budget=11600 estimatedPerOutcome=176 retained=30 uniquePayloadBytes=31457280
+WEIGHT-WIDE: actualPayloadBytes=1048576 estimate=112
+KEY-BUDGET: configured=1 concurrentClaims=16
+ARCHIVE-RACE: original=639fe865-6452-46d9-b432-76067fd902af replay=a6d705ae-ca6d-44df-bee0-d6efa1b47702 replayIsNew=true
+CHURN: removedMetricNames=1000 invalidatedReplicaEntries=1000
+SYNC-DISABLED: oldDispatchStillRunning=true slotsBefore=1 slotsAfter=0 newResult=success
+CORE-ADMISSION: configuredConcurrency=1 liveDispatched=100
+DEPROVISION: removalFailed=true proxyClosed=false trackedStates=0
+All nine diagnostic reproductions observed.
