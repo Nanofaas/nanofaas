@@ -92,6 +92,25 @@ Async queue e sync queue restano distinte; autoscaler e concurrency-control
 restano selezionabili separatamente; i due provider restano adattatori esclusivi.
 Offload, runtime-config e build-metadata restano moduli opzionali.
 
+**Distinzione obbligatoria tra modalità API e strategia di coda:** il modulo
+`async-queue` attuale serve **sia SYNC sia ASYNC**. Quando il gateway sync non
+è attivo, `ReactiveInvocationCoordinator.admitLocally` accoda anche `:invoke`
+tramite `QueueBackedEnqueuer`; il coordinatore attende poi la completion per
+rispondere. `:enqueue` usa la stessa infrastruttura per funzione e restituisce
+l'identificativo senza attendere il risultato. Il nome del modulo non descrive
+quindi tutte le modalità API supportate.
+
+Le due implementazioni rappresentano strategie diverse: `async-queue` fornisce
+code per funzione e scheduling condivisi da richieste SYNC/ASYNC; `sync-queue`
+fornisce la strategia di ammissione sincrona con profondità globale e stima
+dell'attesa. Attualmente sono alternative nella selezione del build. Il
+refactoring deve preservare queste capability e separarle dai contratti di
+accodamento: non trasferire tutto il percorso SYNC in `sync-queue`, non rendere
+quel modulo necessario per `:invoke` e non dedurre la modalità HTTP dal nome
+della coda. L'attesa del risultato resta responsabilità del core. Mantieni gli
+ID dei moduli durante questa campagna; un eventuale rename richiede una
+migrazione esplicita di selettori, configurazioni, metadata e documentazione.
+
 Non creare in questa campagna un ulteriore JAR `execution` o un modulo opzionale
 `deployment-management`: i relativi confini saranno package/configurazioni
 verificati nel core. La separazione in JAR non aggiunge qui un requisito di
@@ -163,6 +182,10 @@ partono da `it/unimib/datai/nanofaas`. Le posizioni dopo P06/P21 saranno diverse
 4. Aggiungi alla matrice i percorsi: nessuna queue, async queue, sync queue
    abilitata/disabilitata a runtime, offload, LOCAL/EXTERNAL/DEPLOYMENT,
    retry, rimozione e nuova registrazione dello stesso nome.
+   Nel profilo `async-queue` prova separatamente `:invoke` (SYNC, attesa del
+   risultato) e `:enqueue` (ASYNC, risposta anticipata), anche concorrenti sulla
+   stessa funzione: condividono coda, capacità e scheduler. Verifica saturazione,
+   retry e cleanup senza perdere la distinzione dei rispettivi contratti HTTP.
 5. Esegui i nuovi test sulla baseline, separatamente dai test già esistenti.
    Registra gli assert falliti attesi; errori di compilazione o dipendenze mancanti
    non costituiscono una riproduzione red.
@@ -719,6 +742,10 @@ dal relativo task. Le metriche di ammissione distinguono rifiuti da lavoro utile
    Definisci port distinti per ammissione/capability async, pianificazione retry,
    dispatch e capacità. Un booleano `enabled()` non può più significare
    contemporaneamente queue attiva, async disponibile e capacità acquisita.
+   La modalità di risposta SYNC/ASYNC resta separata dalla strategia di coda:
+   entrambi i percorsi devono continuare a usare la strategia per funzione di
+   `async-queue`. Esprimi le capability con contratti espliciti, senza inferirle
+   dal nome del modulo e senza duplicare lo scheduler per modalità HTTP.
 2. Introduci un task immutabile con ID e dati necessari al dispatch; non esporre
    il record mutabile. Le queue notificano eventi expired/removed/rejected al
    lifecycle attraverso un port, senza `markTimeout`, `settle` o release diretti.
@@ -927,7 +954,7 @@ non una prova di correttezza o un motivo per cancellare i test.
 | Profilo | Verifiche obbligatorie |
 |---|---|
 | Core `none` | LOCAL/EXTERNAL, limiti attivi senza queue, retry, nessun bean managed inutilizzato, stop |
-| Async queue | accodamento/rifiuto, polling, replay, retry, peso outcome, rimozione con lavoro queued |
+| Async queue | `:invoke` SYNC e `:enqueue` ASYNC, anche concorrenti sulla stessa funzione; coda/capacità condivise, risposta attesa/anticipata, rifiuti, polling, replay, retry, peso outcome, rimozione con lavoro queued |
 | Sync queue, senza runtime-config | compilazione/avvio e assenza dipendenza nascosta dall'estensione |
 | Sync queue + runtime-config | enable/disable e modifica limiti durante lavoro, fairness, timeout waiter, release |
 | Offload con core minimo e con queue compatibile | risultati/failure, waiter discordanti, saturazione, rimozione, cleanup |
