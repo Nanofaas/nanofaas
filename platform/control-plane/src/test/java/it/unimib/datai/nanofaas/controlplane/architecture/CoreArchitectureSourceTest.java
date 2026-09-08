@@ -13,7 +13,7 @@ class CoreArchitectureSourceTest {
     @ParameterizedTest
     @ValueSource(strings = {
             "file:/repo/platform/control-plane/build/classes/java/main/Example.class",
-            "jar:file:/repo/platform/control-plane/build/libs/control-plane-0.20.0-plain.jar!/Example.class"
+            "jar:file:/repo/platform/control-plane/build/libs/control-plane-0.21.0-plain.jar!/Example.class"
     })
     void acceptsCoreSourcesFromClassesDirectoryAndJar(String source) {
         assertThat(CoreArchitectureTest.isCoreSource(URI.create(source))).isTrue();

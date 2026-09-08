@@ -182,7 +182,7 @@ wheels = [
 
 [[package]]
 name = "nanofaas-sdk"
-version = "0.20.0"
+version = "0.21.0"
 source = { directory = "../../../sdks/python" }
 dependencies = [
     { name = "fastapi" },
@@ -196,7 +196,7 @@ dependencies = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.100.0" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.24.0" },
-    { name = "prometheus-client", specifier = ">=0.20.0" },
+    { name = "prometheus-client", specifier = ">=0.21.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=7.4.0" },
     { name = "python-multipart", specifier = ">=0.0.6" },
     { name = "requests", specifier = ">=2.31.0" },

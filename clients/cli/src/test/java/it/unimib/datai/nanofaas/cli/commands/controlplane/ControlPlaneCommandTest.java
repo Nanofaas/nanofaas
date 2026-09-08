@@ -39,7 +39,7 @@ class ControlPlaneCommandTest {
             """;
 
     private static final String METADATA_JSON = """
-            {"version":"0.20.0","revision":"abc123","dirty":false,
+            {"version":"0.21.0","revision":"abc123","dirty":false,
              "modules":["build-metadata","async-queue"],
              "build":{"type":"jvm","variant":null,"optimization":null,
                       "baseImages":{"builder":"b:1","runtime":"r:1"}},

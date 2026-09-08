@@ -13,7 +13,7 @@ from fn_init import generator, wizard
 
 app = typer.Typer(add_completion=False, help="Scaffold a new nanofaas function project.")
 console = Console(force_terminal=sys.stdout.isatty())
-DEFAULT_JAVASCRIPT_SDK_VERSION = "0.20.0"
+DEFAULT_JAVASCRIPT_SDK_VERSION = "0.21.0"
 _RUNTIME = {"java": "java", "python": "python", "go": "go", "javascript": "javascript", "bash": "exec"}
 _RUNTIME_PREFIX = {"java": "java-", "python": "", "go": "go-", "javascript": "javascript-", "bash": "bash-"}
 

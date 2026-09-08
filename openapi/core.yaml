@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: nanofaas Control Plane API
-  version: 0.20.0
+  version: 0.21.0
   description: |
     Minimal FaaS control plane API for function registration and invocation.
 servers:
