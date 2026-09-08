@@ -193,7 +193,7 @@ class ReactiveInvocationCoordinatorOffloadTest {
         doAnswer(inv -> {
             lookup.executionRecord().completion().complete(InvocationResult.success("local-out"));
             return null;
-        }).when(completionHandler).dispatch(any(InvocationTask.class));
+        }).when(completionHandler).dispatchDirect(any(InvocationTask.class));
 
         OffloadContext hop = new OffloadContext(true, null, null);
         SyncInvocation invocation = coordinator(null).invoke(lookup, spec, 1000, hop).block();

@@ -15,7 +15,7 @@ import it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueInvocationEnqueuer;
 import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueMetrics;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
-import it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

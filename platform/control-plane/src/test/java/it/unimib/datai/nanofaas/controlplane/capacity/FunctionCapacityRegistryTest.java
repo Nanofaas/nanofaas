@@ -1,4 +1,4 @@
-package it.unimib.datai.nanofaas.workloadmetrics;
+package it.unimib.datai.nanofaas.controlplane.capacity;
 
 import org.junit.jupiter.api.Test;
 

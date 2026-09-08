@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.controlplane.execution;
 
 import it.unimib.datai.nanofaas.common.model.ErrorInfo;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
+import it.unimib.datai.nanofaas.controlplane.capacity.DispatchLease;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.slf4j.Logger;
@@ -12,6 +13,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
 
 /**
  * Mutable execution record with thread-safe state transitions.
@@ -64,6 +66,26 @@ public class ExecutionRecord {
     private Map<String, String> headers;
     private String encoding;
     private final Set<Integer> releasedDispatchAttempts = new HashSet<>();
+
+    /**
+     * The capacity lease the current attempt owns, set at dispatch and released exactly once
+     * by the attempt's completion (invariant I4). Null for a path that never acquired local
+     * capacity (offload) or that released through a queue's name-based accounting.
+     */
+    private DispatchLease dispatchLease;
+    /**
+     * Whether this attempt acquired its capacity through a lease (direct admission) rather
+     * than a queue scheduler's name-based slot. Kept true even after the lease is detached,
+     * so a second release path knows not to fall through to a name-based release.
+     */
+    private boolean directAdmission;
+
+    /**
+     * The real cancellable transport handle of the current attempt (the raw dispatch future,
+     * not a composed one). Administrative expiry requests local cancellation on it so the
+     * work (and its payload) does not outlive the released capacity.
+     */
+    private Future<?> dispatchHandle;
 
     private final TimeSource timeSource;
 
@@ -307,6 +329,12 @@ public class ExecutionRecord {
         this.statusCode = null;
         this.headers = null;
         this.encoding = null;
+        // The failed attempt's lease and handle were released by its completion; a retry is a
+        // fresh attempt that re-acquires at its own dispatch. Cleared here so a stale handle
+        // from the previous attempt can never be cancelled on the next attempt's behalf.
+        this.dispatchLease = null;
+        this.dispatchHandle = null;
+        this.directAdmission = false;
     }
 
     /**
@@ -315,6 +343,61 @@ public class ExecutionRecord {
      */
     public synchronized boolean markDispatchSlotReleased(int attempt) {
         return releasedDispatchAttempts.add(attempt);
+    }
+
+    /**
+     * Whether the current attempt was dispatched (its slot or lease was acquired). Marked by
+     * {@link #markRunning()}, which is what a dispatch does; a record still sitting in a queue
+     * (or a completion of work that never dispatched) has never run, so it acquired nothing.
+     */
+    public synchronized boolean wasDispatched() {
+        return startedAt != null;
+    }
+
+    /**
+     * Records the lease the current attempt acquired at dispatch. Called under the record
+     * monitor, before the dispatch future is kicked off.
+     */
+    public synchronized void attachDispatchLease(DispatchLease lease) {
+        this.dispatchLease = lease;
+        this.directAdmission = true;
+    }
+
+    /** Whether this attempt admitted directly through a lease (never released by name). */
+    public synchronized boolean wasDirectAdmission() {
+        return directAdmission;
+    }
+
+    /**
+     * Detaches and returns the current attempt's lease, or {@code null} when this attempt
+     * never acquired one. The caller releases the returned lease (idempotently) outside the
+     * monitor where possible.
+     */
+    public synchronized DispatchLease takeDispatchLease() {
+        DispatchLease lease = dispatchLease;
+        dispatchLease = null;
+        return lease;
+    }
+
+    /** Whether the current attempt holds a lease it has not yet released. */
+    public synchronized boolean holdsDispatchLease() {
+        return dispatchLease != null;
+    }
+
+    /**
+     * Registers the raw cancellable transport handle of the current attempt. Called as soon
+     * as the dispatcher hands the future back, so an administrative expiry that wins the race
+     * against publication can still cancel it.
+     */
+    public synchronized void attachDispatchHandle(Future<?> handle) {
+        this.dispatchHandle = handle;
+    }
+
+    /** Detaches and returns the current attempt's transport handle, or null. */
+    public synchronized Future<?> takeDispatchHandle() {
+        Future<?> handle = dispatchHandle;
+        dispatchHandle = null;
+        return handle;
     }
 
     // Legacy accessors - kept for backward compatibility but prefer snapshot() for reads

@@ -2,7 +2,7 @@ package it.unimib.datai.nanofaas.modules.asyncqueue;
 
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityState;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityState;
 
 import java.util.ArrayList;
 import java.util.EnumMap;

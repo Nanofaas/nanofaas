@@ -15,7 +15,7 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.service.ExecutionCompletionHandler;
 import it.unimib.datai.nanofaas.controlplane.service.Metrics;
-import it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;

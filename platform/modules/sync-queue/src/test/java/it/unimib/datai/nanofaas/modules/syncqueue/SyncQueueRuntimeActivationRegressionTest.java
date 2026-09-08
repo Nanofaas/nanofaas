@@ -5,6 +5,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
@@ -57,6 +58,11 @@ class SyncQueueRuntimeActivationRegressionTest {
         @Bean
         InvocationService invocationService() {
             return mock(InvocationService.class);
+        }
+
+        @Bean
+        FunctionCapacityRegistry functionCapacityRegistry() {
+            return new FunctionCapacityRegistry();
         }
     }
 

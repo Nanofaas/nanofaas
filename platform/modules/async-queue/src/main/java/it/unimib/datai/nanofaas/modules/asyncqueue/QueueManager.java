@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
 

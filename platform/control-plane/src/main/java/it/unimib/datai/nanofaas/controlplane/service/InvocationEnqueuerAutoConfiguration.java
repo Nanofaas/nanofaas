@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerLifecycleSupport;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -47,9 +48,11 @@ public class InvocationEnqueuerAutoConfiguration {
      */
     @Bean(destroyMethod = "shutdown")
     @ConditionalOnMissingBean(InvocationEnqueuer.class)
-    ExecutorBackedInvocationEnqueuer invocationEnqueuer(ObjectProvider<ExecutionCompletionHandler> completionHandler) {
+    ExecutorBackedInvocationEnqueuer invocationEnqueuer(ObjectProvider<ExecutionCompletionHandler> completionHandler,
+                                                       FunctionCapacityRegistry capacityRegistry) {
         return new ExecutorBackedInvocationEnqueuer(
-                task -> completionHandler.getObject().dispatch(task),
+                (task, lease) -> completionHandler.getObject().dispatchWithLease(task, lease),
+                capacityRegistry,
                 SchedulerLifecycleSupport.newBoundedExecutor(
                         "nanofaas-core-retry", RETRY_POOL_CORE_SIZE, RETRY_POOL_MAX_SIZE, RETRY_POOL_QUEUE_CAPACITY));
     }

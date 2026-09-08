@@ -622,3 +622,135 @@ Module suites:
 
 - P06 — attempt-scoped leases and dispatch cancellation (closes R5 and the administrative-expiry
   transport-handle gap).
+
+## P06 — Attempt-scoped leases, mandatory capacity and local cancellation
+
+**ID:** P06 — introduce attempt-scoped `DispatchLease`/`DispatchAttempt` with function-generation
+identity, move the mutable capacity into the core, bound every attempt (with or without a queue
+module), register the real cancellable transport handle, and make local cancellation real. Closes
+review finding R5 and the "direct core admission" risk.
+
+**Revision / git state**
+
+- Branch: `control-plane-lifecycle-memory`. BASE (P05): `879c03c4` ("P05: per-waiter timeouts and
+  unconditional offload finalization (R3/R4)"). This entry's commit is the P06 commit.
+
+**What P06 changed**
+
+- New core capacity package `it.unimib.datai.nanofaas.controlplane.capacity`:
+  - `DispatchLease` — an attempt-owned capacity lease carrying the function name, the generation
+    identity and an idempotent `release()` (atomic). The lease is the only thing a completion path
+    may release: there is no name-based release on the core dispatch path any more.
+  - `DispatchAttempt` — `(executionId, attempt, lease)`; a path that never acquired local capacity
+    (offload) carries no lease.
+  - `FunctionCapacityState` / `FunctionCapacityRegistry` — moved from `workload-metrics`, now
+    generation-aware. Each registration is a generation; `remove` retires it, re-registering while
+    it drains creates a NEW generation, and an old lease releases only its own generation
+    (invariant I4 / I7). The name-based methods (`tryAcquireSlot`, `releaseSlotAndGetHoldNanos`,
+    `state`, `inFlight`, `setEffectiveConcurrency`, ...) remain as the temporary adapters the queue
+    modules still use (their retirement is P20). The old `workload-metrics` classes are deleted; the
+    governor's `WorkloadCapacityController` is now a one-line adapter bean in each queue module.
+- `ExecutionRecord` — tracks the current attempt's `DispatchLease` (`attachDispatchLease` /
+  `takeDispatchLease`, plus a `directAdmission` flag that survives the take so a second release
+  path never falls through to a name release) and the raw cancellable transport handle
+  (`attachDispatchHandle` / `takeDispatchHandle`); `wasDispatched()` (startedAt set) is the
+  "this attempt acquired capacity" discriminator. `resetForRetry` clears all three.
+- `ExecutionCompletionHandler` — injects the core `FunctionCapacityRegistry` (a handler built
+  without one owns a private registry, so the no-queue profile is still bounded).
+  `dispatch(task)` is the queue path (a scheduler already acquired name-based); new
+  `dispatchDirect(task)` acquires the lease itself and throws `QueueFullException` (429) when there
+  is no room; new `dispatchWithLease(task, lease)` is used by the core-only retry enqueuer. The raw
+  transport future is published on the record BEFORE the completion callback (an expiry that wins
+  the race can still cancel it), and the attempt's own deadline (`orTimeout(spec.timeoutMs)`) feeds
+  the retry policy. `releaseAttemptCapacity` releases exactly what the attempt acquired: the lease
+  for a direct admission, the name-based slot for a queue dispatch, nothing for work that never
+  dispatched (this is what closes R5). `handleAdministrativeExpiry` now releases the capacity and
+  cancels the raw handle.
+- `ReactiveInvocationCoordinator` — the direct admission path calls `dispatchDirect`; the P05 dead
+  `onErrorResume` branch no longer marks the record ERROR without concluding it — it routes the
+  exceptional completion through `completeExecution` so the record settles (invariant I1/I3).
+- `ExecutorBackedInvocationEnqueuer` (core-only retry) — each retry now acquires a capacity lease
+  before submission and hands it to `dispatchWithLease`; no room returns `false` (retry exhausted)
+  instead of dispatching unbounded work.
+- `RegistryDefaultsConfiguration` — registers the single `@Bean FunctionCapacityRegistry`
+  (`@ConditionalOnMissingBean`), shared by the direct path and both queue modules.
+- Wiring: `SyncQueueConfiguration` / `AsyncQueueConfiguration` drop their own registry beans and
+  provide `WorkloadCapacityController` adapters over the shared core registry; `SyncQueueService`,
+  `SyncQueueInvocationEnqueuer`, `SyncQueueWorkloadMetricsSource`, `QueueManager`,
+  `FunctionQueueState` import the core types.
+- Tests: the R5 and direct-admission regressions go GREEN; a new
+  `DispatchLifecycleAndCancellationTest` covers the exactly-one-of-100 bound, lease idempotency,
+  generation fencing on retirement, double callback, administrative-expiry cancellation of a
+  non-cooperative LOCAL future, and cancellation of a real HTTP call at the transport boundary
+  (MockWebServer); several existing completion/retry tests now mark the attempt dispatched before
+  completing, and the direct-path dispatch tests assert no name-based release.
+
+**Test commands and outcomes**
+
+R5 + direct admission anchors, RED on the P05 baseline, GREEN after P06 (unchanged tests):
+
+```bash
+./gradlew :control-plane:test --tests '*DirectAdmissionWithoutQueueBoundedRegressionTest'
+# RED on baseline (P05): live 100 (expected <= 1). GREEN after P06: BUILD SUCCESSFUL.
+
+./gradlew :control-plane-modules:sync-queue:test --tests '*R5DirectCompletionUnownedSlotRegressionTest'
+# RED on baseline (P05): in-flight 0 (expected 1). GREEN after P06: BUILD SUCCESSFUL.
+```
+
+New lease / cancellation / retirement tests:
+
+```bash
+./gradlew :control-plane:test --tests '*DispatchLifecycleAndCancellationTest'   # 13 tests, 0 failed
+./gradlew :control-plane:test --tests '*FunctionCapacityRegistryTest'          # BUILD SUCCESSFUL
+```
+
+Full suites (once before commit):
+
+```bash
+./gradlew :control-plane:test --no-parallel
+# 599 tests completed, 2 failed, 3 skipped — the 2 failures are the still-red P00 regressions R8
+# (x2, P09/P10). R5 and direct admission are green; none new from P06.
+
+./gradlew :control-plane-modules:sync-queue:test :control-plane-modules:async-queue:test \
+  :workload-metrics:test :control-plane-modules:concurrency-control:test          # BUILD SUCCESSFUL
+./gradlew :control-plane-modules:autoscaler:test :control-plane-modules:offload:test \
+  :control-plane-modules:k8s-deployment-provider:test :control-plane-modules:build-metadata:test \
+  :control-plane-modules:runtime-config:test                                      # BUILD SUCCESSFUL
+# container-deployment-provider still carries the pre-existing R6 red (P08), unchanged.
+```
+
+**Impact (GitNexus)**
+
+- `node .gitnexus/run.cjs impact "FunctionCapacityRegistry" --direction upstream --repo .` →
+  HIGH, 32 impacted (18 direct), 3 processes, 3 modules; boundary note: `WorkloadCapacityController`
+  is an interface with 2 implementations, so interface dispatch is a lower bound.
+- `node .gitnexus/run.cjs impact "InvocationEnqueuer" --direction upstream --repo .` →
+  ambiguous (3 symbols); the platform path (disambiguated by `--file`) resolves to HIGH, 18
+  impacted, 7 direct, 4 processes.
+- `node .gitnexus/run.cjs impact "SyncQueueInvocationEnqueuer" --direction upstream --repo .` →
+  LOW (3 impacted, 2 direct). `impact "QueueBackedEnqueuer"` → LOW (1 impacted, 1 direct).
+- `node .gitnexus/run.cjs detect-changes --scope all --repo .` → 33 files / 82 symbols, risk
+  `critical`; affected flows `invoke` and the dispatch/completion paths. The move of a HIGH-risk
+  symbol plus the `ExecutionRecord`/`ExecutionCompletionHandler` changes account for the severity;
+  the queue modules were migrated behind the same public name-based API so their behavior is
+  unchanged.
+
+**Measures / observations**
+
+- No path bypasses the cap: the direct path (no queue), the queue schedulers, and the core-only
+  retry enqueuer all acquire against the same generation-aware registry. At `concurrency=1`, 100
+  concurrent direct calls admit exactly 1 and refuse 99 with the overload contract (429), no
+  implicit unbounded queue.
+- `accepted + released == acquired`, no negatives: every release is a lease the attempt owns (or a
+  name-based slot the queue scheduler acquired), and a direct completion of work that never
+  dispatched releases nothing (R5). Administrative expiry releases exactly once, then cancels the
+  raw transport handle; the re-entrant completion from the cancel finds the capacity already
+  released and does nothing.
+- Cancellation is local and tested at the transport boundary: `cancel(true)` on the raw
+  `Mono.toFuture()` disposes the HTTP subscription (asserted against a controlled MockWebServer),
+  and a composed future is never relied on as proof. No promise is made that a remote or a
+  non-cooperative LOCAL function stops.
+
+**Next step**
+
+- P07 — finite count/byte admission for live/queued payload bytes (invariant I5's byte half).

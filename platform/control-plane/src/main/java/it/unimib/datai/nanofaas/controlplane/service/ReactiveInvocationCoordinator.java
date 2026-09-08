@@ -115,9 +115,12 @@ public final class ReactiveInvocationCoordinator {
                     log.warn("Execution {} completed exceptionally", executionRecord.executionId(), ex);
                     String message = ex.getMessage() != null ? ex.getMessage() : ex.toString();
                     InvocationResult failure = InvocationResult.error("EXECUTION_FAILED", message);
-                    // Same reason as the timeout above: the slot before the archiving.
-                    executionRecord.markError(failure.error());
-                    metrics.error(executionRecord.task().functionName());
+                    // Conclude the execution through the completion handler, not by marking the
+                    // record terminal here: every terminal marker must conclude the shared future
+                    // and settle the store (invariant I1/I3), and this branch used to mark the
+                    // record ERROR while leaving it un-settled (P05). completeExecution is a no-op
+                    // on an already-settled record, so the waiter still gets the error response.
+                    completionHandler.completeExecution(executionRecord.executionId(), failure);
                     return Mono.just(new SyncInvocation(responseMapper.toResponse(executionRecord, failure), offloadedTarget.get()));
                 });
     }
@@ -171,7 +174,9 @@ public final class ReactiveInvocationCoordinator {
             InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, executionRecord);
         } else {
             metrics.admitted(executionRecord.task().functionName(), executionRecord.task().kind());
-            completionHandler.dispatch(executionRecord.task());
+            // Direct admission: the core acquires the capacity lease and bounds the work;
+            // no room -> QueueFullException (429), never an implicit unbounded queue.
+            completionHandler.dispatchDirect(executionRecord.task());
         }
     }
 

@@ -1,10 +1,13 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.capacity.DispatchLease;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.ExecutorService;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -31,29 +34,54 @@ import java.util.function.Consumer;
  * attempt's own completion callback; since {@code execute} only appends to the pool's
  * work queue and returns, each retry becomes a new task picked up by a worker's own
  * loop rather than a deeper stack frame, so a long retry chain cannot overflow the
- * stack. A saturated queue, a shut-down executor, or any other exception surfacing
- * from submission are all treated as "cannot schedule right now": {@code enqueue}
- * returns {@code false}, which sends the caller down the exact path an exhausted or
- * full queue already takes (see {@code ExecutionCompletionHandler#handleRetry}) -
- * the request still terminates, it never leaks an orphaned {@code QUEUED} record.
+ * stack.
+ *
+ * <p>Each retry still acquires the function's capacity lease (invariant I4/I5): a retry
+ * is an attempt, so the no-queue profile applies the configured concurrency to it too.
+ * When there is no room the lease acquisition fails and {@code enqueue} returns
+ * {@code false}, which sends the caller down the exact path an exhausted or full queue
+ * already takes (see {@code ExecutionCompletionHandler#handleRetry}) - the request still
+ * terminates, it never leaks an orphaned {@code QUEUED} record.
  */
 final class ExecutorBackedInvocationEnqueuer implements InvocationEnqueuer {
     private static final Logger log = LoggerFactory.getLogger(ExecutorBackedInvocationEnqueuer.class);
 
-    private final Consumer<InvocationTask> dispatch;
+    private final BiConsumer<InvocationTask, DispatchLease> dispatchWithLease;
+    private final FunctionCapacityRegistry capacityRegistry;
     private final ExecutorService executor;
 
-    ExecutorBackedInvocationEnqueuer(Consumer<InvocationTask> dispatch, ExecutorService executor) {
-        this.dispatch = dispatch;
+    ExecutorBackedInvocationEnqueuer(BiConsumer<InvocationTask, DispatchLease> dispatchWithLease,
+                                     FunctionCapacityRegistry capacityRegistry,
+                                     ExecutorService executor) {
+        this.dispatchWithLease = dispatchWithLease;
+        this.capacityRegistry = capacityRegistry;
         this.executor = executor;
+    }
+
+    /** Test-only convenience: a plain dispatch consumer with no capacity accounting. */
+    ExecutorBackedInvocationEnqueuer(Consumer<InvocationTask> dispatch, ExecutorService executor) {
+        this((task, lease) -> {
+            dispatch.accept(task);
+            if (lease != null) {
+                lease.release();
+            }
+        }, new FunctionCapacityRegistry(), executor);
     }
 
     @Override
     public boolean enqueue(InvocationTask task) {
+        DispatchLease lease = capacityRegistry.tryAcquireLease(
+                task.functionName(), task.functionSpec().concurrency());
+        if (lease == null) {
+            log.warn("Retry refused for execution {} (function {}, attempt {}): no capacity",
+                    task.executionId(), task.functionName(), task.attempt());
+            return false;
+        }
         try {
-            executor.execute(() -> dispatch.accept(task));
+            executor.execute(() -> dispatchWithLease.accept(task, lease));
             return true;
         } catch (RuntimeException ex) {
+            lease.release();
             log.warn("Retry scheduling rejected for execution {} (function {}, attempt {}): {}",
                     task.executionId(), task.functionName(), task.attempt(), ex.toString());
             return false;

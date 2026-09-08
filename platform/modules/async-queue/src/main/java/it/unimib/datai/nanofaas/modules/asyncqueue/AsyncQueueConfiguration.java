@@ -9,7 +9,8 @@ import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListen
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
-import it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -20,13 +21,14 @@ public class AsyncQueueConfiguration {
     private static final String FUNCTION_REMOVED = "FUNCTION_REMOVED";
 
     @Bean
-    FunctionCapacityRegistry asyncQueueCapacityRegistry() {
-        return new FunctionCapacityRegistry();
-    }
-
-    @Bean
     QueueManager queueManager(MeterRegistry meterRegistry, FunctionCapacityRegistry capacityRegistry) {
         return new QueueManager(meterRegistry, capacityRegistry);
+    }
+
+    /** The governor's capacity knob, backed by the shared core registry (P06). */
+    @Bean
+    WorkloadCapacityController asyncQueueWorkloadCapacityController(FunctionCapacityRegistry capacityRegistry) {
+        return capacityRegistry::setEffectiveConcurrency;
     }
 
     @Bean

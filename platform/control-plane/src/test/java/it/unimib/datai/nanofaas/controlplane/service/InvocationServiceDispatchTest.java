@@ -302,7 +302,8 @@ class InvocationServiceDispatchTest {
         verify(dispatcherRouter).dispatchLocal(any());
         verify(syncQueueGateway, never()).enqueueOrThrow(any());
         verify(enqueuer, never()).enqueue(any());
-        verify(enqueuer).releaseDispatchSlot("inline-fn");
+        // Direct admission releases its own capacity lease, never a name-based queue slot.
+        verify(enqueuer, never()).releaseDispatchSlot(any());
     }
 
     @Test
@@ -336,7 +337,8 @@ class InvocationServiceDispatchTest {
         assertThat(response.output()).isEqualTo("inline-ok");
         verify(dispatcherRouter).dispatchLocal(any());
         verify(enqueuer, never()).enqueue(any());
-        verify(enqueuer).releaseDispatchSlot("inline-no-sync-queue-fn");
+        // Direct admission releases its own capacity lease, never a name-based queue slot.
+        verify(enqueuer, never()).releaseDispatchSlot(any());
     }
 
     @Test
@@ -347,6 +349,10 @@ class InvocationServiceDispatchTest {
         when(enqueuer.enabled()).thenReturn(true);
         doAnswer(invocation -> {
             InvocationTask task = invocation.getArgument(0);
+            ExecutionRecord record = executionStore.getOrNull(task.executionId());
+            if (record != null) {
+                record.markRunning();
+            }
             invocationService.completeExecution(
                     task.executionId(),
                     DispatchResult.warm(InvocationResult.success("queued-ok"))
@@ -398,6 +404,10 @@ class InvocationServiceDispatchTest {
         when(syncQueueGateway.enabled()).thenReturn(true);
         doAnswer(invocation -> {
             InvocationTask task = invocation.getArgument(0);
+            ExecutionRecord record = executionStore.getOrNull(task.executionId());
+            if (record != null) {
+                record.markRunning();
+            }
             invocationService.completeExecution(
                     task.executionId(),
                     DispatchResult.warm(InvocationResult.success("ok"))

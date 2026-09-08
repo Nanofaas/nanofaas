@@ -5,7 +5,7 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;

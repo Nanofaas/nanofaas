@@ -2,8 +2,8 @@ package it.unimib.datai.nanofaas.modules.concurrencycontrol;
 
 import it.unimib.datai.nanofaas.controlplane.ControlPlaneApplication;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
-import it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityState;
-import it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityState;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

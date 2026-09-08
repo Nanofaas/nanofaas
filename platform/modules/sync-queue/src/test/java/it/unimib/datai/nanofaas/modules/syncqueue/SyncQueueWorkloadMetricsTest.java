@@ -16,7 +16,7 @@ import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueMetrics;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
-import it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
 import org.junit.jupiter.api.Test;
 
@@ -127,6 +127,7 @@ class SyncQueueWorkloadMetricsTest {
         ExecutionRecord execution = new ExecutionRecord(task.executionId(), task);
         fixture.store.put(execution);
         assertTrue(fixture.enqueuer.tryAcquireSlot("fn"));
+        execution.markRunning();
 
         new ExecutionCompletionHandler(fixture.store, fixture.enqueuer,
                 mock(DispatcherRouter.class), new Metrics(new SimpleMeterRegistry()))
@@ -142,6 +143,7 @@ class SyncQueueWorkloadMetricsTest {
         ExecutionRecord execution = new ExecutionRecord(task.executionId(), task);
         fixture.store.put(execution);
         assertTrue(fixture.enqueuer.tryAcquireSlot("fn"));
+        execution.markRunning();
         execution.markTimeout();
 
         new ExecutionCompletionHandler(fixture.store, fixture.enqueuer,

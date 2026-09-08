@@ -4,7 +4,7 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
-import it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics;
 
 import java.util.function.Consumer;

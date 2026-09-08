@@ -13,7 +13,8 @@ import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
 import it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncScheduler;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueMetrics;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
-import it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -31,13 +32,14 @@ public class SyncQueueConfiguration {
     }
 
     @Bean
-    FunctionCapacityRegistry syncQueueCapacityRegistry() {
-        return new FunctionCapacityRegistry();
-    }
-
-    @Bean
     WorkloadDiagnostics syncQueueWorkloadDiagnostics(MeterRegistry meterRegistry) {
         return new WorkloadDiagnostics(meterRegistry);
+    }
+
+    /** The governor's capacity knob, backed by the shared core registry (P06). */
+    @Bean
+    WorkloadCapacityController syncQueueWorkloadCapacityController(FunctionCapacityRegistry capacityRegistry) {
+        return capacityRegistry::setEffectiveConcurrency;
     }
 
     @Bean

@@ -1,19 +1,31 @@
-package it.unimib.datai.nanofaas.workloadmetrics;
+package it.unimib.datai.nanofaas.controlplane.capacity;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.function.LongSupplier;
 
+/**
+ * The mutable per-generation capacity of one function incarnation.
+ *
+ * <p>This is the enforcement state the core applies limits against: it holds how
+ * many slots are currently in flight, and the configured/effective concurrency
+ * ceilings. The governor (an optional module) may regulate the effective value;
+ * it does not own this state. Generation identity and retirement live in
+ * {@link FunctionCapacityRegistry}, which keeps at most one active state per name
+ * and lets retired states drain on their own.
+ */
 public final class FunctionCapacityState {
     private final LongSupplier nanoTime;
     private final Runnable onDrained;
-    private volatile int inFlight;
     private final Deque<Long> acquiredAt = new ArrayDeque<>();
+    private volatile int inFlight;
     private volatile int configuredConcurrency;
     private volatile int effectiveConcurrency;
     private volatile boolean active = true;
 
-    public FunctionCapacityState(int concurrency) { this(concurrency, System::nanoTime, null); }
+    public FunctionCapacityState(int concurrency) {
+        this(concurrency, System::nanoTime, null);
+    }
 
     public FunctionCapacityState(int concurrency, LongSupplier nanoTime) {
         this(concurrency, nanoTime, null);
@@ -27,14 +39,18 @@ public final class FunctionCapacityState {
     }
 
     public synchronized boolean tryAcquireSlot() {
-        if (!active || inFlight >= effectiveConcurrency) return false;
+        if (!active || inFlight >= effectiveConcurrency) {
+            return false;
+        }
         inFlight++;
         acquiredAt.addLast(nanoTime.getAsLong());
         return true;
     }
 
     public synchronized void incrementInFlight() {
-        if (!active) return;
+        if (!active) {
+            return;
+        }
         inFlight++;
         acquiredAt.addLast(nanoTime.getAsLong());
     }
@@ -43,17 +59,23 @@ public final class FunctionCapacityState {
         long holdNanos;
         boolean drained;
         synchronized (this) {
-            if (inFlight == 0) return -1;
+            if (inFlight == 0) {
+                return -1;
+            }
             inFlight--;
             Long started = acquiredAt.removeFirst();
             holdNanos = started == null ? -1 : nanoTime.getAsLong() - started;
             drained = !active && inFlight == 0;
         }
-        if (drained && onDrained != null) onDrained.run();
+        if (drained && onDrained != null) {
+            onDrained.run();
+        }
         return holdNanos;
     }
 
-    public void releaseSlot() { releaseSlotAndGetHoldNanos(); }
+    public void releaseSlot() {
+        releaseSlotAndGetHoldNanos();
+    }
 
     public synchronized void concurrency(int concurrency) {
         int previous = configuredConcurrency;
@@ -64,33 +86,39 @@ public final class FunctionCapacityState {
         }
     }
 
-    /**
-     * Put a retired state back in service for a re-registration that arrives while it still
-     * drains. Both limits are reset: {@link #concurrency(int)} deliberately preserves a lower
-     * adaptive limit, but that limit belonged to the removed registration.
-     */
-    synchronized void reactivate(int concurrency) {
-        int normalized = Math.max(1, concurrency);
-        configuredConcurrency = normalized;
-        effectiveConcurrency = normalized;
-        active = true;
-    }
-
     public synchronized void setEffectiveConcurrency(int concurrency) {
         effectiveConcurrency = Math.clamp(concurrency, 1, configuredConcurrency);
     }
 
-    public int configuredConcurrency() { return configuredConcurrency; }
-    public int effectiveConcurrency() { return effectiveConcurrency; }
-    public int inFlight() { return inFlight; }
-    public boolean canDispatch() { return active && inFlight < effectiveConcurrency; }
-    public boolean isActive() { return active; }
+    public int configuredConcurrency() {
+        return configuredConcurrency;
+    }
+
+    public int effectiveConcurrency() {
+        return effectiveConcurrency;
+    }
+
+    public int inFlight() {
+        return inFlight;
+    }
+
+    public boolean canDispatch() {
+        return active && inFlight < effectiveConcurrency;
+    }
+
+    public boolean isActive() {
+        return active;
+    }
+
+    /** Retires this generation: no further acquisition, in-flight work drains on release. */
     public void deactivate() {
         boolean drained;
         synchronized (this) {
             active = false;
             drained = inFlight == 0;
         }
-        if (drained && onDrained != null) onDrained.run();
+        if (drained && onDrained != null) {
+            onDrained.run();
+        }
     }
 }

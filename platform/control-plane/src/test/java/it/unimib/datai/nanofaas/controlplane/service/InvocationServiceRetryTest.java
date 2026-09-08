@@ -117,6 +117,7 @@ class InvocationServiceRetryTest {
 
         ExecutionRecord executionRecord = executionStore.get(response.executionId()).orElseThrow();
         assertThat(executionRecord.completion().isDone()).isFalse();
+        executionRecord.markRunning();
 
         // Complete with error (should trigger retry since maxRetries=3, attempt=1)
         invocationService.completeExecution(
@@ -152,6 +153,7 @@ class InvocationServiceRetryTest {
 
         // Simulate the initial attempt plus 3 retries (maxRetries=3)
         // Attempt 1
+        executionRecord.markRunning();
         invocationService.completeExecution(
                 response.executionId(),
                 InvocationResult.error("ERROR", "Attempt 1 failed")
@@ -160,6 +162,7 @@ class InvocationServiceRetryTest {
         assertThat(executionRecord.task().attempt()).isEqualTo(2);
 
         // Attempt 2
+        executionRecord.markRunning();
         invocationService.completeExecution(
                 response.executionId(),
                 InvocationResult.error("ERROR", "Attempt 2 failed")
@@ -168,6 +171,7 @@ class InvocationServiceRetryTest {
         assertThat(executionRecord.task().attempt()).isEqualTo(3);
 
         // Attempt 3
+        executionRecord.markRunning();
         invocationService.completeExecution(
                 response.executionId(),
                 InvocationResult.error("ERROR", "Attempt 3 failed")
@@ -176,6 +180,7 @@ class InvocationServiceRetryTest {
         assertThat(executionRecord.task().attempt()).isEqualTo(4);
 
         // Attempt 4 (last one, maxRetries reached)
+        executionRecord.markRunning();
         invocationService.completeExecution(
                 response.executionId(),
                 InvocationResult.error("ERROR", "Attempt 4 failed")
@@ -198,6 +203,7 @@ class InvocationServiceRetryTest {
         );
 
         ExecutionRecord executionRecord = executionStore.get(response.executionId()).orElseThrow();
+        executionRecord.markRunning();
 
         // Complete with success
         invocationService.completeExecution(

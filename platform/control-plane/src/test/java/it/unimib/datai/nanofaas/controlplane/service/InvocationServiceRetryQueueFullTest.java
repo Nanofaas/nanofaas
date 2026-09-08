@@ -93,6 +93,7 @@ class InvocationServiceRetryQueueFullTest {
         when(enqueuer.enqueue(any())).thenReturn(false);
 
         // Complete with error - should attempt retry but queue is full
+        executionRecord.markRunning();
         InvocationResult errorResult = InvocationResult.error("ERROR", "First attempt failed");
         invocationService.completeExecution(response.executionId(), errorResult);
 
@@ -121,6 +122,7 @@ class InvocationServiceRetryQueueFullTest {
         ExecutionRecord executionRecord = executionStore.get(response.executionId()).orElseThrow();
 
         // First failure -> retry (attempt 2)
+        executionRecord.markRunning();
         invocationService.completeExecution(
                 response.executionId(), InvocationResult.error("ERROR", "Attempt 1")
         );
@@ -128,6 +130,7 @@ class InvocationServiceRetryQueueFullTest {
         assertThat(executionRecord.task().attempt()).isEqualTo(2);
 
         // Second failure -> retry attempt but queue full
+        executionRecord.markRunning();
         invocationService.completeExecution(
                 response.executionId(), InvocationResult.error("ERROR", "Attempt 2")
         );

@@ -2,6 +2,8 @@ package it.unimib.datai.nanofaas.controlplane.service;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
+import it.unimib.datai.nanofaas.controlplane.capacity.DispatchLease;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
@@ -18,7 +20,9 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Handles dispatch to execution runtimes and post-dispatch completion (retry, metrics, state transitions).
@@ -42,6 +46,7 @@ public class ExecutionCompletionHandler {
     private final DispatcherRouter dispatcherRouter;
     private final Metrics metrics;
     @Nullable private final DeploymentWakeUpGate wakeUpGate;
+    private final FunctionCapacityRegistry capacityRegistry;
 
     /**
      * Production constructor: deployment invocations wait for a scaled-to-zero
@@ -52,12 +57,16 @@ public class ExecutionCompletionHandler {
                                       @Nullable InvocationEnqueuer enqueuer,
                                       DispatcherRouter dispatcherRouter,
                                       Metrics metrics,
-                                      DeploymentWakeUpGate wakeUpGate) {
+                                      DeploymentWakeUpGate wakeUpGate,
+                                      FunctionCapacityRegistry capacityRegistry) {
         this.executionStore = executionStore;
         this.enqueuer = enqueuer == null ? InvocationEnqueuer.noOp() : enqueuer;
         this.dispatcherRouter = dispatcherRouter;
         this.metrics = metrics;
         this.wakeUpGate = wakeUpGate;
+        // A handler built without a shared registry (a bare unit test) still bounds direct
+        // admission: it owns a private registry rather than admitting unbounded work.
+        this.capacityRegistry = capacityRegistry == null ? new FunctionCapacityRegistry() : capacityRegistry;
         // The store knows nothing about dispatch slots or shared futures; it only
         // knows a record fell out of inFlight on its own. Closing what that record
         // was actually holding is this class's job.
@@ -80,7 +89,16 @@ public class ExecutionCompletionHandler {
                                       DispatcherRouter dispatcherRouter,
                                       Metrics metrics) {
         this(executionStore, enqueuer, dispatcherRouter, metrics,
-                null);
+                null, null);
+    }
+
+    /** Compatibility constructor that also passes a wake-up gate, without a shared registry. */
+    public ExecutionCompletionHandler(ExecutionStore executionStore,
+                                      @Nullable InvocationEnqueuer enqueuer,
+                                      DispatcherRouter dispatcherRouter,
+                                      Metrics metrics,
+                                      DeploymentWakeUpGate wakeUpGate) {
+        this(executionStore, enqueuer, dispatcherRouter, metrics, wakeUpGate, null);
     }
 
     /**
@@ -159,9 +177,47 @@ public class ExecutionCompletionHandler {
     }
 
     public void dispatch(InvocationTask task) {
+        dispatchInternal(task, null);
+    }
+
+    /**
+     * Direct (no-queue) admission: the core applies the configured concurrency itself.
+     * This acquires the attempt's capacity lease and dispatches; when the function is at
+     * capacity there is no room, so it rejects per the overload contract (a
+     * {@link QueueFullException}, which the API surfaces as a 429) rather than dispatching
+     * unbounded work. Sync-disabled is not capacity-disabled.
+     */
+    public void dispatchDirect(InvocationTask task) {
+        DispatchLease lease = capacityRegistry.tryAcquireLease(
+                task.functionName(), task.functionSpec().concurrency());
+        if (lease == null) {
+            throw new QueueFullException();
+        }
+        dispatchInternal(task, lease);
+    }
+
+    /**
+     * Dispatches with a lease already acquired by the caller (the core-only retry enqueuer).
+     * The lease travels with the attempt and is released exactly once by its completion.
+     */
+    public void dispatchWithLease(InvocationTask task, DispatchLease lease) {
+        dispatchInternal(task, lease);
+    }
+
+    /**
+     * Shared dispatch body. {@code directLease} is the lease the direct path just acquired;
+     * it is {@code null} for the queue path, whose scheduler already holds a name-based
+     * slot and releases it through the enqueuer. Both register the real cancellable
+     * transport handle on the record and apply the attempt's own deadline.
+     */
+    private void dispatchInternal(InvocationTask task, @Nullable DispatchLease directLease) {
         ExecutionRecord executionRecord = executionStore.getOrNull(task.executionId());
         if (executionRecord == null) {
-            releaseDispatchSlot(task.functionName());
+            if (directLease != null) {
+                directLease.release();
+            } else {
+                releaseDispatchSlot(task.functionName());
+            }
             return;
         }
 
@@ -169,19 +225,26 @@ public class ExecutionCompletionHandler {
         synchronized (executionRecord) {
             terminal = executionRecord.isTerminal();
             if (!terminal) {
+                if (directLease != null) {
+                    executionRecord.attachDispatchLease(directLease);
+                }
                 executionRecord.markRunning();
                 executionRecord.markDispatchedAt();
             }
         }
         if (terminal) {
-            releaseDispatchSlotOnce(executionRecord, task.attempt(), task.functionName());
+            if (directLease != null) {
+                directLease.release();
+            } else {
+                releaseDispatchSlotOnce(executionRecord, task.attempt(), task.functionName());
+            }
             return;
         }
         metrics.dispatch(task.functionName());
 
         ExecutionMode mode = task.functionSpec().executionMode();
         int attemptAtDispatch = task.attempt();
-        java.util.concurrent.CompletableFuture<DispatchResult> future;
+        CompletableFuture<DispatchResult> future;
         try {
             future = switch (mode) {
                 case LOCAL -> dispatcherRouter.dispatchLocal(task);
@@ -189,14 +252,36 @@ public class ExecutionCompletionHandler {
                 case DEPLOYMENT -> dispatchDeployment(task);
             };
         } catch (Exception ex) {
+            // The dispatcher threw synchronously: completeExecution releases the lease (direct)
+            // or the name-based slot (queue) that was already recorded on the record.
             completeExecution(task.executionId(),
                     DispatchResult.warm(InvocationResult.error(mode.name() + "_ERROR", ex.getMessage())),
                     attemptAtDispatch);
             return;
         }
 
-        future.whenComplete((dispatchResult, error) -> {
-            if (error != null) {
+        // Publish the real cancellable handle before the completion callback. An
+        // administrative expiry that wins this race can still cancel the underlying
+        // transport subscriber rather than leaving the work (and its payload) alive after
+        // the capacity was released. For DEPLOYMENT this is the composed wake-up future.
+        executionRecord.attachDispatchHandle(future);
+
+        // The attempt's own deadline (ADR 0001 §3.4, row 9): distinct from any single
+        // waiter's budget, it bounds this dispatch and feeds the retry policy below.
+        long attemptDeadlineMs = task.functionSpec().timeoutMs();
+        CompletableFuture<DispatchResult> attempt = attemptDeadlineMs > 0
+                ? future.orTimeout(attemptDeadlineMs, TimeUnit.MILLISECONDS)
+                : future;
+
+        attempt.whenComplete((dispatchResult, error) -> {
+            if (error instanceof TimeoutException) {
+                // Attempt deadline exceeded: route through the retry policy as a
+                // timeout-classified failure. Local cancellation is best-effort here - for a
+                // non-interruptible LOCAL handler the slot stays held until the work ends.
+                completeExecution(task.executionId(),
+                        DispatchResult.warm(InvocationResult.error("ATTEMPT_TIMEOUT", "Attempt deadline exceeded")),
+                        attemptAtDispatch);
+            } else if (error != null) {
                 Throwable failure = deploymentWakeUpFailure(error);
                 completeExecution(task.executionId(),
                         DispatchResult.warm(InvocationResult.error(
@@ -298,7 +383,7 @@ public class ExecutionCompletionHandler {
         }
 
         String functionName = currentTask.functionName();
-        releaseDispatchSlotOnce(executionRecord, attempt, functionName);
+        releaseAttemptCapacity(executionRecord, attempt, functionName);
         if (isTerminal(executionRecord.state())) {
             return null;
         }
@@ -505,19 +590,25 @@ public class ExecutionCompletionHandler {
     private void handleAdministrativeExpiry(ExecutionRecord executionRecord) {
         InvocationResult result;
         boolean wasNonTerminal;
-        boolean dispatchedLocally;
+        Future<?> handle;
         synchronized (executionRecord) {
-            dispatchedLocally = executionRecord.snapshot().dispatchedAt() != null;
             wasNonTerminal = !isTerminal(executionRecord.state());
             if (wasNonTerminal) {
                 executionRecord.markError(new ErrorInfo(EXECUTION_EXPIRED_CODE,
                         "Execution exceeded its maximum lifetime before a dispatch outcome arrived"));
             }
             result = resultFromRecord(executionRecord);
+            handle = executionRecord.takeDispatchHandle();
         }
         InvocationTask task = executionRecord.task();
-        if (dispatchedLocally) {
-            releaseDispatchSlotOnce(executionRecord, task.attempt(), task.functionName());
+        // Give the attempt's capacity back exactly once (lease for a direct admission, the
+        // name-based slot for a queue dispatch, nothing for work that never dispatched).
+        releaseAttemptCapacity(executionRecord, task.attempt(), task.functionName());
+        // Then request local cancellation of the real transport handle so the work (and its
+        // payload) does not outlive the released admission. This cancels the raw HTTP
+        // subscriber; it does not - and cannot - promise that a remote function stops.
+        if (handle != null) {
+            handle.cancel(true);
         }
         if (wasNonTerminal) {
             metrics.error(task.functionName());
@@ -577,6 +668,24 @@ public class ExecutionCompletionHandler {
     private void releaseDispatchSlotOnce(ExecutionRecord executionRecord, int attempt, String functionName) {
         if (executionRecord.markDispatchSlotReleased(attempt)) {
             releaseDispatchSlot(functionName);
+        }
+    }
+
+    /**
+     * Releases exactly what this attempt acquired (invariant I4). A direct attempt releases
+     * the lease it holds; a queue-dispatched attempt releases the name-based slot its
+     * scheduler acquired; an attempt that never dispatched releases nothing - which is what
+     * closes review finding R5 (a direct completion could steal a queued dispatch's slot).
+     * Called under the record monitor.
+     */
+    private void releaseAttemptCapacity(ExecutionRecord executionRecord, int attempt, String functionName) {
+        if (executionRecord.wasDirectAdmission()) {
+            DispatchLease lease = executionRecord.takeDispatchLease();
+            if (lease != null) {
+                lease.release();
+            }
+        } else if (executionRecord.wasDispatched()) {
+            releaseDispatchSlotOnce(executionRecord, attempt, functionName);
         }
     }
 

@@ -18,7 +18,7 @@ import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueItem;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueMetrics;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
-import it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 

@@ -221,16 +221,19 @@ class ExecutionCompletionHandlerTest {
         assertThat(executionRecord.task().attempt()).isEqualTo(2);
 
         // Attempt 2
+        executionRecord.markRunning();
         completionHandler.completeExecution("exec-max", InvocationResult.error("ERROR", "Attempt 2 failed"));
         assertThat(executionRecord.completion().isDone()).isFalse();
         assertThat(executionRecord.task().attempt()).isEqualTo(3);
 
         // Attempt 3
+        executionRecord.markRunning();
         completionHandler.completeExecution("exec-max", InvocationResult.error("ERROR", "Attempt 3 failed"));
         assertThat(executionRecord.completion().isDone()).isFalse();
         assertThat(executionRecord.task().attempt()).isEqualTo(4);
 
         // Attempt 4 (initial attempt + maxRetries=3)
+        executionRecord.markRunning();
         completionHandler.completeExecution("exec-max", InvocationResult.error("ERROR", "Attempt 4 failed"));
 
         assertThat(executionRecord.completion().isDone()).isTrue();
@@ -337,6 +340,7 @@ class ExecutionCompletionHandlerTest {
         assertThat(executionRecord.task().attempt()).isEqualTo(2);
 
         // Second failure → retry attempt but queue full
+        executionRecord.markRunning();
         completionHandler.completeExecution("exec-mixed", InvocationResult.error("ERROR", "Attempt 2"));
 
         assertThat(executionRecord.completion().isDone()).isTrue();
@@ -356,6 +360,9 @@ class ExecutionCompletionHandlerTest {
     );
         ExecutionRecord executionRecord = new ExecutionRecord(executionId, task);
         executionStore.put(executionRecord);
+        // A dispatch marks the attempt RUNNING and is what acquires its slot; the completion
+        // path releases only what an attempt actually acquired (invariant I4).
+        executionRecord.markRunning();
         return executionRecord;
     }
 
