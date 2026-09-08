@@ -176,7 +176,10 @@ class IdempotencyKeyBudgetTest {
         store.put("fn", "k1", "exec-1");
         assertThat(store.occupied()).isEqualTo(1);
 
-        // Re-claiming the published binding (a stale claim) is the same association.
+        // Re-claiming a published binding (a stale claim) is the same association, but it
+        // is only allowed once the binding is explicitly abandoned after publication: the
+        // mere absence of a record is never proof that a published claim was abandoned.
+        store.markReclaimable("fn", "k1", "exec-1");
         IdempotencyStore.AcquireResult reclaimed = store.claimIfMatches("fn", "k1", "exec-1");
         assertThat(reclaimed.state()).isEqualTo(IdempotencyStore.AcquireResult.State.CLAIMED);
         assertThat(store.occupied()).isEqualTo(1);

@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.controlplane.service;
 
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionLifecycle;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
@@ -28,15 +29,12 @@ public final class InvocationExecutionFactory {
         this.metrics = metrics;
         this.executionStore = executionStore;
         this.idempotencyStore = idempotencyStore;
-        // When an execution archives, its key moves to the terminal binding: terminal
-        // retention starts at completion, not at publication. The record still carries
-        // the original key even after an internal retry.
-        executionStore.onTerminal(record -> {
-            if (record.idempotencyKey() != null) {
-                idempotencyStore.markTerminal(record.task().functionName(), record.idempotencyKey(),
-                        record.executionId());
-            }
-        });
+        // The single owner of the terminal transition, attached to the store here: from
+        // now on the key's move to its terminal binding is a first-class, ordered step of
+        // the owner's settle(), not a best-effort listener that a concurrent eviction can
+        // slip past (finding R2). The record still carries the original key across retries,
+        // so the owner finds it here.
+        new ExecutionLifecycle(executionStore, idempotencyStore);
     }
 
     public ExecutionLookup createOrReuseExecution(String functionName,
@@ -101,22 +99,23 @@ public final class InvocationExecutionFactory {
                 return ExecutionLookup.gone(existingExecutionId);
             }
 
-            // A PUBLISHED binding pointing at an execution that vanished without ever
-            // concluding (an admission abandoned after publication): a stale claim. Here
-            // the key CAN become claimable again - the function never ran - so we re-claim
-            // it and build a new execution. The window the tombstone closes is only the
-            // terminal one above.
+            // A binding pointing at an execution that is neither alive nor archived. It is
+            // re-claimable only if it was explicitly abandoned after publication (markReclaimable):
+            // the function never ran, so a fresh execution may take the key. A still-published
+            // binding - however absent its record and outcome look right now - is a live or
+            // mid-transition execution, and the dedup guarantee forbids a new claim on the
+            // strength of that absence (finding R2).
             AcquireResult reclaimed =
                     idempotencyStore.claimIfMatches(functionName, idempotencyKey, existingExecutionId);
             if (reclaimed.state() == AcquireResult.State.CLAIMED) {
                 return createClaimedRecord(functionName, spec, request, idempotencyKey, traceId, kind,
                         reclaimed.executionIdOrToken());
             }
-            if (reclaimed.state() == AcquireResult.State.PENDING) {
-                parkPendingClaim();
-            }
-            // MISSING or EXISTING: the binding changed in the meantime (perhaps to
-            // terminal) - re-read from the top of the loop.
+            // PENDING (another claimant), MISSING (the binding vanished), or EXISTING (still
+            // published and not explicitly abandoned - the terminal transition is in flight and
+            // will surface the tombstone): park briefly and re-read rather than authorising a
+            // second execution on the strength of an absent record/outcome.
+            parkPendingClaim();
         }
     }
 
@@ -291,17 +290,23 @@ public final class InvocationExecutionFactory {
             if (idempotencyStore == null || claimPublished) {
                 return;
             }
-            idempotencyStore.publishClaim(functionName, idempotencyKey, claimToken, executionRecord.executionId());
-            claimPublished = true;
-            // Admission dispatches BEFORE publishing (InvocationEnqueueSupport.admitIfNew),
-            // and with no queue module the dispatch is inline: the record may already be
-            // archived by the time we get here. In that case the terminal listener has
-            // already seen the key still pending and did nothing by design, so the
-            // just-published binding would stay non-terminal forever - and a replay past
-            // payload eviction would re-invoke the function instead of answering 410.
-            // Both orderings converge on the same terminal binding this way.
-            if (executionRecord.isTerminal()) {
-                idempotencyStore.markTerminal(functionName, idempotencyKey, executionRecord.executionId());
+            // Serialized against the lifecycle's key protection on the record monitor: a
+            // terminal record published here can never expose a reclaimable published key.
+            synchronized (executionRecord) {
+                if (claimPublished) {
+                    return;
+                }
+                idempotencyStore.publishClaim(functionName, idempotencyKey, claimToken, executionRecord.executionId());
+                claimPublished = true;
+                // Admission dispatches BEFORE publishing (InvocationEnqueueSupport.admitIfNew),
+                // and with no queue module the dispatch is inline: the record may already be
+                // settled by the time we get here, and the owner's settle found the key still
+                // pending (no-op by design). Both orderings converge on the same terminal
+                // binding this way - under this monitor, so no intermediate published key is
+                // ever observable alongside a vanished execution.
+                if (executionRecord.isTerminal()) {
+                    idempotencyStore.markTerminal(functionName, idempotencyKey, executionRecord.executionId());
+                }
             }
         }
 
@@ -310,8 +315,15 @@ public final class InvocationExecutionFactory {
                 return;
             }
             executionStore.remove(executionRecord.executionId());
-            if (idempotencyStore != null && !claimPublished) {
-                idempotencyStore.abandonClaim(functionName, idempotencyKey, claimToken);
+            if (idempotencyStore != null) {
+                if (!claimPublished) {
+                    idempotencyStore.abandonClaim(functionName, idempotencyKey, claimToken);
+                } else {
+                    // Published and then abandoned: mark the binding explicitly reclaimable so
+                    // a later replay may re-claim it for a fresh execution - never infer
+                    // abandonment from the record's absence (finding R2).
+                    idempotencyStore.markReclaimable(functionName, idempotencyKey, executionRecord.executionId());
+                }
             }
         }
     }

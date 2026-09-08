@@ -563,6 +563,9 @@ class InvocationServiceDispatchTest {
 
         IdempotencyStore staleStore = new IdempotencyStore(Duration.ofMinutes(15));
         staleStore.put("stale-idem-fn", "same-key", "evicted-execution");
+        // The stale mapping is explicitly abandoned after publication: that is what makes
+        // it reclaimable, not the mere absence of the execution it points at (finding R2).
+        staleStore.markReclaimable("stale-idem-fn", "same-key", "evicted-execution");
         InvocationService racingService = new InvocationService(
                 functionService,
                 enqueuer,
@@ -614,6 +617,9 @@ class InvocationServiceDispatchTest {
         BlockingExecutionStore blockedStore = new BlockingExecutionStore();
         IdempotencyStore staleStore = new IdempotencyStore(Duration.ofMinutes(15));
         staleStore.put("stale-publication-fn", "same-key", "evicted-execution");
+        // The stale mapping is explicitly abandoned after publication: that is what makes
+        // it reclaimable, not the mere absence of the execution it points at (finding R2).
+        staleStore.markReclaimable("stale-publication-fn", "same-key", "evicted-execution");
         InvocationService racingService = new InvocationService(
                 functionService,
                 enqueuer,

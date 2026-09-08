@@ -82,16 +82,23 @@ public class ExecutionStore {
     private final List<Consumer<ExecutionRecord>> expiryListeners = new CopyOnWriteArrayList<>();
 
     /**
-     * Who is told when a terminal record is archived with {@link #settle} - the instant
-     * from which the terminal retention of the idempotency key starts. Nobody by
-     * default. {@code InvocationExecutionFactory} registers {@code IdempotencyStore}
-     * here, because the key's binding must move from the "live" state to the "terminal"
-     * one exactly when the outcome leaves the living, with no window in which the same
-     * key becomes claimable again. {@code ExecutionCompletionHandler} registers the
-     * end-to-end conclusion here, because archiving is the only event common to EVERY
-     * terminal policy.
+     * Who is told after a terminal record has archived - the observers of the terminal
+     * moment, not its owners. Best-effort by design: the deduplication protection (the
+     * key's move to its terminal binding) is {@link ExecutionLifecycle}'s first-class step,
+     * before archiving, so no listener in this chain can reopen the re-execution window.
+     * {@code ExecutionCompletionHandler} registers the end-to-end conclusion here, because
+     * archiving is the only event common to EVERY terminal policy.
      */
     private final List<Consumer<ExecutionRecord>> terminalListeners = new CopyOnWriteArrayList<>();
+
+    /**
+     * The owner of the terminal transition, attached by {@link ExecutionLifecycle} when the
+     * store and the idempotency store are wired together (in production, by
+     * {@code InvocationExecutionFactory}). Null for a store used standalone - the store-level
+     * unit tests - where {@link #settle} performs the archive-and-remove half without the key
+     * protection the owner adds.
+     */
+    private ExecutionLifecycle lifecycle;
 
     public ExecutionStore() {
         this(ExecutionStoreProperties.of(null, null, null));
@@ -203,23 +210,30 @@ public class ExecutionStore {
     }
 
     /**
-     * The terminal transition: this is where the apparatus of the living dies, not
-     * 152 seconds later.
-     *
-     * <p>Idempotent, because there are nine call sites spread over three Gradle
-     * modules, and some of them overlap (a dispatch that completes after the sync path
-     * has already timed out). Calling it on a non-terminal record does nothing: the
-     * record is still alive and {@code inFlight} must keep finding it.
-     *
-     * <p>Retention of the payload is decided here and separated from the caller's
-     * response: the caller has already been answered (synchronously, or will be by
-     * polling), and an outcome whose size cannot be bounded — or whose conservative
-     * weight alone exceeds the whole budget — is simply not retained. The terminal
-     * notification still runs either way, because the idempotency key's tombstone is
-     * what keeps a replay from re-invoking the function, and that must survive even
-     * when the payload does not.
+     * The terminal transition, and the adapter the queue modules and the completion
+     * handler still call. When an {@link ExecutionLifecycle} is attached, this delegates
+     * to it and the transition owns the key protection as well; without one - a store used
+     * standalone in the store-level unit tests - it performs the archive-and-remove half
+     * only. The record must be terminal; a live record is ignored.
      */
     public void settle(ExecutionRecord executionRecord) {
+        ExecutionLifecycle owner = lifecycle;
+        if (owner != null) {
+            owner.settle(executionRecord);
+            return;
+        }
+        archiveAndRemove(executionRecord);
+        notifyTerminal(executionRecord);
+    }
+
+    /**
+     * The store half of the terminal transition: archive the outcome (when its
+     * conservative weight fits the budget) and invalidate the live record. Retention of
+     * the payload is decided here and separated from the caller's response; an outcome
+     * whose size cannot be bounded - or whose weight alone exceeds the whole budget - is
+     * simply not retained. The tombstone is the owner's business, not this half's.
+     */
+    void archiveAndRemove(ExecutionRecord executionRecord) {
         if (!executionRecord.isTerminal()) {
             return;
         }
@@ -229,11 +243,16 @@ public class ExecutionStore {
             outcomes.put(executionId, frozen.outcome());
         }
         inFlight.invalidate(executionId);
-        // After the archiving, and not before: only now is the outcome servable, and it
-        // is from here that the key's terminal retention starts. Reversing the order
-        // would reopen the window in which the key is already terminal while the outcome
-        // is not yet visible to replays.
+    }
+
+    /** Notifies the terminal observers, best-effort, after the invariants already hold. */
+    void notifyTerminal(ExecutionRecord executionRecord) {
         notifyAll(terminalListeners, executionRecord, "Terminal");
+    }
+
+    /** Called by {@link ExecutionLifecycle} to become the owner of the terminal transition. */
+    void attachLifecycle(ExecutionLifecycle lifecycle) {
+        this.lifecycle = lifecycle;
     }
 
     private void notifyExpiry(ExecutionRecord executionRecord) {

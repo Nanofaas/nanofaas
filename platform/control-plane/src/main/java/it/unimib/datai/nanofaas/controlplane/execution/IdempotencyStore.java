@@ -32,6 +32,11 @@ import java.util.concurrent.atomic.AtomicLong;
  *   <li><b>published</b> - bound to an execution that is still live. Expires after
  *       {@code maxLifetime}, the same horizon as {@code ExecutionStore.inFlight}:
  *       key and execution die together when the dispatch never returns.</li>
+ *   <li><b>abandoned</b> - the admission was published and then explicitly given up
+ *       ({@link #markReclaimable}), so the execution will never run and the binding
+ *       may be re-claimed for a fresh one. Only this state is re-claimable: the mere
+ *       absence of a live record or an outcome is never proof that a published binding
+ *       was abandoned.</li>
  *   <li><b>terminal</b> - the execution has archived ({@link #markTerminal}).
  *       Terminal retention starts here: {@code ttl} from completion, not from
  *       publication. This is the state that acts as a tombstone when the outcome
@@ -224,12 +229,14 @@ public class IdempotencyStore {
     }
 
     /**
-     * Re-claims a published key whose binding points at an execution that has
-     * vanished without ever concluding (an admission abandoned after publication, a
-     * dispatch that never started). Only a <b>published</b> binding can be
-     * re-claimed: a terminal binding is the tombstone, and re-claiming it would
-     * reopen the window — closed by {@link #markTerminal} — in which the same key
-     * becomes claimable again and the function runs twice.
+     * Re-claims a key whose binding was explicitly abandoned after publication: the
+     * admission was given up with {@link #markReclaimable}, so the execution it named
+     * will never run and a fresh execution may take the key. Only an <b>abandoned</b>
+     * binding can be re-claimed. A terminal binding is the tombstone, and a
+     * still-{@code published} one is a live (or mid-transition) execution: the absence of
+     * a live record or an outcome is not proof that a published claim was abandoned, so
+     * re-claiming it would reopen the window — closed by {@link #markTerminal} — in which
+     * the same key becomes claimable again and the function runs twice (finding R2).
      *
      * <p>The CAS on {@code keys.replace} is the real guard: if the binding changed
      * between the read and the replace (a transition to terminal included), the
@@ -248,6 +255,13 @@ public class IdempotencyStore {
             }
             if (existing.terminal() || !existing.executionId().equals(expectedExecutionId)) {
                 return AcquireResult.existing(existing.executionId(), existing.terminal());
+            }
+            if (!existing.reclaimable()) {
+                // Still published and pointing at this execution id, but never explicitly
+                // abandoned. The caller must not mint a new claim on the strength of an
+                // absent record/outcome: it re-reads, and the in-flight terminal transition
+                // (or expiry) will surface the tombstone.
+                return AcquireResult.existing(existing.executionId(), false);
             }
             String token = pendingToken();
             StoredKey pending = StoredKey.pending(token);
@@ -285,12 +299,43 @@ public class IdempotencyStore {
     }
 
     /**
-     * The transition to the terminal binding, invoked by the execution store when a
-     * record archives. Terminal retention starts here, not at publication, and it
-     * closes the window in which the key would be claimable again while its outcome
-     * is still (or has just been) servable.
+     * Marks a published binding as explicitly reclaimable: its admission was given up
+     * after publication, so the execution it named will never run and a later replay may
+     * re-claim the key for a fresh one. This is the only route into the reclaimable
+     * state; {@link #claimIfMatches} re-claims nothing else.
      *
-     * <p>Idempotent: on a key that is absent, pending or already terminal it does nothing.
+     * <p>Only a <b>published</b> binding can become reclaimable, and only when it still
+     * points at {@code expectedExecutionId}. A pending claim is still held by its token,
+     * a terminal binding is the tombstone, and a binding replaced by a newer execution
+     * has a different id. The CAS on {@code keys.replace} keeps the transition atomic
+     * against a concurrent terminal transition or re-claim; it is the same association,
+     * so no slot is consumed or released.
+     */
+    public void markReclaimable(String functionName, String key, String expectedExecutionId) {
+        String composed = compose(functionName, key);
+        while (true) {
+            StoredKey existing = keys.get(composed);
+            if (existing == null || existing.pending() || existing.terminal() || existing.reclaimable()
+                    || !existing.executionId().equals(expectedExecutionId)) {
+                return;
+            }
+            StoredKey abandoned = StoredKey.abandoned(existing.executionId());
+            if (keys.replace(composed, existing, abandoned)) {
+                return;
+            }
+        }
+    }
+
+    /**
+     * The transition to the terminal binding, the dedup-protection step of the
+     * {@link ExecutionLifecycle}'s terminal transition (and of the admission path's
+     * publish when completion raced ahead of publication). Terminal retention starts
+     * here, not at publication, and it closes the window in which the key would be
+     * claimable again while its outcome is still (or has just been) servable.
+     *
+     * <p>Idempotent: on a key that is absent, pending, reclaimable or already terminal
+     * it does nothing. A reclaimable (abandoned) binding is not tombstoned here - its
+     * execution was given up, and its settle, if any, must not start terminal retention.
      *
      * <p>The transition happens only if the binding still points at
      * {@code expectedExecutionId}. Without that check, a replaced execution
@@ -308,7 +353,7 @@ public class IdempotencyStore {
         String composed = compose(functionName, idempotencyKey);
         while (true) {
             StoredKey existing = keys.get(composed);
-            if (existing == null || existing.pending() || existing.terminal()
+            if (existing == null || existing.pending() || existing.terminal() || existing.reclaimable()
                     || !existing.executionId().equals(expectedExecutionId)) {
                 return;
             }
@@ -401,17 +446,21 @@ public class IdempotencyStore {
         }
     }
 
-    private record StoredKey(String executionId, boolean pending, boolean terminal) {
+    private record StoredKey(String executionId, boolean pending, boolean terminal, boolean reclaimable) {
         static StoredKey pending(String claimToken) {
-            return new StoredKey(claimToken, true, false);
+            return new StoredKey(claimToken, true, false, false);
         }
 
         static StoredKey published(String executionId) {
-            return new StoredKey(executionId, false, false);
+            return new StoredKey(executionId, false, false, false);
+        }
+
+        static StoredKey abandoned(String executionId) {
+            return new StoredKey(executionId, false, false, true);
         }
 
         static StoredKey terminal(String executionId) {
-            return new StoredKey(executionId, false, true);
+            return new StoredKey(executionId, false, true, false);
         }
     }
 }

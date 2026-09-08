@@ -406,3 +406,113 @@ Full control-plane suite (run once before commit):
 
 - P04 — single terminal owner / dedup (closes the R2 window the declined payload leaves), then P05
   (activate R3 waiter-timeout + offload finalization).
+
+## P04 — Single owner of the terminal transition and the dedup guarantee
+
+**ID:** P04 — introduce `ExecutionLifecycle` as the single owner of an invocation's terminal
+transition and close the R2 dedup gap.
+
+**Revision / git state**
+
+- Branch: `control-plane-lifecycle-memory`. BASE (P03): `8320ef18`; this entry's commit is recorded
+  below once committed.
+
+**What P04 changed**
+
+- `ExecutionLifecycle.java` (new, `execution` package) — the single owner of the terminal
+  transition. `settle(record)` runs, in order: (1) dedup protection — `markTerminal` under the
+  record monitor, so the key is non-reclaimable before the last live reference can disappear and so
+  it is serialized against the admission path's publish; (2) archive (optional, weight-bounded); (3)
+  live removal (`inFlight.invalidate`); (4) best-effort observer notification. No global lock: the
+  record is the monitor, and no listener/dispatcher/external code runs while it is held.
+- `ExecutionStore.java` — `settle` becomes the public adapter the queue modules still call; it
+  delegates to the attached `ExecutionLifecycle` (and to the bare `archiveAndRemove`+`notifyTerminal`
+  half when no owner is attached, as in the store-level unit tests). Added the package-private
+  `archiveAndRemove`, `notifyTerminal` and `attachLifecycle`.
+- `IdempotencyStore.java` — added the explicit `reclaimable` (abandoned) binding state and
+  `markReclaimable`; `claimIfMatches` now re-claims ONLY an explicitly-abandoned binding (identity
+  matched), never a still-`published` one — the absence of a record/outcome is no longer proof that
+  a published claim was abandoned. `markTerminal` skips `reclaimable` bindings (an abandoned
+  execution must not be tombstoned).
+- `InvocationExecutionFactory.java` — removed the `onTerminal` markTerminal listener (the owner does
+  it as a first-class step); constructs and attaches the `ExecutionLifecycle`; `publishAdmission`
+  runs `publishClaim` + the terminal re-check under the record monitor (closing the
+  completion-before-publication ordering); `abandonAdmission` marks a published binding reclaimable;
+  the replay loop parks on a still-published binding instead of re-claiming it.
+- Tests updated for the new contract: `IdempotencyKeyBudgetTest.replacingAndReclaiming…` and the two
+  `InvocationServiceDispatchTest.invokeAsync_staleIdempotencyMapping…` now mark the stale binding
+  reclaimable explicitly; `IdempotentRetentionContractTest.aLateSettle…` abandons via
+  `abandonAdmission()`. New `ExecutionLifecycleTerminalTransitionTest` (7 tests) covers weight and
+  TTL eviction during completion, delayed key publish, concurrent replay, a throwing terminal
+  listener, double completion and completion-against-expiry, counting real dispatcher starts.
+
+**Test commands and outcomes**
+
+R2 regression, RED on baseline (P00 established `replay isNew true (expected false)`), GREEN now:
+
+```bash
+./gradlew :control-plane:test --tests '*R2ArchiveEvictionReplayRegressionTest'
+# GREEN: BUILD SUCCESSFUL (unchanged test — the factory now attaches the owner)
+```
+
+New transition suite plus the surrounding store/key/lifetime tests:
+
+```bash
+./gradlew :control-plane:test \
+  --tests '*ExecutionLifecycleTerminalTransitionTest' \
+  --tests '*IdempotencyKeyBudgetTest' \
+  --tests '*IdempotencyKeyLifetimeTest' \
+  --tests '*IdempotentRetentionContractTest' \
+  --tests '*InvocationServiceDispatchTest.invokeAsync_staleIdempotencyMapping*'
+# BUILD SUCCESSFUL
+```
+
+Full control-plane suite (run once before commit):
+
+```bash
+./gradlew :control-plane:test --no-parallel
+# 572 tests completed, 5 failed, 3 skipped — the 5 failures are the still-red P00 regressions
+# for R3/R4/R8 (x2) and direct admission (owned by P05/P06/P07/P09/P10). R2 is green; none new.
+```
+
+Queue/provider modules still green except their own P00 reds: async-queue green; sync-queue 1
+failure = R5 (P06); container-deployment-provider 1 failure = R6 (P08); offload and
+concurrency-control green.
+
+**Impact**
+
+- `node .gitnexus/run.cjs impact "ExecutionStore" --direction upstream --repo . --file
+  platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java`
+  → CRITICAL (`riskSharedAxes: MEDIUM`), 34 impacted, 8 direct, 8 processes / 3 modules; main flows
+  `invokeSyncReactive`, `coreAdmission`, `disabledSyncSlot`, `offloadRetention`.
+- `node .gitnexus/run.cjs impact "InvocationExecutionFactory" --direction upstream --repo .` →
+  CRITICAL, 13 impacted, 6 direct, 5 processes.
+- `node .gitnexus/run.cjs impact "ExecutionCompletionHandler" --direction upstream --repo .` →
+  MEDIUM (18 impacted, 5 direct) — NOT modified by P04 (its `executionStore.settle` calls route
+  through the adapter unchanged).
+- `node .gitnexus/run.cjs impact "ExecutionRecord" --direction upstream --repo .` → UNKNOWN ("no
+  callers resolved"; index 5 commits behind). Confirmed by text search: NOT modified by P04.
+- `node .gitnexus/run.cjs detect-changes --scope all --repo .` → 7 files / 23 symbols, risk `high`;
+  affected flows `createOrReuseExecution`, `claimIfMatches`, `markTerminal`, `settle`. The listing
+  includes the pre-existing overload-path `STATO.md` (not committed) because the index lags HEAD.
+
+**Measures / observations**
+
+- The invariant is now ordered, not listener-based: `markTerminal` runs first, under the record
+  monitor, so no interleaving of publish/evict/settle can leave a still-valid published key without
+  an execution, outcome or tombstone.
+- Re-claiming requires explicit state: `claimIfMatches` re-claims only `markReclaimable` bindings.
+  The two `staleIdempotencyMapping` tests and the budget test were updated to model the explicit
+  abandon instead of inferring it from `executions.remove(...)`.
+- Administrative expiry co-expiry note (pre-existing, out of P04 scope): the published key and the
+  inFlight record share `maxLifetime`, so an expiry-driven `markTerminal` races the key's own expiry
+  and usually no-ops; the execution never concluded, so a fresh execution after the retention is
+  correct. Recorded for P06.
+- The custom-ticker + `Scheduler.systemScheduler()` expiry observation is flaky in the full suite
+  (also seen in P03); the completion-against-expiry test uses a real ticker and a short
+  `maxLifetime` to stay deterministic, and every concurrent test is latch/barrier time-bounded.
+
+**Next step**
+
+- P05 — activate the R3 waiter-timeout decision and offload finalization (R4), which now sit on a
+  single terminal owner.

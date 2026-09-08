@@ -196,7 +196,9 @@ class IdempotentRetentionContractTest {
                 factory.createOrReuseExecution("fn", spec(), request(), "k", "trace-1", InvocationKind.SYNC);
         first.publishAdmission();
         ExecutionRecord abandoned = first.executionRecord();
-        executions.remove(abandoned.executionId());
+        // An explicit abandon after publication is what makes the binding reclaimable;
+        // the mere absence of the record is not (finding R2).
+        first.abandonAdmission();
 
         InvocationExecutionFactory.ExecutionLookup second =
                 factory.createOrReuseExecution("fn", spec(), request(), "k", "trace-2", InvocationKind.SYNC);
