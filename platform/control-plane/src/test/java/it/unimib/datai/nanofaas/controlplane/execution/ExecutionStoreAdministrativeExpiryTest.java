@@ -36,7 +36,11 @@ class ExecutionStoreAdministrativeExpiryTest {
     private final Ticker ticker = clock::get;
 
     private ExecutionStore store() {
-        return new ExecutionStore(ExecutionStoreProperties.of(TTL, MAX_LIFETIME, SYNC_TTL), ticker);
+        ExecutionStoreProperties props = ExecutionStoreProperties.of(TTL, MAX_LIFETIME, SYNC_TTL);
+        ExecutionStore store = new ExecutionStore(props, ticker);
+        // The owner is mandatory for settle(); the store-level tests attach a minimal one.
+        new ExecutionLifecycle(store, new IdempotencyStore(props, ticker));
+        return store;
     }
 
     private void advance(Duration duration) {

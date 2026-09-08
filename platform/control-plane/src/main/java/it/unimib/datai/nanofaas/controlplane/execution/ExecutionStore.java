@@ -94,9 +94,9 @@ public class ExecutionStore {
     /**
      * The owner of the terminal transition, attached by {@link ExecutionLifecycle} when the
      * store and the idempotency store are wired together (in production, by
-     * {@code InvocationExecutionFactory}). Null for a store used standalone - the store-level
-     * unit tests - where {@link #settle} performs the archive-and-remove half without the key
-     * protection the owner adds.
+     * {@code InvocationExecutionFactory}). {@link #settle} fails fast when a <b>keyed</b>
+     * record is settled without one: that transition would otherwise silently leave the key
+     * binding reclaimable, which is exactly the re-execution window the owner closes.
      */
     private ExecutionLifecycle lifecycle;
 
@@ -211,16 +211,27 @@ public class ExecutionStore {
 
     /**
      * The terminal transition, and the adapter the queue modules and the completion
-     * handler still call. When an {@link ExecutionLifecycle} is attached, this delegates
-     * to it and the transition owns the key protection as well; without one - a store used
-     * standalone in the store-level unit tests - it performs the archive-and-remove half
-     * only. The record must be terminal; a live record is ignored.
+     * handler still call. It delegates to the attached {@link ExecutionLifecycle}, which
+     * owns the key protection as well as the archive and removal.
+     *
+     * <p>There is no silent downgrade for a <b>keyed</b> record: settling one without an
+     * owner would leave its key binding reclaimable (dropping {@code markTerminal}), so it
+     * fails fast instead of losing the dedup guarantee. A keyless record has nothing to
+     * protect, so its archive-and-remove half is the whole transition and needs no owner.
+     * The record must be terminal; a live record is ignored.
      */
     public void settle(ExecutionRecord executionRecord) {
         ExecutionLifecycle owner = lifecycle;
         if (owner != null) {
             owner.settle(executionRecord);
             return;
+        }
+        String key = executionRecord.idempotencyKey();
+        if (key != null && !key.isBlank()) {
+            throw new IllegalStateException(
+                    "No ExecutionLifecycle attached to ExecutionStore: a keyed terminal "
+                    + "transition cannot protect its idempotency key. InvocationExecutionFactory "
+                    + "attaches the owner in production.");
         }
         archiveAndRemove(executionRecord);
         notifyTerminal(executionRecord);

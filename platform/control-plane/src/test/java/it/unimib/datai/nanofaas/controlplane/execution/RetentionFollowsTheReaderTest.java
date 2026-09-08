@@ -44,7 +44,10 @@ class RetentionFollowsTheReaderTest {
     private final Ticker ticker = clock::get;
 
     private ExecutionStore store() {
-        return new ExecutionStore(PROPS, ticker);
+        ExecutionStore store = new ExecutionStore(PROPS, ticker);
+        // The owner is mandatory for settle(); the store-level tests attach a minimal one.
+        new ExecutionLifecycle(store, new IdempotencyStore(PROPS, ticker));
+        return store;
     }
 
     private void advance(Duration duration) {

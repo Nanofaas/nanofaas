@@ -426,8 +426,9 @@ transition and close the R2 dedup gap.
   live removal (`inFlight.invalidate`); (4) best-effort observer notification. No global lock: the
   record is the monitor, and no listener/dispatcher/external code runs while it is held.
 - `ExecutionStore.java` — `settle` becomes the public adapter the queue modules still call; it
-  delegates to the attached `ExecutionLifecycle` (and to the bare `archiveAndRemove`+`notifyTerminal`
-  half when no owner is attached, as in the store-level unit tests). Added the package-private
+  delegates to the attached `ExecutionLifecycle`, and fails fast (`IllegalStateException`) when a
+  keyed record is settled without one rather than silently dropping `markTerminal` (a keyless record
+  still archives via the package-private `archiveAndRemove`+`notifyTerminal` half). Added
   `archiveAndRemove`, `notifyTerminal` and `attachLifecycle`.
 - `IdempotencyStore.java` — added the explicit `reclaimable` (abandoned) binding state and
   `markReclaimable`; `claimIfMatches` now re-claims ONLY an explicitly-abandoned binding (identity

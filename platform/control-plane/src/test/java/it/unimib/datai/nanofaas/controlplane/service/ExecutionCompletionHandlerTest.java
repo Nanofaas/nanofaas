@@ -6,9 +6,11 @@ import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionLifecycle;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionState;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
+import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,6 +54,8 @@ class ExecutionCompletionHandlerTest {
     @BeforeEach
     void setUp() {
         executionStore = new ExecutionStore();
+        // The owner is mandatory for settling a keyed record; attach a minimal one.
+        new ExecutionLifecycle(executionStore, new IdempotencyStore());
         completionHandler = new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics, wakeUpGate);
 
         testSpec = new FunctionSpec(

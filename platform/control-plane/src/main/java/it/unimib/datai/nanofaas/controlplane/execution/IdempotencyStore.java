@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * The binding between an idempotency key and the execution that answers for it.
  *
- * <p>A key lives in three states, each with its own expiry:
+ * <p>A key lives in four states, each with its own expiry:
  * <ul>
  *   <li><b>pending</b> - a request has claimed it and not yet published it.
  *       Expires after {@code maxLifetime}: the cap on an abandoned claim, no

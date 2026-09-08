@@ -107,7 +107,10 @@ class OutcomeWeightBudgetTest {
     }
 
     private static ExecutionStore store(ExecutionStoreProperties props) {
-        return new ExecutionStore(props);
+        ExecutionStore store = new ExecutionStore(props);
+        // The owner is mandatory for settle(); the store-level tests attach a minimal one.
+        new ExecutionLifecycle(store, new IdempotencyStore());
+        return store;
     }
 
     private static void settle(ExecutionStore store, String id, Object output) {

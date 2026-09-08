@@ -34,7 +34,10 @@ class ExecutionStoreEvictionTest {
     }
 
     private ExecutionStore store(ExecutionStoreProperties props) {
-        return new ExecutionStore(props, ticker);
+        ExecutionStore store = new ExecutionStore(props, ticker);
+        // The owner is mandatory for settle(); the store-level tests attach a minimal one.
+        new ExecutionLifecycle(store, new IdempotencyStore(props, ticker));
+        return store;
     }
 
     private void advance(Duration duration) {

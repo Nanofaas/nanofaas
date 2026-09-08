@@ -65,6 +65,8 @@ class R1OutcomeByteBudgetRegressionTest {
                 Duration.ofMinutes(5), Duration.ofMinutes(30), Duration.ofSeconds(30),
                 100, 100, 11_600);
         ExecutionStore store = new ExecutionStore(props, Ticker.systemTicker());
+        // The owner is mandatory for settle(); the store-level tests attach a minimal one.
+        new ExecutionLifecycle(store, new IdempotencyStore(props, Ticker.systemTicker()));
 
         // Deep case: 30 distinct 1 MiB strings, each wrapped in five lists. The current
         // weigher stops at depth 4 and prices the string at zero, so each outcome weighs

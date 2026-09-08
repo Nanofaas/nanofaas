@@ -7,8 +7,10 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionLifecycle;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
+import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
 import it.unimib.datai.nanofaas.controlplane.execution.MutableClock;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
@@ -41,6 +43,8 @@ class ExecutionCompletionHandlerTimingTest {
     @BeforeEach
     void setUp() {
         executionStore = new ExecutionStore();
+        // The owner is mandatory for settle(); attach a minimal one.
+        new ExecutionLifecycle(executionStore, new IdempotencyStore());
         enqueuer = mock(InvocationEnqueuer.class);
         meterRegistry = new SimpleMeterRegistry();
         metrics = new Metrics(meterRegistry);
