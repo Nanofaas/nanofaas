@@ -155,3 +155,66 @@ New green matrix contract tests:
 
 - P01 — write the contract/state-machine/ADR and the resource-ownership matrix; make the R3
   semantic change explicit, then P05 activates the new waiter-timeout behavior tests.
+
+## P01 — Binding lifecycle contract (this entry)
+
+**ID:** P01 — write the ADR, state/event table and resource-ownership matrix.
+
+**Revision / git state**
+
+- Branch: `control-plane-lifecycle-memory`.
+- HEAD at the time of this entry (BASE for P01): `61d72e73528db62cf8ca465c6a037981d7ec13b0`
+  (P00 commit).
+- Documentation-only task: no production source, `openapi/core.yaml`, or test harness modified.
+
+**Files changed**
+
+- `docs/architecture/0001-execution-lifecycle-contract.md` (new) — the ADR.
+- `docs/experiments/lifecycle-memory-2026-09/STATO.md` (this file, appended).
+
+**What was verified in code/spec**
+
+- Execution states and their transitions: `ExecutionRecord` (QUEUED/RUNNING/SUCCESS/ERROR/TIMEOUT;
+  terminal final; `resetForRetry` allows RUNNING→QUEUED), `ExecutionState`.
+- Terminal transition order: `ExecutionStore.settle` publishes outcome → invalidates live record →
+  notifies terminal listeners (R2 window named); terminal listeners are `IdempotencyStore.markTerminal`
+  (from `InvocationExecutionFactory`) and `ExecutionCompletionHandler.recordTerminalConclusionOnce`.
+- Key lifecycle and public scope: `IdempotencyStore` (`pending`/`published`/`terminal`, `acquireOrGet`,
+  `claimIfMatches`, `publishClaim`, `abandonClaim`, `markTerminal`), key composed as
+  `functionName + ":" + key`. `openapi/core.yaml` documents `Idempotency-Key` (per-function,
+  retained `ttl` after completion, `410 Gone` on payload eviction), the stable terminal states
+  (`success`/`error`/`timeout`), and the `408` waiter-timeout description.
+- Waiter-timeout path: `ReactiveInvocationCoordinator.invoke` `.timeout(...)` → `markTimeout()` on the
+  shared record (the R3 defect); `suppressCancel=true` protects the shared future only.
+- Completion/retry/offload/slot paths: `ExecutionCompletionHandler` (`completeUnderLock`,
+  `handleRetry`, `releaseDispatchSlotOnce`, `handleAdministrativeExpiry`, `completeOffloadedExecution`,
+  `failOffloadedExecution`), `InvocationExecutionFactory` (`createOrReuseExecution`, replay/gone
+  branches, `abandonAdmission`/`publishAdmission`), `InvocationEnqueueSupport.admitIfNew`.
+- Slot acquisition timing: `Scheduler.acquireNext`/`SyncScheduler.tickOnceInternal` acquire at
+  dispatch; the direct no-queue path acquires none but releases by name (R5). `FunctionCapacityRegistry`
+  (name-keyed release, reactivation on delete-then-recreate) and `ReplicaStatusSnapshot`
+  (generation guard, stale-while-revalidate, no read-error→0 replicas) confirmed for I7/I9.
+- Function removal/re-register: `FunctionService.remove`/`register`, queue drain
+  (`SyncQueueService.removeFunctionState` → `FUNCTION_REMOVED`), `QueueManager.remove`. Removal does
+  not clear `IdempotencyStore`/`ExecutionStore.outcomes`, so key retention survives remove/re-register.
+- R3 red test: `R3WaiterTimeoutSharedOutcomeRegressionTest` asserts short-waiter timeout + backend
+  success ⇒ long waiter and replay both observe `success`; the ADR matches that branch.
+
+**Documented incompatibility (the one deliberate API decision)**
+
+- R3: per-waiter timeouts. Today a short waiter stamps the SHARED record `TIMEOUT` (documented in
+  `openapi/core.yaml`). The ADR resolves this to I1: a waiter timeout concludes only that waiter's
+  wait; the shared execution continues and its real result is what replay/polling observe. The
+  waiter-timeout HTTP format/status (`408`, `timeout` status) is kept; the caller budget, attempt
+  deadline, retry policy and max execution lifetime stay separate. The implementation change is
+  P05; the ADR records the decision now so P05 is not a silent state-machine change.
+
+**Impact**
+
+- Documentation-only. No symbol edited, so no GitNexus impact/edit gate applies; context was used
+  to confirm callers/transitions rather than grep alone.
+
+**Next step**
+
+- P02 — conservative, bounded outcome weighing (I6), then P03 (atomic key budget), P04 (single
+  terminal owner / dedup), P05 (activate the R3 waiter-timeout behavior + offload finalization).
