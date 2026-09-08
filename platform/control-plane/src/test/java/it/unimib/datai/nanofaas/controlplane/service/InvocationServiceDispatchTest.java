@@ -482,7 +482,7 @@ class InvocationServiceDispatchTest {
     }
 
     @Test
-    void invokeSync_timeoutRemainsTerminalWhenLateSuccessArrives() {
+    void invokeSync_aWaiterTimeoutThenLateSuccess_leavesTheSuccessForTheReplay() {
         CompletableFuture<DispatchResult> dispatchFuture = new CompletableFuture<>();
         FunctionSpec spec = functionSpec("timeout-fn", ExecutionMode.LOCAL);
         when(functionService.get("timeout-fn")).thenReturn(Optional.of(spec));
@@ -490,6 +490,8 @@ class InvocationServiceDispatchTest {
         when(enqueuer.enabled()).thenReturn(false);
         when(dispatcherRouter.dispatchLocal(any())).thenReturn(dispatchFuture);
 
+        // A waiter's own budget runs out first (per-waiter timeout, invariant I1): it
+        // receives the timeout response, but the shared execution keeps running.
         InvocationResponse first = invocationService.invokeSyncReactive(
                 "timeout-fn",
                 new InvocationRequest("payload", Map.of()),
@@ -502,6 +504,8 @@ class InvocationServiceDispatchTest {
 
         dispatchFuture.complete(DispatchResult.warm(InvocationResult.success("late-ok")));
 
+        // The backend answer then arrives and is the shared terminal result: the replay
+        // of the same key observes success, not the short waiter's timeout.
         InvocationResponse second = invocationService.invokeSyncReactive(
                 "timeout-fn",
                 new InvocationRequest("payload", Map.of()),
@@ -510,14 +514,14 @@ class InvocationServiceDispatchTest {
                 10
         ).block().response();
 
-        assertThat(second.status()).isEqualTo("timeout");
+        assertThat(second.status()).isEqualTo("success");
         assertThat(invocationService.getStatus(first.executionId())).get()
                 .extracting(ExecutionStatus::status)
-                .isEqualTo("timeout");
+                .isEqualTo("success");
     }
 
     @Test
-    void invokeSyncReactive_timeoutRemainsTerminalWhenLateSuccessArrives() {
+    void invokeSyncReactive_aWaiterTimeoutThenLateSuccess_leavesTheSuccessForTheReplay() {
         CompletableFuture<DispatchResult> dispatchFuture = new CompletableFuture<>();
         FunctionSpec spec = functionSpec("timeout-reactive-fn", ExecutionMode.LOCAL);
         when(functionService.get("timeout-reactive-fn")).thenReturn(Optional.of(spec));
@@ -547,10 +551,10 @@ class InvocationServiceDispatchTest {
         ).block().response();
 
         assertThat(second).isNotNull();
-        assertThat(second.status()).isEqualTo("timeout");
+        assertThat(second.status()).isEqualTo("success");
         assertThat(invocationService.getStatus(first.executionId())).get()
                 .extracting(ExecutionStatus::status)
-                .isEqualTo("timeout");
+                .isEqualTo("success");
     }
 
     @Test

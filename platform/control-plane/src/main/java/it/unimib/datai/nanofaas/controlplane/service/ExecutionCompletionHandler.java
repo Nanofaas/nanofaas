@@ -86,31 +86,43 @@ public class ExecutionCompletionHandler {
     /**
      * Completion path for offloaded executions: no retry and no dispatch-slot
      * release (offloaded calls never acquired one), just state + metrics + future.
+     *
+     * <p>Finalization is unconditional for the local attempt's completion (finding R4):
+     * an already-terminal record must not authorize an early return that leaves the
+     * shared future or the store open. A terminal state is final, so the
+     * already-definitive result prevails and this late result records nothing; the
+     * future completion and the settle are both idempotent no-ops when a terminal
+     * marker already concluded the execution.
      */
     public void completeOffloadedExecution(String executionId, InvocationResult result) {
         ExecutionRecord executionRecord = executionStore.getOrNull(executionId);
         if (executionRecord == null) {
             return;
         }
+        boolean concluded;
         synchronized (executionRecord) {
-            if (isTerminal(executionRecord.state())) {
-                return;
-            }
-            if (result.success()) {
-                executionRecord.markSuccess(result.output(), result.statusCode(),
-                        result.headers(), result.encoding());
-            } else {
-                executionRecord.markError(result.error());
+            concluded = !isTerminal(executionRecord.state());
+            if (concluded) {
+                if (result.success()) {
+                    executionRecord.markSuccess(result.output(), result.statusCode(),
+                            result.headers(), result.encoding());
+                } else {
+                    executionRecord.markError(result.error());
+                }
             }
         }
-        String functionName = executionRecord.task().functionName();
-        if (result.success()) {
-            metrics.success(functionName);
-        } else {
-            metrics.error(functionName);
+        if (concluded) {
+            String functionName = executionRecord.task().functionName();
+            if (result.success()) {
+                metrics.success(functionName);
+            } else {
+                metrics.error(functionName);
+            }
         }
         // Future published outside the record monitor (same invariant as
         // publishFinalCompletion): synchronous waiters must not run under the lock.
+        // complete() on an already-done future is a no-op, so a late result cannot
+        // overwrite the already-definitive answer.
         executionRecord.completion().complete(result);
         executionStore.settle(executionRecord);
     }
@@ -119,6 +131,10 @@ public class ExecutionCompletionHandler {
      * Infrastructure failure of an offloaded call: final by design (no local
      * fallback). The record stores the error; the shared future completes
      * exceptionally so every idempotent waiter surfaces the same 502/504.
+     *
+     * <p>Finalization is unconditional (finding R4), exactly as in
+     * {@link #completeOffloadedExecution}: a terminal record does not make this an
+     * early return, and the already-definitive result prevails over the late failure.
      */
     public void failOffloadedExecution(String executionId, OffloadFailedException failure) {
         ExecutionRecord executionRecord = executionStore.getOrNull(executionId);
@@ -128,13 +144,16 @@ public class ExecutionCompletionHandler {
         ErrorInfo error = new ErrorInfo(
                 failure.gatewayTimeout() ? OffloadGateway.OFFLOAD_TIMEOUT_CODE : OffloadGateway.OFFLOAD_FAILED_CODE,
                 failure.getMessage());
+        boolean concluded;
         synchronized (executionRecord) {
-            if (isTerminal(executionRecord.state())) {
-                return;
+            concluded = !isTerminal(executionRecord.state());
+            if (concluded) {
+                executionRecord.markError(error);
             }
-            executionRecord.markError(error);
         }
-        metrics.error(executionRecord.task().functionName());
+        if (concluded) {
+            metrics.error(executionRecord.task().functionName());
+        }
         executionRecord.completion().completeExceptionally(failure);
         executionStore.settle(executionRecord);
     }
@@ -245,39 +264,20 @@ public class ExecutionCompletionHandler {
     @SuppressWarnings("java:S2445")
     private void completeExecution(ExecutionRecord executionRecord, DispatchResult dispatchResult, Integer completedAttempt) {
         FinalCompletion completion;
-        boolean lateResultForTerminalRecord;
         synchronized (executionRecord) {
             completion = completeUnderLock(executionRecord, dispatchResult, completedAttempt);
-            // The record was already terminal and this result concerns the current
-            // attempt anyway: there is no FinalCompletion to publish, but the shared
-            // future is still pending and someone may be parked on it. The retry branch
-            // does not reach here - resetForRetry puts the record back to QUEUED - and
-            // neither does a result that arrived for an older attempt.
-            lateResultForTerminalRecord = completion == null
-                    && executionRecord.isTerminal()
-                    && (completedAttempt == null || executionRecord.task().attempt() == completedAttempt);
         }
         publishFinalCompletion(executionRecord, completion);
-        if (lateResultForTerminalRecord) {
-            // A sync timeout made the record terminal while the dispatch was still in
-            // flight. The recorded state stays TIMEOUT - a deliberate invariant, already
-            // covered by a test - but whoever is still waiting on the shared future,
-            // typically a second caller with the same idempotency key and a budget of its
-            // own, must get the real answer instead of waiting in vain until its own
-            // timeout. complete() on an already-completed future does nothing, so it
-            // cannot overwrite anything.
-            //
-            // The end-to-end conclusion of this timeout is recorded by the store's terminal
-            // listener at the settle below: the total (admission -> timeout) is real and
-            // measurable, the service time is not (the dispatch was still in flight), so
-            // only the total is recorded, never a censored service sample.
-            executionRecord.completion().complete(dispatchResult.result());
-        }
         // Last, and outside the monitor: completeUnderLock releases the dispatch slot
-        // even when it finds the record already terminal (a sync timeout that marked the
-        // record while the dispatch was still in flight), and archiving it first would
+        // even when it finds the record already terminal, and archiving it first would
         // make it unreachable at exactly that step - the slot would stay taken forever.
         // settle() ignores non-terminal records, so the retry branch is left intact.
+        //
+        // There is no "answer the shared future with the late result" branch here any
+        // more (ADR 0001 §5, invariant I1): every terminal marker concludes the shared
+        // future itself, so a late dispatch result on an already-terminal record must
+        // not overwrite the already-definitive answer - the future is already done and
+        // the state stays terminal.
         executionStore.settle(executionRecord);
     }
 

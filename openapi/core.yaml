@@ -190,7 +190,13 @@ paths:
         '404':
           description: Function not registered
         '408':
-          description: Invocation timed out. The execution is terminal and will remain in `timeout` if later inspected via `GET /v1/executions/{executionId}`.
+          description: |
+            The caller's wait budget expired; only this caller's wait concluded. The
+            shared execution keeps running, and a later poll of
+            `GET /v1/executions/{executionId}` (or a replay of the same
+            `Idempotency-Key`) may first observe in-flight work (`queued`/`running`)
+            and then the real result — never a fabricated `timeout` borrowed from
+            another caller's budget.
         '410':
           description: |
             The invocation already completed under this `Idempotency-Key`, but its
@@ -243,7 +249,11 @@ paths:
         - $ref: '#/components/parameters/ExecutionId'
       responses:
         '200':
-          description: Execution status. Terminal values (`success`, `error`, `timeout`) are stable and are not rewritten by late callbacks.
+          description: |
+            Execution status. Terminal values (`success`, `error`, `timeout`) are stable
+            and are not rewritten by late callbacks. A caller's wait timeout does NOT make
+            the execution terminal: a later poll may first observe in-flight work
+            (`queued`/`running`) and then the real result.
           content:
             application/json:
               schema:
@@ -688,7 +698,10 @@ components:
           enum: [queued, running, success, error, timeout]
           description: |
             Terminal states are `success`, `error`, and `timeout`.
-            Once an execution reaches `timeout`, later completion callbacks do not rewrite it.
+            `timeout` records an execution-level deadline (for example a queue-wait
+            expiry), never a single caller's wait budget. A caller whose own wait budget
+            expired may later poll this endpoint and observe in-flight work
+            (`queued`/`running`) and then the real result.
         startedAt:
           type: string
           format: date-time

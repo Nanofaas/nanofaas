@@ -92,7 +92,8 @@ class ExecutionCompletionHandlerTimingTest {
         ExecutionRecord record = new ExecutionRecord("exec", task("exec", spec, clock), clock.source());
         executionStore.put(record);
 
-        // The caller's own budget runs out 30ms after admission, before the dispatch returns.
+        // An execution-level deadline concludes the record 30ms after admission, before the
+        // dispatch returns (a waiter's own budget would leave the record untouched).
         clock.advanceMillis(5);
         record.markRunning();
         clock.advanceMillis(25);

@@ -79,11 +79,13 @@ public class AsyncQueueConfiguration {
         );
         ErrorInfo error = result.error();
         synchronized (executionRecord) {
-            if (executionRecord.isTerminal()) {
-                return;
+            // An already-terminal record must not make this an early return that skips
+            // the settle (finding R4, applied to the queue-side terminal early returns):
+            // the already-definitive result prevails, and the settle below is idempotent.
+            if (!executionRecord.isTerminal()) {
+                executionRecord.markError(error);
+                executionRecord.completion().complete(result);
             }
-            executionRecord.markError(error);
-            executionRecord.completion().complete(result);
         }
         executionStore.settle(executionRecord);
     }

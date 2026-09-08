@@ -95,7 +95,7 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
     }
 
     @Test
-    void aWaiterTimeoutDoesNotStopAdministrativeExpiryFromConcludingTheSharedFuture() {
+    void anExecutionTimeoutDoesNotStopAdministrativeExpiryFromConcludingTheSharedFuture() {
         ExecutionStore store = shortLivedStore();
         CountingEnqueuer enqueuer = new CountingEnqueuer();
         DispatcherRouter dispatcherRouter = mock(DispatcherRouter.class);
@@ -108,9 +108,10 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
         store.put(executionRecord);
         handler.dispatch(task);
 
-        // A synchronous caller's own budget runs out first, same as
-        // ReactiveInvocationCoordinator: marks TIMEOUT but does not settle, because
-        // the dispatch (and its slot) is still in flight.
+        // An execution-level deadline (not a single waiter's budget) marks the record
+        // TIMEOUT while the dispatch (and its slot) is still in flight. The administrative
+        // expiry must still conclude the shared future and give the slot back, but never
+        // overwrite the already-recorded terminal state.
         executionRecord.markTimeout();
         assertThat(store.getOrNull("exec-timeout-then-expired")).isNotNull();
 
@@ -121,7 +122,7 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
         // already protects: TIMEOUT, not overwritten by the administrative fallback.
         assertThat(store.outcomeOf("exec-timeout-then-expired").state()).isEqualTo(ExecutionState.TIMEOUT);
         assertThat(enqueuer.releases())
-                .as("the dispatch that outlived the caller's own timeout still held a slot")
+                .as("the dispatch that outlived the execution timeout still held a slot")
                 .isEqualTo(1);
     }
 

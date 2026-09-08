@@ -223,10 +223,10 @@ class ExecutionCompletionHandlerSlotReleaseTest {
         store.put(executionRecord);
         executionRecord.markRunning();
 
-        // The sync path exhausts its budget while the dispatch is still in flight: it
-        // marks the record and nothing more. Archiving it here would take it out of the
-        // living, and the completion arriving later would no longer find it to give back
-        // the concurrency slot that dispatch is still holding.
+        // An execution-level timeout marks the record terminal while the dispatch is still
+        // in flight (and still holding its slot). The completion arriving later must give
+        // that slot back before settling: archiving first would take the record out of the
+        // living, and the completion would no longer find it to release the slot.
         executionRecord.markTimeout();
         assertThat(store.getOrNull("exec-timeout")).isNotNull();
 
@@ -239,7 +239,7 @@ class ExecutionCompletionHandlerSlotReleaseTest {
     }
 
     @Test
-    void completeExecution_afterATimeout_stillAnswersWhoeverIsWaitingOnTheSharedFuture() {
+    void completeExecution_afterAnExecutionTimeout_doesNotOverwriteTheAlreadyConcludedFuture() {
         ExecutionStore store = new ExecutionStore();
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
                 store, new CountingEnqueuer(), mock(DispatcherRouter.class), new Metrics(new SimpleMeterRegistry()));
@@ -248,16 +248,18 @@ class ExecutionCompletionHandlerSlotReleaseTest {
         store.put(executionRecord);
         executionRecord.markRunning();
 
-        // Caller A exhausts its budget. Caller B - same idempotency key, same record, a
-        // wider budget of its own - is still parked on the future.
+        // An execution-level timeout (not a single waiter's budget) concludes the shared
+        // future with the timeout result before the dispatch outcome arrives. A late
+        // success must not overwrite either the future or the recorded terminal state:
+        // the already-definitive result prevails over late responses (invariant I1).
         executionRecord.markTimeout();
+        executionRecord.completion().complete(InvocationResult.error("QUEUE_TIMEOUT", "Queue wait exceeded"));
 
         handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.success("the real answer")));
 
-        assertThat(executionRecord.completion().isDone())
-                .as("B aspetterebbe invano fino al proprio timeout")
-                .isTrue();
-        assertThat(executionRecord.completion().join().output()).isEqualTo("the real answer");
+        assertThat(executionRecord.completion().isDone()).isTrue();
+        assertThat(executionRecord.completion().join().success()).isFalse();
+        assertThat(executionRecord.completion().join().error().code()).isEqualTo("QUEUE_TIMEOUT");
         // The recorded state is not rewritten: that is the long-standing invariant.
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.TIMEOUT);
     }

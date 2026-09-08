@@ -102,12 +102,12 @@ public final class ReactiveInvocationCoordinator {
                     return new SyncInvocation(responseMapper.toResponse(executionRecord, result), offloadedTarget.get());
                 })
                 .onErrorResume(java.util.concurrent.TimeoutException.class, ex -> {
-                    executionRecord.markTimeout();
-                    // Marked but NOT archived: the dispatch is still in flight and holds
-                    // a concurrency slot. Archiving it now would take it out of the living,
-                    // and the completion that arrives later would no longer find it to give
-                    // that slot back. That completion does the archiving, since it passes
-                    // through there anyway; if it never arrives, maxLifetime takes care of it.
+                    // Per-waiter timeout (ADR 0001 §5, invariant I1): this waiter's own budget
+                    // elapsed, so only its wait ends with the documented 408/timeout response.
+                    // The shared record, key, store, lease, budget and counters are untouched;
+                    // the shared execution keeps running and its real result is what a later
+                    // poll/replay observes. The waiter timeout is recorded on its own counter,
+                    // never as a backend error.
                     metrics.timeout(executionRecord.task().functionName());
                     return Mono.just(new SyncInvocation(responseMapper.timeoutResponse(executionRecord), offloadedTarget.get()));
                 })

@@ -517,3 +517,108 @@ concurrency-control green.
 
 - P05 — activate the R3 waiter-timeout decision and offload finalization (R4), which now sit on a
   single terminal owner.
+
+## P05 — Per-waiter timeouts and unconditional offload finalization
+
+**ID:** P05 — activate the R3 waiter-timeout decision (per-waiter timeouts) and make offload
+finalization unconditional (finding R4).
+
+**Revision / git state**
+
+- Branch: `control-plane-lifecycle-memory`. BASE (P04): `c1553077` ("P04 review fix: fail fast
+  when settling a keyed record without an owner"). This entry's commit is the P05 commit.
+
+**What P05 changed**
+
+- `ReactiveInvocationCoordinator.invoke` — the waiter's `.timeout(...)` budget no longer calls
+  `executionRecord.markTimeout()`. A waiter timeout concludes only that waiter's wait (the
+  documented 408/`timeout` response is unchanged); the shared record, key, store, lease, budget
+  and counters are untouched, and the shared execution keeps running. The waiter timeout is still
+  counted on `function_timeout_total` (`metrics.timeout`), never as a backend error.
+- `ExecutionCompletionHandler.completeOffloadedExecution` / `failOffloadedExecution` — finalization
+  is unconditional: the state mutation is guarded by a `concluded = !isTerminal(...)` flag, but the
+  shared-future completion and the `settle` always run. An already-terminal record no longer makes
+  this an early return that leaves a finished offload live in the store with a pending future; the
+  already-definitive result prevails and `complete`/`completeExceptionally`/`settle` are idempotent
+  no-ops on a concluded record.
+- `ExecutionCompletionHandler.completeExecution` — removed the `lateResultForTerminalRecord` branch
+  that answered the shared future with a late dispatch result after a timeout. Under the new
+  contract every terminal marker concludes the shared future itself, so a late result must not
+  overwrite the already-definitive answer; the slot is still released and the settle still runs.
+- `AsyncQueueConfiguration.markFunctionRemoved` — the queue-side terminal early return no longer
+  skips the `settle`; the state mutation is guarded, the settle is unconditional (idempotent).
+- `openapi/core.yaml` — the `408` description, the `GET /v1/executions/{id}` 200 description and the
+  `ExecutionStatus.status` `timeout` sentence now document the per-waiter semantics: a caller's wait
+  timeout does not make the execution terminal; `timeout` records an execution-level deadline only.
+- Tests: `InvocationServiceDispatchTest` (`invokeSync_`/`invokeSyncReactive_timeoutRemainsTerminal…`)
+  now assert the real success reaches the replay; `ExecutionCompletionHandlerSlotReleaseTest`'s
+  timeout test now asserts the already-concluded future is not overwritten; the expiry and timing
+  tests' comments reflect execution-level (not waiter) timeouts. New
+  `P05WaiterTimeoutSharedOutcomeTest` covers both waiter arrival orders, error, retry, offload
+  failure, all-waiters-detached, and the execution-level (global) deadline.
+
+**Test commands and outcomes**
+
+R3/R4 anchors, RED on the P04 baseline, GREEN after P05 (unchanged tests):
+
+```bash
+./gradlew :control-plane:test \
+  --tests '*R3WaiterTimeoutSharedOutcomeRegressionTest' \
+  --tests '*R4OffloadCompletionAfterWaiterTimeoutRegressionTest'
+# RED on baseline (P04): R3 replay "timeout" (expected "success"); R4 live=1/future pending.
+# GREEN after P05: BUILD SUCCESSFUL
+```
+
+New per-waiter/offload contract tests:
+
+```bash
+./gradlew :control-plane:test --tests '*P05WaiterTimeoutSharedOutcomeTest'
+# 6 tests completed, 0 failed
+```
+
+Full control-plane suite (once before commit):
+
+```bash
+./gradlew :control-plane:test --no-parallel
+# 578 tests completed, 3 failed, 3 skipped — the 3 failures are the still-red P00 regressions
+# R8 (x2, P09/P10) and direct admission (P06/P07). R3 and R4 are green; none new from P05.
+```
+
+Module suites:
+
+```bash
+./gradlew :control-plane-modules:offload:test :control-plane-modules:async-queue:test   # BUILD SUCCESSFUL
+./gradlew :control-plane-modules:sync-queue:test    # 87 tests, 1 failed = R5 (P06), unchanged
+./gradlew :control-plane-modules:concurrency-control:test   # BUILD SUCCESSFUL
+```
+
+**Impact**
+
+- `node .gitnexus/run.cjs impact "ReactiveInvocationCoordinator" --direction upstream --repo .` →
+  HIGH (`riskSharedAxes: MEDIUM`), 12 impacted, 5 direct, 4 processes (main/coreAdmission/
+  offloadRetention/disabledSyncSlot).
+- `node .gitnexus/run.cjs impact "ExecutionCompletionHandler" --direction upstream --repo .` →
+  ambiguous (5 symbols); the platform path resolves to MEDIUM (18 impacted, 5 direct).
+- `node .gitnexus/run.cjs impact "completeOffloadedExecution" --direction upstream --repo .` →
+  CRITICAL (`riskSharedAxes: LOW`), 3 impacted, 1 direct (7 processes); `failOffloadedExecution`
+  the same.
+- `node .gitnexus/run.cjs detect-changes --scope all --repo .` → 10 files / 21 symbols, risk
+  `critical`; affected flows `invoke` and the offload/dispatch completions. The listing includes
+  the pre-existing overload-path `STATO.md` (not committed) because the index lags HEAD.
+
+**Measures / observations**
+
+- A waiter timeout now leaves the shared record non-terminal, so the long waiter and the replay both
+  read the real backend answer; the R4 leak (a finished offload retained in `inFlight` until the
+  30-minute `maxLifetime`) is gone without waiting for administrative expiry — the remote result
+  settles immediately.
+- The execution-level `TIMEOUT` terminal (the sync-queue `QUEUE_TIMEOUT` expiry) is unchanged: it
+  still concludes the whole execution, completes the shared future with `QUEUE_TIMEOUT`, settles,
+  and every observer/replay reads `timeout`; a late success cannot change it.
+- Concurrency tests are latch/future/barrier time-bounded (max durations); no `sleep` is used as
+  proof of ordering.
+
+**Next step**
+
+- P06 — attempt-scoped leases and dispatch cancellation (closes R5 and the administrative-expiry
+  transport-handle gap).
