@@ -2,6 +2,12 @@
 
 Data: 8 settembre 2026. Revisione analizzata: `1d9e2f5518c21641be2e791cca9a952ca4128d34`.
 
+Revisione del piano: 9 settembre 2026, dopo le correzioni della review P00–P06
+nel commit `47bc70fa`. Per riprendere usa anche la relativa appendice nel
+[registro dei progressi](../experiments/lifecycle-memory-2026-09/STATO.md#2026-09-09--correzioni-della-review-p00p06).
+Gli ID P00–P25 restano stabili; i sottotask seguenti precisano lavoro residuo,
+dipendenze e verifiche, senza riaprire automaticamente il lavoro già provato.
+
 Questo piano copre **tutti gli otto rilievi R1–R8, gli ulteriori rischi di memoria
 e le modifiche architetturali** della [review pre-soak](../control-plane-pre-soak-review-2026-09-08.md).
 È un piano di implementazione; la sua presenza non significa che le correzioni
@@ -9,9 +15,10 @@ o i test descritti siano già stati eseguiti. Non attribuisce ancora a un bug
 specifico la crescita di RAM dell'esperimento storico.
 
 La sequenza obbligatoria è: riproduzioni e contratti → correzioni e proprietà
-delle risorse → limiti e isolamento → baseline misurata → estrazione dei
-contratti e wiring → verifica finale e soak. Una riorganizzazione di package
-non vale come correzione di una perdita di memoria.
+delle risorse, con contratti interni minimi → limiti e isolamento → baseline
+misurata → completamento dei port, estrazione SPI e wiring → verifica finale e
+soak. Una riorganizzazione di package non vale come correzione di una perdita
+di memoria.
 
 ## 1. Istruzioni per l'agente esecutore
 
@@ -42,6 +49,12 @@ non vale come correzione di una perdita di memoria.
    ID, revisione, file cambiati, impact, test/comandi/esiti, misure, eventuale
    incompatibilità documentata e prossimo passo. Non dichiarare completato un
    task con test falliti, mancanti o soltanto programmati.
+   Per ogni task/sottotask distingui **implementato**, **verificato con test mirati**
+   e **verificato nell'integrazione dei percorsi coinvolti**, riportando SHA,
+   comandi e risultati per ciascuna fase. Solo l'ultima fase, con tutti i criteri
+   di accettazione soddisfatti, consente di segnare il task completato. I gate
+   globali P19/P23 restano ulteriori verifiche. Conserva lo storico: una nuova
+   evidenza corregge esplicitamente la conclusione precedente, senza riscriverla.
 8. Test di concorrenza: usa latch/barrier, future controllate, clock/ticker
    iniettabili e scadenze massime. Non usare `sleep` come prova di un ordinamento.
    Ogni regressione deve fallire sulla baseline per la causa attesa e passare
@@ -117,6 +130,11 @@ verificati nel core. La separazione in JAR non aggiunge qui un requisito di
 deploy o un consumatore indipendente. Registrare questa decisione chiude la
 valutazione di quei possibili split; non costituisce lavoro dimenticato.
 
+Il redesign del runtime di esecuzione e degli scheduler selezionabili resta nel
+lavoro successivo della [issue #208](https://github.com/miciav/nanofaas/issues/208).
+I port di questa campagna separano modalità di risposta, scheduling e proprietà
+delle risorse, ma non introducono nuove strategie o unificano ora le due queue.
+
 ## 3. Copertura completa e ordine
 
 | Rilievo della review | Task |
@@ -145,9 +163,27 @@ valutazione di quei possibili split; non costituisce lavoro dimenticato.
 | Soak e attribuzione della RAM originale | P24 |
 | Documentazione e chiusura verificabile | P25 |
 
-Esegui P00–P09 in ordine. Esegui quindi P10–P18; le dipendenze indicate sono
-obbligatorie anche se in futuro il lavoro venisse assegnato a più agenti.
-P19 congela una baseline corretta prima delle estrazioni P20–P22.
+P00–P06 e la review correttiva sono il punto di partenza già implementato e
+verificato nei profili registrati, non una dichiarazione di completamento della
+campagna. Prima di nuovo codice integra `47bc70fa` nel branch di lavoro e verifica
+che siano presenti le regressioni e le correzioni dell'appendice del 9 settembre.
+R6 resta a P08; i due casi R8 restano rispettivamente a P09 e P10.
+
+Le dipendenze dei task e sottotask sono obbligatorie; l'ordine numerico non
+impone dipendenze aggiuntive. Ordine raccomandato alla ripresa:
+
+1. P20a: contratti interni minimi e inventario di quanto già realizzato.
+2. P08, poi P09/P10: chiusura dei difetti noti di deprovision e stato storico.
+3. P07a–P07e: budget aggregati; poi P11–P15 secondo le dipendenze indicate.
+4. P16a, P17/P18 e P16b: contratto SDK, risorse fisiche e limiti in tutti i runtime.
+
+P16a/P17/P18 possono anticipare i budget del control plane se si lavora sui soli
+SDK; non devono aspettare l'implementazione degli altri linguaggi. P09 può
+chiudere il cleanup storico prima di P07, ma la verifica dei limiti aggregati
+degli owner ritirati resta obbligatoria in P07 e P19. Non avviare refactoring
+concorrenti sugli stessi owner; ogni cambio d'ordine va registrato con dipendenze
+soddisfatte e prossimo task. Per le prove brevi intermedie usa la sezione 8.
+P19 congela una baseline corretta prima di P20b e delle estrazioni P21–P22.
 P23 verifica il risultato completo; P24 esegue il soak; P25 chiude la campagna.
 Non saltare i rischi senza riproduzione: P14/P15 prevedono una decisione misurata,
 mentre gli altri task indicano correzioni o limiti concreti da realizzare.
@@ -378,8 +414,26 @@ del record. Nessuna promessa di terminazione remota forzata.
 
 ### P07 — Budget aggregati del lavoro vivo, dei payload e dei waiter
 
-**Dipendenze:** P06. **File:** ammissione core, store, ingress HTTP, queue,
+**Dipendenze:** P06, P20a. **File:** ammissione core, store, ingress HTTP, queue,
 offload, proprietà/configurazione/Helm.
+
+Esegui e registra separatamente i sottotask seguenti. P07 è completo solo quando
+tutti sono verificati; i criteri e i casi trasversali sotto restano obbligatori.
+
+| Sottotask | Dipende da | Consegna e verifica di uscita |
+|---|---|---|
+| P07a — Proprietà e contabilità | P06, P20a | Tabella per risorsa con unità, owner, prenotazione, trasferimento e rilascio; primitive di prenotazione/rilascio verificate su rollback e doppio completamento. Distingui esecuzione logica, tentativi fisici e waiter. |
+| P07b — Ingresso limitato | P07a | Cap del body prima del parsing completo e policy conservativa della rappresentazione trattenuta; test body dichiarato/chunked e oggetti LOCAL opachi; contratto 413 documentato. |
+| P07c — Esecuzioni e input aggregati | P07b | Collega quote globali e per funzione a tutti i percorsi, compresi offload/pending HTTP, retry e pubblicazione fallita; verifica saturazione e drain fisico. |
+| P07d — Waiter | P07c | Ammissione e distacco limitati anche su replay; timeout/disconnessione liberano solo le risorse del waiter, senza cancellare lavoro condiviso. Test attese divergenti e replay massivo. |
+| P07e — Configurazione e calibrazione | P07d | Default numerici, validazione, riduzione runtime, OpenAPI/documentazione/Helm e misure T1/T2; gate integrato della sezione 8. |
+
+Il rilascio di byte segue la fine della loro ritenzione reale: un record archiviato
+o un waiter scaduto non libera l'input ancora usato da un worker LOCAL, tentativo
+HTTP o callback. L'input condiviso tra retry si conta una volta finché esiste un
+owner; copie fisiche aggiuntive richiedono quote proprie. Mantieni contabilizzato
+il lavoro fisico dopo il terminale amministrativo, con risorse e riferimenti
+osservabili fino al drain; non nasconderlo eliminando il record live.
 
 1. Aggiungi budget distinti e finiti per esecuzioni ammesse, byte di input
    trattenuti e waiter collegati; applica un limite globale oltre ai limiti per
@@ -415,7 +469,7 @@ Nessun claim secondo cui questi contatori da soli limitano RSS o memoria remota.
 
 ### P08 — Rendere recuperabile il deprovision parziale
 
-**Dipendenze:** P07. **File:** `ContainerLocalDeploymentProvider`,
+**Dipendenze:** P06, P20a. **File:** `ContainerLocalDeploymentProvider`,
 `RoundRobinFunctionProxy`, `FunctionService` e test managed deployment.
 
 1. Non cancellare da `states` l'unico riferimento prima di terminare o registrare
@@ -446,12 +500,16 @@ dopo un errore il catalogo e l'API rappresentano lo stato realmente ottenuto.
 
 ### P09 — Eliminare stato storico senza permettere resurrezioni
 
-**Dipendenze:** P08 e identità di P06. **File:** `Metrics`, `SyncQueueMetrics`,
+**Dipendenze:** P06, P20a. **File:** `Metrics`, `SyncQueueMetrics`,
 `SyncQueueService`, `DefaultOffloadGateway`, lifecycle della funzione.
 
 1. Inventaria mappe, set di nomi rimossi e meter per funzione. Sostituisci i set
    che crescono per sempre con owner di generazione: active → retiring → closed.
    Retiring dura solo finché esistono risorse reali, limitate da P06/P07.
+   Riusa l'identità e il protocollo di ritiro di P20a anche per P10/P11; non
+   aggiungere registry storici indipendenti per ogni componente. Se P07 non è
+   ancora implementato, dimostra qui il cleanup dopo drain e registra la
+   verifica del bound aggregato come obbligo di P07, non come risultato acquisito.
 2. Centralizza registrazione e rimozione dei meter; un evento vecchio può chiudere
    il suo owner ma non registrarne uno nuovo. Copri anche i contatori offload
    creati al subscribe/onError e i meter creati pigramente.
@@ -504,7 +562,7 @@ zero repliche e non compie una regolazione basata su una misura inesistente.
 
 ### P11 — Wake-up condiviso, timer cancellabili e percorso già pronto
 
-**Dipendenze:** P10. **File:** `DeploymentWakeUpGate`,
+**Dipendenze:** P07, P10. **File:** `DeploymentWakeUpGate`,
 `DeploymentWakeUpCoordinator`, `DeploymentWakeUpProperties`.
 
 1. Usa le osservazioni di P10 per il percorso già pronto, con freschezza
@@ -530,7 +588,7 @@ cold rispettano la readiness dichiarata e i test di timeout isolato.
 
 ### P12 — Pool HTTP con vita finita e budget aggregato
 
-**Dipendenze:** P07, P10. **File:** `HttpClientConfig`, dispatcher HTTP,
+**Dipendenze:** P06, P07. **File:** `HttpClientConfig`, dispatcher HTTP,
 proprietà e test con server locali controllati.
 
 1. Verifica le API sulla versione Reactor Netty risolta dal build, usando le
@@ -639,8 +697,21 @@ incoerenza riprodotta viene corretta, anche se non spiega la RAM del soak.
 
 ### P16 — Limiti dei callback e dei payload nei runtime SDK
 
-**Dipendenze:** P01, P07. **File:** callback/runtime in `sdks/java`,
+**Dipendenze:** P01 per P16a; P07, P16a, P17 e P18 per P16b. **File:** callback/runtime in `sdks/java`,
 `sdks/java-lite`, `sdks/python`, `sdks/go`, `sdks/javascript`.
+
+**P16a — Inventario e contratto comune:** esegui il censimento del punto 1,
+definisci la policy wire del punto 3 e prepara i casi condivisi di saturazione,
+timeout e stop. Registra owner e responsabilità per ciascun linguaggio. Questo
+sottotask non richiede l'implementazione dei limiti in tutti gli SDK né P07.
+Il corpus deve includere esiti attesi verificabili, non soltanto un documento
+descrittivo; eventuali incoerenze rispetto a P01 vanno risolte prima dei consumer.
+
+**P16b — Limiti e conformità in tutti gli SDK:** implementa i punti rimanenti,
+riusa gli owner corretti in P17/P18 e verifica il corpus in tutti i linguaggi,
+anche con invocazione diretta che bypassa il control plane. Non duplicare gli
+executor o la logica di shutdown per aggiungere le quote. P16 si chiude solo
+quando entrambi i sottotask soddisfano i test e l'accettazione seguenti.
 
 1. Per ciascun runtime censisci code/task, input, output e callback trattenuti;
    verifica i limiti reali anziché dedurli dal numero di worker. Le code già
@@ -667,7 +738,7 @@ Report separato per memoria dei processi funzione e memoria del control plane.
 
 ### P17 — Python: timeout dell'attesa e lavoro del thread ancora attivo
 
-**Dipendenze:** P16. **File:** implementazione runtime Python e `tests/test_runtime.py`.
+**Dipendenze:** P16a. **File:** implementazione runtime Python e `tests/test_runtime.py`.
 
 1. Conserva l'handle dell'esecuzione reale del synchronous handler. La scadenza
    di `wait_for` non significa che il thread di `to_thread` sia terminato.
@@ -693,7 +764,7 @@ progresso secondo i rispettivi limiti; nessuna pretesa di hard timeout del threa
 
 ### P18 — Java-lite: proprietà e chiusura di executor/client
 
-**Dipendenze:** P16. **File:** `NanofaasRuntime`, `CallbackClient` e test Java-lite.
+**Dipendenze:** P16a. **File:** `NanofaasRuntime`, `CallbackClient` e test Java-lite.
 
 1. Conserva come campi posseduti l'executor HTTP creato dal runtime, gli executor
    dei callback e i client che richiedono close. Distingui risorse create dal
@@ -715,7 +786,7 @@ verificata; le risorse iniettate esterne rispettano il contratto di ownership.
 
 ### P19 — Congelare una baseline corretta prima dei movimenti strutturali
 
-**Dipendenze:** P00–P18 completati.
+**Dipendenze:** P00–P18 e P20a completati; P20b resta successivo a questo gate.
 
 1. Esegui i test di regressione e i profili brevi della sezione 8. Registra il
    commit/build esatto e un artefatto identificabile, separato dalla baseline
@@ -735,8 +806,44 @@ dal relativo task. Le metriche di ammissione distinguono rifiuti da lavoro utile
 
 ### P20 — Sostituire i contratti sovraccarichi con port piccoli
 
-**Dipendenze:** P19. **File:** `InvocationEnqueuer`, scheduler queue,
+**Dipendenze:** P06 per P20a; P19 e P20a per P20b. **File:** `InvocationEnqueuer`, scheduler queue,
 `InvocationService`, lifecycle, capacità, governor e metriche.
+
+#### P20a — Contratti interni necessari alle correzioni, prima di P07–P11
+
+1. Parti da `47bc70fa`: risultato terminale canonico, lease per tentativo e
+   generazione, lease trasportata in `InvocationTask`, capacità e registrazione
+   obbligatorie nel core sono già realizzati. Verifica i consumer reali e
+   registra cosa riusare, completare o rimuovere; non ricreare gli stessi owner.
+2. Aggiorna l'ADR lifecycle con una tabella di proprietà per esecuzione, waiter,
+   tentativo e generazione: evento di acquisizione, rilascio, cancellazione,
+   retry e shutdown. Distingui future terminale e fine fisica; la cancellazione
+   chiesta prima della pubblicazione dell'handle deve restare efficace dopo.
+3. Definisci un'identità di generazione e un protocollo active/retiring/closed
+   riutilizzabili da capacità, metriche, snapshot e wake-up. Un callback vecchio
+   può chiudere le proprie risorse, ma non ricreare la funzione né mutare quella
+   nuova. Verifica la compatibilità con la generazione già introdotta in P06;
+   ogni owner di risorsa resta nel proprio componente, senza nuovo registry
+   globale che conservi per sempre nomi o generazioni.
+4. Introduci solo i piccoli contratti interni necessari ai consumer imminenti,
+   nei package core esistenti, e applicali alla capacità/lifecycle già presenti.
+   Verifica remove/re-register e rilascio tardivo con i test della sezione 8.
+   L'implementazione di meter/snapshot/gate resta nei task proprietari P09–P11.
+   Non estrarre ora JAR, spostare tutte le classi o anticipare nuove strategie.
+
+**Accettazione P20a:** contratti, tabella owner e inventario residuo registrati;
+consumer già migrati ancora verdi; protocollo di generazione verificato e
+riutilizzabile dai task successivi. Nessuna duplicazione delle lease di P06.
+Questo sottotask è un prerequisito semantico, non la chiusura di P20.
+
+#### P20b — Completare i port dopo la baseline corretta
+
+Esegui i passi sotto come delta rispetto a P20a e `47bc70fa`. Il task immutabile
+e il trasporto della lease esistono già: elimina gli eventuali riferimenti
+residui al record mutabile e definisci una vista/handle di ownership minima per
+i consumer. Non esportare automaticamente la classe concreta `DispatchLease`
+nel futuro SPI. Rimuovi gli adattatori legacy per nome quando l'ultimo consumer
+è migrato; non reintrodurli per semplificare i mock dei test.
 
 1. Elenca i metodi davvero consumati da ciascun modulo tramite context/import.
    Definisci port distinti per ammissione/capability async, pianificazione retry,
@@ -765,7 +872,7 @@ risultati di P19 restano invariati, salvo difetti nuovi riprodotti e corretti.
 
 ### P21 — Estrarre control-plane-spi e rimuovere dipendenze dalle implementazioni
 
-**Dipendenze:** P20. **File:** `settings.gradle`, build core/moduli,
+**Dipendenze:** P20a e P20b completati. **File:** `settings.gradle`, build core/moduli,
 nuovo `platform/control-plane-spi`, ArchUnit e runtime-config extension.
 
 1. Crea il progetto Gradle obbligatorio `:control-plane-spi`, distinto dai moduli
@@ -805,6 +912,10 @@ conflitti e API dei moduli. Nessun nuovo ciclo di progetti o task Gradle.
    senza provider managed. Verifica condizioni e ordine delle auto-configurazioni.
 3. Completa lo svuotamento della capacità mutabile da workload-metrics. Mantieni
    osservazioni/metriche dove hanno consumatori; elimina API ponte non usate.
+   La capacità obbligatoria e il listener di registrazione nel core sono già
+   introdotti da P06/review: verifica il wiring nei profili minimi e rimuovi
+   soltanto il residuo. Registra il delta rispetto all'inventario di P20a;
+   non spostare nuovamente ownership già corretta per seguire i vecchi nomi.
 4. Rafforza i test di architettura: soltanto l'owner modifica lo stato terminale;
    moduli non importano store/record/service/capacità concreta; SPI non importa
    core/moduli; governor non registra meter; niente cicli di package/progetto.
@@ -916,6 +1027,61 @@ I comandi sono punti di partenza verificati rispetto alla struttura del repo
 al momento della stesura. I nomi dei nuovi test vanno scelti durante P00.
 Esegui test mirati dopo ciascun task; la matrice completa serve ai gate P19/P23,
 non va ripetuta dopo ogni modifica di documentazione.
+
+### Gate mirato per ownership e integrazione
+
+Per P20a e ogni task che cambia ammissione, lifecycle, risorse o contratti, esegui
+i test mirati e un gate d'integrazione piccolo e ripetibile. Riusa fixture e
+contratti di test esistenti; aggiungi soltanto i casi che verificano un rischio
+reale non ancora coperto. Nel registro mantieni un catalogo dei comandi effettivi
+per profilo (selezione moduli e filtri esatti), aggiornato se cambiano package o
+classi. Evita copie di fixture che impongono un vecchio dettaglio implementativo.
+
+| Dimensione | Copertura richiesta nei percorsi interessati |
+|---|---|
+| Percorso | Diretto senza queue; async-queue SYNC e ASYNC; sync-queue; offload nei profili compatibili |
+| Esito/evento | Successo, errore sincrono, retry, timeout waiter, scadenza amministrativa, removal/re-register, stop |
+| Ordinamento | Cancellazione prima/dopo pubblicazione handle; completamento vecchia generazione dopo nuova registrazione; errore listener/metrica durante cleanup |
+| Risorsa reale | Subscriber HTTP cancellato; worker LOCAL ancora contato finché termina; slot, input, waiter e handle timer rilasciati dal rispettivo owner |
+
+Non è richiesto il prodotto cartesiano di ogni combinazione a ogni task:
+seleziona le righe pertinenti dall'impact, documenta perché i percorsi esclusi
+non sono coinvolti e copri almeno ogni consumer del contratto modificato. Un
+assert su `isCancelled()` o sul solo stato terminale non prova il rilascio
+della risorsa sottostante. Usa latch/eventi controllati anche per il confine
+fisico; callback e worker devono essere realmente collegati al percorso testato.
+
+Gli unici fallimenti noti ammessi temporaneamente nel report di avanzamento
+devono essere elencati per metodo, causa attesa e task proprietario. Alla ripresa:
+
+| Caso noto | Owner | Stato/evidenza da preservare |
+|---|---|---|
+| `R6DeprovisionFailureOwnershipRegressionTest.failedDeprovisionDoesNotLeakAnUntrackedProxy` | P08 | Riproduzione P00 della perdita di ownership; rieseguire prima del fix |
+| `R8HistoryCleanupRegressionTest.removedFunctionNamesDoNotAccumulateAfterChurn` | P09 | 1.000 nomi storici dopo churn nella review |
+| `R8HistoryCleanupRegressionTest.invalidatedReplicaTargetsAreRemovedNotJustCleared` | P10 | 1.000 entry dopo invalidazione nella review |
+
+Registra i test noti separatamente dai test verdi, con risultato e revisione;
+non disabilitarli nel build né escludere intere classi per le verifiche future.
+Ogni altro fallimento blocca il task. Rimuovi l'eccezione dal registro corrente
+quando il fix passa, preservando l'evidenza red/green. P19/P23 non ammettono
+nessuna di queste eccezioni. Il conteggio dei test esclusi/saltati resta esplicito.
+
+### Checkpoint brevi durante l'implementazione
+
+Dopo P08–P10 esegui T5/T6/T9 sui componenti corretti; dopo P07 esegui T1/T2/T3/T4/T9;
+dopo P11–P13 esegui T4–T7/T9 pertinenti; dopo i fix SDK esegui T7/T8/T9 nei processi
+funzione. Un caso che dipende da un task ancora aperto mantiene quel difetto nel
+report: non attribuire al checkpoint il completamento dell'intero scenario.
+Raccogli configurazione, carico offerto/ammesso, durata, popolazioni e risorse
+residue al drain; per i cambiamenti del percorso ordinario misura anche le
+allocazioni e la latenza con warm-up e ambiente registrati. I byte ancora
+posseduti da lavoro fisico e gli owner retiring devono restare visibili.
+
+Questi checkpoint permettono di correggere presto ritenzione e contabilità;
+non sostituiscono le ripetizioni comparative P19/P23 o il soak P24. Un benchmark
+di un singolo metodo non dimostra prestazioni dell'intero percorso HTTP.
+
+### Comandi e matrice completa
 
 ```bash
 # Suite core: usare --tests '<package.ClasseTest>' per il task corrente.

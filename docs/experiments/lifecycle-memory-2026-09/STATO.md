@@ -901,3 +901,45 @@ restituiscono l'intero elenco (nessun flag partial/truncated, conteggi coinciden
 le lunghezze degli elenchi). I due file aggiuntivi di `all` sono quelli overload
 preesistenti, non staged. I flussi modificati riguardano il perimetro atteso: admission,
 completion, store, capacità e scheduler. `git diff --cached --check` supera il controllo.
+
+## 2026-09-09 — Revisione del piano dopo le correzioni P00–P06
+
+**ID e stato:** revisione documentale del piano P00–P25, autorizzata insieme al
+commit e al merge nel branch `control-plane-lifecycle-memory`. Base della revisione:
+`47bc70fa` su `fix/p00-p06-review`; destinazione prima dell'integrazione: `c8d6dd02`.
+Questa voce aggiorna il prossimo passo dell'appendice precedente: si riparte da
+**P20a**, poi P08, P09/P10 e P07 secondo il nuovo ordine. Nessun nuovo task di
+implementazione viene dichiarato eseguito dalla sola revisione del piano.
+
+**File e contenuto:** piano esistente e questo registro, senza nuovi file locali
+tracciati. Conservati gli ID e tutti i rilievi. Introdotti P20a/P20b per separare
+contratti interni preliminari ed estrazione successiva alla baseline; P07a–P07e
+per ownership, ingresso, input/esecuzioni, waiter e calibrazione; P16a/P16b per
+permettere i fix Python/Java-lite prima della conformità completa dei cinque SDK.
+Eliminate dipendenze non necessarie di P08/P09/P12; esplicitata la dipendenza
+P11 da P07 per il bound dei wake-up. P20/P22 descrivono il residuo rispetto alle
+lease e alla capacità core già implementate, evitando di rifare il lavoro.
+
+**Criteri nuovi:** contabilità fino alla fine fisica del lavoro che conserva
+payload; identità di generazione condivisa senza registry storici illimitati;
+progressi distinti tra implementazione, test mirati e integrazione; gate sui
+consumer reali con cancellazione HTTP e worker LOCAL osservabili; fallimenti
+noti elencati per metodo/owner; checkpoint brevi di carico e drain prima dei gate
+completi. P19, P23 e il soak P24 mantengono i propri requisiti. Il redesign degli
+scheduler rimane nella issue #208.
+
+**Verifiche documentali:** rilettura del diff, 26 intestazioni P00–P25 preservate,
+destinazioni dei link locali presenti e blocchi di codice bilanciati. Controllo
+del grafo delle dipendenze espanso nei sottotask: 35 nodi senza cicli. Riscontro
+dei tre nomi di metodo R6/R8 nei sorgenti. `git diff --check` senza errori.
+Nessun simbolo produttivo o test modificato: impact upstream non applicabile;
+il controllo GitNexus pre-commit riguarda lo scope documentale staged.
+Le suite applicative non vengono ripetute per questa modifica documentale;
+restano le evidenze e le limitazioni della review `47bc70fa`, inclusi R6/R8 aperti,
+native/NanoLab/soak non eseguiti.
+
+**Integrazione prevista:** commit dei soli due documenti e fast-forward del
+branch della campagna, verificando gli SHA e la preservazione dei file overload
+e delle skill non tracciate. L'esito effettivo è riscontrabile nei riferimenti
+Git del branch; questo paragrafo non anticipa il successo del merge. Nessuna
+variazione di API o default introdotta dalla revisione documentale.
