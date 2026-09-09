@@ -1694,12 +1694,13 @@ final NanoFaaS properties/defaults and Helm calibration (P07e).
   `spring.http.codecs.max-in-memory-size`; startup fails rather than proceeding if the matching
   decoder does not expose a positive finite limit. P07b therefore adds no provisional NanoFaaS
   numeric default or public property. P07e may migrate this seam to its final validated configuration.
-- `RetainedInputEstimator` accepts JSON-like scalars, arrays, and JDK list/map representations. It
-  applies explicit depth, container-width, visited-node and retained-byte bounds, identity-tracks
-  cycles/shared objects during one call, uses subtraction/division guards before arithmetic, and
-  returns a reasoned rejection rather than a frontier token. User-defined collection subclasses
-  are rejected before invoking their methods; arbitrary opaque LOCAL objects are rejected. The
-  estimator has no cross-call state and has not yet been wired into execution ownership.
+- `RetainedInputEstimator` accepts JSON-like scalars and explicit arrays. It applies explicit
+  depth, container-width, visited-node and retained-byte bounds, identity-tracks cycles/shared
+  objects during one call, uses subtraction/division guards before arithmetic, and returns a
+  reasoned rejection rather than a frontier token. All lists/maps and arbitrary opaque LOCAL
+  objects are rejected before collection methods are invoked; callers must convert collections
+  to bounded arrays and retain only those arrays. The estimator has no cross-call state and has
+  not yet been wired into execution ownership.
 - OpenAPI now documents 413 for both `:invoke` and `:enqueue`, including ordering before replay and
   counting unknown-length bodies. `docs/control-plane.md` distinguishes transient ingress bytes,
   conservative retained-representation bytes, and excluded parser/transport/attempt copies. It
@@ -1755,3 +1756,26 @@ repository suite. No soak, container or Kubernetes E2E was run for P07b.
 filter intentionally shares the active Spring JSON decoder limit. P07e may replace the constructor
 resolution with validated NanoFaaS configuration, but it must configure decoder and streaming
 filter consistently so neither boundary silently exceeds the other.
+
+### P07b fix round 1/5 — reject hidden collection capacity
+
+Review found that accepting every `java.util` list/map while charging only logical `size()` let
+spare `ArrayList` capacity and retained `HashMap` tables bypass conservative byte accounting.
+Package identity cannot expose backing capacity, and `java.util` wrappers can also delegate to
+arbitrary collection code. The estimator now rejects every `List` and `Map` before invoking
+collection methods. Scalars and explicit arrays remain supported; a caller converting a
+collection must retain only the bounded array representation it measures.
+
+TDD regression file:
+`platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/input/RetainedInputEstimatorTest.java`.
+The RED run executed 10 tests and failed exactly the two new assertions: a one-element
+`ArrayList` with capacity 1,000,000 and an emptied `HashMap` with an allocated 1,000,000-entry
+table were incorrectly returned as `Measured`. The focused GREEN command
+`./gradlew :control-plane:test --tests 'it.unimib.datai.nanofaas.controlplane.input.RetainedInputEstimatorTest' --console=plain --offline`
+completed with `BUILD SUCCESSFUL in 3s` (78 actionable tasks: 7 executed, 71 up-to-date).
+The full repository suite `./gradlew test --no-parallel --continue --console=plain --offline`
+completed with `BUILD SUCCESSFUL in 2m 22s` (190 actionable tasks: 20 executed,
+170 up-to-date).
+The full repository suite `./gradlew test --no-parallel --continue --console=plain --offline`
+completed with `BUILD SUCCESSFUL in 2m 22s` (190 actionable tasks: 20 executed,
+170 up-to-date).

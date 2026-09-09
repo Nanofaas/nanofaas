@@ -2,8 +2,6 @@ package it.unimib.datai.nanofaas.controlplane.input;
 
 import java.lang.reflect.Array;
 import java.util.IdentityHashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.OptionalLong;
 
 /**
@@ -11,10 +9,11 @@ import java.util.OptionalLong;
  * unbounded object-graph walk. This is an accounting policy, not a whole-heap measurement:
  * allocator padding, framework buffers and transport copies remain outside this estimate.
  *
- * <p>Only arrays and JDK {@link List}/{@link Map} implementations containing JSON-like scalar
- * values are accepted. In particular, an arbitrary LOCAL object (including a user-defined
- * collection whose {@code size()} or iterator may execute unbounded code) is rejected. Callers
- * must convert such a value to an explicitly bounded representation before admission.
+ * <p>Only arrays containing JSON-like scalar values are accepted as containers. Collection APIs
+ * expose logical membership but not backing capacity, so even JDK lists and maps are rejected:
+ * their retained bytes cannot be conservatively bounded from {@code size()}. Callers must convert
+ * them to an explicitly bounded array representation before admission and retain only that
+ * representation.
  *
  * <p>The estimator keeps no state between calls. Shared references and cycles are identified by
  * identity during one estimate and charged as references after their first visit.
@@ -24,7 +23,6 @@ public final class RetainedInputEstimator {
     private static final long REFERENCE_BYTES = 8;
     private static final long OBJECT_HEADER_BYTES = 16;
     private static final long ARRAY_HEADER_BYTES = 24;
-    private static final long MAP_ENTRY_BYTES = 32;
     private static final long BOXED_SCALAR_BYTES = 24;
 
     private final Limits limits;
@@ -91,10 +89,6 @@ public final class RetainedInputEstimator {
         return OptionalLong.of(left * right);
     }
 
-    private static boolean isJdkCollection(Object value) {
-        return "java.util".equals(value.getClass().getPackageName());
-    }
-
     private static final class State {
         private final Limits limits;
         private final IdentityHashMap<Object, Boolean> visited = new IdentityHashMap<>();
@@ -129,18 +123,6 @@ public final class RetainedInputEstimator {
             if (type.isArray()) {
                 return visitArray(value, type.getComponentType(), depth);
             }
-            if (value instanceof List<?> list) {
-                if (!isJdkCollection(value)) {
-                    return Rejection.UNSUPPORTED_REPRESENTATION;
-                }
-                return visitList(list, depth);
-            }
-            if (value instanceof Map<?, ?> map) {
-                if (!isJdkCollection(value)) {
-                    return Rejection.UNSUPPORTED_REPRESENTATION;
-                }
-                return visitMap(map, depth);
-            }
             return Rejection.UNSUPPORTED_REPRESENTATION;
         }
 
@@ -165,62 +147,6 @@ public final class RetainedInputEstimator {
             }
             for (int index = 0; index < length; index++) {
                 rejection = visit(Array.get(array, index), depth + 1);
-                if (rejection != null) {
-                    return rejection;
-                }
-            }
-            return null;
-        }
-
-        private Rejection visitList(List<?> list, int depth) {
-            if (visited.put(list, Boolean.TRUE) != null) {
-                return add(REFERENCE_BYTES);
-            }
-            int size = list.size();
-            if (size > limits.maxContainerEntries()) {
-                return Rejection.CONTAINER_WIDTH_LIMIT;
-            }
-            Rejection rejection = add(OBJECT_HEADER_BYTES + ARRAY_HEADER_BYTES);
-            if (rejection != null) {
-                return rejection;
-            }
-            rejection = addProduct(size, REFERENCE_BYTES);
-            if (rejection != null) {
-                return rejection;
-            }
-            for (Object element : list) {
-                rejection = visit(element, depth + 1);
-                if (rejection != null) {
-                    return rejection;
-                }
-            }
-            return null;
-        }
-
-        private Rejection visitMap(Map<?, ?> map, int depth) {
-            if (visited.put(map, Boolean.TRUE) != null) {
-                return add(REFERENCE_BYTES);
-            }
-            int size = map.size();
-            if (size > limits.maxContainerEntries()) {
-                return Rejection.CONTAINER_WIDTH_LIMIT;
-            }
-            Rejection rejection = add(OBJECT_HEADER_BYTES + ARRAY_HEADER_BYTES);
-            if (rejection != null) {
-                return rejection;
-            }
-            rejection = addProduct(size, MAP_ENTRY_BYTES + (2 * REFERENCE_BYTES));
-            if (rejection != null) {
-                return rejection;
-            }
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                if (!(entry.getKey() instanceof String key)) {
-                    return Rejection.UNSUPPORTED_REPRESENTATION;
-                }
-                rejection = visit(key, depth + 1);
-                if (rejection == null) {
-                    rejection = visit(entry.getValue(), depth + 1);
-                }
                 if (rejection != null) {
                     return rejection;
                 }

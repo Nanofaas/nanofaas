@@ -3,11 +3,8 @@ package it.unimib.datai.nanofaas.controlplane.input;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -15,12 +12,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RetainedInputEstimatorTest {
 
     @Test
-    void flatJsonRepresentationGetsAConservativePositiveMeasurement() {
+    void flatExplicitArrayRepresentationGetsAConservativePositiveMeasurement() {
         RetainedInputEstimator estimator = estimator(4, 8, 32, 10_000);
-        Map<String, Object> input = new LinkedHashMap<>();
-        input.put("enabled", true);
-        input.put("name", "café");
-        input.put("values", Arrays.asList(1, 2L, null));
+        Object[] input = {"enabled", true, "name", "café", "values",
+                new Object[]{1, 2L, null}};
 
         RetainedInputEstimator.Result result = estimator.estimate(input);
 
@@ -33,7 +28,7 @@ class RetainedInputEstimatorTest {
         RetainedInputEstimator estimator = estimator(3, 8, 32, 10_000);
         Object input = "leaf";
         for (int depth = 0; depth < 4; depth++) {
-            input = List.of(input);
+            input = new Object[]{input};
         }
 
         assertThat(estimator.estimate(input))
@@ -42,8 +37,8 @@ class RetainedInputEstimatorTest {
     }
 
     @Test
-    void wideJdkContainerIsRejectedAtTheConfiguredWidth() {
-        List<Object> input = new ArrayList<>(Collections.nCopies(9, "value"));
+    void wideExplicitArrayIsRejectedAtTheConfiguredWidth() {
+        Object[] input = new Object[9];
         RetainedInputEstimator estimator = estimator(4, 8, 32, 10_000);
 
         assertThat(estimator.estimate(input))
@@ -66,9 +61,32 @@ class RetainedInputEstimatorTest {
     void nodeLimitBoundsTraversalEvenWhenDepthAndWidthStillAllowTheShape() {
         RetainedInputEstimator estimator = estimator(8, 8, 4, 10_000);
 
-        assertThat(estimator.estimate(List.of(1, 2, 3, 4)))
+        assertThat(estimator.estimate(new Object[]{1, 2, 3, 4}))
                 .isEqualTo(new RetainedInputEstimator.Rejected(
                         RetainedInputEstimator.Rejection.NODE_LIMIT));
+    }
+
+    @Test
+    void sparseOverCapacityJdkListIsRejectedInsteadOfPricedByLogicalSize() {
+        ArrayList<Object> sparse = new ArrayList<>(1_000_000);
+        sparse.add("one logical element");
+        RetainedInputEstimator estimator = estimator(4, 8, 32, 10_000);
+
+        assertThat(estimator.estimate(sparse))
+                .isEqualTo(new RetainedInputEstimator.Rejected(
+                        RetainedInputEstimator.Rejection.UNSUPPORTED_REPRESENTATION));
+    }
+
+    @Test
+    void sparseOverCapacityJdkMapIsRejectedInsteadOfPricingItsEmptyLogicalSize() {
+        HashMap<String, Object> sparse = new HashMap<>(1_000_000);
+        sparse.put("allocate-table", true);
+        sparse.remove("allocate-table");
+        RetainedInputEstimator estimator = estimator(4, 8, 32, 10_000);
+
+        assertThat(estimator.estimate(sparse))
+                .isEqualTo(new RetainedInputEstimator.Rejected(
+                        RetainedInputEstimator.Rejection.UNSUPPORTED_REPRESENTATION));
     }
 
     @Test
@@ -106,7 +124,7 @@ class RetainedInputEstimatorTest {
                     .isInstanceOf(RetainedInputEstimator.Rejected.class);
         }
 
-        assertThat(estimator.estimate(Map.of("accepted", "after rejections")))
+        assertThat(estimator.estimate(new Object[]{"accepted", "after rejections"}))
                 .isInstanceOf(RetainedInputEstimator.Measured.class);
     }
 

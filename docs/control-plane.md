@@ -217,13 +217,15 @@ that calibration and may move the wiring to a validated NanoFaaS property.
 
 Ingress bytes and retained-input bytes are different quantities. Ingress accounting
 covers transient transport buffers and bounds how much can arrive before rejection.
-The retained-input estimator is a conservative policy for JSON-like scalar, array and
-JDK map/list representations that an execution may keep. Its depth, width, visited-node
-and byte work are bounded; unsupported opaque LOCAL values and values beyond a bound are
-rejected instead of receiving a small token weight. Extra parser, transport, HTTP-client,
-LOCAL-worker or retry copies are excluded from that estimate and require their own
-physical-copy ownership when P07c wires quotas. Consequently, the estimate does not by
-itself claim to cap process RSS, native buffers or remote memory.
+The retained-input estimator is a conservative policy for JSON-like scalars and explicit
+array representations that an execution may keep. Lists and maps are rejected, including
+JDK implementations, because their public logical size does not expose retained backing
+capacity; callers must convert them to a bounded array representation and retain only that
+representation. Depth, width, visited-node and byte work are bounded; unsupported opaque LOCAL
+values and values beyond a bound are rejected instead of receiving a small token weight. Extra
+parser, transport, HTTP-client, LOCAL-worker or retry copies are excluded from that estimate and
+require their own physical-copy ownership when P07c wires quotas. Consequently, the estimate does
+not by itself claim to cap process RSS, native buffers or remote memory.
 
 ## Idempotency and outcome retention
 
