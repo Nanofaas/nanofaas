@@ -5,6 +5,7 @@ import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 
 import java.time.Instant;
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchLease;
+import it.unimib.datai.nanofaas.controlplane.capacity.QueuedInputLease;
 
 public record InvocationTask(
         String executionId,
@@ -16,17 +17,35 @@ public record InvocationTask(
         Instant enqueuedAt,
         int attempt,
         InvocationKind kind,
-        DispatchLease dispatchLease
+        DispatchLease dispatchLease,
+        QueuedInputLease queuedInputLease
 ) {
     public InvocationTask(String executionId, String functionName, FunctionSpec functionSpec,
                           InvocationRequest request, String idempotencyKey, String traceId,
                           Instant enqueuedAt, int attempt, InvocationKind kind) {
         this(executionId, functionName, functionSpec, request, idempotencyKey, traceId,
-                enqueuedAt, attempt, kind, null);
+                enqueuedAt, attempt, kind, null, null);
+    }
+
+    public InvocationTask(String executionId, String functionName, FunctionSpec functionSpec,
+                          InvocationRequest request, String idempotencyKey, String traceId,
+                          Instant enqueuedAt, int attempt, InvocationKind kind,
+                          DispatchLease dispatchLease) {
+        this(executionId, functionName, functionSpec, request, idempotencyKey, traceId,
+                enqueuedAt, attempt, kind, dispatchLease, null);
     }
 
     public InvocationTask withDispatchLease(DispatchLease lease) {
         return new InvocationTask(executionId, functionName, functionSpec, request,
-                idempotencyKey, traceId, enqueuedAt, attempt, kind, lease);
+                idempotencyKey, traceId, enqueuedAt, attempt, kind, lease, queuedInputLease);
+    }
+
+    public InvocationTask withQueuedInputLease(QueuedInputLease lease) {
+        return new InvocationTask(executionId, functionName, functionSpec, request,
+                idempotencyKey, traceId, enqueuedAt, attempt, kind, dispatchLease, lease);
+    }
+
+    public void releaseQueuedInput() {
+        if (queuedInputLease != null) queuedInputLease.close();
     }
 }

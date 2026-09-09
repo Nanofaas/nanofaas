@@ -8,6 +8,11 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore.AcquireResult;
 import it.unimib.datai.nanofaas.controlplane.execution.Outcome;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacity;
+import it.unimib.datai.nanofaas.controlplane.input.CanonicalInvocationInput;
+import it.unimib.datai.nanofaas.controlplane.input.InvocationInputRejectedException;
+import it.unimib.datai.nanofaas.controlplane.input.RetainedInputEstimator;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.springframework.stereotype.Service;
@@ -23,12 +28,32 @@ public final class InvocationExecutionFactory {
     private final IdempotencyStore idempotencyStore;
 
     private final Metrics metrics;
+    private final InvocationCapacity invocationCapacity;
+    private final RetainedInputEstimator.Limits inputLimits;
+    private final boolean standaloneCapacity;
 
     public InvocationExecutionFactory(ExecutionStore executionStore, IdempotencyStore idempotencyStore,
                                       Metrics metrics) {
+        this(executionStore, idempotencyStore, metrics, standaloneCapacity(),
+                new RetainedInputEstimator.Limits(32, 16_384, 65_536, 64L << 20), true);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public InvocationExecutionFactory(ExecutionStore executionStore, IdempotencyStore idempotencyStore,
+                                      Metrics metrics, InvocationCapacity invocationCapacity,
+                                      RetainedInputEstimator.Limits inputLimits) {
+        this(executionStore, idempotencyStore, metrics, invocationCapacity, inputLimits, false);
+    }
+
+    private InvocationExecutionFactory(ExecutionStore executionStore, IdempotencyStore idempotencyStore,
+                                       Metrics metrics, InvocationCapacity invocationCapacity,
+                                       RetainedInputEstimator.Limits inputLimits, boolean standaloneCapacity) {
         this.metrics = metrics;
         this.executionStore = executionStore;
         this.idempotencyStore = idempotencyStore;
+        this.invocationCapacity = invocationCapacity;
+        this.inputLimits = inputLimits;
+        this.standaloneCapacity = standaloneCapacity;
         // The single owner of the terminal transition, attached to the store here: from
         // now on the key's move to its terminal binding is a first-class, ordered step of
         // the owner's settle(), not a best-effort listener that a concurrent eviction can
@@ -45,7 +70,7 @@ public final class InvocationExecutionFactory {
                                                   InvocationKind kind) {
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             ExecutionRecord executionRecord = newExecutionRecord(functionName, spec, request, null, traceId, kind);
-            executionStore.put(executionRecord);
+            publishRecord(executionRecord);
             return ExecutionLookup.newUnclaimed(executionRecord, executionStore);
         }
 
@@ -126,9 +151,10 @@ public final class InvocationExecutionFactory {
                                                 String traceId,
                                                 InvocationKind kind,
                                                 String claimToken) {
-        ExecutionRecord executionRecord = newExecutionRecord(functionName, spec, request, idempotencyKey, traceId, kind);
+        ExecutionRecord executionRecord = null;
         try {
-            executionStore.put(executionRecord);
+            executionRecord = newExecutionRecord(functionName, spec, request, idempotencyKey, traceId, kind);
+            publishRecord(executionRecord);
             return ExecutionLookup.newClaimed(
                     executionRecord,
                     executionStore,
@@ -137,32 +163,70 @@ public final class InvocationExecutionFactory {
                     idempotencyKey,
                     claimToken
             );
-        } catch (RuntimeException ex) {
-            executionStore.remove(executionRecord.executionId());
+        } catch (RuntimeException | Error ex) {
+            if (executionRecord != null) {
+                executionStore.remove(executionRecord.executionId());
+                executionRecord.rollbackAdmissionResources();
+            }
             idempotencyStore.abandonClaim(functionName, idempotencyKey, claimToken);
             throw ex;
         }
     }
 
-    private static ExecutionRecord newExecutionRecord(String functionName,
+    private ExecutionRecord newExecutionRecord(String functionName,
                                                       FunctionSpec spec,
                                                       InvocationRequest request,
                                                       String idempotencyKey,
                                                       String traceId,
                                                       InvocationKind kind) {
         String executionId = newExecutionId();
+        CanonicalInvocationInput.Result result = CanonicalInvocationInput.canonicalize(request, inputLimits);
+        if (result instanceof CanonicalInvocationInput.Rejected rejected) {
+            throw new InvocationInputRejectedException(rejected.reason());
+        }
+        CanonicalInvocationInput.Accepted canonical = (CanonicalInvocationInput.Accepted) result;
+        if (standaloneCapacity) {
+            invocationCapacity.ensureStandaloneGeneration(functionName, spec.concurrency());
+        }
+        InvocationCapacity.Admission admission = invocationCapacity.reserve(
+                functionName, executionId, canonical.retainedBytes());
         InvocationTask task = new InvocationTask(
                 executionId,
                 functionName,
                 spec,
-                request,
+                canonical.canonicalRequest(),
                 idempotencyKey,
                 traceId,
                 Instant.now(),
                 1,
                 kind
         );
-        return new ExecutionRecord(executionId, task);
+        try {
+            return ExecutionRecord.withInputResources(
+                    executionId, task, invocationCapacity, admission, canonical);
+        } catch (RuntimeException | Error failure) {
+            admission.rollback();
+            throw failure;
+        }
+    }
+
+    private void publishRecord(ExecutionRecord executionRecord) {
+        try {
+            executionStore.put(executionRecord);
+            executionRecord.publishAdmissionResources();
+        } catch (RuntimeException | Error failure) {
+            executionStore.remove(executionRecord.executionId());
+            executionRecord.rollbackAdmissionResources();
+            throw failure;
+        }
+    }
+
+    private static InvocationCapacity standaloneCapacity() {
+        return new InvocationCapacity(
+                new FunctionCapacityRegistry(),
+                100_000, 10_000,
+                1L << 30, 256L << 20,
+                64);
     }
 
     /**
@@ -315,6 +379,7 @@ public final class InvocationExecutionFactory {
                 return;
             }
             executionStore.remove(executionRecord.executionId());
+            executionRecord.rollbackAdmissionResources();
             if (idempotencyStore != null) {
                 if (!claimPublished) {
                     idempotencyStore.abandonClaim(functionName, idempotencyKey, claimToken);

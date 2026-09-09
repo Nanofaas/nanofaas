@@ -572,6 +572,7 @@ public class SyncQueueService implements SyncQueueGateway {
     }
 
     private void markFunctionRemoved(String functionName, SyncQueueItem item, boolean wasQueued) {
+        item.task().releaseQueuedInput();
         ExecutionRecord executionRecord = executionStore.getOrNull(item.task().executionId());
         if (executionRecord == null) {
             if (wasQueued) {
@@ -600,6 +601,7 @@ public class SyncQueueService implements SyncQueueGateway {
     }
 
     private void timeout(SyncQueueItem item) {
+        item.task().releaseQueuedInput();
         ExecutionRecord executionRecord = executionStore.getOrNull(item.task().executionId());
         if (executionRecord != null) {
             // Guard: completeExecution publishes the future outside the record monitor; only complete if not already finalized.

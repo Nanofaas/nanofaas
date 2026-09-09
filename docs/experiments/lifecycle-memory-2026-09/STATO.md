@@ -1600,11 +1600,11 @@ still-draining generation of the same name, while per-generation occupancy fence
 |---|---:|---|---|---|---|---|---|
 | Transient HTTP request body | bytes received, including chunked bodies | ingress HTTP exchange | Enforce the transport/body cap before complete aggregation or parsing; these transient bytes are not the retained-input estimate | Once a bounded retained representation exists, ownership moves to that representation; never count an unbounded opaque LOCAL object symbolically | Release transport buffers on consume/cancel/error, but releasing them does not release a retained copy | Abort aggregation and release received buffers; publish no record or queue entry | P07b |
 | Admitted logical execution | 1 | `LOGICAL_EXECUTION` owner under the generation active at admission | Reserve global + same-name function capacity before publishing a new live record or queue state; offload uses the same global quota | Replay and retry keep the same logical owner, generation attribution and execution unit; ordinary transfer cannot cross the acquiring generation | Release on the execution's one terminal/abandon transition; physical attempts, transport handles and input copies that outlive administrative terminal remain separately referenced/accounted until their real drain | `ReservationBatch.close()` releases every earlier reservation if record/key/queue publication fails; `commit()` occurs only after ownership is published | P07c |
-| Canonical retained input | conservative retained bytes | `INPUT_COPY` owner representing the execution's shared canonical input | Reserve global + same-name function bytes before the representation becomes reachable from live/queued/offload state | Retry may hand the same reservation to the next owner with `transferTo` only within the generation that acquired it; a cross-generation retry needs a new reservation unless a future explicit lifecycle authority proves a legal handoff | Release only after the last real reader (LOCAL worker, HTTP attempt or callback) no longer retains the input; waiter timeout or outcome archival is insufficient | Admission/publish/enqueue failure closes the batch and the retained representation together | P07b/P07c |
+| Canonical retained input | conservative retained bytes | `CANONICAL_INPUT` owner representing the execution's shared canonical input | Reserve global + same-name function bytes before the representation becomes reachable from live/queued/offload state | Retry and concurrent physical consumers acquire bounded same-generation references to the shared owner; the reservation is not linearly transferred between consumers | Release only after the record base reference and every real reader/queue reference (LOCAL worker, HTTP attempt, callback or queue entry) have drained; waiter timeout, administrative terminal state or outcome archival is insufficient | Admission/publish/enqueue failure closes the batch and the retained representation together | P07b/P07c |
 | Additional physical input copy | bytes in that copy | `INPUT_COPY` owner tied to the physical attempt/callback that created it | Reserve before allocating/publishing each extra copy; a shared immutable representation is not an extra copy | May transfer to a successor owner only within the acquiring generation when the same bytes move; otherwise reserve a new copy | Release at that copy's actual deallocation/drain, including after administrative terminal state | Copy/allocation/submit failure closes its reservation immediately | P07c |
 | Dispatch capacity | 1 slot | existing attempt-owned `DispatchLease`, carrying `FunctionGeneration` | Existing `tryAcquireLease` before dispatch; no `ResourceQuota` duplicates this ownership | Never transferred: every retry acquires its own lease | Existing idempotent `DispatchLease.release()`, driven by raw physical completion; timeout/cancellation request alone is not release | Existing synchronous-dispatch failure path releases the acquired lease | Existing P06/P20a contract, reused by P07c |
 | Raw LOCAL/HTTP/deployment attempt and pending callback | one cancellable handle plus the input/copies it references | `PHYSICAL_ATTEMPT`; dispatch slot, when present, is still the existing `DispatchLease` | Publish the real cancellable handle and keep its resource reservations reachable before exposing completion | A retry is a new physical attempt; only genuinely shared input ownership transfers | Administrative terminal may cancel best-effort, but handle, lease and input-copy accounting remain until raw completion/drain; pending offload/HTTP work counts globally | Synchronous dispatch/acquisition failure closes only resources acquired by that attempt | P07c |
-| Queue entry | 1 queued task (bounded by its queue) | queue implementation; task refers to the logical execution/input reservations | Execution and input reservations precede enqueue; the entry itself must enter only a bounded queue | Dequeue transfers reachability to dispatch, not quota units; retry reuses the logical execution and shared input | Remove on dequeue/removal/shutdown; draining an entry does not release bytes still held by active physical work | Refused/throwing enqueue removes no entry and closes the uncommitted admission batch | P07c |
+| Queue entry | 1 queued task (bounded by its queue) | queue implementation; task owns an idempotent `QUEUE_ENTRY` reference to canonical input | Execution and input reservations precede enqueue; the entry itself must enter only a bounded queue | Dequeue closes the queue reference after dispatch has retained its own physical-consumer reference; retry reuses the logical execution and canonical input | Remove on dequeue/removal/shutdown; draining an entry does not release bytes still held by active physical work | Refused/throwing enqueue removes no entry and closes the uncommitted admission batch | P07c |
 | Attached waiter | 1 subscription/timer per caller, including replay | `WAITER` owner under the execution's function generation | Reserve global + same-name function waiter quota before attaching to the shared future; an existing key bypasses execution admission only, never waiter admission | No transfer across callers; retry is invisible to the waiter | Release on that waiter's terminal delivery, timeout or disconnect only; never release execution/input/attempt ownership | Attachment/timer setup failure closes that waiter's reservation without touching the shared execution | P07d |
 | Shared completion future | 1 per logical execution | logical execution | Created with the record after successful admission reservations | Unchanged across retries and waiters | Completes once at logical terminal; completion does not assert that raw physical work has drained | Admission rollback makes it unreachable and closes reservations | Existing I1 contract; P07c/P07d consume it |
 | Idempotency binding | 1 key slot | existing `StoredKey` association | Existing atomic key claim precedes execution publication; replay reuses it | Pending → published → terminal remains one association | Existing abandon/expiry/removal semantics; terminal tombstone may outlive outcome | Existing `abandonClaim` on admission failure | Existing R7 budget, composed in P07c |
@@ -1779,3 +1779,65 @@ completed with `BUILD SUCCESSFUL in 2m 22s` (190 actionable tasks: 20 executed,
 The full repository suite `./gradlew test --no-parallel --continue --console=plain --offline`
 completed with `BUILD SUCCESSFUL in 2m 22s` (190 actionable tasks: 20 executed,
 170 up-to-date).
+
+## P07c — Aggregate execution and retained-input quotas
+
+**Task boundary:** P07c on top of `0ada8297`. This gate integrates finite global and
+per-function logical-execution and retained-input quotas across direct, queued, retry and offload
+paths. It deliberately does not add waiter quotas, public quota properties, Helm values or final
+calibration; those remain P07d/P07e.
+
+### Implemented
+
+- New executions canonicalize JSON `ArrayList`/`LinkedHashMap` and JDK immutable JSON collections
+  into a bounded tagged `Object[]` tree before record publication. Depth, logical width, visited
+  nodes, retained bytes and allocation arithmetic are bounded. Successful records retain only the
+  measured canonical tree; arbitrary collection implementations are rejected without invoking
+  their methods, and opaque LOCAL values remain rejected unless they are accepted scalar/array
+  representations.
+- `InvocationCapacity` reserves logical execution count and canonical input bytes as distinct
+  `ResourceQuota` reservations in one rollback batch, fenced by the existing
+  `FunctionGeneration`. Global and same-name limits include old draining generations. Saturation
+  remains on the existing 429/`Retry-After` overload path and is distinct from ingress 413.
+- Logical execution ownership ends at the one terminal settlement. Canonical input has an
+  independent bounded reference-counted owner: queue entries carry an idempotent reference,
+  physical LOCAL/HTTP/deployment/offload attempts retain another, and terminal/administrative
+  settlement releases only the record's base reference. The last real queue/attempt callback
+  drains the canonical reservation.
+- Materializing canonical collection input for a runtime creates a separate, same-generation
+  `INPUT_COPY` reservation before allocation and releases it only from the raw physical future.
+  Retries reuse the canonical representation and do not reserve another logical execution;
+  existing-key replay reserves neither execution nor input. Existing `DispatchLease` and
+  generation identity are unchanged.
+- Record publication, enqueue refusal/throw, dispatch submission failure, offload synchronous
+  failure, queue timeout/removal and scheduler dispatch failure have explicit idempotent cleanup.
+  Internal finite safety ceilings ensure optional-module-free production paths cannot bypass the
+  accounting; P07e still owns public configuration and calibrated defaults.
+
+### Focused-test verified
+
+- Canonicalization covers nested/flat, deep, wide and large inputs, source non-retention, accepted
+  arrays, opaque/custom collection non-traversal, custom numeric objects and repeated rejection.
+- Quota tests cover cross-function global saturation, per-function saturation across generations,
+  atomic two-dimensional rollback, bounded reference counts, barrier-controlled concurrent
+  admission, retry sharing and physical drain without sleeps.
+- Lifecycle integration covers publication and enqueue rollback, replay/retry reuse, 1,000 stable
+  repeated input refusals, old/new generation coexistence, non-cooperative LOCAL work, pending
+  offload, synchronous offload failure, and administrative terminal state while a removed-store
+  queue entry still retains input.
+- Final focused core/async-queue/sync-queue/offload/profile matrix completed with
+  **BUILD SUCCESSFUL in 43s** (90 actionable tasks: 20 executed, 70 up-to-date).
+
+### Integration-verified
+
+- The selected non-cartesian matrix exercised direct core dispatch; async-queue SYNC/ASYNC,
+  retry, context and scheduler-failure contracts; sync-queue activation, lifecycle, retry,
+  timeout/removal and scheduler-failure contracts; eager/pressure offload plus hop/header behavior;
+  core bean/profile startup; and the unchanged ingress body-limit boundary.
+- Full repository suite: `./gradlew test --console=plain --offline` →
+  **BUILD SUCCESSFUL in 2m22s** (190 actionable tasks: 22 executed, 168 up-to-date).
+
+**Status of claims:** implemented, focused-test verified and repository-integration verified for
+P07c. These quotas conservatively account retained Java representations; they do not claim to bound
+RSS, native/client buffers or remote memory. No soak, container or Kubernetes E2E was run. Public
+defaults/calibration and waiter ownership remain explicitly deferred.

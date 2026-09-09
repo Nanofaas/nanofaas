@@ -12,7 +12,8 @@ public final class SchedulerDispatchSupport {
                                                   Logger log) {
         try {
             dispatchAction.run();
-        } catch (Exception ex) {
+        } catch (RuntimeException | Error ex) {
+            task.releaseQueuedInput();
             failureCleanup.run();
             log.error("Dispatch failed for execution {}: {}", task.executionId(), ex.getMessage(), ex);
         }

@@ -71,6 +71,7 @@ public class AsyncQueueConfiguration {
     }
 
     private static void markFunctionRemoved(ExecutionStore executionStore, String functionName, InvocationTask task) {
+        task.releaseQueuedInput();
         ExecutionRecord executionRecord = executionStore.getOrNull(task.executionId());
         if (executionRecord == null) {
             return;

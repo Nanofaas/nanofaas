@@ -25,6 +25,8 @@ public record ResourceOwner(Scope scope, String identity) {
 
     public enum Scope {
         LOGICAL_EXECUTION,
+        CANONICAL_INPUT,
+        QUEUE_ENTRY,
         PHYSICAL_ATTEMPT,
         INPUT_COPY,
         WAITER

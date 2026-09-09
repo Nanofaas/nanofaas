@@ -4,6 +4,8 @@ import it.unimib.datai.nanofaas.common.model.ErrorInfo;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchLease;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
+import it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacity;
+import it.unimib.datai.nanofaas.controlplane.input.CanonicalInvocationInput;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.slf4j.Logger;
@@ -15,6 +17,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Mutable execution record with thread-safe state transitions.
@@ -26,6 +29,7 @@ public class ExecutionRecord {
     private static final Logger log = LoggerFactory.getLogger(ExecutionRecord.class);
 
     private final String executionId;
+    private final ExecutionInputResources inputResources;
     private final CompletableFuture<InvocationResult> completion;
     /**
      * Whether anyone can still ask about this execution once it has finished.
@@ -123,13 +127,29 @@ public class ExecutionRecord {
     private boolean metricsRecorded;
 
     public ExecutionRecord(String executionId, InvocationTask task) {
-        this(executionId, task, TimeSource.system());
+        this(executionId, task, TimeSource.system(), null);
     }
 
     public ExecutionRecord(String executionId, InvocationTask task, TimeSource timeSource) {
+        this(executionId, task, timeSource, null);
+    }
+
+    public static ExecutionRecord withInputResources(
+            String executionId,
+            InvocationTask task,
+            InvocationCapacity capacity,
+            InvocationCapacity.Admission admission,
+            CanonicalInvocationInput.Accepted canonical) {
+        return new ExecutionRecord(executionId, task, TimeSource.system(),
+                new ExecutionInputResources(capacity, admission, canonical));
+    }
+
+    ExecutionRecord(String executionId, InvocationTask task, TimeSource timeSource,
+                    ExecutionInputResources inputResources) {
         this.executionId = executionId;
         this.task = task;
         this.timeSource = timeSource;
+        this.inputResources = inputResources;
         this.readableAfterFinishing = task.kind() == InvocationKind.ASYNC
                 || (task.idempotencyKey() != null && !task.idempotencyKey().isBlank());
         this.idempotencyKey = (task.idempotencyKey() != null && !task.idempotencyKey().isBlank())
@@ -453,10 +473,72 @@ public class ExecutionRecord {
         terminalFailure = failure;
     }
 
-    public synchronized boolean beginSettlement() {
-        if (!isTerminal() || settlementStarted) return false;
-        settlementStarted = true;
+    public boolean beginSettlement() {
+        synchronized (this) {
+            if (!isTerminal() || settlementStarted) return false;
+            settlementStarted = true;
+        }
+        if (inputResources != null) inputResources.settleLogicalExecution();
         return true;
+    }
+
+    /** Acquires the same-generation canonical-input reader and any real materialized copy. */
+    public PhysicalInput openPhysicalInput(InvocationTask source) {
+        if (inputResources == null) return new PhysicalInput(source, null, null);
+        return inputResources.open(source);
+    }
+
+    /** Adds a queue-entry input owner before the task is published to any queue. */
+    public synchronized InvocationTask prepareForQueue() {
+        if (inputResources == null) return task;
+        task = task.withQueuedInputLease(inputResources.retainForQueue(task));
+        return task;
+    }
+
+    public void publishAdmissionResources() {
+        if (inputResources != null) inputResources.publish();
+    }
+
+    public void rollbackAdmissionResources() {
+        if (inputResources != null) inputResources.rollback();
+    }
+
+    public static final class PhysicalInput implements AutoCloseable {
+        private final InvocationTask task;
+        private final AutoCloseable sharedReference;
+        private final AutoCloseable copyReservation;
+        private final AtomicBoolean closed = new AtomicBoolean();
+
+        PhysicalInput(InvocationTask task, AutoCloseable sharedReference, AutoCloseable copyReservation) {
+            this.task = task;
+            this.sharedReference = sharedReference;
+            this.copyReservation = copyReservation;
+        }
+
+        public InvocationTask task() {
+            return task;
+        }
+
+        @Override
+        public void close() {
+            if (!closed.compareAndSet(false, true)) return;
+            try {
+                closeUnchecked(copyReservation);
+            } finally {
+                closeUnchecked(sharedReference);
+            }
+        }
+
+        private static void closeUnchecked(AutoCloseable closeable) {
+            if (closeable == null) return;
+            try {
+                closeable.close();
+            } catch (RuntimeException | Error failure) {
+                throw failure;
+            } catch (Exception impossible) {
+                throw new IllegalStateException(impossible);
+            }
+        }
     }
 
     /** Publish only the selected terminal answer; callbacks run outside the monitor. */

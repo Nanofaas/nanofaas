@@ -10,9 +10,16 @@ final class InvocationEnqueueSupport {
     }
 
     static void enqueueOrThrow(InvocationEnqueuer enqueuer, Metrics metrics, ExecutionRecord executionRecord) {
-        InvocationTask task = executionRecord.task();
-        boolean enqueued = enqueuer.enqueue(task);
+        InvocationTask task = executionRecord.prepareForQueue();
+        boolean enqueued;
+        try {
+            enqueued = enqueuer.enqueue(task);
+        } catch (RuntimeException | Error failure) {
+            task.releaseQueuedInput();
+            throw failure;
+        }
         if (!enqueued) {
+            task.releaseQueuedInput();
             metrics.queueRejected(task.functionName());
             metrics.refused(task.functionName(), task.kind());
             throw new QueueFullException();
@@ -34,7 +41,7 @@ final class InvocationEnqueueSupport {
         try {
             admissionAction.run();
             lookup.publishAdmission();
-        } catch (RuntimeException ex) {
+        } catch (RuntimeException | Error ex) {
             lookup.abandonAdmission();
             throw ex;
         }

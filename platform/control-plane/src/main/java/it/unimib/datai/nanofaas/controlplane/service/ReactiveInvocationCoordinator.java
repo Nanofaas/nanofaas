@@ -9,6 +9,7 @@ import it.unimib.datai.nanofaas.controlplane.offload.OffloadContext;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadGateway;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadTrigger;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
@@ -169,7 +170,13 @@ public final class ReactiveInvocationCoordinator {
 
     private void admitLocally(ExecutionRecord executionRecord) {
         if (syncQueueGateway.enabled()) {
-            syncQueueGateway.enqueueOrThrow(executionRecord.task());
+            InvocationTask queuedTask = executionRecord.prepareForQueue();
+            try {
+                syncQueueGateway.enqueueOrThrow(queuedTask);
+            } catch (RuntimeException | Error failure) {
+                queuedTask.releaseQueuedInput();
+                throw failure;
+            }
         } else if (enqueuer.enabled()) {
             InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, executionRecord);
         } else {
@@ -190,17 +197,32 @@ public final class ReactiveInvocationCoordinator {
         offloadedTarget.set(target);
         // Bypasses the local queue entirely: no local concurrency slots are consumed,
         // so completion goes through the offload-specific path (no slot release, no retry).
-        var remote = offloadGateway.invokeRemote(executionRecord.task(), trigger, context, spec.timeoutMs())
-                .toFuture();
+        ExecutionRecord.PhysicalInput physicalInput;
+        synchronized (executionRecord) {
+            if (executionRecord.isTerminal()) return;
+            physicalInput = executionRecord.openPhysicalInput(executionRecord.task());
+        }
+        java.util.concurrent.CompletableFuture<InvocationResult> remote;
+        try {
+            remote = offloadGateway.invokeRemote(
+                    physicalInput.task(), trigger, context, spec.timeoutMs()).toFuture();
+        } catch (RuntimeException | Error failure) {
+            physicalInput.close();
+            throw failure;
+        }
         executionRecord.attachDispatchHandle(remote);
         remote.whenComplete((result, ex) -> {
-            if (ex == null) {
-                completionHandler.completeOffloadedExecution(executionRecord.executionId(), result);
-            } else {
-                String detail = ex.getMessage() != null ? ex.getMessage() : ex.toString();
-                OffloadFailedException failure = ex instanceof OffloadFailedException ofe
-                        ? ofe : new OffloadFailedException(target, false, detail);
-                completionHandler.failOffloadedExecution(executionRecord.executionId(), failure);
+            try {
+                if (ex == null) {
+                    completionHandler.completeOffloadedExecution(executionRecord.executionId(), result);
+                } else {
+                    String detail = ex.getMessage() != null ? ex.getMessage() : ex.toString();
+                    OffloadFailedException failure = ex instanceof OffloadFailedException ofe
+                            ? ofe : new OffloadFailedException(target, false, detail);
+                    completionHandler.failOffloadedExecution(executionRecord.executionId(), failure);
+                }
+            } finally {
+                physicalInput.close();
             }
         });
     }

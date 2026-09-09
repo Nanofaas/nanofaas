@@ -211,6 +211,7 @@ public class ExecutionCompletionHandler {
     private void dispatchInternal(InvocationTask task, @Nullable DispatchLease directLease) {
         ExecutionRecord executionRecord = executionStore.getOrNull(task.executionId());
         if (executionRecord == null) {
+            task.releaseQueuedInput();
             if (directLease != null) {
                 directLease.release();
             } else {
@@ -220,18 +221,35 @@ public class ExecutionCompletionHandler {
         }
 
         boolean terminal;
+        ExecutionRecord.PhysicalInput physicalInput = null;
+        RuntimeException inputFailure = null;
         synchronized (executionRecord) {
             terminal = executionRecord.isTerminal();
             if (!terminal) {
-                if (directLease != null) {
-                    executionRecord.attachDispatchLease(directLease);
+                try {
+                    // Acquire the physical reader while the terminal-state check is still
+                    // protected by the record monitor. Administrative settlement may release
+                    // the logical/base owners afterwards, but this reader then keeps the input
+                    // charged until the raw transport or LOCAL worker really drains.
+                    physicalInput = executionRecord.openPhysicalInput(task);
+                    task.releaseQueuedInput();
+                    if (directLease != null) {
+                        executionRecord.attachDispatchLease(directLease);
+                    }
+                    executionRecord.transportOwnsCapacity();
+                    executionRecord.markRunning();
+                    executionRecord.markDispatchedAt();
+                } catch (RuntimeException failure) {
+                    task.releaseQueuedInput();
+                    inputFailure = failure;
+                } catch (Error failure) {
+                    task.releaseQueuedInput();
+                    throw failure;
                 }
-                executionRecord.transportOwnsCapacity();
-                executionRecord.markRunning();
-                executionRecord.markDispatchedAt();
             }
         }
         if (terminal) {
+            task.releaseQueuedInput();
             if (directLease != null) {
                 directLease.release();
             } else {
@@ -240,19 +258,29 @@ public class ExecutionCompletionHandler {
             executionStore.settle(executionRecord);
             return;
         }
+        if (inputFailure != null) {
+            if (directLease != null) directLease.release();
+            else releaseDispatchSlotOnce(executionRecord, task.attempt(), task.functionName());
+            completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.error(
+                    "INPUT_CAPACITY_EXHAUSTED", inputFailure.getMessage())), task.attempt());
+            return;
+        }
         bestEffort(() -> metrics.dispatch(task.functionName()));
 
         ExecutionMode mode = task.functionSpec().executionMode();
         DispatchAttempt ownership = new DispatchAttempt(task.executionId(), task.attempt(), directLease);
         int attemptAtDispatch = ownership.attempt();
+        ExecutionRecord.PhysicalInput attemptInput = physicalInput;
+        InvocationTask physicalTask = attemptInput.task();
         CompletableFuture<DispatchResult> future;
         try {
             future = switch (mode) {
-                case LOCAL -> dispatcherRouter.dispatchLocal(task);
-                case EXTERNAL -> dispatcherRouter.dispatchExternal(task);
-                case DEPLOYMENT -> dispatchDeployment(task);
+                case LOCAL -> dispatcherRouter.dispatchLocal(physicalTask);
+                case EXTERNAL -> dispatcherRouter.dispatchExternal(physicalTask);
+                case DEPLOYMENT -> dispatchDeployment(physicalTask);
             };
-        } catch (Exception ex) {
+        } catch (RuntimeException | Error ex) {
+            attemptInput.close();
             if (directLease != null) directLease.release();
             else releaseDispatchSlotOnce(executionRecord, task.attempt(), task.functionName());
             // No transport was created: return the already-acquired capacity here.
@@ -276,8 +304,12 @@ public class ExecutionCompletionHandler {
                 if (ownership.lease() != null) ownership.lease().release();
                 else releaseDispatchSlotOnce(executionRecord, attemptAtDispatch, task.functionName());
             } finally {
-                if (error != null) attempt.completeExceptionally(error);
-                else attempt.complete(result);
+                try {
+                    attemptInput.close();
+                } finally {
+                    if (error != null) attempt.completeExceptionally(error);
+                    else attempt.complete(result);
+                }
             }
         });
         long attemptDeadlineMs = task.functionSpec().timeoutMs();
