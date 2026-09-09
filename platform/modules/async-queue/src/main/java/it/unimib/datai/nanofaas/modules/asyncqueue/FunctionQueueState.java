@@ -61,6 +61,8 @@ public class FunctionQueueState {
         return drained;
     }
 
+    FunctionCapacityState capacity() { return capacity; }
+
     public int inFlight() { return capacity.inFlight(); }
     public boolean tryAcquireSlot() { return capacity.tryAcquireSlot(); }
     public void releaseSlot() { capacity.releaseSlot(); }

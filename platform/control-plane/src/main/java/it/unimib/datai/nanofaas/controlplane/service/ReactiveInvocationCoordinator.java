@@ -190,16 +190,19 @@ public final class ReactiveInvocationCoordinator {
         offloadedTarget.set(target);
         // Bypasses the local queue entirely: no local concurrency slots are consumed,
         // so completion goes through the offload-specific path (no slot release, no retry).
-        offloadGateway.invokeRemote(executionRecord.task(), trigger, context, timeoutMs)
-                .subscribe(
-                        result -> completionHandler.completeOffloadedExecution(executionRecord.executionId(), result),
-                        ex -> {
-                            String detail = ex.getMessage() != null ? ex.getMessage() : ex.toString();
-                            OffloadFailedException failure = ex instanceof OffloadFailedException ofe
-                                    ? ofe
-                                    : new OffloadFailedException(target, false, detail);
-                            completionHandler.failOffloadedExecution(executionRecord.executionId(), failure);
-                        });
+        var remote = offloadGateway.invokeRemote(executionRecord.task(), trigger, context, spec.timeoutMs())
+                .toFuture();
+        executionRecord.attachDispatchHandle(remote);
+        remote.whenComplete((result, ex) -> {
+            if (ex == null) {
+                completionHandler.completeOffloadedExecution(executionRecord.executionId(), result);
+            } else {
+                String detail = ex.getMessage() != null ? ex.getMessage() : ex.toString();
+                OffloadFailedException failure = ex instanceof OffloadFailedException ofe
+                        ? ofe : new OffloadFailedException(target, false, detail);
+                completionHandler.failOffloadedExecution(executionRecord.executionId(), failure);
+            }
+        });
     }
 
     private static OffloadTrigger pressureTrigger(SyncQueueRejectReason reason) {

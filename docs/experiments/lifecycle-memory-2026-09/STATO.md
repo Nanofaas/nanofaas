@@ -754,3 +754,150 @@ Full suites (once before commit):
 **Next step**
 
 - P07 — finite count/byte admission for live/queued payload bytes (invariant I5's byte half).
+
+## 2026-09-09 — Correzioni della review P00–P06
+
+**Revisione e perimetro.** Base verificata `c8d6dd028624e85ee284bd46842f1c1304d1e967`,
+branch delle correzioni `fix/p00-p06-review`. L'implementazione parallela è stata fermata
+prima dell'intervento. Questa voce corregge le conclusioni troppo ampie delle voci P01–P06
+precedenti: i test originari erano verdi, ma dodici riproduzioni aggiuntive della review
+fallivano. P07 e i task successivi non sono implementati da questo intervento.
+
+**Correzioni eseguite.**
+
+- **P01:** riallineato ADR 0001. La protezione della chiave precede pubblicazione dell'outcome
+  e rimozione del live record; non è un listener best-effort. Una dispatch che lancia prima
+  di restituire la future può avere già acquisito capacità e deve restituirla.
+- **P02:** `OutcomeWeigher` ammette soltanto wrapper numerici immutabili di dimensione nota;
+  tipi numerici opachi/mutabili sono esclusi dalla retention. Conta backing array, riferimenti,
+  nodi dei contenitori, chiavi e wrapper della cache. Limite complessivo di 1.024 valori,
+  oltre ai limiti per profondità e larghezza; le stringhe grandi si pesano senza scansione.
+  La cache conserva il peso già calcolato, evitando la seconda traversata. Il limite in byte
+  viene applicato durante il freeze, prima di clonare un array troppo grande. Un outcome
+  oltre il peso rappresentabile da Caffeine viene rifiutato. Errori di traversata non
+  interrompono il cleanup terminale.
+- **P03:** eviction listener sincrono per la scadenza delle chiavi; `clear` restituisce solo
+  le prenotazioni degli elementi effettivamente rimossi, senza azzerare il contatore mentre
+  possono esistere nuove ammissioni. Una notifica scaduta non sottrae quota a una nuova chiave.
+- **P04/P05:** il record seleziona la risposta terminale, inclusa l'eccezione offload, e il
+  lifecycle ne pubblica la versione canonica. Un solo settler archivia/rimuove/notifica;
+  metriche e osservatori non possono lasciare future pendenti o impedire il cleanup.
+  Un completamento concorrente non può rispondere con un risultato diverso da quello archiviato.
+- **P05:** il budget del singolo waiter non diventa la deadline dell'offload condiviso.
+  Quest'ultimo usa `FunctionSpec.timeoutMs`; la sua subscription è registrata per la
+  cancellazione amministrativa. Il test con tempo virtuale verifica anche la risposta
+  tardiva al waiter lungo dopo il timeout di quello breve.
+- **P06:** entrambi gli scheduler trasportano la lease acquisita nel task di dispatch.
+  Rilascio, eccezioni e completamenti tardivi restano legati alla generazione acquisita;
+  l'adattatore legacy per nome non può consumare slot posseduti da lease. Il core registra
+  capacità e aggiornamenti anche senza moduli queue. Task con configurazione obsoleta non
+  sovrascrivono configurazione gestita o limite del governor.
+- **P06:** la cancellazione precedente alla pubblicazione dell'handle viene ricordata;
+  DEPLOYMENT la inoltra al subscriber HTTP senza cancellare il wake-up condiviso. I timeout
+  di tentativo cancellano il trasporto remoto. Il lavoro LOCAL non cooperativo mantiene la
+  capacità fino alla fine reale, anche dopo la scadenza amministrativa. Il rilascio della
+  capacità precede la pubblicazione del risultato del tentativo e l'ammissione del retry.
+
+**File interessati.** Store e lifecycle in `platform/control-plane/.../execution`, registro
+in `.../capacity`, listener in `.../registry/RegistryDefaultsConfiguration`, task e handler/
+coordinator/enqueuer nel core; scheduler e provider delle due code; test di regressione e
+fixture degli scheduler. Aggiornati `docs/control-plane.md`, ADR e descrizione OpenAPI del
+408. Nessuna nuova proprietà o modifica Helm necessaria.
+
+**Evidenza red/green e test.**
+
+- La review sulla copia isolata di `c8d6dd0` aveva 12 test aggiuntivi rossi per le cause
+  attese, senza errori di compilazione. Esempi: BigInteger di circa 1 MiB pesato 114 byte;
+  lista di 256 null pesata 114 byte; quota 1 con 2 chiavi; future pendente dopo errore
+  nelle metriche; risposta offload `late` contro outcome `first`; capacità LOCAL 0 con
+  un worker ancora attivo; subscriber DEPLOYMENT non cancellato.
+- Le riproduzioni sono ora versionate in `ReviewAccountingRegressionTest`,
+  `ReviewLifecycleGateTest` e `ReviewOffloadWaiterBudgetTest`. Il test della pubblicazione
+  tardiva dell'handle usa EXTERNAL: la cancellazione della sua future rappresenta il
+  trasporto. LOCAL è verificato separatamente con un vero worker che ignora l'interruzione,
+  contando il lavoro attivo invece dello stato cancellato della future.
+- Aggiunti `CoreCapacityRegistrationTest` e `QueueLeaseGenerationTest` in entrambi i moduli,
+  con completamenti vecchio/prima-nuovo e nuovo/prima-vecchio, rilascio duplicato, aggiornamento
+  della configurazione e governor. Aggiunti il budget globale della traversata, la scadenza
+  prima del wake-up e il timeout del trasporto EXTERNAL.
+- Suite core completa senza filtri: 615 test, 3 skip. Ha riprodotto i due R8 già previsti
+  per P09/P10 e individuato un vecchio test che esigeva il forwarding del timeout del waiter.
+  Quest'ultimo è stato corretto e rinominato con GitNexus per verificare il contratto P05.
+- Verifica finale del core con **sola esclusione di `R8HistoryCleanupRegressionTest`**:
+  613 test, 0 fallimenti, 3 skip. L'esclusione è in un init script temporaneo, non nella
+  configurazione del repository. I due R8 restano presenti e rossi nella suite ordinaria.
+- Suite complete: async-queue 64 test / 0 fallimenti; sync-queue 89 / 0 / 3 skip;
+  offload 26 / 0; workload-metrics 5 / 0; concurrency-control 64 / 0 / 1 skip.
+- Controlli OpenAPI, copertura contratto e architettura core ripetuti dopo la modifica
+  della documentazione: `BUILD SUCCESSFUL`.
+
+Comandi principali, eseguiti con cache locale e `--offline`:
+
+```bash
+./gradlew :control-plane:test :control-plane-modules:async-queue:test \
+  :control-plane-modules:sync-queue:test :control-plane-modules:offload:test \
+  :workload-metrics:test :control-plane-modules:concurrency-control:test \
+  --continue --no-parallel --console=plain --offline
+# La suite ordinaria conserva i due R8 rossi di P09/P10.
+
+# /tmp/nanofaas-review-exclude-known-r8.gradle contiene esclusivamente:
+# allprojects { tasks.withType(Test).configureEach {
+#   filter { excludeTestsMatching '*R8HistoryCleanupRegressionTest' }
+# } }
+./gradlew -I /tmp/nanofaas-review-exclude-known-r8.gradle :control-plane:test \
+  :control-plane-modules:async-queue:test :control-plane-modules:sync-queue:test \
+  :control-plane-modules:offload:test :workload-metrics:test \
+  :control-plane-modules:concurrency-control:test \
+  --continue --no-parallel --console=plain --offline
+
+./gradlew :control-plane-modules:offload:test --no-parallel --console=plain --offline
+./gradlew :control-plane:test --tests '*OpenApi*Test' --tests '*IssueCoverageTest' \
+  --tests '*CoreArchitectureTest' --no-parallel --console=plain --offline
+```
+
+L'ultima esecuzione aggregata ha richiesto un aggiustamento nella nuova fixture offload:
+la scadenza del waiter restituisce `SyncInvocation` con stato `timeout`, non una future
+completata eccezionalmente. Dopo l'aggiustamento la suite offload completa è verde.
+Le altre suite erano già verdi e non sono state modificate successivamente.
+
+**Misura indicativa del costo ordinario.** Harness temporaneo
+`/tmp/nanofaas-outcome-bench/OutcomeInsertionBench.java`, stessa JVM OpenJDK 25.0.4,
+`-Xms256m -Xmx256m`, 150.000 warm-up e tre round di 300.000 operazioni per payload.
+Confronta freeze + pesatura Caffeine della base con freeze + peso memorizzato del fix;
+non misura HTTP, concorrenza o l'intera inserzione Caffeine. Allocazioni lette tramite
+`ThreadMXBean`, tempi riportati come mediana dei tre round:
+
+| Payload | Base ns/op | Fix ns/op | Base B/op | Fix B/op |
+|---|---:|---:|---:|---:|
+| Stringa `ok` | 130,1 | 121,9 | 776 | 440 |
+| Mappa piccola con stringhe, intero e lista | 264,0 | 136,3 | 1.448 | 768 |
+
+Misura locale esplorativa, non un nuovo SLO. Le allocazioni diminuiscono eliminando la
+seconda traversata; i tempi brevi risentono di warm-up e carico della macchina.
+
+**Compatibilità e limiti.** Nessun cambiamento alle quote configurate o alla semantica
+pubblica delle chiavi. La pesatura più conservativa può trattenere meno outcome a parità
+di budget: il moltiplicatore storico 116 B non è una promessa sul numero di risultati
+leggibili. Tipi opachi possono produrre un successivo 410 pur conservando il tombstone.
+Le metriche di durata dello slot async contano anche una lease restituita dopo un probe
+che trova la coda vuota. Non sono stati eseguiti soak, build native o scenari NanoLab.
+R6 resta assegnato a P08 e R8 a P09/P10; questo intervento non li dichiara risolti.
+
+**Impact e integrazione.** Analisi nel checkout `/home/michele/Documenti/nanofaas`, stesso
+HEAD della review, indice ricostruito preservando gli embedding. Impact upstream dei
+metodi e delle classi prima delle modifiche; HIGH/CRITICAL comunicato per store, lifecycle,
+handler, coordinator e capacità. Collegamenti UNKNOWN verificati con lettura dei sorgenti
+e ricerca dei riferimenti. Le fixture JUnit sono entry point del framework. Controllo
+GitNexus delle modifiche prima del commit, oltre a `git diff --check` e review del diff.
+Le modifiche preesistenti dell'esperimento overload e le skill non tracciate restano fuori
+dal commit delle correzioni.
+
+**Prossimo passo.** Integrare il branch delle correzioni nel branch della campagna e
+riprendere da P07. Il merge e il soak restano successivi a questa consegna.
+
+Controllo finale GitNexus: scope `all` = 41 file / 205 simboli / 58 flussi; scope
+`staged` = 39 file / 204 simboli / 58 flussi, rischio `critical`. Entrambe le risposte
+restituiscono l'intero elenco (nessun flag partial/truncated, conteggi coincidenti con
+le lunghezze degli elenchi). I due file aggiuntivi di `all` sono quelli overload
+preesistenti, non staged. I flussi modificati riguardano il perimetro atteso: admission,
+completion, store, capacità e scheduler. `git diff --cached --check` supera il controllo.

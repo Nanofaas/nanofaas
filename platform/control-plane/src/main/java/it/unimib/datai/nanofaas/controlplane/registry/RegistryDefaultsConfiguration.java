@@ -27,4 +27,16 @@ class RegistryDefaultsConfiguration {
     FunctionCapacityRegistry functionCapacityRegistry() {
         return new FunctionCapacityRegistry();
     }
+    @Bean
+    FunctionRegistrationListener coreCapacityRegistration(FunctionCapacityRegistry registry) {
+        return new FunctionRegistrationListener() {
+            @Override public void onRegister(it.unimib.datai.nanofaas.common.model.FunctionSpec spec) {
+                registry.register(spec.name(), spec.concurrency());
+            }
+            @Override public void onRemove(String functionName) {
+                registry.remove(functionName);
+            }
+        };
+    }
+
 }

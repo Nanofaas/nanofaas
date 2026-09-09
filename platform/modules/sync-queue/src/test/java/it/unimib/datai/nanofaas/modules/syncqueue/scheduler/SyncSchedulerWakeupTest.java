@@ -103,7 +103,9 @@ class SyncSchedulerWakeupTest {
         // The release is the completion of the in-flight execution; under the old sleep backoff
         // the worker would not learn about it until its backoff expired (up to 50 ms of avoidable
         // latency). The release notification must wake it: this is observed as e2 dispatching.
-        enqueuer.releaseDispatchSlot("fn");
+        var captured = org.mockito.ArgumentCaptor.forClass(InvocationTask.class);
+        org.mockito.Mockito.verify(invocationService).dispatch(captured.capture());
+        captured.getValue().dispatchLease().release();
 
         assertThat(second.await(2, TimeUnit.SECONDS))
                 .as("releasing a slot must wake the capacity-blocked worker so the queued "

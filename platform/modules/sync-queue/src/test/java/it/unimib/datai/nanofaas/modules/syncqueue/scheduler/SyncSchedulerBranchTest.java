@@ -24,7 +24,7 @@ class SyncSchedulerBranchTest {
 
     @Test
     void tickOnce_whenQueueEmpty_parksForWorkWithoutDispatching() {
-        InvocationEnqueuer enqueuer = mock(InvocationEnqueuer.class);
+        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         SyncQueueService queue = mock(SyncQueueService.class);
         @SuppressWarnings("unchecked")
         Consumer<InvocationTask> dispatch = mock(Consumer.class);
@@ -45,7 +45,7 @@ class SyncSchedulerBranchTest {
 
     @Test
     void tickOnce_whenQueueBlockedOnCapacity_rotatesWindowThenParks() {
-        InvocationEnqueuer enqueuer = mock(InvocationEnqueuer.class);
+        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         SyncQueueService queue = mock(SyncQueueService.class);
         @SuppressWarnings("unchecked")
         Consumer<InvocationTask> dispatch = mock(Consumer.class);
@@ -68,16 +68,15 @@ class SyncSchedulerBranchTest {
 
     @Test
     void tickOnce_whenFinalSlotAcquisitionFails_rotatesItemThenParks() {
-        InvocationEnqueuer enqueuer = mock(InvocationEnqueuer.class);
+        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         SyncQueueService queue = mock(SyncQueueService.class);
         @SuppressWarnings("unchecked")
         Consumer<InvocationTask> dispatch = mock(Consumer.class);
 
         SyncQueueItem item = mock(SyncQueueItem.class);
-        InvocationTask task = mock(InvocationTask.class);
+        InvocationTask task = new InvocationTask("test", "fn", null, null, null, null, Instant.now(), 1, it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind.SYNC);
         when(queue.findReadyMatching(any(Instant.class), any())).thenReturn(item);
         when(item.task()).thenReturn(task);
-        when(task.functionName()).thenReturn("fn");
         when(enqueuer.tryAcquireSlot("fn")).thenReturn(false);
 
         SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, dispatch);
@@ -92,16 +91,15 @@ class SyncSchedulerBranchTest {
 
     @Test
     void tickOnce_whenSlotAcquiredButRemovalFails_releasesSlotWithoutParking() {
-        InvocationEnqueuer enqueuer = mock(InvocationEnqueuer.class);
+        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         SyncQueueService queue = mock(SyncQueueService.class);
         @SuppressWarnings("unchecked")
         Consumer<InvocationTask> dispatch = mock(Consumer.class);
 
         SyncQueueItem item = mock(SyncQueueItem.class);
-        InvocationTask task = mock(InvocationTask.class);
+        InvocationTask task = new InvocationTask("test", "fn", null, null, null, null, Instant.now(), 1, it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind.SYNC);
         when(queue.findReadyMatching(any(Instant.class), any())).thenReturn(item);
         when(item.task()).thenReturn(task);
-        when(task.functionName()).thenReturn("fn");
         when(enqueuer.tryAcquireSlot("fn")).thenReturn(true);
         when(queue.removeReady(eq(item), any(Instant.class))).thenReturn(false);
 
@@ -117,24 +115,23 @@ class SyncSchedulerBranchTest {
 
     @Test
     void tickOnce_whenDispatchSucceeds_dispatchesWithoutParking() {
-        InvocationEnqueuer enqueuer = mock(InvocationEnqueuer.class);
+        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         SyncQueueService queue = mock(SyncQueueService.class);
         @SuppressWarnings("unchecked")
         Consumer<InvocationTask> dispatch = mock(Consumer.class);
 
         SyncQueueItem item = mock(SyncQueueItem.class);
-        InvocationTask task = mock(InvocationTask.class);
+        InvocationTask task = new InvocationTask("test", "fn", null, null, null, null, Instant.now(), 1, it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind.SYNC);
         when(queue.findReadyMatching(any(Instant.class), any())).thenReturn(item);
         when(queue.removeReady(eq(item), any(Instant.class))).thenReturn(true);
         when(item.task()).thenReturn(task);
-        when(task.functionName()).thenReturn("fn");
         when(enqueuer.tryAcquireSlot("fn")).thenReturn(true);
 
         SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, dispatch);
         scheduler.tickOnce();
 
         verify(queue).recordDispatched(eq("fn"), any(Instant.class));
-        verify(dispatch).accept(task);
+        verify(dispatch).accept(argThat(actual -> actual.withDispatchLease(null).equals(task)));
         verify(queue, never()).awaitWakeup(anyLong(), anyLong());
     }
 }

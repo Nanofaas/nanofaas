@@ -34,7 +34,7 @@ class SyncQueueThroughputPerfTest {
 
     @Test
     void syncQueue_readyWorkBehindBlockedHead_stillMakesProgress() {
-        InvocationEnqueuer enqueuer = mock(InvocationEnqueuer.class);
+        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         InvocationService invocationService = mock(InvocationService.class);
         when(enqueuer.hasAvailableSlot("blocked-fn")).thenReturn(false);
         when(enqueuer.hasAvailableSlot("ready-fn")).thenReturn(true);
@@ -76,7 +76,8 @@ class SyncQueueThroughputPerfTest {
             scheduler.stop();
         }
 
-        verify(invocationService).dispatch(ready);
+        verify(invocationService).dispatch(org.mockito.ArgumentMatchers.argThat(actual ->
+                actual.withDispatchLease(null).equals(ready) && actual.dispatchLease() != null));
     }
 
     private static InvocationTask task(String executionId, String functionName) {

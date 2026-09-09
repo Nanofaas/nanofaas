@@ -18,19 +18,15 @@ class AsyncSchedulerFairnessPerfTest {
 
     @Test
     void asyncScheduler_hotFunctionDoesNotStarveSecondFunction() {
-        QueueManager queueManager = mock(QueueManager.class);
+        QueueManager queueManager = SchedulerLeaseTestSupport.queueManager();
         InvocationService invocationService = mock(InvocationService.class);
         FunctionQueueState hotState = mock(FunctionQueueState.class);
         FunctionQueueState coldState = mock(FunctionQueueState.class);
 
-        InvocationTask hotOne = mock(InvocationTask.class);
-        InvocationTask hotTwo = mock(InvocationTask.class);
-        InvocationTask hotThree = mock(InvocationTask.class);
-        InvocationTask coldOne = mock(InvocationTask.class);
-        when(hotOne.executionId()).thenReturn("hot-1");
-        when(hotTwo.executionId()).thenReturn("hot-2");
-        when(hotThree.executionId()).thenReturn("hot-3");
-        when(coldOne.executionId()).thenReturn("cold-1");
+        InvocationTask hotOne = new InvocationTask("hot-1", "fn", null, null, null, null, java.time.Instant.now(), 1, it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind.SYNC);
+        InvocationTask hotTwo = new InvocationTask("hot-2", "fn", null, null, null, null, java.time.Instant.now(), 1, it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind.SYNC);
+        InvocationTask hotThree = new InvocationTask("hot-3", "fn", null, null, null, null, java.time.Instant.now(), 1, it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind.SYNC);
+        InvocationTask coldOne = new InvocationTask("cold-1", "fn", null, null, null, null, java.time.Instant.now(), 1, it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind.SYNC);
 
         when(queueManager.get("hot-fn")).thenReturn(hotState);
         when(queueManager.get("cold-fn")).thenReturn(coldState);

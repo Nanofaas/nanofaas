@@ -175,7 +175,8 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
      * answer and the cleanup stays next to what it undoes.</p>
      */
     private InvocationTask acquireNext(String functionName, FunctionQueueState state) {
-        if (!state.tryAcquireSlot()) {
+        var lease = queueManager.tryAcquireLease(functionName, state);
+        if (lease == null) {
             queueManager.recordSchedulerSlotBlocked(functionName);
             return null;
         }
@@ -186,9 +187,10 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
                 nanoTime.getAsLong() - pollStarted
         );
         if (task == null) {
-            state.releaseSlot();
+            lease.release();
+            return null;
         }
-        return task;
+        return task.withDispatchLease(lease);
     }
 
     private void processFunction(String functionName) {
@@ -208,7 +210,7 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
             SchedulerDispatchSupport.dispatchWithFailureCleanup(
                     task,
                     () -> invocationService.dispatch(task),
-                    () -> queueManager.releaseSlot(functionName, state),
+                    () -> task.dispatchLease().release(),
                     log
             );
             queueManager.recordSchedulerDispatchSubmitDuration(

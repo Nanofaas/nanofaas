@@ -71,7 +71,7 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
         InvocationTask task = task("exec-stuck", "fn");
         // A dispatch that never calls back - the crashed-runtime / dropped-response case.
         CompletableFuture<DispatchResult> neverCompletes = new CompletableFuture<>();
-        when(dispatcherRouter.dispatchLocal(any(InvocationTask.class))).thenReturn(neverCompletes);
+        when(dispatcherRouter.dispatchExternal(any(InvocationTask.class))).thenReturn(neverCompletes);
         ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
         store.put(executionRecord);
 
@@ -103,7 +103,7 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
                 store, enqueuer, dispatcherRouter, new Metrics(new SimpleMeterRegistry()));
         InvocationTask task = task("exec-timeout-then-expired", "fn");
         CompletableFuture<DispatchResult> neverCompletes = new CompletableFuture<>();
-        when(dispatcherRouter.dispatchLocal(any(InvocationTask.class))).thenReturn(neverCompletes);
+        when(dispatcherRouter.dispatchExternal(any(InvocationTask.class))).thenReturn(neverCompletes);
         ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
         store.put(executionRecord);
         handler.dispatch(task);
@@ -135,7 +135,7 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
     private static InvocationTask task(String executionId, String functionName) {
         FunctionSpec spec = new FunctionSpec(
                 functionName, "test-image", null, null, null,
-                30_000, 1, 100, 2, null, ExecutionMode.LOCAL, null, null, null
+                30_000, 1, 100, 2, null, ExecutionMode.EXTERNAL, null, null, null
         );
         return new InvocationTask(
                 executionId, functionName, spec,

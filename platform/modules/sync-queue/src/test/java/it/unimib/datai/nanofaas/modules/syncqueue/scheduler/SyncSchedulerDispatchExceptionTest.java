@@ -30,7 +30,7 @@ class SyncSchedulerDispatchExceptionTest {
     @Test
     void dispatchException_releasesSlot() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        InvocationEnqueuer enqueuer = mock(InvocationEnqueuer.class);
+        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         FunctionSpec spec = new FunctionSpec(
                 "fn", "image", null, Map.of(), null,
                 1000, 1, 10, 3, null, ExecutionMode.LOCAL, null, null, null
@@ -69,7 +69,7 @@ class SyncSchedulerDispatchExceptionTest {
     @Test
     void dispatchSuccess_doesNotReleaseSlot() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        InvocationEnqueuer enqueuer = mock(InvocationEnqueuer.class);
+        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         FunctionSpec spec = new FunctionSpec(
                 "fn", "image", null, Map.of(), null,
                 1000, 1, 10, 3, null, ExecutionMode.LOCAL, null, null, null

@@ -196,7 +196,8 @@ paths:
             `GET /v1/executions/{executionId}` (or a replay of the same
             `Idempotency-Key`) may first observe in-flight work (`queued`/`running`)
             and then the real result — never a fabricated `timeout` borrowed from
-            another caller's budget.
+            another caller's budget. This also applies to offloaded work: the remote
+            invocation uses the function's timeout, independently of this waiter's budget.
         '410':
           description: |
             The invocation already completed under this `Idempotency-Key`, but its

@@ -73,6 +73,18 @@ public final class SyncQueueInvocationEnqueuer implements InvocationEnqueuer {
     }
 
     @Override
+    public it.unimib.datai.nanofaas.controlplane.capacity.DispatchLease tryAcquireLease(InvocationTask task) {
+        String name = task.functionName();
+        return capacityRegistry.tryAcquireLease(name, capacityRegistry.state(name), held -> {
+            try {
+                if (diagnostics != null && held >= 0) diagnostics.recordDispatchSlotHold(name, held);
+            } finally {
+                slotReleaseListener.accept(name);
+            }
+        });
+    }
+
+    @Override
     public void releaseDispatchSlot(String functionName) {
         long holdNanos = capacityRegistry.releaseSlotAndGetHoldNanos(functionName);
         if (diagnostics != null && holdNanos >= 0) {

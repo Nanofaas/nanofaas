@@ -90,7 +90,7 @@ class ReactiveInvocationCoordinatorOffloadTest {
     }
 
     @Test
-    void timeoutOverrideIsForwardedAsRemoteBudget() {
+    void waiterTimeoutOverrideDoesNotChangeTheSharedRemoteBudget() {
         FunctionSpec spec = spec("fn-budget", new OffloadPolicy(null, null, "always"));
         InvocationExecutionFactory.ExecutionLookup lookup = lookup(spec);
         wireOffloadCompletion(lookup);
@@ -102,8 +102,8 @@ class ReactiveInvocationCoordinatorOffloadTest {
 
         coordinator(null).invoke(lookup, spec, 250).block();
 
-        // spec.timeoutMs is 1000; the X-Timeout-Ms override must win
-        verify(offloadGateway).invokeRemote(any(), eq(OffloadTrigger.EAGER), any(), eq(250));
+        // The override belongs only to this waiter; shared remote work keeps the function budget.
+        verify(offloadGateway).invokeRemote(any(), eq(OffloadTrigger.EAGER), any(), eq(spec.timeoutMs()));
     }
 
     @Test

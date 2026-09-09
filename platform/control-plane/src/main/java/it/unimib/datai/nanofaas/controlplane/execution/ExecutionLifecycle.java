@@ -51,9 +51,8 @@ public class ExecutionLifecycle {
      * already terminal, the archive put and the invalidation are idempotent, and
      * {@code CompletableFuture.complete} on a done future does nothing).
      *
-     * <p>The caller publishes the definitive result to the shared future before (or
-     * alongside) this call; this transition owns the dedup, archive, removal and
-     * notification order, not the per-path result the caller already decided.
+     * <p>The record selects the definitive answer under its monitor. This owner
+     * publishes that answer before archiving and notifying best-effort observers.
      */
     public void settle(ExecutionRecord executionRecord) {
         if (!executionRecord.isTerminal()) {
@@ -64,7 +63,9 @@ public class ExecutionLifecycle {
         // be published under a reclaimable key.
         synchronized (executionRecord) {
             protectKey(executionRecord);
+            if (!executionRecord.beginSettlement()) return;
         }
+        executionRecord.publishTerminal();
         // 2 + 3. Archive (optional) and live removal.
         executionStore.archiveAndRemove(executionRecord);
         // 4. Best-effort observers, after the invariants hold.

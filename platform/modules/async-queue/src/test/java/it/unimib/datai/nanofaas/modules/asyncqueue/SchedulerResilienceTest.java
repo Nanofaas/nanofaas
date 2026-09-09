@@ -31,7 +31,7 @@ class SchedulerResilienceTest {
         InvocationTask task = task("failed-1", spec);
         assertThat(queueManager.enqueue(task)).isTrue();
         InvocationService invocationService = mock(InvocationService.class);
-        doThrow(new RuntimeException("dispatch failed")).when(invocationService).dispatch(task);
+        doThrow(new RuntimeException("dispatch failed")).when(invocationService).dispatch(argThat(actual -> actual != null && actual.withDispatchLease(null).equals(task)));
 
         Scheduler scheduler = new Scheduler(queueManager, invocationService);
         scheduler.init();
@@ -46,7 +46,7 @@ class SchedulerResilienceTest {
                         assertThat(registry.get("function_dispatch_slot_hold_events")
                                 .tag("function", "failed")
                                 .counter()
-                                .count()).isEqualTo(1);
+                                .count()).isEqualTo(2); // dispatched lease plus the following empty-queue probe
                         assertThat(registry.get("function_dispatch_slot_hold_seconds")
                                 .tag("function", "failed")
                                 .counter()
@@ -59,15 +59,15 @@ class SchedulerResilienceTest {
 
     @Test
     void dispatchException_doesNotKillSchedulerLoop() {
-        QueueManager queueManager = mock(QueueManager.class);
+        QueueManager queueManager = SchedulerLeaseTestSupport.queueManager();
         InvocationService invocationService = mock(InvocationService.class);
         FunctionQueueState state = mock(FunctionQueueState.class);
-        InvocationTask task = mock(InvocationTask.class);
+        InvocationTask task = task("task", functionSpec("testFunc", 1, 10));
 
         when(queueManager.get("testFunc")).thenReturn(state);
         when(state.tryAcquireSlot()).thenReturn(true).thenReturn(false); // Process once per signal
         when(state.poll()).thenReturn(task);
-        doThrow(new RuntimeException("dispatch failed")).when(invocationService).dispatch(task);
+        doThrow(new RuntimeException("dispatch failed")).when(invocationService).dispatch(argThat(actual -> actual != null && actual.withDispatchLease(null).equals(task)));
 
         Scheduler scheduler = new Scheduler(queueManager, invocationService);
         scheduler.init();
@@ -79,11 +79,11 @@ class SchedulerResilienceTest {
             // Verify first dispatch was attempted
             Awaitility.await()
                     .atMost(Duration.ofSeconds(2))
-                    .untilAsserted(() -> verify(invocationService, atLeastOnce()).dispatch(task));
+                    .untilAsserted(() -> verify(invocationService, atLeastOnce()).dispatch(argThat(actual -> actual != null && actual.withDispatchLease(null).equals(task))));
 
             // Signal again to prove loop is still alive
             reset(invocationService);
-            doNothing().when(invocationService).dispatch(task);
+            doNothing().when(invocationService).dispatch(argThat(actual -> actual != null && actual.withDispatchLease(null).equals(task)));
             when(state.tryAcquireSlot()).thenReturn(true).thenReturn(false);
             when(state.poll()).thenReturn(task);
             
@@ -91,7 +91,7 @@ class SchedulerResilienceTest {
             
             Awaitility.await()
                     .atMost(Duration.ofSeconds(2))
-                    .untilAsserted(() -> verify(invocationService, atLeastOnce()).dispatch(task));
+                    .untilAsserted(() -> verify(invocationService, atLeastOnce()).dispatch(argThat(actual -> actual != null && actual.withDispatchLease(null).equals(task))));
         } finally {
             scheduler.stop();
         }
@@ -101,7 +101,7 @@ class SchedulerResilienceTest {
 
     @Test
     void startStopStart_restartsSchedulerWithoutRejectedExecution() {
-        QueueManager queueManager = mock(QueueManager.class);
+        QueueManager queueManager = SchedulerLeaseTestSupport.queueManager();
         InvocationService invocationService = mock(InvocationService.class);
 
         Scheduler scheduler = new Scheduler(queueManager, invocationService);
@@ -118,12 +118,12 @@ class SchedulerResilienceTest {
 
     @Test
     void scheduler_requeuesFunctionAfterBoundedBatchInsteadOfDrainingWholeBurst() {
-        QueueManager queueManager = mock(QueueManager.class);
+        QueueManager queueManager = SchedulerLeaseTestSupport.queueManager();
         InvocationService invocationService = mock(InvocationService.class);
         FunctionQueueState state = mock(FunctionQueueState.class);
-        InvocationTask task1 = mock(InvocationTask.class);
-        InvocationTask task2 = mock(InvocationTask.class);
-        InvocationTask task3 = mock(InvocationTask.class);
+        InvocationTask task1 = task("task1", functionSpec("testFunc", 1, 10));
+        InvocationTask task2 = task("task2", functionSpec("testFunc", 1, 10));
+        InvocationTask task3 = task("task3", functionSpec("testFunc", 1, 10));
 
         when(queueManager.get("hot")).thenReturn(state);
         when(state.tryAcquireSlot()).thenReturn(true, true, true, false);
@@ -145,7 +145,7 @@ class SchedulerResilienceTest {
 
             Awaitility.await()
                     .atMost(Duration.ofSeconds(2))
-                    .untilAsserted(() -> assertThat(dispatched).containsExactly(task1, task2, task3));
+                    .untilAsserted(() -> assertThat(dispatched.stream().map(t -> t.withDispatchLease(null)).toList()).containsExactly(task1, task2, task3));
         } finally {
             scheduler.stop();
         }
@@ -174,14 +174,14 @@ class SchedulerResilienceTest {
 
             Awaitility.await()
                     .atMost(Duration.ofSeconds(2))
-                    .untilAsserted(() -> verify(invocationService).dispatch(task1));
+                    .untilAsserted(() -> verify(invocationService).dispatch(argThat(actual -> actual != null && actual.withDispatchLease(null).equals(task1))));
 
             Awaitility.await()
                     .during(Duration.ofMillis(250))
                     .atMost(Duration.ofMillis(500))
                     .untilAsserted(() -> {
                         verify(invocationService, times(1)).dispatch(any(InvocationTask.class));
-                        verify(invocationService, never()).dispatch(task2);
+                        verify(invocationService, never()).dispatch(argThat(actual -> actual != null && actual.withDispatchLease(null).equals(task2)));
                         assertThat(state.queued()).isEqualTo(1);
                         assertThat(state.inFlight()).isEqualTo(1);
                         assertThat(queueManager.getCalls())
@@ -189,11 +189,13 @@ class SchedulerResilienceTest {
                                 .isEqualTo(1);
                     });
 
-            queueManager.releaseSlot("blocked");
+            org.mockito.ArgumentCaptor<InvocationTask> captured = org.mockito.ArgumentCaptor.forClass(InvocationTask.class);
+            verify(invocationService).dispatch(captured.capture());
+            captured.getValue().dispatchLease().release();
 
             Awaitility.await()
                     .atMost(Duration.ofSeconds(2))
-                    .untilAsserted(() -> verify(invocationService).dispatch(task2));
+                    .untilAsserted(() -> verify(invocationService).dispatch(argThat(actual -> actual != null && actual.withDispatchLease(null).equals(task2))));
         } finally {
             scheduler.stop();
         }

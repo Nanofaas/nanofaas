@@ -287,6 +287,18 @@ public class QueueManager {
     }
 
 
+    it.unimib.datai.nanofaas.controlplane.capacity.DispatchLease tryAcquireLease(
+            String name, FunctionQueueState expected) {
+        return capacityRegistry.tryAcquireLease(name, expected.capacity(), held -> {
+            try {
+                if (held >= 0 && queues.get(name) == expected)
+                    workloadDiagnostics.recordDispatchSlotHold(name, held);
+            } finally {
+                if (queues.get(name) == expected && expected.queued() > 0) notifyWork(name);
+            }
+        });
+    }
+
     public void releaseSlot(String functionName) {
         long holdNanos = capacityRegistry.releaseSlotAndGetHoldNanos(functionName);
         if (holdNanos >= 0) {

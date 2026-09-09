@@ -171,7 +171,8 @@ public class SyncScheduler implements SmartLifecycle {
             return;
         }
         String functionName = item.task().functionName();
-        if (!enqueuer.tryAcquireSlot(functionName)) {
+        var lease = enqueuer.tryAcquireLease(item.task());
+        if (lease == null) {
             // The slot went between the scan and the acquire (e.g. the effective limit was
             // lowered concurrently). Put the item back and park: the function is genuinely at
             // its limit, and only a capacity event or the safety timeout should re-try it.
@@ -183,15 +184,16 @@ public class SyncScheduler implements SmartLifecycle {
             // Another thread removed the item (e.g. a removeFunctionState drain) after the slot
             // was taken. Give the slot back and let the loop re-scan immediately: this is a
             // one-time race, not a condition to back off on.
-            enqueuer.releaseDispatchSlot(functionName);
+            lease.release();
             return;
         }
         queue.recordDispatched(functionName, now);
         long submitStarted = System.nanoTime();
+        InvocationTask acquiredTask = item.task().withDispatchLease(lease);
         SchedulerDispatchSupport.dispatchWithFailureCleanup(
-                item.task(),
-                () -> dispatch.accept(item.task()),
-                () -> enqueuer.releaseDispatchSlot(functionName),
+                acquiredTask,
+                () -> dispatch.accept(acquiredTask),
+                lease::release,
                 log
         );
         if (diagnostics != null) {

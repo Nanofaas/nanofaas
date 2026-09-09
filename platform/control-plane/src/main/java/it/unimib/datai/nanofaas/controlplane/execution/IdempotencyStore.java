@@ -59,8 +59,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * key), not to any one of its states. A pending→published→terminal transition
  * replaces the value in place and keeps the same slot; the slot returns to the
  * budget exactly once, when the entry finally leaves the cache — explicit remove,
- * abandon, expiry or shutdown. The Caffeine removal listener releases the slot on
- * expiry only (its notifications are otherwise buffered, not synchronous); explicit
+ * abandon, expiry or shutdown. The synchronous Caffeine eviction listener releases the slot on
+ * expiry only; explicit
  * removals release in code, so a replacement is never a release and no slot is ever
  * returned twice.
  */
@@ -142,16 +142,12 @@ public class IdempotencyStore {
                 // Expired entries are evicted on a maintenance schedule, not only when
                 // someone happens to touch them: a slot abandoned by a key nobody replays
                 // must return to the budget without waiting for traffic on that same key.
-                // The removal listener then releases each evicted entry's slot exactly once.
+                // The synchronous eviction listener returns each expired entry's reservation.
                 .scheduler(Scheduler.systemScheduler())
                 .ticker(ticker)
-                .removalListener((String key, StoredKey value, RemovalCause cause) -> {
-                    // The listener handles ONLY expiry. Its notifications for an explicit
-                    // remove or a replace are buffered, not synchronous, so those paths
-                    // release in code (abandonClaim, clear) or are not a release at all
-                    // (REPLACED: the same entry lives on in another state). Expiry has no
-                    // code path of its own, so the listener is its one release; it is
-                    // flushed by cleanUp() and by the scheduler's maintenance.
+                .evictionListener((String key, StoredKey value, RemovalCause cause) -> {
+                    // Eviction listeners run synchronously with removal. A delayed expiry
+                    // notification must never debit a later binding's reservation.
                     if (cause == RemovalCause.EXPIRED && value != null) {
                         occupied.decrementAndGet();
                     }
@@ -175,7 +171,7 @@ public class IdempotencyStore {
     /**
      * Inserts a published binding directly. A <b>new</b> key reserves its slot first,
      * like every other insertion path, so every entry owns exactly one slot and the
-     * removal listener can release it exactly once. Replacing an existing key keeps
+     * eviction listener can release it exactly once. Replacing an existing key keeps
      * the slot ({@code REPLACED} is not a release).
      */
     public void put(String functionName, String key, String executionId) {
@@ -289,7 +285,7 @@ public class IdempotencyStore {
         String composed = compose(functionName, key);
         StoredKey existing = keys.get(composed);
         if (existing != null && existing.pending() && existing.executionId().equals(claimToken)) {
-            // The removal listener is not synchronous for an explicit remove, so the slot
+            // The eviction listener does not handle explicit removal, so the slot
             // is released here, exactly once, in the same step that removes the entry.
             // (A claim already evicted for expiry was released by the EXPIRED listener.)
             if (keys.remove(composed, existing)) {
@@ -382,13 +378,19 @@ public class IdempotencyStore {
     /**
      * Empties the store and returns every slot to the budget. This is the shutdown /
      * drain hook: after it, nothing is occupied and new claims are admitted again.
-     * The removal listener does not fire synchronously for {@code invalidateAll()},
-     * so the counter is reset here, in the same step that discards the entries.
+     * Each successful removal returns exactly its reservation. Concurrent admissions
+     * may survive this drain and remain accounted for.
      */
     @PreDestroy
     public void clear() {
-        cache.invalidateAll();
-        occupied.set(0);
+        // Remove only bindings we actually observe and win. Concurrent claims retain
+        // their own reservation; never reset a counter shared with active admissions.
+        keys.forEach((key, value) -> {
+            if (keys.remove(key, value)) {
+                releaseOne();
+            }
+        });
+        cache.cleanUp();
     }
 
     private String compose(String functionName, String key) {

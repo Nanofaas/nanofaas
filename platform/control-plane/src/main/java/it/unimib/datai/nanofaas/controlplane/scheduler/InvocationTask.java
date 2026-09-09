@@ -4,6 +4,7 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 
 import java.time.Instant;
+import it.unimib.datai.nanofaas.controlplane.capacity.DispatchLease;
 
 public record InvocationTask(
         String executionId,
@@ -14,6 +15,18 @@ public record InvocationTask(
         String traceId,
         Instant enqueuedAt,
         int attempt,
-        InvocationKind kind
+        InvocationKind kind,
+        DispatchLease dispatchLease
 ) {
+    public InvocationTask(String executionId, String functionName, FunctionSpec functionSpec,
+                          InvocationRequest request, String idempotencyKey, String traceId,
+                          Instant enqueuedAt, int attempt, InvocationKind kind) {
+        this(executionId, functionName, functionSpec, request, idempotencyKey, traceId,
+                enqueuedAt, attempt, kind, null);
+    }
+
+    public InvocationTask withDispatchLease(DispatchLease lease) {
+        return new InvocationTask(executionId, functionName, functionSpec, request,
+                idempotencyKey, traceId, enqueuedAt, attempt, kind, lease);
+    }
 }

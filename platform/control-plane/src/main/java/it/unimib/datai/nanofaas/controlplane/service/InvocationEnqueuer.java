@@ -29,6 +29,11 @@ public interface InvocationEnqueuer {
         return true;
     }
 
+    /** Acquire capacity owned by this task; queue providers override with generation identity. */
+    default it.unimib.datai.nanofaas.controlplane.capacity.DispatchLease tryAcquireLease(InvocationTask task) {
+        throw new UnsupportedOperationException("Queue provider must support attempt-scoped leases");
+    }
+
     default void releaseDispatchSlot(String functionName) {
     }
 

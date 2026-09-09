@@ -31,7 +31,7 @@ import static org.mockito.Mockito.when;
 class SyncSchedulerTest {
     @Test
     void dispatchesWhenSlotAvailable() {
-        InvocationEnqueuer enqueuer = mock(InvocationEnqueuer.class);
+        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         when(enqueuer.hasAvailableSlot("fn")).thenReturn(true);
         when(enqueuer.tryAcquireSlot("fn")).thenReturn(true);
@@ -53,7 +53,7 @@ class SyncSchedulerTest {
 
     @Test
     void leavesItemQueuedWhenSlotAcquisitionFailsAfterSelection() {
-        InvocationEnqueuer enqueuer = mock(InvocationEnqueuer.class);
+        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         when(enqueuer.hasAvailableSlot("fn")).thenReturn(true);
         when(enqueuer.tryAcquireSlot("fn")).thenReturn(false, true);
@@ -81,7 +81,7 @@ class SyncSchedulerTest {
 
     @Test
     void failedSlotAcquisitionDoesNotCreateTemporaryQueueCapacity() {
-        InvocationEnqueuer enqueuer = mock(InvocationEnqueuer.class);
+        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         when(enqueuer.hasAvailableSlot("fn")).thenReturn(true);
         when(enqueuer.tryAcquireSlot("fn")).thenReturn(false);
@@ -107,7 +107,7 @@ class SyncSchedulerTest {
 
     @Test
     void blockedScanRotationDoesNotCreateTemporaryQueueCapacity() {
-        InvocationEnqueuer enqueuer = mock(InvocationEnqueuer.class);
+        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         FunctionSpec spec = new FunctionSpec("blocked", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         when(enqueuer.hasAvailableSlot("blocked")).thenReturn(false);
 
@@ -131,7 +131,7 @@ class SyncSchedulerTest {
 
     @Test
     void selectsLaterTaskWhenHeadFunctionHasNoAvailableSlot() {
-        InvocationEnqueuer enqueuer = mock(InvocationEnqueuer.class);
+        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         FunctionSpec blockedSpec = new FunctionSpec("blocked", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         FunctionSpec readySpec = new FunctionSpec("ready", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         when(enqueuer.hasAvailableSlot("blocked")).thenReturn(false);
@@ -165,7 +165,7 @@ class SyncSchedulerTest {
 
     @Test
     void rotatesCandidateWhenFinalSlotAcquisitionFails() {
-        InvocationEnqueuer enqueuer = mock(InvocationEnqueuer.class);
+        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         FunctionSpec hotSpec = new FunctionSpec("hot", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         FunctionSpec readySpec = new FunctionSpec("ready", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         when(enqueuer.hasAvailableSlot("hot")).thenReturn(true);
@@ -202,7 +202,7 @@ class SyncSchedulerTest {
 
     @Test
     void eventuallySelectsReadyTaskBeyondFirstScanWindow() {
-        InvocationEnqueuer enqueuer = mock(InvocationEnqueuer.class);
+        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         FunctionSpec blockedSpec = new FunctionSpec("blocked", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         FunctionSpec readySpec = new FunctionSpec("ready", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         when(enqueuer.hasAvailableSlot("blocked")).thenReturn(false);

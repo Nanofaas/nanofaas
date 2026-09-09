@@ -37,18 +37,17 @@ import java.util.Set;
 final class OutcomeWeigher {
 
     /**
-     * Structural overhead of the Outcome object: object header, primitive fields and
-     * references, without the payload or the HTTP headers. Chosen so that a compact
-     * outcome — a small output and nothing else — weighs about the
-     * {@code ExecutionStoreProperties#COMPACT_OUTCOME_BYTES} bytes the default byte
-     * budget is derived from: at the default budget, as many fit as fitted before.
+     * Outcome, cached FreezeResult wrapper, primitive fields, references and alignment.
+     * Payload, key and container backing storage are counted separately. The legacy
+     * COMPACT_OUTCOME_BYTES setting calibrates a default budget, not an object size.
      */
-    private static final int FIXED_OVERHEAD_BYTES = 96;
+    private static final int FIXED_OVERHEAD_BYTES = 128;
     private static final int REFERENCE_BYTES = 16;
     private static final int MAX_DEPTH = 4;
     private static final int MAX_ELEMENTS = 256;
+    private static final int MAX_VISITED_VALUES = 1024;
     /** Conservative per-entry cost of a map node: the entry plus its hash bucket. */
-    private static final int MAP_ENTRY_BYTES = 32;
+    private static final int MAP_ENTRY_BYTES = 64;
 
     private OutcomeWeigher() {
     }
@@ -75,7 +74,8 @@ final class OutcomeWeigher {
      * has no such signal); the saturated maximum is the defensive fallback.
      */
     static int weightForCache(String executionId, Outcome outcome) {
-        return weightAsInt(weigh(executionId, outcome).weight());
+        Weighing result = weigh(executionId, outcome);
+        return result.cacheable() ? weightAsInt(result.weight()) : Integer.MAX_VALUE;
     }
 
     /** Conservative estimate, without copying: for the weigher and the tests. */
@@ -85,7 +85,7 @@ final class OutcomeWeigher {
         if (!walker.cacheable) {
             return Weighing.notCacheable();
         }
-        return Weighing.cacheable(saturatingAdd(walker.weight, executionId.length()));
+        return Weighing.cacheable(saturatingAdd(walker.weight, stringBytes(executionId)));
     }
 
     /**
@@ -96,12 +96,18 @@ final class OutcomeWeigher {
      */
     @Nullable
     static FreezeResult freeze(String executionId, Outcome outcome) {
-        Walker walker = new Walker(true);
+        return freeze(executionId, outcome, Long.MAX_VALUE);
+    }
+
+    @Nullable
+    static FreezeResult freeze(String executionId, Outcome outcome, long maximumWeight) {
+        Walker walker = new Walker(true, maximumWeight);
+        walker.add(stringBytes(executionId));
         Outcome frozen = walker.freezeOutcome(outcome);
         if (frozen == null) {
             return null;
         }
-        return new FreezeResult(frozen, saturatingAdd(walker.weight, executionId.length()));
+        return new FreezeResult(frozen, walker.weight);
     }
 
     /** Saturating long addition: the estimator never wraps to a negative weight. */
@@ -135,11 +141,9 @@ final class OutcomeWeigher {
      * the kind of silent underestimate the byte budget exists to prevent.
      */
     private static long stringBytes(String s) {
-        int length = s.length();
-        if (length == 0) {
-            return 0;
-        }
-        return isLatin1(s) ? length : 2L * length;
+        // Large strings are sized in O(1); short compact strings keep a tighter estimate.
+        long characters = s.length() <= 64 && isLatin1(s) ? s.length() : 2L * s.length();
+        return 48 + characters; // String, backing array and alignment allowance
     }
 
     private static boolean isLatin1(String s) {
@@ -160,15 +164,21 @@ final class OutcomeWeigher {
         /** Containers already walked; a repeat is a cycle or a shared reference. */
         private final IdentityHashMap<Object, Boolean> seen = new IdentityHashMap<>();
         private final boolean copy;
+        private final long maximumWeight;
         private long weight;
+        private int visited;
         private boolean cacheable = true;
 
-        Walker(boolean copy) {
+        Walker(boolean copy) { this(copy, Long.MAX_VALUE); }
+
+        Walker(boolean copy, long maximumWeight) {
             this.copy = copy;
+            this.maximumWeight = maximumWeight;
         }
 
         void add(long bytes) {
             weight = saturatingAdd(weight, bytes);
+            if (weight > maximumWeight) cacheable = false;
         }
 
         void walkOutcome(Outcome outcome) {
@@ -217,6 +227,9 @@ final class OutcomeWeigher {
 
         @Nullable
         Object walk(Object value, int depth) {
+            if (++visited > MAX_VISITED_VALUES) {
+                cacheable = false;
+            }
             if (value == null || !cacheable) {
                 return null;
             }
@@ -229,8 +242,8 @@ final class OutcomeWeigher {
                     add(stringBytes(s));
                     yield s;
                 }
-                case Number _, Boolean _, Character _ -> {
-                    add(REFERENCE_BYTES);
+                case Byte _, Short _, Integer _, Long _, Float _, Double _, Boolean _, Character _ -> {
+                    add(32);
                     yield value;
                 }
                 case Map<?, ?> map -> walkMap(map, depth);
@@ -256,6 +269,7 @@ final class OutcomeWeigher {
         private Object primitiveArray(Object array, long elementBytes) {
             int length = java.lang.reflect.Array.getLength(array);
             add(REFERENCE_BYTES + saturatingMultiply(length, elementBytes));
+            if (!cacheable) return null;
             return copy ? cloneArray(array) : array;
         }
 
@@ -286,7 +300,7 @@ final class OutcomeWeigher {
             if (!enter(map)) {
                 return null;
             }
-            add(REFERENCE_BYTES);
+            add(96);
             if (map.size() > MAX_ELEMENTS) {
                 cacheable = false;
                 return null;
@@ -316,6 +330,7 @@ final class OutcomeWeigher {
                 cacheable = false;
                 return null;
             }
+            add(64 + saturatingMultiply(list.size(), 8));
             List<Object> frozen = copy ? new ArrayList<>(list.size()) : null;
             for (Object element : list) {
                 if (!cacheable) {
@@ -339,6 +354,7 @@ final class OutcomeWeigher {
                 cacheable = false;
                 return null;
             }
+            add(96 + saturatingMultiply(set.size(), MAP_ENTRY_BYTES));
             Set<Object> frozen = copy ? new LinkedHashSet<>(set.size()) : null;
             for (Object element : set) {
                 if (!cacheable) {

@@ -86,6 +86,10 @@ public class ExecutionRecord {
      * work (and its payload) does not outlive the released capacity.
      */
     private Future<?> dispatchHandle;
+    private boolean dispatchCancellationRequested;
+    private boolean transportOwnsCapacity;
+    private Throwable terminalFailure;
+    private boolean settlementStarted;
 
     private final TimeSource timeSource;
 
@@ -335,6 +339,8 @@ public class ExecutionRecord {
         this.dispatchLease = null;
         this.dispatchHandle = null;
         this.directAdmission = false;
+        this.dispatchCancellationRequested = false;
+        this.transportOwnsCapacity = false;
     }
 
     /**
@@ -389,15 +395,58 @@ public class ExecutionRecord {
      * as the dispatcher hands the future back, so an administrative expiry that wins the race
      * against publication can still cancel it.
      */
-    public synchronized void attachDispatchHandle(Future<?> handle) {
-        this.dispatchHandle = handle;
+    public void attachDispatchHandle(Future<?> handle) {
+        boolean cancel;
+        synchronized (this) {
+            cancel = dispatchCancellationRequested;
+            if (!cancel) dispatchHandle = handle;
+        }
+        if (cancel) handle.cancel(true);
     }
 
-    /** Detaches and returns the current attempt's transport handle, or null. */
+    /** Remember the request even when the dispatcher has not returned its handle yet. */
     public synchronized Future<?> takeDispatchHandle() {
+        dispatchCancellationRequested = true;
         Future<?> handle = dispatchHandle;
         dispatchHandle = null;
         return handle;
+    }
+
+    public synchronized void transportOwnsCapacity() {
+        transportOwnsCapacity = true;
+    }
+
+    public synchronized boolean capacityOwnedByTransport() {
+        return transportOwnsCapacity;
+    }
+
+    /** Choose the exceptional offload answer atomically with its terminal state. */
+    public synchronized void markFailure(ErrorInfo error, Throwable failure) {
+        if (isTerminal()) return;
+        markError(error);
+        terminalFailure = failure;
+    }
+
+    public synchronized boolean beginSettlement() {
+        if (!isTerminal() || settlementStarted) return false;
+        settlementStarted = true;
+        return true;
+    }
+
+    /** Publish only the selected terminal answer; callbacks run outside the monitor. */
+    public void publishTerminal() {
+        InvocationResult result;
+        Throwable failure;
+        synchronized (this) {
+            if (!isTerminal()) return;
+            failure = terminalFailure;
+            result = state == ExecutionState.SUCCESS
+                    ? InvocationResult.successWithEnvelope(output, statusCode, headers, encoding)
+                    : new InvocationResult(false, null, lastError != null ? lastError
+                            : new ErrorInfo("TIMEOUT", "Execution timed out"));
+        }
+        if (failure != null) completion.completeExceptionally(failure);
+        else completion.complete(result);
     }
 
     // Legacy accessors - kept for backward compatibility but prefer snapshot() for reads

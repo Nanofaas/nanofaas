@@ -26,10 +26,10 @@ class OutcomeWeightBudgetTest {
 
     @Test
     void compactOutcomesStillFitTheirCountBudget() {
-        // The default is calibrated so that nothing changes for compact outcomes:
-        // maxOutcomes outcomes of 116 bytes must all still fit.
+        // An explicit byte budget must cover payload, key and structural overhead.
+        // The legacy 116-byte multiplier is a default budget, not a heap-size guarantee.
         int count = 500;
-        ExecutionStore store = store(new ExecutionStoreProperties(TTL, TTL, TTL, count, 100_000, 0));
+        ExecutionStore store = store(new ExecutionStoreProperties(TTL, TTL, TTL, count, 100_000, count * 256L));
 
         for (int i = 0; i < count; i++) {
             settle(store, "exec-" + i, "ok");

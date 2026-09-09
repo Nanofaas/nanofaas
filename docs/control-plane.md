@@ -169,10 +169,8 @@ compile-time constant with no configuration knob.
 
 ## Abandoned executions and administrative expiry
 
-An execution whose dispatch outcome never arrives — a runtime that died mid-call,
-a callback that was lost — is not left holding its dispatch slot forever. When a
-record exceeds its maximum lifetime the control plane closes it administratively:
-the slot is released, anyone waiting on the shared future is answered, and the
+When an execution exceeds its maximum lifetime, the control plane closes the
+shared wait and requests cancellation of its local transport resources. The
 execution becomes terminal with the error code `EXECUTION_EXPIRED`:
 
 ```json
@@ -185,9 +183,22 @@ outcome the platform fabricated because the real one never came, as opposed to a
 genuine failure the function reported — worth distinguishing when reading error
 rates.
 
-Dispatch slots bind **local** dispatch only. An offloaded invocation never
-acquires one on this plane, so a remote conclusion never releases a slot it did
-not take.
+Each dispatched attempt owns a capacity lease tied to the function's registration.
+Direct admission, retries and both queue schedulers use this ownership. Removing
+and re-registering a function cannot redirect an old completion to the new capacity.
+The core tracks registration and concurrency updates even without queue modules.
+
+A non-cooperative LOCAL handler keeps its lease until its work actually ends;
+cancelling a `CompletableFuture` is not evidence that its worker stopped. For
+EXTERNAL and DEPLOYMENT, cancellation reaches the HTTP subscriber, including when
+expiry precedes handle publication. A shared deployment wake-up future remains
+available to other invocations. Cancelling a local HTTP request cannot guarantee
+that a remote function stops executing.
+
+An offloaded invocation acquires no backend dispatch slot on this plane. Its
+transport uses the function's timeout budget; an individual caller's shorter
+`X-Timeout-Ms` affects only that waiter's subscription. Administrative expiry also
+cancels the outstanding offload subscription.
 
 ## Idempotency and outcome retention
 
@@ -220,6 +231,14 @@ outcome budget so a byte-budget on outcomes never silently evicts dedup
 protection. At budget exhaustion a **new** keyed admission is refused with
 `429 Too Many Requests` before dispatch; replays of keys already held remain
 serviceable.
+
+Outcome weights include keys, backing arrays and container overhead. Freezing and
+weighing share one bounded traversal, and the cache reuses that weight. Opaque or
+mutable numeric types, cycles and structures beyond the traversal budget are
+not retained; idempotency tombstones still protect them. Oversized arrays are
+rejected before copying. The legacy `116 B` multiplier derives a default byte
+budget; it does not guarantee that `max-outcomes` readable responses fit. More
+conservative accounting can therefore retain fewer results at the same budget.
 
 Relevant settings under `nanofaas.execution-store`:
 

@@ -58,7 +58,7 @@ public class ExecutionStore {
     private final Cache<String, ExecutionRecord> inFlight;
 
     /** What is left of it. Bounded in space, with an expiry decided per entry. */
-    private final Cache<String, Outcome> outcomes;
+    private final Cache<String, OutcomeWeigher.FreezeResult> outcomes;
 
     /**
      * The byte budget the {@link #outcomes} cache is capped at. Kept alongside the cache
@@ -151,9 +151,10 @@ public class ExecutionStore {
                 // declined by settle() before it ever reaches this cache, so the weigher
                 // only ever prices outcomes the store already decided to retain.
                 .maximumWeight(properties.maxOutcomeBytes())
-                .weigher(OutcomeWeigher::weightForCache)
-                .expireAfter(Expiry.creating((String id, Outcome outcome) ->
-                        outcome.readable() ? properties.ttl() : properties.syncTtl()))
+                .weigher((String id, OutcomeWeigher.FreezeResult frozen) ->
+                        OutcomeWeigher.weightAsInt(frozen.weight()))
+                .expireAfter(Expiry.creating((String id, OutcomeWeigher.FreezeResult frozen) ->
+                        frozen.outcome().readable() ? properties.ttl() : properties.syncTtl()))
                 .ticker(ticker)
                 .build();
     }
@@ -206,7 +207,8 @@ public class ExecutionStore {
     /** The archived outcome, if the execution is over and someone can still read it. */
     @Nullable
     public Outcome outcomeOf(String executionId) {
-        return outcomes.getIfPresent(executionId);
+        OutcomeWeigher.FreezeResult frozen = outcomes.getIfPresent(executionId);
+        return frozen == null ? null : frozen.outcome();
     }
 
     /**
@@ -233,6 +235,8 @@ public class ExecutionStore {
                     + "transition cannot protect its idempotency key. InvocationExecutionFactory "
                     + "attaches the owner in production.");
         }
+        if (!executionRecord.beginSettlement()) return;
+        executionRecord.publishTerminal();
         archiveAndRemove(executionRecord);
         notifyTerminal(executionRecord);
     }
@@ -249,11 +253,19 @@ public class ExecutionStore {
             return;
         }
         String executionId = executionRecord.executionId();
-        OutcomeWeigher.FreezeResult frozen = OutcomeWeigher.freeze(executionId, executionRecord.toOutcome());
-        if (frozen != null && frozen.weight() <= maximumOutcomeBytes) {
-            outcomes.put(executionId, frozen.outcome());
+        try {
+            OutcomeWeigher.FreezeResult frozen = OutcomeWeigher.freeze(executionId, executionRecord.toOutcome(),
+                    Math.min(maximumOutcomeBytes, Integer.MAX_VALUE));
+            if (frozen != null && frozen.weight() <= maximumOutcomeBytes) {
+                outcomes.put(executionId, frozen);
+            }
+        } catch (RuntimeException failure) {
+            // User containers can throw during traversal (including concurrent mutation).
+            // Declining retention must not interrupt terminal cleanup or dedup protection.
+            log.warn("Cannot retain outcome for execution {}", executionId, failure);
+        } finally {
+            inFlight.invalidate(executionId);
         }
-        inFlight.invalidate(executionId);
     }
 
     /** Notifies the terminal observers, best-effort, after the invariants already hold. */

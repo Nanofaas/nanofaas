@@ -186,24 +186,20 @@ class DispatchLifecycleAndCancellationTest {
         ExecutionStore store = shortLivedStore();
         Metrics metrics = new Metrics(new SimpleMeterRegistry());
         CompletableFuture<DispatchResult> neverCompletes = new CompletableFuture<>();
-        LocalDispatcher local = new LocalDispatcher() {
-            @Override
-            public CompletableFuture<DispatchResult> dispatch(InvocationTask task) {
-                return neverCompletes;
-            }
-        };
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, null,
-                new DispatcherRouter(local, null), metrics);
+        DispatcherRouter router = org.mockito.Mockito.mock(DispatcherRouter.class);
+        org.mockito.Mockito.when(router.dispatchExternal(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(neverCompletes);
+        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, null, router, metrics);
 
-        InvocationTask task = task("exec-stuck", spec("fn", 1));
+        InvocationTask task = task("exec-stuck", externalSpec("fn", "http://unused/invoke", 10_000));
         ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
         store.put(record);
         handler.dispatchDirect(task);
         assertThat(record.state()).isEqualTo(ExecutionState.RUNNING);
 
         // The administrative expiry must cancel the real transport handle (the raw future)
-        // and conclude the waiter. Local cancellation is best-effort: a non-cooperative
-        // handler's future is cancelled, but no promise is made that remote work stops.
+        // and conclude the waiter. Disposing local HTTP resources does not promise
+        // that the remote function has stopped.
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
             assertThat(store.outcomeOf("exec-stuck")).isNotNull();
             assertThat(record.completion()).isDone();

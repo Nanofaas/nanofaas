@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.controlplane.service;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchLease;
+import it.unimib.datai.nanofaas.controlplane.capacity.DispatchAttempt;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
@@ -18,7 +19,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
-import java.time.Instant;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -129,20 +129,13 @@ public class ExecutionCompletionHandler {
                 }
             }
         }
-        if (concluded) {
-            String functionName = executionRecord.task().functionName();
-            if (result.success()) {
-                metrics.success(functionName);
-            } else {
-                metrics.error(functionName);
-            }
-        }
-        // Future published outside the record monitor (same invariant as
-        // publishFinalCompletion): synchronous waiters must not run under the lock.
-        // complete() on an already-done future is a no-op, so a late result cannot
-        // overwrite the already-definitive answer.
-        executionRecord.completion().complete(result);
         executionStore.settle(executionRecord);
+        if (concluded) {
+            bestEffort(() -> {
+                if (result.success()) metrics.success(executionRecord.task().functionName());
+                else metrics.error(executionRecord.task().functionName());
+            });
+        }
     }
 
     /**
@@ -166,18 +159,15 @@ public class ExecutionCompletionHandler {
         synchronized (executionRecord) {
             concluded = !isTerminal(executionRecord.state());
             if (concluded) {
-                executionRecord.markError(error);
+                executionRecord.markFailure(error, failure);
             }
         }
-        if (concluded) {
-            metrics.error(executionRecord.task().functionName());
-        }
-        executionRecord.completion().completeExceptionally(failure);
         executionStore.settle(executionRecord);
+        if (concluded) bestEffort(() -> metrics.error(executionRecord.task().functionName()));
     }
 
     public void dispatch(InvocationTask task) {
-        dispatchInternal(task, null);
+        dispatchInternal(task, task.dispatchLease());
     }
 
     /**
@@ -205,10 +195,8 @@ public class ExecutionCompletionHandler {
     }
 
     /**
-     * Shared dispatch body. {@code directLease} is the lease the direct path just acquired;
-     * it is {@code null} for the queue path, whose scheduler already holds a name-based
-     * slot and releases it through the enqueuer. Both register the real cancellable
-     * transport handle on the record and apply the attempt's own deadline.
+     * Shared body for direct, retry and queue dispatch. All production schedulers pass
+     * their acquired lease with the task. A null lease supports legacy in-process callers.
      */
     private void dispatchInternal(InvocationTask task, @Nullable DispatchLease directLease) {
         ExecutionRecord executionRecord = executionStore.getOrNull(task.executionId());
@@ -228,6 +216,7 @@ public class ExecutionCompletionHandler {
                 if (directLease != null) {
                     executionRecord.attachDispatchLease(directLease);
                 }
+                executionRecord.transportOwnsCapacity();
                 executionRecord.markRunning();
                 executionRecord.markDispatchedAt();
             }
@@ -238,12 +227,14 @@ public class ExecutionCompletionHandler {
             } else {
                 releaseDispatchSlotOnce(executionRecord, task.attempt(), task.functionName());
             }
+            executionStore.settle(executionRecord);
             return;
         }
-        metrics.dispatch(task.functionName());
+        bestEffort(() -> metrics.dispatch(task.functionName()));
 
         ExecutionMode mode = task.functionSpec().executionMode();
-        int attemptAtDispatch = task.attempt();
+        DispatchAttempt ownership = new DispatchAttempt(task.executionId(), task.attempt(), directLease);
+        int attemptAtDispatch = ownership.attempt();
         CompletableFuture<DispatchResult> future;
         try {
             future = switch (mode) {
@@ -252,47 +243,35 @@ public class ExecutionCompletionHandler {
                 case DEPLOYMENT -> dispatchDeployment(task);
             };
         } catch (Exception ex) {
-            // The dispatcher threw synchronously: completeExecution releases the lease (direct)
-            // or the name-based slot (queue) that was already recorded on the record.
+            if (directLease != null) directLease.release();
+            else releaseDispatchSlotOnce(executionRecord, task.attempt(), task.functionName());
+            // No transport was created: return the already-acquired capacity here.
             completeExecution(task.executionId(),
                     DispatchResult.warm(InvocationResult.error(mode.name() + "_ERROR", ex.getMessage())),
                     attemptAtDispatch);
             return;
         }
 
-        // Publish the real cancellable handle before the completion callback. An
-        // administrative expiry that wins this race can still cancel the underlying
-        // transport subscriber rather than leaving the work (and its payload) alive after
-        // the capacity was released. For DEPLOYMENT this is the composed wake-up future.
-        executionRecord.attachDispatchHandle(future);
+        // Remember cancellation across handle publication. DEPLOYMENT forwards it to the
+        // actual HTTP subscription. Cancelling a generic LOCAL future cannot stop its worker.
+        executionRecord.attachDispatchHandle(mode == ExecutionMode.LOCAL
+                ? new LocalCancellationHandle(future) : future);
 
-        // The raw work's own completion is what releases a direct attempt's lease: a
-        // non-interruptible LOCAL handler keeps its capacity until the raw future actually
-        // ends, so a retry cannot acquire a fresh slot while the old handler still runs
-        // (invariant I4 / acceptance "no path bypasses the cap").
-        if (directLease != null) {
-            future.whenComplete((ignoredResult, ignoredError) -> directLease.release());
-        }
-
-        // The attempt's own deadline (ADR 0001 §3.4, row 9) is a separate clock from the raw
-        // transport. It is applied to a mirror of the raw future, never to the raw future
-        // itself, so when the deadline fires the raw future stays pending (and the direct
-        // lease stays held) for work that has not actually ended.
+        // Release physical capacity before publishing this attempt's logical result:
+        // CompletableFuture callbacks otherwise run in reverse registration order and a
+        // retry could see the just-finished attempt still occupying its only slot.
+        CompletableFuture<DispatchResult> attempt = new CompletableFuture<>();
+        future.whenComplete((result, error) -> {
+            try {
+                if (ownership.lease() != null) ownership.lease().release();
+                else releaseDispatchSlotOnce(executionRecord, attemptAtDispatch, task.functionName());
+            } finally {
+                if (error != null) attempt.completeExceptionally(error);
+                else attempt.complete(result);
+            }
+        });
         long attemptDeadlineMs = task.functionSpec().timeoutMs();
-        CompletableFuture<DispatchResult> attempt;
-        if (attemptDeadlineMs > 0) {
-            attempt = new CompletableFuture<>();
-            future.whenComplete((result, error) -> {
-                if (error != null) {
-                    attempt.completeExceptionally(error);
-                } else {
-                    attempt.complete(result);
-                }
-            });
-            attempt.orTimeout(attemptDeadlineMs, TimeUnit.MILLISECONDS);
-        } else {
-            attempt = future;
-        }
+        if (attemptDeadlineMs > 0) attempt.orTimeout(attemptDeadlineMs, TimeUnit.MILLISECONDS);
 
         attempt.whenComplete((dispatchResult, error) -> {
             if (error instanceof TimeoutException) {
@@ -300,12 +279,11 @@ public class ExecutionCompletionHandler {
                 // not release the direct lease here. The raw future's own completion (registered
                 // above) releases it, so a non-interruptible LOCAL handler keeps its slot until
                 // its work actually ends and the retry cannot acquire a fresh slot meanwhile.
-                if (directLease != null) {
-                    executionRecord.takeDispatchLease();
-                }
+
                 completeExecution(task.executionId(),
                         DispatchResult.warm(InvocationResult.error("ATTEMPT_TIMEOUT", "Attempt deadline exceeded")),
                         attemptAtDispatch);
+                if (mode != ExecutionMode.LOCAL) future.cancel(true);
             } else if (error != null) {
                 Throwable failure = deploymentWakeUpFailure(error);
                 completeExecution(task.executionId(),
@@ -324,14 +302,26 @@ public class ExecutionCompletionHandler {
             if (wakeUpGate == null) {
                 return dispatcherRouter.dispatchExternal(task);
             }
-            return wakeUpGate.ensureReady(task)
-                    .handle((ignored, error) -> {
-                        if (error != null) {
-                            throw new DeploymentWakeUpException(error);
-                        }
-                        return ignored;
-                    })
-                    .thenCompose(ignored -> dispatcherRouter.dispatchExternal(task));
+            var result = new CancellableDispatchFuture();
+            wakeUpGate.ensureReady(task).whenComplete((ignored, error) -> {
+                if (result.isCancelled()) return;
+                if (error != null) {
+                    result.completeExceptionally(new DeploymentWakeUpException(error));
+                    return;
+                }
+                try {
+                    CompletableFuture<DispatchResult> transport = dispatcherRouter.dispatchExternal(task);
+                    result.attach(transport);
+                    transport.whenComplete((value, failure) -> {
+                        if (result.cancellationRequested()) return;
+                        if (failure != null) result.completeExceptionally(failure);
+                        else result.complete(value);
+                    });
+                } catch (Exception failure) {
+                    result.completeExceptionally(failure);
+                }
+            });
+            return result;
         } catch (Exception error) {
             return CompletableFuture.failedFuture(new DeploymentWakeUpException(error));
         }
@@ -378,17 +368,9 @@ public class ExecutionCompletionHandler {
             completion = completeUnderLock(executionRecord, dispatchResult, completedAttempt);
         }
         publishFinalCompletion(executionRecord, completion);
-        // Last, and outside the monitor: completeUnderLock releases the dispatch slot
-        // even when it finds the record already terminal, and archiving it first would
-        // make it unreachable at exactly that step - the slot would stay taken forever.
-        // settle() ignores non-terminal records, so the retry branch is left intact.
-        //
-        // There is no "answer the shared future with the late result" branch here any
-        // more (ADR 0001 §5, invariant I1): every terminal marker concludes the shared
-        // future itself, so a late dispatch result on an already-terminal record must
-        // not overwrite the already-definitive answer - the future is already done and
-        // the state stays terminal.
-        executionStore.settle(executionRecord);
+        // Retries remain live. A late callback on a terminal record still drives its
+        // canonical settlement, but never replaces the selected answer.
+        if (completion == null) executionStore.settle(executionRecord);
     }
 
     /**
@@ -464,7 +446,7 @@ public class ExecutionCompletionHandler {
             return null;
         }
         String functionName = currentTask.functionName();
-        metrics.retry(functionName);
+        bestEffort(() -> metrics.retry(functionName));
         InvocationTask retryTask = new InvocationTask(
                 executionRecord.executionId(),
                 functionName,
@@ -522,13 +504,12 @@ public class ExecutionCompletionHandler {
         // monitor and this line. Claiming it first is what makes the end-to-end conclusion single;
         // recording first and claiming after left a window for two samples.
         boolean wonTheConclusion = executionRecord.markMetricsRecorded();
-        recordCompletionMetrics(completion, wonTheConclusion);
-        if (completion.result().success()) {
-            metrics.success(functionName);
-        } else {
-            metrics.error(functionName);
-        }
-        executionRecord.completion().complete(completion.result());
+        executionStore.settle(executionRecord);
+        bestEffort(() -> {
+            recordCompletionMetrics(completion, wonTheConclusion);
+            if (completion.result().success()) metrics.success(functionName);
+            else metrics.error(functionName);
+        });
     }
 
     private void recordCompletionMetrics(FinalCompletion completion, boolean wonTheConclusion) {
@@ -582,38 +563,12 @@ public class ExecutionCompletionHandler {
     }
 
     /**
-     * The store's only escape hatch for a record nobody ever settled: it fell out
-     * of {@code inFlight} because {@code maxLifetime} elapsed, not because a
-     * dispatch outcome (or a sync timeout) ever touched it. Three things a lost
-     * callback would otherwise never do: conclude whoever is still parked on the
-     * shared future, give back the dispatch slot the (possibly still-running,
-     * possibly long-dead) local attempt is holding, and archive an outcome so
-     * {@code GET /v1/executions/{id}} has something to say instead of 404ing
-     * forever.
-     *
-     * <p>Never overwrites a real result: if the record is already terminal
-     * (e.g. a sync caller's own timeout already marked it, while the real
-     * dispatch outcome still hasn't arrived) its recorded state/output/error is
-     * reused verbatim - this only fabricates an error when nothing else ever
-     * will. {@link CompletableFuture#complete} is a no-op on an already-done
-     * future, so a real completion racing this one always wins, whichever runs
-     * first.
-     *
-     * <p>Slots are a local-dispatch bookkeeping device, not proof the remote
-     * runtime stopped executing: releasing one here only means this control
-     * plane stops counting the attempt against its own concurrency budget, the
-     * same limit an ordinary completion releases. Whether the invoked process is
-     * still running past this point is outside what a slot - or this method -
-     * can promise.
-     *
-     * <p>Only released when {@code dispatchedAt} is set - i.e. {@link #dispatch}
-     * actually ran for the current attempt. A record still sitting in a queue
-     * (task expired before ever being picked up) or served through offload
-     * (which never calls {@link #dispatch}) never acquired a slot in the first
-     * place, so there is nothing here to give back.
+     * Conclude an abandoned invocation and request cancellation of its local transport.
+     * Physical work owns capacity until it ends; a non-cooperative LOCAL handler keeps
+     * its lease even after the shared answer has expired and the record was archived.
+     * Taking the handle remembers cancellation when publication has not happened yet.
      */
     private void handleAdministrativeExpiry(ExecutionRecord executionRecord) {
-        InvocationResult result;
         boolean wasNonTerminal;
         Future<?> handle;
         synchronized (executionRecord) {
@@ -622,27 +577,21 @@ public class ExecutionCompletionHandler {
                 executionRecord.markError(new ErrorInfo(EXECUTION_EXPIRED_CODE,
                         "Execution exceeded its maximum lifetime before a dispatch outcome arrived"));
             }
-            result = resultFromRecord(executionRecord);
             handle = executionRecord.takeDispatchHandle();
         }
         InvocationTask task = executionRecord.task();
-        // Give the attempt's capacity back exactly once (lease for a direct admission, the
-        // name-based slot for a queue dispatch, nothing for work that never dispatched).
+        // Compatibility records can own a bookkeeping slot; active transports release
+        // their own capacity on completion, including a cancellation acknowledgement.
         releaseAttemptCapacity(executionRecord, task.attempt(), task.functionName());
-        // Then request local cancellation of the real transport handle so the work (and its
-        // payload) does not outlive the released admission. This cancels the raw HTTP
-        // subscriber; it does not - and cannot - promise that a remote function stops.
         if (handle != null) {
             handle.cancel(true);
         }
-        if (wasNonTerminal) {
-            metrics.error(task.functionName());
-        }
+
         // An invocation that died for maxLifetime still has one end-to-end conclusion: its total,
         // admission to expiry. The store's terminal listener records it at the settle below,
         // guarded against a late dispatch racing this eviction.
-        executionRecord.completion().complete(result);
         executionStore.settle(executionRecord);
+        if (wasNonTerminal) bestEffort(() -> metrics.error(task.functionName()));
     }
 
     /**
@@ -672,20 +621,6 @@ public class ExecutionCompletionHandler {
         }
     }
 
-    /** Called under the record's monitor: reads snapshot() fields directly. */
-    private static InvocationResult resultFromRecord(ExecutionRecord executionRecord) {
-        ExecutionRecord.Snapshot snapshot = executionRecord.snapshot();
-        if (snapshot.state() == it.unimib.datai.nanofaas.controlplane.execution.ExecutionState.SUCCESS) {
-            return InvocationResult.successWithEnvelope(snapshot.output(), snapshot.statusCode(),
-                    snapshot.headers(), snapshot.encoding());
-        }
-        ErrorInfo error = snapshot.lastError() != null
-                ? snapshot.lastError()
-                : new ErrorInfo(EXECUTION_EXPIRED_CODE,
-                        "Execution exceeded its maximum lifetime before a dispatch outcome arrived");
-        return new InvocationResult(false, null, error);
-    }
-
     private void releaseDispatchSlot(String functionName) {
         enqueuer.releaseDispatchSlot(functionName);
     }
@@ -696,15 +631,9 @@ public class ExecutionCompletionHandler {
         }
     }
 
-    /**
-     * Releases exactly what this attempt acquired (invariant I4). A direct attempt releases
-     * the lease it holds; a queue-dispatched attempt releases the name-based slot its
-     * scheduler acquired; an attempt that never dispatched releases nothing - which is what
-     * closes review finding R5 (a direct completion could steal a queued dispatch's slot).
-     * Its accessors are individually synchronized, so it is safe both under the record
-     * monitor (the completion path) and outside it (administrative expiry).
-     */
+    /** Legacy completion adapter; production dispatch leases are owned by raw work. */
     private void releaseAttemptCapacity(ExecutionRecord executionRecord, int attempt, String functionName) {
+        if (executionRecord.capacityOwnedByTransport()) return;
         if (executionRecord.wasDirectAdmission()) {
             DispatchLease lease = executionRecord.takeDispatchLease();
             if (lease != null) {
@@ -712,6 +641,51 @@ public class ExecutionCompletionHandler {
             }
         } else if (executionRecord.wasDispatched()) {
             releaseDispatchSlotOnce(executionRecord, attempt, functionName);
+        }
+    }
+
+    private static void bestEffort(Runnable observer) {
+        try { observer.run(); }
+        catch (RuntimeException failure) { log.warn("Completion observer failed", failure); }
+    }
+
+    /** Cancellation follows a DEPLOYMENT dispatch across the wake-up/HTTP boundary. */
+    private static final class CancellableDispatchFuture extends CompletableFuture<DispatchResult> {
+        private Future<?> transport;
+        private boolean cancellationRequested;
+        synchronized boolean cancellationRequested() { return cancellationRequested; }
+        void attach(Future<?> handle) {
+            boolean cancel;
+            synchronized (this) {
+                transport = handle;
+                cancel = cancellationRequested;
+            }
+            if (cancel) handle.cancel(true);
+        }
+        @Override public boolean cancel(boolean interrupt) {
+            Future<?> handle;
+            synchronized (this) {
+                if (isDone()) return isCancelled();
+                cancellationRequested = true;
+                handle = transport;
+            }
+            // Cancel the actual subscriber before publishing the composed cancellation.
+            if (handle != null) handle.cancel(interrupt);
+            return super.cancel(interrupt);
+        }
+    }
+
+    /** A LOCAL future has no interrupt contract: only its real completion releases capacity. */
+    private record LocalCancellationHandle(CompletableFuture<?> work) implements Future<Object> {
+        @Override public boolean cancel(boolean interrupt) { return false; }
+        @Override public boolean isCancelled() { return false; }
+        @Override public boolean isDone() { return work.isDone(); }
+        @Override public Object get() throws java.util.concurrent.ExecutionException, InterruptedException {
+            return work.get();
+        }
+        @Override public Object get(long timeout, TimeUnit unit)
+                throws java.util.concurrent.ExecutionException, InterruptedException, TimeoutException {
+            return work.get(timeout, unit);
         }
     }
 
