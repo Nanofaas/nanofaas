@@ -406,6 +406,21 @@ tracked state; after a restart there is no tracked state, and the backend redisc
 from their managed labels. Closing the Java context closes the proxies and leaves the containers
 alone — closing the context is not deleting the deployment (I10).
 
+**A restart drops the pending-removal fence.** Pending removal is process-local: it is a name held
+in memory by `FunctionService`, not a flag persisted with the catalog entry. The entry itself *is*
+persisted — that is what keeps the leftovers traceable — so a control plane that restarts while a
+function is in pending removal restores it like any other function: `FunctionCatalogRestorer`
+reconciles it through the normal path, the backend adopts the surviving containers, recreates the
+replicas the partial delete had already removed, and publishes a fresh endpoint. The function is
+then in case 3 above — rebuilt and verified, serving again under a new generation — and every 409
+of case 2 is gone with the process that held it. The operator's DELETE does not survive the
+restart: **if the cleanup is still wanted, the DELETE must be re-issued after the restart.** This is
+the case an operator is most likely to meet, because a restart is a natural reaction to the broken
+container runtime that caused the partial delete in the first place. It is a consequence of the
+single-pod, in-memory constraint, not an oversight: making the fence survive would require a
+persisted field on the deployment metadata and a restore path that refuses to rebuild, which this
+contract does not require today.
+
 ## 9. Conformance: current code vs this contract
 
 The contract above is the target. The baseline at `61d72e73` deviates at these points; each is
