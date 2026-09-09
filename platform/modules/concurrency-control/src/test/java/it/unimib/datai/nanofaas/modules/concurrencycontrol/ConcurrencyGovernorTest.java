@@ -6,6 +6,8 @@ import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaObservation;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.controlplane.registry.DeploymentMetadata;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
@@ -59,12 +61,32 @@ class ConcurrencyGovernorTest {
     void dividesTheLimitAcrossTheReadyReplicasOfAManagedFunction() {
         FunctionSpec function = spec("echo", 12, staticControl(2));
         when(registry.listRegistered()).thenReturn(List.of(managed(function)));
-        when(deploymentCoordinator.getReadyReplicas(any(ManagedDeploymentTarget.class))).thenReturn(3);
+        when(deploymentCoordinator.observeReplicaStatus(any(ManagedDeploymentTarget.class)))
+                .thenReturn(observed(3));
 
         governor(deploymentCoordinator, 10_000).governLoop();
 
         assertThat(metricsSource.effectiveConcurrency).containsEntry("echo", 6);
         assertMode("echo", ConcurrencyControlMode.STATIC_PER_POD);
+    }
+
+    @Test
+    void skipsAFunctionWithoutAReplicaReadingRatherThanGoverningItAsZeroReplicas() {
+        FunctionSpec unreadable = spec("unreadable", 12, staticControl(2));
+        FunctionSpec healthy = spec("healthy", 12, staticControl(2));
+        when(registry.listRegistered()).thenReturn(List.of(managed(unreadable), managed(healthy)));
+        when(deploymentCoordinator.observeReplicaStatus(new ManagedDeploymentTarget("unreadable", "k8s")))
+                .thenReturn(ReplicaObservation.unavailable(Instant.EPOCH, "provider down"));
+        when(deploymentCoordinator.observeReplicaStatus(new ManagedDeploymentTarget("healthy", "k8s")))
+                .thenReturn(observed(2));
+
+        governor(deploymentCoordinator, 10_000).governLoop();
+
+        // No adjustment at all for the function with no measurement, and no collapse to the
+        // single-replica limit either; the other function is governed in the same pass.
+        assertThat(metricsSource.effectiveConcurrency)
+                .containsOnlyKeys("healthy")
+                .containsEntry("healthy", 4);
     }
 
     @Test
@@ -110,10 +132,10 @@ class ConcurrencyGovernorTest {
         FunctionSpec broken = spec("broken", 12, staticControl(2));
         FunctionSpec healthy = spec("healthy", 12, staticControl(2));
         when(registry.listRegistered()).thenReturn(List.of(managed(broken), managed(healthy)));
-        when(deploymentCoordinator.getReadyReplicas(new ManagedDeploymentTarget("broken", "k8s")))
+        when(deploymentCoordinator.observeReplicaStatus(new ManagedDeploymentTarget("broken", "k8s")))
                 .thenThrow(new IllegalStateException("backend down"));
-        when(deploymentCoordinator.getReadyReplicas(new ManagedDeploymentTarget("healthy", "k8s")))
-                .thenReturn(2);
+        when(deploymentCoordinator.observeReplicaStatus(new ManagedDeploymentTarget("healthy", "k8s")))
+                .thenReturn(observed(2));
 
         governor(deploymentCoordinator, 10_000).governLoop();
 
@@ -286,5 +308,9 @@ class ConcurrencyGovernorTest {
         public void setEffectiveConcurrency(String functionName, int value) {
             effectiveConcurrency.put(functionName, value);
         }
+    }
+    /** A fresh observation of a managed function with the given ready replica count. */
+    private static ReplicaObservation observed(int readyReplicas) {
+        return ReplicaObservation.fresh(new ReplicaStatus(readyReplicas, readyReplicas), Instant.EPOCH);
     }
 }

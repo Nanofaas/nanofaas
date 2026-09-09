@@ -6,6 +6,7 @@ import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinator;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaObservation;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
@@ -166,7 +167,17 @@ public class InternalScaler implements SmartLifecycle {
         String functionName = spec.name();
         // Desired and ready are read from the SAME snapshot so a decision can never be
         // based on a target that has already moved on (or a ready count from another pass).
-        ReplicaStatus status = deploymentCoordinator.getReplicaStatus(target);
+        // The observation is non-blocking: a slow provider costs this function its cycle, never
+        // the loop's other functions.
+        ReplicaObservation observation = deploymentCoordinator.observeReplicaStatus(target);
+        if (!(observation instanceof ReplicaObservation.Available available)) {
+            // No reading at all. Skipping the cycle is the only correct move: treating it as zero
+            // replicas would scale a healthy deployment on the strength of a failed GET (I9).
+            log.debug("Skipping scaling for {}: no replica reading available ({})",
+                    functionName, observation);
+            return;
+        }
+        ReplicaStatus status = available.status();
         int readyReplicas = status.readyReplicas();
         int requestedReplicas = status.desiredReplicas();
 

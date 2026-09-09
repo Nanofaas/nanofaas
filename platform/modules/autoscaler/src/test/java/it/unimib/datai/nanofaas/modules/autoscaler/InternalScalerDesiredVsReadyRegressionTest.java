@@ -8,6 +8,7 @@ import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinator;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaObservation;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.controlplane.registry.DeploymentMetadata;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
@@ -26,6 +27,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
+import java.time.Instant;
 
 /**
  * Regression coverage for the "High" priority optimization finding in
@@ -95,14 +97,14 @@ class InternalScalerDesiredVsReadyRegressionTest {
 
         // Round 1: only 5 replicas ready so far -> recommended = ceil(2.0*5) = 10.
         // This issues the "real" desired target of 10.
-        when(deploymentCoordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(5, 5));
+        when(deploymentCoordinator.observeReplicaStatus(target)).thenReturn(observed(5, 5));
         scaler.scalingLoop();
 
         clearScaleUpCooldown("echo");
 
         // Round 2: rollout is still catching up, only 2 of the 10 requested replicas are
         // actually Ready yet. Load pressure (ratio) has NOT changed.
-        when(deploymentCoordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(10, 2));
+        when(deploymentCoordinator.observeReplicaStatus(target)).thenReturn(observed(10, 2));
         scaler.scalingLoop();
 
         ArgumentCaptor<Integer> replicaCounts = ArgumentCaptor.forClass(Integer.class);
@@ -120,5 +122,9 @@ class InternalScalerDesiredVsReadyRegressionTest {
                 .as("the autoscaler must not walk back an already-commanded desired replica "
                         + "count while the rollout is still catching up and pressure is unchanged")
                 .isGreaterThanOrEqualTo(firstCommandedTarget);
+    }
+    /** A fresh observation carrying the replica counts the periodic path would read. */
+    private static ReplicaObservation observed(int desiredReplicas, int readyReplicas) {
+        return ReplicaObservation.fresh(new ReplicaStatus(desiredReplicas, readyReplicas), Instant.EPOCH);
     }
 }

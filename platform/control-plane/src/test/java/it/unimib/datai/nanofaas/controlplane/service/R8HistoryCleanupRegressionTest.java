@@ -57,7 +57,7 @@ class R8HistoryCleanupRegressionTest {
                 InstantSource.system(), Duration.ofSeconds(5), Runnable::run);
         for (int i = 0; i < 1000; i++) {
             String name = "deleted-" + i;
-            snapshot.read(new ManagedDeploymentTarget(name, "container-local"),
+            snapshot.observe(new ManagedDeploymentTarget(name, "container-local"),
                     target -> new ReplicaStatus(1, 1));
             snapshot.invalidate(name);
         }

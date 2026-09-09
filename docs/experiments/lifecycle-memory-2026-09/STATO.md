@@ -1465,3 +1465,119 @@ silently get no metrics rather than lazily-created ones.
 fresh/stale/unavailable observations, the non-blocking periodic path, a freshness-required
 deadline path, refresh observability — the entry-removal/ownership slice landed in the first
 P09 commit closes only that one slice, not the task); then P07.
+
+## P10 — Replica snapshot with bounded, non-blocking refreshes
+
+**Task:** P10. **Revision:** working tree on `control-plane-lifecycle-memory`, on top of
+`d16c1f34` (P09 fix round).
+
+**Changed files**
+- `platform/control-plane/.../deployment/ReplicaObservation.java` (new): sealed observation type.
+- `platform/control-plane/.../deployment/ReplicaStatusSnapshot.java`: bounded owned pools,
+  `observe`/`refresh` split, deadline, invalidation/task ownership, meters.
+- `platform/control-plane/.../config/ReplicaStatusSnapshotConfiguration.java` (new): the snapshot
+  is now a context-owned bean (and, being a `MeterBinder`, its meters are bound automatically).
+- `platform/control-plane/.../registry/ManagedDeploymentCoordinator.java`:
+  `getReplicaStatus`/`getReadyReplicas` replaced by `observeReplicaStatus`; snapshot injected;
+  `close()` only closes a snapshot this coordinator created.
+- `platform/modules/autoscaler/.../InternalScaler.java`,
+  `platform/modules/concurrency-control/.../ConcurrencyGovernor.java`: consume the observation.
+- Tests: `ReplicaStatusSnapshotTest` (rewritten), `ManagedDeploymentCoordinatorTest`,
+  `R8HistoryCleanupRegressionTest`, `InternalScaler*Test` (5 files), `ConcurrencyGovernorTest`.
+
+**Design decision — the observation type.** `ReplicaObservation` is a *sealed* interface with
+`Available(status, state, observedAt)` and `Unavailable(observedAt, reason)`. The sealed split sits
+exactly on the distinction that changes what a caller may legally do — "I have a measurement" vs "I
+do not" — so there is no accessor anywhere that yields a `ReplicaStatus` without narrowing first:
+invariant I9 is enforced by the type, not by convention. FRESH vs STALE rides along as a `state()`
+enum because it changes how much to trust the number, not whether it exists. The failure is carried
+as a short reason `String`, never a `Throwable`, so a retained observation cannot retain a stack
+trace (this is a memory campaign). The distinction propagates exactly one level into each consumer:
+`InternalScaler.evaluateAndScale` and `ConcurrencyGovernor.govern` skip the cycle when the
+observation is not `Available`; nothing else in their logic changed.
+
+**Design decision — two owned pools.** The periodic path (`observe`) and the freshness-required path
+(`refresh`) get separate bounded `ThreadPoolExecutor`s (`RefreshLimits.DEFAULTS` = periodic 2/64,
+freshness 4/32, 5s deadline), both owned and shut down by the snapshot, which is now a Spring bean.
+A single pool cannot satisfy both "wake-up must not queue behind slow periodic refreshes" (P09's
+existing property) and "a forced-fresh read must have a local deadline", because a deadline is only
+possible when the fetch runs off the caller's thread. Rejection policy is `AbortPolicy`: past the
+bound the refresh fails and is counted, which stale-while-revalidate already tolerates.
+`CallerRunsPolicy` is explicitly excluded — it would hand the provider call to the loop thread the
+bound exists to protect.
+
+**Impact analysis (before editing).** `impact ReplicaStatusSnapshot --direction upstream`: MEDIUM,
+17 impacted, 5 direct. `impact getReplicaStatus -f ManagedDeploymentCoordinator.java --include-tests`:
+**CRITICAL**, 53 impacted (30+ of them autoscaler/governor test methods). Not waived: the full
+caller list was enumerated and every entry is compile-checked by the signature change — each one was
+updated (`InternalScaler`, `ConcurrencyGovernor`, `ManagedDeploymentCoordinatorTest`, the five
+`InternalScaler*Test` files, `ConcurrencyGovernorTest`) and the whole suite re-run green. Depth-3
+entries reached via `getFreshReplicaStatus` (`DeploymentWakeUpGate`, `FunctionService`) keep their
+signature and behaviour, except for the new deadline (below). `impact getReadyReplicas` was MEDIUM/7,
+all updated. `detect-changes --scope all` after the work: 15 files, 124 symbols, 23 affected flows,
+risk critical — the same blast radius, all of it compile-checked and covered by the green suite.
+
+**Tests, with RED/GREEN characterised per item**
+- *Item 4 (freshness deadline) — genuine RED→GREEN.* A test written against the pre-P10 API
+  (`refresh` on a provider that never answers, under `assertTimeoutPreemptively(3s)`) failed on the
+  baseline with `execution timed out after 3000 ms`: `refresh()` joined the fetch with no bound at
+  all. It is green now via `ReplicaStatusUnavailableException` at the deadline
+  (`refresh_releasesTheCallerAtItsDeadlineWhenTheProviderNeverAnswers`).
+- *Items 1, 2, 3, 5 — new capability, no meaningful red baseline.* The bounded queue, the
+  observation type, the queue/rejection/age/duration meters and the task-ownership fence are new
+  API; a test for them cannot compile against the old code, so "RED" would only mean "did not
+  compile" and is not claimed as a regression baseline.
+- *Item 5 (R8 entry removal) — already green from P09, verified to stay green.*
+  `R8HistoryCleanupRegressionTest.invalidatedReplicaTargetsAreRemovedNotJustCleared` (1,000
+  invalidated entries → 0) still passes through the new `observe` path, and
+  `invalidatedEntriesAreRemovedSoRepeatedChurnLeavesNothingBehind` adds repeated invalidation.
+- *Brief's test list, all covered* in `ReplicaStatusSnapshotTest`: a provider that does not respond
+  while others do (`observe_neverBlocksTheLoopOnAProviderThatDoesNotRespondWhileOthersDo`); a
+  saturated queue (`observe_rejectsRefreshesPastTheQueueBoundInsteadOfQueueingThemOrRunningThemOnTheCaller`,
+  `refresh_failsWhenTheFreshnessExecutorIsSaturatedRatherThanRunningOnTheCaller` — both assert the
+  fetch never ran on the caller's thread); repeated invalidate
+  (`repeatedInvalidateWhileAFetchIsBlockedCannotQueueUnboundedNewRefreshes`, exact counts: 201
+  submissions → 1 active, 2 queued, 198 rejected); remove/re-register during a GET
+  (`aRemovalDuringAGetDiscardsTheAnswerAndDoesNotReinsertTheEntry`,
+  `aReRegistrationUnderAnotherBackendDuringAGetDiscardsTheOldBackendsAnswer`); late completion
+  (`aCompletionThatLandsAfterTheFreshnessDeadlineStillPopulatesTheCache`); fresh/stale/unavailable on
+  a controlled clock (`observe_walksFreshThenStaleThenUnavailableOnAControlledClock`); context
+  shutdown (`close_stopsTheOwnedPoolsAndRetiresEveryEntry`, `close_leavesAnInjectedExecutorToItsOwner`).
+  Consumer-level: `InternalScalerResilienceTest.scalingLoop_skipsAFunctionWithoutAReplicaReadingInsteadOfTreatingItAsZeroReplicas`
+  (and the throwing variant), `ConcurrencyGovernorTest.skipsAFunctionWithoutAReplicaReadingRatherThanGoverningItAsZeroReplicas`.
+  Concurrency is driven by latches and an injectable `InstantSource` only; no `sleep` anywhere.
+
+**Commands and outcome**
+- `./gradlew :control-plane:test --tests '*ReplicaStatusSnapshotTest*'` on the baseline: 21 tests,
+  1 failed (the deadline RED above).
+- `./gradlew test --no-parallel` after the work: **BUILD SUCCESSFUL** (whole repository).
+
+**Status of the claims:** *implemented* and *verified with targeted tests* for all five items;
+*verified in integration of the involved paths* only as far as the existing Spring-context tests in
+`:control-plane` exercise the new bean and the two periodic loops — no soak or E2E run was performed
+for this task.
+
+**Documented incompatibilities**
+1. `ManagedDeploymentCoordinator.getReplicaStatus` / `getReadyReplicas` are gone, replaced by
+   `observeReplicaStatus`. Deliberate: keeping an `int`-returning read would keep the "error becomes
+   zero replicas" trap one call away.
+2. The periodic path no longer blocks on a first fetch. A function's first autoscaler/governor cycle
+   after registration now observes UNAVAILABLE and is skipped; the value is there on the next cycle
+   (one poll interval later, 5s by default).
+3. `getFreshReplicaStatus` now fails after 5s instead of blocking indefinitely. Under a hung
+   provider a wake-up now fails at ~5s rather than at the gate's 30s budget. This is the point of
+   invariant I8 (a provider timeout must not occupy wake-up workers indefinitely), but it is a
+   visible change in when the caller sees the error.
+4. Cancellation is best-effort: `Fetcher.fetch` is a synchronous call with no cancellation hook, so
+   invalidation/deadline cancel the task (a queued one is really dropped; a running one is
+   interrupted) but cannot abort a provider adapter that ignores interruption. The tests cover the
+   ignoring case explicitly.
+
+**Known residual:** `FunctionService`'s fallback `new ManagedDeploymentCoordinator(resolver,
+registry, locks)` (used only when no coordinator bean exists, i.e. in tests) creates a snapshot that
+owns two pools and is closed only if someone closes the coordinator. Pre-existing shape, now two
+pools instead of one; in production the bean path is always taken.
+
+**Next step:** P11 (deployment wake-up), which consumes `getFreshReplicaStatus` and now inherits its
+deadline; consider whether the wake-up gate should retry across a deadline failure rather than
+completing exceptionally on the first one.

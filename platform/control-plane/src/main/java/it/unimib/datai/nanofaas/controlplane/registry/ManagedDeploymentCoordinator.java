@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.controlplane.registry;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaObservation;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshot;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,7 +19,9 @@ import java.time.InstantSource;
  *
  * <p>Replica-status reads go through a {@link ReplicaStatusSnapshot} shared by every consumer, so
  * the autoscaler, the governor and any other periodic reader hit the provider at most once per TTL
- * window. Wake-up and lifecycle paths force a fresh read through {@link #getFreshReplicaStatus}.</p>
+ * window. Periodic readers use {@link #observeReplicaStatus}, which never blocks on the provider and
+ * distinguishes a fresh reading from a stale one from none at all; wake-up and lifecycle paths force
+ * a fresh read through {@link #getFreshReplicaStatus}.</p>
  */
 @Service
 public class ManagedDeploymentCoordinator implements AutoCloseable {
@@ -27,36 +30,53 @@ public class ManagedDeploymentCoordinator implements AutoCloseable {
     private final FunctionRegistry registry;
     private final FunctionOperationLocks locks;
     private final ReplicaStatusSnapshot snapshot;
+    private final boolean ownsSnapshot;
 
     @Autowired
     public ManagedDeploymentCoordinator(DeploymentProviderResolver deploymentProviderResolver,
                                         FunctionRegistry registry,
-                                        FunctionOperationLocks locks) {
-        this(deploymentProviderResolver, registry, locks,
-                ReplicaStatusSnapshot.withDefaults(InstantSource.system()));
+                                        FunctionOperationLocks locks,
+                                        ReplicaStatusSnapshot snapshot) {
+        this(deploymentProviderResolver, registry, locks, snapshot, false);
     }
 
-    // Package-private for tests: inject a snapshot with a steerable clock or executor.
-    ManagedDeploymentCoordinator(DeploymentProviderResolver deploymentProviderResolver,
-                                 FunctionRegistry registry,
-                                 FunctionOperationLocks locks,
-                                 ReplicaStatusSnapshot snapshot) {
+    /**
+     * Standalone wiring (tests, and the fallback in {@code FunctionService} when no coordinator bean
+     * exists): the coordinator creates the snapshot and therefore owns its executors.
+     */
+    public ManagedDeploymentCoordinator(DeploymentProviderResolver deploymentProviderResolver,
+                                        FunctionRegistry registry,
+                                        FunctionOperationLocks locks) {
+        this(deploymentProviderResolver, registry, locks,
+                ReplicaStatusSnapshot.withDefaults(InstantSource.system()), true);
+    }
+
+    private ManagedDeploymentCoordinator(DeploymentProviderResolver deploymentProviderResolver,
+                                         FunctionRegistry registry,
+                                         FunctionOperationLocks locks,
+                                         ReplicaStatusSnapshot snapshot,
+                                         boolean ownsSnapshot) {
         this.deploymentProviderResolver = deploymentProviderResolver;
         this.registry = registry;
         this.locks = locks;
         this.snapshot = snapshot;
+        this.ownsSnapshot = ownsSnapshot;
     }
 
-    public int getReadyReplicas(ManagedDeploymentTarget target) {
-        return getReplicaStatus(target).readyReplicas();
+    /**
+     * Non-blocking read for the periodic consumers (autoscaler, concurrency governor, ...).
+     *
+     * <p>Returns what is known now — a FRESH or STALE reading, or UNAVAILABLE — and schedules the
+     * refresh in the background. There is deliberately no variant that hands back a bare
+     * {@link ReplicaStatus} here: a periodic consumer must decide what to do without a measurement,
+     * and the sealed {@link ReplicaObservation} is what stops "no reading" from silently becoming
+     * zero replicas.</p>
+     */
+    public ReplicaObservation observeReplicaStatus(ManagedDeploymentTarget target) {
+        return snapshot.observe(target, this::fetchReplicaStatus);
     }
 
-    /** Cached read shared by the periodic consumers (autoscaler, concurrency governor, ...). */
-    public ReplicaStatus getReplicaStatus(ManagedDeploymentTarget target) {
-        return snapshot.read(target, this::fetchReplicaStatus);
-    }
-
-    /** Forced fresh read for wake-up and lifecycle paths (still single-flight). */
+    /** Forced fresh read for wake-up and lifecycle paths (still single-flight, with a deadline). */
     public ReplicaStatus getFreshReplicaStatus(ManagedDeploymentTarget target) {
         return snapshot.refresh(target, this::fetchReplicaStatus);
     }
@@ -130,9 +150,11 @@ public class ManagedDeploymentCoordinator implements AutoCloseable {
         return deploymentProviderResolver.requireBackend(target.backendId());
     }
 
-    /** The coordinator owns the production snapshot created by its Spring constructor. */
+    /** Closes the snapshot only when this coordinator created it; an injected bean is the context's. */
     @Override
     public void close() {
-        snapshot.close();
+        if (ownsSnapshot) {
+            snapshot.close();
+        }
     }
 }

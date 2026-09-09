@@ -9,6 +9,7 @@ import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinator;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaObservation;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.controlplane.registry.DeploymentMetadata;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
@@ -29,6 +30,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import java.time.Instant;
 
 /**
  * Target-aware scaling behaviour of {@link InternalScaler}: the scaler reads desired and ready
@@ -94,13 +96,13 @@ class InternalScalerTargetAwareScalingTest {
         InternalScaler scaler = scaler();
 
         // Round 1: 5 ready -> recommended ceil(2*5)=10, scale up to 10.
-        when(deploymentCoordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(5, 5));
+        when(deploymentCoordinator.observeReplicaStatus(target)).thenReturn(observed(5, 5));
         scaler.scalingLoop();
         verify(deploymentCoordinator).setReplicas(target, 10);
 
         // Round 2 (cooldown elapsed): rollout at 2 ready, pressure unchanged -> recommendation 4.
         clock.advanceMillis(31_000);
-        when(deploymentCoordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(10, 2));
+        when(deploymentCoordinator.observeReplicaStatus(target)).thenReturn(observed(10, 2));
         scaler.scalingLoop();
 
         // No further command: the already-requested 10 is not walked back to 4.
@@ -120,15 +122,15 @@ class InternalScalerTargetAwareScalingTest {
 
         // A rollout that is slow but *progressing* (ready 2 -> 3 -> 5) must never be
         // reconciled down, even across multiple progress windows.
-        when(deploymentCoordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(10, 2));
+        when(deploymentCoordinator.observeReplicaStatus(target)).thenReturn(observed(10, 2));
         scaler.scalingLoop();
 
         clock.advanceMillis(ScalingProgressTracker.PROGRESS_WINDOW_MS + 1);
-        when(deploymentCoordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(10, 3));
+        when(deploymentCoordinator.observeReplicaStatus(target)).thenReturn(observed(10, 3));
         scaler.scalingLoop();
 
         clock.advanceMillis(ScalingProgressTracker.PROGRESS_WINDOW_MS + 1);
-        when(deploymentCoordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(10, 5));
+        when(deploymentCoordinator.observeReplicaStatus(target)).thenReturn(observed(10, 5));
         scaler.scalingLoop();
 
         verify(deploymentCoordinator, never()).setReplicas(any(), anyInt());
@@ -143,7 +145,7 @@ class InternalScalerTargetAwareScalingTest {
         RegisteredFunction fn = function("echo", scaling);
         ManagedDeploymentTarget target = target(fn);
         when(registry.listRegistered()).thenReturn(List.of(fn));
-        when(deploymentCoordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(10, 2));
+        when(deploymentCoordinator.observeReplicaStatus(target)).thenReturn(observed(10, 2));
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(0.0);
 
         scaler().scalingLoop();
@@ -161,7 +163,7 @@ class InternalScalerTargetAwareScalingTest {
         RegisteredFunction fn = function("echo", scaling);
         ManagedDeploymentTarget target = target(fn);
         when(registry.listRegistered()).thenReturn(List.of(fn));
-        when(deploymentCoordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(10, 2));
+        when(deploymentCoordinator.observeReplicaStatus(target)).thenReturn(observed(10, 2));
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(5.0);
 
         InternalScaler scaler = scaler();
@@ -181,7 +183,7 @@ class InternalScalerTargetAwareScalingTest {
         RegisteredFunction fn = function("echo", scaling);
         ManagedDeploymentTarget target = target(fn);
         when(registry.listRegistered()).thenReturn(List.of(fn));
-        when(deploymentCoordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(1, 1));
+        when(deploymentCoordinator.observeReplicaStatus(target)).thenReturn(observed(1, 1));
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(15.0);
         // The function is removed between the scaler's lookup and the apply: setReplicas no-ops.
         when(deploymentCoordinator.setReplicas(target, 3)).thenReturn(false);
@@ -198,7 +200,7 @@ class InternalScalerTargetAwareScalingTest {
         RegisteredFunction fn = function("echo", scaling);
         ManagedDeploymentTarget target = target(fn);
         when(registry.listRegistered()).thenReturn(List.of(fn));
-        when(deploymentCoordinator.getReplicaStatus(target)).thenReturn(new ReplicaStatus(10, 2));
+        when(deploymentCoordinator.observeReplicaStatus(target)).thenReturn(observed(10, 2));
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(5.0);
 
         InternalScaler scaler = scaler();
@@ -211,5 +213,9 @@ class InternalScalerTargetAwareScalingTest {
         scaler.scalingLoop();
 
         verify(deploymentCoordinator, never()).setReplicas(any(), anyInt());
+    }
+    /** A fresh observation carrying the replica counts the periodic path would read. */
+    private static ReplicaObservation observed(int desiredReplicas, int readyReplicas) {
+        return ReplicaObservation.fresh(new ReplicaStatus(desiredReplicas, readyReplicas), Instant.EPOCH);
     }
 }

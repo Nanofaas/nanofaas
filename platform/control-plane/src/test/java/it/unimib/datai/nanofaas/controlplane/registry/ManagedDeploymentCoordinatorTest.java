@@ -7,6 +7,7 @@ import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolv
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
 import it.unimib.datai.nanofaas.controlplane.deployment.MutableInstantSource;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaObservation;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshot;
 import org.junit.jupiter.api.BeforeEach;
@@ -55,14 +56,14 @@ class ManagedDeploymentCoordinatorTest {
 
     @Test
     void delegatesOperationsUsingTheTargetBackend() {
+        ManagedDeploymentCoordinator coordinator = coordinatorWithSnapshot();
         registry.put(managedFunction("fn", 1));
         when(provider.getReadyReplicas("fn")).thenReturn(2);
         when(provider.getReplicaStatus("fn")).thenReturn(new ReplicaStatus(3, 2));
 
         coordinator.setReplicas(target, 3);
 
-        assertThat(coordinator.getReadyReplicas(target)).isEqualTo(2);
-        assertThat(coordinator.getReplicaStatus(target)).isEqualTo(new ReplicaStatus(3, 2));
+        assertThat(observedStatus(coordinator, target)).isEqualTo(new ReplicaStatus(3, 2));
         coordinator.deprovision(target);
 
         verify(provider).setReplicas("fn", 3);
@@ -156,26 +157,39 @@ class ManagedDeploymentCoordinatorTest {
     }
 
     @Test
-    void getReplicaStatus_servesOneProviderReadAcrossRepeatedReadsWithinTheTtl() {
+    void observeReplicaStatus_servesOneProviderReadAcrossRepeatedReadsWithinTheTtl() {
         ManagedDeploymentCoordinator cached = coordinatorWithSnapshot();
         registry.put(managedFunction("fn", 1));
         when(provider.getReplicaStatus("fn")).thenReturn(new ReplicaStatus(3, 2));
 
-        assertThat(cached.getReplicaStatus(target)).isEqualTo(new ReplicaStatus(3, 2));
-        assertThat(cached.getReplicaStatus(target)).isEqualTo(new ReplicaStatus(3, 2));
+        assertThat(observedStatus(cached, target)).isEqualTo(new ReplicaStatus(3, 2));
+        assertThat(observedStatus(cached, target)).isEqualTo(new ReplicaStatus(3, 2));
 
         verify(provider, times(1)).getReplicaStatus("fn");
     }
 
     @Test
-    void getReadyReplicas_sharesTheSnapshotWithGetReplicaStatus() {
+    void observeReplicaStatus_reportsUnavailableWhenTheProviderFails_neverZeroReplicas() {
+        ManagedDeploymentCoordinator cached = coordinatorWithSnapshot();
+        registry.put(managedFunction("fn", 1));
+        when(provider.getReplicaStatus("fn")).thenThrow(new IllegalStateException("provider down"));
+
+        ReplicaObservation observation = cached.observeReplicaStatus(target);
+
+        assertThat(observation).isInstanceOf(ReplicaObservation.Unavailable.class);
+        assertThat(observation.isUsable()).isFalse();
+    }
+
+    @Test
+    void observeReplicaStatus_carriesDesiredAndReadyFromTheSameProviderRead() {
         ManagedDeploymentCoordinator cached = coordinatorWithSnapshot();
         registry.put(managedFunction("fn", 1));
         when(provider.getReplicaStatus("fn")).thenReturn(new ReplicaStatus(3, 2));
 
-        assertThat(cached.getReplicaStatus(target)).isEqualTo(new ReplicaStatus(3, 2));
-        assertThat(cached.getReadyReplicas(target)).isEqualTo(2);
+        ReplicaStatus status = observedStatus(cached, target);
 
+        assertThat(status.desiredReplicas()).isEqualTo(3);
+        assertThat(status.readyReplicas()).isEqualTo(2);
         verify(provider, times(1)).getReplicaStatus("fn");
     }
 
@@ -185,9 +199,9 @@ class ManagedDeploymentCoordinatorTest {
         registry.put(managedFunction("fn", 1));
         when(provider.getReplicaStatus("fn")).thenReturn(new ReplicaStatus(3, 2), new ReplicaStatus(4, 3));
 
-        assertThat(cached.getReplicaStatus(target)).isEqualTo(new ReplicaStatus(3, 2));
+        assertThat(observedStatus(cached, target)).isEqualTo(new ReplicaStatus(3, 2));
         cached.setReplicas(target, 4);
-        assertThat(cached.getReplicaStatus(target)).isEqualTo(new ReplicaStatus(4, 3));
+        assertThat(observedStatus(cached, target)).isEqualTo(new ReplicaStatus(4, 3));
 
         verify(provider, times(2)).getReplicaStatus("fn");
     }
@@ -198,9 +212,9 @@ class ManagedDeploymentCoordinatorTest {
         registry.put(managedFunction("fn", 1));
         when(provider.getReplicaStatus("fn")).thenReturn(new ReplicaStatus(3, 2));
 
-        assertThat(cached.getReplicaStatus(target)).isEqualTo(new ReplicaStatus(3, 2));
+        assertThat(observedStatus(cached, target)).isEqualTo(new ReplicaStatus(3, 2));
         cached.deprovision(target);
-        cached.getReplicaStatus(target);
+        cached.observeReplicaStatus(target);
 
         verify(provider, times(2)).getReplicaStatus("fn");
     }
@@ -211,9 +225,9 @@ class ManagedDeploymentCoordinatorTest {
         registry.put(managedFunction("fn", 1));
         when(provider.getReplicaStatus("fn")).thenReturn(new ReplicaStatus(3, 2));
 
-        assertThat(cached.getReplicaStatus(target)).isEqualTo(new ReplicaStatus(3, 2));
+        assertThat(observedStatus(cached, target)).isEqualTo(new ReplicaStatus(3, 2));
         cached.invalidate(target);
-        cached.getReplicaStatus(target);
+        cached.observeReplicaStatus(target);
 
         verify(provider, times(2)).getReplicaStatus("fn");
     }
@@ -228,6 +242,18 @@ class ManagedDeploymentCoordinatorTest {
         assertThat(cached.getFreshReplicaStatus(target)).isEqualTo(new ReplicaStatus(3, 2));
 
         verify(provider, times(2)).getReplicaStatus("fn");
+    }
+
+    /**
+     * The periodic path never blocks on a first fetch, so the cold observation is UNAVAILABLE while
+     * the refresh it scheduled runs on the inline executor; the next one reports the value.
+     */
+    private static ReplicaStatus observedStatus(ManagedDeploymentCoordinator coordinator,
+                                                ManagedDeploymentTarget target) {
+        coordinator.observeReplicaStatus(target);
+        ReplicaObservation observation = coordinator.observeReplicaStatus(target);
+        assertThat(observation).isInstanceOf(ReplicaObservation.Available.class);
+        return ((ReplicaObservation.Available) observation).status();
     }
 
     private ManagedDeploymentCoordinator coordinatorWithSnapshot() {

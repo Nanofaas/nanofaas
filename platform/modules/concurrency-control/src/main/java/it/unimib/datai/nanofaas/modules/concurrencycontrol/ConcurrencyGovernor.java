@@ -3,6 +3,8 @@ package it.unimib.datai.nanofaas.modules.concurrencycontrol;
 import io.micrometer.core.instrument.Timer;
 import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaObservation;
 import it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
@@ -18,6 +20,7 @@ import java.time.InstantSource;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -214,10 +217,19 @@ public class ConcurrencyGovernor implements SmartLifecycle {
 
     private void govern(RegisteredFunction registeredFunction, long nowEpochMs) {
         try {
+            OptionalInt readyReplicas = readyReplicas(registeredFunction);
+            if (readyReplicas.isEmpty()) {
+                // No replica reading for this cycle. The limit is per replica, so governing without
+                // a replica count would mean inventing one — and inventing zero would collapse the
+                // limit of a healthy function because a provider GET failed (invariant I9).
+                log.debug("Skipping concurrency governing for {}: no replica reading available",
+                        registeredFunction.name());
+                return;
+            }
             Timer latency = metrics.latency(registeredFunction.name());
             coordinator.apply(
                     registeredFunction.spec(),
-                    readyReplicas(registeredFunction),
+                    readyReplicas.getAsInt(),
                     latency.count(),
                     latency.totalTime(TimeUnit.MILLISECONDS),
                     nowEpochMs
@@ -230,14 +242,21 @@ public class ConcurrencyGovernor implements SmartLifecycle {
     /**
      * Non-managed functions have no replicas to divide the limit across, so they are governed as a
      * single replica — the limit then caps in-flight invocations against the external endpoint.
+     *
+     * @return empty when the deployment provider has no usable reading for a managed function
      */
-    private int readyReplicas(RegisteredFunction registeredFunction) {
+    private OptionalInt readyReplicas(RegisteredFunction registeredFunction) {
         if (deploymentCoordinator == null) {
-            return 1;
+            return OptionalInt.of(1);
         }
-        return registeredFunction.managedDeploymentTarget()
-                .map(deploymentCoordinator::getReadyReplicas)
-                .orElse(1);
+        Optional<ManagedDeploymentTarget> target = registeredFunction.managedDeploymentTarget();
+        if (target.isEmpty()) {
+            return OptionalInt.of(1);
+        }
+        return deploymentCoordinator.observeReplicaStatus(target.get())
+                       instanceof ReplicaObservation.Available available
+                ? OptionalInt.of(available.status().readyReplicas())
+                : OptionalInt.empty();
     }
 
     void removeFunctionState(String functionName) {
