@@ -1933,3 +1933,104 @@ unrelated tracked overload experiment files which remain unstaged. The GitNexus 
 stale at `bdada6c` with a recorded `full-rebuild` in progress, so exact text-search caller audits
 and the green impacted test matrix remain the supplementary evidence for symbols added after that
 commit.
+
+## P07e — Public finite limits, calibration and integrated P07 gate
+
+**Scope and configuration.** P07e publishes one validated
+`nanofaas.invocation-capacity` group for the P07 owners. The packaged application, generated
+Spring property metadata, Helm values/template/schema and control-plane documentation use the
+same defaults:
+
+| Limit | Global | Per function |
+|---|---:|---:|
+| Logical executions | 4,096 | 512 |
+| Canonical retained input | 134,217,728 B (128 MiB) | 33,554,432 B (32 MiB) |
+| Physical input copies | 67,108,864 B (64 MiB) | 16,777,216 B (16 MiB) |
+| Attached waiters | 8,192 | 1,024 |
+
+The ingress body and per-execution retained-input limits are both 1,048,576 B. Canonicalization is
+also bounded by 64 retained references, depth 32, 16,384 entries per container and 65,536 visited
+nodes. Startup rejects non-positive, overflowing or inconsistent values, including a per-function
+limit above its global limit and a per-execution input limit above either per-function byte limit.
+The first JSON reader WebFlux will actually use for `InvocationRequest` must expose the configured
+finite codec limit; a mismatched or unsupported first applicable custom reader aborts startup.
+
+Runtime-config accepts partial quota patches. Validation uses the merged effective snapshot.
+Reducing any limit below occupancy preserves every current owner and generation; it only refuses
+new reservations until the corresponding usage drains. Increasing a limit changes admission
+without transferring existing ownership. Controlled coverage holds execution, canonical input,
+physical-copy and waiter owners across a reduction, observes refusals, drains them to zero and
+then observes admission resume.
+
+**Default-sizing envelope.** The minimum chart control-plane request is 512 MiB
+(536,870,912 B). The explicit byte envelope is 128 MiB canonical input + 64 MiB physical copies +
+11,600,000 B (about 11.06 MiB) derived outcome budget (`100000 * 116 B`), or about 203.06 MiB.
+Conservative planning allowances add about 32 MiB for 4,096 logical owners at 8 KiB each, 16 MiB
+for 8,192 waiters at 2 KiB each, and 12.2 MiB for 100,000 key/tombstone owners at about 128 B each.
+That leaves about 248.7 MiB of the 512 MiB request for JVM/runtime structures, parsing, HTTP,
+threads and native overhead. The count-owner sizes are planning assumptions, not object-layout
+measurements. The 1 MiB ingress bound, HTTP pool (500 connections, at most 1,000 derived pending
+acquires) and transport timeouts independently constrain transient work. Remote-runtime memory,
+kernel/socket buffers, allocator fragmentation and transient parser/native buffers are excluded;
+this calibration does not claim an aggregate RSS bound. Per-function caps prevent one function
+from consuming the global envelope.
+
+**T1/T2 calibration.** Reproducible source is `P07Calibration.java`. Both revisions used OpenJDK
+25.0.4 on Linux aarch64, 20 available processors, `-Xms256m -Xmx256m`, 20,000 warm-up operations
+and a 2,000 ms T1 measurement. P00 was checked out read-only from `61d72e73`; P07e was measured on
+the current tree above `01b61870`.
+
+| Corpus | Revision | Offered / admitted | Throughput | p50 / p95 | Allocated/op | Drain / retained outcome |
+|---|---|---:|---:|---:|---:|---|
+| T1 SYNC unkeyed | P00 | 752,511 / 752,511 | 376,249.7/s | 1.600 / 7.024 us | 870.9 B | live=0; outcomes=120,833 |
+| T1 SYNC unkeyed | P07e | 488,461 / 488,461 | 244,226.4/s | 3.248 / 9.984 us | 1,997.4 B | live=0; outcomes=54,716 |
+
+The ordinary-path checkpoint is unfavorable: throughput is 35.1% lower, p50 is 103.0% higher,
+p95 is 42.1% higher and measured allocation is 129.4% higher. This is a disclosed P07e concern,
+not a failed correctness gate; P19 remains the owner of the comparative performance decision.
+
+| T2 ASYNC/keyed shape | Offered / admitted | P07e canonical bytes | P00/P07e outcomes | P00/P07e live | Redispatch after eviction |
+|---|---:|---:|---:|---:|---:|
+| flat | 200 / 200 | 220 | 1 / 0 | 0 / 0 | 0 / 0 |
+| deep | 200 / 200 | 2,168 | 1 / 0 | 0 / 0 | 0 / 0 |
+| wide | 200 / 200 | 131,170 | 1 / 0 | 0 / 0 | 0 / 0 |
+| large | 200 / 200 | 524,328 | 1 / 0 | 0 / 0 | 0 / 0 |
+
+P00 has no canonical-byte instrument (`not-available-on-P00`). Replaying key 0 only after all 200
+terminal admissions proves that outcome eviction leaves the key tombstone and never redispatches.
+All live execution owners drain; the intentionally tiny T2 outcome budget explains retained
+outcome counts of zero/one and is not the production default.
+
+**Integrated non-cartesian P07 matrix.** One shared core gate covers quota primitives, codec/413,
+canonicalization, direct admission, replay/retry, short/long waiter detach, publication/enqueue
+failure, remove/re-register generation fencing and stop/drain. Async-queue tests add SYNC/ASYNC,
+retry, scheduler error and queue-state paths; sync-queue adds dispatch backpressure and runtime
+lifecycle; offload adds slow/pending offload and waiter budgeting; runtime-config adds reduction
+below occupancy and rollback. This set crosses every changed consumer without multiplying modes
+whose ownership transitions are identical. T3 is represented by replay plus divergent waiter
+deadlines; T4 by retry, slow/non-cooperative and offloaded physical work; T9 by publish/enqueue
+errors, function replacement and shutdown drain. Assertions independently return logical,
+canonical, physical-copy and waiter counters to zero and preserve old-generation visibility until
+physical drain.
+
+Focused RED/GREEN evidence included missing-symbol compile REDs for the new public property,
+runtime-limit and active-codec behavior, followed by green focused core and runtime-config tests.
+The selected integrated command spanning core, async-queue, sync-queue, offload and runtime-config
+completed with no failed/error test reports. Separate `bootJar` commands for `none`, `async-queue`,
+`sync-queue,runtime-config`, `container-deployment-provider` and `all` all completed successfully.
+`helm lint deploy/helm/nanofaas` reported zero failed charts and `helm template` rendered every
+configured environment value. The first whole-repository run exposed missing property wiring in
+WebFlux test slices (65 context failures); the first attempted repair removed those failures but
+introduced a forbidden `capacity -> api` dependency caught by two ArchUnit failures. The final
+component wiring keeps production property alignment, permits intentionally partial WebFlux test
+contexts to use their active codec limit and introduces no package cycle. Its focused 77-test
+WebFlux/HTTP/codec/architecture gate passed, then the post-fix whole-repository suite completed
+with **BUILD SUCCESSFUL in 2m19s** (190 actionable tasks: 18 executed, 172 up-to-date). Exact
+GitNexus change analysis is recorded in the task report.
+
+**GitNexus pre-edit evidence.** `InvocationCapacity` was HIGH risk (16 impacted symbols, seven
+direct callers, three processes and two modules) and was reported before editing. `ResourceQuota`
+and the named codec helper were LOW. Spring-created configuration/filter/runtime extension symbols
+were UNKNOWN or absent from the three-commit-stale index; exhaustive text searches identified the
+Spring bean wiring, service/module consumers and tests before edits. UNKNOWN was not treated as a
+clean result. No P11+ policy, soak, container or Kubernetes E2E work is claimed here.

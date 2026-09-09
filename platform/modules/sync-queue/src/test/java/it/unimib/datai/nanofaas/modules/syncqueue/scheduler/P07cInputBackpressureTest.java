@@ -106,7 +106,9 @@ class P07cInputBackpressureTest {
         FunctionCapacityRegistry generations = new FunctionCapacityRegistry();
         generations.register("fn", 1);
         InvocationCapacity capacity = new InvocationCapacity(
-                generations, 4, 4, inputQuota, inputQuota, 16);
+                generations, 4, 4,
+                inputQuota, inputQuota,
+                canonicalBytes - 1, canonicalBytes - 1, 16);
         ExecutionStore store = new ExecutionStore();
         Metrics coreMetrics = new Metrics(new SimpleMeterRegistry(), generations);
         coreMetrics.registerFunction("fn");
@@ -140,11 +142,13 @@ class P07cInputBackpressureTest {
         assertThat(lookup.executionRecord().completion()).isNotDone();
         assertThat(capacity.executionReservedGlobally()).isOne();
         assertThat(capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
+        assertThat(capacity.physicalInputCopyReservedGlobally()).isZero();
 
         queue.pollReady(Instant.now()).task().releaseQueuedInput();
         lookup.abandonAdmission();
         assertThat(capacity.executionReservedGlobally()).isZero();
         assertThat(capacity.inputReservedGlobally()).isZero();
+        assertThat(capacity.physicalInputCopyReservedGlobally()).isZero();
     }
 
     private static SyncQueueService queue(ExecutionStore store) {

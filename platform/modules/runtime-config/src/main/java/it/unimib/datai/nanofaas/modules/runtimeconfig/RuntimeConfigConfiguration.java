@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.modules.runtimeconfig;
 
+import it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacity;
+import it.unimib.datai.nanofaas.controlplane.capacity.WaiterCapacity;
 import it.unimib.datai.nanofaas.controlplane.service.RateLimiter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -10,8 +12,10 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 public class RuntimeConfigConfiguration {
 
     @Bean
-    RuntimeConfigExtension controlPlaneRuntimeConfigExtension(RateLimiter rateLimiter) {
-        return new ControlPlaneRuntimeConfigExtension(rateLimiter);
+    RuntimeConfigExtension controlPlaneRuntimeConfigExtension(RateLimiter rateLimiter,
+                                                              InvocationCapacity invocationCapacity,
+                                                              WaiterCapacity waiterCapacity) {
+        return new ControlPlaneRuntimeConfigExtension(rateLimiter, invocationCapacity, waiterCapacity);
     }
 
     @Bean

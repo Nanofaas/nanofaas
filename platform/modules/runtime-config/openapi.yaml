@@ -97,6 +97,12 @@ components:
           format: int64
         values:
           type: object
+          description: |
+            Partial namespace patch. The `control-plane` namespace supports
+            `rateMaxPerSecond` plus the global/per-function execution,
+            canonical-input, physical-input-copy and waiter limits. Reducing a
+            limit below occupancy never evicts live work; new reservations pause
+            until usage drains below the replacement limit.
           additionalProperties: true
     RuntimeConfigSnapshot:
       type: object

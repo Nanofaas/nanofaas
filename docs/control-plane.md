@@ -210,10 +210,11 @@ otherwise unknown-length requests, the control plane counts bytes in each receiv
 body subscription is cancelled, and the response is 413. This basic bounded parsing
 happens before controller validation and idempotency replay, so replay cannot bypass it.
 
-P07b deliberately takes this boundary from the active Spring JSON decoder, including
-Spring's finite codec default when the application has not overridden it. It does not
-introduce a second NanoFaaS numeric default or public configuration contract; P07e owns
-that calibration and may move the wiring to a validated NanoFaaS property.
+`nanofaas.invocation-capacity.ingress-body-bytes` is the single public boundary. NanoFaaS
+applies it to the default WebFlux codecs and verifies at startup that the first reader which
+can decode `InvocationRequest` exposes exactly that finite limit. A custom reader which takes
+precedence but does not expose a compatible bound makes startup fail; NanoFaaS never skips it
+and claims that a later reader is active.
 
 Ingress bytes and retained-input bytes are different quantities. Ingress accounting
 covers transient transport buffers and bounds how much can arrive before rejection.
@@ -226,6 +227,47 @@ values and values beyond a bound are rejected instead of receiving a small token
 parser, transport, HTTP-client, LOCAL-worker or retry copies are excluded from that estimate and
 require their own physical-copy ownership when P07c wires quotas. Consequently, the estimate does
 not by itself claim to cap process RSS, native buffers or remote memory.
+
+## Invocation capacity and admission ordering
+
+The control plane reserves live work before publication. Defaults are finite and calibrated for
+the Helm chart's minimum supported 512 MiB control-plane container:
+
+| Property under `nanofaas.invocation-capacity` | Default | Unit / owner |
+|---|---:|---|
+| `ingress-body-bytes` | 1,048,576 | received request bytes before parsing |
+| `executions-global` / `executions-per-function` | 4,096 / 512 | logical execution owners |
+| `canonical-input-bytes-global` / `canonical-input-bytes-per-function` | 134,217,728 / 33,554,432 | canonical retained Java representation |
+| `physical-input-copy-bytes-global` / `physical-input-copy-bytes-per-function` | 67,108,864 / 16,777,216 | additional runtime/transport materializations |
+| `waiters-global` / `waiters-per-function` | 8,192 / 1,024 | attached synchronous callers, including replay |
+| `max-input-references` | 64 | physical/queue references to one canonical input |
+| `retained-input-max-depth` | 32 | bounded estimator depth |
+| `retained-input-max-container-entries` | 16,384 | entries in one canonical container |
+| `retained-input-max-visited-nodes` | 65,536 | estimator work per invocation |
+| `retained-input-max-bytes-per-execution` | 1,048,576 | canonical bytes for one execution/copy |
+
+All values must be positive, each per-function value must not exceed its global value, the
+per-execution retained limit must fit both per-function byte budgets, and the ingress value must
+fit WebFlux's integer codec limit. Invalid or overflowing configuration aborts startup.
+
+For invocation HTTP requests the ordering is: ingress/body boundary (413), JSON and request
+validation, idempotency lookup, waiter admission for synchronous new or replayed results,
+new-execution/key/execution/input admission, then queue/store publication. A replay therefore
+cannot bypass body validation or waiter capacity, but it does reuse the existing execution and
+canonical input. A 413 is not overload. Saturated live-owner, key, rate or queue capacity returns
+the existing 429 overload contract; retryable overload includes `Retry-After`.
+
+When the optional runtime-config module is enabled, its `control-plane` namespace can change the
+four global/per-function quota pairs. Lowering a cap below current occupancy does not evict,
+reassign or hide existing owners: new reservations are refused until drain brings usage within
+the new limit. Raising a cap takes effect immediately and does not change the generation recorded
+on an existing reservation.
+
+These counters cover retained JVM objects the control plane owns. Parser scratch space, Netty
+native buffers, HTTP connection-pool buffers, thread stacks, JVM/native overhead and remote
+function memory are excluded. The ingress codec bounds parser aggregation; the owned HTTP pool
+and function timeout bound transport concurrency/lifetime. The figures therefore provide an
+admission envelope, not a whole-process RSS or remote-memory guarantee.
 
 ## Idempotency and outcome retention
 

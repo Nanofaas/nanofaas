@@ -77,6 +77,14 @@ public final class WaiterCapacity implements AutoCloseable {
         }
     }
 
+    public ResourceQuota.Limits limits() {
+        return quota.limits();
+    }
+
+    public void updateLimits(long globalLimit, long perFunctionLimit) {
+        quota.updateLimits(globalLimit, perFunctionLimit);
+    }
+
     @Override
     public void close() {
         ArrayList<Waiter> draining;

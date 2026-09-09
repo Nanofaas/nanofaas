@@ -62,18 +62,21 @@ class P07cReviewFixTest {
         long canonicalBytes = fixture.capacity.inputReservedGlobally();
 
         handler.dispatchDirect(record.task());
-        assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes * 2);
+        assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
+        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
 
         fixture.expire(record);
 
         assertThat(fixture.capacity.inputReservedGlobally())
                 .as("the pending readiness callback still captures the physical request")
-                .isEqualTo(canonicalBytes * 2);
+                .isEqualTo(canonicalBytes);
+        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
         verify(router, never()).dispatchExternal(any());
 
         readiness.complete(null);
         await().atMost(Duration.ofSeconds(3)).untilAsserted(() ->
                 assertThat(fixture.capacity.inputReservedGlobally()).isZero());
+        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isZero();
         verify(router, never()).dispatchExternal(any());
     }
 
@@ -96,11 +99,13 @@ class P07cReviewFixTest {
         assertThat(transport.cancelRequested).isTrue();
         assertThat(fixture.capacity.inputReservedGlobally())
                 .as("logical cancellation is not proof that transport stopped retaining the request")
-                .isEqualTo(canonicalBytes * 2);
+                .isEqualTo(canonicalBytes);
+        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
 
         transport.complete(DispatchResult.warm(InvocationResult.success("late")));
         await().atMost(Duration.ofSeconds(3)).untilAsserted(() ->
                 assertThat(fixture.capacity.inputReservedGlobally()).isZero());
+        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isZero();
     }
 
     @Test
@@ -122,17 +127,20 @@ class P07cReviewFixTest {
         long canonicalBytes = fixture.capacity.inputReservedGlobally();
 
         coordinator.invoke(lookup, spec, 10_000, OffloadContext.none()).subscribe();
-        assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes * 2);
+        assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
+        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
 
         fixture.expire(record);
 
         assertThat(fixture.capacity.inputReservedGlobally())
                 .as("canceling the local outcome must not masquerade as remote drain")
-                .isEqualTo(canonicalBytes * 2);
+                .isEqualTo(canonicalBytes);
+        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
 
         remote.complete(InvocationResult.success("late"));
         await().atMost(Duration.ofSeconds(3)).untilAsserted(() ->
                 assertThat(fixture.capacity.inputReservedGlobally()).isZero());
+        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isZero();
     }
 
     @Test
@@ -140,7 +148,7 @@ class P07cReviewFixTest {
         InvocationRequest request = request();
         long canonicalBytes = ((CanonicalInvocationInput.Accepted)
                 CanonicalInvocationInput.canonicalize(request, INPUT_LIMITS)).retainedBytes();
-        Fixture fixture = new Fixture(new AtomicLong(), canonicalBytes * 2 - 1);
+        Fixture fixture = new Fixture(new AtomicLong(), canonicalBytes * 2, canonicalBytes - 1);
         DispatcherRouter router = new DispatcherRouter(new LocalDispatcher() {
             @Override
             public CompletableFuture<DispatchResult> dispatch(
@@ -163,6 +171,7 @@ class P07cReviewFixTest {
         assertThat(fixture.store.getOrNull(lookup.executionRecord().executionId())).isNull();
         assertThat(fixture.capacity.executionReservedGlobally()).isZero();
         assertThat(fixture.capacity.inputReservedGlobally()).isZero();
+        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isZero();
     }
 
     @Test
@@ -301,13 +310,20 @@ class P07cReviewFixTest {
         private final InvocationExecutionFactory factory;
 
         private Fixture(AtomicLong tickerNanos, long inputBytes) {
+            this(tickerNanos, inputBytes, inputBytes);
+        }
+
+        private Fixture(AtomicLong tickerNanos, long canonicalInputBytes, long physicalInputBytes) {
             this.tickerNanos = tickerNanos;
             this.store = new ExecutionStore(new ExecutionStoreProperties(
                     Duration.ofMinutes(5), Duration.ofMinutes(30), Duration.ofSeconds(30),
                     100, 100, 11600), (Ticker) tickerNanos::get);
             generations.register("fn", 1);
             metrics.registerFunction("fn");
-            capacity = new InvocationCapacity(generations, 10, 10, inputBytes, inputBytes, 16);
+            capacity = new InvocationCapacity(
+                    generations, 10, 10,
+                    canonicalInputBytes, canonicalInputBytes,
+                    physicalInputBytes, physicalInputBytes, 16);
             factory = new InvocationExecutionFactory(
                     store, new IdempotencyStore(), metrics, capacity, INPUT_LIMITS);
         }

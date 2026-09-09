@@ -22,8 +22,7 @@ import java.util.Optional;
 public final class ResourceQuota {
 
     private final FunctionCapacityRegistry generationAuthority;
-    private final long globalLimit;
-    private final long perFunctionLimit;
+    private volatile Limits limits;
     private final Object lock = new Object();
     private final Map<String, Long> reservedByFunction = new HashMap<>();
     private final Map<FunctionGeneration, Long> reservedByGeneration = new HashMap<>();
@@ -41,8 +40,7 @@ public final class ResourceQuota {
                     "perFunctionLimit must be positive, was " + perFunctionLimit);
         }
         this.generationAuthority = Objects.requireNonNull(generationAuthority, "generationAuthority");
-        this.globalLimit = globalLimit;
-        this.perFunctionLimit = perFunctionLimit;
+        this.limits = new Limits(globalLimit, perFunctionLimit);
     }
 
     /**
@@ -64,9 +62,10 @@ public final class ResourceQuota {
     private Reservation reserveActiveGeneration(
             FunctionGeneration generation, ResourceOwner owner, long units) {
         synchronized (lock) {
+            Limits activeLimits = limits;
             long functionReserved = reservedByFunction.getOrDefault(generation.functionName(), 0L);
-            if (units > globalLimit - globallyReserved
-                    || units > perFunctionLimit - functionReserved) {
+            if (units > activeLimits.global() - globallyReserved
+                    || units > activeLimits.perFunction() - functionReserved) {
                 return null;
             }
             globallyReserved += units;
@@ -92,6 +91,29 @@ public final class ResourceQuota {
     public long reservedForGeneration(FunctionGeneration generation) {
         synchronized (lock) {
             return reservedByGeneration.getOrDefault(generation, 0L);
+        }
+    }
+
+    /** Changes admission ceilings without touching reservations already owned by live work. */
+    public void updateLimits(long globalLimit, long perFunctionLimit) {
+        Limits replacement = new Limits(globalLimit, perFunctionLimit);
+        synchronized (lock) {
+            limits = replacement;
+        }
+    }
+
+    public Limits limits() {
+        return limits;
+    }
+
+    public record Limits(long global, long perFunction) {
+        public Limits {
+            if (global < 1 || perFunction < 1) {
+                throw new IllegalArgumentException("quota limits must be positive");
+            }
+            if (perFunction > global) {
+                throw new IllegalArgumentException("per-function quota must not exceed global quota");
+            }
         }
     }
 

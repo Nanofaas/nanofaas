@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
-                "spring.http.codecs.max-in-memory-size=64B",
+                "nanofaas.invocation-capacity.ingress-body-bytes=64",
                 "nanofaas.rate.maxPerSecond=1000000",
                 "nanofaas.registry.path=build/test-ingress-body-limit-functions.json",
                 "sync-queue.enabled=false"

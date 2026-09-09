@@ -227,12 +227,17 @@ paths:
             the completed execution.
         '413':
           description: |
-            Invocation request body exceeded the active ingress byte limit. The limit
+            Invocation request body exceeded `nanofaas.invocation-capacity.ingress-body-bytes`. The limit
             is enforced before complete JSON aggregation and before idempotency replay;
             bodies without Content-Length are counted and rejected as received bytes
             cross the same boundary.
         '429':
-          description: Too many requests. Returned for rate limiting, queue/admission backpressure, and an exhausted idempotency-key budget on the synchronous invoke path.
+          description: |
+            Too many requests. Returned for rate limiting, waiter or new-execution
+            admission backpressure, queue backpressure, and an exhausted idempotency-key
+            budget. Retry-After is present for retryable overload. Body validation runs
+            before replay; after validation an existing-key lookup precedes waiter
+            admission, while only a genuinely new execution consumes execution/input quota.
         '500':
           description: Invocation failed
 
@@ -271,12 +276,15 @@ paths:
             the completed execution.
         '413':
           description: |
-            Invocation request body exceeded the active ingress byte limit. The limit
+            Invocation request body exceeded `nanofaas.invocation-capacity.ingress-body-bytes`. The limit
             is enforced before complete JSON aggregation and before idempotency replay;
             bodies without Content-Length are counted and rejected as received bytes
             cross the same boundary.
         '429':
-          description: Too many requests. Returned for queue/admission backpressure and an exhausted idempotency-key budget on the asynchronous enqueue path.
+          description: |
+            Too many requests. Returned for queue/new-execution admission backpressure
+            and an exhausted idempotency-key budget. Body validation precedes replay;
+            replay precedes new-execution admission and publication.
         '501':
           description: The async-queue module is not part of this build, so the asynchronous path is unavailable.
 

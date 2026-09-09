@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "controlPlane": {
+      "type": "object",
+      "properties": {
+        "invocationCapacity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ingressBodyBytes", "executionsGlobal", "executionsPerFunction",
+            "canonicalInputBytesGlobal", "canonicalInputBytesPerFunction",
+            "physicalInputCopyBytesGlobal", "physicalInputCopyBytesPerFunction",
+            "waitersGlobal", "waitersPerFunction", "maxInputReferences",
+            "retainedInputMaxDepth", "retainedInputMaxContainerEntries",
+            "retainedInputMaxVisitedNodes", "retainedInputMaxBytesPerExecution"
+          ],
+          "properties": {
+            "ingressBodyBytes": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+            "executionsGlobal": {"type": "integer", "minimum": 1},
+            "executionsPerFunction": {"type": "integer", "minimum": 1},
+            "canonicalInputBytesGlobal": {"type": "integer", "minimum": 1},
+            "canonicalInputBytesPerFunction": {"type": "integer", "minimum": 1},
+            "physicalInputCopyBytesGlobal": {"type": "integer", "minimum": 1},
+            "physicalInputCopyBytesPerFunction": {"type": "integer", "minimum": 1},
+            "waitersGlobal": {"type": "integer", "minimum": 1},
+            "waitersPerFunction": {"type": "integer", "minimum": 1},
+            "maxInputReferences": {"type": "integer", "minimum": 1},
+            "retainedInputMaxDepth": {"type": "integer", "minimum": 1},
+            "retainedInputMaxContainerEntries": {"type": "integer", "minimum": 1},
+            "retainedInputMaxVisitedNodes": {"type": "integer", "minimum": 1},
+            "retainedInputMaxBytesPerExecution": {"type": "integer", "minimum": 1}
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,6 +1,8 @@
 package it.unimib.datai.nanofaas.controlplane.api;
 
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
+import it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacityProperties;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.Ordered;
 import org.springframework.core.ResolvableType;
@@ -33,9 +35,9 @@ import reactor.core.publisher.Mono;
  * trustworthy length are counted as buffers arrive and their upstream publisher is cancelled on
  * the first buffer that crosses the boundary.
  *
- * <p>The limit is read from the actual JSON decoder configured for {@link InvocationRequest}; the
- * filter therefore shares Spring's existing finite aggregation boundary instead of publishing an
- * independent NanoFaaS default. P07e owns the final public property and calibrated default.
+ * <p>The public NanoFaaS limit is applied to the codec stack at startup. This filter verifies that
+ * the first JSON reader WebFlux will actually use for {@link InvocationRequest} exposes the same
+ * finite limit; unsupported or ambiguously ordered custom readers fail startup.
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -49,8 +51,18 @@ public final class IngressBodyLimitWebFilter implements WebFilter {
     private final long maxBodyBytes;
 
     @Autowired
-    public IngressBodyLimitWebFilter(ServerCodecConfigurer codecs) {
-        this(configuredInvocationJsonLimit(codecs));
+    public IngressBodyLimitWebFilter(
+            ServerCodecConfigurer codecs,
+            ObjectProvider<InvocationCapacityProperties> propertiesProvider) {
+        this(codecs, configuredLimit(codecs, propertiesProvider.getIfAvailable()));
+    }
+
+    IngressBodyLimitWebFilter(ServerCodecConfigurer codecs) {
+        this(activeInvocationJsonLimit(codecs));
+    }
+
+    IngressBodyLimitWebFilter(ServerCodecConfigurer codecs, long configuredLimit) {
+        this(requireAlignedInvocationJsonLimit(codecs, configuredLimit));
     }
 
     IngressBodyLimitWebFilter(long maxBodyBytes) {
@@ -60,25 +72,44 @@ public final class IngressBodyLimitWebFilter implements WebFilter {
         this.maxBodyBytes = maxBodyBytes;
     }
 
-    private static long configuredInvocationJsonLimit(ServerCodecConfigurer codecs) {
+    private static long configuredLimit(
+            ServerCodecConfigurer codecs, InvocationCapacityProperties properties) {
+        return properties == null ? activeInvocationJsonLimit(codecs) : properties.getIngressBodyBytes();
+    }
+
+    private static long requireAlignedInvocationJsonLimit(
+            ServerCodecConfigurer codecs, long configuredLimit) {
+        long activeLimit = activeInvocationJsonLimit(codecs);
+        if (activeLimit != configuredLimit) {
+            throw new IllegalStateException("Invocation ingress limit does not match the active JSON reader");
+        }
+        return activeLimit;
+    }
+
+    private static long activeInvocationJsonLimit(ServerCodecConfigurer codecs) {
         ResolvableType requestType = ResolvableType.forClass(InvocationRequest.class);
         for (var reader : codecs.getReaders()) {
-            if (!reader.canRead(requestType, MediaType.APPLICATION_JSON)
-                    || !(reader instanceof DecoderHttpMessageReader<?> decoderReader)) {
+            if (!reader.canRead(requestType, MediaType.APPLICATION_JSON)) {
                 continue;
+            }
+            if (!(reader instanceof DecoderHttpMessageReader<?> decoderReader)) {
+                throw new IllegalStateException(
+                        "The first applicable InvocationRequest JSON reader does not expose a finite limit");
             }
             Object decoder = decoderReader.getDecoder();
-            int configuredLimit;
+            int readerLimit;
             if (decoder instanceof AbstractJacksonDecoder<?> jacksonDecoder) {
-                configuredLimit = jacksonDecoder.getMaxInMemorySize();
+                readerLimit = jacksonDecoder.getMaxInMemorySize();
             } else if (decoder instanceof AbstractDataBufferDecoder<?> dataBufferDecoder) {
-                configuredLimit = dataBufferDecoder.getMaxInMemorySize();
+                readerLimit = dataBufferDecoder.getMaxInMemorySize();
             } else {
-                continue;
+                throw new IllegalStateException(
+                        "The first applicable InvocationRequest JSON reader uses an unsupported decoder");
             }
-            if (configuredLimit > 0) {
-                return configuredLimit;
+            if (readerLimit <= 0) {
+                throw new IllegalStateException("Invocation JSON decoder must expose a finite max-in-memory size");
             }
+            return readerLimit;
         }
         throw new IllegalStateException(
                 "Invocation JSON decoder must expose a finite max-in-memory size");

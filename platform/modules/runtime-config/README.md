@@ -44,8 +44,15 @@ curl -X PATCH http://localhost:8080/v1/admin/runtime-config/control-plane \
   }'
 ```
 
-- Each module owns one namespace and its patch format; the control-plane
-  namespace currently exposes `rateMaxPerSecond`.
+- Each module owns one namespace and its patch format. The `control-plane`
+  namespace exposes `rateMaxPerSecond` and partial updates for
+  `maxExecutionsGlobal`, `maxExecutionsPerFunction`,
+  `maxCanonicalInputBytesGlobal`, `maxCanonicalInputBytesPerFunction`,
+  `maxPhysicalInputCopyBytesGlobal`, `maxPhysicalInputCopyBytesPerFunction`,
+  `maxWaitersGlobal`, and `maxWaitersPerFunction`.
+- Reducing a quota below current occupancy does not evict or reassign work.
+  New reservations remain blocked until the corresponding owner count drains;
+  increases apply immediately without changing generation ownership.
 - A stale `expectedRevision` returns `409` with the current revision in
   `currentRevision` — re-read, then retry.
 - Invalid patches return `422` with an `errors` list; an apply failure rolls

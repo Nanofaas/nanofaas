@@ -39,6 +39,23 @@ nanofaas:
   admin:
     runtime-config:
       enabled: false
+  invocation-capacity:
+    # Calibrated for the chart's minimum supported 512 MiB container. These are
+    # simultaneous live-owner ceilings, not rate limits and not an RSS promise.
+    ingress-body-bytes: 1048576
+    executions-global: 4096
+    executions-per-function: 512
+    canonical-input-bytes-global: 134217728
+    canonical-input-bytes-per-function: 33554432
+    physical-input-copy-bytes-global: 67108864
+    physical-input-copy-bytes-per-function: 16777216
+    waiters-global: 8192
+    waiters-per-function: 1024
+    max-input-references: 64
+    retained-input-max-depth: 32
+    retained-input-max-container-entries: 16384
+    retained-input-max-visited-nodes: 65536
+    retained-input-max-bytes-per-execution: 1048576
   deployment:
     # Optional backend id to prefer when multiple managed deployment providers are available.
     default-backend: ""

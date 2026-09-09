@@ -55,15 +55,18 @@ class InvocationQuotaLifecycleIntegrationTest {
 
         ExecutionRecord.PhysicalInput physical = record.openPhysicalInput(record.task());
         assertThat(physical.task().request().input()).isInstanceOf(Map.class).isNotSameAs(source);
-        assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes * 2);
+        assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
+        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
 
         record.markSuccess("ok");
         fixture.store.settle(record);
         assertThat(fixture.capacity.executionReservedGlobally()).isZero();
-        assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes * 2);
+        assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
+        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
 
         physical.close();
         assertThat(fixture.capacity.inputReservedGlobally()).isZero();
+        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isZero();
     }
 
     @Test
@@ -87,8 +90,10 @@ class InvocationQuotaLifecycleIntegrationTest {
         firstAttempt.close();
         var retryAttempt = record.openPhysicalInput(record.task());
         assertThat(fixture.capacity.executionReservedGlobally()).isOne();
-        assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(retained * 2);
+        assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(retained);
+        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(retained);
         retryAttempt.close();
+        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isZero();
 
         record.markSuccess("ok");
         fixture.store.settle(record);
@@ -155,16 +160,19 @@ class InvocationQuotaLifecycleIntegrationTest {
         long canonicalBytes = fixture.capacity.inputReservedGlobally();
 
         handler.dispatchDirect(record.task());
-        assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes * 2);
+        assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
+        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
 
         record.markTimeout();
         fixture.store.settle(record);
         assertThat(fixture.capacity.executionReservedGlobally()).isZero();
-        assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes * 2);
+        assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
+        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
 
         rawWork.complete(DispatchResult.warm(
                 it.unimib.datai.nanofaas.common.model.InvocationResult.success("late")));
         assertThat(fixture.capacity.inputReservedGlobally()).isZero();
+        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isZero();
     }
 
     @Test
@@ -189,14 +197,17 @@ class InvocationQuotaLifecycleIntegrationTest {
         long canonicalBytes = fixture.capacity.inputReservedGlobally();
 
         coordinator.invoke(lookup, spec(), 10_000, OffloadContext.none());
-        assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes * 2);
+        assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
+        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
 
         record.markTimeout();
         fixture.store.settle(record);
-        assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes * 2);
+        assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
+        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
 
         remote.complete(InvocationResult.success("late"));
         assertThat(fixture.capacity.inputReservedGlobally()).isZero();
+        assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isZero();
     }
 
     @Test
@@ -245,16 +256,19 @@ class InvocationQuotaLifecycleIntegrationTest {
         oldRecord.markSuccess("old");
         fixture.store.settle(oldRecord);
         assertThat(fixture.capacity.executionReservedForFunction("fn")).isOne();
-        assertThat(fixture.capacity.inputReservedForFunction("fn")).isEqualTo(oneCanonical * 3);
+        assertThat(fixture.capacity.inputReservedForFunction("fn")).isEqualTo(oneCanonical * 2);
+        assertThat(fixture.capacity.physicalInputCopyReservedForFunction("fn")).isEqualTo(oneCanonical);
 
         oldPhysical.close();
         assertThat(fixture.capacity.executionReservedForFunction("fn")).isOne();
         assertThat(fixture.capacity.inputReservedForFunction("fn")).isEqualTo(oneCanonical);
+        assertThat(fixture.capacity.physicalInputCopyReservedForFunction("fn")).isZero();
 
         currentRecord.markSuccess("current");
         fixture.store.settle(currentRecord);
         assertThat(fixture.capacity.executionReservedForFunction("fn")).isZero();
         assertThat(fixture.capacity.inputReservedForFunction("fn")).isZero();
+        assertThat(fixture.capacity.physicalInputCopyReservedForFunction("fn")).isZero();
     }
 
     @Test

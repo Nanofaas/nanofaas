@@ -51,6 +51,23 @@ controlPlane:
     # matrix cells, which held the limit fixed at 1 core and varied the
     # worker count independently of it.
     ioWorkerCount: ""
+  invocationCapacity:
+    # Finite live-owner budgets calibrated for the 512Mi request below. Byte
+    # budgets exclude transient/native/remote buffers; see docs/control-plane.md.
+    ingressBodyBytes: 1048576
+    executionsGlobal: 4096
+    executionsPerFunction: 512
+    canonicalInputBytesGlobal: 134217728
+    canonicalInputBytesPerFunction: 33554432
+    physicalInputCopyBytesGlobal: 67108864
+    physicalInputCopyBytesPerFunction: 16777216
+    waitersGlobal: 8192
+    waitersPerFunction: 1024
+    maxInputReferences: 64
+    retainedInputMaxDepth: 32
+    retainedInputMaxContainerEntries: 16384
+    retainedInputMaxVisitedNodes: 65536
+    retainedInputMaxBytesPerExecution: 1048576
   # Kubernetes' bare defaults (timeoutSeconds: 1, failureThreshold: 3, periodSeconds: 10)
   # give a GC pause under memory pressure a 3-second window before three strikes call it
   # dead. dispatch-bottleneck/README.md (2026-08-21) already measured p95 probe latency at

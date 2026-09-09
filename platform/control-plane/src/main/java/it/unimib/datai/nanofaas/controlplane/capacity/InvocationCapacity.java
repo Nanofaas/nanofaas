@@ -6,7 +6,8 @@ import java.util.Objects;
 public final class InvocationCapacity {
     private final FunctionCapacityRegistry generations;
     private final ResourceQuota executions;
-    private final ResourceQuota inputs;
+    private final ResourceQuota canonicalInputs;
+    private final ResourceQuota physicalInputCopies;
     private final int maxInputReferences;
 
     public InvocationCapacity(
@@ -19,6 +20,20 @@ public final class InvocationCapacity {
         this(generations,
                 new ResourceQuota(generations, globalExecutions, perFunctionExecutions),
                 new ResourceQuota(generations, globalInputBytes, perFunctionInputBytes),
+                new ResourceQuota(generations, globalInputBytes, perFunctionInputBytes),
+                maxInputReferences);
+    }
+
+    public InvocationCapacity(
+            FunctionCapacityRegistry generations,
+            long globalExecutions, long perFunctionExecutions,
+            long globalCanonicalInputBytes, long perFunctionCanonicalInputBytes,
+            long globalPhysicalInputCopyBytes, long perFunctionPhysicalInputCopyBytes,
+            int maxInputReferences) {
+        this(generations,
+                new ResourceQuota(generations, globalExecutions, perFunctionExecutions),
+                new ResourceQuota(generations, globalCanonicalInputBytes, perFunctionCanonicalInputBytes),
+                new ResourceQuota(generations, globalPhysicalInputCopyBytes, perFunctionPhysicalInputCopyBytes),
                 maxInputReferences);
     }
 
@@ -27,9 +42,19 @@ public final class InvocationCapacity {
             ResourceQuota executions,
             ResourceQuota inputs,
             int maxInputReferences) {
+        this(generations, executions, inputs, inputs, maxInputReferences);
+    }
+
+    InvocationCapacity(
+            FunctionCapacityRegistry generations,
+            ResourceQuota executions,
+            ResourceQuota canonicalInputs,
+            ResourceQuota physicalInputCopies,
+            int maxInputReferences) {
         this.generations = Objects.requireNonNull(generations, "generations");
         this.executions = Objects.requireNonNull(executions, "executions");
-        this.inputs = Objects.requireNonNull(inputs, "inputs");
+        this.canonicalInputs = Objects.requireNonNull(canonicalInputs, "canonicalInputs");
+        this.physicalInputCopies = Objects.requireNonNull(physicalInputCopies, "physicalInputCopies");
         if (maxInputReferences < 1) {
             throw new IllegalArgumentException("maxInputReferences must be positive");
         }
@@ -52,7 +77,7 @@ public final class InvocationCapacity {
                     .orElseThrow(() -> new InvocationQuotaExceededException(
                             InvocationQuotaExceededException.Resource.EXECUTION));
             ResourceQuota.Reservation input = batch.tryReserve(
-                            inputs,
+                            canonicalInputs,
                             generation,
                             new ResourceOwner(ResourceOwner.Scope.CANONICAL_INPUT, executionId + "/canonical"),
                             inputBytes)
@@ -75,7 +100,7 @@ public final class InvocationCapacity {
     /** Reserves an actual additional representation before it is allocated or published. */
     public ResourceQuota.Reservation reserveInputCopy(
             FunctionGeneration generation, ResourceOwner owner, long bytes) {
-        return inputs.tryReserve(generation, owner, bytes)
+        return physicalInputCopies.tryReserve(generation, owner, bytes)
                 .orElseThrow(() -> new InvocationQuotaExceededException(
                         InvocationQuotaExceededException.Resource.INPUT));
     }
@@ -89,11 +114,42 @@ public final class InvocationCapacity {
     }
 
     public long inputReservedGlobally() {
-        return inputs.reservedGlobally();
+        return canonicalInputs.reservedGlobally();
     }
 
     public long inputReservedForFunction(String functionName) {
-        return inputs.reservedForFunction(functionName);
+        return canonicalInputs.reservedForFunction(functionName);
+    }
+
+    public long physicalInputCopyReservedGlobally() {
+        return physicalInputCopies.reservedGlobally();
+    }
+
+    public long physicalInputCopyReservedForFunction(String functionName) {
+        return physicalInputCopies.reservedForFunction(functionName);
+    }
+
+    public Limits limits() {
+        return new Limits(executions.limits(), canonicalInputs.limits(), physicalInputCopies.limits());
+    }
+
+    public void updateLimits(Limits replacement) {
+        Objects.requireNonNull(replacement, "replacement");
+        executions.updateLimits(replacement.executions().global(), replacement.executions().perFunction());
+        canonicalInputs.updateLimits(
+                replacement.canonicalInputBytes().global(), replacement.canonicalInputBytes().perFunction());
+        physicalInputCopies.updateLimits(
+                replacement.physicalInputCopyBytes().global(), replacement.physicalInputCopyBytes().perFunction());
+    }
+
+    public record Limits(ResourceQuota.Limits executions,
+                         ResourceQuota.Limits canonicalInputBytes,
+                         ResourceQuota.Limits physicalInputCopyBytes) {
+        public Limits {
+            Objects.requireNonNull(executions, "executions");
+            Objects.requireNonNull(canonicalInputBytes, "canonicalInputBytes");
+            Objects.requireNonNull(physicalInputCopyBytes, "physicalInputCopyBytes");
+        }
     }
 
     public static final class Admission {
