@@ -1673,3 +1673,85 @@ acquired it. No explicit lifecycle handoff authority exists in P07a.
 - The covering test now obtains identities from the real registry authority. Its regression covers
   both the retired-but-capacity-draining interval and the post-drain absence case; concurrency tests
   remain latch/barrier/future based with no sleeps.
+
+## P07b — Bounded ingress and retained-input measurement
+
+**Task boundary:** P07b only, on top of `3f43602f`. This gate limits invocation request bodies and
+defines bounded conservative retained-input measurement. It does not attach execution/input quotas
+to records, queues, retries, offload or dispatch (P07c), attach waiter quotas (P07d), or choose the
+final NanoFaaS properties/defaults and Helm calibration (P07e).
+
+### Implemented
+
+- Bodies at or below the limit on both invocation routes pass through a highest-precedence WebFlux
+  filter. A declared `Content-Length` above the limit is refused before body subscription. For
+  chunked/unknown-length bodies, each received `DataBuffer` contributes its readable bytes; the
+  first crossing buffer is released and an error cancels the server-side upstream subscription.
+  The crossing exception carries 413 through controller advice, while direct filter chains map it
+  to the same status. Counters are subscription-local and retained nowhere after the exchange.
+- The filter derives its limit from the active JSON decoder that can read `InvocationRequest`.
+  Spring's codec has a finite per-decoder default and honors
+  `spring.http.codecs.max-in-memory-size`; startup fails rather than proceeding if the matching
+  decoder does not expose a positive finite limit. P07b therefore adds no provisional NanoFaaS
+  numeric default or public property. P07e may migrate this seam to its final validated configuration.
+- `RetainedInputEstimator` accepts JSON-like scalars, arrays, and JDK list/map representations. It
+  applies explicit depth, container-width, visited-node and retained-byte bounds, identity-tracks
+  cycles/shared objects during one call, uses subtraction/division guards before arithmetic, and
+  returns a reasoned rejection rather than a frontier token. User-defined collection subclasses
+  are rejected before invoking their methods; arbitrary opaque LOCAL objects are rejected. The
+  estimator has no cross-call state and has not yet been wired into execution ownership.
+- OpenAPI now documents 413 for both `:invoke` and `:enqueue`, including ordering before replay and
+  counting unknown-length bodies. `docs/control-plane.md` distinguishes transient ingress bytes,
+  conservative retained-representation bytes, and excluded parser/transport/attempt copies. It
+  explicitly makes no RSS, native-buffer or remote-memory claim.
+
+### Systematic-debugging evidence for chunked cancellation
+
+The first real Reactor Netty test attached a cancellation latch to the *client outbound* publisher.
+That publisher is upstream of the client transport, not the server body subscription; after bytes
+are accepted by Reactor Netty or an early response arrives, cancellation is not guaranteed to
+propagate back to that test publisher. The test report also showed that the first filter version's
+crossing exception was consumed by `GlobalExceptionHandler` inside the downstream chain and became
+500 before the filter's outer `onErrorResume` could observe it.
+
+The single tested hypothesis was that server-owned cancellation/release was correct but the client
+latch was the wrong observation point, while the exception needed HTTP status semantics inside the
+handler chain. A controlled `MockServerWebExchange` connected a pooled-buffer publisher directly to
+the filter: after the crossing it completed with 413, observed upstream cancellation, and both the
+accepted buffer (released by decoder unwind) and crossing buffer (released by the filter) had zero
+ownership. The real random-port HTTP test remains responsible for unknown-length/chunked 413 and a
+subsequent bounded request reaching normal routing; it makes no client-publisher cancellation claim.
+
+### TDD and verification
+
+- Retained estimator RED: the focused test failed in `compileTestJava` with 29 missing-symbol
+  errors. An intermediate run exposed a test-fixture error (`List.of` cannot contain null); after
+  replacing that fixture, all 8 estimator tests passed. Cases cover flat, deep, wide and large
+  shapes, node/work bounds, guarded near-`Long.MAX_VALUE` addition, opaque LOCAL objects, custom
+  collection non-traversal, and repeated rejection followed by acceptance.
+- Initial HTTP RED on the baseline implementation: 4 tests ran, 3 failed. Declared/repeated
+  oversized bodies reached normal routing instead of 413, and the never-completing chunked body
+  timed out. The exact-boundary request already passed.
+- First filter diagnostic run: declared, boundary and repeated cases passed, while chunked returned
+  500 because advice treated the private body exception as generic. The controlled publisher test
+  then proved server cancellation/release independently of Reactor Netty's client publisher.
+- Codec-seam RED: `IngressBodyLimitWebFilterTest` failed compilation with
+  `ServerCodecConfigurer cannot be converted to long`. The production constructor now resolves the
+  matching JSON decoder's configured finite limit.
+- Focused GREEN:
+  `./gradlew :control-plane:test --tests 'it.unimib.datai.nanofaas.controlplane.input.RetainedInputEstimatorTest'
+  --tests 'it.unimib.datai.nanofaas.controlplane.api.IngressBodyLimitWebFilterTest' --tests
+  'it.unimib.datai.nanofaas.controlplane.api.IngressBodyLimitHttpTest' --console=plain --offline`
+  → **BUILD SUCCESSFUL** in 8s, 16 tests (8 estimator, 3 controlled filter, 5 real HTTP).
+- Integration GREEN: `./gradlew test --no-parallel --continue --console=plain --offline` →
+  **BUILD SUCCESSFUL** in 2m21s (190 actionable tasks: 25 executed, 165 up-to-date).
+
+**Status of claims:** implemented and focused-test verified for body limiting and retained-input
+measurement; integration-verified through a real Reactor Netty server for declared/chunked 413,
+boundary acceptance, ordering, repetition and subsequent-request recovery, plus the complete
+repository suite. No soak, container or Kubernetes E2E was run for P07b.
+
+**Residual transition:** until P07e publishes a calibrated NanoFaaS ingress setting, the pre-parser
+filter intentionally shares the active Spring JSON decoder limit. P07e may replace the constructor
+resolution with validated NanoFaaS configuration, but it must configure decoder and streaming
+filter consistently so neither boundary silently exceeds the other.

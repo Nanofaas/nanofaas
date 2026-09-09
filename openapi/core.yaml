@@ -225,6 +225,12 @@ paths:
             ended. The function was NOT re-invoked: the deduplication guarantee
             holds, only the stored result is gone. The `X-Execution-Id` header names
             the completed execution.
+        '413':
+          description: |
+            Invocation request body exceeded the active ingress byte limit. The limit
+            is enforced before complete JSON aggregation and before idempotency replay;
+            bodies without Content-Length are counted and rejected as received bytes
+            cross the same boundary.
         '429':
           description: Too many requests. Returned for rate limiting, queue/admission backpressure, and an exhausted idempotency-key budget on the synchronous invoke path.
         '500':
@@ -263,6 +269,12 @@ paths:
             outcome payload was evicted for capacity before the retention window
             ended. The function was NOT re-invoked; the `X-Execution-Id` header names
             the completed execution.
+        '413':
+          description: |
+            Invocation request body exceeded the active ingress byte limit. The limit
+            is enforced before complete JSON aggregation and before idempotency replay;
+            bodies without Content-Length are counted and rejected as received bytes
+            cross the same boundary.
         '429':
           description: Too many requests. Returned for queue/admission backpressure and an exhausted idempotency-key budget on the asynchronous enqueue path.
         '501':

@@ -200,6 +200,31 @@ transport uses the function's timeout budget; an individual caller's shorter
 `X-Timeout-Ms` affects only that waiter's subscription. Administrative expiry also
 cancels the outstanding offload subscription.
 
+## Invocation ingress and retained-input measurement
+
+Both `POST /v1/functions/{name}:invoke` and `:enqueue` enforce a finite body boundary
+before complete JSON aggregation. A declared `Content-Length` above the boundary is
+answered with `413 Payload Too Large` without subscribing to the body. For chunked or
+otherwise unknown-length requests, the control plane counts bytes in each received
+`DataBuffer`; the first buffer that crosses the boundary is released, the server-side
+body subscription is cancelled, and the response is 413. This basic bounded parsing
+happens before controller validation and idempotency replay, so replay cannot bypass it.
+
+P07b deliberately takes this boundary from the active Spring JSON decoder, including
+Spring's finite codec default when the application has not overridden it. It does not
+introduce a second NanoFaaS numeric default or public configuration contract; P07e owns
+that calibration and may move the wiring to a validated NanoFaaS property.
+
+Ingress bytes and retained-input bytes are different quantities. Ingress accounting
+covers transient transport buffers and bounds how much can arrive before rejection.
+The retained-input estimator is a conservative policy for JSON-like scalar, array and
+JDK map/list representations that an execution may keep. Its depth, width, visited-node
+and byte work are bounded; unsupported opaque LOCAL values and values beyond a bound are
+rejected instead of receiving a small token weight. Extra parser, transport, HTTP-client,
+LOCAL-worker or retry copies are excluded from that estimate and require their own
+physical-copy ownership when P07c wires quotas. Consequently, the estimate does not by
+itself claim to cap process RSS, native buffers or remote memory.
+
 ## Idempotency and outcome retention
 
 A request may carry an `Idempotency-Key` header on `:invoke` and `:enqueue`.
