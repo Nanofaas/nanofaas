@@ -49,12 +49,13 @@ class InvocationPathAccountingTest {
     @Mock private SyncQueueGateway syncQueueGateway;
 
     private MeterRegistry registry;
+    private Metrics metrics;
     private InvocationService invocationService;
 
     @BeforeEach
     void setUp() {
         registry = new SimpleMeterRegistry();
-        Metrics metrics = new Metrics(registry);
+        metrics = new Metrics(registry);
         ExecutionStore executionStore = new ExecutionStore();
         when(enqueuer.enabled()).thenReturn(true);
         when(syncQueueGateway.enabled()).thenReturn(false);
@@ -68,6 +69,7 @@ class InvocationPathAccountingTest {
     void theTwoDoorsAreAccountedApart() {
         FunctionSpec spec = spec("mixed-fn");
         when(functionService.get("mixed-fn")).thenReturn(Optional.of(spec));
+        metrics.registerFunction("mixed-fn");
         when(enqueuer.enqueue(any())).thenReturn(true);
 
         invocationService.invokeSyncReactive(
@@ -88,6 +90,7 @@ class InvocationPathAccountingTest {
     void aRefusalIsBookedAgainstTheDoorThatPaidForIt() {
         FunctionSpec spec = spec("full-fn");
         when(functionService.get("full-fn")).thenReturn(Optional.of(spec));
+        metrics.registerFunction("full-fn");
         when(enqueuer.isQueueFull(anyString())).thenReturn(true);
 
         // Early refusal: no execution is built, so the only record it leaves is this one.
@@ -108,6 +111,7 @@ class InvocationPathAccountingTest {
     void aReplayIsOnlyCountedWhenAKeyFindsAnExecution() {
         FunctionSpec spec = spec("keyed-fn");
         when(functionService.get("keyed-fn")).thenReturn(Optional.of(spec));
+        metrics.registerFunction("keyed-fn");
         when(enqueuer.enqueue(any())).thenReturn(true);
 
         invocationService.invokeAsync(

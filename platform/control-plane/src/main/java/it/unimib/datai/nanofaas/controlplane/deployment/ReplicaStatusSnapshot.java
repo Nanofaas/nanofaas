@@ -10,8 +10,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -35,7 +37,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *       function's state.</li>
  * </ul>
  */
-public final class ReplicaStatusSnapshot {
+public final class ReplicaStatusSnapshot implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(ReplicaStatusSnapshot.class);
 
@@ -56,19 +58,13 @@ public final class ReplicaStatusSnapshot {
      */
     public static final Duration DEFAULT_MAX_STALE = Duration.ofSeconds(15);
 
-    private static final Executor DEFAULT_REFRESH_EXECUTOR = Executors.newFixedThreadPool(
-            DEFAULT_REFRESH_CONCURRENCY, runnable -> {
-                Thread thread = new Thread(runnable, "nanofaas-replica-snapshot-refresh");
-                thread.setDaemon(true);
-                return thread;
-            });
-
     private final ConcurrentMap<String, Entry> entries = new ConcurrentHashMap<>();
     private final AtomicLong generationSequence = new AtomicLong();
     private final InstantSource clock;
     private final Duration ttl;
     private final Duration maxStale;
     private final Executor refreshExecutor;
+    private final ExecutorServiceOwner executorOwner;
 
     public ReplicaStatusSnapshot(InstantSource clock, Duration ttl, Executor refreshExecutor) {
         if (clock == null || refreshExecutor == null) {
@@ -81,11 +77,35 @@ public final class ReplicaStatusSnapshot {
         this.ttl = ttl;
         this.maxStale = DEFAULT_MAX_STALE;
         this.refreshExecutor = refreshExecutor;
+        this.executorOwner = null;
+    }
+
+    private ReplicaStatusSnapshot(InstantSource clock, Duration ttl, ThreadPoolExecutor refreshExecutor) {
+        if (clock == null) {
+            throw new IllegalArgumentException("clock is required");
+        }
+        this.clock = clock;
+        this.ttl = ttl;
+        this.maxStale = DEFAULT_MAX_STALE;
+        this.refreshExecutor = refreshExecutor;
+        this.executorOwner = new ExecutorServiceOwner(refreshExecutor);
     }
 
     /** Production defaults: system clock, {@link #DEFAULT_TTL}, bounded daemon refresh pool. */
     public static ReplicaStatusSnapshot withDefaults(InstantSource clock) {
-        return new ReplicaStatusSnapshot(clock, DEFAULT_TTL, DEFAULT_REFRESH_EXECUTOR);
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                DEFAULT_REFRESH_CONCURRENCY,
+                DEFAULT_REFRESH_CONCURRENCY,
+                0L,
+                TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(DEFAULT_REFRESH_CONCURRENCY),
+                runnable -> {
+                    Thread thread = new Thread(runnable, "nanofaas-replica-snapshot-refresh");
+                    thread.setDaemon(true);
+                    return thread;
+                },
+                new ThreadPoolExecutor.AbortPolicy());
+        return new ReplicaStatusSnapshot(clock, DEFAULT_TTL, executor);
     }
 
     /** Fetches a function's replica status from the deployment provider. */
@@ -147,16 +167,30 @@ public final class ReplicaStatusSnapshot {
      * for the previous generation is discarded on completion.
      */
     public void invalidate(String functionName) {
-        Entry entry = entries.get(functionName);
-        if (entry == null) {
-            return;
-        }
-        synchronized (entry) {
+        Entry entry = entries.remove(functionName);
+        if (entry != null) {
+            synchronized (entry) {
             entry.generation = nextGeneration();
             entry.backendId = null;
             entry.status = null;
             entry.fetchedAt = null;
-            entry.inFlight = null;
+            // Do not cancel arbitrary provider work here: adapters may not support cancellation.
+            // Removing the entry is the ownership fence; an old completion can only touch this
+            // detached Entry and can never reinsert it into entries.
+            }
+        }
+    }
+
+    /**
+     * Stops the executor owned by this snapshot. Injected executors belong to their caller and
+     * are deliberately left alone. Detached in-flight provider calls may finish, but their
+     * generation guard prevents them from publishing state after shutdown.
+     */
+    @Override
+    public void close() {
+        entries.forEach((name, entry) -> invalidate(name));
+        if (executorOwner != null) {
+            executorOwner.shutdown();
         }
     }
 
@@ -291,6 +325,18 @@ public final class ReplicaStatusSnapshot {
 
         Entry(long generation) {
             this.generation = generation;
+        }
+    }
+
+    private static final class ExecutorServiceOwner {
+        private final ThreadPoolExecutor executor;
+
+        private ExecutorServiceOwner(ThreadPoolExecutor executor) {
+            this.executor = executor;
+        }
+
+        private void shutdown() {
+            executor.shutdownNow();
         }
     }
 }

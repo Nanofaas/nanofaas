@@ -12,21 +12,28 @@ import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadTrigger;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.controlplane.service.Metrics;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
 
 import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
 
 class DefaultOffloadGatewayTest {
 
@@ -49,6 +56,10 @@ class DefaultOffloadGatewayTest {
 
     private DefaultOffloadGateway gateway(OffloadProperties props) {
         return new DefaultOffloadGateway(props, WebClient.create(), meterRegistry);
+    }
+
+    private DefaultOffloadGateway gateway(OffloadProperties props, Metrics lifecycle) {
+        return new DefaultOffloadGateway(props, WebClient.create(), lifecycle);
     }
 
     private DefaultOffloadGateway gateway() {
@@ -102,7 +113,9 @@ class DefaultOffloadGatewayTest {
                 .setBody("{\"executionId\":\"remote-1\",\"status\":\"success\",\"output\":\"out\",\"error\":null}"));
         FunctionSpec spec = spec("echo", null, 5000);
 
-        InvocationResult result = gateway()
+        Metrics lifecycle = new Metrics(meterRegistry);
+        lifecycle.registerFunction("echo");
+        InvocationResult result = gateway(new OffloadProperties(true, serverUrl(), true), lifecycle)
                 .invokeRemote(task(spec), OffloadTrigger.EAGER, new OffloadContext(false, "00-abc-def-01", "vendor=1"), BUDGET_MS)
                 .block();
 
@@ -127,7 +140,9 @@ class DefaultOffloadGatewayTest {
         server.enqueue(new MockResponse().setResponseCode(404));
         FunctionSpec spec = spec("ghost", null, 5000);
 
-        DefaultOffloadGateway gateway = gateway();
+        Metrics lifecycle = new Metrics(meterRegistry);
+        lifecycle.registerFunction("ghost");
+        DefaultOffloadGateway gateway = gateway(new OffloadProperties(true, serverUrl(), true), lifecycle);
         InvocationTask invocationTask = task(spec);
         OffloadContext context = OffloadContext.none();
         assertThatThrownBy(() -> invokeRemoteBlocking(gateway, invocationTask, OffloadTrigger.EAGER, context, BUDGET_MS))
@@ -135,6 +150,56 @@ class DefaultOffloadGatewayTest {
                 .hasMessageContaining("not registered on remote");
         assertThat(meterRegistry.counter("nanofaas.offload.failure", "function", "ghost").count())
                 .isEqualTo(1.0);
+    }
+
+    @Test
+    void removedGenerationDoesNotRecreateOffloadMetersWhenOldRemoteFails() throws InterruptedException {
+        server.enqueue(new MockResponse().setResponseCode(503).setBody("saturated")
+                .setBodyDelay(200, TimeUnit.MILLISECONDS));
+        Metrics lifecycle = new Metrics(meterRegistry);
+        lifecycle.registerFunction("echo");
+        FunctionSpec spec = spec("echo", null, 5000);
+
+        var oldInvocation = gateway(new OffloadProperties(true, serverUrl(), true), lifecycle)
+                .invokeRemote(task(spec), OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS)
+                .toFuture();
+        server.takeRequest();
+
+        lifecycle.removeFunction("echo");
+        lifecycle.registerFunction("echo");
+
+        assertThatThrownBy(() -> oldInvocation.get(3, TimeUnit.SECONDS))
+                .hasCauseInstanceOf(OffloadFailedException.class);
+        assertThat(meterRegistry.find("nanofaas.offload").tag("function", "echo").counter())
+                .as("the old subscription must not leave its removed meter behind")
+                .isNull();
+        assertThat(meterRegistry.find("nanofaas.offload.failure").tag("function", "echo").counter())
+                .as("the old error must not create a meter for the re-registered name")
+                .isNull();
+    }
+
+    @Test
+    void lazyMeterRegistryConstructorCleansLegacyOwnersAndMetersAfterEachCall() {
+        WebClient client = WebClient.builder().exchangeFunction(ignored -> Mono.just(
+                ClientResponse.create(HttpStatus.OK)
+                        .header(HttpHeaders.CONTENT_TYPE, "application/json")
+                        .body("{\"executionId\":\"remote-1\",\"status\":\"success\"," +
+                                "\"output\":\"out\",\"error\":null}")
+                        .build())).build();
+        DefaultOffloadGateway gateway = new DefaultOffloadGateway(
+                new OffloadProperties(true, serverUrl(), true),
+                () -> client,
+                () -> meterRegistry);
+
+        for (int i = 0; i < 1000; i++) {
+            gateway.invokeRemote(task(spec("legacy-" + i, null, 5000)),
+                    OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS).block();
+        }
+
+        await().atMost(3, TimeUnit.SECONDS).untilAsserted(() -> {
+            assertThat(gateway.legacyOwnerCount()).isZero();
+            assertThat(meterRegistry.getMeters()).isEmpty();
+        });
     }
 
     @Test

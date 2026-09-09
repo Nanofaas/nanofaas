@@ -25,6 +25,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.lang.reflect.Field;
+import java.util.Map;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -37,6 +39,40 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueInvocationEnqueuer;
 
 class SyncQueueServiceTest {
+
+    @Test
+    void removedFunctionMarkersDrainWithTheirLastGeneration() throws Exception {
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3);
+        SyncQueueService service = createService(props, new ExecutionStore(),
+                new WaitEstimator(Duration.ofSeconds(30), 3),
+                new SyncQueueMetrics(new SimpleMeterRegistry()), Clock.systemUTC());
+        for (int i = 0; i < 1000; i++) {
+            String name = "removed-" + i;
+            service.registerFunction(name, 1);
+            service.removeFunctionState(name);
+        }
+
+        Field field = SyncQueueService.class.getDeclaredField("removalFences");
+        field.setAccessible(true);
+        assertTrue(((Map<?, ?>) field.get(service)).isEmpty());
+    }
+
+    @Test
+    void removingUnknownFunctionsDoesNotRetainNameTombstones() throws Exception {
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3);
+        SyncQueueService service = createService(props, new ExecutionStore(),
+                new WaitEstimator(Duration.ofSeconds(30), 3),
+                new SyncQueueMetrics(new SimpleMeterRegistry()), Clock.systemUTC());
+        for (int i = 0; i < 1000; i++) {
+            service.removeFunctionState("unknown-" + i);
+        }
+
+        Field field = SyncQueueService.class.getDeclaredField("removalFences");
+        field.setAccessible(true);
+        assertTrue(((Map<?, ?>) field.get(service)).isEmpty());
+    }
 
     @Test
     void lifecycleLocksAreRemovedAfterRepeatedFunctionRemoval() {
@@ -529,7 +565,7 @@ class SyncQueueServiceTest {
     }
 
     @Test
-    void enqueueAfterRemoveFunctionStateCompletesAsFunctionRemovedWithoutRecreatingMeters() {
+    void staleEnqueuesStayRejectedUntilTheirRemovedGenerationDrains() throws Exception {
         SyncQueueProperties props = new SyncQueueProperties(
                 true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
         );
@@ -537,21 +573,64 @@ class SyncQueueServiceTest {
         WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(30), 3);
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         SyncQueueMetrics metrics = new SyncQueueMetrics(registry);
-        SyncQueueService service = createService(props, store, estimator, metrics, Clock.systemUTC());
+        FunctionCapacityRegistry capacity = new FunctionCapacityRegistry();
+        SyncQueueService service = new SyncQueueService(
+                props, store, estimator, metrics, Clock.systemUTC(),
+                SyncQueueConfigSource.fixed(props.runtimeDefaults()), capacity, null);
 
         FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
-        InvocationTask task = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
-        ExecutionRecord executionRecord = new ExecutionRecord("e1", task);
-        store.put(executionRecord);
+        InvocationTask first = new InvocationTask("e1", "fn", spec, new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
+        InvocationTask second = new InvocationTask("e2", "fn", spec, new InvocationRequest("two", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
+        ExecutionRecord firstRecord = new ExecutionRecord("e1", first);
+        ExecutionRecord secondRecord = new ExecutionRecord("e2", second);
+        store.put(firstRecord);
+        store.put(secondRecord);
+
+        service.registerFunction("fn", 1);
+        assertTrue(capacity.tryAcquireSlot("fn"));
+        service.removeFunctionState("fn");
+
+        assertThrows(SyncQueueRejectedException.class, () -> service.enqueueOrThrow(first));
+        assertThrows(SyncQueueRejectedException.class, () -> service.enqueueOrThrow(second));
+        assertEquals(0, service.queuedItems());
+        assertTrue(firstRecord.completion().isDone());
+        assertTrue(secondRecord.completion().isDone());
+        assertEquals("FUNCTION_REMOVED", firstRecord.completion().join().error().code());
+        assertEquals("FUNCTION_REMOVED", secondRecord.completion().join().error().code());
+        assertEquals(null, registry.find("sync_queue_depth").tag("function", "fn").gauge());
+        assertEquals(null, registry.find("sync_queue_admitted_total").tag("function", "fn").counter());
+
+        Field field = SyncQueueService.class.getDeclaredField("removalFences");
+        field.setAccessible(true);
+        assertEquals(1, ((Map<?, ?>) field.get(service)).size());
+        assertTrue(capacity.releaseSlotAndGetHoldNanos("fn") >= 0);
+        service.onDispatchSlotReleased("fn");
+        assertTrue(((Map<?, ?>) field.get(service)).isEmpty());
+    }
+
+    @Test
+    void enqueueAfterUnregisteredRemovalCompletesAsFunctionRemovedWithoutRetainingTheName() throws Exception {
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
+        );
+        ExecutionStore store = new ExecutionStore();
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        SyncQueueService service = createService(props, store,
+                new WaitEstimator(Duration.ofSeconds(30), 3),
+                new SyncQueueMetrics(registry), Clock.systemUTC());
+        InvocationTask task = task("fn", "e1");
+        ExecutionRecord record = new ExecutionRecord("e1", task);
+        store.put(record);
 
         service.removeFunctionState("fn");
 
         assertThrows(SyncQueueRejectedException.class, () -> service.enqueueOrThrow(task));
-        assertEquals(0, service.queuedItems());
-        assertTrue(executionRecord.completion().isDone());
-        assertEquals("FUNCTION_REMOVED", executionRecord.completion().join().error().code());
+        assertTrue(record.completion().isDone());
+        assertEquals("FUNCTION_REMOVED", record.completion().join().error().code());
+        Field field = SyncQueueService.class.getDeclaredField("removalFences");
+        field.setAccessible(true);
+        assertTrue(((Map<?, ?>) field.get(service)).isEmpty());
         assertEquals(null, registry.find("sync_queue_depth").tag("function", "fn").gauge());
-        assertEquals(null, registry.find("sync_queue_admitted_total").tag("function", "fn").counter());
     }
 
     @Test

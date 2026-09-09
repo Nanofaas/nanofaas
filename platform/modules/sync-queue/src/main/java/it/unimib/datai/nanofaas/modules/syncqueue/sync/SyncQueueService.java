@@ -10,6 +10,7 @@ import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics;
 
 import java.time.Clock;
@@ -20,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
@@ -62,7 +64,8 @@ public class SyncQueueService implements SyncQueueGateway {
      */
     private final ConcurrentHashMap<String, Integer> depthByFunction = new ConcurrentHashMap<>();
 
-    private final Set<String> removedFunctions = ConcurrentHashMap.newKeySet();
+    /** Fences are owned by a draining generation and/or concrete stale execution records. */
+    private final ConcurrentHashMap<String, RemovalFence> removalFences = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, LifecycleLock> lifecycleLocks = new ConcurrentHashMap<>();
     private final FunctionCapacityRegistry capacityRegistry;
     private final WorkloadDiagnostics diagnostics;
@@ -129,6 +132,10 @@ public class SyncQueueService implements SyncQueueGateway {
         if (capacityRegistry != null) {
             capacityRegistry.addCapacityListener(this::onCapacityOpened);
         }
+        executionStore.onTerminal(record -> releaseRemovalExecution(
+                record.task().functionName(), record.executionId()));
+        executionStore.onAdministrativeExpiry(record -> releaseRemovalExecution(
+                record.task().functionName(), record.executionId()));
     }
 
     private void onCapacityOpened(String functionName) {
@@ -162,6 +169,10 @@ public class SyncQueueService implements SyncQueueGateway {
         // Only a drained generation needs cleaning up,
         // and that is exactly when the registry stops carrying the function.
         if (capacityRegistry.hasGeneration(functionName)) return;
+        // A removal marker protects only real retiring work.  Once the capacity authority has
+        // dropped the final generation there is no callback/lease this queue still owns, so
+        // retaining the name would turn a lifecycle fence into an unbounded history cache.
+        cleanupRemovalFence(functionName);
         LifecycleLock lock;
         synchronized (lifecycleLocks) {
             lock = lifecycleLocks.get(functionName);
@@ -191,7 +202,7 @@ public class SyncQueueService implements SyncQueueGateway {
 
     @Override
     public void enqueueOrThrow(InvocationTask task) {
-        if (removedFunctions.contains(task.functionName())) {
+        if (isRemovalFenced(task)) {
             markFunctionRemoved(task.functionName(), new SyncQueueItem(task, clock.instant()), false);
             throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
         }
@@ -203,7 +214,7 @@ public class SyncQueueService implements SyncQueueGateway {
             throw new SyncQueueRejectedException(decision.reason(), configSource.syncQueueRetryAfterSeconds());
         }
         synchronized (queue) {
-            if (removedFunctions.contains(task.functionName())) {
+            if (isRemovalFenced(task)) {
                 markFunctionRemoved(task.functionName(), new SyncQueueItem(task, now), false);
                 throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
             }
@@ -465,11 +476,21 @@ public class SyncQueueService implements SyncQueueGateway {
         LifecycleLock lifecycleLock = acquireLifecycleLock(functionName);
         try {
             synchronized (lifecycleLock) {
-            removedFunctions.add(functionName);
+            FunctionGeneration generation = capacityRegistry.activeGeneration(functionName);
+            Set<String> staleExecutions = executionStore.inFlightExecutionIds(functionName);
+            if (generation != null || !staleExecutions.isEmpty()) {
+                removalFences.put(functionName, new RemovalFence(generation, staleExecutions));
+            }
             drainRemovedFunction(functionName);
             estimator.removeFunctionState(functionName);
             metrics.removeFunctionState(functionName);
             capacityRegistry.remove(functionName);
+            if (!capacityRegistry.hasGeneration(functionName)) {
+                // No active or draining generation remains. The normal API admission path has
+                // already resolved the function through FunctionService; keeping this internal
+                // marker forever would only retain a deleted name.
+                cleanupRemovalFence(functionName);
+            }
             }
         } finally {
             releaseLifecycleLock(functionName, lifecycleLock);
@@ -483,12 +504,12 @@ public class SyncQueueService implements SyncQueueGateway {
         LifecycleLock lifecycleLock = acquireLifecycleLock(functionName);
         try {
             synchronized (lifecycleLock) {
-            // Mirror of removeFunctionState, which raises the flag first: enqueueOrThrow reads
-            // removedFunctions without this lock, so anything that runs while the flag is still
+            // Mirror of removeFunctionState, which raises the fence first: enqueueOrThrow reads
+            // removalFences without this lock, so anything that runs while the fence is still
             // up terminates a live invocation as FUNCTION_REMOVED. Clear it before the register,
             // which takes the registry entry lock and can reactivate a draining generation. A
             // task queued in between simply waits for a slot.
-            removedFunctions.remove(functionName);
+            removalFences.remove(functionName);
             capacityRegistry.register(functionName, concurrency);
             metrics.registerFunction(functionName);
             }
@@ -502,6 +523,36 @@ public class SyncQueueService implements SyncQueueGateway {
 
     private static final class LifecycleLock {
         private int users;
+    }
+
+    private boolean isRemovalFenced(InvocationTask task) {
+        RemovalFence fence = removalFences.get(task.functionName());
+        return fence != null && (fence.generation() != null
+                || fence.staleExecutions().contains(task.executionId()));
+    }
+
+    private void releaseRemovalExecution(String functionName, String executionId) {
+        RemovalFence fence = removalFences.get(functionName);
+        if (fence == null) return;
+        fence.staleExecutions().remove(executionId);
+        cleanupRemovalFence(functionName);
+    }
+
+    private void cleanupRemovalFence(String functionName) {
+        RemovalFence fence = removalFences.get(functionName);
+        if (fence != null && !capacityRegistry.hasGeneration(functionName)
+                && fence.staleExecutions().isEmpty()) {
+            removalFences.remove(functionName, fence);
+        }
+    }
+
+    private record RemovalFence(FunctionGeneration generation, Set<String> staleExecutions) {
+        private RemovalFence(FunctionGeneration generation, Set<String> staleExecutions) {
+            this.generation = generation;
+            Set<String> ownedExecutions = ConcurrentHashMap.newKeySet();
+            ownedExecutions.addAll(staleExecutions);
+            this.staleExecutions = ownedExecutions;
+        }
     }
 
     private void drainRemovedFunction(String functionName) {

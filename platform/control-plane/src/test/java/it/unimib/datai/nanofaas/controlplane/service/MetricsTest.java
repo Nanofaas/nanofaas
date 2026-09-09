@@ -16,6 +16,7 @@ class MetricsTest {
     void setUp() {
         registry = new SimpleMeterRegistry();
         metrics = new Metrics(registry);
+        metrics.registerFunction("echo");
     }
 
     @Test

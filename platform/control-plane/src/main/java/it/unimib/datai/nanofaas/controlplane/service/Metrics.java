@@ -13,18 +13,39 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
+import it.unimib.datai.nanofaas.controlplane.capacity.GenerationLifecycle;
+import it.unimib.datai.nanofaas.controlplane.offload.OffloadTrigger;
+import org.springframework.beans.factory.annotation.Autowired;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Component
 public class Metrics {
     private static final String FUNCTION_TAG = "function";
     private final MeterRegistry registry;
     private final Map<String, FunctionMeters> meters = new ConcurrentHashMap<>();
-    private final Set<String> removedFunctions = ConcurrentHashMap.newKeySet();
+    /** Current registrations only; removed names must never become a history cache. */
+    private final Set<String> registeredFunctions = ConcurrentHashMap.newKeySet();
     private final FunctionTimers removedFunctionTimers;
     private final Object functionStateMonitor = new Object();
+    private final FunctionCapacityRegistry capacityRegistry;
+    private final AtomicLong standaloneGeneration = new AtomicLong(1);
+    /** Active owners are name-addressable; draining owners are identity-addressable only. */
+    private final Map<String, OffloadMeterOwner> activeOffloadOwners = new HashMap<>();
+    /** Not history: an entry remains only while a subscribed remote call still owns it. */
+    private final Map<FunctionGeneration, OffloadMeterOwner> retiringOffloadOwners = new HashMap<>();
 
     public Metrics(MeterRegistry registry) {
+        this(registry, null);
+    }
+
+    @Autowired
+    public Metrics(MeterRegistry registry, FunctionCapacityRegistry capacityRegistry) {
         this.registry = registry;
+        this.capacityRegistry = capacityRegistry;
         MeterRegistry removedRegistry = new SimpleMeterRegistry();
         this.removedFunctionTimers = new FunctionTimers(
                 Timer.builder("removed_function_latency_ms").register(removedRegistry),
@@ -156,18 +177,71 @@ public class Metrics {
 
     public void registerFunction(String function) {
         synchronized (functionStateMonitor) {
-            removedFunctions.remove(function);
+            FunctionGeneration generation = generationForRegistration(function);
+            OffloadMeterOwner previous = activeOffloadOwners.get(function);
+            if (previous == null || !previous.generation().equals(generation)) {
+                if (previous != null) {
+                    retireOffloadOwner(previous);
+                }
+                activeOffloadOwners.put(function, new OffloadMeterOwner(generation));
+            }
+            registeredFunctions.add(function);
             metersOrNull(function);
         }
     }
 
     public void removeFunction(String function) {
         synchronized (functionStateMonitor) {
-            removedFunctions.add(function);
+            registeredFunctions.remove(function);
             FunctionMeters removed = meters.remove(function);
             if (removed != null) {
                 removed.meterIds().forEach(registry::remove);
             }
+            OffloadMeterOwner owner = activeOffloadOwners.remove(function);
+            if (owner != null) {
+                retireOffloadOwner(owner);
+            }
+        }
+    }
+
+    /**
+     * Captures the owner for one offload before Reactor subscribes. The returned lease is
+     * generation-bound, so a callback that outlives remove/re-register can only release its old
+     * owner; it cannot look the name up again and mutate the replacement's meters.
+     */
+    public OffloadMeterLease offloadMeters(String function, OffloadTrigger trigger) {
+        synchronized (functionStateMonitor) {
+            return new OffloadMeterLease(activeOffloadOwners.get(function), trigger);
+        }
+    }
+
+    private FunctionGeneration generationForRegistration(String function) {
+        if (capacityRegistry != null) {
+            FunctionGeneration active = capacityRegistry.activeGeneration(function);
+            if (active != null) {
+                return active;
+            }
+        }
+        OffloadMeterOwner existing = activeOffloadOwners.get(function);
+        return existing != null ? existing.generation()
+                : new FunctionGeneration(function, standaloneGeneration.getAndIncrement());
+    }
+
+    private void retireOffloadOwner(OffloadMeterOwner owner) {
+        // Meter identity cannot include the internal generation. Remove the series immediately:
+        // a new registration may use the same public function tag while an old remote call drains.
+        owner.removeMeters();
+        if (owner.lifecycle().retire()) {
+            retiringOffloadOwners.remove(owner.generation(), owner);
+        } else {
+            retiringOffloadOwners.put(owner.generation(), owner);
+        }
+    }
+
+    private void closeOffloadOwner(OffloadMeterOwner owner) {
+        if (owner.lifecycle().release()) {
+            owner.removeMeters();
+            retiringOffloadOwners.remove(owner.generation(), owner);
         }
     }
 
@@ -184,8 +258,8 @@ public class Metrics {
      *
      * <p>The lock stays on the slow path, where it is actually needed: first registration and
      * the race with {@link #removeFunction}. The invariant it protects — a removed function
-     * does not re-register its meters — still holds, because registration happens only in
-     * there. A fast read that grabs the meters an instant before removal increments a counter
+     * does not re-register its meters — still holds, because only an explicit registration adds
+     * the name to {@code registeredFunctions}. A fast read that grabs the meters an instant before removal increments a counter
      * about to be deregistered: that sample is lost, and it is an acceptable price for not
      * serializing every invocation on the platform.
      */
@@ -195,7 +269,7 @@ public class Metrics {
             return registered;
         }
         synchronized (functionStateMonitor) {
-            if (removedFunctions.contains(function)) {
+            if (!registeredFunctions.contains(function)) {
                 return null;
             }
             return meters.computeIfAbsent(function, this::registerMeters);
@@ -292,5 +366,95 @@ public class Metrics {
     }
 
     record FunctionTimers(Timer latency, Timer initDuration, Timer queueWait, Timer e2eLatency) {
+    }
+
+    /** Lifecycle handle for lazy offload counters; it deliberately exposes no generation tag. */
+    public final class OffloadMeterLease implements AutoCloseable {
+        private final OffloadMeterOwner owner;
+        private final OffloadTrigger trigger;
+        private boolean subscribed;
+
+        private OffloadMeterLease(OffloadMeterOwner owner, OffloadTrigger trigger) {
+            this.owner = owner;
+            this.trigger = trigger;
+        }
+
+        /** Called from Reactor's subscribe callback: only an active owner can create the meter. */
+        public void subscribed() {
+            synchronized (functionStateMonitor) {
+                if (owner == null || subscribed || !owner.lifecycle().retain()) {
+                    return;
+                }
+                subscribed = true;
+                owner.offload(trigger).increment();
+            }
+        }
+
+        /** A retired owner intentionally ignores a late error rather than reviving a public series. */
+        public void failed() {
+            synchronized (functionStateMonitor) {
+                if (owner != null && subscribed && owner.lifecycle().isActive()) {
+                    owner.failure().increment();
+                }
+            }
+        }
+
+        @Override
+        public void close() {
+            synchronized (functionStateMonitor) {
+                if (owner != null && subscribed) {
+                    subscribed = false;
+                    closeOffloadOwner(owner);
+                }
+            }
+        }
+    }
+
+    private final class OffloadMeterOwner {
+        private final FunctionGeneration generation;
+        private final GenerationLifecycle lifecycle = new GenerationLifecycle();
+        private final Map<OffloadTrigger, Counter> offloads = new EnumMap<>(OffloadTrigger.class);
+        private final List<Meter.Id> meterIds = new ArrayList<>();
+        private Counter failure;
+
+        private OffloadMeterOwner(FunctionGeneration generation) {
+            this.generation = generation;
+        }
+
+        private FunctionGeneration generation() {
+            return generation;
+        }
+
+        private GenerationLifecycle lifecycle() {
+            return lifecycle;
+        }
+
+        private Counter offload(OffloadTrigger trigger) {
+            return offloads.computeIfAbsent(trigger, ignored -> {
+                Counter counter = Counter.builder("nanofaas.offload")
+                        .tag(FUNCTION_TAG, generation.functionName())
+                        .tag("trigger", trigger.name().toLowerCase(java.util.Locale.ROOT))
+                        .register(registry);
+                meterIds.add(counter.getId());
+                return counter;
+            });
+        }
+
+        private Counter failure() {
+            if (failure == null) {
+                failure = Counter.builder("nanofaas.offload.failure")
+                        .tag(FUNCTION_TAG, generation.functionName())
+                        .register(registry);
+                meterIds.add(failure.getId());
+            }
+            return failure;
+        }
+
+        private void removeMeters() {
+            meterIds.forEach(registry::remove);
+            meterIds.clear();
+            offloads.clear();
+            failure = null;
+        }
     }
 }

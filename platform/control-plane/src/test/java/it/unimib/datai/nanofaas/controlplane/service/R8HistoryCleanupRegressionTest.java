@@ -17,9 +17,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Regression tests for finding R8 of the 2026-09-08 pre-soak review.
  *
- * <p>Removal leaves historical-name state indefinitely: {@link Metrics} keeps removed
- * function names in {@code removedFunctions} (reduced only when the exact same name is
- * registered again), and {@link ReplicaStatusSnapshot#invalidate} clears an entry's
+ * <p>Removal used to leave historical-name state indefinitely: {@link Metrics} kept removed
+ * function names, and {@link ReplicaStatusSnapshot#invalidate} cleared an entry's
  * contents but never removes the entry from its map. Both collections therefore grow
  * with every distinct name ever seen rather than with the current function count.
  *
@@ -47,8 +46,8 @@ class R8HistoryCleanupRegressionTest {
             metrics.registerFunction(name);
             metrics.removeFunction(name);
         }
-        assertThat(privateSize(metrics, "removedFunctions"))
-                .as("removed function names must not accumulate beyond the live functions")
+        assertThat(privateSize(metrics, "registeredFunctions"))
+                .as("metric registration names must not accumulate beyond the live functions")
                 .isZero();
     }
 

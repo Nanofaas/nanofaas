@@ -1261,3 +1261,101 @@ exchange for the metadata-driven recovery; nothing on the invocation path change
 P09/P10 (R8: removed-name sets and replica-snapshot entries) and P07 (aggregate admission budgets),
 in the order set by the plan revision. A Docker-backed NanoLab scenario for the partial-deprovision
 path is owned by NanoLab (separate checkout) and is out of scope here.
+
+## 2026-09-09 — P09/P10, prima correzione R8 (non ancora task completi)
+
+Base: `397e2e01` (P20a/P08). GitNexus aggiornato con `analyze --index-only` prima delle
+modifiche. L'impact su `Metrics` è CRITICAL (25 dipendenze, 8 dirette, cinque flow); quello su
+`ReplicaStatusSnapshot` e `ManagedDeploymentCoordinator` è MEDIUM. Il successivo
+`detect-changes --scope all --repo .` riporta 21 simboli e rischio CRITICAL, quindi i flow
+di invocazione/completion e scaling restano da verificare integralmente.
+
+- Implementato: `Metrics` conserva solo registrazioni correnti, non nomi rimossi; il churn di
+  1.000 nomi non lascia tombstone. `ReplicaStatusSnapshot.invalidate` stacca la Entry dalla
+  mappa (la callback tardiva rimane confinata nella Entry staccata), e il pool di refresh non è
+  più statico: è per-snapshot, con due worker, coda 2, `AbortPolicy` e shutdown posseduto dal
+  `ManagedDeploymentCoordinator`.
+- Test mirati green:
+  `./gradlew :control-plane:test --tests '*MetricsTest*' --tests '*R8HistoryCleanupRegressionTest*' --tests '*ReplicaStatusSnapshotTest*' --console=plain --offline`.
+  La suite `:control-plane:test --no-parallel --console=plain --offline` non ha XML con failure/error.
+- Non dichiarare P09/P10 completi: restano da migrare `SyncQueueMetrics`, `SyncQueueService` e
+  i meter lazy dell'offload all'owner di generazione, e P10 richiede ancora osservazioni
+  fresh/stale/unavailable, deadline/cancellazione e metriche del refresh. P07 non è iniziato.
+
+Aggiornamento: `SyncQueueMetrics` ora conserva anch'esso soltanto registrazioni correnti; il test
+di churn di 1.000 nomi e `:control-plane-modules:sync-queue:test --tests '*SyncQueueMetricsTest*'
+sono green. `SyncQueueService` e offload restano esplicitamente aperti.
+
+Secondo aggiornamento: il marker di `SyncQueueService` viene eliminato quando drena una
+generazione realmente registrata; una rimozione senza generazione mantiene invece il rifiuto
+difensivo per compatibilità con l'API interna. Aggiunto churn di 1.000 generazioni e verificato
+con `:control-plane-modules:sync-queue:test --tests '*SyncQueueServiceTest*'` green.
+
+### Ripresa SDD — rettifica delle evidenze precedenti
+
+HEAD di lavoro: `fa3118e896293ece0f46179bdc663500f484d48d`; le modifiche P09/P10
+sono ancora non committate. La base `397e2e01` sopra identifica P20a, non include
+la successiva implementazione P08.
+
+La review ha respinto il marker difensivo permanente e il successivo tentativo
+di consumarlo al primo enqueue: il secondo enqueue tardivo avrebbe potuto passare.
+Il fix successivo conserva owner associati alla generazione e agli execution ID
+ancora live, con rilascio su settlement/expiry/drain. Offload ripristina il
+costruttore `Supplier<MeterRegistry>` e rimuove gli owner legacy dopo l'ultima
+sottoscrizione. La re-review di questo fix è in corso.
+
+L'implementer ha registrato esiti finali `BUILD SUCCESSFUL` per le suite
+`:control-plane-modules:sync-queue:test` (93 test, 3 skipped) e
+`:control-plane-modules:offload:test` (28 test), entrambe senza failure/error.
+Questa evidenza riguarda quel fix; non certifica modifiche successive.
+La precedente sola scansione degli XML core non certifica il completamento della
+suite integrale. L'errore di compilazione per erasure dei costruttori non vale
+come riproduzione RED comportamentale richiesta dal piano.
+
+P09 resta aperto: la completion core usa ancora il nome per aggiornare contatori
+e timer e deve essere vincolata all'owner acquisito dall'esecuzione. P10 resta
+parziale; P07 non è iniziato. Nessun gate globale o soak è dichiarato eseguito.
+
+### 2026-09-09 — Ripresa dopo interruzione di sessione: verifica e chiusura di P09
+
+Ripreso dopo un'interruzione per limite di sessione. Il worktree conteneva modifiche non
+commesse per `Metrics`, `SyncQueueMetrics`, `SyncQueueService`, `DefaultOffloadGateway`
+(owner offload legacy + generazione), `ReplicaStatusSnapshot` ed `ExecutionStore`, prodotte
+da esecuzioni precedenti di questa stessa campagna (incluso un ciclo di review/fix registrato
+sopra). Compilazione rotta: `OffloadConfiguration` cablava ancora `MeterRegistry` mentre
+`DefaultOffloadGateway` richiedeva `Metrics`; corretto (nessun cambio comportamentale, solo
+il bean Spring). Quattro test rossi per lo stesso motivo (`ExecutionCompletionHandlerTimingTest`
+e i tre di `InvocationPathAccountingTest`): usano `Metrics` senza mai chiamare
+`registerFunction`, comportamento accettato prima che il whitelist di P09 lo rendesse
+esplicito. Corretti aggiungendo la registrazione esplicita nei rispettivi `@BeforeEach`/test,
+coerente con il vincolo reale (una funzione deve essere registrata prima di generare metriche).
+
+**Verifica finale:** `./gradlew test --no-parallel --continue --console=plain --offline` →
+`BUILD SUCCESSFUL` sull'intero repository. `:control-plane:test` 637 test, 0 falliti, 3 skip
+(incluso `R8HistoryCleanupRegressionTest`, ora verde su entrambi gli assert: nomi metrica e
+voci snapshot non si accumulano). `:control-plane-modules:sync-queue:test` 93 test, 0 falliti.
+`:control-plane-modules:offload:test` 28 test, 0 falliti. `detect-changes --scope staged`:
+16 file, 146 simboli, 41 flussi, rischio `critical`, nessun `partial`/`truncated`.
+
+**Limite noto, non risolto qui:** `ExecutionCompletionHandler` registra i contatori/timer
+core di completamento (`success`, `error`, `coldStart`, `warmStart`, i timer, `retry`) per
+nome funzione, senza legarli alla generazione acquisita dall'esecuzione al momento
+dell'ammissione. Un'esecuzione ammessa sotto una generazione, la cui funzione viene rimossa
+e riregistrata con lo stesso nome mentre il dispatch è ancora in corso, e il cui completamento
+tardivo arriva dopo la riregistrazione, incrementerebbe i contatori della NUOVA generazione:
+una violazione puntuale dell'invariante I7 per un caso raro (richiede remove+re-register nella
+finestra di un singolo dispatch in corso). Il percorso offload (`completeOffloadedExecution`/
+`failOffloadedExecution`) ha lo stesso limite ed è persino più difficile da chiudere subito:
+le chiamate offload non acquisiscono un lease, quindi oggi non esiste alcuna generazione
+catturata all'ammissione con cui confrontare. Non corretto in questa sessione: il fix
+richiede propagare la generazione catturata dal lease (`ExecutionRecord`/`DispatchLease`)
+attraverso `FinalCompletion` fino a ogni chiamata a `Metrics`, toccando un file CRITICAL
+(`ExecutionCompletionHandler`) senza un ciclo dedicato di implementazione e review. Rimane
+un rilievo aperto da instradare nel prossimo ciclo di review di P09, non un risultato
+acquisito.
+
+**Prossimo passo:** dispatch della review di task per P09 (che quasi certamente segnalerà
+il limite sopra); poi P10 (completamento del suo scope pieno: osservazioni fresh/stale/
+unavailable, percorso non bloccante, deadline/cancellazione per letture che richiedono
+freschezza, metriche del refresh — lo snapshot fix qui sopra chiude solo l'accumulo delle
+entry, non l'intero task); poi P07.

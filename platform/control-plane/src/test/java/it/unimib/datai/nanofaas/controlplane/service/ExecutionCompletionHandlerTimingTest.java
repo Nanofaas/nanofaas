@@ -48,6 +48,7 @@ class ExecutionCompletionHandlerTimingTest {
         enqueuer = mock(InvocationEnqueuer.class);
         meterRegistry = new SimpleMeterRegistry();
         metrics = new Metrics(meterRegistry);
+        metrics.registerFunction("fn");
         completionHandler = new ExecutionCompletionHandler(
                 executionStore, enqueuer, mock(DispatcherRouter.class), metrics);
     }

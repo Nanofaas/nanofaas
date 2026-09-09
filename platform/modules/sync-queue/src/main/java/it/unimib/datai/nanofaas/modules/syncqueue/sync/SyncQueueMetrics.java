@@ -23,7 +23,8 @@ public class SyncQueueMetrics {
     private final Map<String, Timer> waitTimers = new ConcurrentHashMap<>();
     private final Map<String, AtomicInteger> perFunctionDepth = new ConcurrentHashMap<>();
     private final Map<String, Meter.Id> perFunctionDepthGaugeIds = new ConcurrentHashMap<>();
-    private final Set<String> removedFunctions = ConcurrentHashMap.newKeySet();
+    /** The currently registered functions, never a tombstone history of removals. */
+    private final Set<String> registeredFunctions = ConcurrentHashMap.newKeySet();
     private final Object functionStateMonitor = new Object();
     private final AtomicInteger globalDepth = new AtomicInteger();
     private final Timer globalWaitTimer;
@@ -40,7 +41,7 @@ public class SyncQueueMetrics {
 
     public void registerFunction(String functionName) {
         synchronized (functionStateMonitor) {
-            removedFunctions.remove(functionName);
+            registeredFunctions.add(functionName);
             getOrCreateDepth(functionName);
         }
     }
@@ -49,7 +50,7 @@ public class SyncQueueMetrics {
         Counter admitted;
         AtomicInteger depth;
         synchronized (functionStateMonitor) {
-            if (removedFunctions.contains(functionName)) {
+            if (!registeredFunctions.contains(functionName)) {
                 return;
             }
             admitted = counter(admittedCounters, "sync_queue_admitted_total", functionName);
@@ -85,7 +86,7 @@ public class SyncQueueMetrics {
     public void rejected(String functionName) {
         Counter rejected;
         synchronized (functionStateMonitor) {
-            if (removedFunctions.contains(functionName)) {
+            if (!registeredFunctions.contains(functionName)) {
                 return;
             }
             rejected = counter(rejectedCounters, "sync_queue_rejected_total", functionName);
@@ -96,7 +97,7 @@ public class SyncQueueMetrics {
     public void timedOut(String functionName) {
         Counter timedOut;
         synchronized (functionStateMonitor) {
-            if (removedFunctions.contains(functionName)) {
+            if (!registeredFunctions.contains(functionName)) {
                 return;
             }
             timedOut = counter(timedOutCounters, "sync_queue_timedout_total", functionName);
@@ -107,7 +108,7 @@ public class SyncQueueMetrics {
     public void recordWait(String functionName, long waitMillis) {
         Timer waitTimer;
         synchronized (functionStateMonitor) {
-            if (removedFunctions.contains(functionName)) {
+            if (!registeredFunctions.contains(functionName)) {
                 return;
             }
             waitTimer = waitTimer(functionName);
@@ -118,7 +119,7 @@ public class SyncQueueMetrics {
 
     public void removeFunctionState(String functionName) {
         synchronized (functionStateMonitor) {
-            removedFunctions.add(functionName);
+            registeredFunctions.remove(functionName);
             Counter rejected = rejectedCounters.remove(functionName);
             Counter timedOut = timedOutCounters.remove(functionName);
             Counter admitted = admittedCounters.remove(functionName);

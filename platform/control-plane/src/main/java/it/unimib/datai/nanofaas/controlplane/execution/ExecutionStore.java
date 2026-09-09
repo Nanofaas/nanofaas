@@ -18,6 +18,8 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
@@ -188,6 +190,18 @@ public class ExecutionStore {
     public int inFlightCount() {
         inFlight.cleanUp();
         return (int) inFlight.estimatedSize();
+    }
+
+    /**
+     * Snapshots the live executions owned by one function. Lifecycle consumers use this only
+     * on function removal, never on invocation admission; the returned ids let them retain a
+     * removal fence only while concrete executions can still deliver stale work.
+     */
+    public Set<String> inFlightExecutionIds(String functionName) {
+        return inFlight.asMap().values().stream()
+                .filter(record -> functionName.equals(record.task().functionName()))
+                .map(ExecutionRecord::executionId)
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     public void put(ExecutionRecord executionRecord) {

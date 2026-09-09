@@ -21,7 +21,7 @@ import java.time.InstantSource;
  * window. Wake-up and lifecycle paths force a fresh read through {@link #getFreshReplicaStatus}.</p>
  */
 @Service
-public class ManagedDeploymentCoordinator {
+public class ManagedDeploymentCoordinator implements AutoCloseable {
 
     private final DeploymentProviderResolver deploymentProviderResolver;
     private final FunctionRegistry registry;
@@ -128,5 +128,11 @@ public class ManagedDeploymentCoordinator {
 
     public ManagedDeploymentProvider requireProvider(ManagedDeploymentTarget target) {
         return deploymentProviderResolver.requireBackend(target.backendId());
+    }
+
+    /** The coordinator owns the production snapshot created by its Spring constructor. */
+    @Override
+    public void close() {
+        snapshot.close();
     }
 }

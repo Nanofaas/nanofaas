@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.modules.offload;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationResponse;
@@ -10,12 +12,17 @@ import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadGateway;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadTrigger;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.controlplane.service.Metrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -76,19 +83,40 @@ public class DefaultOffloadGateway implements OffloadGateway {
 
     private final OffloadProperties properties;
     private final Supplier<WebClient> webClient;
-    private final Supplier<MeterRegistry> meterRegistry;
+    private final Metrics metrics;
+    private final LegacyMeterLifecycle legacyMeters;
 
-    public DefaultOffloadGateway(OffloadProperties properties, WebClient webClient, MeterRegistry meterRegistry) {
+    public DefaultOffloadGateway(OffloadProperties properties, WebClient webClient, Metrics metrics) {
+        this(properties, () -> webClient, metrics);
+    }
+
+    /**
+     * Compatibility constructor for module consumers that still provide a bare meter registry.
+     * The registry-backed path has no function lifecycle signal, so invocation admission is the
+     * only safe point at which it can establish the legacy function registration.
+     */
+    public DefaultOffloadGateway(OffloadProperties properties, WebClient webClient,
+                                 MeterRegistry meterRegistry) {
         this(properties, () -> webClient, () -> meterRegistry);
     }
 
-    /** Lazy suppliers: let the bean exist in contexts without WebClient/MeterRegistry (test slices). */
+    public DefaultOffloadGateway(OffloadProperties properties,
+                                 Supplier<WebClient> webClient,
+                                 Metrics metrics) {
+        this.properties = properties;
+        this.webClient = webClient;
+        this.metrics = metrics;
+        this.legacyMeters = null;
+    }
+
+    /** Compatibility constructor retained for consumers that supply a registry lazily. */
     public DefaultOffloadGateway(OffloadProperties properties,
                                  Supplier<WebClient> webClient,
                                  Supplier<MeterRegistry> meterRegistry) {
         this.properties = properties;
         this.webClient = webClient;
-        this.meterRegistry = meterRegistry;
+        this.metrics = null;
+        this.legacyMeters = new LegacyMeterLifecycle(meterRegistry);
     }
 
     @Override
@@ -136,6 +164,10 @@ public class DefaultOffloadGateway implements OffloadGateway {
         String target = targetUrl(task.functionSpec());
         String uri = target + "/v1/functions/" + task.functionName() + ":invoke";
         long timeoutMs = Math.max(1, timeoutBudgetMs - TIMEOUT_MARGIN_MS);
+        Metrics.OffloadMeterLease meterLease = metrics == null
+                ? null : metrics.offloadMeters(task.functionName(), trigger);
+        LegacyMeterLease legacyLease = legacyMeters == null
+                ? null : legacyMeters.lease(task.functionName(), trigger);
 
         WebClient.RequestBodySpec request = webClient.get().post().uri(uri);
         request.header("X-NanoFaaS-Offload-Hop", "1");
@@ -187,12 +219,143 @@ public class DefaultOffloadGateway implements OffloadGateway {
                     return new OffloadFailedException(target, false,
                             REMOTE_PREFIX + target + " unreachable: " + message);
                 })
-                .doOnSubscribe(s -> meterRegistry.get().counter("nanofaas.offload",
-                        "function", task.functionName(),
-                        "trigger", trigger.name().toLowerCase()).increment())
-                .doOnError(OffloadFailedException.class, ex ->
-                        meterRegistry.get().counter("nanofaas.offload.failure",
-                                "function", task.functionName()).increment());
+                .doOnSubscribe(s -> {
+                    if (meterLease != null) {
+                        meterLease.subscribed();
+                    } else {
+                        legacyLease.subscribed();
+                    }
+                })
+                .doOnError(OffloadFailedException.class, ex -> {
+                    if (meterLease != null) {
+                        meterLease.failed();
+                    } else {
+                        legacyLease.failed();
+                    }
+                })
+                .doFinally(_ -> {
+                    if (meterLease != null) {
+                        meterLease.close();
+                    } else {
+                        legacyLease.close();
+                    }
+                });
+    }
+
+    int legacyOwnerCount() {
+        return legacyMeters == null ? 0 : legacyMeters.ownerCount();
+    }
+
+    /** Compatibility metrics live exactly as long as real legacy subscriptions. */
+    private static final class LegacyMeterLifecycle {
+        private static final String FUNCTION_TAG = "function";
+        private final Supplier<MeterRegistry> registry;
+        private final Map<String, LegacyMeterOwner> owners = new HashMap<>();
+
+        private LegacyMeterLifecycle(Supplier<MeterRegistry> registry) {
+            this.registry = registry;
+        }
+
+        private LegacyMeterLease lease(String function, OffloadTrigger trigger) {
+            return new LegacyMeterLease(this, function, trigger);
+        }
+
+        private synchronized LegacyMeterOwner retain(String function, OffloadTrigger trigger) {
+            LegacyMeterOwner owner = owners.computeIfAbsent(function,
+                    ignored -> new LegacyMeterOwner(registry.get(), function));
+            owner.retained++;
+            owner.offload(trigger).increment();
+            return owner;
+        }
+
+        private synchronized void failed(LegacyMeterOwner owner) {
+            if (owners.get(owner.function) == owner) {
+                owner.failure().increment();
+            }
+        }
+
+        private synchronized void release(LegacyMeterOwner owner) {
+            if (--owner.retained == 0 && owners.remove(owner.function, owner)) {
+                owner.removeMeters();
+            }
+        }
+
+        private synchronized int ownerCount() {
+            return owners.size();
+        }
+    }
+
+    private static final class LegacyMeterLease implements AutoCloseable {
+        private final LegacyMeterLifecycle lifecycle;
+        private final String function;
+        private final OffloadTrigger trigger;
+        private LegacyMeterOwner owner;
+
+        private LegacyMeterLease(LegacyMeterLifecycle lifecycle, String function, OffloadTrigger trigger) {
+            this.lifecycle = lifecycle;
+            this.function = function;
+            this.trigger = trigger;
+        }
+
+        private void subscribed() {
+            if (owner == null) {
+                owner = lifecycle.retain(function, trigger);
+            }
+        }
+
+        private void failed() {
+            if (owner != null) {
+                lifecycle.failed(owner);
+            }
+        }
+
+        @Override
+        public void close() {
+            if (owner != null) {
+                LegacyMeterOwner retainedOwner = owner;
+                owner = null;
+                lifecycle.release(retainedOwner);
+            }
+        }
+    }
+
+    private static final class LegacyMeterOwner {
+        private final MeterRegistry registry;
+        private final String function;
+        private final Map<OffloadTrigger, Counter> offloads = new EnumMap<>(OffloadTrigger.class);
+        private final List<Meter.Id> meterIds = new ArrayList<>();
+        private int retained;
+        private Counter failure;
+
+        private LegacyMeterOwner(MeterRegistry registry, String function) {
+            this.registry = registry;
+            this.function = function;
+        }
+
+        private Counter offload(OffloadTrigger trigger) {
+            return offloads.computeIfAbsent(trigger, ignored -> {
+                Counter counter = Counter.builder("nanofaas.offload")
+                        .tag(LegacyMeterLifecycle.FUNCTION_TAG, function)
+                        .tag("trigger", trigger.name().toLowerCase(Locale.ROOT))
+                        .register(registry);
+                meterIds.add(counter.getId());
+                return counter;
+            });
+        }
+
+        private Counter failure() {
+            if (failure == null) {
+                failure = Counter.builder("nanofaas.offload.failure")
+                        .tag(LegacyMeterLifecycle.FUNCTION_TAG, function)
+                        .register(registry);
+                meterIds.add(failure.getId());
+            }
+            return failure;
+        }
+
+        private void removeMeters() {
+            meterIds.forEach(registry::remove);
+        }
     }
 
     /**

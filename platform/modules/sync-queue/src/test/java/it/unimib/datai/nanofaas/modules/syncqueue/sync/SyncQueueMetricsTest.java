@@ -5,13 +5,31 @@ import io.micrometer.prometheusmetrics.PrometheusConfig;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
+import java.util.Collection;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class SyncQueueMetricsTest {
     @Test
+    void removedNamesDoNotAccumulateInMetricLifecycleState() throws Exception {
+        SyncQueueMetrics metrics = new SyncQueueMetrics(new SimpleMeterRegistry());
+        for (int i = 0; i < 1000; i++) {
+            String function = "removed-" + i;
+            metrics.registerFunction(function);
+            metrics.removeFunctionState(function);
+        }
+
+        Field field = SyncQueueMetrics.class.getDeclaredField("registeredFunctions");
+        field.setAccessible(true);
+        assertThat((Collection<?>) field.get(metrics)).isEmpty();
+    }
+
+    @Test
     void prometheusRegistryKeepsGlobalAndPerFunctionMeters() {
         PrometheusMeterRegistry registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
         SyncQueueMetrics metrics = new SyncQueueMetrics(registry);
+        metrics.registerFunction("echo");
 
         metrics.registerFunction("echo");
         metrics.recordWait("echo", 10);
@@ -26,6 +44,7 @@ class SyncQueueMetricsTest {
     void removeFunctionState_removesPerFunctionMeters() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         SyncQueueMetrics metrics = new SyncQueueMetrics(registry);
+        metrics.registerFunction("echo");
 
         metrics.admitted("echo");
         metrics.rejected("echo");
@@ -53,6 +72,7 @@ class SyncQueueMetricsTest {
     void removedFunction_doesNotRecreateMetersUntilRegisteredAgain() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         SyncQueueMetrics metrics = new SyncQueueMetrics(registry);
+        metrics.registerFunction("echo");
 
         metrics.admitted("echo");
         metrics.removeFunctionState("echo");
