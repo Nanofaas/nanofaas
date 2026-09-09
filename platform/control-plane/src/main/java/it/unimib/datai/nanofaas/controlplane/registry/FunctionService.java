@@ -4,6 +4,7 @@ import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
+import it.unimib.datai.nanofaas.controlplane.deployment.PartialDeprovisionException;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
 import org.slf4j.Logger;
@@ -14,7 +15,9 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class FunctionService {
@@ -28,6 +31,14 @@ public class FunctionService {
     private final List<FunctionRegistrationListener> listeners;
     private final FunctionOperationLocks locks;
     private final FunctionRestoreGate restoreGate;
+    /**
+     * Functions whose backend reported a partial deprovision, mapped to what it still owns.
+     *
+     * <p>An entry lives exactly as long as those resources do: it is written when a delete comes
+     * back partial and removed by the retry that finally succeeds. It is not a history of removed
+     * names — nothing accumulates here once the resources are gone.
+     */
+    private final Map<String, List<String>> pendingRemovals = new ConcurrentHashMap<>();
 
     public FunctionService(FunctionRegistry registry,
                            FunctionDefaults defaults,
@@ -76,6 +87,17 @@ public class FunctionService {
         }
     }
 
+    /**
+     * Fences everything that would lead into a deployment being torn down. The one operation that
+     * must still get through is {@link #remove}: it is the retry that ends the pending state.
+     */
+    private void requireNotPendingRemoval(String name) {
+        List<String> remaining = pendingRemovals.get(name);
+        if (remaining != null) {
+            throw new FunctionRemovalPendingException(name, remaining);
+        }
+    }
+
     public Collection<FunctionSpec> list() {
         return registry.list();
     }
@@ -84,7 +106,13 @@ public class FunctionService {
         return registry.listRegistered();
     }
 
+    /**
+     * The lookup the invocation path uses. A function in pending removal is refused explicitly
+     * here: its generation is retired and its endpoint is closed, so dispatching into it would only
+     * produce a transport error the caller cannot interpret.
+     */
     public Optional<FunctionSpec> get(String name) {
+        requireNotPendingRemoval(name);
         return registry.get(name);
     }
 
@@ -97,6 +125,7 @@ public class FunctionService {
         FunctionSpec initialResolved = resolver.resolve(spec);
 
         return locks.withLock(initialResolved.name(), () -> {
+            requireNotPendingRemoval(initialResolved.name());
             if (registry.getRegistered(initialResolved.name()).isPresent()) {
                 return Optional.empty();
             }
@@ -133,6 +162,7 @@ public class FunctionService {
     public Optional<RegisteredFunction> update(String name, FunctionUpdateRequest request) {
         ensureReady();
         return locks.withLock(name, () -> {
+            requireNotPendingRemoval(name);
             RegisteredFunction existing = registry.getRegistered(name).orElse(null);
             if (existing == null) {
                 return Optional.empty();
@@ -167,6 +197,7 @@ public class FunctionService {
      */
     public Optional<Integer> setReplicas(String name, int replicas) {
         ensureReady();
+        requireNotPendingRemoval(name);
         RegisteredFunction function = registry.getRegistered(name).orElse(null);
         if (function == null) {
             return Optional.empty();
@@ -196,6 +227,18 @@ public class FunctionService {
         });
     }
 
+    /**
+     * Removes a function and the deployment behind it.
+     *
+     * <p>Two failure outcomes are distinguished, and they are not interchangeable. If the backend
+     * reports a {@link PartialDeprovisionException} — resources it could not delete — the removal
+     * enters <em>pending removal</em>: nothing pretends the function came back, and a retry of this
+     * same call resumes the cleanup. Any other failure means the deployment was not given up, and
+     * the function is restored (see {@link #rollbackRemoval}).
+     *
+     * @throws FunctionRemovalPendingException when the backend deprovisioned only part of the
+     *         function; the API answers {@code 409} and the leftover resources are named in it
+     */
     public Optional<FunctionSpec> remove(String name) {
         ensureReady();
         return locks.withLock(name, () -> {
@@ -216,7 +259,12 @@ public class FunctionService {
                     deprovisioned = true;
                 }
                 registry.persistCurrentSnapshot(); // durable delete commit happens last
+                // A retry that finally emptied the backend ends the pending state.
+                pendingRemovals.remove(name);
                 return Optional.of(existing.spec());
+            } catch (PartialDeprovisionException partial) {
+                holdPendingRemoval(existing, partial);
+                throw new FunctionRemovalPendingException(name, partial.remainingResources(), partial);
             } catch (RuntimeException failure) {
                 rollbackRemoval(existing, notified, deprovisioned, failure);
                 throw failure;
@@ -224,6 +272,41 @@ public class FunctionService {
         });
     }
 
+    /**
+     * Pending removal — the outcome of a partial deprovision, and deliberately not a rollback.
+     *
+     * <p>The catalog entry is put back, because that entry is what keeps the leftover resources
+     * traceable and what makes a retried {@code DELETE} resume the cleanup instead of answering
+     * {@code 404}. Everything else stays removed: the registration listeners are <b>not</b>
+     * replayed, so capacity, queues and meters stay retired with the generation that owned those
+     * resources (I7), and {@link #get} refuses the function outright, so no invocation is admitted
+     * into a deployment whose endpoint the backend has already closed.
+     *
+     * <p>Contrast with {@link #rollbackRemoval}: an operational rollback is only honest when
+     * nothing needed was lost — there the deprovision itself succeeded and {@link #reconcile}
+     * rebuilt and verified the deployment before the function was declared live again. Here
+     * resources are missing, so declaring the function restored would be a lie the next invocation
+     * would expose.
+     */
+    private void holdPendingRemoval(RegisteredFunction existing, PartialDeprovisionException partial) {
+        pendingRemovals.put(existing.name(), List.copyOf(partial.remainingResources()));
+        registry.restoreDetached(existing); // memory-only: the entry is the handle on what is left
+        try {
+            registry.persistCurrentSnapshot(); // best-effort: keep the leftovers visible after a restart
+        } catch (RuntimeException persistFailure) {
+            partial.addSuppressed(persistFailure);
+        }
+        log.error("Function '{}' is in pending removal: backend '{}' still owns {}",
+                existing.name(), partial.backendId(), partial.remainingResources());
+    }
+
+    /**
+     * Operational rollback, allowed only because nothing needed was lost. Either the deployment was
+     * never touched, or it was fully deprovisioned and {@link #reconcile} has rebuilt it against
+     * the persisted backend and replica target — a rebuild that reports the resources back before
+     * the function is declared live again. A backend that lost resources reports it instead, and
+     * that outcome goes to {@link #holdPendingRemoval}, never here.
+     */
     private void rollbackRemoval(RegisteredFunction existing,
                                  List<FunctionRegistrationListener> notified,
                                  boolean deprovisioned,
@@ -274,6 +357,13 @@ public class FunctionService {
         if (target.isEmpty()) return;
         try {
             managedDeploymentCoordinator.deprovision(target.get());
+        } catch (PartialDeprovisionException partial) {
+            // The rollback could not undo the provisioning: resources this registration created are
+            // still there. Dropping the name would orphan them with nothing left to trace them by,
+            // so the function is held in pending removal instead — refused for everything except
+            // the delete that resumes the cleanup.
+            holdPendingRemoval(function, partial);
+            failure.addSuppressed(partial);
         } catch (RuntimeException cleanupFailure) {
             failure.addSuppressed(cleanupFailure);
         }

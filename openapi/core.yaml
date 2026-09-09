@@ -89,6 +89,15 @@ paths:
     delete:
       summary: Delete a function
       operationId: deleteFunction
+      description: |
+        Removes the function and the deployment behind it.
+
+        If the deployment backend cannot delete every resource it owns, the function enters
+        **pending removal** instead of being reported as deleted or as restored: the entry stays in
+        the catalog so the leftover resources remain traceable, it admits no invocation and accepts
+        no change (409 `FUNCTION_REMOVAL_PENDING` on invoke, enqueue, patch, replicas and
+        re-registration), and repeating this DELETE resumes the cleanup idempotently. The 409 body
+        names the resources the backend still owns.
       parameters:
         - $ref: '#/components/parameters/FunctionName'
       responses:
@@ -96,6 +105,11 @@ paths:
           description: Deleted
         '404':
           description: Not found
+        '409':
+          description: |
+            The deletion removed only part of the deployment. The function is in pending removal
+            until a retried DELETE succeeds; the body carries `FUNCTION_REMOVAL_PENDING` and the
+            resources still owned by the backend.
 
   /v1/functions/{name}/replicas:
     get:
@@ -198,6 +212,12 @@ paths:
             and then the real result — never a fabricated `timeout` borrowed from
             another caller's budget. This also applies to offloaded work: the remote
             invocation uses the function's timeout, independently of this waiter's budget.
+        '409':
+          description: |
+            The function is in pending removal: a previous DELETE deprovisioned it only partially
+            and its deployment backend still owns resources. No new invocation is admitted under
+            that generation until a retried DELETE finishes the cleanup. Body carries
+            `FUNCTION_REMOVAL_PENDING`.
         '410':
           description: |
             The invocation already completed under this `Idempotency-Key`, but its
@@ -231,6 +251,12 @@ paths:
       responses:
         '404':
           description: Function not registered
+        '409':
+          description: |
+            The function is in pending removal: a previous DELETE deprovisioned it only partially
+            and its deployment backend still owns resources. No new invocation is admitted under
+            that generation until a retried DELETE finishes the cleanup. Body carries
+            `FUNCTION_REMOVAL_PENDING`.
         '410':
           description: |
             The invocation already completed under this `Idempotency-Key`, but its

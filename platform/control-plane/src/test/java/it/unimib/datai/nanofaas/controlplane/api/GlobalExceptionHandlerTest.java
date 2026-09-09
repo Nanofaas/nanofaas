@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.api;
 
+import it.unimib.datai.nanofaas.controlplane.registry.FunctionRemovalPendingException;
 import it.unimib.datai.nanofaas.controlplane.registry.ImageValidationException;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
@@ -24,6 +25,18 @@ import static org.mockito.Mockito.*;
 class GlobalExceptionHandlerTest {
 
     private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
+
+    @Test
+    void handleFunctionRemovalPending_returnsConflictNamingWhatIsLeft() {
+        FunctionRemovalPendingException ex =
+                new FunctionRemovalPendingException("fn", List.of("nanofaas-fn-r2"));
+
+        ResponseEntity<Map<String, Object>> response = handler.handleFunctionRemovalPending(ex);
+
+        assertEquals(HttpStatus.CONFLICT.value(), response.getStatusCode().value());
+        assertEquals("FUNCTION_REMOVAL_PENDING", response.getBody().get("error"));
+        assertTrue(response.getBody().get("message").toString().contains("nanofaas-fn-r2"));
+    }
 
     @Test
     void handleValidationErrors_returnsBadRequest() {

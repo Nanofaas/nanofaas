@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.api;
 
+import it.unimib.datai.nanofaas.controlplane.registry.FunctionRemovalPendingException;
 import it.unimib.datai.nanofaas.controlplane.registry.ImageValidationException;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
@@ -87,6 +88,19 @@ public class GlobalExceptionHandler {
             ImageValidationException ex) {
         log.debug("Image validation failed: {} {}", ex.errorCode(), ex.getMessage());
         return ResponseEntity.status(ex.status()).body(errorBody(ex.errorCode(), ex.getMessage()));
+    }
+
+    /**
+     * A partially deprovisioned function: its backend still owns resources it could not delete, so
+     * the function admits no invocation and accepts no change until a retried delete finishes the
+     * cleanup. The body names what is left, because that is what the operator has to act on.
+     */
+    @ExceptionHandler(FunctionRemovalPendingException.class)
+    public ResponseEntity<Map<String, Object>> handleFunctionRemovalPending(
+            FunctionRemovalPendingException ex) {
+        log.warn("Function '{}' is in pending removal: {}", ex.functionName(), ex.remainingResources());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(errorBody(FunctionRemovalPendingException.ERROR_CODE, ex.getMessage()));
     }
 
     /**

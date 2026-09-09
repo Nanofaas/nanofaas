@@ -4,20 +4,30 @@ import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
+import it.unimib.datai.nanofaas.controlplane.deployment.PartialDeprovisionException;
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
-public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvider {
+public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvider, AutoCloseable {
+
+    private static final Logger log = LoggerFactory.getLogger(ContainerLocalDeploymentProvider.class);
+
+    /** What the partial outcome names when the proxy itself could not be released. */
+    private static final String PROXY_RESOURCE = "local invocation proxy";
 
     static final String BACKEND_ID = "container-local";
     static final String MANAGED_LABEL = "io.nanofaas.managed";
@@ -78,6 +88,14 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
         try {
             FunctionState existing = states.get(spec.name());
             if (existing != null) {
+                if (existing.pendingRemoval) {
+                    // Its proxy is already closed and some of its containers may still be alive:
+                    // handing this endpoint back would publish a dead URL and silently adopt
+                    // resources that are still owed a cleanup.
+                    throw new IllegalStateException("Function '" + spec.name()
+                            + "' has a pending removal on backend '" + backendId()
+                            + "'; finish the deprovision before provisioning it again");
+                }
                 return new ProvisionResult(existing.proxy.endpointUrl(), backendId(), deploymentObjects(spec.name()));
             }
 
@@ -171,24 +189,131 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
         }
     }
 
+    /**
+     * Removes every resource this backend owns for the function and reports what it could not
+     * remove, instead of dropping the only handle on it (invariant I10).
+     *
+     * <p><b>Order, and what it commits to.</b> The proxy is released first: the removal decision is
+     * already taken, so the function must stop accepting invocations before its replicas start
+     * disappearing underneath it. Closing it is irreversible, and that is precisely why every
+     * failure from here on is reported as a pending removal and never as an operational rollback —
+     * the endpoint is gone whatever happens to the containers. Its release is attempted whenever
+     * this process owns one, and a failure to release it is reported like any other leftover rather
+     * than swallowed.
+     *
+     * <p><b>Every resource is attempted.</b> Containers come from two sources merged into one pass:
+     * the replicas this process tracks, and whatever the runtime still reports under this
+     * function's managed labels — which is how a restart, or a container whose tracking was lost
+     * while it was being created, is still found. One failure never skips the others; each error is
+     * collected and travels with the partial outcome.
+     *
+     * <p><b>Ownership is given up last.</b> The tracked state is dropped only once nothing is left.
+     * While resources remain, that entry is what keeps them traceable, and a second
+     * {@code deprovision} resumes from it — or, after a restart, from the labels alone.
+     *
+     * @throws PartialDeprovisionException if any resource could not be released
+     */
     @Override
     public void deprovision(String functionName) {
         ReentrantLock lock = locks.computeIfAbsent(functionName, k -> new ReentrantLock());
+        boolean fullyRemoved = false;
         lock.lock();
         try {
-            FunctionState state = states.remove(functionName);
-            if (state == null) {
-                adapter.listManagedContainers(functionName)
-                        .forEach(container -> adapter.removeContainer(container.name()));
-                return;
-            }
-            for (int replicaIndex : List.copyOf(state.replicas.keySet()).reversed()) {
-                removeReplica(state, replicaIndex);
-            }
-            safeClose(state.proxy);
+            fullyRemoved = releaseAllResources(functionName);
         } finally {
             lock.unlock();
-            locks.remove(functionName);
+            if (fullyRemoved) {
+                locks.remove(functionName);
+            }
+        }
+    }
+
+    /**
+     * @return {@code true} when nothing is left for this function
+     * @throws PartialDeprovisionException when something is
+     */
+    private boolean releaseAllResources(String functionName) {
+        FunctionState state = states.get(functionName);
+        List<Throwable> failures = new ArrayList<>();
+        List<String> remaining = new ArrayList<>();
+
+        if (state != null) {
+            // Marked before anything is touched: from here the state exists only to be cleaned up.
+            state.pendingRemoval = true;
+            try {
+                state.proxy.close();
+            } catch (RuntimeException proxyFailure) {
+                failures.add(proxyFailure);
+                remaining.add(PROXY_RESOURCE);
+            }
+        }
+
+        for (String containerName : containersToRemove(functionName, state, failures, remaining)) {
+            try {
+                adapter.removeContainer(containerName);
+                forgetReplica(state, containerName);
+            } catch (RuntimeException removalFailure) {
+                failures.add(removalFailure);
+                remaining.add(containerName);
+            }
+        }
+
+        if (failures.isEmpty()) {
+            states.remove(functionName);
+            return true;
+        }
+        log.error("Partial deprovision of function '{}': {} resource(s) still owned by backend '{}': {}",
+                functionName, remaining.size(), backendId(), remaining);
+        throw new PartialDeprovisionException(functionName, backendId(), remaining, failures);
+    }
+
+    /**
+     * The tracked replicas (highest index first, as scaling down does) followed by anything else the
+     * runtime still reports for this function. Discovery is what makes the cleanup resumable across
+     * a restart; a discovery failure is collected rather than thrown, so the containers this process
+     * does know about are still removed.
+     */
+    private Set<String> containersToRemove(String functionName,
+                                           FunctionState state,
+                                           List<Throwable> failures,
+                                           List<String> remaining) {
+        Set<String> containerNames = new LinkedHashSet<>();
+        if (state != null) {
+            for (int replicaIndex : List.copyOf(state.replicas.keySet()).reversed()) {
+                containerNames.add(state.replicas.get(replicaIndex).containerName());
+            }
+        }
+        try {
+            adapter.listManagedContainers(functionName)
+                    .forEach(container -> containerNames.add(container.name()));
+        } catch (RuntimeException discoveryFailure) {
+            failures.add(discoveryFailure);
+            remaining.add("managed containers of '" + functionName + "' (could not be listed)");
+        }
+        return containerNames;
+    }
+
+    /** Drops a replica from the tracked state only once its container is confirmed gone. */
+    private static void forgetReplica(FunctionState state, String containerName) {
+        if (state == null) {
+            return;
+        }
+        state.replicas.entrySet()
+                .removeIf(replica -> replica.getValue().containerName().equals(containerName));
+    }
+
+    /**
+     * Closes the Java-side resources this provider owns — one HTTP server, virtual-thread executor
+     * and HTTP client per function proxy — when the context shuts down.
+     *
+     * <p>It deliberately removes no container. Containers outlive the process and are recovered on
+     * the next start from their managed labels, through {@link #reconcile} or a retried
+     * {@link #deprovision}. Closing the context is not deleting the deployment (invariant I10).
+     */
+    @Override
+    public void close() {
+        for (FunctionState state : states.values()) {
+            safeClose(state.proxy);
         }
     }
 
@@ -202,6 +327,12 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
         try {
             FunctionState state = states.get(functionName);
             if (state == null) {
+                return;
+            }
+            if (state.pendingRemoval) {
+                // Scaling a deployment that is being torn down would create containers the pending
+                // cleanup then has to delete again, behind a proxy that is already closed.
+                log.warn("Ignoring setReplicas({}) for function '{}': its removal is pending", replicas, functionName);
                 return;
             }
             scaleTo(state, Math.max(0, replicas));
@@ -295,11 +426,18 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
         state.replicas.put(replicaIndex, new ReplicaState(containerName, hostPort, baseUrl));
     }
 
+    /**
+     * Removes one replica's container and only then stops tracking it. Dropping the entry first
+     * would leave a container alive with nothing left pointing at it whenever the removal fails
+     * (R6): the map is the provider's only in-process handle on it.
+     */
     private void removeReplica(FunctionState state, int replicaIndex) {
-        ReplicaState removed = state.replicas.remove(replicaIndex);
-        if (removed != null) {
-            adapter.removeContainer(removed.containerName());
+        ReplicaState replica = state.replicas.get(replicaIndex);
+        if (replica == null) {
+            return;
         }
+        adapter.removeContainer(replica.containerName());
+        state.replicas.remove(replicaIndex);
     }
 
     private String requirePersistedPrefix(String functionName, Map<String, String> deploymentObjects) {
@@ -453,6 +591,12 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
         private volatile FunctionSpec spec;
         private final ManagedFunctionProxy proxy;
         private final LinkedHashMap<Integer, ReplicaState> replicas = new LinkedHashMap<>();
+        /**
+         * Set by a deprovision that could not finish. The state then exists only to be cleaned up:
+         * its proxy is closed, whatever replicas are still listed are the ones that survived the
+         * removal, and the entry stays until a retry finally empties it.
+         */
+        private volatile boolean pendingRemoval;
 
         private FunctionState(FunctionSpec spec, ManagedFunctionProxy proxy) {
             this.spec = spec;

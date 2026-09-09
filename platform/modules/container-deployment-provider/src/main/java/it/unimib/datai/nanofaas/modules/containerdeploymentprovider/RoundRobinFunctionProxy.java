@@ -69,7 +69,10 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
     private final AtomicInteger inFlight = new AtomicInteger();
     private final AtomicInteger maxInFlight = new AtomicInteger(DEFAULT_MAX_IN_FLIGHT);
     private final AtomicReference<Duration> singleHopTimeout = new AtomicReference<>(DEFAULT_SINGLE_HOP_TIMEOUT);
+    /** Admission gate: flipped by the first {@link #close()}, before any resource is touched. */
     private final AtomicBoolean closed = new AtomicBoolean();
+    /** Set only once every close stage has actually completed, so a failed close stays retryable. */
+    private final AtomicBoolean released = new AtomicBoolean();
 
     public RoundRobinFunctionProxy(String bindHost) {
         this(bindHost, DEFAULT_MAX_IN_FLIGHT, DEFAULT_SINGLE_HOP_TIMEOUT);
@@ -128,20 +131,45 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
         this.singleHopTimeout.set(singleHopTimeout);
     }
 
+    /**
+     * Releases the proxy: the listening socket, the handler threads and the HTTP client.
+     *
+     * <p>The admission gate flips first and unconditionally, so from this instant the proxy answers
+     * {@code 503} even if a later stage fails — a deployment being removed never keeps admitting
+     * traffic because its teardown was incomplete. Then each stage runs even when an earlier one
+     * throws: this is the only path that reclaims these resources, and a stage skipped here has no
+     * other owner left to run it. Stop accepting new exchanges, interrupt the in-flight handler
+     * virtual threads (blocked in {@code httpClient.send}), release the client.
+     *
+     * <p>A stage that fails leaves the proxy <em>not</em> released and rethrows, so the owner still
+     * holds a handle it can close again; every stage is idempotent, so the retry simply re-runs
+     * them. A close that succeeded is a no-op on any later call.
+     */
     @Override
     public void close() {
-        if (!closed.compareAndSet(false, true)) {
+        closed.set(true);
+        if (released.get()) {
             return;
         }
-        // Stop accepting new exchanges first, then interrupt in-flight handler virtual threads
-        // (blocked in httpClient.send) and release the client's own resources. HttpServer.stop
-        // returns promptly and does not shut down a caller-provided executor.
-        try {
-            server.stop(0);
-        } finally {
-            executor.shutdownNow();
-            httpClient.close();
+        RuntimeException failure = releaseStage(null, () -> server.stop(0));
+        failure = releaseStage(failure, executor::shutdownNow);
+        failure = releaseStage(failure, httpClient::close);
+        if (failure != null) {
+            throw failure;
         }
+        released.set(true);
+    }
+
+    private static RuntimeException releaseStage(RuntimeException failure, Runnable stage) {
+        try {
+            stage.run();
+        } catch (RuntimeException stageFailure) {
+            if (failure == null) {
+                return stageFailure;
+            }
+            failure.addSuppressed(stageFailure);
+        }
+        return failure;
     }
 
     private void handleInvoke(HttpExchange exchange) {

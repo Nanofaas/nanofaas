@@ -117,8 +117,13 @@ public class ManagedDeploymentCoordinator {
     }
 
     public void deprovision(ManagedDeploymentTarget target) {
-        requireProvider(target).deprovision(target.functionName());
-        snapshot.invalidate(target.functionName());
+        try {
+            requireProvider(target).deprovision(target.functionName());
+        } finally {
+            // Even a deprovision that only partly succeeded changed what the backend holds: a
+            // status cached from before it would be read as truth by the next observer.
+            snapshot.invalidate(target.functionName());
+        }
     }
 
     public ManagedDeploymentProvider requireProvider(ManagedDeploymentTarget target) {

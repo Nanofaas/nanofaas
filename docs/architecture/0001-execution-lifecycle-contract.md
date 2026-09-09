@@ -304,7 +304,7 @@ must make its row true.
 | **Dispatch / transport future + HTTP acquisition** | dispatcher (`dispatcherRouter.dispatch*`) or offload gateway (`invokeRemote`) | normal completion; cancellation on shutdown/expiry (P06: keep the real cancellable handle) | dispatch throwing synchronously → `completeExecution` with a warm error result (release the lease already acquired on that path) |
 | **Waiter subscription** (reactive subscriber + timer) | `ReactiveInvocationCoordinator.invoke` (`Mono.fromFuture(...).timeout(...)`) | waiter timeout, client cancel, or shared terminal completes the future | timeout/cancel releases only that waiter's subscription/timer; the shared future and record are untouched (I1) |
 | **Function capacity/generation state** (`FunctionCapacityState`, `ReplicaStatusSnapshot.Entry`) | core function-registration listener (also without queue modules); optional modules consume the same registry | function removal, after its in-flight work drains | remove under load deactivates rather than deletes while slots are held; drain-then-delete (P09/P10) |
-| **Deployment resources** (proxy, `FunctionState`, HttpServer, executor, HttpClient) | `ContainerLocalDeploymentProvider` at provision | `deprovision` (close proxy after all replica removals) + Spring context shutdown | adapter failure must not lose the proxy reference or provider state (R6 → P08: keep ownership until cleanup completes; attempt independent cleanups) |
+| **Deployment resources** (proxy, `FunctionState`, HttpServer, executor, HttpClient) | `ContainerLocalDeploymentProvider` at provision | `deprovision` (proxy closed first, then every container attempted) + context shutdown, which closes the proxies and leaves the containers recoverable | ownership is kept until the cleanup completes: the proxy is released on a guaranteed path, a replica leaves the map only once its container is confirmed gone, and what could not be removed is reported as `PartialDeprovisionException` (P08, R6) |
 | **Executor/thread resources** (scheduler executor, replica-refresh pool) | `Scheduler`/`SyncScheduler.start`, `ReplicaStatusSnapshot` refresh pool | `SmartLifecycle.stop` (`shutdownNow` + shutdown); context shutdown | a `start` that throws shuts down the executor and clears the reference before rethrowing |
 | **Metrics / meters** (Micrometer meters per function) | function register (`Metrics.registerFunction`, queue managers) | `Metrics.removeFunction` / queue removal listeners | a removed function's late event must not re-register meters (R8 → P09); removed-name sets retire with the generation |
 
@@ -376,6 +376,36 @@ replaced it with the shared identity, no second lease concept), and `FunctionCap
 implements the protocol above — a slot is one retained resource, `deactivate()` is the retirement
 transition, and the state drains when its last slot returns.
 
+### 8.3 Partial deprovision: pending removal vs operational rollback (P08)
+
+A removal can end in three states, and only two of them may be presented as an outcome the caller
+can trust.
+
+1. **Removed.** The backend released everything. The catalog delete is committed last.
+2. **Pending removal.** The backend reports a `PartialDeprovisionException` naming what it could not
+   release. Resources were really lost from the control plane's reach, so no rollback is claimed:
+   the catalog entry stays (it is what keeps the leftovers traceable and what makes a retried
+   `DELETE` resume the cleanup), the registration listeners are **not** replayed — capacity, queues
+   and meters retire with the generation that owns those resources (I7) — and every path into the
+   function is refused with `409 FUNCTION_REMOVAL_PENDING`: invoke, enqueue, patch, replicas and
+   re-registration. The endpoint is already closed, so admitting anything would only produce a
+   transport error the caller cannot interpret.
+3. **Operational rollback.** Allowed only when nothing needed was lost: either the deployment was
+   never touched, or it was fully deprovisioned and `reconcile` rebuilt it against the persisted
+   backend and replica target — a rebuild that probes the resources back before the function is
+   declared live again. Closing the proxy and then declaring an operational rollback is forbidden;
+   that is why the container backend closes the proxy *first* on the removal path and reports every
+   later failure as pending removal.
+
+The distinction lives in one place per side: `ContainerLocalDeploymentProvider.deprovision` decides
+whether the outcome is partial, and `FunctionService.remove` routes a `PartialDeprovisionException`
+to `holdPendingRemoval` and everything else to `rollbackRemoval`.
+
+Retry and restart both work from the resources themselves. A second `deprovision` resumes over the
+tracked state; after a restart there is no tracked state, and the backend rediscovers its containers
+from their managed labels. Closing the Java context closes the proxies and leaves the containers
+alone — closing the context is not deleting the deployment (I10).
+
 ## 9. Conformance: current code vs this contract
 
 The contract above is the target. The baseline at `61d72e73` deviates at these points; each is
@@ -391,7 +421,7 @@ closed by the named task.
 | rows 1, 2 / I5 | no-queue direct admission has no count/byte bound (direct admission admits unbounded concurrency) | P06/P07 |
 | §8 outcome row / I6 | `OutcomeWeigher` prices deep/wide payloads near zero and retains them (R1) | P02 |
 | §7 / I7 | removed-name sets in `Metrics`, sync-queue metrics, and `ReplicaStatusSnapshot` entries accumulate (R8); offload meters are never deregistered | P09/P10 |
-| §8 deployment row / I10 | a deprovision adapter throw loses the proxy reference and provider state (R6) | P08 |
+| §8 deployment row / I10 | ~~a deprovision adapter throw loses the proxy reference and provider state (R6)~~ **closed by P08**: pending removal, see §8.3 | P08 |
 | §8 transport row / I3 | administrative expiry releases bookkeeping but holds no handle to cancel the dispatch (work can outlive its released capacity) | P06 |
 
 No new state is introduced by this ADR. Any future state addition must carry a defined transition
@@ -401,7 +431,7 @@ into and out of it, an owner, and an unchanged shared-result guarantee.
 (P02), R7 (P03), R2/R4 (P04), R3 and the per-waiter timeout (P05), R5, mandatory core capacity,
 attempt-scoped leases, the cancellable transport handle and the per-attempt deadline (P06). Still
 open, in the order the campaign now runs them: unbounded direct admission and the aggregate
-live/payload/waiter budgets (P07), R6 (P08), R8 — which keeps two explicitly red regressions until
+live/payload/waiter budgets (P07), R8 — which keeps two explicitly red regressions until
 P09 removes the historical sets and P10 removes the snapshot entries — and the shared wake-up (P11).
 
 ## 10. Residual inventory after P06 (recorded by P20a)

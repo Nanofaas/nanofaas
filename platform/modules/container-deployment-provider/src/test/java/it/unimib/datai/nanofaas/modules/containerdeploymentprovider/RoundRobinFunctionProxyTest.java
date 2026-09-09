@@ -29,7 +29,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 class RoundRobinFunctionProxyTest {
 
@@ -303,6 +306,26 @@ class RoundRobinFunctionProxyTest {
                 .orTimeout(REASONABLE_AWAIT.toMillis(), TimeUnit.MILLISECONDS)
                 .exceptionally(ex -> null);
         assertThat(finished.get()).isNull();
+    }
+
+    @Test
+    void close_stageFailure_stillReleasesTheOtherStages_andStaysRetryable() throws Exception {
+        HttpClient failingClient = mock(HttpClient.class);
+        doThrow(new IllegalStateException("client close failed")).doNothing().when(failingClient).close();
+        proxy = new RoundRobinFunctionProxy("127.0.0.1", 4, Duration.ofSeconds(5), failingClient);
+        int port = portOf(proxy);
+
+        assertThatThrownBy(proxy::close)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("client close failed");
+
+        // The stages before the failing one did run: the listening socket is gone even though the
+        // close as a whole did not finish. A skipped stage would have no other owner left to run it.
+        assertThatThrownBy(() -> new Socket("127.0.0.1", port)).isInstanceOf(ConnectException.class);
+
+        // The failed close left the proxy unreleased, so the owner's retry re-runs every stage.
+        proxy.close();
+        verify(failingClient, times(2)).close();
     }
 
     @Test

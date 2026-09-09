@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.RuntimeMode;
+import it.unimib.datai.nanofaas.controlplane.deployment.PartialDeprovisionException;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
@@ -29,8 +30,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * despite the removal failure, or the state stays tracked so a retry can still clean it
  * up. A subsequent successful deprovision must then leave no proxy open.
  *
- * <p>This test injects an adapter failure and asserts the desired behavior, so it is RED
- * on the current baseline, where the proxy is left open and untracked.
+ * <p>This test injects an adapter failure and asserts the desired behavior. It was RED on the
+ * baseline before P08 (the proxy was left open and untracked, and the assertion below on the
+ * resources still being reachable failed); P08 makes it pass by closing the proxy on a guaranteed
+ * path, keeping the tracked state until nothing is left, and reporting the explicit
+ * {@link PartialDeprovisionException} outcome.
  */
 class R6DeprovisionFailureOwnershipRegressionTest {
 
@@ -117,8 +121,10 @@ class R6DeprovisionFailureOwnershipRegressionTest {
 
         adapter.failRemoval.set(true);
         assertThatThrownBy(() -> provider.deprovision("fn"))
-                .as("the injected adapter removal failure must propagate")
-                .isInstanceOf(IllegalStateException.class);
+                .as("the removal failure must propagate, as the explicit partial outcome")
+                .isInstanceOf(PartialDeprovisionException.class)
+                .hasRootCauseInstanceOf(IllegalStateException.class)
+                .hasRootCauseMessage("Docker unavailable");
 
         // Immediately after the failure the resources must still be reachable: either the
         // proxy was already closed, or the provider still tracks the state for a retry.

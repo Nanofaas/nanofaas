@@ -1097,3 +1097,167 @@ predicate, so the hot dispatch path allocates nothing it did not allocate before
 P08 (recoverable partial deprovision), then P09/P10 and P07, in the order set by the plan
 revision. P08–P11 consume §8.2 and `activeGeneration(name)` for their own generation-scoped
 owners; P20b removes the adapters listed in ADR §10 once those consumers have a port to move to.
+
+## P08 — Recoverable partial deprovision (R6)
+
+**Task:** P08 — "Rendere recuperabile il deprovision parziale". **Plan revision:** the 2026-09-09
+revision of `docs/plans/2026-09-08-control-plane-lifecycle-memory-and-modularity.md`. **Base
+commit:** `397e2e01` (P20a), branch `control-plane-lifecycle-memory`.
+
+**What changed**
+
+The container backend used to drop a function's only tracking reference before knowing its
+containers were gone, and to skip the proxy close entirely once a removal threw: a failed cleanup
+lost both the ability to retry and the handle on a running HTTP server, executor and client (R6,
+invariant I10). The control plane then restored the function as if nothing had happened.
+
+- `ContainerLocalDeploymentProvider.deprovision` now releases the proxy on a guaranteed path
+  *first* (the removal decision is already taken, so the endpoint must stop admitting traffic before
+  replicas start disappearing), then attempts every container in one pass — the tracked replicas
+  plus whatever the runtime still reports under this function's managed labels — collecting errors
+  instead of stopping at the first. A replica leaves the map only once its container is confirmed
+  gone, and the tracked state (and its lock) are dropped only when nothing is left. What could not
+  be released is reported as `PartialDeprovisionException`, naming it.
+- `removeReplica` (the scale-down path) got the same rule: confirm, then forget.
+- `ContainerLocalDeploymentProvider` is now `AutoCloseable`: context shutdown closes the proxies and
+  removes no container, so a restarted provider rediscovers them from their labels.
+- A function in pending removal is refused by `provision` and ignored by `setReplicas`, so nothing
+  adopts or grows a deployment that is still owed a cleanup.
+- `RoundRobinFunctionProxy.close` flips the admission gate first and unconditionally, then runs
+  every release stage even if an earlier one throws; a stage that fails leaves the proxy unreleased
+  and rethrows, so the owner's retry re-runs all of them (each is idempotent).
+- `FunctionService.remove` distinguishes the two failure outcomes. A `PartialDeprovisionException`
+  goes to `holdPendingRemoval`: the catalog entry is restored (that entry is what keeps the
+  leftovers traceable and makes a retried DELETE resume the cleanup), the registration listeners are
+  **not** replayed, and every path into the function — invoke, enqueue, patch, replicas,
+  re-registration — is refused with `409 FUNCTION_REMOVAL_PENDING`. Any other failure keeps the
+  existing `rollbackRemoval`, which is only honest because the deprovision succeeded and
+  `reconcile` rebuilt and verified the deployment first. The same rule applies to the registration
+  rollback path, so a failed registration whose cleanup fails does not orphan its containers.
+- `ManagedDeploymentCoordinator.deprovision` invalidates the cached replica status even when the
+  provider throws.
+- API behaviour documented in `openapi/core.yaml` (DELETE 409 plus invoke/enqueue 409) and in ADR
+  §8.3, with the §8 deployment row and the §9 conformance table updated.
+
+**Files changed**
+
+- `platform/control-plane/src/main/java/.../controlplane/deployment/PartialDeprovisionException.java` (new)
+- `platform/control-plane/src/main/java/.../controlplane/registry/FunctionRemovalPendingException.java` (new)
+- `platform/control-plane/src/main/java/.../controlplane/deployment/ManagedDeploymentProvider.java`
+- `platform/control-plane/src/main/java/.../controlplane/registry/FunctionService.java`
+- `platform/control-plane/src/main/java/.../controlplane/registry/ManagedDeploymentCoordinator.java`
+- `platform/control-plane/src/main/java/.../controlplane/api/GlobalExceptionHandler.java`
+- `platform/modules/container-deployment-provider/src/main/java/.../ContainerLocalDeploymentProvider.java`
+- `platform/modules/container-deployment-provider/src/main/java/.../RoundRobinFunctionProxy.java`
+- `platform/control-plane/src/test/java/.../controlplane/registry/FunctionServicePartialDeprovisionTest.java` (new)
+- `platform/control-plane/src/test/java/.../controlplane/api/GlobalExceptionHandlerTest.java`
+- `platform/modules/container-deployment-provider/src/test/java/.../ContainerLocalDeprovisionRecoveryTest.java` (new)
+- `platform/modules/container-deployment-provider/src/test/java/.../R6DeprovisionFailureOwnershipRegressionTest.java`
+- `platform/modules/container-deployment-provider/src/test/java/.../RoundRobinFunctionProxyTest.java`
+- `openapi/core.yaml`, `docs/architecture/0001-execution-lifecycle-contract.md`,
+  `docs/experiments/lifecycle-memory-2026-09/STATO.md`
+
+**Impact (GitNexus, `--direction upstream`, run before editing)**
+
+| Symbol | Risk | Impacted / direct |
+|---|---|---|
+| `RoundRobinFunctionProxy` | **HIGH** (82 with tests) | 82 / 14 |
+| `ManagedDeploymentProvider.deprovision` | **HIGH** | 23 / 3 |
+| `FunctionService.get` | **HIGH** | 45 / 18 |
+| `FunctionService.getRegistered` | **HIGH** | 44 / 7 |
+| `FunctionService.remove` | MEDIUM | 12 / 12 |
+| `ContainerLocalDeploymentProvider` | LOW | 3 / 2 |
+
+No `UNKNOWN` verdict, so none had to be resolved by a text search. The HIGH verdicts were not
+waived: `RoundRobinFunctionProxy`'s public surface is unchanged except for `close()` becoming
+retryable, and every dependent listed (the factory, the provider's provision/reconcile, and the two
+suites) was compiled and run; `FunctionService.get`'s dependent list is inflated by `Optional.get`
+and `List.get` name matches, and the added behaviour only triggers for a name in pending removal,
+which no pre-existing path can enter. `getRegistered` was deliberately **not** changed, so a
+partially removed function is still listed and readable — that is what "the catalog represents the
+state actually obtained" means here.
+
+`detect-changes --scope all` before committing: recorded with the commit (see below).
+
+**Test commands and outcomes**
+
+```bash
+# RED, on the P08 base with the fix stashed (the pre-existing R6 regression):
+git stash push -- platform openapi
+./gradlew :control-plane-modules:container-deployment-provider:test \
+  --tests '*R6DeprovisionFailureOwnershipRegressionTest*' --console=plain --offline
+# FAILED at R6DeprovisionFailureOwnershipRegressionTest.java:128 —
+# "a failed deprovision must not drop the proxy without closing or tracking it"
+git stash pop
+
+# GREEN, with the fix:
+./gradlew :control-plane-modules:container-deployment-provider:test --console=plain --offline
+# BUILD SUCCESSFUL — 77 tests, 0 failed (66 before: +10 recovery cases, +1 proxy close-stage case)
+
+./gradlew :control-plane:test --tests '*FunctionServicePartialDeprovisionTest*' --console=plain --offline
+# BUILD SUCCESSFUL — 5 tests
+
+./gradlew :control-plane:test --no-parallel --console=plain --offline
+# 635 tests completed, 2 failed, 3 skipped — the 2 failures are the known R8 regressions
+# (R8HistoryCleanupRegressionTest), owned by P09/P10 and red before this task as well.
+
+./gradlew :control-plane-modules:async-queue:test :control-plane-modules:sync-queue:test \
+  :control-plane-modules:offload:test :control-plane-modules:concurrency-control:test \
+  :control-plane-modules:autoscaler:test :control-plane-modules:k8s-deployment-provider:test \
+  :control-plane-modules:runtime-config:test :control-plane-modules:build-metadata:test \
+  :control-plane-modules:container-deployment-provider:test :workload-metrics:test \
+  --continue --no-parallel --console=plain --offline
+# BUILD SUCCESSFUL
+
+./gradlew test --no-parallel --continue --console=plain --offline
+# Only the same 2 R8 failures across the whole repository.
+
+./gradlew build -x test --console=plain --offline
+# BUILD SUCCESSFUL
+```
+
+**Progress classification**
+
+- **Implemented:** the four requirements — ownership kept until confirmation, every resource
+  attempted with collected errors and a guaranteed proxy path, the explicit partial outcome shared
+  by provider and `FunctionService`, and discovery/restart plus context shutdown.
+- **Verified with targeted tests:** one failing replica among several; a failing proxy close; a
+  successful second attempt; a failing discovery; a scale-down whose removal fails; provider
+  stop/start with rediscovery; context shutdown; the reconcile rebuild out of pending removal; the
+  proxy's close-stage failure and retry.
+- **Verified in integration of the involved paths:** `FunctionService.remove`, the registration
+  rollback, the invocation lookup, patch, replicas and re-registration under pending removal, plus
+  the removal racing an invocation lookup; the whole control-plane and module suites are green
+  except the two R8 reds owned by P09/P10.
+- No load run, no native build, no NanoLab scenario, no soak.
+
+**Measures**
+
+None taken: P08 adds no limit, default or tunable. The removal path gains one
+`listManagedContainers` call per deprovision (a delete-path call, not a request-path one) in
+exchange for the metadata-driven recovery; nothing on the invocation path changed except one
+`ConcurrentHashMap` lookup in `FunctionService.get`, which returns null in every non-pending case.
+
+**Documented incompatibilities**
+
+- `ContainerLocalDeploymentProvider.deprovision` now throws `PartialDeprovisionException` instead of
+  the raw adapter exception; the adapter's own failure travels as the cause. The R6 regression
+  test's type assertion was updated accordingly (its ownership assertions — the part that was red —
+  are unchanged).
+- `DELETE /v1/functions/{name}` can now answer `409 FUNCTION_REMOVAL_PENDING` instead of propagating
+  a `500`, and a function in pending removal answers `409` on invoke, enqueue, patch, replicas and
+  re-registration. Documented in `openapi/core.yaml`.
+- `ContainerLocalDeploymentProvider` implements `AutoCloseable`, so Spring now calls `close()` on
+  context shutdown (inferred destroy method). It closes proxies only; containers are left recoverable.
+- `KubernetesManagedDeploymentProvider` was **not** changed: it still throws raw exceptions, so a
+  failed k8s deprovision keeps today's restore-and-reconcile behaviour. Adopting the partial
+  outcome there is a follow-up, not part of P08's file list.
+- Across a restart, a function left in pending removal is restored from the catalog and reconciled
+  like any other: if the rebuild succeeds it serves again under a new generation, which is the
+  "rebuilt and verified" case ADR §8.3 allows, and the operator re-issues the delete.
+
+**Next step**
+
+P09/P10 (R8: removed-name sets and replica-snapshot entries) and P07 (aggregate admission budgets),
+in the order set by the plan revision. A Docker-backed NanoLab scenario for the partial-deprovision
+path is owned by NanoLab (separate checkout) and is out of scope here.

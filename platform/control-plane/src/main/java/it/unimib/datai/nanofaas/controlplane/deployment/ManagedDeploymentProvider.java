@@ -37,6 +37,21 @@ public interface ManagedDeploymentProvider {
         // Nothing derived from the spec is held between calls.
     }
 
+    /**
+     * Removes every resource this backend owns for the function, attempting all of them even when
+     * one removal fails.
+     *
+     * <p>A backend that could not remove everything must say so with a
+     * {@link PartialDeprovisionException} naming what is left. That is the control plane's signal
+     * that resources were really lost from its reach, so the removal is held in pending removal
+     * instead of being presented as rolled back. Any other exception means the removal failed
+     * without the backend giving up ownership of anything the caller still needs, and the caller
+     * may restore the function.
+     *
+     * <p>A second call for the same name resumes the cleanup idempotently, including after a
+     * restart, where the backend rediscovers its resources from their own metadata rather than from
+     * process-local state.
+     */
     void deprovision(String functionName);
 
     void setReplicas(String functionName, int replicas);
