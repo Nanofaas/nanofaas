@@ -943,3 +943,157 @@ branch della campagna, verificando gli SHA e la preservazione dei file overload
 e delle skill non tracciate. L'esito effettivo è riscontrabile nei riferimenti
 Git del branch; questo paragrafo non anticipa il successo del merge. Nessuna
 variazione di API o default introdotta dalla revisione documentale.
+
+## P20a — Internal contracts needed before P07–P11
+
+**ID:** P20a — the semantic prerequisite of P20: verify the P06 consumers, record the residual
+inventory, extend the lifecycle ADR with ownership by scope, and introduce the generation identity
+and the active/retiring/closed protocol as small reusable contracts in the existing core packages.
+Not the closure of P20: no JAR extraction, no mass class move, no meter/snapshot/gate
+implementation (those stay with P09/P10/P11), no removal of the temporary adapters (P20b/P21).
+
+**Revision / git state**
+
+- Branch: `control-plane-lifecycle-memory`. BASE: `92aae4e9` ("Refine lifecycle campaign
+  dependencies and validation gates"). This entry's commit is the P20a commit. The pre-existing
+  uncommitted files of the overload experiment (`docs/experiments/overload-path-2026-09/STATO.md`,
+  `run-queue-2.out`) and the untracked GitNexus skills are deliberately left out of the commit.
+
+**Changed files**
+
+- New (core, `it.unimib.datai.nanofaas.controlplane.capacity`):
+  - `FunctionGeneration` — the shared identity of one incarnation of a function name
+    (`functionName` + monotonic id), minted by `FunctionCapacityRegistry`, with `supersedes` to
+    tell a stale event from a current one. Internal only: never an execution id, a key component
+    or a metric tag.
+  - `GenerationPhase` — `ACTIVE -> RETIRING -> CLOSED` (plus the direct `ACTIVE -> CLOSED` when a
+    generation is retired holding nothing); `CLOSED` is terminal.
+  - `GenerationLifecycle` — the reusable state machine plus the count of retained resources:
+    `retain`/`retainIfBelow` are admitted only while `ACTIVE`, and the transition to `CLOSED` is
+    reported to exactly one caller. It carries no identity and fires no callback on purpose: the
+    owner pairs it with its own `FunctionGeneration` and runs its cleanup outside its own locks,
+    so no owner's lock order is inverted by this class.
+- Applied to the capacity already in place:
+  - `FunctionCapacityState` now delegates active/in-flight/drained bookkeeping to
+    `GenerationLifecycle` (a slot is one retained resource, `deactivate()` is the retirement
+    transition) and exposes `phase()`. Same semantics, with one intentional tightening: a repeated
+    `deactivate()` on an already closed generation no longer re-fires the drain callback.
+  - `DispatchLease` carries a `FunctionGeneration` instead of `(String, long)`; `functionName()`
+    is derived from it. No second lease concept, no duplication of P06's lease.
+  - `FunctionCapacityRegistry` mints `FunctionGeneration`, keys the draining map by it, and adds
+    `activeGeneration(name)` — the read the other per-function owners (P08–P11) use to fence a
+    stale event without a new global registry.
+- `docs/architecture/0001-execution-lifecycle-contract.md`: §3.3 and §3.4 updated to what P05/P06
+  actually delivered (including the carried-forward per-attempt-deadline note: the deadline is
+  applied to a mirror of the raw transport future, so the retry policy runs while the lease stays
+  with the physically running work; the offload hop's derived budget remains the one documented
+  conflation). New §8.1 (ownership by scope: execution, waiter, attempt, generation — acquisition,
+  release, cancellation, retry, shutdown, plus terminal future vs physical end and cancellation
+  requested before the handle is published), new §8.2 (generation identity and the
+  active/retiring/closed protocol, with the five rules), a status paragraph in §9, and new §10
+  (residual inventory after P06).
+- Tests: new `GenerationLifecycleTest` (8) and `FunctionGenerationTest` (4); two cases added to
+  `FunctionCapacityRegistryTest` for remove/re-register identity + late release fencing and for
+  "a generation closes only once its last slot comes back".
+
+**Residual inventory (the verified part, full table in ADR §10)**
+
+Read from the call sites, not assumed. Two findings worth naming here:
+
+- The whole name-based **acquisition** chain (`FunctionCapacityRegistry.tryAcquireSlot`,
+  `InvocationEnqueuer.tryAcquireSlot` and its four implementations, `QueueManager.tryAcquireSlot`)
+  has **no production caller left**: every remaining call site is a test or a test double that
+  simulates `tryAcquireLease`. It is a removal candidate for P20b, not a live path.
+- The name-based **release** (`releaseSlotAndGetHoldNanos` through
+  `InvocationEnqueuer.releaseDispatchSlot`) is still called, but is inert in practice:
+  `releaseAttemptCapacity` returns early once the transport owns the capacity, and the registry's
+  `leased` identity map prevents it from consuming a lease-owned slot. It goes with the `leased`
+  map in P20b.
+- `FunctionCapacityState.incrementInFlight()` (an increment with no ceiling) and the two public
+  `FunctionCapacityState` constructors are reachable only from tests; `hasGeneration(name)` answers
+  "any generation, including one only draining", while the two `SyncQueueService` guards that use it
+  are really asking `activeGeneration(name) != null`.
+
+**Impact and graph checks**
+
+- GitNexus index up to date at `92aae4e9` before starting. `impact --direction upstream` before
+  editing: `FunctionCapacityRegistry` **HIGH** (43 impacted, 23 direct, 3 processes),
+  `DispatchLease` **CRITICAL** (19 impacted, 8 direct), `FunctionCapacityState` **HIGH** (13
+  impacted, 4 direct), `DispatchAttempt` LOW. No `UNKNOWN` verdict was returned.
+- The CRITICAL warning on `DispatchLease` was not waived: the dependent list was read symbol by
+  symbol, which showed that every dependent only *carries* the lease and that `generation()` is read
+  in exactly two module tests (`QueueLeaseGenerationTest` in async-queue and sync-queue), both of
+  which compare identities and stay valid with a record. Every dependent module's suite was then run
+  (see below).
+- `detect-changes` before committing (see the command block); the architecture rule
+  `core_packages_are_free_of_cycles` was re-run to confirm the new types keep `capacity` a leaf
+  package.
+
+**Test commands and outcomes**
+
+```bash
+./gradlew :control-plane:test --tests '*FunctionCapacityRegistryTest' \
+  --tests '*GenerationLifecycleTest' --tests '*FunctionGenerationTest' \
+  --tests '*DispatchLifecycleAndCancellationTest' --tests '*ReviewLifecycleGateTest' \
+  --tests '*CoreCapacityRegistrationTest' --console=plain --offline
+# BUILD SUCCESSFUL
+
+./gradlew :control-plane:test --no-parallel --console=plain --offline
+# 629 tests completed, 2 failed, 3 skipped — the 2 failures are the known R8 regressions
+# (R8HistoryCleanupRegressionTest), owned by P09/P10 and red before this task as well.
+
+./gradlew :control-plane-modules:async-queue:test :control-plane-modules:sync-queue:test \
+  :control-plane-modules:offload:test :control-plane-modules:concurrency-control:test \
+  :workload-metrics:test --continue --no-parallel --console=plain --offline
+# BUILD SUCCESSFUL
+
+./gradlew :control-plane-modules:autoscaler:test :control-plane-modules:k8s-deployment-provider:test \
+  :control-plane-modules:runtime-config:test :control-plane-modules:build-metadata:test \
+  --continue --no-parallel --console=plain --offline
+# BUILD SUCCESSFUL
+
+./gradlew :control-plane-modules:container-deployment-provider:test --console=plain --offline
+# 66 tests, 1 failed — the pre-existing R6 red (P08), unchanged by this task.
+
+./gradlew :control-plane:test --tests '*OpenApi*Test' --tests '*IssueCoverageTest' \
+  --tests '*CoreArchitectureTest' --no-parallel --console=plain --offline
+# BUILD SUCCESSFUL
+```
+
+**Progress classification**
+
+- **Implemented:** the three contracts, their application to `FunctionCapacityState`,
+  `DispatchLease` and `FunctionCapacityRegistry`, the ADR ownership table and the residual
+  inventory.
+- **Verified with targeted tests:** the active/retiring/closed protocol (including the
+  exactly-one-close report under contention), the identity across remove/re-register, and the late
+  release that must not touch the new generation.
+- **Verified in integration of the involved paths:** the already migrated consumers — core
+  dispatch, both queue modules, offload, the governor and workload metrics — all still green on
+  their own suites, with the two known R8 reds and the R6 red unchanged.
+- No load run, no native build, no NanoLab scenario, no soak: this task changes contracts and
+  documentation, not admission or transport behavior.
+
+**Measures**
+
+None taken: P20a introduces no new limit, default or measurable path. The one performance-relevant
+choice is deliberate — the acquisition ceiling is applied by `retainIfBelow(int)` rather than a
+predicate, so the hot dispatch path allocates nothing it did not allocate before.
+
+**Documented incompatibilities**
+
+- `DispatchLease.generation()` returns a `FunctionGeneration` instead of a `long`. Internal API,
+  no public/HTTP surface, no configuration or metric changes; the only readers were the two
+  module tests named above.
+- A repeated `FunctionCapacityState.deactivate()` no longer re-fires the drain callback. The
+  registry's drain handler was already idempotent, so this only removes a duplicate notification.
+- `activeGeneration(name)` is added, `hasGeneration(name)` is unchanged: the second still answers
+  "any generation, including one only draining". The two are not interchangeable, and switching the
+  `SyncQueueService` guards belongs to P20b.
+- R6 (P08) and R8 (P09/P10) remain open and explicitly red; nothing here declares them closed.
+
+**Next step**
+
+P08 (recoverable partial deprovision), then P09/P10 and P07, in the order set by the plan
+revision. P08–P11 consume §8.2 and `activeGeneration(name)` for their own generation-scoped
+owners; P20b removes the adapters listed in ADR §10 once those consumers have a port to move to.

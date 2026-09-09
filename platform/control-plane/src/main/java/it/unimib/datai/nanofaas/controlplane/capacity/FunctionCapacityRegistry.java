@@ -16,13 +16,16 @@ import org.slf4j.LoggerFactory;
  * The single, core-owned capacity authority: what limits a function's in-flight
  * work, independently of any optional queue or governor module.
  *
- * <p>Each registration is a <em>generation</em>. Removing a function retires its
- * current generation (no further acquisition) while its already-acquired slots
- * keep draining under the old identity; re-registering the same name creates a
- * new generation, so an old lease can never decrement the new registration's
- * state (ADR 0001 §7 / invariant I7). A {@link DispatchLease} carries its
- * generation, so completion paths release exactly the capacity the attempt
- * acquired (invariant I4) rather than releasing by name alone.
+ * <p>Each registration is a {@link FunctionGeneration}, minted here: this is the
+ * core's generation authority, and {@link #activeGeneration(String)} is where the
+ * other per-function resource owners read the identity they attribute their own
+ * state to. Removing a function retires its current generation (no further
+ * acquisition) while its already-acquired slots keep draining under the old
+ * identity; re-registering the same name creates a new generation, so an old
+ * lease can never decrement the new registration's state (ADR 0001 §7 / invariant
+ * I7). A {@link DispatchLease} carries its generation, so completion paths release
+ * exactly the capacity the attempt acquired (invariant I4) rather than releasing by
+ * name alone.
  *
  * <p>The name-based methods ({@link #tryAcquireSlot},
  * {@link #releaseSlotAndGetHoldNanos}, {@link #state}, ...) are the temporary
@@ -77,7 +80,8 @@ public final class FunctionCapacityRegistry {
                     // Retire the old generation: it keeps its slots and drains on release.
                     entry.draining.put(entry.generation, current);
                 }
-                long newGeneration = nextGeneration.getAndIncrement();
+                FunctionGeneration newGeneration =
+                        new FunctionGeneration(functionName, nextGeneration.getAndIncrement());
                 FunctionCapacityState fresh = new FunctionCapacityState(configuredConcurrency, nanoTime,
                         () -> onStateDrained(functionName, entry, newGeneration));
                 entry.state = fresh;
@@ -137,8 +141,34 @@ public final class FunctionCapacityRegistry {
         }
     }
 
+    /**
+     * Whether any generation of the name is still known here — the active one, or a
+     * retired one that has not finished draining.
+     */
     public boolean hasGeneration(String functionName) {
         return entries.containsKey(functionName);
+    }
+
+    /**
+     * The identity of the name's active incarnation, or {@code null} when the name has
+     * no registration (or only retired ones still draining).
+     *
+     * <p>This is the read other per-function resource owners use to fence a stale event:
+     * an event carrying an older {@link FunctionGeneration} may close what that
+     * generation owned, but must neither recreate an entry nor mutate the current one
+     * (ADR 0001 §8.2, invariant I7).
+     */
+    public FunctionGeneration activeGeneration(String functionName) {
+        Entry entry = entries.get(functionName);
+        if (entry == null) {
+            return null;
+        }
+        entry.lock.lock();
+        try {
+            return activeState(functionName, entry) == null ? null : entry.generation;
+        } finally {
+            entry.lock.unlock();
+        }
     }
 
     /**
@@ -183,9 +213,8 @@ public final class FunctionCapacityRegistry {
             if (!entry.lifecycleOwned) state.concurrency(configuredConcurrency);
             if (!state.tryAcquireSlot()) return null;
             entry.leased.merge(state, 1, Integer::sum);
-            long generation = entry.generation;
-            return new DispatchLease(functionName, generation,
-                    () -> releaseSlot(functionName, generation));
+            FunctionGeneration generation = entry.generation;
+            return new DispatchLease(generation, () -> releaseSlot(generation));
         } finally {
             entry.lock.unlock();
         }
@@ -277,12 +306,12 @@ public final class FunctionCapacityRegistry {
     }
 
     /** Release for a lease carrying its generation: never crosses into another generation. */
-    private long releaseSlot(String functionName, long generation) {
-        Entry entry = entries.get(functionName);
+    private long releaseSlot(FunctionGeneration generation) {
+        Entry entry = entries.get(generation.functionName());
         if (entry == null) return -1L;
         entry.lock.lock();
         try {
-            FunctionCapacityState acquired = entry.generation == generation
+            FunctionCapacityState acquired = generation.equals(entry.generation)
                     ? entry.state : entry.draining.get(generation);
             if (acquired == null) return -1L;
             entry.leased.computeIfPresent(acquired, (state, count) -> count == 1 ? null : count - 1);
@@ -302,9 +331,9 @@ public final class FunctionCapacityRegistry {
             FunctionCapacityState current = activeState(functionName, entry);
             if (current == null || current != expectedState || !current.tryAcquireSlot()) return null;
             entry.leased.merge(current, 1, Integer::sum);
-            long generation = entry.generation;
-            return new DispatchLease(functionName, generation, () -> {
-                long held = releaseSlot(functionName, generation);
+            FunctionGeneration generation = entry.generation;
+            return new DispatchLease(generation, () -> {
+                long held = releaseSlot(generation);
                 onReleased.accept(held);
             });
         } finally {
@@ -317,13 +346,13 @@ public final class FunctionCapacityRegistry {
      * in-flight work left: a retired current generation drops the whole entry, a draining old
      * generation drops just itself. Runs under the entry lock (reentrant).
      */
-    private void onStateDrained(String functionName, Entry entry, long generation) {
+    private void onStateDrained(String functionName, Entry entry, FunctionGeneration generation) {
         entry.lock.lock();
         try {
             if (entries.get(functionName) != entry) {
                 return;
             }
-            if (entry.generation == generation) {
+            if (generation.equals(entry.generation)) {
                 if (fullyDrained(entry)) {
                     entries.remove(functionName, entry);
                 }
@@ -351,8 +380,8 @@ public final class FunctionCapacityRegistry {
         private final ReentrantLock lock = new ReentrantLock();
         private FunctionCapacityState state;
         private final Map<FunctionCapacityState, Integer> leased = new IdentityHashMap<>();
-        private long generation;
+        private FunctionGeneration generation;
         private boolean lifecycleOwned;
-        private final Map<Long, FunctionCapacityState> draining = new LinkedHashMap<>();
+        private final Map<FunctionGeneration, FunctionCapacityState> draining = new LinkedHashMap<>();
     }
 }

@@ -11,28 +11,27 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * so a late callback, a retry reset, an administrative expiry and the normal
  * completion racing each other can only ever give the slot back once.
  *
- * <p>The {@code generation} is an internal identity (see
- * {@link FunctionCapacityRegistry}); it is what keeps an old lease from
- * decrementing a re-registered function's state while it drains.
+ * <p>The {@link FunctionGeneration} is the internal identity of the incarnation
+ * the attempt was admitted under (see {@link FunctionCapacityRegistry}); it is
+ * what keeps an old lease from decrementing a re-registered function's state
+ * while it drains.
  */
 public final class DispatchLease {
-    private final String functionName;
-    private final long generation;
+    private final FunctionGeneration generation;
     private final Runnable releaseAction;
     private final AtomicBoolean released = new AtomicBoolean(false);
 
-    DispatchLease(String functionName, long generation, Runnable releaseAction) {
-        this.functionName = functionName;
+    DispatchLease(FunctionGeneration generation, Runnable releaseAction) {
         this.generation = generation;
         this.releaseAction = releaseAction;
     }
 
     public String functionName() {
-        return functionName;
+        return generation.functionName();
     }
 
     /** Internal generation identity; never part of any public key or tag. */
-    public long generation() {
+    public FunctionGeneration generation() {
         return generation;
     }
 

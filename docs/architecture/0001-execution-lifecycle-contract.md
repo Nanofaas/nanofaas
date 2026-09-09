@@ -5,6 +5,9 @@
 - **Campaign:** control-plane lifecycle, memory and modularity
 - **Applies to:** `platform/control-plane` core + optional modules (`async-queue`, `sync-queue`, `offload`, `container-deployment-provider`, …)
 - **Reviewed against:** `61d72e73` (P00, branch `control-plane-lifecycle-memory`); analyzed revision `1d9e2f55` (`main`, v0.21.0)
+- **Amended:** P20a at `92aae4e9` — §3.3 and §4 updated to what P05/P06 delivered, §8.1 (ownership by
+  scope), §8.2 (generation identity and the active/retiring/closed protocol) and §10 (residual
+  inventory after P06) added
 - **Related:** [pre-soak review](../control-plane-pre-soak-review-2026-09-08.md) findings R1–R8; [campaign plan](../plans/2026-09-08-control-plane-lifecycle-memory-and-modularity.md) §2 (invariants I1–I10), §4 (P01–P09)
 
 ## 1. Context and problem
@@ -25,8 +28,9 @@ that split ownership:
 
 The campaign therefore needs a single, written contract for the binding lifecycle — one that P02–P09
 implement against. This ADR is that contract. It records the invariants, the complete state/event
-transition table, the public key scope, and a per-resource ownership matrix. It changes no
-production code; it is normative for the code changes that follow.
+transition table, the public key scope, and a per-resource ownership matrix. As first written it
+changed no production code; it is normative for the code changes that follow. §8.2 and §10 were
+added later, by P20a, alongside the small core contracts they describe.
 
 It is deliberately explicit about **one API decision** (R3) that changes a behavior currently
 documented in `openapi/core.yaml`. See §5.
@@ -84,9 +88,12 @@ implementation (`ExecutionRecord.canTransition`), because a retry resets `RUNNIN
 - **Idempotency key** — the public, caller-supplied `Idempotency-Key` header, scoped per function
   name (see §7). Not per caller; there is no tenant identity.
 - **Claim token** — internal, unguessable, transient handle for a `pending` key binding.
-- **Generation identity** — internal identity for one incarnation of a function name
-  (`FunctionCapacityState` activation/reactivation, `ReplicaStatusSnapshot.Entry.generation`).
-  Used to retire state and fence stale callbacks; never exposed as a tag or key component.
+- **Generation identity** — internal identity for one incarnation of a function name:
+  `FunctionGeneration` (`functionName` + a monotonic id), minted by
+  `FunctionCapacityRegistry` on registration and readable through its
+  `activeGeneration(name)`. Used to retire state and fence stale callbacks; never
+  exposed as a tag or key component. `ReplicaStatusSnapshot.Entry.generation` is the
+  same idea with its own private counter today; P10 aligns it on this identity. See §8.2.
 - **Attempt** — one dispatch of an invocation (initial attempt `1`, incremented by retry).
 
 ### 3.4 The four clocks (kept separate)
@@ -98,10 +105,16 @@ implementation (`ExecutionRecord.canTransition`), because a retry resets `RUNNIN
 | **Retry policy** | `maxRetries` | decides queue-vs-conclude on an attempt failure |
 | **Max execution lifetime** | `ExecutionStore.inFlight` (`maxLifetime`) | the whole execution (administrative expiry) |
 
-Today these are partly conflated: the single `timeoutMs` drives both the waiter's `.timeout(...)`
-and (minus a 50 ms margin) the offload hop's remote budget; the sync queue has its own
-`syncQueueMaxQueueWait` item expiry. The contract keeps them separate; the code must do the same
-(P05/P06).
+P05 and P06 separated the first two: a waiter's `.timeout(...)` now concludes only that waiter
+(§5), and the attempt deadline is applied to a *mirror* of the raw transport future
+(`ExecutionCompletionHandler.dispatchInternal`), so the deadline concludes the attempt and routes
+the retry policy while the raw work — and the lease attributed to it — stays with the attempt until
+it physically ends. What remains shared with the waiter's budget is the offload hop's remote budget
+(`spec.timeoutMs` minus a 50 ms margin, `DefaultOffloadGateway.TIMEOUT_MARGIN_MS`), so that a remote
+hop reports `504` before the local wait expires. The sync queue keeps its own
+`syncQueueMaxQueueWait` item expiry, which is an execution-level deadline (row 10), not a caller
+budget. The contract keeps the four clocks separate; the code does the same except for the
+documented offload derivation.
 
 ## 4. Invariants
 
@@ -295,6 +308,74 @@ must make its row true.
 | **Executor/thread resources** (scheduler executor, replica-refresh pool) | `Scheduler`/`SyncScheduler.start`, `ReplicaStatusSnapshot` refresh pool | `SmartLifecycle.stop` (`shutdownNow` + shutdown); context shutdown | a `start` that throws shuts down the executor and clears the reference before rethrowing |
 | **Metrics / meters** (Micrometer meters per function) | function register (`Metrics.registerFunction`, queue managers) | `Metrics.removeFunction` / queue removal listeners | a removed function's late event must not re-register meters (R8 → P09); removed-name sets retire with the generation |
 
+### 8.1 Ownership by scope: execution, waiter, attempt, generation
+
+The matrix above is per *resource*. This table is the same ownership seen per *scope* — the four
+lifetimes that nest inside one invocation — and it is what P07–P11 must not blur. Read it together
+with §6: a row there is one event; a row here is who owns what across all of them.
+
+| Scope | Acquisition event | Release event | Cancellation | Retry | Shutdown |
+|---|---|---|---|---|---|
+| **Execution** (one invocation: record, shared future, key binding, admission quota) | admission accepted: `InvocationExecutionFactory.newExecutionRecord` + `ExecutionStore.put`, after the key claim is published. A replay of a live key reuses the execution and acquires nothing | `ExecutionStore.settle` — the single terminal transition; a failed admission uses `abandonAdmission` instead | concluded only by its own terminal events (§6 rows 4–7, 9–11, 13–15). A waiter detaching or timing out never cancels it (`suppressCancel=true`) | unchanged owner: same id, same key, same admission across attempts (`resetForRetry` returns it to `QUEUED`) | every live record settles per policy; none is left unconcluded (row 15) |
+| **Waiter** (one HTTP caller attached to the execution) | `ReactiveInvocationCoordinator.invoke` subscribes to the shared future with that caller's own budget (`X-Timeout-Ms`, else `spec.timeoutMs`) | the shared terminal completes it, its own budget expires, or the client disconnects | waiter-local: only that subscription and timer are released; record, key, store, lease, budget and counters are untouched (rows 8 and 12, I1) | invisible: a retry neither concludes nor re-creates waiters; they keep waiting on the same shared future | the record's terminal answer concludes every attached waiter |
+| **Attempt** (one dispatch of the execution) | `dispatchDirect` (core direct path), `dispatchWithLease` (core retry enqueuer) or the queue scheduler's `tryAcquireLease`: a `DispatchLease` under the function's generation, then the raw transport handle registered on the record. An attempt that never dispatched (offload, retry refused) owns no lease | the attempt's own completion, exactly once — `DispatchLease.release()` is idempotent. The release is driven by the **raw** transport future, never by the deadline mirror | `handle.cancel(true)` on the raw future (administrative expiry, shutdown); best-effort locally, never a promise of remote termination | the failed attempt releases its lease before the next attempt is scheduled; the retry acquires its own lease under whatever generation is active then, or fails admission | the owning record's settle releases the lease; executors, timers and clients close under the owners in the matrix above |
+| **Generation** (one incarnation of a function name) | `FunctionCapacityRegistry.register` mints a `FunctionGeneration`, on first registration and again on re-registration after retirement | `remove` retires it; it closes — and its owner may drop it — only when the last resource it owns comes back (`GenerationPhase.CLOSED`) | retirement is not cancellation: it stops admission only. Work already in flight under it continues and stays accounted to it (I3, I7) | a retry admitted after re-registration belongs to the **new** generation; an old lease still releases only the old generation's slot (I4) | generations close as their resources drain with the context; no set of removed names or past generations outlives the functions themselves |
+
+**Terminal future vs physical end.** These are two different moments and only the first is a state
+transition. The terminal future is the shared answer: `settle` publishes it, and from that instant
+replay, polling and every waiter agree. The physical end is when the work actually stops consuming
+resources — a non-interruptible LOCAL handler still running, an HTTP exchange still draining, a
+container still serving. Accounting follows the physical end, not the future: an attempt's lease is
+released by the raw transport future's own completion, so capacity it still occupies is never handed
+to a second attempt (I3, I4). Conversely the future is never held hostage by the physical end: an
+attempt deadline, an administrative expiry or a shutdown concludes the execution while the raw work
+is cancelled best-effort and its lease stays attributed until that work ends.
+
+**Cancellation asked before the handle exists.** A cancellation can be requested before the
+attempt's transport handle is published on the record — administrative expiry or shutdown racing a
+dispatch that has not returned its future yet. The request is remembered on the record and applied
+when the handle arrives; it is never silently dropped because it was early. The same rule holds for
+DEPLOYMENT, where the handle reaches the record through the wake-up composition.
+
+### 8.2 Generation identity and the active/retiring/closed protocol
+
+A function *name* is not an identity: the same name can be removed and registered again while work
+admitted under the previous registration is still draining. The identity is the generation, and
+three small core contracts (`it.unimib.datai.nanofaas.controlplane.capacity`) carry it:
+
+- `FunctionGeneration` — `functionName` + a monotonic id. Minted by `FunctionCapacityRegistry`,
+  which is the core's mandatory capacity authority and therefore the one component that already
+  retires and replaces a name's incarnation; `activeGeneration(name)` publishes it to the other
+  owners. Internal only: never an execution id, a key component, or a metric tag.
+- `GenerationPhase` — `ACTIVE -> RETIRING -> CLOSED`, plus the direct `ACTIVE -> CLOSED` when a
+  generation is retired holding nothing. `CLOSED` is terminal.
+- `GenerationLifecycle` — the reusable state machine: acquisition is admitted only while `ACTIVE`
+  (with the owner's own ceiling applied atomically through `retainIfBelow`), and the transition to
+  `CLOSED` is reported to exactly one caller so the owner's cleanup runs once. It holds no identity
+  and fires no callback: the owner pairs it with its `FunctionGeneration` and runs its cleanup
+  outside its own locks, which is what keeps lock order the same for every owner.
+
+**Rules.**
+
+1. Every per-function resource is attributed to the generation that acquired it, not to the name.
+2. Retirement stops admission; it never disowns work in flight. Retired state disappears **after**
+   the resources it owns are released, never before (I7).
+3. A stale event — a late callback, a refresh reply, a delayed release — may close or release what
+   *its own* generation owns. It may never recreate an entry for the name, and never mutate the
+   generation that superseded it (`FunctionGeneration.supersedes` distinguishes the two).
+4. Each owner keeps its own generation-scoped state in its own component: capacity in
+   `FunctionCapacityRegistry`, meters in `Metrics` (P09), replica entries in `ReplicaStatusSnapshot`
+   (P10), gates in the wake-up coordinator (P11). There is no global registry that remembers names
+   or generations after their resources are gone — such a registry would be exactly the unbounded
+   history R8 already reports.
+5. A generation never bypasses a still-valid tombstone: re-registering a name does not make a
+   replay of a retained key run again (§7).
+
+`DispatchLease` carries a `FunctionGeneration` (P06 introduced the lease with a bare `long`; P20a
+replaced it with the shared identity, no second lease concept), and `FunctionCapacityState`
+implements the protocol above — a slot is one retained resource, `deactivate()` is the retirement
+transition, and the state drains when its last slot returns.
+
 ## 9. Conformance: current code vs this contract
 
 The contract above is the target. The baseline at `61d72e73` deviates at these points; each is
@@ -315,3 +396,35 @@ closed by the named task.
 
 No new state is introduced by this ADR. Any future state addition must carry a defined transition
 into and out of it, an owner, and an unchanged shared-result guarantee.
+
+**Status at `92aae4e9`** (recorded by P20a, after P00–P06 and their review fixes). Delivered: R1
+(P02), R7 (P03), R2/R4 (P04), R3 and the per-waiter timeout (P05), R5, mandatory core capacity,
+attempt-scoped leases, the cancellable transport handle and the per-attempt deadline (P06). Still
+open, in the order the campaign now runs them: unbounded direct admission and the aggregate
+live/payload/waiter budgets (P07), R6 (P08), R8 — which keeps two explicitly red regressions until
+P09 removes the historical sets and P10 removes the snapshot entries — and the shared wake-up (P11).
+
+## 10. Residual inventory after P06 (recorded by P20a)
+
+P06 moved capacity into the core and introduced the attempt-scoped lease, deliberately leaving
+name-based adapters behind so the queue modules could migrate one at a time. This is the verified
+inventory of what exists today, its **real** consumers (read from the call sites, not assumed), and
+what happens to it. Nothing is removed here: removal is P20b's and P21's job, once the consumers
+have a port to move to.
+
+| Item | Real consumers today | Verdict |
+|---|---|---|
+| `DispatchLease`, `DispatchAttempt` | `ExecutionRecord`, `InvocationTask`, `ExecutionCompletionHandler` (`dispatch`/`dispatchDirect`/`dispatchWithLease`), `ExecutorBackedInvocationEnqueuer`, `QueueManager`/`Scheduler`, `SyncQueueInvocationEnqueuer`/`SyncScheduler` | **Reuse.** P20a made the lease carry `FunctionGeneration` instead of a bare `long`; no second lease concept is introduced by any later task |
+| `FunctionCapacityRegistry.tryAcquireLease(name, concurrency)` | core direct admission and the core-only retry enqueuer | **Reuse** |
+| `FunctionCapacityRegistry.tryAcquireLease(name, expectedState, onReleased)` | both queue schedulers (bind the lease to the exact state that supplied the queued work) | **Reuse**; P20b can drop the `expectedState` argument once modules identify the incarnation by generation instead of by state object |
+| `FunctionCapacityRegistry.tryAcquireSlot(name)` and the whole `InvocationEnqueuer.tryAcquireSlot` chain (`QueueBackedEnqueuer`, `SyncQueueInvocationEnqueuer`, `ExecutorBackedInvocationEnqueuer`, `NoOpInvocationEnqueuer`, `QueueManager.tryAcquireSlot`) | **none in production** — verified: every remaining call site is a test or a test double that simulates `tryAcquireLease` | **Remove** in P20b, together with the port method |
+| `FunctionCapacityRegistry.releaseSlotAndGetHoldNanos(name)` via `InvocationEnqueuer.releaseDispatchSlot` | live but effectively inert: `ExecutionCompletionHandler.releaseAttemptCapacity` returns early once the transport owns the capacity, so it fires only for a dispatch with no lease (missing/terminal record). The registry's `leased` bookkeeping additionally prevents it from consuming a lease-owned slot | **Remove** in P20b with the last name-based release; the `leased` identity map exists only to make this adapter safe and goes with it |
+| `FunctionCapacityRegistry.state(name)` | `SyncQueueInvocationEnqueuer.hasAvailableSlot`/`tryAcquireLease` | **Complete**: P20 replaces it with a read-only capacity/observation port; handing modules the mutable state object is what a port removes |
+| `FunctionCapacityRegistry.hasGeneration(name)` | `SyncQueueService` (two runtime-activation guards) | **Complete**: it answers "any generation, including one that is only draining". `activeGeneration(name) != null` is the question those guards actually ask; P20b switches them |
+| `configuredConcurrency` / `effectiveConcurrency` / `setEffectiveConcurrency` / `inFlight` (by name) | governor and queue metrics | **Reuse** until P20's `InvocationObservations` read-only port; the governor regulates the effective value, the core owns the state |
+| `addCapacityListener` | sync-queue wake-up on a capacity opening | **Reuse** |
+| `FunctionCapacityState.incrementInFlight()` (no ceiling) | `QueueManager.incrementInFlight`, itself called only from tests | **Remove** in P20b: an increment that bypasses admission has no place once every acquisition is a lease |
+| public `FunctionCapacityState(int)` / `(int, LongSupplier)` constructors | the test-facing `FunctionQueueState` constructors only; production wires `capacityRegistry.register(...)` | **Remove**/narrow in P20b so a generation can only be minted by the registry |
+| `ExecutorBackedInvocationEnqueuer`'s test-only `Consumer` constructor (releases the lease right after dispatch) | the A3 retry round-trip tests | **Complete** in P07, which gives the no-queue retry path its own bound and regression |
+| `ReplicaStatusSnapshot.Entry.generation` (private counter) | replica snapshot refresh/invalidate | **Complete** in P10: same idea, own counter; align it on `FunctionGeneration` and the phase protocol |
+| removed-name sets in `Metrics` and `SyncQueueMetrics`, lazily created and offload meters | metric registration/removal | **Complete** in P09: replace the ever-growing sets with generation owners (R8 stays red until then) |

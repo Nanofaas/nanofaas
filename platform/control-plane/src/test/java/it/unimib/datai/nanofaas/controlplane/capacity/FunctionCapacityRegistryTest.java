@@ -304,6 +304,57 @@ class FunctionCapacityRegistryTest {
         }
     }
     @Test
+    void removeAndReRegisterMintANewIdentityAndFenceTheOldLease() {
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        registry.register("echo", 2);
+        FunctionGeneration retiring = registry.activeGeneration("echo");
+        DispatchLease oldLease = registry.tryAcquireLease("echo", 2);
+        assertThat(oldLease.generation()).isEqualTo(retiring);
+
+        registry.remove("echo");
+        assertThat(registry.activeGeneration("echo"))
+                .as("a retired generation is no longer the active identity")
+                .isNull();
+
+        registry.register("echo", 2);
+        FunctionGeneration current = registry.activeGeneration("echo");
+        assertThat(current.supersedes(retiring)).isTrue();
+        assertThat(registry.tryAcquireLease("echo", 2).generation()).isEqualTo(current);
+        assertThat(registry.inFlight("echo")).isEqualTo(1);
+
+        // The late release belongs to the retired generation: it drains that one only.
+        oldLease.release();
+
+        assertThat(registry.activeGeneration("echo")).isEqualTo(current);
+        assertThat(registry.inFlight("echo")).isEqualTo(1);
+    }
+
+    @Test
+    void aGenerationClosesOnlyOnceItsLastSlotComesBack() {
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        FunctionCapacityState state = registry.register("echo", 2);
+        assertThat(state.phase()).isEqualTo(GenerationPhase.ACTIVE);
+        DispatchLease lease = registry.tryAcquireLease("echo", 2);
+
+        registry.remove("echo");
+
+        assertThat(state.phase())
+                .as("removal with work in flight retires, it does not close")
+                .isEqualTo(GenerationPhase.RETIRING);
+        assertThat(registry.hasGeneration("echo")).isTrue();
+
+        lease.release();
+
+        assertThat(state.phase()).isEqualTo(GenerationPhase.CLOSED);
+        assertThat(registry.hasGeneration("echo")).isFalse();
+        assertThat(registry.entryCount()).isZero();
+
+        // A late duplicate release cannot reopen or recreate anything.
+        lease.release();
+        assertThat(registry.entryCount()).isZero();
+    }
+
+    @Test
     void reRegistersWhileRemovedFunctionStillDrains() {
         FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
         registry.register("fn", 2);

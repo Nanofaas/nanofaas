@@ -13,15 +13,19 @@ import java.util.function.LongSupplier;
  * it does not own this state. Generation identity and retirement live in
  * {@link FunctionCapacityRegistry}, which keeps at most one active state per name
  * and lets retired states drain on their own.
+ *
+ * <p>Admission and drain follow the shared {@link GenerationLifecycle} protocol:
+ * a slot is one retained resource, {@link #deactivate()} is the retirement
+ * transition, and the state is drained only once its last slot comes back
+ * ({@link GenerationPhase#CLOSED}).
  */
 public final class FunctionCapacityState {
     private final LongSupplier nanoTime;
     private final Runnable onDrained;
     private final Deque<Long> acquiredAt = new ArrayDeque<>();
-    private volatile int inFlight;
+    private final GenerationLifecycle lifecycle = new GenerationLifecycle();
     private volatile int configuredConcurrency;
     private volatile int effectiveConcurrency;
-    private volatile boolean active = true;
 
     public FunctionCapacityState(int concurrency) {
         this(concurrency, System::nanoTime, null);
@@ -39,34 +43,31 @@ public final class FunctionCapacityState {
     }
 
     public synchronized boolean tryAcquireSlot() {
-        if (!active || inFlight >= effectiveConcurrency) {
+        if (!lifecycle.retainIfBelow(effectiveConcurrency)) {
             return false;
         }
-        inFlight++;
         acquiredAt.addLast(nanoTime.getAsLong());
         return true;
     }
 
     public synchronized void incrementInFlight() {
-        if (!active) {
-            return;
+        if (lifecycle.retain()) {
+            acquiredAt.addLast(nanoTime.getAsLong());
         }
-        inFlight++;
-        acquiredAt.addLast(nanoTime.getAsLong());
     }
 
     public long releaseSlotAndGetHoldNanos() {
         long holdNanos;
         boolean drained;
         synchronized (this) {
-            if (inFlight == 0) {
+            if (lifecycle.retained() == 0) {
                 return -1;
             }
-            inFlight--;
-            Long started = acquiredAt.removeFirst();
+            drained = lifecycle.release();
+            Long started = acquiredAt.pollFirst();
             holdNanos = started == null ? -1 : nanoTime.getAsLong() - started;
-            drained = !active && inFlight == 0;
         }
+        // Outside the monitor: the drain callback reaches back into the registry's lock.
         if (drained && onDrained != null) {
             onDrained.run();
         }
@@ -99,24 +100,33 @@ public final class FunctionCapacityState {
     }
 
     public int inFlight() {
-        return inFlight;
+        return lifecycle.retained();
     }
 
     public boolean canDispatch() {
-        return active && inFlight < effectiveConcurrency;
+        return lifecycle.isActive() && lifecycle.retained() < effectiveConcurrency;
     }
 
     public boolean isActive() {
-        return active;
+        return lifecycle.isActive();
     }
 
-    /** Retires this generation: no further acquisition, in-flight work drains on release. */
+    /** Where this generation stands in the active/retiring/closed protocol. */
+    public GenerationPhase phase() {
+        return lifecycle.phase();
+    }
+
+    /**
+     * Retires this generation: no further acquisition, in-flight work drains on release.
+     * Idempotent — the drain callback runs once, on the transition that actually closes
+     * the generation.
+     */
     public void deactivate() {
         boolean drained;
         synchronized (this) {
-            active = false;
-            drained = inFlight == 0;
+            drained = lifecycle.retire();
         }
+        // Outside the monitor: the drain callback reaches back into the registry's lock.
         if (drained && onDrained != null) {
             onDrained.run();
         }
