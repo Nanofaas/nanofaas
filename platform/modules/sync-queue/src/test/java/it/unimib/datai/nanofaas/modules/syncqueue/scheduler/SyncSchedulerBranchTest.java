@@ -101,7 +101,7 @@ class SyncSchedulerBranchTest {
         when(queue.findReadyMatching(any(Instant.class), any())).thenReturn(item);
         when(item.task()).thenReturn(task);
         when(enqueuer.tryAcquireSlot("fn")).thenReturn(true);
-        when(queue.removeReady(eq(item), any(Instant.class))).thenReturn(false);
+        when(queue.removeReadyForDispatch(eq(item), any(Instant.class))).thenReturn(false);
 
         SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, dispatch);
         scheduler.tickOnce();
@@ -123,7 +123,7 @@ class SyncSchedulerBranchTest {
         SyncQueueItem item = mock(SyncQueueItem.class);
         InvocationTask task = new InvocationTask("test", "fn", null, null, null, null, Instant.now(), 1, it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind.SYNC);
         when(queue.findReadyMatching(any(Instant.class), any())).thenReturn(item);
-        when(queue.removeReady(eq(item), any(Instant.class))).thenReturn(true);
+        when(queue.removeReadyForDispatch(eq(item), any(Instant.class))).thenReturn(true);
         when(item.task()).thenReturn(task);
         when(enqueuer.tryAcquireSlot("fn")).thenReturn(true);
 
@@ -132,6 +132,7 @@ class SyncSchedulerBranchTest {
 
         verify(queue).recordDispatched(eq("fn"), any(Instant.class));
         verify(dispatch).accept(argThat(actual -> actual.withDispatchLease(null).equals(task)));
+        verify(queue).completeDispatchReservation(item);
         verify(queue, never()).awaitWakeup(anyLong(), anyLong());
     }
 }

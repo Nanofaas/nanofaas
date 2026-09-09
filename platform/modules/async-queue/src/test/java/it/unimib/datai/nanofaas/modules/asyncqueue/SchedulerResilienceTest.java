@@ -6,6 +6,7 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.controlplane.capacity.InvocationQuotaExceededException;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
@@ -21,6 +22,37 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 class SchedulerResilienceTest {
+
+    @Test
+    void inputCapacityBackpressureRequeuesTaskAndReleasesDispatchLease() {
+        QueueManager queueManager = SchedulerLeaseTestSupport.queueManager();
+        InvocationService invocationService = mock(InvocationService.class);
+        FunctionQueueState state = mock(FunctionQueueState.class);
+        InvocationTask task = task("input-blocked", functionSpec("fn", 1, 10));
+        when(queueManager.get("fn")).thenReturn(state);
+        when(state.tryAcquireSlot()).thenReturn(true);
+        when(state.pollForDispatch()).thenReturn(task);
+        when(state.requeueAfterInputBackpressure(any())).thenReturn(true);
+        when(state.queued()).thenReturn(0);
+        doThrow(new InvocationQuotaExceededException(
+                InvocationQuotaExceededException.Resource.INPUT))
+                .when(invocationService).dispatch(any(InvocationTask.class));
+        Scheduler scheduler = new Scheduler(queueManager, invocationService, System::nanoTime, 1);
+        scheduler.init();
+        scheduler.start();
+        try {
+            scheduler.signalWork("fn");
+
+            Awaitility.await().atMost(Duration.ofSeconds(2)).untilAsserted(() ->
+                    verify(state).requeueAfterInputBackpressure(argThat(requeued -> requeued != null
+                            && requeued.executionId().equals(task.executionId())
+                            && requeued.dispatchLease() == null)));
+        } finally {
+            scheduler.stop();
+        }
+
+        verify(queueManager).releaseSlot("fn", state);
+    }
 
     @Test
     void dispatchExceptionRecordsSlotHoldAndReleasesTheAcquiredState() {
@@ -66,7 +98,7 @@ class SchedulerResilienceTest {
 
         when(queueManager.get("testFunc")).thenReturn(state);
         when(state.tryAcquireSlot()).thenReturn(true).thenReturn(false); // Process once per signal
-        when(state.poll()).thenReturn(task);
+        when(state.pollForDispatch()).thenReturn(task);
         doThrow(new RuntimeException("dispatch failed")).when(invocationService).dispatch(argThat(actual -> actual != null && actual.withDispatchLease(null).equals(task)));
 
         Scheduler scheduler = new Scheduler(queueManager, invocationService);
@@ -85,7 +117,7 @@ class SchedulerResilienceTest {
             reset(invocationService);
             doNothing().when(invocationService).dispatch(argThat(actual -> actual != null && actual.withDispatchLease(null).equals(task)));
             when(state.tryAcquireSlot()).thenReturn(true).thenReturn(false);
-            when(state.poll()).thenReturn(task);
+            when(state.pollForDispatch()).thenReturn(task);
             
             scheduler.signalWork("testFunc");
             
@@ -127,7 +159,7 @@ class SchedulerResilienceTest {
 
         when(queueManager.get("hot")).thenReturn(state);
         when(state.tryAcquireSlot()).thenReturn(true, true, true, false);
-        when(state.poll()).thenReturn(task1, task2, task3, null);
+        when(state.pollForDispatch()).thenReturn(task1, task2, task3, null);
         when(state.queued()).thenReturn(1, 0);
         when(state.canDispatch()).thenReturn(true);
 

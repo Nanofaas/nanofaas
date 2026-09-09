@@ -12,8 +12,27 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class InvocationCapacityTest {
+
+    @Test
+    void inputReservationErrorRollsBackTheExecutionReservation() {
+        FunctionCapacityRegistry registry = registry("fn");
+        ResourceQuota executions = new ResourceQuota(registry, 4, 4);
+        ResourceQuota inputs = mock(ResourceQuota.class);
+        when(inputs.tryReserve(any(), any(), anyLong()))
+                .thenThrow(new AssertionError("input allocator failed"));
+        InvocationCapacity capacity = new InvocationCapacity(registry, executions, inputs, 16);
+
+        assertThatThrownBy(() -> capacity.reserve("fn", "e1", 10))
+                .isInstanceOf(AssertionError.class)
+                .hasMessage("input allocator failed");
+        assertThat(executions.reservedGlobally()).isZero();
+    }
 
     @Test
     void globalExecutionLimitAggregatesAcrossFunctionNames() {

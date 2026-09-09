@@ -20,6 +20,8 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.Iterator;
+import java.util.IdentityHashMap;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -37,6 +39,9 @@ public class SyncQueueService implements SyncQueueGateway {
     private final SyncQueueMetrics metrics;
     private final Clock clock;
     private final Deque<SyncQueueItem> queue;
+    /** Queue slots held by dequeued items until dispatch commits or backpressure requeues them. */
+    private final Set<SyncQueueItem> dispatchReservations =
+            Collections.newSetFromMap(new IdentityHashMap<>());
     private final int maxDepth;
     private final Object workSignal = new Object();
     /**
@@ -218,7 +223,7 @@ public class SyncQueueService implements SyncQueueGateway {
                 markFunctionRemoved(task.functionName(), new SyncQueueItem(task, now), false);
                 throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
             }
-            if (queue.size() >= maxDepth) {
+            if (queue.size() + dispatchReservations.size() >= maxDepth) {
                 metrics.rejected(task.functionName());
                 throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
             }
@@ -390,12 +395,22 @@ public class SyncQueueService implements SyncQueueGateway {
     }
 
     public boolean removeReady(SyncQueueItem item, Instant now) {
+        return removeReady(item, now, false);
+    }
+
+    /** Removes an item while retaining its bounded queue slot through dispatch submission. */
+    public boolean removeReadyForDispatch(SyncQueueItem item, Instant now) {
+        return removeReady(item, now, true);
+    }
+
+    private boolean removeReady(SyncQueueItem item, Instant now, boolean reserveDispatchSlot) {
         long pollStarted = System.nanoTime();
         boolean removed;
         synchronized (queue) {
             removed = queue.remove(item);
             if (removed) {
                 countRemoved(item);
+                if (reserveDispatchSlot) dispatchReservations.add(item);
             }
         }
         if (!removed) {
@@ -404,6 +419,33 @@ public class SyncQueueService implements SyncQueueGateway {
         recordDequeued(item, now);
         recordQueuePoll(item.task().functionName(), pollStarted);
         return true;
+    }
+
+    /** Reinstates an admitted item whose physical input copy could not yet be reserved. */
+    public void requeueAfterInputBackpressure(SyncQueueItem item) {
+        boolean requeued;
+        synchronized (queue) {
+            if (!dispatchReservations.remove(item)) {
+                throw new IllegalStateException("queue item has no dispatch reservation");
+            }
+            requeued = !isRemovalFenced(item.task());
+            if (requeued) {
+                queue.addFirst(item);
+                countAdded(item);
+            }
+        }
+        if (requeued) {
+            signalWakeup();
+        } else {
+            markFunctionRemoved(item.task().functionName(), item, false);
+        }
+    }
+
+    /** Releases the queue slot retained while a dequeued item committed to dispatch. */
+    public void completeDispatchReservation(SyncQueueItem item) {
+        synchronized (queue) {
+            dispatchReservations.remove(item);
+        }
     }
 
     public boolean rotateReadyHead(Instant now) {

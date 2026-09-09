@@ -180,7 +180,7 @@ public class SyncScheduler implements SmartLifecycle {
             queue.awaitWakeup(CAPACITY_BLOCKED_AWAIT_MS, observedEpoch);
             return;
         }
-        if (!queue.removeReady(item, now)) {
+        if (!queue.removeReadyForDispatch(item, now)) {
             // Another thread removed the item (e.g. a removeFunctionState drain) after the slot
             // was taken. Give the slot back and let the loop re-scan immediately: this is a
             // one-time race, not a condition to back off on.
@@ -190,12 +190,22 @@ public class SyncScheduler implements SmartLifecycle {
         queue.recordDispatched(functionName, now);
         long submitStarted = System.nanoTime();
         InvocationTask acquiredTask = item.task().withDispatchLease(lease);
-        SchedulerDispatchSupport.dispatchWithFailureCleanup(
-                acquiredTask,
-                () -> dispatch.accept(acquiredTask),
-                lease::release,
-                log
-        );
+        SchedulerDispatchSupport.Result result = null;
+        try {
+            result = SchedulerDispatchSupport.dispatchWithFailureCleanup(
+                    acquiredTask,
+                    () -> dispatch.accept(acquiredTask),
+                    lease::release,
+                    log
+            );
+            if (result == SchedulerDispatchSupport.Result.INPUT_BACKPRESSURED) {
+                queue.requeueAfterInputBackpressure(item);
+            }
+        } finally {
+            if (result != SchedulerDispatchSupport.Result.INPUT_BACKPRESSURED) {
+                queue.completeDispatchReservation(item);
+            }
+        }
         if (diagnostics != null) {
             diagnostics.recordDispatchSubmitDuration(functionName, System.nanoTime() - submitStarted);
         }

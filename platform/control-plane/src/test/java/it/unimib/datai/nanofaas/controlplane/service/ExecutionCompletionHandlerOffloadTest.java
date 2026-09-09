@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -100,5 +101,20 @@ class ExecutionCompletionHandlerOffloadTest {
 
         verify(enqueuer).enqueue(any());
         assertThat(executionRecord.completion()).isNotCompleted();
+    }
+
+    @Test
+    void retrySchedulingErrorConcludesInsteadOfParkingTheRecord() {
+        ExecutionRecord executionRecord = executionRecord("exec-retry-error", "fn3");
+        when(enqueuer.enqueue(any())).thenThrow(new AssertionError("scheduler failed"));
+
+        assertThatCode(() -> handler.completeExecution(
+                "exec-retry-error", InvocationResult.error("BOOM", "transient")))
+                .doesNotThrowAnyException();
+
+        assertThat(executionRecord.completion()).isCompleted();
+        assertThat(executionRecord.state()).isEqualTo(
+                it.unimib.datai.nanofaas.controlplane.execution.ExecutionState.ERROR);
+        assertThat(executionStore.getOrNull("exec-retry-error")).isNull();
     }
 }

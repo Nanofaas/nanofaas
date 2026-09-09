@@ -32,8 +32,8 @@ class AsyncSchedulerFairnessPerfTest {
         when(queueManager.get("cold-fn")).thenReturn(coldState);
         when(hotState.tryAcquireSlot()).thenReturn(true, true, true, false);
         when(coldState.tryAcquireSlot()).thenReturn(true, false);
-        when(hotState.poll()).thenReturn(hotOne, hotTwo, hotThree, null);
-        when(coldState.poll()).thenReturn(coldOne, (InvocationTask) null);
+        when(hotState.pollForDispatch()).thenReturn(hotOne, hotTwo, hotThree, null);
+        when(coldState.pollForDispatch()).thenReturn(coldOne, (InvocationTask) null);
         when(hotState.queued()).thenReturn(1, 0);
         when(hotState.canDispatch()).thenReturn(true);
         when(coldState.queued()).thenReturn(0);

@@ -1841,3 +1841,34 @@ calibration; those remain P07d/P07e.
 P07c. These quotas conservatively account retained Java representations; they do not claim to bound
 RSS, native/client buffers or remote memory. No soak, container or Kubernetes E2E was run. Public
 defaults/calibration and waiter ownership remain explicitly deferred.
+
+## P07c — Fix Round 1
+
+**Implemented**
+
+- Separated administrative/logical cancellation from raw deployment and offload drain. Physical
+  input and dispatch capacity now close only when readiness/transport/remote work actually drains.
+- Propagated direct physical-copy saturation through the existing overload boundary. Async and
+  sync schedulers now retain a bounded queue-slot reservation while attempting dispatch and
+  requeue on input-copy backpressure, including concurrent-admission and removal races.
+- Extended synchronous rollback to `Error` for aggregate admission, dispatch submission, retry
+  scheduling, and executor-backed retry submission.
+- Preserved the admission's existing `FunctionGeneration` on records, including offload and
+  retries, so late old-generation success/failure callbacks cannot update replacement metrics.
+
+**Focused-test verified**
+
+- Controlled regressions cover cancellation before deployment wake-up, non-cooperative transport,
+  canceled offload, direct and queued physical-copy saturation above half the input quota,
+  async/sync queue displacement, admission/dispatch/retry `Error`, and late old-generation
+  offload success/failure. No sleep is used as ordering proof.
+- Final focused consumer/profile matrix: `BUILD SUCCESSFUL` in 43s; 86 actionable tasks
+  (6 executed, 80 up-to-date).
+
+**Integration verified**
+
+- Final repository suite: `./gradlew test --console=plain --offline` — `BUILD SUCCESSFUL` in
+  3m13s; 190 actionable tasks (18 executed, 172 up-to-date).
+- GitNexus exact-checkout detect-changes and explicit staging audit are recorded in the ignored
+  P07c task report. Controller staging/commit remains external because this sandbox cannot write
+  Git metadata.

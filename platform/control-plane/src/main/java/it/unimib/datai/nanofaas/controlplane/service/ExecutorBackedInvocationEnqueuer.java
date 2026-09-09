@@ -80,7 +80,7 @@ final class ExecutorBackedInvocationEnqueuer implements InvocationEnqueuer {
         try {
             executor.execute(() -> dispatchWithLease.accept(task, lease));
             return true;
-        } catch (RuntimeException ex) {
+        } catch (RuntimeException | Error ex) {
             lease.release();
             log.warn("Retry scheduling rejected for execution {} (function {}, attempt {}): {}",
                     task.executionId(), task.functionName(), task.attempt(), ex.toString());

@@ -6,6 +6,7 @@ import it.unimib.datai.nanofaas.controlplane.capacity.DispatchLease;
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchAttempt;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
+import it.unimib.datai.nanofaas.controlplane.capacity.InvocationQuotaExceededException;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
@@ -131,9 +132,8 @@ public class ExecutionCompletionHandler {
             }
         }
         executionStore.settle(executionRecord);
-        // Offloaded calls never acquire a local lease, so currentGeneration() is always null
-        // here and this guard is a documented no-op today: there is no admission-time
-        // generation captured to fence a late offload conclusion against (STATO.md, P09).
+        // Offload has no dispatch lease, but the record carries the existing logical
+        // admission generation so a late callback cannot write replacement-generation meters.
         if (concluded && metrics.isCurrentGeneration(
                 executionRecord.task().functionName(), executionRecord.currentGeneration())) {
             bestEffort(() -> {
@@ -168,8 +168,7 @@ public class ExecutionCompletionHandler {
             }
         }
         executionStore.settle(executionRecord);
-        // See completeOffloadedExecution: no lease exists for an offloaded call, so this is a
-        // documented no-op guard today, kept for uniformity with the other completion paths.
+        // See completeOffloadedExecution: the logical admission generation fences this path too.
         if (concluded && metrics.isCurrentGeneration(
                 executionRecord.task().functionName(), executionRecord.currentGeneration())) {
             bestEffort(() -> metrics.error(executionRecord.task().functionName()));
@@ -222,7 +221,7 @@ public class ExecutionCompletionHandler {
 
         boolean terminal;
         ExecutionRecord.PhysicalInput physicalInput = null;
-        RuntimeException inputFailure = null;
+        Throwable inputFailure = null;
         synchronized (executionRecord) {
             terminal = executionRecord.isTerminal();
             if (!terminal) {
@@ -240,11 +239,9 @@ public class ExecutionCompletionHandler {
                     executionRecord.markRunning();
                     executionRecord.markDispatchedAt();
                 } catch (RuntimeException failure) {
-                    task.releaseQueuedInput();
                     inputFailure = failure;
                 } catch (Error failure) {
-                    task.releaseQueuedInput();
-                    throw failure;
+                    inputFailure = failure;
                 }
             }
         }
@@ -259,8 +256,18 @@ public class ExecutionCompletionHandler {
             return;
         }
         if (inputFailure != null) {
+            if (physicalInput != null) physicalInput.close();
             if (directLease != null) directLease.release();
             else releaseDispatchSlotOnce(executionRecord, task.attempt(), task.functionName());
+            if (inputFailure instanceof InvocationQuotaExceededException quotaFailure) {
+                throw quotaFailure;
+            }
+            task.releaseQueuedInput();
+            if (inputFailure instanceof Error error) {
+                completeOffloadedExecution(task.executionId(), InvocationResult.error(
+                        "INPUT_PREPARATION_ERROR", error.getMessage()));
+                throw error;
+            }
             completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.error(
                     "INPUT_CAPACITY_EXHAUSTED", inputFailure.getMessage())), task.attempt());
             return;
@@ -272,11 +279,11 @@ public class ExecutionCompletionHandler {
         int attemptAtDispatch = ownership.attempt();
         ExecutionRecord.PhysicalInput attemptInput = physicalInput;
         InvocationTask physicalTask = attemptInput.task();
-        CompletableFuture<DispatchResult> future;
+        PhysicalDispatch dispatch;
         try {
-            future = switch (mode) {
-                case LOCAL -> dispatcherRouter.dispatchLocal(physicalTask);
-                case EXTERNAL -> dispatcherRouter.dispatchExternal(physicalTask);
+            dispatch = switch (mode) {
+                case LOCAL -> PhysicalDispatch.raw(dispatcherRouter.dispatchLocal(physicalTask));
+                case EXTERNAL -> PhysicalDispatch.raw(dispatcherRouter.dispatchExternal(physicalTask));
                 case DEPLOYMENT -> dispatchDeployment(physicalTask);
             };
         } catch (RuntimeException | Error ex) {
@@ -284,34 +291,41 @@ public class ExecutionCompletionHandler {
             if (directLease != null) directLease.release();
             else releaseDispatchSlotOnce(executionRecord, task.attempt(), task.functionName());
             // No transport was created: return the already-acquired capacity here.
-            completeExecution(task.executionId(),
-                    DispatchResult.warm(InvocationResult.error(mode.name() + "_ERROR", ex.getMessage())),
-                    attemptAtDispatch);
+            InvocationResult failure = InvocationResult.error(mode.name() + "_ERROR", ex.getMessage());
+            if (ex instanceof Error error) {
+                completeOffloadedExecution(task.executionId(), failure);
+                throw error;
+            }
+            completeExecution(task.executionId(), DispatchResult.warm(failure), attemptAtDispatch);
             return;
         }
+        CompletableFuture<DispatchResult> future = dispatch.outcome();
 
         // Remember cancellation across handle publication. DEPLOYMENT forwards it to the
         // actual HTTP subscription. Cancelling a generic LOCAL future cannot stop its worker.
         executionRecord.attachDispatchHandle(mode == ExecutionMode.LOCAL
                 ? new LocalCancellationHandle(future) : future);
 
-        // Release physical capacity before publishing this attempt's logical result:
-        // CompletableFuture callbacks otherwise run in reverse registration order and a
-        // retry could see the just-finished attempt still occupying its only slot.
+        // Cancellation can complete the logical outcome wrapper before readiness/transport
+        // has stopped retaining the request. Only the independent raw-drain signal releases
+        // the dispatch lease and physical input. The derived resourcesDrained stage also
+        // preserves the retry invariant: a next attempt cannot observe completion before the
+        // previous attempt returned its physical capacity.
         CompletableFuture<DispatchResult> attempt = new CompletableFuture<>();
-        future.whenComplete((result, error) -> {
+        CompletableFuture<Void> resourcesDrained = dispatch.drained().handle((ignored, drainError) -> {
             try {
                 if (ownership.lease() != null) ownership.lease().release();
                 else releaseDispatchSlotOnce(executionRecord, attemptAtDispatch, task.functionName());
             } finally {
-                try {
-                    attemptInput.close();
-                } finally {
-                    if (error != null) attempt.completeExceptionally(error);
-                    else attempt.complete(result);
-                }
+                attemptInput.close();
             }
+            return null;
         });
+        future.whenComplete((result, error) -> resourcesDrained.whenComplete((ignored, drainError) -> {
+            if (error != null) attempt.completeExceptionally(error);
+            else if (drainError != null) attempt.completeExceptionally(drainError);
+            else attempt.complete(result);
+        }));
         long attemptDeadlineMs = task.functionSpec().timeoutMs();
         if (attemptDeadlineMs > 0) attempt.orTimeout(attemptDeadlineMs, TimeUnit.MILLISECONDS);
 
@@ -339,33 +353,45 @@ public class ExecutionCompletionHandler {
         });
     }
 
-    private CompletableFuture<DispatchResult> dispatchDeployment(InvocationTask task) {
+    private PhysicalDispatch dispatchDeployment(InvocationTask task) {
         try {
             if (wakeUpGate == null) {
-                return dispatcherRouter.dispatchExternal(task);
+                return PhysicalDispatch.raw(dispatcherRouter.dispatchExternal(task));
             }
             var result = new CancellableDispatchFuture();
+            var drained = new CompletableFuture<Void>();
             wakeUpGate.ensureReady(task).whenComplete((ignored, error) -> {
-                if (result.isCancelled()) return;
+                if (result.isCancelled()) {
+                    drained.complete(null);
+                    return;
+                }
                 if (error != null) {
                     result.completeExceptionally(new DeploymentWakeUpException(error));
+                    drained.complete(null);
                     return;
                 }
                 try {
                     CompletableFuture<DispatchResult> transport = dispatcherRouter.dispatchExternal(task);
                     result.attach(transport);
                     transport.whenComplete((value, failure) -> {
-                        if (result.cancellationRequested()) return;
-                        if (failure != null) result.completeExceptionally(failure);
-                        else result.complete(value);
+                        try {
+                            if (!result.cancellationRequested()) {
+                                if (failure != null) result.completeExceptionally(failure);
+                                else result.complete(value);
+                            }
+                        } finally {
+                            drained.complete(null);
+                        }
                     });
-                } catch (Exception failure) {
+                } catch (RuntimeException | Error failure) {
                     result.completeExceptionally(failure);
+                    drained.complete(null);
                 }
             });
-            return result;
-        } catch (Exception error) {
-            return CompletableFuture.failedFuture(new DeploymentWakeUpException(error));
+            return new PhysicalDispatch(result, drained);
+        } catch (RuntimeException | Error error) {
+            return PhysicalDispatch.raw(
+                    CompletableFuture.failedFuture(new DeploymentWakeUpException(error)));
         }
     }
 
@@ -381,6 +407,19 @@ public class ExecutionCompletionHandler {
     private static final class DeploymentWakeUpException extends RuntimeException {
         private DeploymentWakeUpException(Throwable cause) {
             super(cause.getMessage(), cause);
+        }
+    }
+
+    private record PhysicalDispatch(
+            CompletableFuture<DispatchResult> outcome,
+            CompletableFuture<Void> drained) {
+        private PhysicalDispatch {
+            java.util.Objects.requireNonNull(outcome, "outcome");
+            java.util.Objects.requireNonNull(drained, "drained");
+        }
+
+        private static PhysicalDispatch raw(CompletableFuture<DispatchResult> future) {
+            return new PhysicalDispatch(future, future.handle((ignored, failure) -> null));
         }
     }
 
@@ -513,7 +552,7 @@ public class ExecutionCompletionHandler {
         try {
             InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, executionRecord);
             return null;
-        } catch (RuntimeException ex) {
+        } catch (RuntimeException | Error ex) {
             // QueueFullException is the expected refusal; anything else is belt-and-braces.
             // enqueueOrThrow only throws QueueFullException on its own account, but the enqueuer
             // it wraps is pluggable (queue-backed, sync-queue, executor-backed, or a future

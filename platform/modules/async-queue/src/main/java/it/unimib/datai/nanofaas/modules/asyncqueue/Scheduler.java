@@ -181,7 +181,7 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
             return null;
         }
         long pollStarted = nanoTime.getAsLong();
-        InvocationTask task = state.poll();
+        InvocationTask task = state.pollForDispatch();
         queueManager.recordQueuePollDuration(
                 functionName,
                 nanoTime.getAsLong() - pollStarted
@@ -207,12 +207,25 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
             }
             dispatched++;
             long dispatchStarted = nanoTime.getAsLong();
-            SchedulerDispatchSupport.dispatchWithFailureCleanup(
-                    task,
-                    () -> invocationService.dispatch(task),
-                    () -> task.dispatchLease().release(),
-                    log
-            );
+            SchedulerDispatchSupport.Result result = null;
+            try {
+                result = SchedulerDispatchSupport.dispatchWithFailureCleanup(
+                        task,
+                        () -> invocationService.dispatch(task),
+                        () -> task.dispatchLease().release(),
+                        log
+                );
+                if (result == SchedulerDispatchSupport.Result.INPUT_BACKPRESSURED) {
+                    InvocationTask queuedTask = task.withDispatchLease(null);
+                    if (!state.requeueAfterInputBackpressure(queuedTask)) {
+                        queuedTask.releaseQueuedInput();
+                    }
+                }
+            } finally {
+                if (result != SchedulerDispatchSupport.Result.INPUT_BACKPRESSURED) {
+                    state.completeDispatchReservation(task);
+                }
+            }
             queueManager.recordSchedulerDispatchSubmitDuration(
                     functionName,
                     nanoTime.getAsLong() - dispatchStarted

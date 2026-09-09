@@ -91,7 +91,7 @@ public class ExecutionRecord {
      * {@link #takeDispatchLease()} is reached only on the legacy name-released path — a real
      * dispatch marks {@link #transportOwnsCapacity()}, which makes {@code releaseAttemptCapacity}
      * skip it entirely — but a caller of {@link #currentGeneration()} should not have to know
-     * that to trust the answer (I7). Cleared only on retry, together with the lease itself.
+     * that to trust the answer (I7). Logical admission identity remains stable across retries.
      */
     private FunctionGeneration admittedGeneration;
 
@@ -150,6 +150,7 @@ public class ExecutionRecord {
         this.task = task;
         this.timeSource = timeSource;
         this.inputResources = inputResources;
+        this.admittedGeneration = inputResources == null ? null : inputResources.generation();
         this.readableAfterFinishing = task.kind() == InvocationKind.ASYNC
                 || (task.idempotencyKey() != null && !task.idempotencyKey().isBlank());
         this.idempotencyKey = (task.idempotencyKey() != null && !task.idempotencyKey().isBlank())
@@ -368,7 +369,6 @@ public class ExecutionRecord {
         // fresh attempt that re-acquires at its own dispatch. Cleared here so a stale handle
         // from the previous attempt can never be cancelled on the next attempt's behalf.
         this.dispatchLease = null;
-        this.admittedGeneration = null;
         this.dispatchHandle = null;
         this.directAdmission = false;
         this.dispatchCancellationRequested = false;
@@ -398,7 +398,9 @@ public class ExecutionRecord {
      */
     public synchronized void attachDispatchLease(DispatchLease lease) {
         this.dispatchLease = lease;
-        this.admittedGeneration = lease.generation();
+        if (this.admittedGeneration == null) {
+            this.admittedGeneration = lease.generation();
+        }
         this.directAdmission = true;
     }
 
@@ -424,8 +426,10 @@ public class ExecutionRecord {
     }
 
     /**
-     * The generation this attempt was admitted under, or {@code null} when the attempt never
-     * acquired a lease (offload, or a queue path that releases by name). Stable across
+     * The generation this logical execution was admitted under, or {@code null} only for
+     * compatibility records built without aggregate input resources. A dispatch lease may
+     * reaffirm the same identity for a local attempt; offload retains the admission identity.
+     * Stable across
      * {@link #takeDispatchLease()}: a listener that fires after release accounting has already
      * detached the lease (e.g. the administrative-expiry path's terminal-conclusion timer) still
      * needs to fence against the SAME generation the attempt was admitted under, not "whatever

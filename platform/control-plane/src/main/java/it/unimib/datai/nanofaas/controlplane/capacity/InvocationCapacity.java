@@ -16,9 +16,20 @@ public final class InvocationCapacity {
             long globalInputBytes,
             long perFunctionInputBytes,
             int maxInputReferences) {
+        this(generations,
+                new ResourceQuota(generations, globalExecutions, perFunctionExecutions),
+                new ResourceQuota(generations, globalInputBytes, perFunctionInputBytes),
+                maxInputReferences);
+    }
+
+    InvocationCapacity(
+            FunctionCapacityRegistry generations,
+            ResourceQuota executions,
+            ResourceQuota inputs,
+            int maxInputReferences) {
         this.generations = Objects.requireNonNull(generations, "generations");
-        this.executions = new ResourceQuota(generations, globalExecutions, perFunctionExecutions);
-        this.inputs = new ResourceQuota(generations, globalInputBytes, perFunctionInputBytes);
+        this.executions = Objects.requireNonNull(executions, "executions");
+        this.inputs = Objects.requireNonNull(inputs, "inputs");
         if (maxInputReferences < 1) {
             throw new IllegalArgumentException("maxInputReferences must be positive");
         }
@@ -48,7 +59,7 @@ public final class InvocationCapacity {
                     .orElseThrow(() -> new InvocationQuotaExceededException(
                             InvocationQuotaExceededException.Resource.INPUT));
             return new Admission(batch, logical, new RetainedInputLease(input, maxInputReferences));
-        } catch (RuntimeException failure) {
+        } catch (RuntimeException | Error failure) {
             batch.close();
             throw failure;
         }

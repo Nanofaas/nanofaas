@@ -142,6 +142,20 @@ class FunctionQueueStateTest {
     }
 
     @Test
+    void dispatchReservationPreventsConcurrentOfferFromDisplacingBackpressuredTask() {
+        FunctionQueueState state = new FunctionQueueState("fn", 1, 1);
+        InvocationTask first = createTask("first");
+        InvocationTask second = createTask("second");
+        assertThat(state.offer(first)).isTrue();
+
+        InvocationTask dispatching = state.pollForDispatch();
+
+        assertThat(state.offer(second)).isFalse();
+        assertThat(state.requeueAfterInputBackpressure(dispatching)).isTrue();
+        assertThat(state.poll()).isSameAs(first);
+    }
+
+    @Test
     void queued_returnsCorrectCount() {
         FunctionQueueState state = new FunctionQueueState("fn", 10, 1);
 

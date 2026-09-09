@@ -123,6 +123,23 @@ class ExecutorBackedInvocationEnqueuerTest {
     }
 
     @Test
+    void enqueueReturnsFalseWhenSubmissionThrowsAnError() {
+        ExecutorService throwingExecutor = new java.util.concurrent.AbstractExecutorService() {
+            @Override public void execute(Runnable command) {
+                throw new AssertionError("executor failed");
+            }
+            @Override public void shutdown() { }
+            @Override public List<Runnable> shutdownNow() { return List.of(); }
+            @Override public boolean isShutdown() { return false; }
+            @Override public boolean isTerminated() { return false; }
+            @Override public boolean awaitTermination(long timeout, TimeUnit unit) { return true; }
+        };
+        ExecutorBackedInvocationEnqueuer enqueuer = new ExecutorBackedInvocationEnqueuer(t -> { }, throwingExecutor);
+
+        assertThat(enqueuer.enqueue(task("exec-error", 2))).isFalse();
+    }
+
+    @Test
     void tryAcquireSlotAndReleaseDispatchSlotMirrorNoOpBehaviour() {
         executor = it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerLifecycleSupport
                 .newBoundedExecutor("test-retry", 1, 1, 1);

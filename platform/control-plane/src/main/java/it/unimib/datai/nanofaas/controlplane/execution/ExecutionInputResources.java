@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.controlplane.execution;
 
 import it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacity;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.capacity.QueuedInputLease;
 import it.unimib.datai.nanofaas.controlplane.capacity.ResourceOwner;
 import it.unimib.datai.nanofaas.controlplane.capacity.ResourceQuota;
@@ -34,6 +35,10 @@ final class ExecutionInputResources {
     void settleLogicalExecution() {
         admission.logicalExecution().close();
         admission.canonicalInput().close();
+    }
+
+    FunctionGeneration generation() {
+        return admission.canonicalInput().generation();
     }
 
     QueuedInputLease retainForQueue(InvocationTask source) {

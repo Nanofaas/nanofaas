@@ -210,7 +210,11 @@ public final class ReactiveInvocationCoordinator {
             physicalInput.close();
             throw failure;
         }
-        executionRecord.attachDispatchHandle(remote);
+        // Administrative cancellation concludes only the local execution view. The raw remote
+        // publisher may ignore cancellation and still retain the physical request, so it owns
+        // the input until its own terminal signal rather than until this cancelable view closes.
+        java.util.concurrent.CompletableFuture<Void> cancellationView = new java.util.concurrent.CompletableFuture<>();
+        executionRecord.attachDispatchHandle(cancellationView);
         remote.whenComplete((result, ex) -> {
             try {
                 if (ex == null) {
@@ -222,7 +226,11 @@ public final class ReactiveInvocationCoordinator {
                     completionHandler.failOffloadedExecution(executionRecord.executionId(), failure);
                 }
             } finally {
-                physicalInput.close();
+                try {
+                    physicalInput.close();
+                } finally {
+                    cancellationView.complete(null);
+                }
             }
         });
     }
