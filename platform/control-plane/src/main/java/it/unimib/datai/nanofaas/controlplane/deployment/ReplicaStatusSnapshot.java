@@ -10,8 +10,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Executor;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -91,20 +91,29 @@ public final class ReplicaStatusSnapshot implements AutoCloseable {
         this.executorOwner = new ExecutorServiceOwner(refreshExecutor);
     }
 
-    /** Production defaults: system clock, {@link #DEFAULT_TTL}, bounded daemon refresh pool. */
+    /**
+     * Production defaults: system clock, {@link #DEFAULT_TTL}, a daemon refresh pool this
+     * snapshot owns and closes.
+     *
+     * <p>The queue is deliberately unbounded, matching the pre-existing pool's behavior: this
+     * task (P09) fixes the owned-executor/entry-removal half of R8, not the queue-bound
+     * backpressure policy for slow refreshes, which is P10's own scope (fresh/stale/unavailable
+     * observation semantics, a freshness-required deadline path, refresh queue/rejection
+     * observability). Bounding this queue and choosing a rejection policy belongs there, with
+     * its own tests.
+     */
     public static ReplicaStatusSnapshot withDefaults(InstantSource clock) {
         ThreadPoolExecutor executor = new ThreadPoolExecutor(
                 DEFAULT_REFRESH_CONCURRENCY,
                 DEFAULT_REFRESH_CONCURRENCY,
                 0L,
                 TimeUnit.MILLISECONDS,
-                new ArrayBlockingQueue<>(DEFAULT_REFRESH_CONCURRENCY),
+                new LinkedBlockingQueue<>(),
                 runnable -> {
                     Thread thread = new Thread(runnable, "nanofaas-replica-snapshot-refresh");
                     thread.setDaemon(true);
                     return thread;
-                },
-                new ThreadPoolExecutor.AbortPolicy());
+                });
         return new ReplicaStatusSnapshot(clock, DEFAULT_TTL, executor);
     }
 
@@ -170,13 +179,13 @@ public final class ReplicaStatusSnapshot implements AutoCloseable {
         Entry entry = entries.remove(functionName);
         if (entry != null) {
             synchronized (entry) {
-            entry.generation = nextGeneration();
-            entry.backendId = null;
-            entry.status = null;
-            entry.fetchedAt = null;
-            // Do not cancel arbitrary provider work here: adapters may not support cancellation.
-            // Removing the entry is the ownership fence; an old completion can only touch this
-            // detached Entry and can never reinsert it into entries.
+                entry.generation = nextGeneration();
+                entry.backendId = null;
+                entry.status = null;
+                entry.fetchedAt = null;
+                // Do not cancel arbitrary provider work here: adapters may not support
+                // cancellation. Removing the entry is the ownership fence; an old completion can
+                // only touch this detached Entry and can never reinsert it into entries.
             }
         }
     }

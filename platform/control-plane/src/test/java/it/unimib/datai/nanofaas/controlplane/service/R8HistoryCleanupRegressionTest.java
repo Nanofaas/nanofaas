@@ -26,8 +26,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * is retired once the resources that use it have drained; historical names do not
  * accumulate after removal.
  *
- * <p>These tests assert the desired behavior, so they are RED on the current baseline,
- * where 1,000 removed metric names and 1,000 invalidated replica entries remain.
+ * <p>These tests were RED on the pre-P09/P10 baseline, where 1,000 removed metric names and
+ * 1,000 invalidated replica entries remained; both are green after the fix.
  */
 class R8HistoryCleanupRegressionTest {
 

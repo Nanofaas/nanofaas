@@ -30,8 +30,6 @@ class SyncQueueMetricsTest {
         PrometheusMeterRegistry registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
         SyncQueueMetrics metrics = new SyncQueueMetrics(registry);
         metrics.registerFunction("echo");
-
-        metrics.registerFunction("echo");
         metrics.recordWait("echo", 10);
 
         assertThat(registry.find("sync_queue_depth").tag("function", "").gauge()).isNotNull();

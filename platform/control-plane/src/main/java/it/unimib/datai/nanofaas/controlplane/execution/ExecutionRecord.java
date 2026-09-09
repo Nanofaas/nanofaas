@@ -80,6 +80,16 @@ public class ExecutionRecord {
      * so a second release path knows not to fall through to a name-based release.
      */
     private boolean directAdmission;
+    /**
+     * The generation the current attempt was admitted under, captured alongside the lease but
+     * kept even after {@link #takeDispatchLease()} detaches it (unlike a plain peek at
+     * {@code dispatchLease}, which would go stale the moment that happens). Today
+     * {@link #takeDispatchLease()} is reached only on the legacy name-released path — a real
+     * dispatch marks {@link #transportOwnsCapacity()}, which makes {@code releaseAttemptCapacity}
+     * skip it entirely — but a caller of {@link #currentGeneration()} should not have to know
+     * that to trust the answer (I7). Cleared only on retry, together with the lease itself.
+     */
+    private FunctionGeneration admittedGeneration;
 
     /**
      * The real cancellable transport handle of the current attempt (the raw dispatch future,
@@ -338,6 +348,7 @@ public class ExecutionRecord {
         // fresh attempt that re-acquires at its own dispatch. Cleared here so a stale handle
         // from the previous attempt can never be cancelled on the next attempt's behalf.
         this.dispatchLease = null;
+        this.admittedGeneration = null;
         this.dispatchHandle = null;
         this.directAdmission = false;
         this.dispatchCancellationRequested = false;
@@ -367,6 +378,7 @@ public class ExecutionRecord {
      */
     public synchronized void attachDispatchLease(DispatchLease lease) {
         this.dispatchLease = lease;
+        this.admittedGeneration = lease.generation();
         this.directAdmission = true;
     }
 
@@ -393,13 +405,15 @@ public class ExecutionRecord {
 
     /**
      * The generation this attempt was admitted under, or {@code null} when the attempt never
-     * acquired a lease (offload, or a queue path that releases by name). A peek, not a take: it
-     * does not detach the lease, so it is safe to call before {@link #takeDispatchLease()} and
-     * does not disturb the release accounting. Used to fence a late completion's metrics against
+     * acquired a lease (offload, or a queue path that releases by name). Stable across
+     * {@link #takeDispatchLease()}: a listener that fires after release accounting has already
+     * detached the lease (e.g. the administrative-expiry path's terminal-conclusion timer) still
+     * needs to fence against the SAME generation the attempt was admitted under, not "whatever
+     * happens to still be on the lease field". Used to fence a late completion's metrics against
      * a function that has since been removed and re-registered under a new identity (I7).
      */
     public synchronized FunctionGeneration currentGeneration() {
-        return dispatchLease != null ? dispatchLease.generation() : null;
+        return admittedGeneration;
     }
 
     /**

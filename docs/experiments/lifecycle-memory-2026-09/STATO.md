@@ -1316,67 +1316,152 @@ P09 resta aperto: la completion core usa ancora il nome per aggiornare contatori
 e timer e deve essere vincolata all'owner acquisito dall'esecuzione. P10 resta
 parziale; P07 non è iniziato. Nessun gate globale o soak è dichiarato eseguito.
 
-### 2026-09-09 — Ripresa dopo interruzione di sessione: verifica e chiusura di P09
+### 2026-09-09 — Resumed after a session interruption: verifying and closing out P09
 
-Ripreso dopo un'interruzione per limite di sessione. Il worktree conteneva modifiche non
-commesse per `Metrics`, `SyncQueueMetrics`, `SyncQueueService`, `DefaultOffloadGateway`
-(owner offload legacy + generazione), `ReplicaStatusSnapshot` ed `ExecutionStore`, prodotte
-da esecuzioni precedenti di questa stessa campagna (incluso un ciclo di review/fix registrato
-sopra). Compilazione rotta: `OffloadConfiguration` cablava ancora `MeterRegistry` mentre
-`DefaultOffloadGateway` richiedeva `Metrics`; corretto (nessun cambio comportamentale, solo
-il bean Spring). Quattro test rossi per lo stesso motivo (`ExecutionCompletionHandlerTimingTest`
-e i tre di `InvocationPathAccountingTest`): usano `Metrics` senza mai chiamare
-`registerFunction`, comportamento accettato prima che il whitelist di P09 lo rendesse
-esplicito. Corretti aggiungendo la registrazione esplicita nei rispettivi `@BeforeEach`/test,
-coerente con il vincolo reale (una funzione deve essere registrata prima di generare metriche).
+Resumed after a session-limit interruption. The worktree held uncommitted changes to
+`Metrics`, `SyncQueueMetrics`, `SyncQueueService`, `DefaultOffloadGateway` (legacy offload
+owner + generation), `ReplicaStatusSnapshot` and `ExecutionStore`, produced by earlier runs
+of this same campaign (including a review/fix round recorded above). Compile break:
+`OffloadConfiguration` still wired `MeterRegistry` while `DefaultOffloadGateway` had moved
+to `Metrics`; fixed (no behavior change, only the Spring bean). Four red tests for the same
+reason (`ExecutionCompletionHandlerTimingTest` and the three in `InvocationPathAccountingTest`):
+they used `Metrics` without ever calling `registerFunction`, a behavior accepted before P09's
+whitelist made it explicit. Fixed by adding the explicit registration in their respective
+`@BeforeEach`/tests, consistent with the real constraint (a function must be registered
+before it produces metrics).
 
-**Verifica finale:** `./gradlew test --no-parallel --continue --console=plain --offline` →
-`BUILD SUCCESSFUL` sull'intero repository. `:control-plane:test` 637 test, 0 falliti, 3 skip
-(incluso `R8HistoryCleanupRegressionTest`, ora verde su entrambi gli assert: nomi metrica e
-voci snapshot non si accumulano). `:control-plane-modules:sync-queue:test` 93 test, 0 falliti.
-`:control-plane-modules:offload:test` 28 test, 0 falliti. `detect-changes --scope staged`:
-16 file, 146 simboli, 41 flussi, rischio `critical`, nessun `partial`/`truncated`.
+**Final verification:** `./gradlew test --no-parallel --continue --console=plain --offline`
+→ `BUILD SUCCESSFUL` across the whole repository. `:control-plane:test` 637 tests, 0 failed,
+3 skipped (including `R8HistoryCleanupRegressionTest`, now green on both assertions: metric
+names and snapshot entries do not accumulate). `:control-plane-modules:sync-queue:test` 93
+tests, 0 failed. `:control-plane-modules:offload:test` 28 tests, 0 failed.
+`detect-changes --scope staged`: 16 files, 146 symbols, 41 flows, risk `critical`, no
+`partial`/`truncated`.
 
-**Limite chiuso in un secondo commit della stessa ripresa:** `ExecutionCompletionHandler`
-registrava i contatori/timer core di completamento (`success`, `error`, `coldStart`,
-`warmStart`, i timer, `retry`) per nome funzione, senza legarli alla generazione acquisita
-dall'esecuzione al momento dell'ammissione — una violazione puntuale dell'invariante I7 nel
-caso raro di un remove+re-register con lo stesso nome nella finestra di un singolo dispatch
-ancora in corso. Aggiunto `ExecutionRecord.currentGeneration()` (un peek, non un take, sul
-lease già presente: non tocca la contabilità di rilascio) e `Metrics.isCurrentGeneration`
-(vero se non c'è generazione catturata — offload, o un percorso a rilascio per nome — o se
-coincide con quella attiva nel registro capacità). La generazione catturata PRIMA di
-`releaseAttemptCapacity` attraversa `FinalCompletion` fino a ogni chiamata di scrittura;
-`completeUnderLock`, `handleRetry`, `publishFinalCompletion`, `handleAdministrativeExpiry` e
-`recordTerminalConclusionOnce` sono tutti guardati. Per `completeOffloadedExecution`/
-`failOffloadedExecution` la guardia è un no-op documentato: le chiamate offload non
-acquisiscono mai un lease, quindi non c'è oggi una generazione catturata all'ammissione con
-cui confrontare — limite reale, non finto risolto, annotato nel codice.
+**Gap closed in a second commit of the same resumption:** `ExecutionCompletionHandler`
+recorded core completion counters/timers (`success`, `error`, `coldStart`, `warmStart`, the
+timers, `retry`) by function name alone, without binding them to the generation the
+execution was admitted under — a point violation of invariant I7 in the rare case of a
+same-name remove+re-register racing an in-flight dispatch. Added
+`ExecutionRecord.currentGeneration()` (a peek, not a take, of the already-attached lease: it
+does not touch release accounting) and `Metrics.isCurrentGeneration` (true when there is no
+captured generation — offload, or a name-released path — or when it matches the capacity
+registry's active generation). The generation captured BEFORE `releaseAttemptCapacity`
+threads through `FinalCompletion` to every write site; `completeUnderLock`, `handleRetry`,
+`publishFinalCompletion`, `handleAdministrativeExpiry` and `recordTerminalConclusionOnce` are
+all guarded. For `completeOffloadedExecution`/`failOffloadedExecution` the guard is a
+documented no-op: offload calls never acquire a lease, so there is no admission-time
+generation captured to compare against today — a real, disclosed limitation, not a false
+claim of closure.
 
-Nuovo test `CompletionMetricsGenerationFenceRegressionTest`: ammette una funzione con lease
-diretto, la rimuove e la riregistra con lo stesso nome mentre il dispatch è ancora pendente,
-poi completa in ritardo il vecchio tentativo. RED sulla baseline (contatore `success` della
-nuova generazione incrementato dal completamento vecchio); GREEN con il fix (contatori
-`success`/`error` della nuova generazione a zero, mentre lo stato dell'esecuzione conclude
-comunque normalmente in `SUCCESS` — solo la scrittura del meter è stata sospesa, non la
-transizione). Verifica: `./gradlew :control-plane:test --tests
-'*CompletionMetricsGenerationFenceRegressionTest*' --console=plain --offline` GREEN dopo il
-fix; `./gradlew :control-plane:test --no-parallel --console=plain --offline` → 638 test, 0
-falliti, 3 skip; `./gradlew test --no-parallel --continue --console=plain --offline` →
-`BUILD SUCCESSFUL` sull'intero repository.
+New test `CompletionMetricsGenerationFenceRegressionTest`: admits a function under a direct
+lease, removes and re-registers the same name while the dispatch is still pending, then
+completes the old attempt late. RED on the baseline (the new generation's `success` counter
+incremented by the stale completion); GREEN with the fix (the new generation's
+`success`/`error` counters stay zero, while the execution's own state still concludes
+normally in `SUCCESS` — only the meter write was suppressed, not the transition).
+Verification: `./gradlew :control-plane:test --tests
+'*CompletionMetricsGenerationFenceRegressionTest*' --console=plain --offline` GREEN after the
+fix; `./gradlew :control-plane:test --no-parallel --console=plain --offline` → 638 tests, 0
+failed, 3 skipped; `./gradlew test --no-parallel --continue --console=plain --offline` →
+`BUILD SUCCESSFUL` across the whole repository.
 
-**Impact e integrazione:** indice riallineato con `analyze --index-only` prima della modifica
-(HEAD del commit P09 precedente). Impact upstream su `ExecutionCompletionHandler` (classe):
-HIGH, non aggirato — i due dipendenti reali (`InvocationService`,
-`ReactiveInvocationCoordinator`) non hanno cambiato firma di chiamata e sono coperti dalla
-suite integrale verde. Nessun `UNKNOWN` sui simboli produttivi toccati.
-`detect-changes --scope staged`: 4 file, 23 simboli, 21 flussi, rischio `critical`, nessun
-`partial`/`truncated`; i flussi elencati coincidono con il perimetro atteso (CompleteExecution,
-RetryExhaustedUnderLock, RecordTerminalConclusionOnce). `git diff --cached --check` supera
-il controllo.
+**Impact and integration:** index refreshed with `analyze --index-only` before editing (at
+the prior P09 commit's HEAD). Impact upstream on `ExecutionCompletionHandler` (class): HIGH,
+not waived — its two real dependents (`InvocationService`, `ReactiveInvocationCoordinator`)
+did not change call signature and are covered by the green full-repo suite. No `UNKNOWN` on
+any production symbol touched. `detect-changes --scope staged`: 4 files, 23 symbols, 21
+flows, risk `critical`, no `partial`/`truncated`; the listed flows match the expected
+perimeter (CompleteExecution, RetryExhaustedUnderLock, RecordTerminalConclusionOnce).
+`git diff --cached --check` passes.
 
-**Prossimo passo:** dispatch della review di task per P09 (entrambi i commit di questa
-ripresa); poi P10 (completamento del suo scope pieno: osservazioni fresh/stale/unavailable,
-percorso non bloccante, deadline/cancellazione per letture che richiedono freschezza,
-metriche del refresh — lo snapshot fix del primo commit chiude solo l'accumulo delle entry,
-non l'intero task); poi P07.
+### 2026-09-09 — P09 task review and fix round
+
+Task review dispatched on both P09 commits together (base `fa3118e8`, the already-closed P08
+commit; head `bcf1a6bc`). Verdict: **Needs fixes** — spec ❌ on part of acceptance criterion
+(b) ("old events do not contaminate the new generation"), 3 Important findings, several
+Minor. Adjudicated below with evidence from tracing the actual code, not just the report.
+
+**Important #1 (reviewer): the generation fence only covers direct admission; queue-mediated
+dispatch fails open.** Checked against source: `attachDispatchLease` is indeed called from
+exactly one call site (inside `dispatchInternal`), but that call site is reached by
+`dispatch(InvocationTask)` too, not only `dispatchDirect`. The async-queue `Scheduler`
+acquires a real `DispatchLease` via `queueManager.tryAcquireLease` (the SAME
+`capacity.DispatchLease` type dispatchDirect uses) and attaches it to the task with
+`task.withDispatchLease(lease)` before calling `invocationService.dispatch(task)`, which
+reaches `dispatchInternal(task, task.dispatchLease())` with a non-null lease — so
+`attachDispatchLease` DOES fire for the async-queue path too. `sync-queue` is a pure
+admission/backpressure gate (depth + wait estimate); it does not itself dispatch, so it does
+not bypass this. **Adjudication: not reproducible as described; the finding rests on an
+incomplete trace of how `task.dispatchLease()` gets populated before `dispatch()` is called.**
+Not fixed (nothing to fix); recorded here so a future reviewer does not re-raise it without
+re-checking `Scheduler.java:178-193`.
+
+**Important #2 (reviewer): `recordTerminalConclusionOnce`'s guard is inert on the
+administrative-expiry path it exists for**, because it re-peeks a lease that
+`releaseAttemptCapacity` has, by then, already detached. Checked against source:
+`releaseAttemptCapacity`'s very first line returns early whenever
+`executionRecord.capacityOwnedByTransport()` is true — and `transportOwnsCapacity()` is set
+unconditionally, right after `attachDispatchLease`, for every dispatch that reaches the
+non-terminal branch of `dispatchInternal`. So `takeDispatchLease()` — the only place that
+clears the field a plain peek would read — is in practice reached only by the legacy
+name-released path, not by any lease-bearing dispatch. A dedicated regression test built to
+reproduce this exact race (admit under a lease → remove+re-register → force administrative
+expiry via a steered Caffeine ticker → assert the e2e timer stays at zero) passed GREEN even
+with the peek-based `currentGeneration()` reverted, confirming the race does not manifest on
+the current dispatch flow. **Adjudication: the underlying observation (a peek can be stale
+once detached) is correct in principle, but not reproducible today given
+`capacityOwnedByTransport()`'s short-circuit.** Kept the improvement anyway as a genuine
+simplification: `ExecutionRecord` now captures `admittedGeneration` as a stable field set
+alongside the lease and cleared only on retry, so `currentGeneration()`'s contract no longer
+depends on knowing which release path a caller is on — cheap, strictly more robust, and it
+removes the need for callers to reason about `takeDispatchLease()` timing at all. The
+reproduction test built for this was deleted rather than kept, since it could not be made RED
+on the real baseline and the campaign's convention requires a red regression to actually be
+red for the right reason.
+
+**Important #3 (reviewer): the `ReplicaStatusSnapshot` executor change exceeds the bounded
+companion-fix scope and is untested.** Confirmed and fixed: `withDefaults` had replaced the
+prior unbounded `Executors.newFixedThreadPool(2)` with a bounded
+`ThreadPoolExecutor(2, 2, ArrayBlockingQueue(2), AbortPolicy)` — a real backpressure/rejection
+policy change for slow provider refreshes, squarely P10's scope (fresh/stale/unavailable
+observation semantics, refresh queue/rejection observability), introduced with no test.
+Reverted the queue to unbounded (`LinkedBlockingQueue`), keeping only the ownership/`close()`
+half (the snapshot now owns and shuts down its own executor instead of leaning on a static,
+unclosable pool) — that half is behavior-preserving under normal load and needed no new test
+beyond the existing shutdown coverage.
+
+**Minor findings addressed:** stale RED-tense javadoc in `R8HistoryCleanupRegressionTest`
+(both halves are green now, not still-red); a duplicate `import java.util.Map;` and a
+duplicated `metrics.registerFunction("echo")` call in the sync-queue test module; a
+`synchronized (entry)` block in `ReplicaStatusSnapshot.invalidate` that was not re-indented
+to the 4-space rule; **this STATO.md entry itself was written in Italian**, against this
+campaign's own explicit ruling (see the plan-revision entry above and the 9-09 ledger) that
+new prose must be in English — corrected from this entry onward.
+
+**Minor findings deferred (parked, not fixed here):** ~110 lines of dead legacy offload
+meter-ownership code (`LegacyMeterLifecycle`/`LegacyMeterLease`/`LegacyMeterOwner`) with no
+production caller, kept only for three test constructions; a narrow `RemovalFence`
+construction race in `SyncQueueService.removeFunctionState` that could leak one execution id
+per name if a record settles between the `inFlightExecutionIds` snapshot and the fence's
+`put`; unordered `FunctionRegistrationListener` bean list making `Metrics`'s
+initial-registration generation capture nondeterministic relative to the capacity registry's
+own listener, with a benign but visible effect (a same-tick `update()` can zero a live
+function's offload counters). None of these are load-bearing for P09's acceptance criteria.
+
+**Test-list gaps acknowledged, not closed here:** no test for a sync-gateway toggle mid-flight
+(brief-listed); no test for `ReplicaStatusSnapshot.close()` / `ManagedDeploymentCoordinator.close()`
+(introduced by this task, but shutdown-path coverage, not R8/I7 correctness — deferred to P10,
+which owns this file's full test surface).
+
+**Incompatibility now documented (was missing):** `Metrics.metersOrNull` used to create
+meters lazily for any name not explicitly removed; it now requires `registerFunction` to have
+been called first. Every production caller already goes through the
+`FunctionRegistrationListener` fan-out (`FunctionCatalogRestorer`, `FunctionService`
+register/update/remove), so this is safe, but any future caller that skips registration will
+silently get no metrics rather than lazily-created ones.
+
+**Next step:** dispatch a scoped re-review of this fix round; then P10 (its full scope:
+fresh/stale/unavailable observations, the non-blocking periodic path, a freshness-required
+deadline path, refresh observability — the entry-removal/ownership slice landed in the first
+P09 commit closes only that one slice, not the task); then P07.
