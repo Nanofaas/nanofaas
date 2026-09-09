@@ -13,12 +13,15 @@ import java.util.Optional;
  * those units. Accounting is additionally split by {@link FunctionGeneration}, so
  * old-generation completion drains its own reservation while the per-function cap
  * still covers all same-name generations that coexist during remove/re-register.
+ * New reservations are admitted only while the supplied generation is proven active
+ * by the existing {@link FunctionCapacityRegistry} lifecycle authority.
  *
  * <p>Thread-safe. The two limit checks and all counter changes share one critical
  * section, making reservation atomic across the global and per-function budgets.
  */
 public final class ResourceQuota {
 
+    private final FunctionCapacityRegistry generationAuthority;
     private final long globalLimit;
     private final long perFunctionLimit;
     private final Object lock = new Object();
@@ -26,7 +29,10 @@ public final class ResourceQuota {
     private final Map<FunctionGeneration, Long> reservedByGeneration = new HashMap<>();
     private long globallyReserved;
 
-    public ResourceQuota(long globalLimit, long perFunctionLimit) {
+    public ResourceQuota(
+            FunctionCapacityRegistry generationAuthority,
+            long globalLimit,
+            long perFunctionLimit) {
         if (globalLimit < 1) {
             throw new IllegalArgumentException("globalLimit must be positive, was " + globalLimit);
         }
@@ -34,13 +40,14 @@ public final class ResourceQuota {
             throw new IllegalArgumentException(
                     "perFunctionLimit must be positive, was " + perFunctionLimit);
         }
+        this.generationAuthority = Objects.requireNonNull(generationAuthority, "generationAuthority");
         this.globalLimit = globalLimit;
         this.perFunctionLimit = perFunctionLimit;
     }
 
     /**
      * Reserves {@code units} against both caps, or returns empty without changing
-     * accounting when either cap has insufficient room.
+     * accounting when the generation is not active or either cap has insufficient room.
      */
     public Optional<Reservation> tryReserve(
             FunctionGeneration generation, ResourceOwner owner, long units) {
@@ -49,17 +56,24 @@ public final class ResourceQuota {
         if (units < 1) {
             throw new IllegalArgumentException("units must be positive, was " + units);
         }
+        Reservation reservation = generationAuthority.withActiveGeneration(
+                generation, () -> reserveActiveGeneration(generation, owner, units));
+        return Optional.ofNullable(reservation);
+    }
+
+    private Reservation reserveActiveGeneration(
+            FunctionGeneration generation, ResourceOwner owner, long units) {
         synchronized (lock) {
             long functionReserved = reservedByFunction.getOrDefault(generation.functionName(), 0L);
             if (units > globalLimit - globallyReserved
                     || units > perFunctionLimit - functionReserved) {
-                return Optional.empty();
+                return null;
             }
             globallyReserved += units;
             reservedByFunction.put(generation.functionName(), functionReserved + units);
             reservedByGeneration.merge(generation, units, Long::sum);
             Claim claim = new Claim(generation, owner, units);
-            return Optional.of(new Reservation(claim, generation, owner, claim.version));
+            return new Reservation(claim, generation, owner, claim.version);
         }
     }
 
@@ -116,12 +130,10 @@ public final class ResourceQuota {
             if (!claim.active || claim.version != version) {
                 throw new IllegalStateException("reservation is no longer owned by this handle");
             }
-            if (!claim.generation.functionName().equals(targetGeneration.functionName())) {
-                throw new IllegalArgumentException("reservation cannot move between functions");
+            if (!claim.generation.equals(targetGeneration)) {
+                throw new IllegalArgumentException(
+                        "reservation cannot move between generations without lifecycle authority");
             }
-            subtractOrRemove(reservedByGeneration, claim.generation, claim.units);
-            reservedByGeneration.merge(targetGeneration, claim.units, Long::sum);
-            claim.generation = targetGeneration;
             claim.owner = targetOwner;
             claim.version++;
             return new Reservation(claim, targetGeneration, targetOwner, claim.version);
@@ -138,7 +150,7 @@ public final class ResourceQuota {
     }
 
     private static final class Claim {
-        private FunctionGeneration generation;
+        private final FunctionGeneration generation;
         private ResourceOwner owner;
         private final long units;
         private long version;
@@ -185,9 +197,11 @@ public final class ResourceQuota {
         }
 
         /**
-         * Atomically hands the same units to another owner of the same function.
+         * Atomically hands the same units to another owner of the acquiring generation.
          * The returned handle is the only live release capability; this handle becomes
          * inert, so a late callback from the previous owner cannot release the transfer.
+         * Cross-generation handoff requires a separate explicit lifecycle authority and
+         * is therefore rejected by this primitive.
          */
         public Reservation transferTo(
                 FunctionGeneration targetGeneration, ResourceOwner targetOwner) {

@@ -13,6 +13,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 /**
  * P07a contract for one quota dimension. A reservation is the capability that
@@ -20,36 +21,38 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class ResourceQuotaTest {
 
-    private static final FunctionGeneration ECHO_1 = new FunctionGeneration("echo", 1);
-    private static final FunctionGeneration ECHO_2 = new FunctionGeneration("echo", 2);
-    private static final FunctionGeneration OTHER_3 = new FunctionGeneration("other", 3);
-
     @Test
     void aSuccessfulReservationAttributesUnitsToItsOwnerAndGeneration() {
         // Break caught: reserving without recording all three aggregate views would let
         // later admission checks or generation drain observe phantom free capacity.
-        ResourceQuota quota = new ResourceQuota(10, 6);
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        FunctionGeneration generation = register(registry, "echo");
+        ResourceQuota quota = new ResourceQuota(registry, 10, 6);
         ResourceOwner owner = new ResourceOwner(ResourceOwner.Scope.LOGICAL_EXECUTION, "exec-1");
 
-        ResourceQuota.Reservation reservation = quota.tryReserve(ECHO_1, owner, 4).orElseThrow();
+        ResourceQuota.Reservation reservation = quota.tryReserve(generation, owner, 4).orElseThrow();
 
-        assertThat(reservation.generation()).isEqualTo(ECHO_1);
+        assertThat(reservation.generation()).isEqualTo(generation);
         assertThat(reservation.owner()).isEqualTo(owner);
         assertThat(reservation.units()).isEqualTo(4);
         assertThat(quota.reservedGlobally()).isEqualTo(4);
         assertThat(quota.reservedForFunction("echo")).isEqualTo(4);
-        assertThat(quota.reservedForGeneration(ECHO_1)).isEqualTo(4);
+        assertThat(quota.reservedForGeneration(generation)).isEqualTo(4);
     }
 
     @Test
     void globalSaturationRejectsAReservationWithoutChangingAnyCounter() {
         // Break caught: a per-function-only check would let many individually-small
         // functions exceed the process-wide retained-resource cap.
-        ResourceQuota quota = new ResourceQuota(5, 5);
-        assertThat(quota.tryReserve(ECHO_1, owner("exec-1"), 3)).isPresent();
-        assertThat(quota.tryReserve(OTHER_3, owner("exec-2"), 2)).isPresent();
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        FunctionGeneration echo = register(registry, "echo");
+        FunctionGeneration other = register(registry, "other");
+        FunctionGeneration third = register(registry, "third");
+        ResourceQuota quota = new ResourceQuota(registry, 5, 5);
+        assertThat(quota.tryReserve(echo, owner("exec-1"), 3)).isPresent();
+        assertThat(quota.tryReserve(other, owner("exec-2"), 2)).isPresent();
 
-        assertThat(quota.tryReserve(new FunctionGeneration("third", 4), owner("exec-3"), 1))
+        assertThat(quota.tryReserve(third, owner("exec-3"), 1))
                 .isEmpty();
         assertThat(quota.reservedGlobally()).isEqualTo(5);
         assertThat(quota.reservedForFunction("third")).isZero();
@@ -59,23 +62,29 @@ class ResourceQuotaTest {
     void perFunctionSaturationIncludesEveryGenerationOfTheSameName() {
         // Break caught: keying the function cap only by generation would let remove plus
         // re-register bypass the per-function budget while old physical work drains.
-        ResourceQuota quota = new ResourceQuota(20, 5);
-        assertThat(quota.tryReserve(ECHO_1, owner("old"), 3)).isPresent();
-        assertThat(quota.tryReserve(ECHO_2, owner("new"), 2)).isPresent();
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        FunctionGeneration oldGeneration = register(registry, "echo");
+        ResourceQuota quota = new ResourceQuota(registry, 20, 5);
+        assertThat(quota.tryReserve(oldGeneration, owner("old"), 3)).isPresent();
+        registry.remove("echo");
+        FunctionGeneration newGeneration = register(registry, "echo");
+        assertThat(quota.tryReserve(newGeneration, owner("new"), 2)).isPresent();
 
-        assertThat(quota.tryReserve(ECHO_2, owner("too-many"), 1)).isEmpty();
+        assertThat(quota.tryReserve(newGeneration, owner("too-many"), 1)).isEmpty();
         assertThat(quota.reservedForFunction("echo")).isEqualTo(5);
-        assertThat(quota.reservedForGeneration(ECHO_1)).isEqualTo(3);
-        assertThat(quota.reservedForGeneration(ECHO_2)).isEqualTo(2);
+        assertThat(quota.reservedForGeneration(oldGeneration)).isEqualTo(3);
+        assertThat(quota.reservedForGeneration(newGeneration)).isEqualTo(2);
     }
 
     @Test
     void closeIsIdempotentAndCountersCannotGoNegative() {
         // Break caught: two completion paths closing one owner must not return another
         // owner's units or drive aggregate accounting below zero.
-        ResourceQuota quota = new ResourceQuota(10, 10);
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        FunctionGeneration generation = register(registry, "echo");
+        ResourceQuota quota = new ResourceQuota(registry, 10, 10);
         ResourceQuota.Reservation reservation =
-                quota.tryReserve(ECHO_1, owner("exec-1"), 7).orElseThrow();
+                quota.tryReserve(generation, owner("exec-1"), 7).orElseThrow();
 
         reservation.close();
         reservation.close();
@@ -83,26 +92,30 @@ class ResourceQuotaTest {
         assertThat(reservation.isClosed()).isTrue();
         assertThat(quota.reservedGlobally()).isZero();
         assertThat(quota.reservedForFunction("echo")).isZero();
-        assertThat(quota.reservedForGeneration(ECHO_1)).isZero();
+        assertThat(quota.reservedForGeneration(generation)).isZero();
     }
 
     @Test
     void aLateOldGenerationCloseCannotReleaseTheNewGenerationsReservation() {
         // Break caught: releasing by name after remove/re-register would debit the new
         // incarnation instead of the exact reservation acquired by the old one.
-        ResourceQuota quota = new ResourceQuota(10, 10);
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        FunctionGeneration oldGeneration = register(registry, "echo");
+        ResourceQuota quota = new ResourceQuota(registry, 10, 10);
         ResourceQuota.Reservation oldReservation =
-                quota.tryReserve(ECHO_1, owner("old"), 4).orElseThrow();
+                quota.tryReserve(oldGeneration, owner("old"), 4).orElseThrow();
+        registry.remove("echo");
+        FunctionGeneration newGeneration = register(registry, "echo");
         ResourceQuota.Reservation newReservation =
-                quota.tryReserve(ECHO_2, owner("new"), 3).orElseThrow();
+                quota.tryReserve(newGeneration, owner("new"), 3).orElseThrow();
 
         oldReservation.close();
         oldReservation.close();
 
         assertThat(quota.reservedGlobally()).isEqualTo(3);
         assertThat(quota.reservedForFunction("echo")).isEqualTo(3);
-        assertThat(quota.reservedForGeneration(ECHO_1)).isZero();
-        assertThat(quota.reservedForGeneration(ECHO_2)).isEqualTo(3);
+        assertThat(quota.reservedForGeneration(oldGeneration)).isZero();
+        assertThat(quota.reservedForGeneration(newGeneration)).isEqualTo(3);
         assertThat(newReservation.isClosed()).isFalse();
     }
 
@@ -110,22 +123,23 @@ class ResourceQuotaTest {
     void transferMovesOneReservationWithoutDoubleCountingOrLeavingTheOldHandleLive() {
         // Break caught: release-then-reacquire creates a quota gap (and may fail at
         // saturation), while copying a reservation double-counts retry-shared input.
-        ResourceQuota quota = new ResourceQuota(4, 4);
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        FunctionGeneration generation = register(registry, "echo");
+        ResourceQuota quota = new ResourceQuota(registry, 4, 4);
         ResourceOwner firstCopy =
                 new ResourceOwner(ResourceOwner.Scope.INPUT_COPY, "exec-1/attempt-1");
-        ResourceQuota.Reservation first = quota.tryReserve(ECHO_1, firstCopy, 4).orElseThrow();
+        ResourceQuota.Reservation first = quota.tryReserve(generation, firstCopy, 4).orElseThrow();
         ResourceOwner retryCopy =
                 new ResourceOwner(ResourceOwner.Scope.INPUT_COPY, "exec-1/attempt-2");
 
-        ResourceQuota.Reservation retry = first.transferTo(ECHO_2, retryCopy);
+        ResourceQuota.Reservation retry = first.transferTo(generation, retryCopy);
 
         assertThat(first.isClosed()).isTrue();
-        assertThat(retry.generation()).isEqualTo(ECHO_2);
+        assertThat(retry.generation()).isEqualTo(generation);
         assertThat(retry.owner()).isEqualTo(retryCopy);
         assertThat(quota.reservedGlobally()).isEqualTo(4);
         assertThat(quota.reservedForFunction("echo")).isEqualTo(4);
-        assertThat(quota.reservedForGeneration(ECHO_1)).isZero();
-        assertThat(quota.reservedForGeneration(ECHO_2)).isEqualTo(4);
+        assertThat(quota.reservedForGeneration(generation)).isEqualTo(4);
 
         first.close();
         assertThat(quota.reservedGlobally()).isEqualTo(4);
@@ -134,20 +148,68 @@ class ResourceQuotaTest {
     }
 
     @Test
+    void transferCannotMoveAttributionToAnotherGeneration() {
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        FunctionGeneration acquiringGeneration = register(registry, "echo");
+        ResourceQuota quota = new ResourceQuota(registry, 4, 4);
+        ResourceQuota.Reservation reservation =
+                quota.tryReserve(acquiringGeneration, owner("old-generation"), 4).orElseThrow();
+        registry.remove("echo");
+        FunctionGeneration newerGeneration = register(registry, "echo");
+
+        assertThatIllegalArgumentException().isThrownBy(() -> reservation.transferTo(
+                newerGeneration, owner("new-generation")));
+
+        assertThat(reservation.isClosed()).isFalse();
+        assertThat(quota.reservedForGeneration(acquiringGeneration)).isEqualTo(4);
+        assertThat(quota.reservedForGeneration(newerGeneration)).isZero();
+        reservation.close();
+        assertThat(quota.reservedGlobally()).isZero();
+    }
+
+    @Test
+    void aRetiredGenerationCannotRecreateAccountingAfterItDrains() {
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        registry.register("echo", 1);
+        FunctionGeneration retired = registry.activeGeneration("echo");
+        DispatchLease drainingCapacity = registry.tryAcquireLease("echo", 1);
+        assertThat(drainingCapacity).isNotNull();
+        ResourceQuota quota = new ResourceQuota(registry, 4, 4);
+        ResourceQuota.Reservation original =
+                quota.tryReserve(retired, owner("original"), 4).orElseThrow();
+
+        registry.remove("echo");
+        original.close();
+
+        assertThat(registry.activeGeneration("echo")).isNull();
+        assertThat(registry.hasGeneration("echo")).isTrue();
+        assertThat(quota.reservedForGeneration(retired)).isZero();
+        assertThat(quota.tryReserve(retired, owner("late-callback"), 1)).isEmpty();
+        assertThat(quota.reservedGlobally()).isZero();
+
+        drainingCapacity.release();
+        assertThat(registry.hasGeneration("echo")).isFalse();
+        assertThat(quota.tryReserve(retired, owner("post-drain-callback"), 1)).isEmpty();
+        assertThat(quota.reservedGlobally()).isZero();
+    }
+
+    @Test
     void anUncommittedBatchRollsBackEverySuccessfulIntermediateReservation() {
         // Break caught: failure of a later quota reservation must not leak earlier
         // execution/input ownership that was never published.
-        ResourceQuota executionQuota = new ResourceQuota(1, 1);
-        ResourceQuota inputQuota = new ResourceQuota(1, 1);
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        FunctionGeneration generation = register(registry, "echo");
+        ResourceQuota executionQuota = new ResourceQuota(registry, 1, 1);
+        ResourceQuota inputQuota = new ResourceQuota(registry, 1, 1);
         ResourceQuota.Reservation existingInput =
-                inputQuota.tryReserve(ECHO_1, new ResourceOwner(ResourceOwner.Scope.INPUT_COPY, "held"), 1)
+                inputQuota.tryReserve(generation, new ResourceOwner(ResourceOwner.Scope.INPUT_COPY, "held"), 1)
                         .orElseThrow();
 
         try (ReservationBatch batch = new ReservationBatch()) {
-            assertThat(batch.tryReserve(executionQuota, ECHO_1, owner("exec-1"), 1)).isPresent();
+            assertThat(batch.tryReserve(executionQuota, generation, owner("exec-1"), 1)).isPresent();
             assertThat(batch.tryReserve(
                     inputQuota,
-                    ECHO_1,
+                    generation,
                     new ResourceOwner(ResourceOwner.Scope.INPUT_COPY, "exec-1/input"),
                     1)).isEmpty();
         }
@@ -161,10 +223,12 @@ class ResourceQuotaTest {
     void committingABatchLeavesItsReservationWithThePublishedOwner() {
         // Break caught: closing the try-with-resources admission scope after publish
         // must not release ownership that the live execution still retains.
-        ResourceQuota quota = new ResourceQuota(1, 1);
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        FunctionGeneration generation = register(registry, "echo");
+        ResourceQuota quota = new ResourceQuota(registry, 1, 1);
         ResourceQuota.Reservation reservation;
         try (ReservationBatch batch = new ReservationBatch()) {
-            reservation = batch.tryReserve(quota, ECHO_1, owner("exec-1"), 1).orElseThrow();
+            reservation = batch.tryReserve(quota, generation, owner("exec-1"), 1).orElseThrow();
             batch.commit();
         }
 
@@ -177,21 +241,22 @@ class ResourceQuotaTest {
     void rollbackFollowsAReservationTransferredBeforePublication() {
         // Break caught: a batch tracking only the superseded handle would make its
         // close a no-op and leak the transfer if publication then failed.
-        ResourceQuota quota = new ResourceQuota(3, 3);
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        FunctionGeneration generation = register(registry, "echo");
+        ResourceQuota quota = new ResourceQuota(registry, 3, 3);
         try (ReservationBatch batch = new ReservationBatch()) {
             ResourceQuota.Reservation provisional = batch.tryReserve(
                     quota,
-                    ECHO_1,
+                    generation,
                     new ResourceOwner(ResourceOwner.Scope.INPUT_COPY, "exec-1/provisional"),
                     3).orElseThrow();
             provisional.transferTo(
-                    ECHO_2,
+                    generation,
                     new ResourceOwner(ResourceOwner.Scope.INPUT_COPY, "exec-1/attempt-2"));
         }
 
         assertThat(quota.reservedGlobally()).isZero();
-        assertThat(quota.reservedForGeneration(ECHO_1)).isZero();
-        assertThat(quota.reservedForGeneration(ECHO_2)).isZero();
+        assertThat(quota.reservedForGeneration(generation)).isZero();
     }
 
     @Test
@@ -199,7 +264,10 @@ class ResourceQuotaTest {
         // Break caught: splitting cap checks from increments would allow simultaneous
         // admissions to oversubscribe either aggregate.
         int contenders = 32;
-        ResourceQuota quota = new ResourceQuota(7, 4);
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        FunctionGeneration echo = register(registry, "echo");
+        FunctionGeneration other = register(registry, "other");
+        ResourceQuota quota = new ResourceQuota(registry, 7, 4);
         CyclicBarrier start = new CyclicBarrier(contenders + 1);
         CountDownLatch attempted = new CountDownLatch(contenders);
         CountDownLatch release = new CountDownLatch(1);
@@ -210,7 +278,7 @@ class ResourceQuotaTest {
                 int index = i;
                 futures.add(workers.submit(() -> {
                     start.await(5, TimeUnit.SECONDS);
-                    FunctionGeneration generation = index % 2 == 0 ? ECHO_1 : OTHER_3;
+                    FunctionGeneration generation = index % 2 == 0 ? echo : other;
                     Optional<ResourceQuota.Reservation> reservation =
                             quota.tryReserve(generation, owner("owner-" + index), 1);
                     attempted.countDown();
@@ -246,5 +314,11 @@ class ResourceQuotaTest {
 
     private static ResourceOwner owner(String identity) {
         return new ResourceOwner(ResourceOwner.Scope.LOGICAL_EXECUTION, identity);
+    }
+
+    private static FunctionGeneration register(
+            FunctionCapacityRegistry registry, String functionName) {
+        registry.register(functionName, 1);
+        return registry.activeGeneration(functionName);
     }
 }

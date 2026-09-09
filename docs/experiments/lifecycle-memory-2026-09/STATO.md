@@ -1599,9 +1599,9 @@ still-draining generation of the same name, while per-generation occupancy fence
 | Resource | Unit | Owner | Reservation and publication point | Transfer | Release / physical-drain rule | Rollback on intermediate failure | Gate |
 |---|---:|---|---|---|---|---|---|
 | Transient HTTP request body | bytes received, including chunked bodies | ingress HTTP exchange | Enforce the transport/body cap before complete aggregation or parsing; these transient bytes are not the retained-input estimate | Once a bounded retained representation exists, ownership moves to that representation; never count an unbounded opaque LOCAL object symbolically | Release transport buffers on consume/cancel/error, but releasing them does not release a retained copy | Abort aggregation and release received buffers; publish no record or queue entry | P07b |
-| Admitted logical execution | 1 | `LOGICAL_EXECUTION` owner under the generation active at admission | Reserve global + same-name function capacity before publishing a new live record or queue state; offload uses the same global quota | Replay and retry keep the same logical owner and consume no second execution unit; generation attribution may be handed off only with the reservation capability | Release on the execution's one terminal/abandon transition; physical attempts, transport handles and input copies that outlive administrative terminal remain separately referenced/accounted until their real drain | `ReservationBatch.close()` releases every earlier reservation if record/key/queue publication fails; `commit()` occurs only after ownership is published | P07c |
-| Canonical retained input | conservative retained bytes | `INPUT_COPY` owner representing the execution's shared canonical input | Reserve global + same-name function bytes before the representation becomes reachable from live/queued/offload state | Retry hands the same reservation to the next owner with `transferTo`; it never release-then-reacquires or duplicates the units | Release only after the last real reader (LOCAL worker, HTTP attempt or callback) no longer retains the input; waiter timeout or outcome archival is insufficient | Admission/publish/enqueue failure closes the batch and the retained representation together | P07b/P07c |
-| Additional physical input copy | bytes in that copy | `INPUT_COPY` owner tied to the physical attempt/callback that created it | Reserve before allocating/publishing each extra copy; a shared immutable representation is not an extra copy | May transfer to a successor owner only when the same bytes, rather than a duplicate, move; otherwise reserve a new copy | Release at that copy's actual deallocation/drain, including after administrative terminal state | Copy/allocation/submit failure closes its reservation immediately | P07c |
+| Admitted logical execution | 1 | `LOGICAL_EXECUTION` owner under the generation active at admission | Reserve global + same-name function capacity before publishing a new live record or queue state; offload uses the same global quota | Replay and retry keep the same logical owner, generation attribution and execution unit; ordinary transfer cannot cross the acquiring generation | Release on the execution's one terminal/abandon transition; physical attempts, transport handles and input copies that outlive administrative terminal remain separately referenced/accounted until their real drain | `ReservationBatch.close()` releases every earlier reservation if record/key/queue publication fails; `commit()` occurs only after ownership is published | P07c |
+| Canonical retained input | conservative retained bytes | `INPUT_COPY` owner representing the execution's shared canonical input | Reserve global + same-name function bytes before the representation becomes reachable from live/queued/offload state | Retry may hand the same reservation to the next owner with `transferTo` only within the generation that acquired it; a cross-generation retry needs a new reservation unless a future explicit lifecycle authority proves a legal handoff | Release only after the last real reader (LOCAL worker, HTTP attempt or callback) no longer retains the input; waiter timeout or outcome archival is insufficient | Admission/publish/enqueue failure closes the batch and the retained representation together | P07b/P07c |
+| Additional physical input copy | bytes in that copy | `INPUT_COPY` owner tied to the physical attempt/callback that created it | Reserve before allocating/publishing each extra copy; a shared immutable representation is not an extra copy | May transfer to a successor owner only within the acquiring generation when the same bytes move; otherwise reserve a new copy | Release at that copy's actual deallocation/drain, including after administrative terminal state | Copy/allocation/submit failure closes its reservation immediately | P07c |
 | Dispatch capacity | 1 slot | existing attempt-owned `DispatchLease`, carrying `FunctionGeneration` | Existing `tryAcquireLease` before dispatch; no `ResourceQuota` duplicates this ownership | Never transferred: every retry acquires its own lease | Existing idempotent `DispatchLease.release()`, driven by raw physical completion; timeout/cancellation request alone is not release | Existing synchronous-dispatch failure path releases the acquired lease | Existing P06/P20a contract, reused by P07c |
 | Raw LOCAL/HTTP/deployment attempt and pending callback | one cancellable handle plus the input/copies it references | `PHYSICAL_ATTEMPT`; dispatch slot, when present, is still the existing `DispatchLease` | Publish the real cancellable handle and keep its resource reservations reachable before exposing completion | A retry is a new physical attempt; only genuinely shared input ownership transfers | Administrative terminal may cancel best-effort, but handle, lease and input-copy accounting remain until raw completion/drain; pending offload/HTTP work counts globally | Synchronous dispatch/acquisition failure closes only resources acquired by that attempt | P07c |
 | Queue entry | 1 queued task (bounded by its queue) | queue implementation; task refers to the logical execution/input reservations | Execution and input reservations precede enqueue; the entry itself must enter only a bounded queue | Dequeue transfers reachability to dispatch, not quota units; retry reuses the logical execution and shared input | Remove on dequeue/removal/shutdown; draining an entry does not release bytes still held by active physical work | Refused/throwing enqueue removes no entry and closes the uncommitted admission batch | P07c |
@@ -1619,8 +1619,9 @@ still-draining generation of the same name, while per-generation occupancy fence
   critical section. It also tracks `FunctionGeneration`, while the function-name aggregate covers
   old and new generations concurrently. A successful reservation is the sole release capability;
   duplicate/stale close is inert and zero entries are removed from the maps.
-- `Reservation.transferTo` moves the same-name allocation and invalidates the old handle, so a late
-  callback cannot release the new owner's units. Global and function totals do not move or double.
+- `Reservation.transferTo` moves ownership only within the exact acquiring generation and
+  invalidates the old handle, so a late callback cannot release the new owner's units. Generation,
+  global and function attribution do not move or double.
 - `ReservationBatch` tracks a multi-quota admission until publication: uncommitted close rolls back
   in reverse order; commit drops the batch's references and leaves each handle with its owner.
 - No ingress/store/queue/offload/waiter consumer is wired and no numeric default is introduced.
@@ -1653,3 +1654,22 @@ still-draining generation of the same name, while per-generation occupancy fence
 2m 20s (190 actionable tasks: 27 executed, 163 up-to-date). This is the required one-time full
 repository suite for P07a. It verifies compilation and integration with every module; P07b–P07e
 consumer behavior is intentionally not claimed because those gates are not wired by this task.
+
+### P07a fix round 1/5 — generation authority correction
+
+This section preserves the original P07a record while correcting its ownership rule. The resource
+table and implemented summary above now supersede the earlier same-name generation-handoff wording:
+an ordinary reservation transfer is owner-only and remains attributed to the exact generation that
+acquired it. No explicit lifecycle handoff authority exists in P07a.
+
+- `ResourceQuota` now requires the existing `FunctionCapacityRegistry` generation authority.
+  Reservation checks and accounting publication occur while the registry's per-function lifecycle
+  lock proves that the supplied `FunctionGeneration` is the current active generation.
+- A retiring generation may release its already-owned reservation, but cannot reserve new units.
+  Once its accounting drains and its map entry disappears, a late callback still cannot recreate
+  it. This is the I7 fence for the reusable primitive.
+- Cross-generation `Reservation.transferTo` is rejected before any owner or counter mutation.
+  Same-generation owner transfer remains atomic and leaves the old handle inert.
+- The covering test now obtains identities from the real registry authority. Its regression covers
+  both the retired-but-capacity-draining interval and the post-drain absence case; concurrency tests
+  remain latch/barrier/future based with no sleeps.

@@ -9,6 +9,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -166,6 +167,33 @@ public final class FunctionCapacityRegistry {
         entry.lock.lock();
         try {
             return activeState(functionName, entry) == null ? null : entry.generation;
+        } finally {
+            entry.lock.unlock();
+        }
+    }
+
+    /**
+     * Runs an accounting acquisition only while {@code expectedGeneration} is the
+     * exact active incarnation. Holding the entry lock across the callback makes the
+     * lifecycle check atomic with the acquisition: remove/re-register linearizes
+     * entirely before or after it.
+     *
+     * <p>Package-private because this is an authority hook for sibling ownership
+     * primitives, not another public lifecycle API. Returns {@code null} when the
+     * generation is absent, retired, or superseded.
+     */
+    <T> T withActiveGeneration(FunctionGeneration expectedGeneration, Supplier<T> acquisition) {
+        Entry entry = entries.get(expectedGeneration.functionName());
+        if (entry == null) {
+            return null;
+        }
+        entry.lock.lock();
+        try {
+            FunctionCapacityState state = activeState(expectedGeneration.functionName(), entry);
+            if (state == null || !expectedGeneration.equals(entry.generation)) {
+                return null;
+            }
+            return acquisition.get();
         } finally {
             entry.lock.unlock();
         }
