@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.controlplane.execution;
 import it.unimib.datai.nanofaas.common.model.ErrorInfo;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchLease;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.slf4j.Logger;
@@ -388,6 +389,17 @@ public class ExecutionRecord {
     /** Whether the current attempt holds a lease it has not yet released. */
     public synchronized boolean holdsDispatchLease() {
         return dispatchLease != null;
+    }
+
+    /**
+     * The generation this attempt was admitted under, or {@code null} when the attempt never
+     * acquired a lease (offload, or a queue path that releases by name). A peek, not a take: it
+     * does not detach the lease, so it is safe to call before {@link #takeDispatchLease()} and
+     * does not disturb the release accounting. Used to fence a late completion's metrics against
+     * a function that has since been removed and re-registered under a new identity (I7).
+     */
+    public synchronized FunctionGeneration currentGeneration() {
+        return dispatchLease != null ? dispatchLease.generation() : null;
     }
 
     /**

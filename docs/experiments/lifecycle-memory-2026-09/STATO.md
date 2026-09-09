@@ -1337,25 +1337,46 @@ voci snapshot non si accumulano). `:control-plane-modules:sync-queue:test` 93 te
 `:control-plane-modules:offload:test` 28 test, 0 falliti. `detect-changes --scope staged`:
 16 file, 146 simboli, 41 flussi, rischio `critical`, nessun `partial`/`truncated`.
 
-**Limite noto, non risolto qui:** `ExecutionCompletionHandler` registra i contatori/timer
-core di completamento (`success`, `error`, `coldStart`, `warmStart`, i timer, `retry`) per
-nome funzione, senza legarli alla generazione acquisita dall'esecuzione al momento
-dell'ammissione. Un'esecuzione ammessa sotto una generazione, la cui funzione viene rimossa
-e riregistrata con lo stesso nome mentre il dispatch è ancora in corso, e il cui completamento
-tardivo arriva dopo la riregistrazione, incrementerebbe i contatori della NUOVA generazione:
-una violazione puntuale dell'invariante I7 per un caso raro (richiede remove+re-register nella
-finestra di un singolo dispatch in corso). Il percorso offload (`completeOffloadedExecution`/
-`failOffloadedExecution`) ha lo stesso limite ed è persino più difficile da chiudere subito:
-le chiamate offload non acquisiscono un lease, quindi oggi non esiste alcuna generazione
-catturata all'ammissione con cui confrontare. Non corretto in questa sessione: il fix
-richiede propagare la generazione catturata dal lease (`ExecutionRecord`/`DispatchLease`)
-attraverso `FinalCompletion` fino a ogni chiamata a `Metrics`, toccando un file CRITICAL
-(`ExecutionCompletionHandler`) senza un ciclo dedicato di implementazione e review. Rimane
-un rilievo aperto da instradare nel prossimo ciclo di review di P09, non un risultato
-acquisito.
+**Limite chiuso in un secondo commit della stessa ripresa:** `ExecutionCompletionHandler`
+registrava i contatori/timer core di completamento (`success`, `error`, `coldStart`,
+`warmStart`, i timer, `retry`) per nome funzione, senza legarli alla generazione acquisita
+dall'esecuzione al momento dell'ammissione — una violazione puntuale dell'invariante I7 nel
+caso raro di un remove+re-register con lo stesso nome nella finestra di un singolo dispatch
+ancora in corso. Aggiunto `ExecutionRecord.currentGeneration()` (un peek, non un take, sul
+lease già presente: non tocca la contabilità di rilascio) e `Metrics.isCurrentGeneration`
+(vero se non c'è generazione catturata — offload, o un percorso a rilascio per nome — o se
+coincide con quella attiva nel registro capacità). La generazione catturata PRIMA di
+`releaseAttemptCapacity` attraversa `FinalCompletion` fino a ogni chiamata di scrittura;
+`completeUnderLock`, `handleRetry`, `publishFinalCompletion`, `handleAdministrativeExpiry` e
+`recordTerminalConclusionOnce` sono tutti guardati. Per `completeOffloadedExecution`/
+`failOffloadedExecution` la guardia è un no-op documentato: le chiamate offload non
+acquisiscono mai un lease, quindi non c'è oggi una generazione catturata all'ammissione con
+cui confrontare — limite reale, non finto risolto, annotato nel codice.
 
-**Prossimo passo:** dispatch della review di task per P09 (che quasi certamente segnalerà
-il limite sopra); poi P10 (completamento del suo scope pieno: osservazioni fresh/stale/
-unavailable, percorso non bloccante, deadline/cancellazione per letture che richiedono
-freschezza, metriche del refresh — lo snapshot fix qui sopra chiude solo l'accumulo delle
-entry, non l'intero task); poi P07.
+Nuovo test `CompletionMetricsGenerationFenceRegressionTest`: ammette una funzione con lease
+diretto, la rimuove e la riregistra con lo stesso nome mentre il dispatch è ancora pendente,
+poi completa in ritardo il vecchio tentativo. RED sulla baseline (contatore `success` della
+nuova generazione incrementato dal completamento vecchio); GREEN con il fix (contatori
+`success`/`error` della nuova generazione a zero, mentre lo stato dell'esecuzione conclude
+comunque normalmente in `SUCCESS` — solo la scrittura del meter è stata sospesa, non la
+transizione). Verifica: `./gradlew :control-plane:test --tests
+'*CompletionMetricsGenerationFenceRegressionTest*' --console=plain --offline` GREEN dopo il
+fix; `./gradlew :control-plane:test --no-parallel --console=plain --offline` → 638 test, 0
+falliti, 3 skip; `./gradlew test --no-parallel --continue --console=plain --offline` →
+`BUILD SUCCESSFUL` sull'intero repository.
+
+**Impact e integrazione:** indice riallineato con `analyze --index-only` prima della modifica
+(HEAD del commit P09 precedente). Impact upstream su `ExecutionCompletionHandler` (classe):
+HIGH, non aggirato — i due dipendenti reali (`InvocationService`,
+`ReactiveInvocationCoordinator`) non hanno cambiato firma di chiamata e sono coperti dalla
+suite integrale verde. Nessun `UNKNOWN` sui simboli produttivi toccati.
+`detect-changes --scope staged`: 4 file, 23 simboli, 21 flussi, rischio `critical`, nessun
+`partial`/`truncated`; i flussi elencati coincidono con il perimetro atteso (CompleteExecution,
+RetryExhaustedUnderLock, RecordTerminalConclusionOnce). `git diff --cached --check` supera
+il controllo.
+
+**Prossimo passo:** dispatch della review di task per P09 (entrambi i commit di questa
+ripresa); poi P10 (completamento del suo scope pieno: osservazioni fresh/stale/unavailable,
+percorso non bloccante, deadline/cancellazione per letture che richiedono freschezza,
+metriche del refresh — lo snapshot fix del primo commit chiude solo l'accumulo delle entry,
+non l'intero task); poi P07.

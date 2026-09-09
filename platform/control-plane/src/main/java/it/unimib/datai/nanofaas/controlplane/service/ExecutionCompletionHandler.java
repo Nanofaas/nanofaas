@@ -5,6 +5,7 @@ import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchLease;
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchAttempt;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
@@ -130,7 +131,11 @@ public class ExecutionCompletionHandler {
             }
         }
         executionStore.settle(executionRecord);
-        if (concluded) {
+        // Offloaded calls never acquire a local lease, so currentGeneration() is always null
+        // here and this guard is a documented no-op today: there is no admission-time
+        // generation captured to fence a late offload conclusion against (STATO.md, P09).
+        if (concluded && metrics.isCurrentGeneration(
+                executionRecord.task().functionName(), executionRecord.currentGeneration())) {
             bestEffort(() -> {
                 if (result.success()) metrics.success(executionRecord.task().functionName());
                 else metrics.error(executionRecord.task().functionName());
@@ -163,7 +168,12 @@ public class ExecutionCompletionHandler {
             }
         }
         executionStore.settle(executionRecord);
-        if (concluded) bestEffort(() -> metrics.error(executionRecord.task().functionName()));
+        // See completeOffloadedExecution: no lease exists for an offloaded call, so this is a
+        // documented no-op guard today, kept for uniformity with the other completion paths.
+        if (concluded && metrics.isCurrentGeneration(
+                executionRecord.task().functionName(), executionRecord.currentGeneration())) {
+            bestEffort(() -> metrics.error(executionRecord.task().functionName()));
+        }
     }
 
     public void dispatch(InvocationTask task) {
@@ -390,6 +400,10 @@ public class ExecutionCompletionHandler {
         }
 
         String functionName = currentTask.functionName();
+        // Captured before releaseAttemptCapacity, which detaches the lease on the
+        // direct-admission path: this is the generation the attempt was admitted under,
+        // not whatever the registry considers active by the time metrics are recorded.
+        FunctionGeneration generation = executionRecord.currentGeneration();
         releaseAttemptCapacity(executionRecord, attempt, functionName);
         if (isTerminal(executionRecord.state())) {
             return null;
@@ -401,7 +415,7 @@ public class ExecutionCompletionHandler {
             // handleRetry always terminates the retry path: null when the retry was
             // enqueued (never fall through to final completion), a FinalCompletion
             // when retry is exhausted (queue full).
-            return handleRetry(executionRecord, currentTask, result);
+            return handleRetry(executionRecord, currentTask, result, generation);
         }
 
         if (result.success()) {
@@ -430,7 +444,7 @@ public class ExecutionCompletionHandler {
                 ? null
                 : nanosToMs(executionRecord.admittedAtNanos(), finishedAtNanos);
         return new FinalCompletion(functionName, result, latencyMs, queueWaitMs, e2eMs,
-                dispatchResult.coldStart(), dispatchResult.initDurationMs(), false);
+                dispatchResult.coldStart(), dispatchResult.initDurationMs(), false, generation);
     }
 
     private static Long nanosToMs(long startNanos, long endNanos) {
@@ -441,12 +455,15 @@ public class ExecutionCompletionHandler {
      * Returns a final completion when the retry path terminates (queue full), null when the
      * retry was enqueued or when no retry applies (success or attempts exhausted).
      */
-    private FinalCompletion handleRetry(ExecutionRecord executionRecord, InvocationTask currentTask, InvocationResult result) {
+    private FinalCompletion handleRetry(ExecutionRecord executionRecord, InvocationTask currentTask,
+                                        InvocationResult result, FunctionGeneration generation) {
         if (result.success() || currentTask.attempt() > currentTask.functionSpec().maxRetries()) {
             return null;
         }
         String functionName = currentTask.functionName();
-        bestEffort(() -> metrics.retry(functionName));
+        if (metrics.isCurrentGeneration(functionName, generation)) {
+            bestEffort(() -> metrics.retry(functionName));
+        }
         InvocationTask retryTask = new InvocationTask(
                 executionRecord.executionId(),
                 functionName,
@@ -477,7 +494,7 @@ public class ExecutionCompletionHandler {
                 log.warn("Retry scheduling failed for execution {}, completing with error: {}",
                         executionRecord.executionId(), ex.toString());
             }
-            return retryExhaustedUnderLock(executionRecord, functionName, result);
+            return retryExhaustedUnderLock(executionRecord, functionName, result, generation);
         }
     }
 
@@ -488,10 +505,11 @@ public class ExecutionCompletionHandler {
      */
     private static FinalCompletion retryExhaustedUnderLock(ExecutionRecord executionRecord,
                                                            String functionName,
-                                                           InvocationResult result) {
+                                                           InvocationResult result,
+                                                           FunctionGeneration generation) {
         executionRecord.markError(result.error());
         Long e2eMs = nanosToMs(executionRecord.admittedAtNanos(), executionRecord.finishedAtNanos());
-        return FinalCompletion.retryExhausted(functionName, result, e2eMs);
+        return FinalCompletion.retryExhausted(functionName, result, e2eMs, generation);
     }
 
     private void publishFinalCompletion(ExecutionRecord executionRecord, FinalCompletion completion) {
@@ -505,6 +523,12 @@ public class ExecutionCompletionHandler {
         // recording first and claiming after left a window for two samples.
         boolean wonTheConclusion = executionRecord.markMetricsRecorded();
         executionStore.settle(executionRecord);
+        // A completion whose function was removed and re-registered since admission (I7) must
+        // not attribute its sample to the new generation's meters. The execution's own state
+        // transition above is unaffected; only the meter write is skipped.
+        if (!metrics.isCurrentGeneration(functionName, completion.generation())) {
+            return;
+        }
         bestEffort(() -> {
             recordCompletionMetrics(completion, wonTheConclusion);
             if (completion.result().success()) metrics.success(functionName);
@@ -545,9 +569,11 @@ public class ExecutionCompletionHandler {
                                    Long e2eMs,
                                    boolean coldStart,
                                    Long initDurationMs,
-                                   boolean retryExhausted) {
-        static FinalCompletion retryExhausted(String functionName, InvocationResult result, Long e2eMs) {
-            return new FinalCompletion(functionName, result, null, null, e2eMs, false, null, true);
+                                   boolean retryExhausted,
+                                   @Nullable FunctionGeneration generation) {
+        static FinalCompletion retryExhausted(String functionName, InvocationResult result, Long e2eMs,
+                                              FunctionGeneration generation) {
+            return new FinalCompletion(functionName, result, null, null, e2eMs, false, null, true, generation);
         }
     }
 
@@ -580,6 +606,7 @@ public class ExecutionCompletionHandler {
             handle = executionRecord.takeDispatchHandle();
         }
         InvocationTask task = executionRecord.task();
+        FunctionGeneration generation = executionRecord.currentGeneration();
         // Compatibility records can own a bookkeeping slot; active transports release
         // their own capacity on completion, including a cancellation acknowledgement.
         releaseAttemptCapacity(executionRecord, task.attempt(), task.functionName());
@@ -591,7 +618,9 @@ public class ExecutionCompletionHandler {
         // admission to expiry. The store's terminal listener records it at the settle below,
         // guarded against a late dispatch racing this eviction.
         executionStore.settle(executionRecord);
-        if (wasNonTerminal) bestEffort(() -> metrics.error(task.functionName()));
+        if (wasNonTerminal && metrics.isCurrentGeneration(task.functionName(), generation)) {
+            bestEffort(() -> metrics.error(task.functionName()));
+        }
     }
 
     /**
@@ -614,10 +643,13 @@ public class ExecutionCompletionHandler {
         if (!executionRecord.markMetricsRecorded()) {
             return;
         }
+        String functionName = executionRecord.task().functionName();
+        if (!metrics.isCurrentGeneration(functionName, executionRecord.currentGeneration())) {
+            return;
+        }
         Long e2eMs = nanosToMs(executionRecord.admittedAtNanos(), finishedAtNanos);
         if (e2eMs >= 0) {
-            metrics.timers(executionRecord.task().functionName())
-                    .e2eLatency().record(e2eMs, TimeUnit.MILLISECONDS);
+            metrics.timers(functionName).e2eLatency().record(e2eMs, TimeUnit.MILLISECONDS);
         }
     }
 
