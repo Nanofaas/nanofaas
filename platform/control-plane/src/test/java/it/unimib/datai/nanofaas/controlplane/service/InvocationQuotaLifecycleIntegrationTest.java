@@ -8,6 +8,7 @@ import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacity;
 import it.unimib.datai.nanofaas.controlplane.capacity.InvocationQuotaExceededException;
+import it.unimib.datai.nanofaas.controlplane.capacity.WaiterCapacity;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.dispatch.LocalDispatcher;
@@ -180,7 +181,7 @@ class InvocationQuotaLifecycleIntegrationTest {
                 new Metrics(new SimpleMeterRegistry()), null, fixture.generations);
         ReactiveInvocationCoordinator coordinator = new ReactiveInvocationCoordinator(
                 null, new Metrics(new SimpleMeterRegistry()), null, gateway, handler,
-                new InvocationResponseMapper());
+                new InvocationResponseMapper(), new WaiterCapacity(fixture.generations, 10_000, 1_000));
         var lookup = fixture.factory.createOrReuseExecution(
                 "fn", spec(), new InvocationRequest(new ArrayList<>(java.util.List.of("x")), Map.of()),
                 null, null, InvocationKind.SYNC);
@@ -270,7 +271,7 @@ class InvocationQuotaLifecycleIntegrationTest {
                 new Metrics(new SimpleMeterRegistry()), null, fixture.generations);
         ReactiveInvocationCoordinator coordinator = new ReactiveInvocationCoordinator(
                 null, new Metrics(new SimpleMeterRegistry()), null, gateway, handler,
-                new InvocationResponseMapper());
+                new InvocationResponseMapper(), new WaiterCapacity(fixture.generations, 10_000, 1_000));
         var lookup = fixture.factory.createOrReuseExecution(
                 "fn", spec(), new InvocationRequest(new ArrayList<>(java.util.List.of("x")), Map.of()),
                 null, null, InvocationKind.SYNC);

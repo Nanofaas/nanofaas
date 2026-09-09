@@ -28,21 +28,8 @@ public final class WaiterCapacity implements AutoCloseable {
                 generations, globalLimit, perFunctionLimit);
     }
 
-    private WaiterCapacity() {
-        generations = null;
-        quota = null;
-    }
-
-    /** Compatibility seam for direct legacy constructions outside the application context. */
-    public static WaiterCapacity disabled() {
-        return new WaiterCapacity();
-    }
-
     /** Reserves against the currently active generation, used for archived replay delivery. */
     public Waiter reserve(String functionName, String executionId) {
-        if (quota == null) {
-            return new Waiter();
-        }
         FunctionGeneration generation = generations.activeGeneration(functionName);
         if (generation == null) {
             throw quotaExceeded();
@@ -52,9 +39,6 @@ public final class WaiterCapacity implements AutoCloseable {
 
     /** Reserves and publishes one waiter, or fails without retaining any waiter state. */
     public Waiter reserve(FunctionGeneration generation, String executionId) {
-        if (quota == null) {
-            return new Waiter();
-        }
         Objects.requireNonNull(generation, "generation");
         if (executionId == null || executionId.isBlank()) {
             throw new IllegalArgumentException("executionId must not be blank");
@@ -76,15 +60,15 @@ public final class WaiterCapacity implements AutoCloseable {
     }
 
     public long reservedGlobally() {
-        return quota == null ? 0 : quota.reservedGlobally();
+        return quota.reservedGlobally();
     }
 
     public long reservedForFunction(String functionName) {
-        return quota == null ? 0 : quota.reservedForFunction(functionName);
+        return quota.reservedForFunction(functionName);
     }
 
     public long reservedForGeneration(FunctionGeneration generation) {
-        return quota == null ? 0 : quota.reservedForGeneration(generation);
+        return quota.reservedForGeneration(generation);
     }
 
     public int retainedWaiters() {
@@ -116,19 +100,13 @@ public final class WaiterCapacity implements AutoCloseable {
         private final ResourceQuota.Reservation reservation;
         private boolean detached;
 
-        private Waiter() {
-            id = 0;
-            reservation = null;
-            detached = true;
-        }
-
         private Waiter(long id, ResourceQuota.Reservation reservation) {
             this.id = id;
             this.reservation = reservation;
         }
 
         public FunctionGeneration generation() {
-            return reservation == null ? null : reservation.generation();
+            return reservation.generation();
         }
 
         @Override
@@ -140,9 +118,7 @@ public final class WaiterCapacity implements AutoCloseable {
                 detached = true;
                 retained.remove(id, this);
             }
-            if (reservation != null) {
-                reservation.close();
-            }
+            reservation.close();
         }
     }
 }

@@ -78,11 +78,12 @@ class DispatchLifecycleAndCancellationTest {
                         return backend;
                     }
                 }, null), metrics);
+        TestWaiterCapacity.Runtime runtime = TestWaiterCapacity.runtime(
+                store, new IdempotencyStore(), metrics, "fn");
         ReactiveInvocationCoordinator coordinator =
                 new ReactiveInvocationCoordinator(null, metrics, null, null, handler,
-                        new InvocationResponseMapper());
-        InvocationExecutionFactory factory = new InvocationExecutionFactory(store,
-                new IdempotencyStore(), metrics);
+                        new InvocationResponseMapper(), runtime.waiters());
+        InvocationExecutionFactory factory = runtime.factory();
 
         int accepted = 0;
         int rejected = 0;

@@ -2,8 +2,10 @@ package it.unimib.datai.nanofaas.modules.offload;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.*;
+import it.unimib.datai.nanofaas.controlplane.capacity.*;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.execution.*;
+import it.unimib.datai.nanofaas.controlplane.input.RetainedInputEstimator;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.service.*;
 import org.junit.jupiter.api.Test;
@@ -27,10 +29,16 @@ class ReviewOffloadWaiterBudgetTest {
                     WebClient.builder().exchangeFunction(request -> remote.asMono()).build(), registry);
             var store = new ExecutionStore();
             var metrics = new Metrics(registry);
-            var factory = new InvocationExecutionFactory(store, new IdempotencyStore(), metrics);
-            var handler = new ExecutionCompletionHandler(store, null, mock(DispatcherRouter.class), metrics);
+            var generations = new FunctionCapacityRegistry();
+            generations.register("fn", 1);
+            var capacity = new InvocationCapacity(generations, 100, 100, 1_000_000, 1_000_000, 16);
+            var factory = new InvocationExecutionFactory(
+                    store, new IdempotencyStore(), metrics, capacity,
+                    new RetainedInputEstimator.Limits(32, 16_384, 65_536, 64L << 20));
+            var handler = new ExecutionCompletionHandler(
+                    store, null, mock(DispatcherRouter.class), metrics, null, generations);
             var coordinator = new ReactiveInvocationCoordinator(null, metrics, null, gateway,
-                    handler, new InvocationResponseMapper());
+                    handler, new InvocationResponseMapper(), new WaiterCapacity(generations, 100, 100));
             var spec = new FunctionSpec("fn", "img", List.of(), Map.of(), null, 10000,
                     1, 100, 0, null, ExecutionMode.LOCAL, null, null, null, null,
                     new OffloadPolicy(true, "http://remote", "always"));

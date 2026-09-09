@@ -23,11 +23,13 @@ class ReactiveInvocationCoordinatorTest {
     private final ExecutionStore executionStore = new ExecutionStore();
     private final IdempotencyStore idempotencyStore = new IdempotencyStore();
     private final Metrics metrics = new Metrics(new SimpleMeterRegistry());
-    private final InvocationExecutionFactory factory =
-            new InvocationExecutionFactory(executionStore, idempotencyStore, metrics);
+    private final TestWaiterCapacity.Runtime runtime = TestWaiterCapacity.runtime(
+            executionStore, idempotencyStore, metrics, "fn-cancel", "fn-boom", "fn-slot");
+    private final InvocationExecutionFactory factory = runtime.factory();
     private final ExecutionCompletionHandler completionHandler = mock(ExecutionCompletionHandler.class);
     private final ReactiveInvocationCoordinator coordinator =
-            new ReactiveInvocationCoordinator(null, metrics, null, null, completionHandler, new InvocationResponseMapper());
+            new ReactiveInvocationCoordinator(null, metrics, null, null, completionHandler,
+                    new InvocationResponseMapper(), runtime.waiters());
 
     @Test
     void clientTimeoutDoesNotCancelSharedCompletionFuture() {

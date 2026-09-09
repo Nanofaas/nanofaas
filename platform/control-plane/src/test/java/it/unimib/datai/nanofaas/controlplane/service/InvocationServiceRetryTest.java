@@ -61,14 +61,15 @@ class InvocationServiceRetryTest {
         ExecutionCompletionHandler completionHandler = new ExecutionCompletionHandler(
                 executionStore, enqueuer, dispatcherRouter, metrics);
 
-        invocationService = new InvocationService(
+        invocationService = TestWaiterCapacity.service(
                 functionService,
                 enqueuer,
                 executionStore,
                 idempotencyStore,
                 metrics,
                 syncQueueGateway,
-                completionHandler
+                completionHandler,
+                "testFunc"
         );
 
         testSpec = new FunctionSpec(

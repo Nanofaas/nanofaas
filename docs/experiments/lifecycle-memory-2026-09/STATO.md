@@ -1900,3 +1900,36 @@ completed in 3 minutes 10 seconds (`190 actionable tasks: 21 executed, 169 up-to
 1.6.11 `detect-changes --scope all --limit 10000` completed successfully before staging and reported
 12 indexed changed symbols, 46 affected processes and `critical` aggregate risk; a staged rerun is
 recorded in the P07d task report so newly tracked P07d files are included in the exact commit view.
+
+## P07d — Fix Round 1
+
+The disabled compatibility path has been removed. `ReactiveInvocationCoordinator` now has only the
+constructor that requires `WaiterCapacity`, and the public `InvocationService` constructor which
+created a coordinator without that dependency has been removed. Direct test and module callers now
+construct an explicit finite waiter authority sharing the logical admission generation registry.
+Legacy records without logical admission metadata still reserve against the currently active
+generation; this preserves compatibility without bypassing either finite limit.
+
+The pending replay-storm regression now snapshots execution owners, retained input bytes, live
+records and archived outcomes. Each of 100 waiter refusals must leave all four values unchanged;
+after terminal drain it proves zero waiter/execution/input/live-record retention and exactly one
+expected keyed archived outcome. Duplicate terminal coverage now invokes
+`ExecutionCompletionHandler.completeExecution` twice with distinct results, rather than attempting
+to complete the same `CompletableFuture` twice.
+
+TDD produced a behavioral RED for the public-constructor bypass and a second RED which exposed use
+of the archived-outcome counter where the live-record counter was intended. The corrected focused
+P07d tests completed successfully in 5 seconds (78 actionable tasks), the full impacted constructor
+and module matrix completed successfully in 18 seconds (87 actionable tasks), and the full repository
+suite completed successfully in 2 minutes 22 seconds (190 actionable tasks: 22 executed,
+168 up-to-date). GitNexus impact and final detect-changes evidence are recorded in the P07d report.
+
+Final pre-commit review found no additional defect. `git diff --check` and the exact 23-file staged
+audit completed without findings. GitNexus 1.6.11
+`detect-changes --scope all --limit 10000` exited 0 after staging with 25 changed files, 60 indexed
+changed symbols, 42 affected processes and `critical` aggregate risk. It emitted neither
+`PARTIAL RESULT` nor `LISTING CAPPED`; the count comprises the 23 staged P07d files plus two
+unrelated tracked overload experiment files which remain unstaged. The GitNexus index remains
+stale at `bdada6c` with a recorded `full-rebuild` in progress, so exact text-search caller audits
+and the green impacted test matrix remain the supplementary evidence for symbols added after that
+commit.

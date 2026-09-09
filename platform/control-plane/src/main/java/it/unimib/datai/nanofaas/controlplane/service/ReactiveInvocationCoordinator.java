@@ -35,16 +35,6 @@ public final class ReactiveInvocationCoordinator {
     private final InvocationResponseMapper responseMapper;
     private final WaiterCapacity waiterCapacity;
 
-    public ReactiveInvocationCoordinator(@Nullable InvocationEnqueuer enqueuer,
-                                         Metrics metrics,
-                                         @Nullable SyncQueueGateway syncQueueGateway,
-                                         @Nullable OffloadGateway offloadGateway,
-                                         ExecutionCompletionHandler completionHandler,
-                                         InvocationResponseMapper responseMapper) {
-        this(enqueuer, metrics, syncQueueGateway, offloadGateway, completionHandler,
-                responseMapper, WaiterCapacity.disabled());
-    }
-
     @org.springframework.beans.factory.annotation.Autowired
     public ReactiveInvocationCoordinator(@Nullable InvocationEnqueuer enqueuer,
                                          Metrics metrics,
@@ -87,7 +77,10 @@ public final class ReactiveInvocationCoordinator {
         try {
             ExecutionRecord record = lookup.executionRecord();
             if (record != null) {
-                return waiterCapacity.reserve(record.currentGeneration(), record.executionId());
+                if (record.currentGeneration() != null) {
+                    return waiterCapacity.reserve(record.currentGeneration(), record.executionId());
+                }
+                return waiterCapacity.reserve(spec.name(), record.executionId());
             }
             return waiterCapacity.reserve(spec.name(), lookup.settledExecutionId());
         } catch (RuntimeException | Error failure) {

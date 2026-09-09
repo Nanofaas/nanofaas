@@ -44,15 +44,18 @@ class ReactiveInvocationCoordinatorOffloadTest {
     private final ExecutionStore executionStore = new ExecutionStore();
     private final IdempotencyStore idempotencyStore = new IdempotencyStore();
     private final Metrics metrics = new Metrics(new SimpleMeterRegistry());
-    private final InvocationExecutionFactory factory =
-            new InvocationExecutionFactory(executionStore, idempotencyStore, metrics);
+    private final TestWaiterCapacity.Runtime runtime = TestWaiterCapacity.runtime(
+            executionStore, idempotencyStore, metrics,
+            "fn-budget", "fn-declined", "fn-eager", "fn-est-wait",
+            "fn-fail", "fn-hop", "fn-pressure", "fn-timeout");
+    private final InvocationExecutionFactory factory = runtime.factory();
     private final ExecutionCompletionHandler completionHandler = mock(ExecutionCompletionHandler.class);
     private final OffloadGateway offloadGateway = mock(OffloadGateway.class);
     private final SyncQueueGateway syncQueueGateway = mock(SyncQueueGateway.class);
 
     private ReactiveInvocationCoordinator coordinator(SyncQueueGateway syncGateway) {
         return new ReactiveInvocationCoordinator(null, metrics, syncGateway, offloadGateway,
-                completionHandler, new InvocationResponseMapper());
+                completionHandler, new InvocationResponseMapper(), runtime.waiters());
     }
 
     /** Stubs that mirror the real handler's offload completion paths. */

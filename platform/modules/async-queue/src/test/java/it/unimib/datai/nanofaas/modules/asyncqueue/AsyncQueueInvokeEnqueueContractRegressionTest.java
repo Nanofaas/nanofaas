@@ -5,12 +5,16 @@ import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacity;
+import it.unimib.datai.nanofaas.controlplane.capacity.WaiterCapacity;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.dispatch.LocalDispatcher;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
+import it.unimib.datai.nanofaas.controlplane.input.RetainedInputEstimator;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.service.ExecutionCompletionHandler;
@@ -92,13 +96,13 @@ class AsyncQueueInvokeEnqueueContractRegressionTest {
         QueueBackedEnqueuer enqueuer = new QueueBackedEnqueuer(queueManager);
         ExecutionStore store = new ExecutionStore();
         Metrics metrics = new Metrics(new SimpleMeterRegistry());
+        AdmissionRuntime admission = admissionRuntime(store, metrics);
         RecordingDispatcherRouter router = new RecordingDispatcherRouter();
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
                 store, enqueuer, router, metrics);
         ReactiveInvocationCoordinator coordinator = new ReactiveInvocationCoordinator(
-                enqueuer, metrics, null, null, handler, new InvocationResponseMapper());
-        InvocationExecutionFactory factory =
-                new InvocationExecutionFactory(store, new IdempotencyStore(), metrics);
+                enqueuer, metrics, null, null, handler, new InvocationResponseMapper(), admission.waiters());
+        InvocationExecutionFactory factory = admission.factory();
         InvocationExecutionFactory.ExecutionLookup lookup =
                 factory.createOrReuseExecution("fn", spec, new InvocationRequest("payload", Map.of()),
                         null, null, InvocationKind.SYNC);
@@ -164,13 +168,13 @@ class AsyncQueueInvokeEnqueueContractRegressionTest {
         QueueBackedEnqueuer enqueuer = new QueueBackedEnqueuer(queueManager);
         ExecutionStore store = new ExecutionStore();
         Metrics metrics = new Metrics(new SimpleMeterRegistry());
+        AdmissionRuntime admission = admissionRuntime(store, metrics);
         RecordingDispatcherRouter router = new RecordingDispatcherRouter();
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
                 store, enqueuer, router, metrics);
         ReactiveInvocationCoordinator coordinator = new ReactiveInvocationCoordinator(
-                enqueuer, metrics, null, null, handler, new InvocationResponseMapper());
-        InvocationExecutionFactory factory =
-                new InvocationExecutionFactory(store, new IdempotencyStore(), metrics);
+                enqueuer, metrics, null, null, handler, new InvocationResponseMapper(), admission.waiters());
+        InvocationExecutionFactory factory = admission.factory();
 
         // One SYNC :invoke and one ASYNC :enqueue land on the same function's queue.
         InvocationExecutionFactory.ExecutionLookup syncLookup =
@@ -219,13 +223,13 @@ class AsyncQueueInvokeEnqueueContractRegressionTest {
         QueueBackedEnqueuer enqueuer = new QueueBackedEnqueuer(queueManager);
         ExecutionStore store = new ExecutionStore();
         Metrics metrics = new Metrics(new SimpleMeterRegistry());
+        AdmissionRuntime admission = admissionRuntime(store, metrics);
         RecordingDispatcherRouter router = new RecordingDispatcherRouter();
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
                 store, enqueuer, router, metrics);
         ReactiveInvocationCoordinator coordinator = new ReactiveInvocationCoordinator(
-                enqueuer, metrics, null, null, handler, new InvocationResponseMapper());
-        InvocationExecutionFactory factory =
-                new InvocationExecutionFactory(store, new IdempotencyStore(), metrics);
+                enqueuer, metrics, null, null, handler, new InvocationResponseMapper(), admission.waiters());
+        InvocationExecutionFactory factory = admission.factory();
         InvocationExecutionFactory.ExecutionLookup lookup =
                 factory.createOrReuseExecution("fn", spec, new InvocationRequest("payload", Map.of()),
                         null, null, InvocationKind.SYNC);
@@ -285,4 +289,18 @@ class AsyncQueueInvokeEnqueueContractRegressionTest {
         assertThat(queueManager.get("fn").queued()).isZero();
         assertThat(queueManager.get("fn").inFlight()).isZero();
     }
+
+    private static AdmissionRuntime admissionRuntime(ExecutionStore store, Metrics metrics) {
+        FunctionCapacityRegistry generations = new FunctionCapacityRegistry();
+        generations.register("fn", 10);
+        InvocationCapacity capacity = new InvocationCapacity(
+                generations, 100, 100, 1_000_000, 1_000_000, 16);
+        InvocationExecutionFactory factory = new InvocationExecutionFactory(
+                store, new IdempotencyStore(), metrics, capacity,
+                new RetainedInputEstimator.Limits(32, 16_384, 65_536, 64L << 20));
+        return new AdmissionRuntime(factory, new WaiterCapacity(generations, 100, 100));
+    }
+
+    private record AdmissionRuntime(
+            InvocationExecutionFactory factory, WaiterCapacity waiters) { }
 }

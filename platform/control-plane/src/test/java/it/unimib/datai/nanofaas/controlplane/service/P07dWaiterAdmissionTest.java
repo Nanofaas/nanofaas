@@ -21,6 +21,7 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -33,6 +34,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class P07dWaiterAdmissionTest {
+
+    @Test
+    void productionConstructorsCannotBypassFiniteWaiterCapacity() {
+        assertThat(Arrays.stream(ReactiveInvocationCoordinator.class.getConstructors()))
+                .allSatisfy(constructor -> assertThat(constructor.getParameterTypes())
+                        .contains(WaiterCapacity.class));
+        assertThat(Arrays.stream(InvocationService.class.getConstructors()))
+                .allSatisfy(constructor -> assertThat(Arrays.stream(constructor.getParameterTypes())
+                        .anyMatch(type -> type.equals(WaiterCapacity.class)
+                                || type.equals(ReactiveInvocationCoordinator.class))).isTrue());
+    }
 
     @Test
     void massivePendingReplaySaturatesWaitersWithoutRedispatchOrRetainedRejections() throws Exception {
@@ -48,17 +60,29 @@ class P07dWaiterAdmissionTest {
         CompletableFuture<SyncInvocation> second =
                 h.coordinator.invoke(h.lookup("fn", "key"), spec("fn"), 10_000).toFuture();
 
+        long executionOwners = h.invocations.executionReservedGlobally();
+        long inputBytes = h.invocations.inputReservedGlobally();
+        int liveExecutions = h.store.inFlightCount();
+        int archivedOutcomes = h.store.size();
+
         for (int i = 0; i < 100; i++) {
             assertThatThrownBy(() ->
                     h.coordinator.invoke(h.lookup("fn", "key"), spec("fn"), 10_000))
                     .isInstanceOfSatisfying(InvocationQuotaExceededException.class,
                             failure -> assertThat(failure.resource())
                                     .isEqualTo(InvocationQuotaExceededException.Resource.WAITER));
+            assertThat(h.invocations.executionReservedGlobally()).isEqualTo(executionOwners);
+            assertThat(h.invocations.inputReservedGlobally()).isEqualTo(inputBytes);
+            assertThat(h.store.inFlightCount()).isEqualTo(liveExecutions);
+            assertThat(h.store.size()).isEqualTo(archivedOutcomes);
         }
         assertThat(dispatches).hasValue(1);
         assertThat(h.waiters.reservedGlobally()).isEqualTo(2);
         assertThat(h.waiters.retainedWaiters()).isEqualTo(2);
-        assertThat(h.invocations.executionReservedGlobally()).isOne();
+        assertThat(executionOwners).isOne();
+        assertThat(inputBytes).isPositive();
+        assertThat(liveExecutions).isOne();
+        assertThat(archivedOutcomes).isZero();
 
         first.cancel(true);
         assertThat(h.waiters.reservedGlobally()).isOne();
@@ -66,6 +90,10 @@ class P07dWaiterAdmissionTest {
         assertThat(second.get(2, TimeUnit.SECONDS).response().output()).isEqualTo("shared");
         assertThat(h.waiters.reservedGlobally()).isZero();
         assertThat(h.waiters.retainedWaiters()).isZero();
+        assertThat(h.invocations.executionReservedGlobally()).isZero();
+        assertThat(h.invocations.inputReservedGlobally()).isZero();
+        assertThat(h.store.inFlightCount()).isZero();
+        assertThat(h.store.size()).isOne();
     }
 
     @Test
@@ -160,8 +188,11 @@ class P07dWaiterAdmissionTest {
                 h.coordinator.invoke(replacementLookup, spec("fn"), 10_000).toFuture();
         assertThat(h.waiters.reservedGlobally()).isEqualTo(2);
 
-        oldLookup.executionRecord().completion().complete(InvocationResult.success("late-old"));
+        h.completion.completeExecution(oldLookup.executionRecord().executionId(),
+                DispatchResult.warm(InvocationResult.success("late-old")));
         assertThat(oldWaiter.join().response().output()).isEqualTo("late-old");
+        h.completion.completeExecution(oldLookup.executionRecord().executionId(),
+                DispatchResult.warm(InvocationResult.success("duplicate-old")));
         oldWaiter.cancel(true);
         oldWaiter.cancel(true);
         assertThat(h.waiters.reservedGlobally()).isOne();
@@ -267,7 +298,7 @@ class P07dWaiterAdmissionTest {
                 store, enqueuer, new DispatcherRouter(dispatcher, null), metrics, null, generations);
         ReactiveInvocationCoordinator coordinator = new ReactiveInvocationCoordinator(
                 enqueuer, metrics, syncGateway, null, completion, new InvocationResponseMapper(), waiters);
-        return new Harness(store, factory, invocations, waiters, coordinator);
+        return new Harness(store, factory, invocations, waiters, completion, coordinator);
     }
 
     private static FunctionCapacityRegistry generations(String... names) {
@@ -297,6 +328,7 @@ class P07dWaiterAdmissionTest {
                            InvocationExecutionFactory factory,
                            InvocationCapacity invocations,
                            WaiterCapacity waiters,
+                           ExecutionCompletionHandler completion,
                            ReactiveInvocationCoordinator coordinator) {
         InvocationExecutionFactory.ExecutionLookup lookup(String functionName, String key) {
             return factory.createOrReuseExecution(functionName, spec(functionName),

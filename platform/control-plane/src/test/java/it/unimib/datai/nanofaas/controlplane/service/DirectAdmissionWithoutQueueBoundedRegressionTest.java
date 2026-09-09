@@ -58,7 +58,8 @@ class DirectAdmissionWithoutQueueBoundedRegressionTest {
         IdempotencyStore keys = new IdempotencyStore();
         Metrics metrics = new Metrics(new SimpleMeterRegistry());
         CompletableFuture<DispatchResult> backend = new CompletableFuture<>();
-        InvocationExecutionFactory factory = new InvocationExecutionFactory(store, keys, metrics);
+        TestWaiterCapacity.Runtime runtime = TestWaiterCapacity.runtime(store, keys, metrics, "fn");
+        InvocationExecutionFactory factory = runtime.factory();
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, null,
                 new DispatcherRouter(new LocalDispatcher() {
                     @Override
@@ -68,7 +69,7 @@ class DirectAdmissionWithoutQueueBoundedRegressionTest {
                 }, null), metrics);
         ReactiveInvocationCoordinator coordinator =
                 new ReactiveInvocationCoordinator(null, metrics, null, null, handler,
-                        new InvocationResponseMapper());
+                        new InvocationResponseMapper(), runtime.waiters());
 
         List<CompletableFuture<SyncInvocation>> attempts = new ArrayList<>();
         try {

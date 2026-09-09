@@ -59,10 +59,11 @@ class InvocationPathAccountingTest {
         ExecutionStore executionStore = new ExecutionStore();
         when(enqueuer.enabled()).thenReturn(true);
         when(syncQueueGateway.enabled()).thenReturn(false);
-        invocationService = new InvocationService(
+        invocationService = TestWaiterCapacity.service(
                 functionService, enqueuer, executionStore, new IdempotencyStore(),
                 metrics, syncQueueGateway,
-                new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics));
+                new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics),
+                "full-fn", "keyed-fn", "mixed-fn");
     }
 
     @Test

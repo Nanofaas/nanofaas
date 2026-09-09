@@ -11,6 +11,7 @@ import it.unimib.datai.nanofaas.common.model.RuntimeMode;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacity;
 import it.unimib.datai.nanofaas.controlplane.capacity.InvocationQuotaExceededException;
+import it.unimib.datai.nanofaas.controlplane.capacity.WaiterCapacity;
 import it.unimib.datai.nanofaas.controlplane.config.ExecutionStoreProperties;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
@@ -114,7 +115,7 @@ class P07cReviewFixTest {
         when(gateway.invokeRemote(any(), any(), any(), anyInt())).thenReturn(Mono.fromFuture(remote));
         ExecutionCompletionHandler handler = fixture.handler(mock(DispatcherRouter.class), null);
         ReactiveInvocationCoordinator coordinator = new ReactiveInvocationCoordinator(
-                null, fixture.metrics, null, gateway, handler, new InvocationResponseMapper());
+                null, fixture.metrics, null, gateway, handler, new InvocationResponseMapper(), fixture.waiters());
         FunctionSpec spec = offloadSpec();
         InvocationExecutionFactory.ExecutionLookup lookup = fixture.newLookup(spec);
         ExecutionRecord record = lookup.executionRecord();
@@ -150,7 +151,7 @@ class P07cReviewFixTest {
         }, null);
         ExecutionCompletionHandler handler = fixture.handler(router, null);
         ReactiveInvocationCoordinator coordinator = new ReactiveInvocationCoordinator(
-                null, fixture.metrics, null, null, handler, new InvocationResponseMapper());
+                null, fixture.metrics, null, null, handler, new InvocationResponseMapper(), fixture.waiters());
         FunctionSpec spec = localSpec();
         InvocationExecutionFactory.ExecutionLookup lookup = fixture.newLookup(spec);
 
@@ -176,7 +177,7 @@ class P07cReviewFixTest {
         }, null);
         ExecutionCompletionHandler handler = fixture.handler(router, null);
         ReactiveInvocationCoordinator coordinator = new ReactiveInvocationCoordinator(
-                null, fixture.metrics, null, null, handler, new InvocationResponseMapper());
+                null, fixture.metrics, null, null, handler, new InvocationResponseMapper(), fixture.waiters());
         FunctionSpec spec = localSpec();
         InvocationExecutionFactory.ExecutionLookup lookup = fixture.newLookup(spec);
 
@@ -200,7 +201,7 @@ class P07cReviewFixTest {
         when(gateway.invokeRemote(any(), any(), any(), anyInt())).thenReturn(Mono.fromFuture(remote));
         ExecutionCompletionHandler handler = fixture.handler(mock(DispatcherRouter.class), null);
         ReactiveInvocationCoordinator coordinator = new ReactiveInvocationCoordinator(
-                null, fixture.metrics, null, gateway, handler, new InvocationResponseMapper());
+                null, fixture.metrics, null, gateway, handler, new InvocationResponseMapper(), fixture.waiters());
         FunctionSpec spec = offloadSpec();
         InvocationExecutionFactory.ExecutionLookup lookup = fixture.newLookup(spec);
 
@@ -231,7 +232,7 @@ class P07cReviewFixTest {
         when(gateway.invokeRemote(any(), any(), any(), anyInt())).thenReturn(Mono.fromFuture(remote));
         ExecutionCompletionHandler handler = fixture.handler(mock(DispatcherRouter.class), null);
         ReactiveInvocationCoordinator coordinator = new ReactiveInvocationCoordinator(
-                null, fixture.metrics, null, gateway, handler, new InvocationResponseMapper());
+                null, fixture.metrics, null, gateway, handler, new InvocationResponseMapper(), fixture.waiters());
         FunctionSpec spec = offloadSpec();
         InvocationExecutionFactory.ExecutionLookup lookup = fixture.newLookup(spec);
 
@@ -313,6 +314,10 @@ class P07cReviewFixTest {
 
         private ExecutionCompletionHandler handler(DispatcherRouter router, DeploymentWakeUpGate gate) {
             return new ExecutionCompletionHandler(store, null, router, metrics, gate, generations);
+        }
+
+        private WaiterCapacity waiters() {
+            return new WaiterCapacity(generations, 10_000, 1_000);
         }
 
         private InvocationExecutionFactory.ExecutionLookup newLookup(FunctionSpec spec) {

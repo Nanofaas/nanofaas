@@ -87,14 +87,19 @@ class InvocationServiceDispatchTest {
 
         completionHandler = new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics);
 
-        invocationService = new InvocationService(
+        invocationService = TestWaiterCapacity.service(
                 functionService,
                 enqueuer,
                 executionStore,
                 idempotencyStore,
                 metrics,
                 syncQueueGateway,
-                completionHandler
+                completionHandler,
+                "replay-success-fn", "replay-reactive-success-fn", "replay-sync-timeout-fn",
+                "replay-timeout-fn", "fn", "inline-fn", "queued-sync-fn", "sync-queued-fn",
+                "sync-queued-sync-fn", "idem-admission-race-fn", "sync-reject-fn",
+                "sync-reject-local-fn", "reactive-sync-reject-fn", "queue-reject-fn", "queue-timeout-fn",
+                "timeout-fn", "timeout-reactive-fn"
         );
 
         io.micrometer.core.instrument.simple.SimpleMeterRegistry meterRegistry =
@@ -309,14 +314,15 @@ class InvocationServiceDispatchTest {
     @Test
     void invokeSync_whenSyncQueueGatewayMissingAndEnqueuerDisabled_dispatchesInline() {
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics);
-        InvocationService invocationServiceWithoutSyncQueue = new InvocationService(
+        InvocationService invocationServiceWithoutSyncQueue = TestWaiterCapacity.service(
                 functionService,
                 enqueuer,
                 executionStore,
                 new IdempotencyStore(),
                 metrics,
                 null,
-                handler
+                handler,
+                "inline-no-sync-queue-fn"
         );
 
         FunctionSpec spec = functionSpec("inline-no-sync-queue-fn", ExecutionMode.LOCAL);
@@ -580,14 +586,15 @@ class InvocationServiceDispatchTest {
         // The stale mapping is explicitly abandoned after publication: that is what makes
         // it reclaimable, not the mere absence of the execution it points at (finding R2).
         staleStore.markReclaimable("stale-idem-fn", "same-key", "evicted-execution");
-        InvocationService racingService = new InvocationService(
+        InvocationService racingService = TestWaiterCapacity.service(
                 functionService,
                 enqueuer,
                 executionStore,
                 staleStore,
                 metrics,
                 syncQueueGateway,
-                completionHandler
+                completionHandler,
+                "stale-idem-fn"
         );
 
         int contenders = 2;
@@ -634,14 +641,15 @@ class InvocationServiceDispatchTest {
         // The stale mapping is explicitly abandoned after publication: that is what makes
         // it reclaimable, not the mere absence of the execution it points at (finding R2).
         staleStore.markReclaimable("stale-publication-fn", "same-key", "evicted-execution");
-        InvocationService racingService = new InvocationService(
+        InvocationService racingService = TestWaiterCapacity.service(
                 functionService,
                 enqueuer,
                 blockedStore,
                 staleStore,
                 metrics,
                 syncQueueGateway,
-                new ExecutionCompletionHandler(blockedStore, enqueuer, dispatcherRouter, metrics)
+                new ExecutionCompletionHandler(blockedStore, enqueuer, dispatcherRouter, metrics),
+                "stale-publication-fn"
         );
 
         ExecutorService executor = Executors.newFixedThreadPool(2);

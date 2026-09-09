@@ -84,14 +84,15 @@ class InvocationServiceAsyncReplayTest {
         ExecutionCompletionHandler completionHandler = new ExecutionCompletionHandler(
                 executionStore, enqueuer, dispatcherRouter, metrics);
 
-        invocationService = new InvocationService(
+        invocationService = TestWaiterCapacity.service(
                 functionService,
                 enqueuer,
                 executionStore,
                 idempotencyStore,
                 metrics,
                 syncQueueGateway,
-                completionHandler
+                completionHandler,
+                "testFunc"
         );
 
         testSpec = new FunctionSpec(
@@ -249,8 +250,9 @@ class InvocationServiceAsyncReplayTest {
         idempotencyStore = new IdempotencyStore();
         ExecutionCompletionHandler completionHandler = new ExecutionCompletionHandler(
                 executionStore, enqueuer, dispatcherRouter, metrics);
-        invocationService = new InvocationService(
-                functionService, enqueuer, executionStore, idempotencyStore, metrics, syncQueueGateway, completionHandler);
+        invocationService = TestWaiterCapacity.service(
+                functionService, enqueuer, executionStore, idempotencyStore, metrics, syncQueueGateway,
+                completionHandler, "testFunc");
 
         ExecutionRecord first = queueAndSettleSuccess("idem-gone", "first");
         assertThat(executionStore.size()).isZero();

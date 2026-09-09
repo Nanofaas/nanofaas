@@ -62,10 +62,11 @@ class InvocationServiceEarlyRefusalTest {
         idempotencyStore = new IdempotencyStore();
         when(enqueuer.enabled()).thenReturn(true);
         when(syncQueueGateway.enabled()).thenReturn(false);
-        invocationService = new InvocationService(
+        invocationService = TestWaiterCapacity.service(
                 functionService, enqueuer, executionStore, idempotencyStore,
                 metrics, syncQueueGateway,
-                new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics));
+                new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics),
+                "full-fn", "hot-fn", "replay-fn", "sync-fn");
     }
 
     @Test

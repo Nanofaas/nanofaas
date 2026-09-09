@@ -93,12 +93,13 @@ class R4OffloadCompletionAfterWaiterTimeoutRegressionTest {
                 return remote.asMono();
             }
         };
-        InvocationExecutionFactory factory = new InvocationExecutionFactory(store, keys, metrics);
+        TestWaiterCapacity.Runtime runtime = TestWaiterCapacity.runtime(store, keys, metrics, "fn");
+        InvocationExecutionFactory factory = runtime.factory();
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, null,
                 new DispatcherRouter(new LocalDispatcher(), null), metrics);
         ReactiveInvocationCoordinator coordinator =
                 new ReactiveInvocationCoordinator(null, metrics, null, gateway, handler,
-                        new InvocationResponseMapper());
+                        new InvocationResponseMapper(), runtime.waiters());
 
         InvocationExecutionFactory.ExecutionLookup first = lookup(factory, "offloaded");
         CompletableFuture<SyncInvocation> owner =

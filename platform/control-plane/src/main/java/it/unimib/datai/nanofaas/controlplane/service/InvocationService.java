@@ -10,13 +10,11 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
-import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
 import it.unimib.datai.nanofaas.controlplane.execution.Outcome;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionNotFoundException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadContext;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
@@ -36,25 +34,6 @@ public class InvocationService {
     private final InvocationExecutionFactory executionFactory;
     private final InvocationResponseMapper responseMapper;
     private final ReactiveInvocationCoordinator reactiveCoordinator;
-
-    public InvocationService(FunctionService functionService,
-                             @Nullable InvocationEnqueuer enqueuer,
-                             ExecutionStore executionStore,
-                             IdempotencyStore idempotencyStore,
-                             Metrics metrics,
-                             @Autowired(required = false) @Nullable SyncQueueGateway syncQueueGateway,
-                             ExecutionCompletionHandler completionHandler) {
-        this(
-                functionService,
-                enqueuer,
-                executionStore,
-                metrics,
-                completionHandler,
-                new InvocationExecutionFactory(executionStore, idempotencyStore, metrics),
-                new InvocationResponseMapper(),
-                new ReactiveInvocationCoordinator(enqueuer, metrics, syncQueueGateway, null, completionHandler, new InvocationResponseMapper())
-        );
-    }
 
     @Autowired
     public InvocationService(FunctionService functionService,

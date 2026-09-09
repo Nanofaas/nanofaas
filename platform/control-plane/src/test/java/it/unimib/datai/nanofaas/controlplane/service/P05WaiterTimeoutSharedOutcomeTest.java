@@ -73,7 +73,8 @@ class P05WaiterTimeoutSharedOutcomeTest {
         ExecutionStore store = new ExecutionStore();
         IdempotencyStore keys = new IdempotencyStore();
         Metrics metrics = new Metrics(new SimpleMeterRegistry());
-        InvocationExecutionFactory factory = new InvocationExecutionFactory(store, keys, metrics);
+        TestWaiterCapacity.Runtime runtime = TestWaiterCapacity.runtime(store, keys, metrics, "fn");
+        InvocationExecutionFactory factory = runtime.factory();
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, enqueuer,
                 new DispatcherRouter(new LocalDispatcher() {
                     @Override
@@ -83,7 +84,7 @@ class P05WaiterTimeoutSharedOutcomeTest {
                 }, null), metrics);
         ReactiveInvocationCoordinator coordinator =
                 new ReactiveInvocationCoordinator(enqueuer, metrics, null, null, handler,
-                        new InvocationResponseMapper());
+                        new InvocationResponseMapper(), runtime.waiters());
         return new CoordinatorHarness(store, keys, metrics, factory, handler, coordinator);
     }
 
@@ -203,12 +204,13 @@ class P05WaiterTimeoutSharedOutcomeTest {
                 return remote.asMono();
             }
         };
-        InvocationExecutionFactory factory = new InvocationExecutionFactory(store, keys, metrics);
+        TestWaiterCapacity.Runtime runtime = TestWaiterCapacity.runtime(store, keys, metrics, "fn");
+        InvocationExecutionFactory factory = runtime.factory();
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, null,
                 new DispatcherRouter(new LocalDispatcher(), null), metrics);
         ReactiveInvocationCoordinator coordinator =
                 new ReactiveInvocationCoordinator(null, metrics, null, gateway, handler,
-                        new InvocationResponseMapper());
+                        new InvocationResponseMapper(), runtime.waiters());
 
         InvocationExecutionFactory.ExecutionLookup first = lookup(factory, "offloaded");
         CompletableFuture<SyncInvocation> owner =
@@ -262,11 +264,12 @@ class P05WaiterTimeoutSharedOutcomeTest {
                 return true;
             }
         };
+        TestWaiterCapacity.Runtime runtime = TestWaiterCapacity.runtime(store, keys, metrics, "fn");
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, enqueuer, router, metrics);
         ReactiveInvocationCoordinator coordinator =
                 new ReactiveInvocationCoordinator(enqueuer, metrics, null, null, handler,
-                        new InvocationResponseMapper());
-        InvocationExecutionFactory factory = new InvocationExecutionFactory(store, keys, metrics);
+                        new InvocationResponseMapper(), runtime.waiters());
+        InvocationExecutionFactory factory = runtime.factory();
         FunctionSpec spec = spec("fn", 1);
 
         InvocationExecutionFactory.ExecutionLookup first = lookup(factory, "key", spec);
