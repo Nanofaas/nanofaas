@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.controlplane.service;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationResponse;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
+import it.unimib.datai.nanofaas.controlplane.capacity.WaiterCapacity;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.Outcome;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadContext;
@@ -32,6 +33,7 @@ public final class ReactiveInvocationCoordinator {
     private final OffloadGateway offloadGateway;
     private final ExecutionCompletionHandler completionHandler;
     private final InvocationResponseMapper responseMapper;
+    private final WaiterCapacity waiterCapacity;
 
     public ReactiveInvocationCoordinator(@Nullable InvocationEnqueuer enqueuer,
                                          Metrics metrics,
@@ -39,12 +41,25 @@ public final class ReactiveInvocationCoordinator {
                                          @Nullable OffloadGateway offloadGateway,
                                          ExecutionCompletionHandler completionHandler,
                                          InvocationResponseMapper responseMapper) {
+        this(enqueuer, metrics, syncQueueGateway, offloadGateway, completionHandler,
+                responseMapper, WaiterCapacity.disabled());
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ReactiveInvocationCoordinator(@Nullable InvocationEnqueuer enqueuer,
+                                         Metrics metrics,
+                                         @Nullable SyncQueueGateway syncQueueGateway,
+                                         @Nullable OffloadGateway offloadGateway,
+                                         ExecutionCompletionHandler completionHandler,
+                                         InvocationResponseMapper responseMapper,
+                                         WaiterCapacity waiterCapacity) {
         this.enqueuer = enqueuer == null ? InvocationEnqueuer.noOp() : enqueuer;
         this.metrics = metrics;
         this.syncQueueGateway = syncQueueGateway == null ? SyncQueueGateway.noOp() : syncQueueGateway;
         this.offloadGateway = offloadGateway == null ? OffloadGateway.noOp() : offloadGateway;
         this.completionHandler = completionHandler;
         this.responseMapper = responseMapper;
+        this.waiterCapacity = waiterCapacity;
     }
 
     public Mono<SyncInvocation> invoke(InvocationExecutionFactory.ExecutionLookup lookup,
@@ -57,6 +72,37 @@ public final class ReactiveInvocationCoordinator {
                                        FunctionSpec spec,
                                        Integer timeoutOverrideMs,
                                        OffloadContext offloadContext) {
+        WaiterCapacity.Waiter waiter = reserveWaiter(lookup, spec);
+        try {
+            return invokeAttached(lookup, spec, timeoutOverrideMs, offloadContext)
+                    .doFinally(ignored -> waiter.close());
+        } catch (RuntimeException | Error failure) {
+            waiter.close();
+            throw failure;
+        }
+    }
+
+    private WaiterCapacity.Waiter reserveWaiter(
+            InvocationExecutionFactory.ExecutionLookup lookup, FunctionSpec spec) {
+        try {
+            ExecutionRecord record = lookup.executionRecord();
+            if (record != null) {
+                return waiterCapacity.reserve(record.currentGeneration(), record.executionId());
+            }
+            return waiterCapacity.reserve(spec.name(), lookup.settledExecutionId());
+        } catch (RuntimeException | Error failure) {
+            if (lookup.isNew()) {
+                lookup.abandonAdmission();
+            }
+            throw failure;
+        }
+    }
+
+    private Mono<SyncInvocation> invokeAttached(
+            InvocationExecutionFactory.ExecutionLookup lookup,
+            FunctionSpec spec,
+            Integer timeoutOverrideMs,
+            OffloadContext offloadContext) {
         // The key found an execution that is already over: the mutable record is gone,
         // but the outcome the replay needs is not. Retaining it is why
         // ExecutionRecord.toOutcome() keeps the payload for keyed executions.

@@ -16,6 +16,11 @@ class InvocationCapacityConfiguration {
                 64);
     }
 
+    @Bean(destroyMethod = "close")
+    WaiterCapacity waiterCapacity(FunctionCapacityRegistry generations) {
+        return new WaiterCapacity(generations, 100_000, 10_000);
+    }
+
     @Bean
     RetainedInputEstimator.Limits retainedInputLimits() {
         return new RetainedInputEstimator.Limits(32, 16_384, 65_536, 64L << 20);

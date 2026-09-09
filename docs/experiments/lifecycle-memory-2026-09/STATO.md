@@ -1872,3 +1872,31 @@ defaults/calibration and waiter ownership remain explicitly deferred.
 - GitNexus exact-checkout detect-changes and explicit staging audit are recorded in the ignored
   P07c task report. Controller staging/commit remains external because this sandbox cannot write
   Git metadata.
+
+## P07d — Bounded waiter admission and isolated detach
+
+P07d adds a distinct generation-scoped waiter owner with finite internal global and per-function
+safety ceilings; P07e still owns calibrated public values and runtime reduction. Every synchronous
+caller, including pending and archived idempotency replay, reserves one waiter before its result
+attachment is returned. Saturation follows the existing overload/`Retry-After` boundary and never
+charges execution or canonical input twice.
+
+The waiter handle is detached exactly once by terminal delivery, its own timeout, cancellation or
+client disconnect. Detach never cancels the shared completion, queue entry, dispatch, retry, input
+owner or another waiter. A bounded retained-owner registry supports shutdown draining and fences
+post-close admission; reservations remain attributed to their acquiring `FunctionGeneration`, so
+late old-generation signals cannot release replacement accounting.
+
+Controlled tests cover global and per-function saturation, 100 rejected replays of one pending key
+without redispatch or retained-state growth, direct/no-queue plus representative async/sync queue
+paths, divergent deadlines, archived replay, enqueue publication failure, disconnect, duplicate
+completion/cancellation, shutdown and remove/re-register races. These waiter counters bound only
+the retained control-plane waiter owners; they do not claim to bound RSS, HTTP/native buffers or
+remote memory.
+
+Validation on 2026-09-09 is green: the focused waiter and HIGH-impact consumer matrix completed in
+17 seconds (`87 actionable tasks: 15 executed, 72 up-to-date`), and `./gradlew test --offline`
+completed in 3 minutes 10 seconds (`190 actionable tasks: 21 executed, 169 up-to-date`). GitNexus
+1.6.11 `detect-changes --scope all --limit 10000` completed successfully before staging and reported
+12 indexed changed symbols, 46 affected processes and `critical` aggregate risk; a staged rerun is
+recorded in the P07d task report so newly tracked P07d files are included in the exact commit view.

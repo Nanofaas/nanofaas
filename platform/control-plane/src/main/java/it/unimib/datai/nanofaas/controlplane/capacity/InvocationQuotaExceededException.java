@@ -16,6 +16,7 @@ public final class InvocationQuotaExceededException extends QueueFullException {
 
     public enum Resource {
         EXECUTION,
-        INPUT
+        INPUT,
+        WAITER
     }
 }
