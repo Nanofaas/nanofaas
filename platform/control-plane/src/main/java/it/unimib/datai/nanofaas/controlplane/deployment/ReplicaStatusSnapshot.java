@@ -277,6 +277,7 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
             if (status != null && !isTooStale(entry.fetchedAt, now)) {
                 observation = ReplicaObservation.stale(status, entry.fetchedAt);
             } else {
+                String reason = entry.failureReason;
                 if (status != null) {
                     // Past the stale bound the cached value is no longer a defensible reading of
                     // reality. Drop it and report unavailability: a consumer that skips a cycle is
@@ -285,8 +286,13 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
                             target.functionName(), maxStale);
                     entry.status = null;
                     entry.fetchedAt = null;
+                    if (reason == null) {
+                        reason = "last reading was older than the " + maxStale + " stale bound";
+                    }
+                } else if (reason == null) {
+                    reason = "no reading from the deployment provider yet";
                 }
-                observation = ReplicaObservation.unavailable(now, entry.unavailableReason());
+                observation = ReplicaObservation.unavailable(now, reason);
             }
             refresh = startOrJoinLocked(entry, target, fetcher, RefreshPath.PERIODIC);
         }
@@ -713,10 +719,6 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
 
         Entry(long generation) {
             this.generation = generation;
-        }
-
-        String unavailableReason() {
-            return failureReason == null ? "no reading from the deployment provider yet" : failureReason;
         }
     }
 

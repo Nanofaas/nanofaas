@@ -558,9 +558,11 @@ class ReplicaStatusSnapshotTest {
 
         snapshot.close();
 
-        assertThat(snapshot.isTerminated()).isTrue();
+        // close() interrupts rather than waiting, so a worker already inside a task may still be
+        // unwinding; termination is expected promptly, not instantaneously.
+        assertThat(awaitTermination(snapshot)).isTrue();
         assertThat(snapshot.entryCount()).isZero();
-        assertThat(snapshot.queueDepth(RefreshPath.PERIODIC)).isZero();
+        awaitQueueDepth(snapshot, RefreshPath.PERIODIC, 0);
 
         // A reader that arrives after shutdown is answered, not blown up: the submission is
         // rejected and the observation is UNAVAILABLE.
@@ -641,6 +643,17 @@ class ReplicaStatusSnapshotTest {
             // from the poll itself.
             if (snapshot.observe(target, failingFetcher()) instanceof ReplicaObservation.Available available
                     && expected.equals(available.status())) {
+                return true;
+            }
+            Thread.onSpinWait();
+        }
+        return false;
+    }
+
+    private static boolean awaitTermination(ReplicaStatusSnapshot snapshot) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            if (snapshot.isTerminated()) {
                 return true;
             }
             Thread.onSpinWait();
