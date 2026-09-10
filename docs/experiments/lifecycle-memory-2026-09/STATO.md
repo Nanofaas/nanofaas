@@ -2644,3 +2644,23 @@ journal was introduced. Focused pending tests (12), the 103-test registry slice,
 autoscaler/concurrency integration, bootJar, native-profile AOT Java compilation and the
 complete repository suite (190/190 actionable tasks in 3 min 19 s) are GREEN. Only the
 single-sample benchmark-stability Minor remains deferred. Next: P16.
+
+## P15 fix round 3 — unavailable retry rollback
+
+The sole Important re-review finding is closed (1/1). If retrying removal of an already
+unavailable record reaches an ordinary deprovision failure, `FunctionRegistry` now decides
+under its own lock that rollback remains recovery-only. Public registry get/list and the
+direct `DeploymentWakeUpGate` consumer cannot observe or use the record; no service-level
+check-then-act was added.
+
+The deterministic RED failed both the public registry assertion and the real wake-up
+consumer assertion. GREEN retains the raw durable recovery record plus pending PATCH,
+scale and unavailable markers, performs no extra snapshot write, and later completes delete
+with the fourth total write before returning marker/retained-name counts to zero. Durable
+delete prunes every marker kind; startup resets the full volatile table, while coordinator
+shutdown intentionally clears scale markers only.
+
+Focused recovery/wake-up/removal/restorer/HTTP tests, autoscaler/concurrency integration,
+bootJar, native-profile AOT Java compilation and the complete repository suite (190/190
+actionable tasks in 4 min 9 s) are GREEN. The single-sample benchmark-stability Minor remains
+the only deferred P15 item. Next: P16.

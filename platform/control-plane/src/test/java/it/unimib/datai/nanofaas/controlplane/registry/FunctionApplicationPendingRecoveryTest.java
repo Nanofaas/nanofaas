@@ -2,6 +2,8 @@ package it.unimib.datai.nanofaas.controlplane.registry;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.common.model.ScalingConfig;
+import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProperties;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
@@ -195,6 +197,48 @@ class FunctionApplicationPendingRecoveryTest {
         assertThat(service.get("fn")).isEmpty();
         assertThat(new FunctionRegistry(catalog).listRegisteredForRecovery()).isEmpty();
         verify(listener, times(1)).onRemove("fn");
+    }
+
+    @Test
+    void unavailableDeleteRetryFailureRetainsRecoveryMarkersUntilDeleteSucceeds() {
+        CountingFailingCatalog catalog = new CountingFailingCatalog(tempDir.resolve("unavailable-delete-retry.json"));
+        FunctionRegistry registry = new FunctionRegistry(catalog);
+        ManagedDeploymentProvider provider = provider();
+        FunctionService service = service(registry, provider);
+        FunctionSpec function = wakeUpSpec("fn");
+        service.register(function);
+        doThrow(new IllegalStateException("patch unavailable")).when(provider).updateSpec(any());
+        doThrow(new IllegalStateException("scale unavailable")).when(provider).setReplicas("fn", 3);
+        assertThatThrownBy(() -> service.update("fn", new FunctionUpdateRequest(2, null, null, null)))
+                .hasMessage("patch unavailable");
+        assertThatThrownBy(() -> service.setReplicas("fn", 3)).hasMessage("scale unavailable");
+
+        catalog.failSaves(true);
+        doNothing()
+                .doThrow(new IllegalStateException("retry deprovision unavailable"))
+                .doNothing()
+                .when(provider).deprovision("fn");
+        when(provider.reconcile(any(), anyInt(), anyMap()))
+                .thenThrow(new IllegalStateException("reconcile unavailable"));
+        assertThatThrownBy(() -> service.remove("fn")).hasMessage("catalog failure");
+
+        catalog.failSaves(false);
+        assertThatThrownBy(() -> service.remove("fn")).hasMessage("retry deprovision unavailable");
+
+        assertThat(registry.listRegisteredForRecovery()).extracting(RegisteredFunction::name)
+                .containsExactly("fn");
+        assertThat(registry.getRegistered("fn")).isEmpty();
+        assertThat(registry.listRegistered()).isEmpty();
+        assertThat(registry.applicationState().retainedFunctionCount()).isEqualTo(1);
+        assertThat(registry.applicationState().retainedMarkerCount()).isEqualTo(3);
+
+        assertThat(service.remove("fn")).map(FunctionSpec::name).contains("fn");
+        assertThat(registry.listRegisteredForRecovery()).isEmpty();
+        assertThat(registry.listRegistered()).isEmpty();
+        assertThat(registry.applicationState().retainedFunctionCount()).isZero();
+        assertThat(registry.applicationState().retainedMarkerCount()).isZero();
+        assertThat(catalog.writes()).isEqualTo(4);
+        verify(provider, times(3)).deprovision("fn");
     }
 
     @Test
@@ -485,6 +529,12 @@ class FunctionApplicationPendingRecoveryTest {
         String endpoint = executionMode == ExecutionMode.EXTERNAL ? "http://" + name + "/invoke" : null;
         return new FunctionSpec(name, "example:latest", List.of(), Map.of(), null,
                 1_000, 1, 10, 0, endpoint, executionMode, null, null, null, null);
+    }
+
+    private static FunctionSpec wakeUpSpec(String name) {
+        return new FunctionSpec(name, "example:latest", List.of(), Map.of(), null,
+                1_000, 1, 10, 0, null, ExecutionMode.DEPLOYMENT, null, null,
+                new ScalingConfig(ScalingStrategy.INTERNAL, 0, 10, List.of()), null);
     }
 
     private static RegisteredFunction managed(String name, int replicas) {

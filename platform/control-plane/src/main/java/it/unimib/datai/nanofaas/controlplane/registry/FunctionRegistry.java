@@ -123,6 +123,10 @@ public class FunctionRegistry {
 
     synchronized void restoreDetached(RegisteredFunction function) {
         if (function != null) {
+            if (applicationState.isUnavailable(function.name())) {
+                restoreDetachedForRecovery(function);
+                return;
+            }
             RegistrySnapshot currentSnapshot = functions;
             Map<String, RegisteredFunction> next = new HashMap<>(currentSnapshot.recovery());
             next.put(function.name(), function);

@@ -235,8 +235,9 @@ Both open Important findings and the deterministic race-test Minor are addressed
 
 1. Removal start no longer clears pending PATCH or scale application markers. Provider
    deprovision failure restores the live record with those markers intact, so an identical
-   PATCH/scale retry reapplies its side effects without another catalog write. All markers
-   are pruned only when catalog deletion is durably published.
+   PATCH/scale retry reapplies its side effects without another catalog write. Durable
+   catalog deletion prunes all marker kinds; independently, startup recovery resets all
+   volatile state and coordinator shutdown clears scale markers only.
 2. `FunctionRegistry` now owns one volatile immutable snapshot containing separate recovery
    and public maps. Every public/service/invocation lookup and list reads only the public
    map; raw records are package-private to startup recovery. Managed deployments loaded
@@ -324,3 +325,37 @@ and `git diff --cached --check` passed.
 
 The sole open review item is the requested single-sample benchmark-stability Minor (1 open,
 3 addressed). It remains deferred exactly as requested.
+
+## Fix round 3 — unavailable retry rollback stays recovery-only
+
+Base: `7c80df411e7e5f23600d6e60514cf343da1e2a14`. The sole open Important
+finding is addressed (1/1).
+
+An ordinary deprovision failure during retry of an already unavailable removal no longer
+republishes the detached record. `FunctionRegistry.restoreDetached` owns the decision under
+its registry lock: when the current application state is unavailable/pending removal, it
+restores the durable record to the recovery map only; otherwise it performs the ordinary
+public rollback. No service-level check-then-act was introduced.
+
+The deterministic RED had exactly two behavioral failures: public registry lookup observed
+the unavailable record, and the real `DeploymentWakeUpGate` reached its coordinator for
+that record. GREEN retains the raw recovery record and all three PATCH/scale/unavailable
+markers after the failed retry, keeps public lookup/list empty, and makes wake-up return
+`DEPLOYMENT_WAKE_UP_TARGET_UNAVAILABLE` without touching its coordinator. A later successful
+delete writes the fourth and final snapshot, removes the raw record, and returns retained
+function/marker counts to zero. Existing no-extra-write and bounded-state behavior remains.
+
+Verification: the exact RED/GREEN pair ran 7 tests; the focused recovery/wake-up/removal/
+restorer/HTTP slice passed with 78/78 actionable tasks; autoscaler and concurrency-control
+integration plus bootJar passed with 43 tasks; native-profile AOT generation/Java compilation
+passed with 37 tasks; and the complete repository suite passed 190/190 tasks from scratch in
+4 min 9 s.
+
+GitNexus 1.6.11 refreshed to 19,590 nodes, 56,459 edges, 870 clusters and 767
+flows. Process discovery still omitted 1,539 candidate entry points and 1,768 callees and
+cut 46 walks, so flow absence remains a lower bound compensated by exact text search and
+tests. The complete all-scope gate reported 7 files, 17 symbols, 2 affected flows and MEDIUM
+risk; it includes the two preserved overload experiment files. The authoritative complete
+staged gate included exactly all 5 P15 files, 16 symbols, the same 2 audited
+`restoreDetached` flows and MEDIUM risk. Neither gate reported partial or truncated output;
+the staged diff check passed.
