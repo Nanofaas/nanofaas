@@ -242,6 +242,25 @@ class SyncQueueServiceTest {
     }
 
     @Test
+    void sampleSaturationWithUnusedFunctionSlotsRemainsAdmissible() {
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, true, 10, Duration.ofSeconds(10), Duration.ofSeconds(30), 7,
+                Duration.ofSeconds(10), 1);
+        Instant now = Instant.parse("2026-09-10T10:00:00Z");
+        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(10), 1, 3, 3, 1);
+        for (int i = 0; i < 10; i++) {
+            estimator.recordDispatch("hot", now.plusNanos(i));
+        }
+        SyncQueueService service = createService(
+                props, new ExecutionStore(), estimator,
+                new SyncQueueMetrics(new SimpleMeterRegistry()), Clock.fixed(now, ZoneOffset.UTC));
+        service.enqueueOrThrow(task("queued", "e-sample-cap-queued"));
+
+        assertDoesNotThrow(() -> service.enqueueOrThrow(
+                task("unused", "e-sample-cap-admitted")));
+    }
+
+    @Test
     void timesOutQueuedItem() {
         Instant t0 = Instant.parse("2026-02-01T00:00:00Z");
         Clock fixed = Clock.fixed(t0, ZoneOffset.UTC);

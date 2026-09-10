@@ -298,3 +298,97 @@ so these results are lower-bound tooling evidence rather than an all-clear.
 Neither output had a partial/truncated marker and each listed count matched its
 declared total. The staged file list excluded all unrelated files and
 git diff --cached --check passed.
+
+## Fix round 2 — reserved first-sample capacity
+
+Fix round 2 starts from P14 fix-round-1 commit `815861c7`. The remaining
+Important finding was reproducible: the single 262,144-sample counter could be
+exhausted by a few hot functions even while most of the 8,192 function-state
+slots were unused. `makeRoomForFunction` then returned false solely because the
+sample counter was full, and production admission treated a ninth function as
+infinite wait.
+
+### Bounded invariant and implementation
+
+Production now partitions the same 262,144 total per-function sample bound into
+8,192 permanently reserved first-sample slots and 253,952 shared extra-sample
+permits. The maintained invariant is:
+
+    retainedExtraSamples = sum(max(0, samples(function) - 1)) <= 253952
+
+The first sample of any admitted function state never consumes the shared pool.
+Additional samples acquire one permit with a bounded atomic compare-and-set. If
+the pool or per-function cap is full, the dispatch replaces that function's
+oldest timestamp with the newest one, preserving recency and conservative exact
+history without changing counters. No global state scan is added, and each
+dispatch performs at most one reservation trim.
+
+Pruning, time-driven cleanup, explicit removal, and expired-state eviction
+release the exact difference between `max(0, before - 1)` and
+`max(0, after - 1)`. Function creation/removal cannot race with hot histories for
+first-sample capacity because those 8,192 slots are never lent to the shared
+pool. `makeRoomForFunction` therefore depends only on the function-state ceiling
+and existing bounded expired-state recovery. Conservative infinity remains only
+for the 8,193rd genuinely live function.
+
+The package-private test seam now exposes function-state, total-sample, cleanup,
+and maintenance budgets independently. Constructor validation rejects a total
+sample bound smaller than the state bound; injected histories reserve their
+extra permits in O(1) per supplied state.
+
+### Round-2 RED/GREEN and verification
+
+The focused RED command was:
+
+    ./gradlew :control-plane-modules:sync-queue:test --tests '*WaitEstimatorRetentionTest' --tests '*SyncQueueServiceTest.liveEstimatorOverflowUsesProductionRejectionWithFiniteRetryAfter' --tests '*SyncQueueServiceTest.sampleSaturationWithUnusedFunctionSlotsRemainsAdmissible' --rerun-tasks --no-parallel --console=plain --offline
+
+It failed exactly two new regressions: few-function saturation retained one state
+instead of two, and the real queue rejected a function despite unused state
+capacity. The 8,192/8,193 and expiry/removal controls passed, isolating the fault
+to sample accounting. The first GREEN attempt exposed legacy fixtures whose
+compact constructor encoded equal total/state limits and one fixture whose
+maintenance budget reverted to the default; separating those dimensions restored
+their intended contracts. The final focused command succeeded with 39/39
+actionable tasks.
+
+Distinct regressions now cover few-function sample saturation and creation of a
+new history, the production 8,192/8,193 live-state boundary, expiry plus explicit
+removal recovery, admission under unused reserved slots, and genuine full-state
+rejection with finite configured Retry-After 7.
+
+- Complete sync-queue module: GREEN, 39/39 actionable tasks in 11 s.
+- HTTP backpressure integration: GREEN, 78/78 actionable tasks in 22 s.
+- Full repository suite after the shared admission change: GREEN, 190/190
+  actionable tasks in 4 min.
+
+### Round-2 impact audit
+
+The GitNexus 1.6.11 index was six commits behind HEAD. Exact upstream impact was
+MEDIUM for `WaitEstimator` (nine impacted, six direct), LOW for
+`recordDispatch` (three impacted), CRITICAL for `estimateWaitSeconds` (eight
+impacted across seven process families), HIGH for its per-function `snapshot`
+(three impacted across three process families), and LOW for exact
+`removeFunctionState` (two impacted). The round-1 private helpers,
+`runBoundedCleanup`, `evictExpiredFunctionState`, `makeRoomForFunction`, and the
+expanded constructor were absent/UNKNOWN in the stale index. Exact text search
+resolved them to `WaitEstimator`; constructor call sites additionally span
+sync-queue configuration/tests and the queue benchmark. No absent or zero result
+was treated as safety. The CRITICAL/HIGH admission paths were audited with the
+real queue regression, HTTP integration, and full suite.
+
+### Round-2 GitNexus and staging gate
+
+Complete change detection used `--limit 100000`. All scope returned six files,
+all ten listed symbols, zero affected processes, and LOW risk; it included the
+two unrelated tracked overload-experiment files. Staged scope returned exactly
+the four P14 files, all nine listed symbols, zero affected processes, and LOW
+risk. Neither output reported partial/truncated results, and each listed-symbol
+count matched its declared total.
+
+The stale index omitted the new retention test symbols and new private permit
+helpers, and attributed the nearby service-test hunk to
+`aQueueWaitTimeoutStillRecordsTheInvocationsEndToEndConclusion`; it also reported
+unchanged nearby `prune`, `samples`, `throughput`, and `ThroughputSnapshot`
+symbols. These are recorded as six-commit-stale lower-bound tooling results, not
+an all-clear. Exact pre-edit CRITICAL/HIGH impact and text-search resolution
+remain the authoritative audit for production admission paths.

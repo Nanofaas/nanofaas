@@ -26,6 +26,7 @@ public class WaitEstimator {
     private final int maxPerFunctionSamples;
     private final int maxFunctionStates;
     private final int maxTotalPerFunctionSamples;
+    private final int maxExtraPerFunctionSamples;
     private final int cleanupBudget;
     private final int maintenanceSampleBudget;
     private final Deque<Instant> globalEvents;
@@ -34,6 +35,7 @@ public class WaitEstimator {
     private final AtomicInteger functionStates = new AtomicInteger();
     private final AtomicInteger retainedGlobalSamples = new AtomicInteger();
     private final AtomicInteger retainedPerFunctionSamples = new AtomicInteger();
+    private final AtomicInteger retainedExtraPerFunctionSamples = new AtomicInteger();
     private final AtomicReference<Instant> latestTime = new AtomicReference<>(Instant.MIN);
 
     public WaitEstimator(Duration window, int perFunctionMinSamples) {
@@ -74,6 +76,31 @@ public class WaitEstimator {
                 cleanupBudget, maintenanceSampleBudget);
     }
 
+    WaitEstimator(Duration window,
+                  int perFunctionMinSamples,
+                  int maxGlobalSamples,
+                  int maxPerFunctionSamples,
+                  int maxFunctionStates,
+                  int maxTotalPerFunctionSamples,
+                  int cleanupBudget) {
+        this(window, perFunctionMinSamples, maxGlobalSamples, maxPerFunctionSamples,
+                maxFunctionStates, maxTotalPerFunctionSamples, cleanupBudget,
+                DEFAULT_MAINTENANCE_SAMPLE_BUDGET);
+    }
+
+    WaitEstimator(Duration window,
+                  int perFunctionMinSamples,
+                  int maxGlobalSamples,
+                  int maxPerFunctionSamples,
+                  int maxFunctionStates,
+                  int maxTotalPerFunctionSamples,
+                  int cleanupBudget,
+                  int maintenanceSampleBudget) {
+        this(window, perFunctionMinSamples, new ConcurrentLinkedDeque<>(), Map.of(),
+                maxGlobalSamples, maxPerFunctionSamples, maxFunctionStates,
+                maxTotalPerFunctionSamples, cleanupBudget, maintenanceSampleBudget);
+    }
+
     private WaitEstimator(Duration window,
                           int perFunctionMinSamples,
                           Deque<Instant> globalEvents,
@@ -92,6 +119,12 @@ public class WaitEstimator {
         this.maxFunctionStates = positive(maxFunctionStates, "maxFunctionStates");
         this.maxTotalPerFunctionSamples = positive(maxTotalPerFunctionSamples,
                 "maxTotalPerFunctionSamples");
+        if (this.maxTotalPerFunctionSamples < this.maxFunctionStates) {
+            throw new IllegalArgumentException(
+                    "maxTotalPerFunctionSamples must cover every function state");
+        }
+        this.maxExtraPerFunctionSamples =
+                this.maxTotalPerFunctionSamples - this.maxFunctionStates;
         this.cleanupBudget = positive(cleanupBudget, "cleanupBudget");
         this.maintenanceSampleBudget = positive(
                 maintenanceSampleBudget, "maintenanceSampleBudget");
@@ -101,6 +134,10 @@ public class WaitEstimator {
                 return;
             }
             FunctionEvents state = new FunctionEvents(name, events, events.size());
+            if (!reserveExtraSamples(Math.max(0, state.samples - 1))) {
+                throw new IllegalArgumentException(
+                        "initial function history exceeds sample capacity");
+            }
             this.perFunctionEvents.put(name, state);
             queueForCleanup(state);
             this.retainedPerFunctionSamples.addAndGet(events.size());
@@ -124,28 +161,22 @@ public class WaitEstimator {
         FunctionEvents state = perFunctionEvents.compute(functionName, (name, existing) -> {
             FunctionEvents current = existing;
             if (current == null) {
-                if (retainedPerFunctionSamples.get() >= maxTotalPerFunctionSamples
-                        || !reserveFunctionState()) {
+                if (!reserveFunctionState()) {
                     return null;
                 }
                 current = new FunctionEvents(name, new ConcurrentLinkedDeque<>(), 0);
             }
             synchronized (current.events) {
-                current.events.addLast(effectiveNow);
-                current.samples++;
-                retainedPerFunctionSamples.incrementAndGet();
                 int expired = prune(current.events, effectiveNow);
-                current.samples -= expired;
-                retainedPerFunctionSamples.addAndGet(-expired);
-                int capped = cap(current.events, current.samples, maxPerFunctionSamples);
-                current.samples -= capped;
-                retainedPerFunctionSamples.addAndGet(-capped);
-                if (retainedPerFunctionSamples.get() > maxTotalPerFunctionSamples) {
-                    Instant removed = current.events.pollFirst();
-                    if (removed != null) {
-                        current.samples--;
-                        retainedPerFunctionSamples.decrementAndGet();
-                    }
+                removeSamples(current, expired);
+                if (current.samples > 0
+                        && (current.samples >= maxPerFunctionSamples || !reserveExtraSamples(1))) {
+                    current.events.pollFirst();
+                    current.events.addLast(effectiveNow);
+                } else {
+                    current.events.addLast(effectiveNow);
+                    current.samples++;
+                    retainedPerFunctionSamples.incrementAndGet();
                 }
             }
             return current;
@@ -160,9 +191,8 @@ public class WaitEstimator {
         if (removed != null) {
             functionStates.decrementAndGet();
             synchronized (removed.events) {
-                retainedPerFunctionSamples.addAndGet(-removed.samples);
+                removeSamples(removed, removed.samples);
                 removed.events.clear();
-                removed.samples = 0;
             }
         }
     }
@@ -214,8 +244,7 @@ public class WaitEstimator {
         boolean empty;
         synchronized (state.events) {
             int removed = prune(state.events, now);
-            state.samples -= removed;
-            retainedPerFunctionSamples.addAndGet(-removed);
+            removeSamples(state, removed);
             snapshot = throughputSnapshot(state.samples);
             empty = state.samples == 0;
         }
@@ -278,8 +307,7 @@ public class WaitEstimator {
             boolean empty;
             synchronized (state.events) {
                 int removed = prune(state.events, now, perStateSampleBudget);
-                state.samples -= removed;
-                retainedPerFunctionSamples.addAndGet(-removed);
+                removeSamples(state, removed);
                 empty = state.samples == 0;
             }
             if (!empty) {
@@ -303,13 +331,11 @@ public class WaitEstimator {
     }
 
     private boolean makeRoomForFunction(Instant now) {
-        if (functionStates.get() < maxFunctionStates
-                && retainedPerFunctionSamples.get() < maxTotalPerFunctionSamples) {
+        if (functionStates.get() < maxFunctionStates) {
             return true;
         }
         if (evictExpiredFunctionState(now)) {
-            return functionStates.get() < maxFunctionStates
-                    && retainedPerFunctionSamples.get() < maxTotalPerFunctionSamples;
+            return functionStates.get() < maxFunctionStates;
         }
         return false;
     }
@@ -328,9 +354,8 @@ public class WaitEstimator {
                     if (latest != null && !latest.isBefore(cutoff)) {
                         return state;
                     }
-                    retainedPerFunctionSamples.addAndGet(-state.samples);
+                    removeSamples(state, state.samples);
                     state.events.clear();
-                    state.samples = 0;
                     functionStates.decrementAndGet();
                     removed.set(true);
                     return null;
@@ -375,6 +400,32 @@ public class WaitEstimator {
                 return true;
             }
         }
+    }
+
+    private boolean reserveExtraSamples(int samples) {
+        if (samples == 0) {
+            return true;
+        }
+        while (true) {
+            int current = retainedExtraPerFunctionSamples.get();
+            if (samples > maxExtraPerFunctionSamples - current) {
+                return false;
+            }
+            if (retainedExtraPerFunctionSamples.compareAndSet(current, current + samples)) {
+                return true;
+            }
+        }
+    }
+
+    private void removeSamples(FunctionEvents state, int removed) {
+        if (removed == 0) {
+            return;
+        }
+        int extraBefore = Math.max(0, state.samples - 1);
+        state.samples -= removed;
+        int extraAfter = Math.max(0, state.samples - 1);
+        retainedExtraPerFunctionSamples.addAndGet(extraAfter - extraBefore);
+        retainedPerFunctionSamples.addAndGet(-removed);
     }
 
     private int prune(Deque<Instant> events, Instant now) {

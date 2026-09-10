@@ -11,7 +11,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class WaitEstimatorRetentionTest {
     @Test
     void boundedMaintenanceEventuallyRemovesEveryInactiveFunction() {
-        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(10), 3, 100, 10, 2);
+        WaitEstimator estimator = new WaitEstimator(
+                Duration.ofSeconds(10), 3, 100, 10, 10, 100, 2);
         Instant start = Instant.parse("2026-09-10T10:00:00Z");
         for (int i = 0; i < 5; i++) {
             estimator.recordDispatch("idle-" + i, start);
@@ -60,7 +61,8 @@ class WaitEstimatorRetentionTest {
 
     @Test
     void capsExactHistoryWhileKeepingTheNewestSamples() {
-        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(10), 3, 5, 3, 1);
+        WaitEstimator estimator = new WaitEstimator(
+                Duration.ofSeconds(10), 3, 5, 3, 5, 7, 1);
         Instant start = Instant.parse("2026-09-10T10:00:00Z");
         for (int i = 0; i < 20; i++) {
             estimator.recordDispatch("fn", start.plusMillis(i));
@@ -70,6 +72,39 @@ class WaitEstimatorRetentionTest {
         assertEquals(5, retained.globalSamples());
         assertEquals(3, retained.perFunctionSamples());
         assertEquals(20.0, estimator.estimateWaitSeconds("fn", 6, start.plusSeconds(1)), 0.0);
+    }
+
+    @Test
+    void fewHotFunctionsCannotConsumeUnusedFunctionHistorySlots() {
+        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(10), 1, 5, 5, 1);
+        Instant now = Instant.parse("2026-09-10T10:00:00Z");
+        for (int i = 0; i < 20; i++) {
+            estimator.recordDispatch("hot-a", now.plusNanos(i));
+            estimator.recordDispatch("hot-b", now.plusNanos(i));
+        }
+
+        assertEquals(2, estimator.retentionSnapshot().functionStates());
+        assertEquals(2, estimator.retentionSnapshot().perFunctionSamples());
+        assertTrue(Double.isFinite(estimator.estimateWaitSeconds("unused", 1, now)));
+
+        estimator.recordDispatch("unused", now);
+
+        assertEquals(3, estimator.retentionSnapshot().functionStates());
+        assertEquals(3, estimator.retentionSnapshot().perFunctionSamples());
+    }
+
+    @Test
+    void defaultStateCapacityRejectsOnlyThe8193rdLiveFunction() {
+        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(10), 1);
+        Instant now = Instant.parse("2026-09-10T10:00:00Z");
+        for (int i = 0; i < 8_192; i++) {
+            estimator.recordDispatch("live-" + i, now);
+        }
+
+        assertEquals(8_192, estimator.retentionSnapshot().functionStates());
+        assertEquals(8_192, estimator.retentionSnapshot().perFunctionSamples());
+        assertEquals(Double.POSITIVE_INFINITY,
+                estimator.estimateWaitSeconds("function-8193", 1, now), 0.0);
     }
 
     @Test
@@ -102,8 +137,38 @@ class WaitEstimatorRetentionTest {
     }
 
     @Test
+    void expiryAndRemovalRestoreReservedFunctionHistorySlots() {
+        WaitEstimator estimator = new WaitEstimator(
+                Duration.ofSeconds(10), 1, 5, 5, 3, 5, 1);
+        Instant start = Instant.parse("2026-09-10T10:00:00Z");
+        for (int i = 0; i < 3; i++) {
+            estimator.recordDispatch("expired", start.plusNanos(i));
+        }
+        Instant live = start.plusSeconds(11);
+        estimator.recordDispatch("live-a", live);
+        estimator.recordDispatch("live-b", live);
+
+        estimator.recordDispatch("after-expiry", live.plusNanos(1));
+        estimator.recordDispatch("after-expiry", live.plusNanos(2));
+        estimator.recordDispatch("after-expiry", live.plusNanos(3));
+        assertEquals(3, estimator.retentionSnapshot().functionStates());
+        assertEquals(5, estimator.retentionSnapshot().perFunctionSamples());
+
+        estimator.removeFunctionState("after-expiry");
+        estimator.recordDispatch("after-removal", live.plusNanos(4));
+        estimator.recordDispatch("after-removal", live.plusNanos(5));
+        estimator.recordDispatch("after-removal", live.plusNanos(6));
+
+        assertEquals(3, estimator.retentionSnapshot().functionStates());
+        assertEquals(5, estimator.retentionSnapshot().perFunctionSamples());
+        assertTrue(Double.isFinite(estimator.estimateWaitSeconds(
+                "after-removal", 1, live.plusNanos(6))));
+    }
+
+    @Test
     void maintenanceGivesGlobalAndFunctionHistoryIndependentBoundedShares() {
-        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(10), 1, 20, 10, 2, 2);
+        WaitEstimator estimator = new WaitEstimator(
+                Duration.ofSeconds(10), 1, 20, 10, 5, 20, 2, 2);
         Instant start = Instant.parse("2026-09-10T10:00:00Z");
         for (int i = 0; i < 6; i++) {
             estimator.recordDispatch("a", start);
@@ -132,7 +197,8 @@ class WaitEstimatorRetentionTest {
 
     @Test
     void anOlderClockReadingCannotReorderOrExpireNewerSamples() {
-        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(10), 2, 10, 10, 1);
+        WaitEstimator estimator = new WaitEstimator(
+                Duration.ofSeconds(10), 2, 10, 10, 5, 10, 1);
         Instant newest = Instant.parse("2026-09-10T10:00:10Z");
         estimator.recordDispatch("fn", newest);
         estimator.recordDispatch("fn", newest.minusSeconds(20));
