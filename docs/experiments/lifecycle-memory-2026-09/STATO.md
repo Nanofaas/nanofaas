@@ -2664,3 +2664,71 @@ Focused recovery/wake-up/removal/restorer/HTTP tests, autoscaler/concurrency int
 bootJar, native-profile AOT Java compilation and the complete repository suite (190/190
 actionable tasks in 4 min 9 s) are GREEN. The single-sample benchmark-stability Minor remains
 the only deferred P15 item. Next: P16.
+
+## P16a — SDK memory inventory and common saturation wire corpus
+
+**Revision / scope.** Started from `9ad0f87e2db260193ce09e72399c7b3086ee4cd7`
+with external MIT commit `779e1480` preserved in history. P16a inventories Java,
+Java-lite, Python, Go and JavaScript runtime retention, freezes one common wire policy,
+and adds executable adapters for one shared JSON corpus. It deliberately does not claim
+runtime quota conformance or implement the P16b byte/count limits. Protected overload
+experiment files, untracked GitNexus skills, the untracked replica-status test and ignored
+progress ledger remain untouched and excluded.
+
+**Implemented.** `sdks/runtime-contract/saturation-wire-corpus.json` is the sole source of
+expected saturation, payload, handler-timeout, callback-delivery-exhaustion and stopping
+outcomes. Its embedded runner contract requires unique cases, finite positive deadlines
+under a finite ceiling, valid HTTP/no-second-response status, complete observable errors,
+release sets and success/error/cancel/stop policy. Thin adapters in all five languages parse
+that file and validate those invariants; expected IDs/statuses/codes/messages are not copied
+into the adapters. The companion README defines fail-fast admission before handler/avoidable
+large copies, `429` saturation, `413` payload rejection, attempt-level `504`, accepted-during-
+stop `503`, finite waits, physical release, callback failure observation and preserved
+execution/dispatch identities with control-plane-owned retry.
+
+**Inventory / ownership.** Java callback retention is bounded by two default workers plus a
+fixed 128 queue, while its virtual-thread handler executor is unbounded. Java-lite has the
+same default callback shape but unowned server/HTTP/executor shutdown gaps. Python's 128
+callback semaphore is real, while default `to_thread` queues and timed-out sync work are not
+bounded by worker count. Go has 128 buffered plus two active callbacks by default, but
+unbounded request/handler goroutines. JavaScript has a real 128 active-callback Promise cap,
+not a worker queue, while request/handler promises are unbounded. No runtime currently has
+both single-payload and pending-callback-byte caps. Exact retained input/output/callback,
+owner, release, timeout and stop paths are tabulated in the README.
+
+**Routing / compatibility.** Every nonconforming corpus row is assigned explicitly: P16b
+owns common direct-invocation admission, byte/count, wire and observation conformance; P17
+owns Python physical handler/callback executor and shutdown truth; P18 owns Java-lite
+executor/client/start-stop lifecycle and verifies the Spring Java HTTP ownership pattern.
+There is no unresolved P01 incompatibility: SDK handler timeout is an attempt-level `504`,
+not the per-waiter `408`; retry preserves `X-Execution-Id` and `X-Dispatch-Attempt`, and the
+SDK never invents a second execution identity.
+
+**RED/GREEN evidence.** Before the corpus existed, all five new adapters failed on the
+missing shared file (Java and Java-lite `IllegalStateException`, Python `FileNotFoundError`,
+JavaScript test failure, Go explicit missing-corpus path). After adding the corpus, all five
+focused adapters passed. Synchronization relies on file completion and finite corpus
+deadlines; no sleep orders these tests.
+
+**Verification.** Java and Java-lite focused adapters passed in a fresh 16-task Gradle run;
+both complete SDK `build` tasks passed with 18/18 actions. Python focused adapter passed,
+the complete suite passed 61 tests (35 existing deprecation warnings), and `uv build`
+produced both wheel and sdist. Go focused and complete suites passed on exact Go 1.24.0;
+`go vet ./...` reached a pre-existing unrelated `cold_start.go:27` atomic no-copy warning,
+which was not changed in P16a. JavaScript focused adapter and complete 39-test suite passed;
+`npm run build` passed. The first sandboxed JavaScript suite attempt could not bind localhost
+(`EPERM`); the required socket-enabled rerun passed all tests. Full repository
+`./gradlew build --rerun-tasks --no-parallel --continue --console=plain --offline` passed in
+4 min 14 s with 240/240 actionable tasks executed.
+
+**Impact.** GitNexus 1.6.11 was refreshed at the exact base to 19,590 nodes, 56,459 edges,
+870 clusters and 767 flows. Its SDK callback/payload query identified the Java callback
+submit/serialization process and Python/JavaScript invoke/callback owners used by the
+inventory. P16a edits no existing code symbol—all corpus, adapter and report code files are
+new, and STATO is append-only—so no existing-symbol impact gate or HIGH/CRITICAL pre-edit
+risk was crossed. Final all/staged graph detection and exact commit scope are recorded in
+the forced-added P16a report.
+
+**Next step.** P17 and P18 establish their physical ownership primitives, then P16b drives
+the shared corpus through real direct invocations and implements/observes all remaining
+count and byte quotas.

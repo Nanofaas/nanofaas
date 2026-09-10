@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "scope": "direct-and-control-plane-runtime-invocation",
+  "admissionPoint": "before-handler-and-large-copy",
+  "retryIdentity": {
+    "executionId": "preserve",
+    "dispatchAttempt": "preserve",
+    "retryOwner": "control-plane"
+  },
+  "releaseOn": [
+    "success",
+    "error",
+    "cancel",
+    "stop"
+  ],
+  "runner": {
+    "requiredCaseIds": [
+      "callback-saturated",
+      "payload-too-large",
+      "handler-timeout",
+      "callback-delivery-exhausted",
+      "runtime-stopping"
+    ],
+    "requiredReleaseEvents": [
+      "success",
+      "error",
+      "cancel",
+      "stop"
+    ],
+    "maximumCaseTimeoutMs": 1000,
+    "minimumHttpStatus": 100,
+    "maximumHttpStatus": 599,
+    "noSecondResponseStatus": 0
+  },
+  "cases": [
+    {
+      "id": "callback-saturated",
+      "implementationOwner": "P16b",
+      "timeoutMs": 25,
+      "stimulus": "callback admission has no count or byte capacity",
+      "expected": {
+        "httpStatus": 429,
+        "errorCode": "RUNTIME_CALLBACK_SATURATED",
+        "message": "Runtime callback capacity exhausted",
+        "headers": {
+          "Retry-After": "1"
+        },
+        "retryable": true,
+        "handlerStarted": false,
+        "callbackExpected": false,
+        "release": [
+          "input-reservation"
+        ]
+      }
+    },
+    {
+      "id": "payload-too-large",
+      "implementationOwner": "P16b",
+      "timeoutMs": 25,
+      "stimulus": "one input or output exceeds the configured single-payload byte limit",
+      "expected": {
+        "httpStatus": 413,
+        "errorCode": "RUNTIME_PAYLOAD_TOO_LARGE",
+        "message": "Runtime payload exceeds configured byte limit",
+        "headers": {},
+        "retryable": false,
+        "handlerStarted": false,
+        "callbackExpected": false,
+        "release": [
+          "payload-probe"
+        ]
+      }
+    },
+    {
+      "id": "handler-timeout",
+      "implementationOwner": "P16b-P17-P18",
+      "timeoutMs": 25,
+      "stimulus": "an admitted handler exceeds its configured attempt deadline",
+      "expected": {
+        "httpStatus": 504,
+        "errorCode": "HANDLER_TIMEOUT",
+        "message": "Handler exceeded configured timeout",
+        "headers": {},
+        "retryable": true,
+        "handlerStarted": true,
+        "callbackExpected": true,
+        "release": [
+          "request-wait",
+          "handler-resources-on-physical-completion"
+        ]
+      }
+    },
+    {
+      "id": "callback-delivery-exhausted",
+      "implementationOwner": "P16b-P17-P18",
+      "timeoutMs": 25,
+      "stimulus": "an admitted callback reaches its finite delivery deadline after retryable failures",
+      "expected": {
+        "httpStatus": 0,
+        "errorCode": "CALLBACK_DELIVERY_FAILED",
+        "message": "Callback delivery failed after configured retries",
+        "observation": "delivery happens after the invoke response; expose the failure through the runtime metric and structured log",
+        "headers": {},
+        "retryable": true,
+        "handlerStarted": true,
+        "callbackExpected": false,
+        "release": [
+          "callback-count",
+          "callback-bytes",
+          "serialized-callback-body"
+        ]
+      }
+    },
+    {
+      "id": "runtime-stopping",
+      "implementationOwner": "P16b-P17-P18",
+      "timeoutMs": 25,
+      "stimulus": "the listener accepted a new invoke request after stop began",
+      "expected": {
+        "httpStatus": 503,
+        "errorCode": "RUNTIME_STOPPING",
+        "message": "Runtime is stopping",
+        "headers": {
+          "Retry-After": "1"
+        },
+        "retryable": true,
+        "handlerStarted": false,
+        "callbackExpected": false,
+        "release": [
+          "accepted-request",
+          "input-reservation"
+        ]
+      }
+    }
+  ]
+}
