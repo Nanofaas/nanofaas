@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.config;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import io.netty.channel.ChannelOption;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -28,7 +29,7 @@ public class HttpClientConfig {
      * The dispatch connection pool, owned by this context rather than shared with whatever
      * else in the JVM happens to call {@code HttpClient.create()}.
      *
-     * <p>Two things this buys, both of which the global default did not give:
+     * <p>This gives the global default three properties it did not have:
      *
      * <ul>
      *   <li><b>A stated budget.</b> Connections per destination and queued acquisitions are
@@ -40,18 +41,22 @@ public class HttpClientConfig {
      *       {@code .timeout(functionTimeout)}, which cancels the pending acquisition too). With
      *       cancellation the value makes no measurable difference, so the tuning was not
      *       adopted — see docs/experiments/control-plane-tuning-2026-09/RESULTS.md.</li>
+     *   <li><b>Finite retention.</b> Idle connections are evicted, optional maximum lifetime
+     *       rotates old sockets, and empty inactive destination pools are disposed.</li>
      * </ul>
      *
-     * <p>{@code destroyMethod} gives the pool the explicit lifecycle it lacked: the global
-     * provider is never disposed, so its connections outlive the context that opened them.
+     * <p>The owner bean is the only destroy target. The exported provider facade has inferred
+     * destruction disabled, so context shutdown blocks on the owner's idempotent close exactly once.
      */
-    @Bean(destroyMethod = "dispose")
-    public ConnectionProvider dispatchConnectionProvider(HttpClientProperties properties) {
-        return ConnectionProvider.builder("nanofaas-dispatch")
-                .maxConnections(properties.maxConnections())
-                .pendingAcquireMaxCount(properties.pendingAcquireMaxCount())
-                .pendingAcquireTimeout(Duration.ofMillis(properties.pendingAcquireTimeoutMs()))
-                .build();
+    @Bean(destroyMethod = "close")
+    public DispatchConnectionPool dispatchConnectionPool(
+            HttpClientProperties properties, MeterRegistry meterRegistry) {
+        return new DispatchConnectionPool(properties, meterRegistry);
+    }
+
+    @Bean(destroyMethod = "")
+    public ConnectionProvider dispatchConnectionProvider(DispatchConnectionPool owner) {
+        return owner.provider();
     }
 
     @Bean

@@ -97,9 +97,9 @@ nanofaas:
     # The dispatch connection pool. It used to be Reactor Netty's GLOBAL provider:
     # no stated budget and, above all, nobody to dispose it, so its connections
     # outlived the context that opened them. It is now a bean with a lifecycle, and
-    # these three numbers are its budget.
+    # the values below state its per-destination budget and finite retention policy.
     #
-    # The defaults match Reactor Netty's on purpose: shortening the acquisition wait
+    # The 45-second acquisition default matches Reactor Netty's on purpose: shortening it
     # looked like a large win, but the dispatcher already wraps the call in
     # .timeout(functionTimeout), which cancels the pending acquisition too.
     # Re-measured with that cancellation, 45 s / 5 s / 1 s are indistinguishable, so
@@ -108,6 +108,15 @@ nanofaas:
     max-connections: 500
     pending-acquire-max-count: 0        # 0 = derived: twice max-connections
     pending-acquire-timeout-ms: 45000
+    max-idle-time-ms: 30000
+    max-life-time-ms: 0                 # 0 = disabled; opt in to connection rotation
+    eviction-interval-ms: 5000
+    inactive-pool-dispose-interval-ms: 5000
+    pool-inactivity-ms: 30000
+    # max-connections and pending-acquire-max-count apply to each concrete remote
+    # destination, not across destinations. P07 remains the aggregate execution,
+    # retained-input and waiter admission authority. Reactor Netty 1.3.6's
+    # maxConnectionPools only logs a warning, so it is intentionally not exposed as a cap.
   defaults:
     timeoutMs: 30000
     concurrency: 4

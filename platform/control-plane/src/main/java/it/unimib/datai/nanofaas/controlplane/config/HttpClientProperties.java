@@ -7,14 +7,17 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * <p>Defaults: connect timeout 5000 ms, read (response) timeout 30000 ms,
  * max in-memory codec buffer size 16 MB, 500 pooled connections per destination
- * with twice that many queued acquisitions, and a 45000 ms acquisition timeout.
+ * with twice that many queued acquisitions, a 45000 ms acquisition timeout, a 30 s idle
+ * lifetime, 5 s background eviction checks and disposal of empty destination pools after
+ * 30 s. Maximum connection lifetime is disabled by default and can be enabled explicitly.
  *
- * <p>The three pool properties make the connection budget explicit and tunable; before
- * them the pool was whatever Reactor Netty's global defaults happened to be, shared with
- * anything else in the JVM and never disposed.
+ * <p>The pool properties make the connection budget and retention policy explicit and tunable;
+ * before them the pool was whatever Reactor Netty's global defaults happened to be, shared with
+ * anything else in the JVM, without finite destination retention, and never disposed.
  *
- * <p><b>The defaults deliberately preserve the previous behaviour.</b> A shorter
- * acquisition timeout looked like an obvious win — on a saturated pool an unbounded-ish
+ * <p><b>The connection budget and acquisition defaults deliberately preserve the previous
+ * behaviour.</b> A shorter acquisition timeout looked like an obvious win — on a saturated
+ * pool an unbounded-ish
  * 45 s queue lets a request whose caller has given up still take a connection and make the
  * backend answer nobody. Measured, that was 62% of the backend's work wasted and a p95 at
  * twice the caller's budget. But the measurement did not reproduce production: {@code
@@ -37,7 +40,12 @@ public record HttpClientProperties(
         Integer maxInMemorySizeMb,
         Integer maxConnections,
         Integer pendingAcquireMaxCount,
-        Integer pendingAcquireTimeoutMs
+        Integer pendingAcquireTimeoutMs,
+        Integer maxIdleTimeMs,
+        Integer maxLifeTimeMs,
+        Integer evictionIntervalMs,
+        Integer inactivePoolDisposeIntervalMs,
+        Integer poolInactivityMs
 ) {
     private static final int DEFAULT_CONNECT_TIMEOUT_MS = 5000;
     private static final int DEFAULT_READ_TIMEOUT_MS = 30000;
@@ -45,6 +53,11 @@ public record HttpClientProperties(
     /** Reactor Netty's own defaults, kept so this change alters no behaviour it did not measure. */
     private static final int DEFAULT_MAX_CONNECTIONS = 500;
     private static final int DEFAULT_PENDING_ACQUIRE_TIMEOUT_MS = 45_000;
+    private static final int DEFAULT_MAX_IDLE_TIME_MS = 30_000;
+    private static final int DEFAULT_MAX_LIFE_TIME_MS = 0;
+    private static final int DEFAULT_EVICTION_INTERVAL_MS = 5_000;
+    private static final int DEFAULT_INACTIVE_POOL_DISPOSE_INTERVAL_MS = 5_000;
+    private static final int DEFAULT_POOL_INACTIVITY_MS = 30_000;
 
     public HttpClientProperties {
         if (connectTimeoutMs == null || connectTimeoutMs <= 0) {
@@ -66,6 +79,21 @@ public record HttpClientProperties(
         }
         if (pendingAcquireTimeoutMs == null || pendingAcquireTimeoutMs <= 0) {
             pendingAcquireTimeoutMs = DEFAULT_PENDING_ACQUIRE_TIMEOUT_MS;
+        }
+        if (maxIdleTimeMs == null || maxIdleTimeMs <= 0) {
+            maxIdleTimeMs = DEFAULT_MAX_IDLE_TIME_MS;
+        }
+        if (maxLifeTimeMs == null || maxLifeTimeMs < 0) {
+            maxLifeTimeMs = DEFAULT_MAX_LIFE_TIME_MS;
+        }
+        if (evictionIntervalMs == null || evictionIntervalMs <= 0) {
+            evictionIntervalMs = DEFAULT_EVICTION_INTERVAL_MS;
+        }
+        if (inactivePoolDisposeIntervalMs == null || inactivePoolDisposeIntervalMs <= 0) {
+            inactivePoolDisposeIntervalMs = DEFAULT_INACTIVE_POOL_DISPOSE_INTERVAL_MS;
+        }
+        if (poolInactivityMs == null || poolInactivityMs <= 0) {
+            poolInactivityMs = DEFAULT_POOL_INACTIVITY_MS;
         }
     }
 }

@@ -2198,3 +2198,53 @@ queue. A subsequent removal continues to reject old-generation scale-down. The f
 core/autoscaler suite is green in 13 seconds (81 tasks), all five packaging profiles are green, and
 the full offline repository suite is green in 3 minutes 9 seconds (190 actionable tasks: 22
 executed, 168 up-to-date).
+
+## P12 — Finite-lifetime HTTP pools and aggregate ownership
+
+The resolved HTTP transport is Reactor Netty **1.3.6** (Gradle
+`dependencyInsight`, selected by Spring Boot 4.1.0). Its official Maven Central source artifact,
+`reactor-netty-core-1.3.6-sources.jar` (SHA-256
+`061136ccc1bc3bed6938cea77a7343dc47de275aad4851b3407fb7ac15854121`), is the API and semantic
+authority used for this change. `ConnectionProvider.java` states that a pool corresponds to one
+concrete remote host (lines 383–389), documents `pendingAcquireTimeout` (575–585),
+`maxIdleTime` (632–645), `maxLifeTime` (647–659), default idle/lifetime eviction (693–708), custom
+metric registration (739–752), background eviction and its shared Reactor scheduler default
+(783–820), and disposal of empty inactive pools (436–453). The same source explicitly says
+`maxConnectionPools` only logs a warning after the expected count is exceeded (492–507), so it is
+not exposed as an aggregate cap. `ConnectionPoolMetrics.java` defines acquired, allocated, idle and
+pending counts (20–55). `PooledConnectionProvider.java` confirms one map entry per destination,
+metric register/deregister on pool create/remove, map clearing during `disposeLater`, and inactive
+pool checks scheduled on shared `Schedulers.parallel()`.
+
+One context-owned `DispatchConnectionPool` now builds and reuses the provider, exports only its
+facade, aggregates destination/allocated/active/idle/pending gauges without destination tags, and
+performs cached idempotent disposal. New acquires are rejected once disposal begins. The packaged
+policy is 30 s maximum idle time, disabled maximum lifetime (`0`, applied conditionally), 5 s idle
+eviction checks, and empty-pool checks every 5 s after 30 s inactivity. The existing 500
+connections-per-destination, derived 1,000 pending-per-destination and **45 s** acquisition timeout
+remain unchanged. These are transport retention controls; P07 remains the aggregate execution,
+retained-input and waiter admission owner across all destinations. The pool owner creates no
+executor. Reactor Netty's inactive-pool check uses the process-wide shared parallel scheduler, so
+context shutdown owns and drains pools/connections but does not shut down that shared scheduler.
+
+Deterministic controlled-server tests use latches, wire request counts, connection sequence numbers,
+pool metrics and explicit Awaitility deadlines; the P12 ordering tests contain no sleeps. The
+measured test policy (100–150 ms idle/lifetime, 20–50 ms checks and 200 ms inactivity) physically
+rotates expired sockets and reduces 16 historical destinations/connections to at most one within a
+5 s deadline. Cancellation, 150 ms acquisition timeout, 1 s function timeout, a drained 16 KiB
+HTTP error, endpoint replacement/removal, repeated context/owner close and post-close acquisition
+all reach zero pending/active ownership with the asserted socket behavior. A real P07 path proves a
+second host cannot bypass global execution, input or waiter admission.
+
+The final focused set is green: 46 tests in `DispatchConnectionPoolTest`, `HttpClientPoolTest`,
+`HttpClientPropertiesTest`, `P12CrossHostAdmissionTest`, `DispatchLifecycleAndCancellationTest`,
+`ExternalDispatcherTest` and `ExternalDispatcherTimeoutTest` (`BUILD SUCCESSFUL in 17s`). Separate
+`bootJar` builds are green for `none`, `async-queue`, `sync-queue,runtime-config`,
+`container-deployment-provider` and `all`. The full repository `./gradlew test` suite is green in
+2 minutes 33 seconds (190 actionable tasks: 18 executed, 172 up-to-date).
+
+Pre-edit GitNexus impact reported no HIGH/CRITICAL symbols. The disambiguated `HttpClientProperties`
+record, `HttpClientConfig.dispatchConnectionProvider#1` and `HttpClientConfig.webClient#3` results
+were UNKNOWN; exact constructor/type and direct-call searches resolved them before editing (Spring
+bean calls are reflective). The final complete staged/all detection and staged diff audit are
+recorded in the P12 task report.
