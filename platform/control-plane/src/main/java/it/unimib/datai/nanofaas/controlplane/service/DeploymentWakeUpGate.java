@@ -145,7 +145,10 @@ public class DeploymentWakeUpGate implements FunctionRegistrationListener, AutoC
 
     @Override
     public void onRegister(FunctionSpec spec) {
-        // P07's capacity listener owns generation creation. A registration cannot revive old work.
+        FunctionGeneration generation = generations.activeGeneration(spec.name());
+        if (generation != null) {
+            wakeUpCoordinator.restoreFunctionState(generation);
+        }
     }
 
     @Override

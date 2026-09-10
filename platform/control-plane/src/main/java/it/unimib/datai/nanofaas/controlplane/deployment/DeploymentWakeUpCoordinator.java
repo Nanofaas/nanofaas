@@ -175,6 +175,17 @@ public class DeploymentWakeUpCoordinator implements AutoCloseable {
         }
     }
 
+    /** Reopens only the exact still-current generation after a failed removal is rolled back. */
+    public void restoreFunctionState(FunctionGeneration generation) {
+        Objects.requireNonNull(generation, "generation");
+        synchronized (stateLifecycle) {
+            pruneRemovalFences();
+            if (isCurrent(generation)) {
+                removedGenerations.remove(generation);
+            }
+        }
+    }
+
     int ownedStateCount() {
         return functions.size();
     }

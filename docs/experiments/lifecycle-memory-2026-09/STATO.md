@@ -2182,3 +2182,19 @@ generation publishes a lease successfully, and drains its timer and state. Focus
 gate, managed-coordinator and autoscaler tests are green in 9 seconds; all five packaging profiles
 are green; the full offline suite is green in 2 minutes 33 seconds (190 actionable tasks: 20
 executed, 170 up-to-date).
+
+### P11 fix round 4 — failed-removal rollback fence restoration
+
+Removal rollback now reopens only the exact P07 generation that is still current when the gate's
+registration callback runs. The coordinator performs that check and tombstone removal under its
+publication/removal lifecycle monitor. This repairs listener order `[gate, failure, capacity]`,
+where capacity never retired the original generation, without reviving an old generation after a
+successful remove/re-register. Logical retirement and bounded physical drain are unchanged.
+
+A deterministic real-`FunctionService` regression drives that listener order, verifies the
+original generation and restored catalog entry, manually advances the forced wake-up poll, and
+asserts successful readiness, released scale-down protection, zero gate owners, and an empty timer
+queue. A subsequent removal continues to reject old-generation scale-down. The final focused
+core/autoscaler suite is green in 13 seconds (81 tasks), all five packaging profiles are green, and
+the full offline repository suite is green in 3 minutes 9 seconds (190 actionable tasks: 22
+executed, 168 up-to-date).
