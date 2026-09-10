@@ -1,5 +1,22 @@
 # Task P16a report — common SDK memory inventory and saturation wire contract
 
+## Fix round 7 — barrier producer/consumer connection
+
+This section supersedes fix-round-6 barrier-completeness claims. Starting revision: `a9b90fad`.
+
+Fresh review found that the action-side barrier sequence did not constrain backend producers. One
+deterministic RED added a `decoy` barrier, redirected the handler producer to it, and left the
+harness waiting on `handler-started`; the validator accepted the deadlocking program.
+
+GREEN adds exact per-kind barrier declaration and handler/callback producer sequences to the JSON
+policy. The existing generic mapped-sequence validator now permits empty finite sequences, needed
+for scenarios without barriers. No barrier or scenario literal exists in Python. Validator tests
+are 22/22 GREEN and all embedded mutations remain GREEN. Upstream impact for `validate_rule` was
+exact LOW and limited to the Runtime-contract validator flow. All five focused adapters passed
+again (Java/Java-lite 16/16 Gradle actions, Python, Go and JavaScript). Complete non-partial/
+non-truncated detection reported eight worktree files/six symbols including the protected overload
+files, and six staged P16a files/five symbols; both scopes had zero affected processes and LOW risk.
+
 ## Fix round 6 — complete action target projection
 
 This section supersedes fix-round-5 causal-completeness claims. Starting revision: `79decd42`.

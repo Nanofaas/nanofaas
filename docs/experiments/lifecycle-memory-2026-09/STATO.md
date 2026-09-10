@@ -2842,3 +2842,13 @@ wrong redispatch target and premature callback wait.
 The JSON policy now adds exact per-kind request-target and barrier sequences, completing the
 action projection. The generic sequence operator accepts finite JSON values so `null` slots remain
 first-class. Refreshed-index impact for `validate_rule` was exact LOW; validator GREEN is 21/21.
+
+## P16a fix round 7 — barrier producers and consumers
+
+Starting from `a9b90fad`, fresh review found the action-side barrier sequence did not constrain the
+backend producer. A deterministic RED redirected the timeout handler to a declared `decoy` while
+the harness still waited on `handler-started`, reproducing an accepted deadlock.
+
+The JSON policy now anchors barrier declarations plus handler/callback producer sequences per kind.
+The generic sequence validator permits empty finite sequences for barrier-free scenarios. Exact
+impact for `validate_rule` was LOW; validator GREEN is 22/22.

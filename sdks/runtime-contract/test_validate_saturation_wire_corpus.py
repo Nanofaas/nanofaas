@@ -34,6 +34,19 @@ def scenario(document, scenario_id):
 
 
 class SaturationWireCorpusMutationTest(unittest.TestCase):
+    def test_rejects_backend_barrier_disconnected_from_wait(self):
+        validator = load_validator_module()
+        document = json.loads(CORPUS.read_text(encoding="utf-8"))
+        mutated = scenario(document, "handler-timeout")
+        mutated["harness"]["barriers"].append({
+            "id": "decoy",
+            "initialState": "closed",
+        })
+        mutated["backend"]["handlers"][0]["barrier"] = "decoy"
+
+        with self.assertRaises(validator.ContractError):
+            validator.validate_document(document)
+
     def test_rejects_swapped_retry_action_targets(self):
         validator = load_validator_module()
         document = json.loads(CORPUS.read_text(encoding="utf-8"))
