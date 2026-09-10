@@ -138,6 +138,8 @@ class FunctionServiceManagedDeploymentTest {
         ManagedDeploymentProvider provider = provider("k8s");
         Map<String, String> deploymentObjects = Map.of("deployment", "fn-deploy", "service", "fn-svc");
         when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080/invoke", "k8s", deploymentObjects));
+        when(provider.reconcile(any(), eq(5), eq(deploymentObjects)))
+                .thenReturn(new ProvisionResult("http://fn-svc:8080/invoke", "k8s", deploymentObjects));
         FunctionService service = new FunctionService(
                 registry,
                 defaults,

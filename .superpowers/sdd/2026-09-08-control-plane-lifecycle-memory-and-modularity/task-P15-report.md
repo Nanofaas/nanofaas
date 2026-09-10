@@ -134,3 +134,94 @@ is included as the eighth P15 commit path, matching the brief's report deliverab
   semantics are claimed.
 - GitNexus flow-index budget truncation limits graph completeness and is compensated by
   exact text searches and executable tests, not interpreted as a clean absence of callers.
+
+## Fix round 1 — three Important findings addressed
+
+Base implementation: `2c88d569000cfa24d8a54e6f9726285cd5a27436`; the external MIT commit
+`779e14807ed9033117b9afc9aeee616759aa637f` remains an unchanged ancestor.
+
+1. `FunctionRegistry` now owns bounded, volatile per-function application state separate
+   from its durable catalog snapshot. A failed PATCH or desired-replica provider/listener
+   application retains a marker. An identical retry reapplies provider/listener work while
+   skipping the catalog write; the equality fast path resumes only after successful
+   application. The state permits at most one PATCH, scale and unavailable marker per
+   retained function name, caps reported provider data, and is never persisted.
+2. A successful deprovision followed by catalog-delete and reconcile failures restores the
+   durable record only as an unavailable recovery handle. Service get/list/invocation views
+   exclude it and listeners are not replayed. In-process delete retry and restart through
+   the existing catalog restorer/reconcile path recover it without claiming a live backend.
+3. Manual scale now checks availability and looks up the function while holding the same
+   per-function lock used by remove. The latch-driven partial-deprovision race returns the
+   pending-removal conflict and performs no provider scale call.
+
+The three Important findings are closed (3/3). The reviewer-requested benchmark-stability
+Minor is intentionally deferred. The original catalog-size 1/100/1,000 snapshot matrix and
+its decision are unchanged; no journal or replacement persistence mechanism was introduced.
+
+### Fix-round RED/GREEN evidence
+
+- Initial behavioral RED: six deterministic failures showed identical PATCH/scale retries
+  were incorrectly short-circuited, triple failure republished/listener-replayed the
+  function, restart advertised failed reconcile, and racing scale missed pending removal.
+- Retention RED: removing the state diagnostics made the 1,000-function bound/zero-cleanup
+  test fail compilation on the missing contract; restoring only those diagnostics made it
+  GREEN.
+- HTTP mapping RED: with the pending-state exception handler removed, its focused test
+  failed compilation on the missing handler; restoring the 409 mapping made it GREEN.
+- Fail-then-identical-retry GREEN writes are exactly two: registration plus one PATCH, or
+  initial durable record plus one desired-replica update. Provider application is attempted
+  twice and the third identical call is a true no-op.
+- Triple-failure GREEN keeps the durable recovery record but exposes no live service view,
+  replays no registration listener, and succeeds on delete retry. Failed startup reconcile
+  stays unavailable; a later healthy restart publishes and replays once.
+- At 1,000 durable names, 2,000 simultaneous PATCH/scale markers allocated 200,480 bytes in
+  the diagnostic run. Cardinality plateaued at one table entry and two markers per name,
+  then returned to zero after success/removal; reload/startup clears volatile markers.
+
+### Fix-round verification
+
+- Focused pending recovery and HTTP mapping checks: GREEN.
+- Complete control-plane test task: GREEN, 78 actionable tasks in 1 min 44 s.
+- Autoscaler and concurrency-control integration plus bootJar/native-profile AOT generation
+  and Java compilation: GREEN, 46 actionable tasks in 32 s; native linking excluded.
+- Final complete repository `test --rerun-tasks --no-parallel --continue`: GREEN, 190/190
+  actionable tasks in 4 min 46 s.
+- Final GitNexus all/staged gate details are recorded below.
+
+### Fix-round GitNexus finalization
+
+GitNexus 1.6.11 refreshed successfully to 19,559 nodes, 56,231 edges, 867 clusters
+and 768 flows. Process discovery still reported its known independent budget truncation:
+1,533 candidate entry points and 1,778 callees were omitted, with 48 walks cut. Therefore
+flow counts remain lower bounds and are compensated by exact text searches, focused
+failure/concurrency tests, module integration, and the complete repository suite.
+
+The final complete all-scope gate reported 18 detected files, 126 symbols, nine affected
+flows and HIGH risk. It includes the two preserved dirty overload experiment files in
+addition to the 16 P15 paths. The complete staged-scope gate is
+the authoritative commit-scope check: exactly 16 P15 files, 125 symbols, nine affected
+flows and HIGH risk. Neither gate reported `partial: true` or `truncated: true`; the HIGH
+risk flows are the explicitly reviewed rollback/unavailable recovery path plus the
+pre-existing registry persistence flow. The exact staged diff passes `git diff --cached
+--check`. The report is force-added and included in the commit.
+
+### Fix-round changed files
+
+- `docs/experiments/lifecycle-memory-2026-09/STATO.md`
+- `.superpowers/sdd/2026-09-08-control-plane-lifecycle-memory-and-modularity/task-P15-report.md`
+- `platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/GlobalExceptionHandler.java`
+- `platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionApplicationPendingException.java`
+- `platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionApplicationState.java`
+- `platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionCatalogRestorer.java`
+- `platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionRegistry.java`
+- `platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionService.java`
+- `platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/ManagedDeploymentCoordinator.java`
+- `platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/api/FunctionApplicationPendingHttpMappingTest.java`
+- `platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionApplicationPendingRecoveryTest.java`
+- `platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionCatalogRestorerTest.java`
+- `platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionServiceConcurrencyTest.java`
+- `platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionServiceManagedDeploymentTest.java`
+- `platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionServicePartialDeprovisionTest.java`
+- `platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionServiceTest.java`
+
+The report remains included in the fix-round commit from the ignored task scratch directory.

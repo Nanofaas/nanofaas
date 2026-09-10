@@ -506,6 +506,8 @@ class FunctionServiceTest {
         FunctionRegistry realRegistry = new FunctionRegistry(catalog);
         Map<String, String> deploymentObjects = Map.of("deployment", "fn-deploy", "service", "fn-svc");
         when(provider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s", deploymentObjects));
+        when(provider.reconcile(any(), eq(1), eq(deploymentObjects)))
+                .thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s", deploymentObjects));
         FunctionService localService = new FunctionService(
                 realRegistry, defaults, imageValidator, List.of(listener), resolver(provider));
         localService.register(new FunctionSpec("fn", "img:latest", null, null, null,

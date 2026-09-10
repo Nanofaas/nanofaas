@@ -390,6 +390,7 @@ class FunctionServiceConcurrencyTest {
         when(localProvider.provision(any())).thenReturn(new ProvisionResult("http://fn-svc:8080", "k8s"));
 
         CountDownLatch removalStarted = new CountDownLatch(1);
+        CountDownLatch scaleStarted = new CountDownLatch(1);
         CountDownLatch allowRemoval = new CountDownLatch(1);
         doAnswer(invocation -> {
             removalStarted.countDown();
@@ -411,13 +412,16 @@ class FunctionServiceConcurrencyTest {
 
             assertThat(removalStarted.await(5, TimeUnit.SECONDS)).isTrue();
 
-            // The function is already gone from the registry while teardown is blocked on the
-            // listener, so scaling it is a no-op returning empty rather than touching the provider.
-            assertThat(localService.setReplicas("tear-fn", 2)).isEmpty();
+            Future<Optional<Integer>> scaleFuture = executor.submit(() -> {
+                scaleStarted.countDown();
+                return localService.setReplicas("tear-fn", 2);
+            });
+            assertThat(scaleStarted.await(5, TimeUnit.SECONDS)).isTrue();
 
             allowRemoval.countDown();
 
             assertThat(removeFuture.get(5, TimeUnit.SECONDS)).isPresent();
+            assertThat(scaleFuture.get(5, TimeUnit.SECONDS)).isEmpty();
         } finally {
             executor.shutdownNow();
         }

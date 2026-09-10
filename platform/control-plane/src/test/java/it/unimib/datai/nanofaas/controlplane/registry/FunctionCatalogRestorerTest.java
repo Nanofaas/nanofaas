@@ -133,7 +133,8 @@ class FunctionCatalogRestorerTest {
                 .run(new DefaultApplicationArguments());
 
         assertThat(registry.listRegistered()).extracting(RegisteredFunction::name).containsExactly("echo");
-        verify(listener).onRegister(any());
+        assertThat(registry.applicationState().isUnavailable("echo")).isTrue();
+        verify(listener, never()).onRegister(any());
     }
 
     @Test
@@ -150,7 +151,8 @@ class FunctionCatalogRestorerTest {
                 .run(new DefaultApplicationArguments());
 
         assertThat(registry.listRegistered()).extracting(RegisteredFunction::name).containsExactly("echo");
-        verify(listener).onRegister(any());
+        assertThat(registry.applicationState().isUnavailable("echo")).isTrue();
+        verify(listener, never()).onRegister(any());
     }
 
     @Test
@@ -186,7 +188,8 @@ class FunctionCatalogRestorerTest {
         RegisteredFunction kept = registry.listRegistered().iterator().next();
         assertThat(kept.name()).isEqualTo("echo");
         assertThat(kept.deploymentMetadata().deploymentBackend()).isEqualTo("container-local");
-        verify(listener).onRegister(any());
+        assertThat(registry.applicationState().isUnavailable("echo")).isTrue();
+        verify(listener, never()).onRegister(any());
     }
 
     @Test
@@ -206,7 +209,8 @@ class FunctionCatalogRestorerTest {
         RegisteredFunction kept = registry.listRegistered().iterator().next();
         assertThat(kept.name()).isEqualTo("echo");
         assertThat(kept.deploymentMetadata().effectiveExecutionMode()).isEqualTo(ExecutionMode.DEPLOYMENT);
-        verify(listener).onRegister(any());
+        assertThat(registry.applicationState().isUnavailable("echo")).isTrue();
+        verify(listener, never()).onRegister(any());
     }
 
     @Test

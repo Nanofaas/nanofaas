@@ -17,7 +17,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class FunctionService {
@@ -31,14 +30,7 @@ public class FunctionService {
     private final List<FunctionRegistrationListener> listeners;
     private final FunctionOperationLocks locks;
     private final FunctionRestoreGate restoreGate;
-    /**
-     * Functions whose backend reported a partial deprovision, mapped to what it still owns.
-     *
-     * <p>An entry lives exactly as long as those resources do: it is written when a delete comes
-     * back partial and removed by the retry that finally succeeds. It is not a history of removed
-     * names — nothing accumulates here once the resources are gone.
-     */
-    private final Map<String, List<String>> pendingRemovals = new ConcurrentHashMap<>();
+    private final FunctionApplicationState applicationState;
 
     public FunctionService(FunctionRegistry registry,
                            FunctionDefaults defaults,
@@ -70,6 +62,7 @@ public class FunctionService {
                            @Autowired(required = false) ManagedDeploymentCoordinator managedDeploymentCoordinator,
                            @Autowired(required = false) FunctionRestoreGate restoreGate) {
         this.registry = registry;
+        this.applicationState = registry.applicationState();
         this.resolver = new FunctionSpecResolver(defaults);
         this.deploymentProviderResolver = deploymentProviderResolver;
         this.locks = locks;
@@ -92,18 +85,20 @@ public class FunctionService {
      * must still get through is {@link #remove}: it is the retry that ends the pending state.
      */
     private void requireNotPendingRemoval(String name) {
-        List<String> remaining = pendingRemovals.get(name);
-        if (remaining != null) {
-            throw new FunctionRemovalPendingException(name, remaining);
-        }
+        applicationState.requireAvailable(name);
     }
 
     public Collection<FunctionSpec> list() {
-        return registry.list();
+        return registry.listRegistered().stream()
+                .filter(function -> !applicationState.isUnavailable(function.name()))
+                .map(RegisteredFunction::spec)
+                .toList();
     }
 
     public Collection<RegisteredFunction> listRegistered() {
-        return registry.listRegistered();
+        return registry.listRegistered().stream()
+                .filter(function -> !applicationState.isUnavailable(function.name()))
+                .toList();
     }
 
     /**
@@ -117,6 +112,9 @@ public class FunctionService {
     }
 
     public Optional<RegisteredFunction> getRegistered(String name) {
+        if (applicationState.isUnavailable(name)) {
+            return Optional.empty();
+        }
         return registry.getRegistered(name);
     }
 
@@ -170,10 +168,14 @@ public class FunctionService {
 
             FunctionSpec updatedSpec = resolver.resolve(request.applyTo(existing.spec()));
             RegisteredFunction updated = new RegisteredFunction(updatedSpec, existing.deploymentMetadata());
-            if (updated.equals(existing)) {
+            boolean applicationPending = applicationState.isUpdatePending(updated);
+            if (updated.equals(existing) && !applicationPending) {
                 return Optional.of(existing);
             }
-            registry.put(updated);
+            if (!updated.equals(existing)) {
+                registry.put(updated);
+            }
+            applicationState.markUpdate(updated);
             // A managed backend derived its runtime tuning from the spec it was provisioned with;
             // the container proxy's single-hop timeout and admission bound are exactly that. Without
             // this the deployment keeps enforcing the original values while the caller believes the
@@ -186,6 +188,7 @@ public class FunctionService {
             for (FunctionRegistrationListener listener : listeners) {
                 listener.onRegister(updatedSpec);
             }
+            applicationState.completeUpdate(updated);
             log.info("Updated function {} (concurrency={}, timeoutMs={}, maxRetries={})",
                     name, updatedSpec.concurrency(), updatedSpec.timeoutMs(), updatedSpec.maxRetries());
             return Optional.of(updated);
@@ -200,25 +203,26 @@ public class FunctionService {
      */
     public Optional<Integer> setReplicas(String name, int replicas) {
         ensureReady();
-        requireNotPendingRemoval(name);
-        RegisteredFunction function = registry.getRegistered(name).orElse(null);
-        if (function == null) {
-            return Optional.empty();
-        }
-        if (function.deploymentMetadata().effectiveExecutionMode() != ExecutionMode.DEPLOYMENT) {
-            throw new IllegalArgumentException("Function '" + name + "' is not in DEPLOYMENT mode");
-        }
-        if (!managedDeploymentCoordinator.setReplicas(requireManagedDeploymentTarget(function), replicas)) {
-            // A concurrent remove deleted the function between the lookup above and the
-            // coordinator's own re-check under the lock; treat it as not-found.
-            return Optional.empty();
-        }
-        log.info("Set replicas for function {} to {}", name, replicas);
-        return Optional.of(replicas);
+        return locks.withLock(name, () -> {
+            requireNotPendingRemoval(name);
+            RegisteredFunction function = registry.getRegistered(name).orElse(null);
+            if (function == null) {
+                return Optional.empty();
+            }
+            if (function.deploymentMetadata().effectiveExecutionMode() != ExecutionMode.DEPLOYMENT) {
+                throw new IllegalArgumentException("Function '" + name + "' is not in DEPLOYMENT mode");
+            }
+            if (!managedDeploymentCoordinator.setReplicas(requireManagedDeploymentTarget(function), replicas)) {
+                return Optional.empty();
+            }
+            log.info("Set replicas for function {} to {}", name, replicas);
+            return Optional.of(replicas);
+        });
     }
 
     public Optional<ReplicaStatus> getReplicaStatus(String name) {
         return locks.withLock(name, () -> {
+            requireNotPendingRemoval(name);
             RegisteredFunction function = registry.getRegistered(name).orElse(null);
             if (function == null) {
                 return Optional.empty();
@@ -236,8 +240,9 @@ public class FunctionService {
      * <p>Two failure outcomes are distinguished, and they are not interchangeable. If the backend
      * reports a {@link PartialDeprovisionException} — resources it could not delete — the removal
      * enters <em>pending removal</em>: nothing pretends the function came back, and a retry of this
-     * same call resumes the cleanup. Any other failure means the deployment was not given up, and
-     * the function is restored (see {@link #rollbackRemoval}).
+     * same call resumes the cleanup. Other provider failures restore the function; after a completed
+     * deprovision, restoration is allowed only when reconcile succeeds. Otherwise the durable record
+     * stays as an unavailable recovery handle (see {@link #rollbackRemoval}).
      *
      * @throws FunctionRemovalPendingException when the backend deprovisioned only part of the
      *         function; the API answers {@code 409} and the leftover resources are named in it
@@ -245,6 +250,7 @@ public class FunctionService {
     public Optional<FunctionSpec> remove(String name) {
         ensureReady();
         return locks.withLock(name, () -> {
+            boolean listenersRetired = applicationState.beginRemoval(name);
             RegisteredFunction existing = registry.detach(name);
             if (existing == null) {
                 return Optional.empty();
@@ -253,9 +259,11 @@ public class FunctionService {
             List<FunctionRegistrationListener> notified = new ArrayList<>();
             boolean deprovisioned = false;
             try {
-                for (FunctionRegistrationListener listener : listeners) {
-                    listener.onRemove(name);
-                    notified.add(listener);
+                if (!listenersRetired) {
+                    for (FunctionRegistrationListener listener : listeners) {
+                        listener.onRemove(name);
+                        notified.add(listener);
+                    }
                 }
                 if (existing.managedDeploymentTarget().isPresent()) {
                     managedDeploymentCoordinator.deprovision(existing.managedDeploymentTarget().orElseThrow());
@@ -263,7 +271,7 @@ public class FunctionService {
                 }
                 registry.persistCurrentSnapshot(); // durable delete commit happens last
                 // A retry that finally emptied the backend ends the pending state.
-                pendingRemovals.remove(name);
+                applicationState.clearFunction(name);
                 return Optional.of(existing.spec());
             } catch (PartialDeprovisionException partial) {
                 holdPendingRemoval(existing, partial);
@@ -292,8 +300,7 @@ public class FunctionService {
      * would expose.
      */
     private void holdPendingRemoval(RegisteredFunction existing, PartialDeprovisionException partial) {
-        pendingRemovals.put(existing.name(), List.copyOf(partial.remainingResources()));
-        registry.restoreDetached(existing); // memory-only: the entry is the handle on what is left
+        registry.restoreDetachedPendingRemoval(existing, partial.remainingResources());
         try {
             registry.persistCurrentSnapshot(); // best-effort: keep the leftovers visible after a restart
         } catch (RuntimeException persistFailure) {
@@ -320,6 +327,10 @@ public class FunctionService {
                 restored = reconcile(existing);
             } catch (RuntimeException rollback) {
                 failure.addSuppressed(rollback);
+                registry.restoreDetachedUnavailable(existing, rollback.getMessage());
+                log.error("Function '{}' remains unavailable after delete rollback reconcile failed",
+                        existing.name(), rollback);
+                return;
             }
         }
         rollbackRemovalListeners(restored.spec(), notified, failure);

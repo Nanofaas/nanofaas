@@ -2541,6 +2541,41 @@ Changed production/test history is limited to the three registry/service classes
 coordinator regression update and two P15 test classes; this status entry records the
 decision. Next: P16.
 
+## P15 fix round 1 — provider application and unavailable recovery
+
+All three Important review findings are addressed above P15 commit `2c88d569`. A new
+registry-owned volatile application-state table distinguishes durable desired state from
+provider/listener application completion. It is structurally bounded to retained function
+names, with at most one PATCH, scale and unavailable marker per name; provider resource
+diagnostics are capped at 64 bounded strings. Identical PATCH/scale retries now reapply the
+provider/listeners after failure without another catalog save, and markers clear after
+success, durable removal, coordinator shutdown or startup restore. They are never serialized.
+
+If deprovision succeeds but catalog deletion and rollback reconcile both fail, the durable
+record remains an internal recovery handle. The function is excluded from get/list and
+invocation-visible service paths and listeners are not replayed. A delete retry can finish
+cleanup in-process; after restart the existing restorer/reconcile path alone decides whether
+the function becomes available and replays listeners. Manual scale now performs availability
+checking and lookup under the same per-function lock as removal.
+
+Deterministic RED evidence covered failed-listener and failed-provider identical PATCH,
+failed-provider identical scale, the deprovision/save/reconcile triple failure, restart
+recovery, and a latch-driven partial-deprovision/scale race. The HTTP conflict mapping also
+had an explicit compile RED before its handler was restored. GREEN proves two catalog writes
+total for register plus PATCH, and two for initial record plus desired-replica mutation;
+identical retries add zero writes. The race returns pending-removal conflict and never calls
+provider scale. At 1,000 durable functions, 2,000 simultaneous PATCH/scale markers allocated
+200,480 bytes in the diagnostic run, remained exactly one entry/two markers per function,
+and returned to zero after completion and removal. Reload/startup also clears old volatile
+markers.
+
+Verification was GREEN for the focused regressions, the full control-plane suite (78
+actionable tasks), autoscaler/concurrency integration plus native-profile AOT Java
+compilation (46 actionable tasks), and the final complete repository suite (190/190 actionable
+tasks in 4 min 46 s). The original 1/100/1,000 catalog measurement matrix and snapshot
+decision remain unchanged: snapshots are adequate and the replacement hypothesis stays
+closed. The benchmark-stability Minor remains deferred as requested. Next: P16.
+
 ## P14 fix round 1 — review findings closed
 
 Starting revision e0aa2673. The existing owned SyncScheduler now invokes bounded

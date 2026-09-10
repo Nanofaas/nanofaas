@@ -148,6 +148,8 @@ public class ManagedDeploymentCoordinator implements AutoCloseable {
     }
 
     private boolean setReplicasLocked(ManagedDeploymentTarget target, int replicas) {
+        FunctionApplicationState applicationState = registry.applicationState();
+        applicationState.requireAvailable(target.functionName());
         RegisteredFunction existing = registry.getRegistered(target.functionName()).orElse(null);
         if (existing == null) {
             return false;
@@ -159,15 +161,20 @@ public class ManagedDeploymentCoordinator implements AutoCloseable {
         }
 
         RegisteredFunction updated = existing.withDesiredReplicas(replicas);
-        if (updated.equals(existing)) {
+        boolean applicationPending = applicationState.isScalePending(target, replicas);
+        if (updated.equals(existing) && !applicationPending) {
             return true;
         }
         // Durable-first: desired state is the operator's target, not a claim about current provider
         // state. A provider failure is returned to the caller, while the persisted target remains
         // available for retry and restart reconciliation.
-        registry.put(updated);
+        if (!updated.equals(existing)) {
+            registry.put(updated);
+        }
+        applicationState.markScale(target, replicas);
         try {
             requireProvider(target).setReplicas(target.functionName(), replicas);
+            applicationState.completeScale(target, replicas);
         } finally {
             // The target changed and the provider attempt may have partially applied it. Forget the
             // volatile observation on both success and failure so it is never presented as current.
@@ -193,6 +200,7 @@ public class ManagedDeploymentCoordinator implements AutoCloseable {
     /** Closes the snapshot only when this coordinator created it; an injected bean is the context's. */
     @Override
     public void close() {
+        registry.applicationState().clearScaleApplications();
         if (ownsSnapshot) {
             snapshot.close();
         }

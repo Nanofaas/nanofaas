@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.api;
 
+import it.unimib.datai.nanofaas.controlplane.registry.FunctionApplicationPendingException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRemovalPendingException;
 import it.unimib.datai.nanofaas.controlplane.registry.ImageValidationException;
 import jakarta.validation.ConstraintViolationException;
@@ -101,6 +102,13 @@ public class GlobalExceptionHandler {
         log.warn("Function '{}' is in pending removal: {}", ex.functionName(), ex.remainingResources());
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(errorBody(FunctionRemovalPendingException.ERROR_CODE, ex.getMessage()));
+    }
+
+    @ExceptionHandler(FunctionApplicationPendingException.class)
+    public ResponseEntity<Map<String, Object>> handleFunctionApplicationPending(
+            FunctionApplicationPendingException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(errorBody(FunctionApplicationPendingException.ERROR_CODE, ex.getMessage()));
     }
 
     /**

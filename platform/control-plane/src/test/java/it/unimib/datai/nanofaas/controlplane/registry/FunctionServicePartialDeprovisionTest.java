@@ -62,9 +62,9 @@ class FunctionServicePartialDeprovisionTest {
         // owns the leftover resources. Replaying onRegister would mint a new one over them.
         verify(listener, times(1)).onRegister(any());
         verify(listener, times(1)).onRemove("fn");
-        // The catalog still shows the function, because its resources still exist.
-        assertThat(service.listRegistered()).extracting(RegisteredFunction::name).containsExactly("fn");
-        assertThat(service.getRegistered("fn")).isPresent();
+        // The recovery handle remains internal; management and invocation views do not advertise it.
+        assertThat(service.listRegistered()).isEmpty();
+        assertThat(service.getRegistered("fn")).isEmpty();
     }
 
     @Test
@@ -106,7 +106,7 @@ class FunctionServicePartialDeprovisionTest {
         assertThat(service.listRegistered()).isEmpty();
         assertThat(service.get("fn")).isEmpty();
         verify(provider, times(2)).deprovision("fn");
-        verify(listener, times(2)).onRemove("fn");
+        verify(listener, times(1)).onRemove("fn");
         // The name is free again once nothing is left of the old generation.
         assertThat(service.register(deploymentSpec("fn"))).isPresent();
     }
@@ -126,8 +126,8 @@ class FunctionServicePartialDeprovisionTest {
                 .satisfies(thrown -> assertThat(thrown.getSuppressed())
                         .hasAtLeastOneElementOfType(PartialDeprovisionException.class));
 
-        // Dropping the name here would orphan the containers the failed registration created.
-        assertThat(service.listRegistered()).extracting(RegisteredFunction::name).containsExactly("fn");
+        // The internal recovery handle is retained without advertising a live function.
+        assertThat(service.listRegistered()).isEmpty();
         assertThatThrownBy(() -> service.get("fn")).isInstanceOf(FunctionRemovalPendingException.class);
 
         doNothing().when(provider).deprovision("fn");
