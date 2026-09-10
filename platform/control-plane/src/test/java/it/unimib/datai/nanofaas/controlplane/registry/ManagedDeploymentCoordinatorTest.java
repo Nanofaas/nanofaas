@@ -95,7 +95,7 @@ class ManagedDeploymentCoordinatorTest {
     }
 
     @Test
-    void providerFailureRestoresThePreviousDurableTarget() {
+    void providerFailureKeepsTheNewDurableTargetForReconciliation() {
         registry.put(managedFunction("fn", 1));
         doThrow(new IllegalStateException("scale failed")).when(provider).setReplicas("fn", 3);
 
@@ -103,7 +103,7 @@ class ManagedDeploymentCoordinatorTest {
                 .hasMessageContaining("scale failed");
         assertThat(registry.getRegistered("fn")).get()
                 .extracting(RegisteredFunction::desiredReplicas)
-                .isEqualTo(1);
+                .isEqualTo(3);
     }
 
     @Test

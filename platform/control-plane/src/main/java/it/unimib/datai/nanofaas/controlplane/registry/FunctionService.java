@@ -170,6 +170,9 @@ public class FunctionService {
 
             FunctionSpec updatedSpec = resolver.resolve(request.applyTo(existing.spec()));
             RegisteredFunction updated = new RegisteredFunction(updatedSpec, existing.deploymentMetadata());
+            if (updated.equals(existing)) {
+                return Optional.of(existing);
+            }
             registry.put(updated);
             // A managed backend derived its runtime tuning from the spec it was provisioned with;
             // the container proxy's single-hop timeout and admission bound are exactly that. Without
@@ -321,10 +324,15 @@ public class FunctionService {
         }
         rollbackRemovalListeners(restored.spec(), notified, failure);
         registry.restoreDetached(restored); // memory-only: keep serving even if the catalog is unwritable
-        try {
-            registry.persistCurrentSnapshot(); // best-effort durable re-save closes the detach window
-        } catch (RuntimeException rollback) {
-            failure.addSuppressed(rollback);
+        if (deprovisioned) {
+            try {
+                // The provider was rebuilt after the durable delete failed; persist any refreshed
+                // endpoint/object metadata. If teardown itself failed, the old snapshot never
+                // changed and rewriting it would only add another failure point.
+                registry.persistCurrentSnapshot();
+            } catch (RuntimeException rollback) {
+                failure.addSuppressed(rollback);
+            }
         }
     }
 

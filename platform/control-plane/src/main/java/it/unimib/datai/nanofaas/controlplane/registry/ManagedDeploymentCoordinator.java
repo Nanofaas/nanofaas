@@ -159,23 +159,20 @@ public class ManagedDeploymentCoordinator implements AutoCloseable {
         }
 
         RegisteredFunction updated = existing.withDesiredReplicas(replicas);
-        // ponytail: durable-first. Persisting before applying keeps the target across a crash
-        // after a successful scale, but a provider failure whose rollback save also fails leaves
-        // a never-applied target that the next restart's reconcile enforces. A full fix needs an
-        // intent journal, out of scope for the MVP.
+        if (updated.equals(existing)) {
+            return true;
+        }
+        // Durable-first: desired state is the operator's target, not a claim about current provider
+        // state. A provider failure is returned to the caller, while the persisted target remains
+        // available for retry and restart reconciliation.
         registry.put(updated);
         try {
             requireProvider(target).setReplicas(target.functionName(), replicas);
-        } catch (RuntimeException failure) {
-            try {
-                registry.put(existing);
-            } catch (RuntimeException rollback) {
-                failure.addSuppressed(rollback);
-            }
-            throw failure;
+        } finally {
+            // The target changed and the provider attempt may have partially applied it. Forget the
+            // volatile observation on both success and failure so it is never presented as current.
+            snapshot.invalidate(target.functionName());
         }
-        // The target changed: forget the cached read so the next one re-fetches the new count.
-        snapshot.invalidate(target.functionName());
         return true;
     }
 

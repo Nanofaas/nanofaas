@@ -49,6 +49,10 @@ public class FunctionRegistry {
     }
 
     public synchronized RegisteredFunction put(RegisteredFunction function) {
+        RegisteredFunction current = functions.get(function.name());
+        if (function.equals(current)) {
+            return current;
+        }
         Map<String, RegisteredFunction> next = new HashMap<>(functions);
         RegisteredFunction previous = next.put(function.name(), function);
         saveAndPublish(next);

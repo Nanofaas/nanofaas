@@ -2478,6 +2478,69 @@ functions use the existing global fallback rather than individual history.
 
 Next: P15.
 
+## P15 — Catalog snapshot cost and persistence correctness
+
+Work started at `9f5c58db`; the final review/commit base is the preserved concurrent
+MIT-license commit `779e14807ed9033117b9afc9aeee616759aa637f`. Snapshot persistence remains
+the catalog format. Equal registry records, PATCH requests resolving to the current
+record, and desired-replica requests already at target now avoid copying, saving and
+provider/listener work.
+
+Desired replicas are durable intent. A scale persists that intent before invoking the
+provider; persistence failure is returned without calling the provider or changing the
+published/reloaded catalog. Provider failure is also returned, but the new durable target
+survives reload for reconciliation. Volatile replica observations are invalidated after
+every provider attempt, including failures. Remove provider failure restores serving from
+memory while leaving the unchanged durable snapshot untouched; if teardown completed but
+catalog deletion failed, the reconciled provider metadata is still re-saved best-effort.
+Controlled stores/providers and a barrier cover save/provider failures, no-op paths,
+write-boundary reloads and concurrent updates.
+
+Warmed single-operation measurements on Linux aarch64 6.17.0-1032-nvidia, OpenJDK
+25.0.4, 20 CPUs and 121 GiB RAM follow. Duration includes a real temporary-file atomic
+snapshot write and sync; writes are per measured mutation.
+
+| operation | catalog | allocated bytes | serialized bytes | duration ns | writes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| register | 1 | 17,216 | 1,057 | 1,572,906 | 1 |
+| update | 1 | 11,776 | 541 | 1,278,027 | 1 |
+| remove | 1 | 53,544 | 34 | 1,771,480 | 1 |
+| desired replicas | 1 | 21,192 | 582 | 2,481,029 | 1 |
+| register | 100 | 1,085,344 | 51,439 | 4,803,484 | 1 |
+| update | 100 | 1,081,888 | 50,923 | 4,014,447 | 1 |
+| remove | 100 | 1,079,552 | 50,415 | 5,482,281 | 1 |
+| desired replicas | 100 | 1,079,536 | 55,203 | 8,154,686 | 1 |
+| register | 1,000 | 2,086,320 | 510,439 | 8,874,042 | 1 |
+| update | 1,000 | 1,876,608 | 509,923 | 10,723,090 | 1 |
+| remove | 1,000 | 1,747,240 | 509,415 | 5,741,592 | 1 |
+| desired replicas | 1,000 | 1,871,192 | 554,703 | 4,416,749 | 1 |
+
+The 1,000-entry maximum is 10.723 ms, about 0.214% of the default 5 s autoscaler
+period; maximum measured allocation is 2,086,320 bytes and maximum serialized size is
+554,703 bytes. This is adequate for the declared control loop, so P15 explicitly closes
+the snapshot-replacement hypothesis. No ADR, journal, coalescing or copy-on-write catalog
+was introduced.
+
+Deterministic RED evidence captured failures for equal-record writes, same-target scale,
+no-op PATCH notifications, redundant remove rollback writes, provider-failure desired-state
+rollback and stale observed-state retention. GREEN includes the focused P15/registry slice,
+autoscaler integration, bootJar and native-profile AOT generation/Java compilation. The
+final repository suite passed all 190 actionable tasks from scratch in 4 min 8 s; the
+post-review scale-persistence regression passed in the focused 78-task control-plane run.
+
+Pre-edit GitNexus impact was HIGH for `FunctionRegistry.put` (66 impacted symbols, four
+direct callers/four processes), MEDIUM for `FunctionService.update`, CRITICAL for
+`ManagedDeploymentCoordinator.setReplicasLocked` (27 impacted symbols, two direct callers,
+five processes), and LOW for `FunctionService.rollbackRemoval`. The UNKNOWN test symbol was
+resolved by exact text search as JUnit discovery-only. The refreshed index still reported
+process-layer budget truncation while building flows, so impact counts are lower bounds;
+exact call-site searches and focused/full tests compensate. Final all/staged detect-change
+results and the precise staged-scope limitation are recorded in the P15 report.
+
+Changed production/test history is limited to the three registry/service classes, the
+coordinator regression update and two P15 test classes; this status entry records the
+decision. Next: P16.
+
 ## P14 fix round 1 — review findings closed
 
 Starting revision e0aa2673. The existing owned SyncScheduler now invokes bounded
