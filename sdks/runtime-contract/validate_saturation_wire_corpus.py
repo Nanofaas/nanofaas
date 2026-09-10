@@ -142,7 +142,11 @@ def validate_rule(rule_value: Any, path: str) -> dict[str, Any]:
         fail(f"{path}/operator", "is not a supported generic validation operator")
     exact_keys(rule, keys, path)
     string(rule["id"], f"{path}/id")
-    member(rule["scope"], ["scenario", "request", "callback", "action"], f"{path}/scope")
+    member(
+        rule["scope"],
+        ["scenario", "request", "callback", "action", "request-action"],
+        f"{path}/scope",
+    )
     string(rule["source"], f"{path}/source")
     if "expected" in rule:
         string(rule["expected"], f"{path}/expected")
@@ -718,6 +722,7 @@ def validate_expected(scenario: dict[str, Any], requests: list[dict[str, Any]],
 
     request_contexts = [
         {
+            "scenario": scenario,
             "request": request_by_id[request_id],
             "handlerBackend": backend["handlers"][request_id],
             "callbackBackend": backend["callbacks"][request_id],
@@ -732,6 +737,11 @@ def validate_expected(scenario: dict[str, Any], requests: list[dict[str, Any]],
         "request": request_contexts,
         "callback": request_contexts,
         "action": [{"action": action} for action in actions],
+        "request-action": [
+            {"action": action, "request": request_by_id[action["requestId"]]}
+            for action in actions
+            if action["requestId"] is not None
+        ],
     }
     apply_rules(definitions["identityRules"], scope_contexts, scenario_path)
     apply_rules(definitions["crossFieldRules"], scope_contexts, scenario_path)

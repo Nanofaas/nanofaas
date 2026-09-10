@@ -2809,3 +2809,15 @@ and callback-attempt cardinality rules to the corpus. The validator implements o
 mapping, presence and length operators. Exact upstream GitNexus impacts for `validate_rule`,
 `validate_expected` and `apply_rules` were LOW and limited to the Runtime-contract validator
 flow. Focused and full verification plus final graph gates are recorded in the P16a report.
+
+## P16a fix round 4 — stimulus and scenario anchors
+
+Starting from `088c3497`, a fresh reviewer showed five further coordinated rewrites were accepted:
+output size relation could disagree with lifecycle, a scenario kind could be rewritten into another
+canonical outcome chain, and health/invoke request roles could disagree with request actions.
+Five deterministic tests reproduced the gap before implementation.
+
+The corpus now declares scenario-kind/outcome, size-relation/lifecycle and action/request-role
+compatibility. Python only exposes generic scenario and referenced-request contexts to generic
+mapping rules. The validator suite is 12/12 GREEN; adapter and graph verification are recorded in
+the P16a report after completion.

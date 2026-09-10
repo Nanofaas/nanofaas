@@ -72,8 +72,8 @@ final counters. Declarative maps also connect handler lifecycle to wire outcome 
 to callback envelope, while declarative action and cardinality rules require request-bearing
 actions to name a request and require one dispatch-attempt entry per callback delivery attempt.
 The embedded mutation suite includes the seven round-two contradictions plus broken-reference and
-projection-drift probes; standalone tests also reject coordinated, internally canonical changes
-that would otherwise disconnect those sections.
+projection-drift probes. Standalone tests additionally reject the reviewed coordinated changes
+across size relation, lifecycle, outcome, envelope, scenario kind and request/action role.
 
 Each language adapter runs that validator with a finite 10 s process deadline and then parses the
 same JSON source. Java and Java-lite deserialize the complete typed model; Go disallows unknown

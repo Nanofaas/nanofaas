@@ -528,6 +528,57 @@
           }
         },
         {
+          "id": "scenario-kind-controls-wire-outcome",
+          "scope": "request",
+          "operator": "mapped-member",
+          "source": "scenario.kind",
+          "expected": "response.outcomeRef",
+          "value": {
+            "success-drain": ["success"],
+            "input-too-large": ["input-too-large"],
+            "output-too-large": ["output-too-large"],
+            "callback-saturated": ["callback-saturated"],
+            "handler-timeout": ["handler-timeout"],
+            "cancellation": ["client-cancelled"],
+            "health-under-saturation": ["health-ok"],
+            "stop-with-full-queue": ["runtime-stopping"],
+            "restart": ["success"],
+            "callback-delivery-exhausted": ["success"],
+            "dispatch-retry-identity": ["handler-error", "success"]
+          }
+        },
+        {
+          "id": "input-size-relation-controls-handler-lifecycle",
+          "scope": "request",
+          "operator": "mapped-member",
+          "source": "request.payload.relationToInputLimit",
+          "expected": "handler.lifecycleRef",
+          "value": {
+            "above-limit": ["not-started"],
+            "below-limit": [
+              "succeeded",
+              "output-rejected",
+              "timed-out",
+              "cancelled",
+              "failed",
+              "not-started"
+            ],
+            "not-applicable": ["not-started"]
+          }
+        },
+        {
+          "id": "output-size-relation-controls-handler-lifecycle",
+          "scope": "request",
+          "operator": "mapped-member",
+          "source": "handlerBackend.outputRelationToLimit",
+          "expected": "handler.lifecycleRef",
+          "value": {
+            "above-limit": ["output-rejected"],
+            "below-limit": ["succeeded"],
+            "not-applicable": ["not-started", "timed-out", "cancelled", "failed"]
+          }
+        },
+        {
           "id": "wire-outcome-controls-callback-envelope",
           "scope": "request",
           "operator": "mapped-member",
@@ -559,6 +610,22 @@
             "await-callback",
             "control-plane-redispatch"
           ]
+        },
+        {
+          "id": "request-action-role-compatibility",
+          "scope": "request-action",
+          "operator": "mapped-member",
+          "source": "action.action",
+          "expected": "request.role",
+          "value": {
+            "send-request": ["invoke"],
+            "probe-health": ["health"],
+            "await-barrier": ["invoke"],
+            "cancel-request": ["invoke"],
+            "await-response": ["invoke", "health"],
+            "await-callback": ["invoke"],
+            "control-plane-redispatch": ["invoke"]
+          }
         }
       ],
       "observationSets": {

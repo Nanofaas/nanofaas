@@ -1,5 +1,27 @@
 # Task P16a report — common SDK memory inventory and saturation wire contract
 
+## Fix round 4 — anchor semantics to stimuli and scenario kind
+
+This section supersedes broader fix-round-3 connectivity claims. Starting revision:
+`088c3497`.
+
+The next independent review found that internally canonical lifecycle/outcome/envelope chains
+could still be disconnected from the facts that cause them. Five deterministic RED tests proved
+that the validator accepted below-limit output rewritten as output rejection, above-limit output
+rewritten as success, a complete `success-drain` rewrite into handler error, `probe-health`
+targeting an invoke request, and `send-request` targeting a health request.
+
+GREEN remains data-driven. Corpus rules now anchor scenario kind to allowed wire outcomes, input
+and output size relations to allowed handler lifecycles, and request-bearing actions to allowed
+request roles. The Python change only adds the generic `request-action` scope and exposes scenario
+and referenced-request context to the existing generic mapping operator; no scenario kind,
+outcome, lifecycle, role or action policy value is duplicated in Python. The full validator suite
+is now 12/12 GREEN and all embedded mutations remain GREEN. All five focused adapters passed
+again: Java/Java-lite 16/16 Gradle actions, Python and Go focused tests, and JavaScript test
+compilation plus its Node test. Complete, non-partial/non-truncated GitNexus detection reported
+eight worktree files/10 symbols including the two protected overload files and six staged P16a
+files/nine symbols; both scopes had zero affected processes and LOW risk.
+
 ## Fix round 3 — coordinated semantic consistency
 
 This section supersedes the fix-round-2 connectivity claims where they conflict. Starting
