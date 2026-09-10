@@ -69,7 +69,7 @@ class FunctionRegistryPersistenceTest {
         assertEquals(0, managed.withDesiredReplicas(0).desiredReplicas());
         assertNull(RegisteredFunction.nonManaged(spec("local", ExecutionMode.LOCAL, null)).desiredReplicas());
         registry.put(managed.withDesiredReplicas(0));
-        assertEquals(0, new FunctionRegistry(catalog).getRegistered("managed").orElseThrow().desiredReplicas());
+        assertEquals(0, new FunctionRegistry(catalog).listRegisteredForRecovery().iterator().next().desiredReplicas());
     }
 
     private FunctionCatalog catalog(String name) {

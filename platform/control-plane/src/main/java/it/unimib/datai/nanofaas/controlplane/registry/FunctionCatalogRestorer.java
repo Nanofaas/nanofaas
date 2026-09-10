@@ -54,7 +54,7 @@ final class FunctionCatalogRestorer implements ApplicationRunner {
         applicationState.clearAll();
         List<RegisteredFunction> restored = new ArrayList<>();
         List<RegisteredFunction> available = new ArrayList<>();
-        for (RegisteredFunction function : registry.listRegistered().stream()
+        for (RegisteredFunction function : registry.listRegisteredForRecovery().stream()
                 .sorted(Comparator.comparing(RegisteredFunction::name)).toList()) {
             try {
                 RegisteredFunction reconciled = reconcileIfManaged(function);
@@ -68,7 +68,7 @@ final class FunctionCatalogRestorer implements ApplicationRunner {
                 applicationState.markUnavailable(function.name(), failure.getMessage());
             }
         }
-        registry.replaceAllDurably(restored);
+        registry.replaceAllAfterRestore(restored, available);
         for (RegisteredFunction function : available) {
             for (FunctionRegistrationListener listener : listeners) {
                 listener.onRegister(function.spec());

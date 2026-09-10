@@ -86,6 +86,10 @@ class FunctionCatalogCostMeasurementTest {
         catalog.save(initial);
         catalog.resetWrites();
         FunctionRegistry registry = new FunctionRegistry(catalog);
+        if (managed) {
+            registry.replaceAllAfterRestore(initial, initial);
+            catalog.resetWrites();
+        }
         Runnable mutation = mutationFactory.prepare(registry);
         ThreadMXBean allocations = allocationBean();
         long threadId = Thread.currentThread().threadId();

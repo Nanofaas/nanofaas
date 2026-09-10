@@ -21,7 +21,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.DefaultApplicationArguments;
@@ -32,6 +35,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
@@ -39,6 +43,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -115,6 +120,49 @@ class FunctionApplicationPendingRecoveryTest {
     }
 
     @Test
+    void failedDeletePreservesPendingPatchForAnIdenticalNoWriteRetry() {
+        CountingFailingCatalog catalog = new CountingFailingCatalog(tempDir.resolve("patch-delete.json"));
+        FunctionRegistry registry = new FunctionRegistry(catalog);
+        ManagedDeploymentProvider provider = provider();
+        FunctionService service = service(registry, provider);
+        service.register(spec("fn"));
+        doThrow(new IllegalStateException("patch unavailable"))
+                .doNothing().when(provider).updateSpec(any());
+        doThrow(new IllegalStateException("delete unavailable"))
+                .when(provider).deprovision("fn");
+        FunctionUpdateRequest patch = new FunctionUpdateRequest(2, null, null, null);
+
+        assertThatThrownBy(() -> service.update("fn", patch)).hasMessage("patch unavailable");
+        assertThatThrownBy(() -> service.remove("fn")).hasMessage("delete unavailable");
+        assertThat(service.update("fn", patch)).isPresent();
+        assertThat(service.update("fn", patch)).isPresent();
+
+        assertThat(catalog.writes()).isEqualTo(2);
+        verify(provider, times(2)).updateSpec(any());
+    }
+
+    @Test
+    void failedDeletePreservesPendingScaleForAnIdenticalNoWriteRetry() {
+        CountingFailingCatalog catalog = new CountingFailingCatalog(tempDir.resolve("scale-delete.json"));
+        FunctionRegistry registry = new FunctionRegistry(catalog);
+        ManagedDeploymentProvider provider = provider();
+        FunctionService service = service(registry, provider);
+        service.register(spec("fn"));
+        doThrow(new IllegalStateException("scale unavailable"))
+                .doNothing().when(provider).setReplicas("fn", 3);
+        doThrow(new IllegalStateException("delete unavailable"))
+                .when(provider).deprovision("fn");
+
+        assertThatThrownBy(() -> service.setReplicas("fn", 3)).hasMessage("scale unavailable");
+        assertThatThrownBy(() -> service.remove("fn")).hasMessage("delete unavailable");
+        assertThat(service.setReplicas("fn", 3)).contains(3);
+        assertThat(service.setReplicas("fn", 3)).contains(3);
+
+        assertThat(catalog.writes()).isEqualTo(2);
+        verify(provider, times(2)).setReplicas("fn", 3);
+    }
+
+    @Test
     void reconcileFailureAfterDeleteSaveFailureStaysUnavailableUntilDeleteRetrySucceeds() {
         CountingFailingCatalog catalog = new CountingFailingCatalog(tempDir.resolve("triple-retry.json"));
         FunctionRegistry registry = new FunctionRegistry(catalog);
@@ -134,7 +182,10 @@ class FunctionApplicationPendingRecoveryTest {
                         .anySatisfy(suppressed -> assertThat(suppressed).hasMessage("reconcile unavailable")));
 
         assertUnavailableFromService(service, "fn");
-        assertThat(new FunctionRegistry(catalog).getRegistered("fn")).isPresent();
+        FunctionRegistry reloadedRecovery = new FunctionRegistry(catalog);
+        assertThat(reloadedRecovery.getRegistered("fn")).isEmpty();
+        assertThat(reloadedRecovery.listRegisteredForRecovery())
+                .extracting(RegisteredFunction::name).containsExactly("fn");
         verify(listener, times(1)).onRemove("fn");
         verify(listener, never()).onRegister(any());
 
@@ -142,7 +193,7 @@ class FunctionApplicationPendingRecoveryTest {
         assertThat(service.remove("fn")).map(FunctionSpec::name).contains("fn");
 
         assertThat(service.get("fn")).isEmpty();
-        assertThat(new FunctionRegistry(catalog).getRegistered("fn")).isEmpty();
+        assertThat(new FunctionRegistry(catalog).listRegisteredForRecovery()).isEmpty();
         verify(listener, times(1)).onRemove("fn");
     }
 
@@ -184,17 +235,114 @@ class FunctionApplicationPendingRecoveryTest {
     }
 
     @Test
+    void rollbackCannotPublishAnUnavailableRecordToAReaderThatAlreadyStartedLookup() throws Exception {
+        CountingFailingCatalog catalog = new CountingFailingCatalog(tempDir.resolve("atomic-rollback.json"));
+        FunctionRegistry registry = spy(new FunctionRegistry(catalog));
+        ManagedDeploymentProvider provider = provider();
+        FunctionService service = service(registry, provider);
+        service.register(spec("fn"));
+        catalog.failSaves(true);
+        doNothing().when(provider).deprovision("fn");
+        CountDownLatch insideReconcile = new CountDownLatch(1);
+        CountDownLatch releaseReconcile = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            insideReconcile.countDown();
+            assertThat(releaseReconcile.await(5, TimeUnit.SECONDS)).isTrue();
+            throw new IllegalStateException("reconcile unavailable");
+        }).when(provider).reconcile(any(), anyInt(), anyMap());
+
+        AtomicReference<Thread> readerThread = new AtomicReference<>();
+        AtomicBoolean holdReader = new AtomicBoolean();
+        CountDownLatch readerPassedAvailabilityCheck = new CountDownLatch(1);
+        CountDownLatch releaseReader = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            if (holdReader.get() && Thread.currentThread() == readerThread.get()) {
+                readerPassedAvailabilityCheck.countDown();
+                assertThat(releaseReader.await(5, TimeUnit.SECONDS)).isTrue();
+            }
+            return invocation.callRealMethod();
+        }).when(registry).get("fn");
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            Future<Throwable> removal = executor.submit(() -> thrownBy(() -> service.remove("fn")));
+            assertThat(insideReconcile.await(5, TimeUnit.SECONDS)).isTrue();
+            holdReader.set(true);
+            Future<Optional<FunctionSpec>> read = executor.submit(() -> {
+                readerThread.set(Thread.currentThread());
+                return service.get("fn");
+            });
+            assertThat(readerPassedAvailabilityCheck.await(5, TimeUnit.SECONDS)).isTrue();
+
+            releaseReconcile.countDown();
+            assertThat(removal.get(5, TimeUnit.SECONDS)).hasMessage("catalog failure");
+            releaseReader.countDown();
+
+            assertThat(read.get(5, TimeUnit.SECONDS)).isEmpty();
+        }
+
+        assertThat(registry.getRegistered("fn")).isEmpty();
+        assertThat(registry.list()).isEmpty();
+        assertThat(registry.listRegistered()).isEmpty();
+    }
+
+    @Test
+    void managedCatalogEntryStaysNonPublicWhilePrecreatedReadersWaitForRestore() throws Exception {
+        CountingFailingCatalog catalog = new CountingFailingCatalog(tempDir.resolve("startup-publication.json"));
+        FunctionRegistry seed = new FunctionRegistry(catalog);
+        seed.put(managed("managed", 1));
+        seed.put(RegisteredFunction.nonManaged(plainSpec("local", ExecutionMode.LOCAL)));
+        seed.put(RegisteredFunction.nonManaged(plainSpec("external", ExecutionMode.EXTERNAL)));
+
+        FunctionRegistry registry = new FunctionRegistry(catalog);
+        ManagedDeploymentProvider provider = provider();
+        FunctionService service = service(registry, provider);
+        CountDownLatch insideReconcile = new CountDownLatch(1);
+        CountDownLatch releaseReconcile = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            insideReconcile.countDown();
+            assertThat(releaseReconcile.await(5, TimeUnit.SECONDS)).isTrue();
+            return new ProvisionResult("http://managed-restored/invoke", "k8s");
+        }).when(provider).reconcile(any(), anyInt(), anyMap());
+        FunctionCatalogRestorer restorer = new FunctionCatalogRestorer(registry, resolver(provider), List.of());
+
+        try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
+            Future<?> restore = executor.submit(() -> restorer.run(new DefaultApplicationArguments()));
+            assertThat(insideReconcile.await(5, TimeUnit.SECONDS)).isTrue();
+
+            assertThat(service.get("managed")).isEmpty();
+            assertThat(service.getRegistered("managed")).isEmpty();
+            assertThat(service.list()).extracting(FunctionSpec::name)
+                    .containsExactlyInAnyOrder("local", "external");
+            assertThat(registry.listRegistered()).extracting(RegisteredFunction::name)
+                    .containsExactlyInAnyOrder("local", "external");
+
+            releaseReconcile.countDown();
+            restore.get(5, TimeUnit.SECONDS);
+        }
+
+        assertThat(service.list()).extracting(FunctionSpec::name)
+                .containsExactlyInAnyOrder("managed", "local", "external");
+    }
+
+    @Test
     void partialDeprovisionThatRacesManualScaleReturnsConflictWithoutProviderScale() throws Exception {
         FunctionRegistry registry = new FunctionRegistry();
         ManagedDeploymentProvider provider = provider();
-        FunctionOperationLocks locks = new FunctionOperationLocks();
+        FunctionOperationLocks locks = spy(new FunctionOperationLocks());
         FunctionService service = new FunctionService(
                 registry, DEFAULTS, ImageValidator.noOp(), List.of(), resolver(provider), locks,
                 coordinator(registry, provider, locks));
         service.register(spec("fn"));
         CountDownLatch insideDeprovision = new CountDownLatch(1);
-        CountDownLatch scaleStarted = new CountDownLatch(1);
+        CountDownLatch scaleReachedLockBoundary = new CountDownLatch(1);
         CountDownLatch releaseDeprovision = new CountDownLatch(1);
+        AtomicBoolean observeScale = new AtomicBoolean();
+        doAnswer(invocation -> {
+            if (observeScale.get()) {
+                scaleReachedLockBoundary.countDown();
+            }
+            return invocation.callRealMethod();
+        }).when(locks).withLock(eq("fn"), any(Supplier.class));
         doAnswer(invocation -> {
             insideDeprovision.countDown();
             assertThat(releaseDeprovision.await(5, TimeUnit.SECONDS)).isTrue();
@@ -205,11 +353,9 @@ class FunctionApplicationPendingRecoveryTest {
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
             Future<Throwable> removal = executor.submit(() -> thrownBy(() -> service.remove("fn")));
             assertThat(insideDeprovision.await(5, TimeUnit.SECONDS)).isTrue();
-            Future<Throwable> scale = executor.submit(() -> {
-                scaleStarted.countDown();
-                return thrownBy(() -> service.setReplicas("fn", 3));
-            });
-            assertThat(scaleStarted.await(5, TimeUnit.SECONDS)).isTrue();
+            observeScale.set(true);
+            Future<Throwable> scale = executor.submit(() -> thrownBy(() -> service.setReplicas("fn", 3)));
+            assertThat(scaleReachedLockBoundary.await(5, TimeUnit.SECONDS)).isTrue();
             releaseDeprovision.countDown();
 
             assertThat(removal.get(5, TimeUnit.SECONDS)).isInstanceOf(FunctionRemovalPendingException.class);
@@ -333,6 +479,12 @@ class FunctionApplicationPendingRecoveryTest {
     private static FunctionSpec spec(String name) {
         return new FunctionSpec(name, "example:latest", List.of(), Map.of(), null,
                 1_000, 1, 10, 0, null, ExecutionMode.DEPLOYMENT, null, null, null, null);
+    }
+
+    private static FunctionSpec plainSpec(String name, ExecutionMode executionMode) {
+        String endpoint = executionMode == ExecutionMode.EXTERNAL ? "http://" + name + "/invoke" : null;
+        return new FunctionSpec(name, "example:latest", List.of(), Map.of(), null,
+                1_000, 1, 10, 0, endpoint, executionMode, null, null, null, null);
     }
 
     private static RegisteredFunction managed(String name, int replicas) {

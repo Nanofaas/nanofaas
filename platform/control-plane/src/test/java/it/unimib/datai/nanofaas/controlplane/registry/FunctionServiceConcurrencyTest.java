@@ -360,7 +360,9 @@ class FunctionServiceConcurrencyTest {
                 assertThat(localRegistry.get("tear-fn")).isEmpty();
             });
             // ...but still present in the durable catalog until teardown completes
-            assertThat(new FunctionRegistry(catalog).get("tear-fn")).isPresent();
+            assertThat(new FunctionRegistry(catalog).listRegisteredForRecovery())
+                    .extracting(RegisteredFunction::name)
+                    .containsExactly("tear-fn");
 
             allowRemoval.countDown();
 

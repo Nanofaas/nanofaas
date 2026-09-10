@@ -46,7 +46,7 @@ class FunctionCatalogMutationContractTest {
         registry.put(function);
 
         assertThat(catalog.writes()).isEqualTo(1);
-        assertThat(new FunctionRegistry(catalog).getRegistered("fn")).contains(function);
+        assertThat(new FunctionRegistry(catalog).listRegisteredForRecovery()).contains(function);
     }
 
     @Test
@@ -62,7 +62,7 @@ class FunctionCatalogMutationContractTest {
 
         assertThat(catalog.writes()).isEqualTo(1);
         verify(provider, never()).setReplicas("fn", 3);
-        assertThat(new FunctionRegistry(catalog).getRegistered("fn")).contains(function);
+        assertThat(new FunctionRegistry(catalog).listRegisteredForRecovery()).contains(function);
     }
 
     @Test
@@ -98,7 +98,7 @@ class FunctionCatalogMutationContractTest {
         assertThat(registry.getRegistered("fn")).get()
                 .extracting(RegisteredFunction::desiredReplicas)
                 .isEqualTo(3);
-        assertThat(new FunctionRegistry(catalog).getRegistered("fn")).get()
+        assertThat(recoveredFunction(catalog, "fn"))
                 .extracting(RegisteredFunction::desiredReplicas)
                 .isEqualTo(3);
         assertThat(catalog.writes()).isEqualTo(2);
@@ -119,7 +119,7 @@ class FunctionCatalogMutationContractTest {
 
         verify(provider, never()).setReplicas("fn", 3);
         assertThat(registry.getRegistered("fn")).contains(function);
-        assertThat(new FunctionRegistry(catalog).getRegistered("fn")).contains(function);
+        assertThat(new FunctionRegistry(catalog).listRegisteredForRecovery()).contains(function);
         assertThat(catalog.writes()).isEqualTo(1);
     }
 
@@ -155,7 +155,7 @@ class FunctionCatalogMutationContractTest {
         assertThatThrownBy(() -> service.update("fn", new FunctionUpdateRequest(2, null, null, null)))
                 .hasMessage("provider update failed");
 
-        assertThat(new FunctionRegistry(catalog).get("fn")).get()
+        assertThat(recoveredFunction(catalog, "fn").spec())
                 .extracting(FunctionSpec::concurrency)
                 .isEqualTo(2);
         assertThat(catalog.writes()).isEqualTo(2);
@@ -175,7 +175,7 @@ class FunctionCatalogMutationContractTest {
                 .hasMessage("provider remove failed");
 
         assertThat(registry.getRegistered("fn")).contains(function);
-        assertThat(new FunctionRegistry(catalog).getRegistered("fn")).contains(function);
+        assertThat(new FunctionRegistry(catalog).listRegisteredForRecovery()).contains(function);
         assertThat(catalog.writes()).isEqualTo(1);
     }
 
@@ -205,6 +205,13 @@ class FunctionCatalogMutationContractTest {
         } catch (Exception failure) {
             throw new IllegalStateException(failure);
         }
+    }
+
+    private static RegisteredFunction recoveredFunction(CountingCatalog catalog, String name) {
+        return new FunctionRegistry(catalog).listRegisteredForRecovery().stream()
+                .filter(function -> function.name().equals(name))
+                .findFirst()
+                .orElseThrow();
     }
 
     private static ManagedDeploymentCoordinator coordinator(FunctionRegistry registry,

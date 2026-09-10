@@ -13,30 +13,31 @@ import org.springframework.stereotype.Component;
 @Component
 public class FunctionRegistry {
     private final FunctionCatalog catalog;
-    private volatile Map<String, RegisteredFunction> functions; // NOSONAR: replaced wholesale with an immutable snapshot, never mutated in place
+    private volatile RegistrySnapshot functions; // NOSONAR: replaced wholesale with an immutable snapshot, never mutated in place
     private final FunctionApplicationState applicationState;
 
     public FunctionRegistry() {
         this.catalog = null;
-        this.functions = Map.of();
-        this.applicationState = new FunctionApplicationState(functions.keySet());
+        this.functions = RegistrySnapshot.EMPTY;
+        this.applicationState = new FunctionApplicationState(functions.recovery().keySet());
     }
 
     @Autowired
     public FunctionRegistry(FunctionCatalog catalog) {
         this.catalog = catalog;
-        this.functions = immutableByName(catalog.load());
-        this.applicationState = new FunctionApplicationState(functions.keySet());
+        Map<String, RegisteredFunction> recovered = immutableByName(catalog.load());
+        this.functions = new RegistrySnapshot(recovered, startupPublicView(recovered));
+        this.applicationState = new FunctionApplicationState(recovered.keySet());
     }
 
     public Collection<FunctionSpec> list() {
-        return functions.values().stream()
+        return functions.publicView().values().stream()
                 .map(RegisteredFunction::spec)
                 .toList();
     }
 
     public Collection<RegisteredFunction> listRegistered() {
-        return functions.values().stream().toList();
+        return functions.publicView().values().stream().toList();
     }
 
     public Optional<FunctionSpec> get(String name) {
@@ -44,7 +45,7 @@ public class FunctionRegistry {
     }
 
     public Optional<RegisteredFunction> getRegistered(String name) {
-        return Optional.ofNullable(functions.get(name));
+        return Optional.ofNullable(functions.publicView().get(name));
     }
 
     public FunctionSpec put(FunctionSpec spec) {
@@ -53,13 +54,16 @@ public class FunctionRegistry {
     }
 
     public synchronized RegisteredFunction put(RegisteredFunction function) {
-        RegisteredFunction current = functions.get(function.name());
+        RegistrySnapshot currentSnapshot = functions;
+        RegisteredFunction current = currentSnapshot.recovery().get(function.name());
         if (function.equals(current)) {
             return current;
         }
-        Map<String, RegisteredFunction> next = new HashMap<>(functions);
+        Map<String, RegisteredFunction> next = new HashMap<>(currentSnapshot.recovery());
         RegisteredFunction previous = next.put(function.name(), function);
-        saveAndPublish(next);
+        Map<String, RegisteredFunction> publicNext = new HashMap<>(currentSnapshot.publicView());
+        publicNext.put(function.name(), function);
+        saveAndPublish(next, publicNext);
         return previous;
     }
 
@@ -75,13 +79,16 @@ public class FunctionRegistry {
     }
 
     public synchronized RegisteredFunction putIfAbsent(RegisteredFunction function) {
-        RegisteredFunction previous = functions.get(function.name());
+        RegistrySnapshot currentSnapshot = functions;
+        RegisteredFunction previous = currentSnapshot.recovery().get(function.name());
         if (previous != null) {
             return previous;
         }
-        Map<String, RegisteredFunction> next = new HashMap<>(functions);
+        Map<String, RegisteredFunction> next = new HashMap<>(currentSnapshot.recovery());
         next.put(function.name(), function);
-        saveAndPublish(next);
+        Map<String, RegisteredFunction> publicNext = new HashMap<>(currentSnapshot.publicView());
+        publicNext.put(function.name(), function);
+        saveAndPublish(next, publicNext);
         return null;
     }
 
@@ -91,28 +98,37 @@ public class FunctionRegistry {
     }
 
     public synchronized RegisteredFunction removeRegistered(String name) {
-        RegisteredFunction previous = functions.get(name);
+        RegistrySnapshot currentSnapshot = functions;
+        RegisteredFunction previous = currentSnapshot.recovery().get(name);
         if (previous == null) {
             return null;
         }
-        Map<String, RegisteredFunction> next = new HashMap<>(functions);
+        Map<String, RegisteredFunction> next = new HashMap<>(currentSnapshot.recovery());
         next.remove(name);
-        saveAndPublish(next);
+        Map<String, RegisteredFunction> publicNext = new HashMap<>(currentSnapshot.publicView());
+        publicNext.remove(name);
+        saveAndPublish(next, publicNext);
         return previous;
     }
 
     synchronized RegisteredFunction detach(String name) {
-        Map<String, RegisteredFunction> next = new HashMap<>(functions);
+        RegistrySnapshot currentSnapshot = functions;
+        Map<String, RegisteredFunction> next = new HashMap<>(currentSnapshot.recovery());
         RegisteredFunction detached = next.remove(name);
-        functions = Map.copyOf(next);
+        Map<String, RegisteredFunction> publicNext = new HashMap<>(currentSnapshot.publicView());
+        publicNext.remove(name);
+        functions = snapshot(next, publicNext);
         return detached;
     }
 
     synchronized void restoreDetached(RegisteredFunction function) {
         if (function != null) {
-            Map<String, RegisteredFunction> next = new HashMap<>(functions);
+            RegistrySnapshot currentSnapshot = functions;
+            Map<String, RegisteredFunction> next = new HashMap<>(currentSnapshot.recovery());
             next.put(function.name(), function);
-            functions = Map.copyOf(next);
+            Map<String, RegisteredFunction> publicNext = new HashMap<>(currentSnapshot.publicView());
+            publicNext.put(function.name(), function);
+            functions = snapshot(next, publicNext);
         }
     }
 
@@ -120,20 +136,21 @@ public class FunctionRegistry {
                                                      Collection<String> remainingResources) {
         applicationState.retainName(function.name());
         applicationState.markPartialRemoval(function.name(), List.copyOf(remainingResources));
-        restoreDetached(function);
+        restoreDetachedForRecovery(function);
     }
 
     synchronized void restoreDetachedUnavailable(RegisteredFunction function, String reason) {
         applicationState.retainName(function.name());
         applicationState.markUnavailable(function.name(), reason);
-        restoreDetached(function);
+        restoreDetachedForRecovery(function);
     }
 
     synchronized void persistCurrentSnapshot() {
+        RegistrySnapshot currentSnapshot = functions;
         if (catalog != null) {
-            catalog.save(functions.values());
+            catalog.save(currentSnapshot.recovery().values());
         }
-        publishDurable(functions);
+        publishDurable(currentSnapshot.recovery(), currentSnapshot.publicView());
     }
 
     synchronized void replaceAllDurably(Collection<RegisteredFunction> replacement) {
@@ -141,24 +158,67 @@ public class FunctionRegistry {
         if (catalog != null) {
             catalog.save(next.values());
         }
-        publishDurable(next);
+        publishDurable(next, next);
     }
 
-    private void saveAndPublish(Map<String, RegisteredFunction> next) {
+    synchronized void replaceAllAfterRestore(Collection<RegisteredFunction> replacement,
+                                             Collection<RegisteredFunction> available) {
+        Map<String, RegisteredFunction> next = immutableByName(replacement);
+        Map<String, RegisteredFunction> publicNext = immutableByName(available);
+        if (!next.entrySet().containsAll(publicNext.entrySet())) {
+            throw new IllegalArgumentException("Available restored functions must be recovery records");
+        }
         if (catalog != null) {
             catalog.save(next.values());
         }
-        publishDurable(next);
+        publishDurable(next, publicNext);
+    }
+
+    Collection<RegisteredFunction> listRegisteredForRecovery() {
+        return functions.recovery().values().stream().toList();
+    }
+
+    private void saveAndPublish(Map<String, RegisteredFunction> next,
+                                Map<String, RegisteredFunction> publicNext) {
+        if (catalog != null) {
+            catalog.save(next.values());
+        }
+        publishDurable(next, publicNext);
     }
 
     FunctionApplicationState applicationState() {
         return applicationState;
     }
 
-    private void publishDurable(Map<String, RegisteredFunction> next) {
-        Map<String, RegisteredFunction> snapshot = Map.copyOf(next);
-        functions = snapshot;
-        applicationState.retainOnly(snapshot.keySet());
+    private void publishDurable(Map<String, RegisteredFunction> next,
+                                Map<String, RegisteredFunction> publicNext) {
+        functions = snapshot(next, publicNext);
+        applicationState.retainOnly(functions.recovery().keySet());
+    }
+
+    private void restoreDetachedForRecovery(RegisteredFunction function) {
+        RegistrySnapshot currentSnapshot = functions;
+        Map<String, RegisteredFunction> next = new HashMap<>(currentSnapshot.recovery());
+        next.put(function.name(), function);
+        Map<String, RegisteredFunction> publicNext = new HashMap<>(currentSnapshot.publicView());
+        publicNext.remove(function.name());
+        functions = snapshot(next, publicNext);
+    }
+
+    private static RegistrySnapshot snapshot(Map<String, RegisteredFunction> recovery,
+                                             Map<String, RegisteredFunction> publicView) {
+        return new RegistrySnapshot(Map.copyOf(recovery), Map.copyOf(publicView));
+    }
+
+    private static Map<String, RegisteredFunction> startupPublicView(
+            Map<String, RegisteredFunction> recovered) {
+        Map<String, RegisteredFunction> publicView = new HashMap<>();
+        recovered.forEach((name, function) -> {
+            if (function.managedDeploymentTarget().isEmpty()) {
+                publicView.put(name, function);
+            }
+        });
+        return Map.copyOf(publicView);
     }
 
     private static Map<String, RegisteredFunction> immutableByName(Collection<RegisteredFunction> registered) {
@@ -169,5 +229,10 @@ public class FunctionRegistry {
             }
         }
         return Map.copyOf(byName);
+    }
+
+    private record RegistrySnapshot(Map<String, RegisteredFunction> recovery,
+                                    Map<String, RegisteredFunction> publicView) {
+        private static final RegistrySnapshot EMPTY = new RegistrySnapshot(Map.of(), Map.of());
     }
 }

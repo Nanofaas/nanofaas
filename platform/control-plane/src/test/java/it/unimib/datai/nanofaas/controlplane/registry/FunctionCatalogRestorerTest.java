@@ -112,9 +112,9 @@ class FunctionCatalogRestorerTest {
 
         InOrder order = inOrder(provider, registry, listener);
         order.verify(provider).reconcile(any(), eq(0), anyMap());
-        order.verify(registry).replaceAllDurably(anyCollection());
+        order.verify(registry).replaceAllAfterRestore(anyCollection(), anyCollection());
         order.verify(listener).onRegister(any());
-        verify(registry, times(1)).replaceAllDurably(anyCollection());
+        verify(registry, times(1)).replaceAllAfterRestore(anyCollection(), anyCollection());
         verify(resolver, never()).resolveAndProvision(any(), any());
         verify(resolver, never()).resolve(any(), any());
         verify(provider, never()).provision(any());
@@ -132,7 +132,9 @@ class FunctionCatalogRestorerTest {
         new FunctionCatalogRestorer(registry, resolver, List.of(listener))
                 .run(new DefaultApplicationArguments());
 
-        assertThat(registry.listRegistered()).extracting(RegisteredFunction::name).containsExactly("echo");
+        assertThat(registry.listRegistered()).isEmpty();
+        assertThat(registry.listRegisteredForRecovery()).extracting(RegisteredFunction::name)
+                .containsExactly("echo");
         assertThat(registry.applicationState().isUnavailable("echo")).isTrue();
         verify(listener, never()).onRegister(any());
     }
@@ -150,7 +152,9 @@ class FunctionCatalogRestorerTest {
         new FunctionCatalogRestorer(registry, resolver, List.of(listener))
                 .run(new DefaultApplicationArguments());
 
-        assertThat(registry.listRegistered()).extracting(RegisteredFunction::name).containsExactly("echo");
+        assertThat(registry.listRegistered()).isEmpty();
+        assertThat(registry.listRegisteredForRecovery()).extracting(RegisteredFunction::name)
+                .containsExactly("echo");
         assertThat(registry.applicationState().isUnavailable("echo")).isTrue();
         verify(listener, never()).onRegister(any());
     }
@@ -185,7 +189,8 @@ class FunctionCatalogRestorerTest {
         new FunctionCatalogRestorer(registry, resolver, List.of(listener))
                 .run(new DefaultApplicationArguments());
 
-        RegisteredFunction kept = registry.listRegistered().iterator().next();
+        assertThat(registry.listRegistered()).isEmpty();
+        RegisteredFunction kept = registry.listRegisteredForRecovery().iterator().next();
         assertThat(kept.name()).isEqualTo("echo");
         assertThat(kept.deploymentMetadata().deploymentBackend()).isEqualTo("container-local");
         assertThat(registry.applicationState().isUnavailable("echo")).isTrue();
@@ -206,7 +211,8 @@ class FunctionCatalogRestorerTest {
         new FunctionCatalogRestorer(registry, resolver, List.of(listener))
                 .run(new DefaultApplicationArguments());
 
-        RegisteredFunction kept = registry.listRegistered().iterator().next();
+        assertThat(registry.listRegistered()).isEmpty();
+        RegisteredFunction kept = registry.listRegisteredForRecovery().iterator().next();
         assertThat(kept.name()).isEqualTo("echo");
         assertThat(kept.deploymentMetadata().effectiveExecutionMode()).isEqualTo(ExecutionMode.DEPLOYMENT);
         assertThat(registry.applicationState().isUnavailable("echo")).isTrue();

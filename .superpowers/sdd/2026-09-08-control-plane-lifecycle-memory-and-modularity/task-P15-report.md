@@ -225,3 +225,102 @@ pre-existing registry persistence flow. The exact staged diff passes `git diff -
 - `platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionServiceTest.java`
 
 The report remains included in the fix-round commit from the ignored task scratch directory.
+
+## Fix round 2 — atomic publication and removal marker retention
+
+Base: `9f165ed1b588e0949703dd51eb45573877f5fa77`; the external MIT commit
+`779e14807ed9033117b9afc9aeee616759aa637f` remains an unchanged ancestor.
+
+Both open Important findings and the deterministic race-test Minor are addressed (3/3):
+
+1. Removal start no longer clears pending PATCH or scale application markers. Provider
+   deprovision failure restores the live record with those markers intact, so an identical
+   PATCH/scale retry reapplies its side effects without another catalog write. All markers
+   are pruned only when catalog deletion is durably published.
+2. `FunctionRegistry` now owns one volatile immutable snapshot containing separate recovery
+   and public maps. Every public/service/invocation lookup and list reads only the public
+   map; raw records are package-private to startup recovery. Managed deployments loaded
+   from disk begin recovery-only, while LOCAL and EXTERNAL records remain public. Failed
+   rollback restores only the recovery map and successful restore publishes availability
+   atomically with the recovered catalog snapshot.
+3. The removal/scale race test now observes the scale call at the shared lock boundary
+   before allowing deprovision to finish. This deterministically traverses the old pre-lock
+   window and proves scale returns conflict without invoking the provider.
+
+Cleanup ownership is exact: `FunctionApplicationState` owns every volatile marker and
+prunes all marker kinds when durable deletion publishes or startup recovery resets state.
+`FunctionService` completes PATCH markers after provider/listener success.
+`ManagedDeploymentCoordinator` completes scale markers after provider success and its
+`close()` clears scale markers only; it does not own PATCH or unavailable-marker shutdown.
+Registry replacement/reload discards the whole old volatile state because a new registry
+instance owns a new table. No marker is serialized.
+
+### Round-2 RED/GREEN evidence
+
+- Deterministic RED produced four new failures: failed PATCH -> failed DELETE -> identical
+  PATCH and failed scale -> failed DELETE -> identical scale each attempted the side effect
+  only once; a rollback/read interleaving observed an unavailable record; and a precreated
+  startup reader observed a managed record before reconcile. The strengthened lock-boundary
+  race already passed the corrected lock placement and would time out on the old pre-lock
+  return path.
+- GREEN performs two provider attempts for each fail/delete/retry sequence while retaining
+  exactly two catalog writes (registration plus PATCH/desired-replica persistence). A
+  following identical call is a complete no-op. Durable deletion returns marker counts to
+  zero.
+- Latch-driven rollback/read and startup tests prove unavailable/recovery records never
+  enter any public registry or service view. Failed reconcile retains the raw durable record
+  and replays no listener; the existing restorer remains the sole restart recovery path.
+- The 1,000-function retention diagnostic remains bounded at 1,000 entries/2,000 markers,
+  allocated 200,480 bytes, and returned to zero on cleanup.
+
+### Round-2 measurement rerun
+
+The setup now explicitly completes startup publication before measuring managed desired
+replicas. This is a functional correction, not the deferred multi-sample benchmark-stability
+work. Each row is still one warmed diagnostic sample.
+
+| operation | catalog size | allocation B | serialized B | duration ns | writes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| register | 1 | 18,328 | 1,057 | 1,599,866 | 1 |
+| update | 1 | 12,376 | 541 | 1,390,907 | 1 |
+| remove | 1 | 53,488 | 34 | 1,487,370 | 1 |
+| desired-replicas | 1 | 16,736 | 582 | 1,252,123 | 1 |
+| register | 100 | 1,103,912 | 51,439 | 4,963,631 | 1 |
+| update | 100 | 1,099,704 | 50,923 | 4,612,656 | 1 |
+| remove | 100 | 1,097,008 | 50,415 | 4,023,602 | 1 |
+| desired-replicas | 100 | 290,664 | 55,203 | 2,749,174 | 1 |
+| register | 1,000 | 2,256,016 | 510,439 | 8,415,955 | 1 |
+| update | 1,000 | 2,077,432 | 509,923 | 6,487,897 | 1 |
+| remove | 1,000 | 1,892,080 | 509,415 | 6,159,435 | 1 |
+| desired-replicas | 1,000 | 2,011,392 | 554,703 | 4,336,769 | 1 |
+
+The maximum duration is 8.416 ms, maximum allocation is 2,256,016 B, and maximum
+serialized snapshot is 554,703 B. Every measured mutation writes once. Snapshots remain
+adequate, the replacement hypothesis stays closed, and no journal was introduced.
+
+### Round-2 verification
+
+- Pending/recovery GREEN: 12 tests, zero failures/errors.
+- Registry/restorer/service/coordinator slice: 103 tests, GREEN.
+- HTTP/invocation focused checks: GREEN, 78 actionable tasks.
+- Autoscaler and concurrency-control integration plus bootJar: GREEN, 43 actionable tasks.
+- Native-profile AOT generation and Java compilation: GREEN, 37 actionable tasks; final
+  native linking intentionally excluded.
+- Complete repository suite from scratch: GREEN in 3 min 19 s, 190/190 actionable tasks.
+
+### Round-2 GitNexus finalization
+
+GitNexus 1.6.11 refreshed to 19,578 nodes, 56,344 edges, 872 clusters and 765
+flows. Its independent process discovery again reported incomplete flow coverage (1,539
+candidate entry points and 1,773 callees omitted; 47 walks cut), so flow counts remain lower
+bounds compensated by exact text searches and executable tests.
+
+The complete all-scope gate reported 13 files, 65 symbols, 13 affected flows and HIGH risk;
+the two additional files are the preserved dirty overload experiment files. The complete
+staged gate reported exactly 11 P15 round-2 files, 64 symbols, 13 affected flows and HIGH
+risk. The affected flows are the audited registry publication, put-if-absent and removal
+rollback/recovery paths. Neither detect-changes result reported partial or truncated output,
+and `git diff --cached --check` passed.
+
+The sole open review item is the requested single-sample benchmark-stability Minor (1 open,
+3 addressed). It remains deferred exactly as requested.

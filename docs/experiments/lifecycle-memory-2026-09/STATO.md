@@ -2548,8 +2548,11 @@ registry-owned volatile application-state table distinguishes durable desired st
 provider/listener application completion. It is structurally bounded to retained function
 names, with at most one PATCH, scale and unavailable marker per name; provider resource
 diagnostics are capped at 64 bounded strings. Identical PATCH/scale retries now reapply the
-provider/listeners after failure without another catalog save, and markers clear after
-success, durable removal, coordinator shutdown or startup restore. They are never serialized.
+provider/listeners after failure without another catalog save. PATCH markers clear after
+provider/listener success; scale markers clear after provider success and are the only
+application markers cleared by coordinator shutdown. Durable removal clears all marker
+kinds, while a new registry/startup lifecycle gets fresh volatile state. They are never
+serialized.
 
 If deprovision succeeds but catalog deletion and rollback reconcile both fail, the durable
 record remains an internal recovery handle. The function is excluded from get/list and
@@ -2608,3 +2611,36 @@ P14 files/13 symbols; both reported the eight audited scheduler flows at HIGH
 risk, with no partial/truncated marker. Staged diff validation passed.
 
 Next: P15.
+
+## P15 fix round 2 — atomic registry publication
+
+Both remaining Important findings and the deterministic race-test Minor are closed (3/3).
+Removal start now preserves pending PATCH/scale markers across every failed or aborted delete;
+only durably published catalog deletion removes all application state. Deterministic
+failed-PATCH/failed-DELETE/retry and failed-scale/failed-DELETE/retry tests prove the
+identical retry performs its provider side effect, adds no snapshot write, and then becomes
+a true no-op after success.
+
+`FunctionRegistry` now publishes one immutable volatile pair of recovery/public maps.
+Public/service/invocation get/list paths can only read the public map. Managed deployments
+loaded from disk begin recovery-only before readers and services exist; LOCAL and EXTERNAL
+records remain public. The restorer consumes an explicit package-private recovery view and
+atomically publishes only successful reconciles. Failed rollback atomically retains a raw
+durable recovery record without listener replay or public visibility. Latch tests cover a
+reader already inside lookup during rollback and precreated readers while startup reconcile
+is blocked.
+
+Marker ownership is explicit: `FunctionApplicationState` owns all volatile marker kinds;
+`FunctionService` completes PATCH, `ManagedDeploymentCoordinator` completes scale and its
+`close()` clears only scale markers, durable registry deletion prunes every marker, and a
+new registry/startup lifecycle gets a fresh table. Markers remain bounded by durable names
+and are never persisted. The 1,000-name/2,000-marker diagnostic remains 200,480 allocated
+bytes and returns to zero.
+
+The final diagnostic snapshot matrix remains one write per operation. The round-2 rerun
+maxima are 8,415,955 ns, 2,256,016 allocated bytes and 554,703 serialized bytes at sizes
+1/100/1,000. Snapshots remain adequate and the replacement hypothesis stays closed; no
+journal was introduced. Focused pending tests (12), the 103-test registry slice, HTTP,
+autoscaler/concurrency integration, bootJar, native-profile AOT Java compilation and the
+complete repository suite (190/190 actionable tasks in 3 min 19 s) are GREEN. Only the
+single-sample benchmark-stability Minor remains deferred. Next: P16.
