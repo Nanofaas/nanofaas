@@ -102,7 +102,7 @@ public final class InvocationCapacity {
             FunctionGeneration generation, ResourceOwner owner, long bytes) {
         return physicalInputCopies.tryReserve(generation, owner, bytes)
                 .orElseThrow(() -> new InvocationQuotaExceededException(
-                        InvocationQuotaExceededException.Resource.INPUT));
+                        InvocationQuotaExceededException.Resource.INPUT_COPY));
     }
 
     public long executionReservedGlobally() {

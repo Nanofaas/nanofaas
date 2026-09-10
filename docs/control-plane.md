@@ -251,11 +251,19 @@ per-execution retained limit must fit both per-function byte budgets, and the in
 fit WebFlux's integer codec limit. Invalid or overflowing configuration aborts startup.
 
 For invocation HTTP requests the ordering is: ingress/body boundary (413), JSON and request
-validation, idempotency lookup, waiter admission for synchronous new or replayed results,
-new-execution/key/execution/input admission, then queue/store publication. A replay therefore
-cannot bypass body validation or waiter capacity, but it does reuse the existing execution and
-canonical input. A 413 is not overload. Saturated live-owner, key, rate or queue capacity returns
-the existing 429 overload contract; retryable overload includes `Retry-After`.
+validation, function/rate checks, then idempotency lookup. A genuinely new request claims its key
+when present,
+canonicalizes the input, reserves execution and canonical-input ownership, and publishes the live
+record before a synchronous waiter is admitted. If waiter admission fails, that newly published
+record, key claim and both owners are rolled back before the 429 response. A replay does not create
+or publish any of those owners; it only reserves its own transient waiter before attaching to the
+existing live or archived result. Async admission has no waiter and publishes to its queue only
+after the new execution/input owners exist. Thus replay cannot bypass body validation or waiter
+capacity, but it does reuse the existing execution and canonical input. A 413 is not overload.
+Saturated execution, canonical-input, physical-input-copy or waiter capacity returns 429 with
+`Retry-After: 1` and the stable body
+`{"error":"invocation_quota_exceeded","resource":"execution|input|input_copy|waiter"}`. Other
+key, rate or queue saturation retains its existing 429 contract.
 
 When the optional runtime-config module is enabled, its `control-plane` namespace can change the
 four global/per-function quota pairs. Lowering a cap below current occupancy does not evict,

@@ -4,6 +4,7 @@ import it.unimib.datai.nanofaas.common.model.ExecutionStatus;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResponse;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
+import it.unimib.datai.nanofaas.controlplane.capacity.InvocationQuotaExceededException;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionNotFoundException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
@@ -17,6 +18,8 @@ import it.unimib.datai.nanofaas.controlplane.service.RateLimiter;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
@@ -30,6 +33,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -226,6 +230,36 @@ class InvocationControllerTest {
                 .expectStatus().isEqualTo(429);
     }
 
+    @ParameterizedTest
+    @CsvSource({
+            "EXECUTION,execution",
+            "INPUT,input",
+            "INPUT_COPY,input_copy",
+            "WAITER,waiter"
+    })
+    void invokeSync_quotaRefusalPrecedesGenericQueueMapping(
+            InvocationQuotaExceededException.Resource resource, String wireResource) {
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
+                .thenReturn(Mono.error(new InvocationQuotaExceededException(resource)));
+
+        webClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(new InvocationRequest("payload", Map.of()))
+                .exchange()
+                .expectStatus().isEqualTo(429)
+                .expectHeader().valueEquals("Retry-After", "1")
+                .expectBody()
+                .jsonPath("$.error").isEqualTo("invocation_quota_exceeded")
+                .jsonPath("$.resource").isEqualTo(wireResource);
+    }
+
+    @Test
+    void physicalInputCopyHasADistinctQuotaResource() {
+        assertThatCode(() -> InvocationQuotaExceededException.Resource.valueOf("INPUT_COPY"))
+                .doesNotThrowAnyException();
+    }
+
     @Test
     void invokeSync_functionDecidedStatusCode_usedAsRealHttpStatus() {
         InvocationRequest request = new InvocationRequest("payload", Map.of());
@@ -402,6 +436,30 @@ class InvocationControllerTest {
         verify(invocationService).invokeAsync(eq("echo"), captor.capture(), eq("idem-1"), eq("trace-1"));
         assertThat(captor.getValue().input()).isEqualTo("payload");
         assertThat(captor.getValue().metadata()).isEqualTo(Map.of("x", "y"));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "EXECUTION,execution",
+            "INPUT,input",
+            "INPUT_COPY,input_copy",
+            "WAITER,waiter"
+    })
+    void invokeAsync_quotaRefusalPrecedesGenericQueueMapping(
+            InvocationQuotaExceededException.Resource resource, String wireResource) {
+        when(invocationService.invokeAsync(eq("echo"), any(), eq(null), eq(null)))
+                .thenThrow(new InvocationQuotaExceededException(resource));
+
+        webClient.post()
+                .uri("/v1/functions/echo:enqueue")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(new InvocationRequest("payload", Map.of()))
+                .exchange()
+                .expectStatus().isEqualTo(429)
+                .expectHeader().valueEquals("Retry-After", "1")
+                .expectBody()
+                .jsonPath("$.error").isEqualTo("invocation_quota_exceeded")
+                .jsonPath("$.resource").isEqualTo(wireResource);
     }
 
     @Test

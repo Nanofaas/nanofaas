@@ -20,7 +20,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Reproducible local P07 T1/T2 calibration; not a pass/fail microbenchmark. */
+/**
+ * Historical factory/store microbenchmark retained to disclose the original P00/P07e regression.
+ * It bypasses the configured application, HTTP codecs/controllers and queue modules, so its T1/T2
+ * numbers are explicitly non-comparable with the configured HTTP profile acceptance evidence.
+ */
 public final class P07Calibration {
     private static final int WARMUP_OPERATIONS = 20_000;
     private static final Duration T1_DURATION = Duration.ofSeconds(2);

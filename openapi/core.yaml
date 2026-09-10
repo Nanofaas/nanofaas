@@ -236,8 +236,19 @@ paths:
             Too many requests. Returned for rate limiting, waiter or new-execution
             admission backpressure, queue backpressure, and an exhausted idempotency-key
             budget. Retry-After is present for retryable overload. Body validation runs
-            before replay; after validation an existing-key lookup precedes waiter
-            admission, while only a genuinely new execution consumes execution/input quota.
+            before replay. A new execution reserves and publishes execution/input ownership
+            before waiter admission; waiter refusal rolls it back. Replay skips those new
+            owners and reserves only its waiter. Invocation quota failures return Retry-After
+            1 and the stable InvocationQuotaError body; other 429 responses may have no body.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before retrying, when the overload is retryable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvocationQuotaError'
         '500':
           description: Invocation failed
 
@@ -283,8 +294,19 @@ paths:
         '429':
           description: |
             Too many requests. Returned for queue/new-execution admission backpressure
-            and an exhausted idempotency-key budget. Body validation precedes replay;
-            replay precedes new-execution admission and publication.
+            and an exhausted idempotency-key budget. Body validation and idempotency lookup
+            precede new-execution reservation/publication. Invocation quota failures return
+            Retry-After 1 and the stable InvocationQuotaError body; other 429 responses may
+            have no body.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before retrying, when the overload is retryable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvocationQuotaError'
         '501':
           description: The async-queue module is not part of this build, so the asynchronous path is unavailable.
 
@@ -807,3 +829,13 @@ components:
           type: string
         message:
           type: string
+    InvocationQuotaError:
+      type: object
+      required: [error, resource]
+      properties:
+        error:
+          type: string
+          enum: [invocation_quota_exceeded]
+        resource:
+          type: string
+          enum: [execution, input, input_copy, waiter]

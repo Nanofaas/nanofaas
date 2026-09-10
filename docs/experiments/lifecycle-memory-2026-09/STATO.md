@@ -2034,3 +2034,50 @@ and the named codec helper were LOW. Spring-created configuration/filter/runtime
 were UNKNOWN or absent from the three-commit-stale index; exhaustive text searches identified the
 Spring bean wiring, service/module consumers and tests before edits. UNKNOWN was not treated as a
 clean result. No P11+ policy, soak, container or Kubernetes E2E work is claimed here.
+
+## P07e — Fix Round 1: configured HTTP evidence and quota wire contract
+
+The acceptance evidence now comes from `P07ConfiguredHttpCalibrationTest`, which boots the real
+Spring application twice and sends invocation traffic through Reactor Netty, WebFlux codecs, the
+controller, invocation services and capacity owners. T1 uses the core-only `none` profile and T2
+uses the published `async-queue` profile, including the real scheduler and bounded per-function
+queue. Only the downstream LOCAL function boundary is controlled so retained populations can be
+sampled before a deterministic drain. The earlier `P07Calibration.java` factory/store
+microbenchmark remains solely to disclose the original P00/P07e regression. Because it bypasses
+the configured application, HTTP stack and queue modules, its figures are explicitly
+non-comparable with this acceptance run; the unfavorable historical regression remains open for
+P19 and is not replaced with invented comparative evidence.
+
+Both runs used Java 25.0.4 on Linux aarch64 and the published P07 capacity defaults. Allocation is
+the increase in allocated bytes reported by `ThreadMXBean` for JVM threads alive at each sample;
+it is a whole-process observational delta, not retained heap and not a cross-run benchmark.
+Latency is HTTP round-trip latency measured at the test client. No performance threshold is
+asserted.
+
+| Corpus / shape | Offered / admitted | Quota refusals | p50 / p95 HTTP | Observed allocation | Retained peak / drain |
+|---|---:|---:|---:|---:|---|
+| T1 SYNC unkeyed, `none` | 1,000 / 1,000 | 0 | 2,910.829 / 5,671.130 us | 152,534,936 B | exec/live/waiter 1; all live owners 0 after drain |
+| T2 flat, `async-queue` | 100 / 100 | 0 | 5,736.499 / 10,367.001 us | 130,940,880 B | exec/live 100; input 22,000 B; all live owners 0 after drain |
+| T2 deep, `async-queue` | 100 / 100 | 0 | 3,274.377 / 5,331.524 us | 15,932,576 B | exec/live 100; input 216,800 B; all live owners 0 after drain |
+| T2 wide, `async-queue` | 100 / 100 | 0 | 5,451.044 / 9,148.283 us | 41,515,856 B | exec/live 100; input 13,117,000 B; all live owners 0 after drain |
+| T2 large, `async-queue` | 100 / 63 | 37 input | 7,480.639 / 10,987.111 us | 305,548,800 B | input 33,032,664 B at the 32 MiB/function boundary; all live owners 0 after drain |
+
+Every T2 replay of key 0 after drain returned either the retained terminal result or 410 after
+outcome loss. Dispatch count remained unchanged in all four cases, proving that outcome eviction
+or retention refusal preserves the key tombstone and never re-executes the function.
+
+The documented admission sequence now matches runtime behavior. For new synchronous work the
+factory claims the key, canonicalizes input, reserves execution/canonical bytes and publishes the
+live record before waiter admission. A waiter refusal calls `abandonAdmission`, removing the new
+record and rolling back key, execution and input ownership. Replay skips those new owners and
+reserves only its transient waiter. Characterization tests independently cover both sequences.
+
+Invocation quota overload is mapped before its `QueueFullException` superclass for both sync and
+async endpoints. The stable 429 response carries `Retry-After: 1` and
+`{"error":"invocation_quota_exceeded","resource":"execution|input|input_copy|waiter"}`.
+Controller tests cover all four resources on both endpoints; real HTTP saturation covers sync and
+async execution, aggregate canonical input, and pending-replay waiter refusal. The focused gate
+and both profile calibrations are green. The corrected integrated core + async-queue + sync-queue
+and runtime-config gate is green in 36 seconds (89 actionable tasks: 13 executed, 76 up-to-date).
+The single fix-round full repository run, `./gradlew test --console=plain --offline`, is also green
+in 2 minutes 9 seconds (190 actionable tasks: 23 executed, 167 up-to-date).

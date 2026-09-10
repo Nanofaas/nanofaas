@@ -4,6 +4,7 @@ import it.unimib.datai.nanofaas.common.model.ExecutionStatus;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResponse;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
+import it.unimib.datai.nanofaas.controlplane.capacity.InvocationQuotaExceededException;
 import it.unimib.datai.nanofaas.common.runtime.ResponseHeaderPolicy;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadContext;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
@@ -115,7 +116,7 @@ public class InvocationController {
     }
 
     @PostMapping("/functions/{name}:invoke")
-    public Mono<ResponseEntity<InvocationResponse>> invokeSync(
+    public Mono<ResponseEntity<Object>> invokeSync(
             @PathVariable @NotBlank(message = "Function name is required") String name,
             @RequestBody @Valid InvocationRequest request,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
@@ -131,9 +132,11 @@ public class InvocationController {
         return Mono.defer(() -> invocationService.invokeSyncReactive(name, requestWithHeaders, idempotencyKey, traceId, timeoutMs, offloadContext))
                 .map(InvocationController::toResponse)
                 .onErrorResume(FunctionNotFoundException.class, ex ->
-                        Mono.just(ResponseEntity.notFound().<InvocationResponse>build()))
+                        Mono.just(ResponseEntity.notFound().<Object>build()))
                 .onErrorResume(SyncQueueRejectedException.class, ex ->
                         Mono.just(tooManyRequests(ex)))
+                .onErrorResume(InvocationQuotaExceededException.class, ex ->
+                        Mono.just(invocationQuotaExceeded(ex)))
                 .onErrorResume(QueueFullException.class, ex ->
                         Mono.just(tooManyRequests()))
                 .onErrorResume(OffloadFailedException.class, ex ->
@@ -144,7 +147,7 @@ public class InvocationController {
                         Mono.just(tooManyRequests()));
     }
 
-    private static ResponseEntity<InvocationResponse> toResponse(SyncInvocation invocation) {
+    private static ResponseEntity<Object> toResponse(SyncInvocation invocation) {
         InvocationResponse response = invocation.response();
         Integer statusCode = response.statusCode();
         // ponytail: statusCode is already validated upstream (ExternalDispatcher via
@@ -185,7 +188,7 @@ public class InvocationController {
     }
 
     @PostMapping("/functions/{name}:enqueue")
-    public Mono<ResponseEntity<InvocationResponse>> invokeAsync(
+    public Mono<ResponseEntity<Object>> invokeAsync(
             @PathVariable @NotBlank(message = "Function name is required") String name,
             @RequestBody @Valid InvocationRequest request,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
@@ -194,11 +197,13 @@ public class InvocationController {
         InvocationRequest requestWithHeaders = withCallerHeaders(request, allHeaders);
         return Mono.fromCallable(() -> invocationService.invokeAsync(name, requestWithHeaders, idempotencyKey, traceId))
                 .subscribeOn(Schedulers.boundedElastic())
-                .map(response -> ResponseEntity.status(HttpStatus.ACCEPTED).body(response))
+                .map(response -> ResponseEntity.status(HttpStatus.ACCEPTED).<Object>body(response))
                 .onErrorResume(FunctionNotFoundException.class, ex ->
-                        Mono.just(ResponseEntity.notFound().<InvocationResponse>build()))
+                        Mono.just(ResponseEntity.notFound().<Object>build()))
                 .onErrorResume(AsyncQueueUnavailableException.class, ex ->
-                        Mono.just(ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).<InvocationResponse>build()))
+                        Mono.just(ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).<Object>build()))
+                .onErrorResume(InvocationQuotaExceededException.class, ex ->
+                        Mono.just(invocationQuotaExceeded(ex)))
                 .onErrorResume(QueueFullException.class, ex ->
                         Mono.just(tooManyRequests()))
                 .onErrorResume(OutcomeGoneException.class, ex ->
@@ -241,11 +246,24 @@ public class InvocationController {
         }
     }
 
-    private static ResponseEntity<InvocationResponse> tooManyRequests() {
+    private static ResponseEntity<Object> tooManyRequests() {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
     }
 
-    private static ResponseEntity<InvocationResponse> tooManyRequests(SyncQueueRejectedException ex) {
+    private static ResponseEntity<Object> invocationQuotaExceeded(
+            InvocationQuotaExceededException ex) {
+        String resource = switch (ex.resource()) {
+            case EXECUTION -> "execution";
+            case INPUT -> "input";
+            case INPUT_COPY -> "input_copy";
+            case WAITER -> "waiter";
+        };
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", "1")
+                .body(new InvocationQuotaError("invocation_quota_exceeded", resource));
+    }
+
+    private static ResponseEntity<Object> tooManyRequests(SyncQueueRejectedException ex) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .header("Retry-After", String.valueOf(ex.retryAfterSeconds()))
                 // Locale.ROOT, not the default locale: TIMEOUT contains 'I', which folds to
@@ -254,18 +272,21 @@ public class InvocationController {
                 .build();
     }
 
-    private static ResponseEntity<InvocationResponse> outcomeGone(OutcomeGoneException ex) {
+    private static ResponseEntity<Object> outcomeGone(OutcomeGoneException ex) {
         return ResponseEntity.status(HttpStatus.GONE)
                 .header("X-Execution-Id", ex.executionId())
                 .build();
     }
 
-    private static ResponseEntity<InvocationResponse> offloadFailed(OffloadFailedException ex) {
+    private static ResponseEntity<Object> offloadFailed(OffloadFailedException ex) {
         HttpStatus status = ex.gatewayTimeout() ? HttpStatus.GATEWAY_TIMEOUT : HttpStatus.BAD_GATEWAY;
         ResponseEntity.BodyBuilder builder = ResponseEntity.status(status);
         if (ex.targetUrl() != null) {
             builder.header("X-NanoFaaS-Offloaded", ex.targetUrl());
         }
         return builder.build();
+    }
+
+    private record InvocationQuotaError(String error, String resource) {
     }
 }

@@ -167,7 +167,7 @@ class P07cReviewFixTest {
                 lookup, spec, 10_000, OffloadContext.none()).block())
                 .isInstanceOf(InvocationQuotaExceededException.class)
                 .extracting("resource")
-                .isEqualTo(InvocationQuotaExceededException.Resource.INPUT);
+                .isEqualTo(InvocationQuotaExceededException.Resource.INPUT_COPY);
         assertThat(fixture.store.getOrNull(lookup.executionRecord().executionId())).isNull();
         assertThat(fixture.capacity.executionReservedGlobally()).isZero();
         assertThat(fixture.capacity.inputReservedGlobally()).isZero();

@@ -22,6 +22,9 @@ x-nanofaas-overlays:
               schema:
                 $ref: '#/components/schemas/EnqueueResponse'
         '429':
-          description: Too many requests. Returned for rate limiting or async queue saturation.
+          description: >-
+            Too many requests. Returned for rate limiting, invocation quota admission or async
+            queue saturation. Invocation quota failures use the core InvocationQuotaError body
+            and Retry-After 1; other overload responses may have no body.
         '500':
           description: Enqueue failed

@@ -97,6 +97,39 @@ class P07dWaiterAdmissionTest {
     }
 
     @Test
+    void newExecutionIsPublishedBeforeWaiterAdmissionAndRolledBackWhenTheWaiterIsRefused() {
+        CompletableFuture<DispatchResult> backend = new CompletableFuture<>();
+        Harness h = directHarness(1, 1, ignored -> backend);
+        CompletableFuture<SyncInvocation> occupying =
+                h.coordinator.invoke(h.lookup("other", "occupying-key"), spec("other"), 10_000).toFuture();
+        long occupyingInputBytes = h.invocations.inputReservedGlobally();
+
+        var newLookup = h.lookup("fn", "new-key");
+        String newExecutionId = newLookup.executionRecord().executionId();
+        assertThat(h.store.getOrNull(newExecutionId)).isSameAs(newLookup.executionRecord());
+        assertThat(h.store.inFlightCount()).isEqualTo(2);
+        assertThat(h.invocations.executionReservedGlobally()).isEqualTo(2);
+        assertThat(h.invocations.inputReservedGlobally()).isGreaterThan(occupyingInputBytes);
+
+        assertThatThrownBy(() -> h.coordinator.invoke(newLookup, spec("fn"), 10_000))
+                .isInstanceOfSatisfying(InvocationQuotaExceededException.class,
+                        failure -> assertThat(failure.resource())
+                                .isEqualTo(InvocationQuotaExceededException.Resource.WAITER));
+
+        assertThat(h.store.getOrNull(newExecutionId)).isNull();
+        assertThat(h.store.inFlightCount()).isOne();
+        assertThat(h.invocations.executionReservedGlobally()).isOne();
+        assertThat(h.invocations.inputReservedGlobally()).isEqualTo(occupyingInputBytes);
+        assertThat(h.waiters.reservedGlobally()).isOne();
+
+        occupying.cancel(true);
+        backend.complete(DispatchResult.warm(InvocationResult.success("drained")));
+        assertThat(h.waiters.reservedGlobally()).isZero();
+        assertThat(h.invocations.executionReservedGlobally()).isZero();
+        assertThat(h.invocations.inputReservedGlobally()).isZero();
+    }
+
+    @Test
     void divergentDeadlinesDetachOnlyTheShortWaiter() throws Exception {
         CompletableFuture<DispatchResult> backend = new CompletableFuture<>();
         Harness h = directHarness(2, 2, ignored -> backend);
