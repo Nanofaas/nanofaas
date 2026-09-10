@@ -2411,3 +2411,21 @@ GitNexus fix-round detection used the uncapped direct backend. All-scope returne
 symbols and 3/3 affected processes across five files (the three P13 files plus two unrelated
 overload files); staged scope returned 7/7 and 3/3 across exactly three P13 files. Both were medium
 risk with `partial=false`, `truncated=false`, and no error. `git diff --cached --check` was clean.
+
+## P13 fix round 2 — request-graph lifetime and strict deadline ordering
+
+OpenJDK 25.0.4 inspection establishes two simultaneous request-byte owners, not three:
+`ByteArrayPublisher.content` aliases the proxy array, while subscription creates body-length
+`ByteBuffer.allocate` storage; `HttpResponseImpl.initialRequest` retains the request/publisher
+graph. The proxy now holds both byte leases through response buffering and caller writing, until a
+helper return makes that graph releasable. A post-header latch-blocked writer observes 16 + 16 + 1
+= 33 leased bytes and final zero.
+
+The controlled deadline factory now throws immediately if the third (response-write) deadline is
+created before the backend deadline is closed. An uncommitted ordering mutation that omitted the
+backend deadline close failed with `response deadline created before backend deadline closed`; the
+restored implementation and both new focused regressions are GREEN. The focused P13 suite and full
+provider test task are GREEN, as are bootJar and native-profile AOT generation/Java compilation.
+The earlier full-suite evidence remains the broad gate because this round is confined to one
+provider proxy and its package-private test seams; no shared lifecycle or provider contract changed.
+The original TDD chronology and round-1 mutation evidence remain unchanged.

@@ -325,27 +325,35 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
             URI target = URI.create(backend + exchange.getRequestURI().getPath()
                     + (exchange.getRequestURI().getRawQuery() == null
                     ? "" : "?" + exchange.getRequestURI().getRawQuery()));
+            // OpenJDK 25's ByteArrayPublisher aliases requestBody.bytes(), then subscribe() copies
+            // the body into allocated ByteBuffers. HttpResponse retains its initial HttpRequest.
+            // Keep both physical-byte leases until the helper's whole request/response graph can
+            // become unreachable; publisher content is the request array, not a third byte owner.
             try (BufferReservation publisherCopy = bufferBudget.reserve(requestBody.length())) {
-                HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(target)
-                        .timeout(singleHopTimeout.get())
-                        .method(exchange.getRequestMethod(), HttpRequest.BodyPublishers.ofByteArray(
-                                requestBody.bytes(), 0, requestBody.length()));
-                copyRequestHeaders(exchange, requestBuilder);
-
-                BackendResponse backendResponse = readBackendResponse(
-                        requestBuilder.build(), requestBody, publisherCopy);
-                try (BufferedBody responseBody = backendResponse.body()) {
-                    writeBackendResponse(exchange, backendResponse.response(), responseBody);
-                }
+                forwardRetainingRequestGraph(exchange, target, requestBody);
             }
         } finally {
             requestBody.close();
         }
     }
 
-    private BackendResponse readBackendResponse(HttpRequest request,
-                                                BufferedBody requestBody,
-                                                BufferReservation publisherCopy)
+    private void forwardRetainingRequestGraph(HttpExchange exchange,
+                                              URI target,
+                                              BufferedBody requestBody)
+            throws IOException, InterruptedException {
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(target)
+                .timeout(singleHopTimeout.get())
+                .method(exchange.getRequestMethod(), HttpRequest.BodyPublishers.ofByteArray(
+                        requestBody.bytes(), 0, requestBody.length()));
+        copyRequestHeaders(exchange, requestBuilder);
+
+        BackendResponse backendResponse = readBackendResponse(requestBuilder.build());
+        try (BufferedBody responseBody = backendResponse.body()) {
+            writeBackendResponse(exchange, backendResponse.response(), responseBody);
+        }
+    }
+
+    private BackendResponse readBackendResponse(HttpRequest request)
             throws IOException, InterruptedException {
         AtomicReference<InputStream> responseStream = new AtomicReference<>();
         BufferedBody responseBody = null;
@@ -354,8 +362,6 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
                 HttpResponse<InputStream> response =
                         httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
                 responseStream.set(response.body());
-                publisherCopy.close();
-                requestBody.close();
                 responseBody = BufferedBody.read(
                         response.body(), proxyProperties.maxResponseBytes(), bufferBudget, true);
                 if (deadline.expired()) {

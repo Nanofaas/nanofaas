@@ -150,9 +150,9 @@ class P13BoundedProxyTest {
         HttpServer backend = backend(exchange -> {
             firstArrived.countDown();
             await(release);
-            respond(exchange, 200, "ok".getBytes(StandardCharsets.UTF_8));
+            respond(exchange, 200, "x".getBytes(StandardCharsets.UTF_8));
         });
-        proxy = proxy(limits(16, 16, 32));
+        proxy = proxy(limits(16, 1, 33));
         proxy.updateBackends(List.of(baseUrl(backend)));
         HttpClient client = HttpClient.newHttpClient();
 
@@ -163,7 +163,7 @@ class P13BoundedProxyTest {
 
         HttpResponse<String> rejected = post(new byte[1]);
         assertThat(rejected.statusCode()).isEqualTo(503);
-        assertThat(proxy.snapshot().bufferedBytes()).isLessThanOrEqualTo(32);
+        assertThat(proxy.snapshot().bufferedBytes()).isLessThanOrEqualTo(33);
 
         release.countDown();
         assertThat(admitted.get(AWAIT.toMillis(), TimeUnit.MILLISECONDS).statusCode()).isEqualTo(200);
@@ -171,10 +171,50 @@ class P13BoundedProxyTest {
     }
 
     @Test
+    void requestGraphOwnersRemainReservedWhileCallerResponseWriteIsBlocked() throws Exception {
+        byte[] responseBody = "r".getBytes(StandardCharsets.UTF_8);
+        HttpServer backend = backend(exchange -> respond(exchange, 200, responseBody));
+        CountDownLatch writeStarted = new CountDownLatch(1);
+        CountDownLatch releaseWrite = new CountDownLatch(1);
+        RoundRobinFunctionProxy.ResponseBodyWriter blockedWriter = (exchange, bytes, length) -> {
+            writeStarted.countDown();
+            try {
+                if (!releaseWrite.await(AWAIT.toMillis(), TimeUnit.MILLISECONDS)) {
+                    throw new IOException("controlled response writer release timed out");
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("controlled response writer interrupted", e);
+            }
+            try (OutputStream output = exchange.getResponseBody()) {
+                output.write(bytes, 0, length);
+            }
+        };
+        proxy = new RoundRobinFunctionProxy(
+                "127.0.0.1", 4, Duration.ofSeconds(30), HttpClient.newHttpClient(),
+                new ContainerProxyProperties(
+                        16, 1, 33, Duration.ofSeconds(2), Duration.ofSeconds(30)),
+                null, blockedWriter);
+        proxy.updateBackends(List.of(baseUrl(backend)));
+
+        CompletableFuture<HttpResponse<String>> call =
+                postAsync(HttpClient.newHttpClient(), new byte[16]);
+        assertThat(writeStarted.await(AWAIT.toMillis(), TimeUnit.MILLISECONDS)).isTrue();
+
+        assertThat(proxy.snapshot()).isEqualTo(new RoundRobinFunctionProxy.Snapshot(1, 33));
+
+        releaseWrite.countDown();
+        HttpResponse<String> response = call.get(AWAIT.toMillis(), TimeUnit.MILLISECONDS);
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).isEqualTo("r");
+        assertIdle();
+    }
+
+    @Test
     void aggregateBudgetSmallerThanGrowthChunkStillAcceptsARepresentableBody() throws Exception {
         HttpServer backend = backend(exchange -> respond(exchange, 204, new byte[0]));
         proxy = proxy(new ContainerProxyProperties(
-                3, 64, 6, Duration.ofSeconds(2), Duration.ofSeconds(2)));
+                3, 64, 7, Duration.ofSeconds(2), Duration.ofSeconds(2)));
         proxy.updateBackends(List.of(baseUrl(backend)));
 
         HttpResponse<String> response = post(new byte[3]);
@@ -237,7 +277,7 @@ class P13BoundedProxyTest {
         inbound.awaitClosed();
         ControlledDeadline backendPhase = deadlines.awaitStarted();
         assertThat(backendCompleted.await(AWAIT.toMillis(), TimeUnit.MILLISECONDS)).isTrue();
-        ControlledDeadline responseWrite = deadlines.awaitStarted();
+        ControlledDeadline responseWrite = deadlines.awaitResponseStarted();
 
         backendPhase.awaitClosed();
         assertThat(writeStarted.await(AWAIT.toMillis(), TimeUnit.MILLISECONDS)).isTrue();
@@ -292,16 +332,16 @@ class P13BoundedProxyTest {
     }
 
     @Test
-    void healthRemainsResponsiveWhileInvocationCountAndBufferBudgetAreSaturated() throws Exception {
+    void healthRemainsResponsiveWhileInvocationCountAndRequestOwnerBudgetAreSaturated() throws Exception {
         CountDownLatch backendArrived = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         HttpServer backend = backend(exchange -> {
             backendArrived.countDown();
             await(release);
-            respond(exchange, 200, "ok".getBytes(StandardCharsets.UTF_8));
+            respond(exchange, 200, "x".getBytes(StandardCharsets.UTF_8));
         });
         proxy = new RoundRobinFunctionProxy(
-                "127.0.0.1", 1, Duration.ofSeconds(5), HttpClient.newHttpClient(), limits(16, 16, 32));
+                "127.0.0.1", 1, Duration.ofSeconds(5), HttpClient.newHttpClient(), limits(16, 1, 33));
         proxy.updateBackends(List.of(baseUrl(backend)));
         HttpClient client = HttpClient.newHttpClient();
         CompletableFuture<HttpResponse<String>> invocation = postAsync(client, new byte[16]);
@@ -321,7 +361,7 @@ class P13BoundedProxyTest {
     @Test
     void successfulRoundTripReleasesRequestAndResponseBuffers() throws Exception {
         HttpServer backend = backend(exchange -> respond(exchange, 200, new byte[32]));
-        proxy = proxy(limits(64, 64, 128));
+        proxy = proxy(limits(64, 64, 160));
         proxy.updateBackends(List.of(baseUrl(backend)));
 
         assertThat(post(new byte[32]).statusCode()).isEqualTo(200);
@@ -496,11 +536,28 @@ class P13BoundedProxyTest {
 
     private static final class ControlledDeadlineFactory implements RoundRobinFunctionProxy.DeadlineFactory {
         private final BlockingQueue<ControlledDeadline> started = new LinkedBlockingQueue<>();
+        private final CompletableFuture<ControlledDeadline> responseStarted = new CompletableFuture<>();
+        private final AtomicInteger phase = new AtomicInteger();
+        private volatile ControlledDeadline backendDeadline;
 
         @Override
         public RoundRobinFunctionProxy.Deadline start(Duration duration, Runnable abort) {
             ControlledDeadline deadline = new ControlledDeadline(duration, abort, Thread.currentThread());
-            started.add(deadline);
+            int currentPhase = phase.getAndIncrement();
+            if (currentPhase == 1) {
+                backendDeadline = deadline;
+            }
+            if (currentPhase == 2) {
+                if (!backendDeadline.isClosed()) {
+                    AssertionError failure = new AssertionError(
+                            "response deadline created before backend deadline closed");
+                    responseStarted.completeExceptionally(failure);
+                    throw failure;
+                }
+                responseStarted.complete(deadline);
+            } else {
+                started.add(deadline);
+            }
             return deadline;
         }
 
@@ -508,6 +565,10 @@ class P13BoundedProxyTest {
             ControlledDeadline deadline = started.poll(AWAIT.toMillis(), TimeUnit.MILLISECONDS);
             assertThat(deadline).isNotNull();
             return deadline;
+        }
+
+        private ControlledDeadline awaitResponseStarted() throws Exception {
+            return responseStarted.get(AWAIT.toMillis(), TimeUnit.MILLISECONDS);
         }
     }
 
@@ -539,6 +600,10 @@ class P13BoundedProxyTest {
 
         private void awaitClosed() throws Exception {
             closed.get(AWAIT.toMillis(), TimeUnit.MILLISECONDS);
+        }
+
+        private boolean isClosed() {
+            return closed.isDone();
         }
 
         @Override
