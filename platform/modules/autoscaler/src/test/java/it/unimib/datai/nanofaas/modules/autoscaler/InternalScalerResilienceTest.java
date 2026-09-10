@@ -14,6 +14,7 @@ import it.unimib.datai.nanofaas.controlplane.registry.DeploymentMetadata;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -38,6 +39,7 @@ class InternalScalerResilienceTest {
     private ManagedDeploymentCoordinator deploymentCoordinator;
 
     private InternalScaler scaler;
+    private final WakeUpTestResources wakeUpResources = new WakeUpTestResources();
 
     @BeforeEach
     void setUp() {
@@ -46,8 +48,17 @@ class InternalScalerResilienceTest {
                 metricsReader,
                 deploymentCoordinator,
                 new ScalingProperties(5000L, 1, 10),
-                new ColdStartTracker()
+                new ColdStartTracker(),
+                wakeUpResources.coordinator()
         );
+        lenient().when(deploymentCoordinator.generationOf(any())).thenAnswer(invocation ->
+                wakeUpResources.generation(invocation.getArgument(0, RegisteredFunction.class).name()));
+        lenient().when(deploymentCoordinator.setReplicas(any(), any(), anyInt())).thenReturn(true);
+    }
+
+    @AfterEach
+    void closeWakeUpResources() {
+        wakeUpResources.close();
     }
 
     @Test
@@ -79,7 +90,7 @@ class InternalScalerResilienceTest {
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator).setReplicas(target(healthy), 3);
+        verify(deploymentCoordinator).setReplicas(any(), eq(target(healthy)), eq(3));
     }
 
     @Test
@@ -102,10 +113,10 @@ class InternalScalerResilienceTest {
         scaler.scalingLoop();
 
         // No decision at all for the unreadable one: not a scale to zero, not a scale to anything.
-        verify(deploymentCoordinator, never()).setReplicas(eq(target(unreadable)), anyInt());
+        verify(deploymentCoordinator, never()).setReplicas(any(), eq(target(unreadable)), anyInt());
         verify(metricsReader, never()).readMetric(eq("unreadable"), any());
         // ... and the loop still visits the function behind it in the same pass.
-        verify(deploymentCoordinator).setReplicas(target(healthy), 3);
+        verify(deploymentCoordinator).setReplicas(any(), eq(target(healthy)), eq(3));
     }
 
     @Test
@@ -127,8 +138,8 @@ class InternalScalerResilienceTest {
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator, never()).setReplicas(eq(target(broken)), anyInt());
-        verify(deploymentCoordinator).setReplicas(target(healthy), 3);
+        verify(deploymentCoordinator, never()).setReplicas(any(), eq(target(broken)), anyInt());
+        verify(deploymentCoordinator).setReplicas(any(), eq(target(healthy)), eq(3));
     }
 
     private RegisteredFunction spec(String name, ScalingConfig scalingConfig) {

@@ -12,62 +12,36 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.BooleanSupplier;
 import java.util.function.LongSupplier;
 
 /** Serializes generation-scoped deployment wake-ups with scale-downs for each function. */
 @Service
 public class DeploymentWakeUpCoordinator implements AutoCloseable {
-    private static final ScheduledThreadPoolExecutor FALLBACK_SCHEDULER = fallbackScheduler();
-
     private final FunctionCapacityRegistry generations;
     private final ScheduledExecutorService scheduler;
     private final LongSupplier nanoTime;
-    private final boolean standaloneGenerations;
     private final ConcurrentMap<FunctionGeneration, FunctionState> functions = new ConcurrentHashMap<>();
     private final AtomicLong leaseIds = new AtomicLong();
     private final AtomicBoolean closed = new AtomicBoolean();
-
-    public DeploymentWakeUpCoordinator() {
-        this(new FunctionCapacityRegistry(), FALLBACK_SCHEDULER, System::nanoTime, true);
-    }
 
     @Autowired
     public DeploymentWakeUpCoordinator(
             FunctionCapacityRegistry generations,
             @Qualifier("deploymentWakeUpTimeoutScheduler") ScheduledExecutorService scheduler) {
-        this(generations, scheduler, System::nanoTime, false);
+        this(generations, scheduler, System::nanoTime);
     }
 
     DeploymentWakeUpCoordinator(FunctionCapacityRegistry generations,
                                 ScheduledExecutorService scheduler,
                                 LongSupplier nanoTime) {
-        this(generations, scheduler, nanoTime, false);
-    }
-
-    private DeploymentWakeUpCoordinator(FunctionCapacityRegistry generations,
-                                        ScheduledExecutorService scheduler,
-                                        LongSupplier nanoTime,
-                                        boolean standaloneGenerations) {
         this.generations = Objects.requireNonNull(generations, "generations");
         this.scheduler = Objects.requireNonNull(scheduler, "scheduler");
         this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime");
-        this.standaloneGenerations = standaloneGenerations;
-    }
-
-    /**
-     * Compatibility entry point for tests and embedded users. Production callers should carry the
-     * generation they acquired from the P07 authority.
-     */
-    public WakeUpLease protectAndScaleUp(ManagedDeploymentTarget target, long deadlineNanos, Runnable scaleUp) {
-        FunctionGeneration generation = activeGeneration(target.functionName());
-        if (generation == null) {
-            throw new IllegalStateException("DEPLOYMENT_WAKE_UP_TARGET_UNAVAILABLE");
-        }
-        return protectAndScaleUp(generation, target, deadlineNanos, scaleUp);
     }
 
     /**
@@ -90,57 +64,72 @@ public class DeploymentWakeUpCoordinator implements AutoCloseable {
         }
 
         FunctionState state = functions.computeIfAbsent(generation, ignored -> new FunctionState());
-        synchronized (state) {
-            if (closed.get() || functions.get(generation) != state || !isCurrent(generation)) {
-                functions.remove(generation, state);
-                throw new IllegalStateException(closed.get()
-                        ? "DEPLOYMENT_WAKE_UP_CLOSED" : "DEPLOYMENT_WAKE_UP_REMOVED");
-            }
-            cancel(state.expiryTask);
-            long leaseId = leaseIds.incrementAndGet();
-            state.leaseId = leaseId;
-            state.deadlineNanos = deadlineNanos;
-            try {
+        state.mutationLock.lock();
+        long leaseId = 0;
+        try {
+            synchronized (state) {
+                if (closed.get() || state.retired || functions.get(generation) != state || !isCurrent(generation)) {
+                    retire(generation, state);
+                    throw new IllegalStateException(closed.get()
+                            ? "DEPLOYMENT_WAKE_UP_CLOSED" : "DEPLOYMENT_WAKE_UP_REMOVED");
+                }
+                cancel(state.expiryTask);
+                leaseId = leaseIds.incrementAndGet();
+                state.leaseId = leaseId;
+                state.deadlineNanos = deadlineNanos;
                 state.expiryTask = scheduleExpiry(generation, state, leaseId, deadlineNanos);
+                state.runningCallbacks++;
+            }
+            try {
                 scaleUp.run();
                 return new WakeUpLease(generation, state, leaseId);
-            } catch (RuntimeException | Error failure) {
-                release(generation, state, leaseId);
-                throw failure;
+            } finally {
+                callbackFinished(generation, state);
             }
+        } catch (RuntimeException | Error failure) {
+            if (leaseId != 0) release(generation, state, leaseId);
+            throw failure;
+        } finally {
+            state.mutationLock.unlock();
         }
     }
 
     /** Runs a downscale only when the active generation has no wake-up lease. */
-    public boolean scaleDownIfUnprotected(ManagedDeploymentTarget target, Runnable scaleDown) {
-        while (!closed.get()) {
-            FunctionGeneration generation = activeGeneration(target.functionName());
-            if (generation == null) {
-                scaleDown.run();
-                return true;
-            }
-            FunctionState state = functions.computeIfAbsent(generation, ignored -> new FunctionState());
+    public boolean scaleDownIfUnprotected(FunctionGeneration generation,
+                                           ManagedDeploymentTarget target,
+                                           BooleanSupplier scaleDown) {
+        Objects.requireNonNull(generation, "generation");
+        Objects.requireNonNull(target, "target");
+        Objects.requireNonNull(scaleDown, "scaleDown");
+        if (!generation.functionName().equals(target.functionName()) || closed.get() || !isCurrent(generation)) {
+            return false;
+        }
+        FunctionState state = functions.computeIfAbsent(generation, ignored -> new FunctionState());
+        state.mutationLock.lock();
+        try {
             synchronized (state) {
-                if (closed.get()) {
-                    functions.remove(generation, state);
+                if (closed.get() || state.retired || functions.get(generation) != state || !isCurrent(generation)) {
+                    retire(generation, state);
                     return false;
-                }
-                if (functions.get(generation) != state || !isCurrent(generation)) {
-                    continue;
                 }
                 expireIfDue(state, nanoTime.getAsLong());
                 if (state.leaseId != 0) {
                     return false;
                 }
-                scaleDown.run();
-                return true;
+                state.runningCallbacks++;
             }
+            try {
+                return scaleDown.getAsBoolean();
+            } finally {
+                callbackFinished(generation, state);
+            }
+        } finally {
+            state.mutationLock.unlock();
         }
-        return false;
     }
 
     boolean isScaleDownProtected(String functionName) {
-        FunctionGeneration generation = activeGeneration(functionName);
+        FunctionGeneration generation = generations.activeGeneration(functionName);
         if (generation == null) {
             return false;
         }
@@ -159,11 +148,14 @@ public class DeploymentWakeUpCoordinator implements AutoCloseable {
 
     public void removeFunctionState(String functionName) {
         for (var entry : new ArrayList<>(functions.entrySet())) {
-            if (entry.getKey().functionName().equals(functionName)
-                    && functions.remove(entry.getKey(), entry.getValue())) {
-                clear(entry.getValue());
+            if (entry.getKey().functionName().equals(functionName)) {
+                retire(entry.getKey(), entry.getValue());
             }
         }
+    }
+
+    int ownedStateCount() {
+        return functions.size();
     }
 
     int ownedLeaseCount() {
@@ -184,9 +176,7 @@ public class DeploymentWakeUpCoordinator implements AutoCloseable {
             return;
         }
         for (var entry : new ArrayList<>(functions.entrySet())) {
-            if (functions.remove(entry.getKey(), entry.getValue())) {
-                clear(entry.getValue());
-            }
+            retire(entry.getKey(), entry.getValue());
         }
     }
 
@@ -205,6 +195,7 @@ public class DeploymentWakeUpCoordinator implements AutoCloseable {
                         long deadlineNanos) {
         synchronized (state) {
             if (functions.get(generation) != state
+                    || state.retired
                     || state.leaseId != leaseId
                     || state.deadlineNanos != deadlineNanos) {
                 return;
@@ -236,7 +227,7 @@ public class DeploymentWakeUpCoordinator implements AutoCloseable {
 
     private void release(FunctionGeneration generation, FunctionState state, long leaseId) {
         synchronized (state) {
-            if (functions.get(generation) != state || state.leaseId != leaseId) {
+            if (state.leaseId != leaseId) {
                 return;
             }
             state.leaseId = 0;
@@ -244,32 +235,36 @@ public class DeploymentWakeUpCoordinator implements AutoCloseable {
             ScheduledFuture<?> expiry = state.expiryTask;
             state.expiryTask = null;
             cancel(expiry);
+            drainIfRetired(generation, state);
         }
     }
 
-    private static void clear(FunctionState state) {
+    private void retire(FunctionGeneration generation, FunctionState state) {
         synchronized (state) {
+            state.retired = true;
             state.leaseId = 0;
             state.deadlineNanos = 0;
             ScheduledFuture<?> expiry = state.expiryTask;
             state.expiryTask = null;
             cancel(expiry);
+            drainIfRetired(generation, state);
         }
     }
 
-    private FunctionGeneration activeGeneration(String functionName) {
-        FunctionGeneration generation = generations.activeGeneration(functionName);
-        if (generation == null && standaloneGenerations && !closed.get()) {
-            generations.register(functionName, 1);
-            generation = generations.activeGeneration(functionName);
+    private void callbackFinished(FunctionGeneration generation, FunctionState state) {
+        synchronized (state) {
+            state.runningCallbacks--;
+            drainIfRetired(generation, state);
         }
-        return generation;
+    }
+
+    private void drainIfRetired(FunctionGeneration generation, FunctionState state) {
+        if (state.retired && state.runningCallbacks == 0) {
+            functions.remove(generation, state);
+        }
     }
 
     private boolean isCurrent(FunctionGeneration generation) {
-        if (standaloneGenerations) {
-            return !closed.get();
-        }
         return generation.equals(generations.activeGeneration(generation.functionName()));
     }
 
@@ -277,17 +272,6 @@ public class DeploymentWakeUpCoordinator implements AutoCloseable {
         if (future != null) {
             future.cancel(false);
         }
-    }
-
-    private static ScheduledThreadPoolExecutor fallbackScheduler() {
-        ScheduledThreadPoolExecutor scheduler = new ScheduledThreadPoolExecutor(1, runnable -> {
-            Thread thread = new Thread(runnable, "deployment-wakeup-timeout-");
-            thread.setDaemon(true);
-            return thread;
-        });
-        scheduler.setRemoveOnCancelPolicy(true);
-        scheduler.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
-        return scheduler;
     }
 
     public final class WakeUpLease implements AutoCloseable {
@@ -311,8 +295,11 @@ public class DeploymentWakeUpCoordinator implements AutoCloseable {
     }
 
     private static final class FunctionState {
+        private final ReentrantLock mutationLock = new ReentrantLock();
         private long leaseId;
         private long deadlineNanos;
         private ScheduledFuture<?> expiryTask;
+        private int runningCallbacks;
+        private boolean retired;
     }
 }

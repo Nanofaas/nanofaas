@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.modules.autoscaler;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinator;
@@ -35,14 +36,6 @@ public class InternalScaler implements SmartLifecycle {
     private final InstantSource instantSource;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private ScheduledExecutorService executor;
-
-    public InternalScaler(FunctionRegistry registry,
-                          ScalingMetricsReader metricsReader,
-                          @Autowired(required = false) ManagedDeploymentCoordinator deploymentCoordinator,
-                          ScalingProperties properties,
-                          ColdStartTracker coldStartTracker) {
-        this(registry, metricsReader, deploymentCoordinator, properties, coldStartTracker, new DeploymentWakeUpCoordinator());
-    }
 
     public InternalScaler(FunctionRegistry registry,
                           ScalingMetricsReader metricsReader,
@@ -146,7 +139,10 @@ public class InternalScaler implements SmartLifecycle {
                 registeredFunction.managedDeploymentTarget().ifPresent(target -> {
                     if (scaling != null
                         && scaling.strategy() == ScalingStrategy.INTERNAL) {
-                        scaleFunction(target, spec);
+                        FunctionGeneration generation = deploymentCoordinator.generationOf(registeredFunction);
+                        if (generation != null) {
+                            scaleFunction(generation, target, spec);
+                        }
                     }
                 });
             }
@@ -155,15 +151,19 @@ public class InternalScaler implements SmartLifecycle {
         }
     }
 
-    private void scaleFunction(ManagedDeploymentTarget target, FunctionSpec spec) {
+    private void scaleFunction(FunctionGeneration generation,
+                               ManagedDeploymentTarget target,
+                               FunctionSpec spec) {
         try {
-            evaluateAndScale(target, spec);
+            evaluateAndScale(generation, target, spec);
         } catch (Exception ex) {
             log.error("Error scaling function {}", spec.name(), ex);
         }
     }
 
-    private void evaluateAndScale(ManagedDeploymentTarget target, FunctionSpec spec) {
+    private void evaluateAndScale(FunctionGeneration generation,
+                                  ManagedDeploymentTarget target,
+                                  FunctionSpec spec) {
         String functionName = spec.name();
         // Desired and ready are read from the SAME snapshot so a decision can never be
         // based on a target that has already moved on (or a ready count from another pass).
@@ -194,20 +194,20 @@ public class InternalScaler implements SmartLifecycle {
 
         if (recommended > requestedReplicas) {
             // Genuine scale-up: the load needs more replicas than we have already asked for.
-            scaleUp(target, functionName, decision, requestedReplicas, now);
+            scaleUp(generation, target, functionName, decision, requestedReplicas, now);
         } else if (recommended < requestedReplicas) {
             // The load needs fewer replicas than already requested.
             if (decision.downscaleSignal()) {
                 // Explicit downscale: the serving (ready) replicas already exceed what the
                 // load needs. This never waits for the rollout to complete, so replicas that
                 // never became ready cannot block it.
-                scaleDown(target, functionName, decision, requestedReplicas, now);
+                scaleDown(generation, target, functionName, decision, requestedReplicas, now);
             } else if (progressTracker.isStuck(functionName, requestedReplicas, readyReplicas, now)) {
                 // Mid-rollout recommendation (ready <= recommended < requested) but the
                 // rollout has made no progress for a full window: reconcile the requested
                 // target down so a stuck rollout cannot hold a phantom target (or block a
                 // real downscale) forever.
-                scaleDown(target, functionName, decision, requestedReplicas, now);
+                scaleDown(generation, target, functionName, decision, requestedReplicas, now);
             }
             // Otherwise the rollout is still catching up and progressing: keep the
             // already-commanded higher target, do not walk it back.
@@ -215,7 +215,7 @@ public class InternalScaler implements SmartLifecycle {
         // recommended == requestedReplicas: nothing to do.
     }
 
-    private void scaleUp(ManagedDeploymentTarget target, String functionName,
+    private void scaleUp(FunctionGeneration generation, ManagedDeploymentTarget target, String functionName,
                          ScalingDecision decision, int requestedReplicas, Instant now) {
         if (!cooldownTracker.allowScaleUp(functionName, now)) {
             log.debug("Skipping scale-up for {} (cooldown)", functionName);
@@ -224,20 +224,20 @@ public class InternalScaler implements SmartLifecycle {
         log.info("Scaling UP function {} from {} to {} replicas (maxRatio={})",
                 functionName, requestedReplicas, decision.desiredReplicas(), decision.maxRatio());
         coldStartTracker.recordScaleUp(functionName, decision.currentReplicas(), decision.desiredReplicas());
-        deploymentCoordinator.setReplicas(target, decision.desiredReplicas());
+        deploymentCoordinator.setReplicas(generation, target, decision.desiredReplicas());
         cooldownTracker.recordScaleUp(functionName, now);
     }
 
-    private void scaleDown(ManagedDeploymentTarget target, String functionName,
+    private void scaleDown(FunctionGeneration generation, ManagedDeploymentTarget target, String functionName,
                            ScalingDecision decision, int requestedReplicas, Instant now) {
         if (!cooldownTracker.allowScaleDown(functionName, now)) {
             log.debug("Skipping scale-down for {} (cooldown)", functionName);
             return;
         }
-        boolean scaled = wakeUpCoordinator.scaleDownIfUnprotected(target, () -> {
+        boolean scaled = wakeUpCoordinator.scaleDownIfUnprotected(generation, target, () -> {
             log.info("Scaling DOWN function {} from {} to {} replicas (maxRatio={})",
                     functionName, requestedReplicas, decision.desiredReplicas(), decision.maxRatio());
-            deploymentCoordinator.setReplicas(target, decision.desiredReplicas());
+            return deploymentCoordinator.setReplicas(generation, target, decision.desiredReplicas());
         });
         if (scaled) {
             cooldownTracker.recordScaleDown(functionName, now);

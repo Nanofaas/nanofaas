@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.controlplane.registry;
 
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
@@ -29,6 +31,7 @@ public class ManagedDeploymentCoordinator implements AutoCloseable {
     private final DeploymentProviderResolver deploymentProviderResolver;
     private final FunctionRegistry registry;
     private final FunctionOperationLocks locks;
+    private final FunctionCapacityRegistry generations;
     private final ReplicaStatusSnapshot snapshot;
     private final boolean ownsSnapshot;
 
@@ -36,8 +39,16 @@ public class ManagedDeploymentCoordinator implements AutoCloseable {
     public ManagedDeploymentCoordinator(DeploymentProviderResolver deploymentProviderResolver,
                                         FunctionRegistry registry,
                                         FunctionOperationLocks locks,
+                                        FunctionCapacityRegistry generations,
                                         ReplicaStatusSnapshot snapshot) {
-        this(deploymentProviderResolver, registry, locks, snapshot, false);
+        this(deploymentProviderResolver, registry, locks, generations, snapshot, false);
+    }
+
+    public ManagedDeploymentCoordinator(DeploymentProviderResolver deploymentProviderResolver,
+                                        FunctionRegistry registry,
+                                        FunctionOperationLocks locks,
+                                        ReplicaStatusSnapshot snapshot) {
+        this(deploymentProviderResolver, registry, locks, new FunctionCapacityRegistry(), snapshot, false);
     }
 
     /**
@@ -48,17 +59,19 @@ public class ManagedDeploymentCoordinator implements AutoCloseable {
                                         FunctionRegistry registry,
                                         FunctionOperationLocks locks) {
         this(deploymentProviderResolver, registry, locks,
-                ReplicaStatusSnapshot.withDefaults(InstantSource.system()), true);
+                new FunctionCapacityRegistry(), ReplicaStatusSnapshot.withDefaults(InstantSource.system()), true);
     }
 
     private ManagedDeploymentCoordinator(DeploymentProviderResolver deploymentProviderResolver,
                                          FunctionRegistry registry,
                                          FunctionOperationLocks locks,
+                                         FunctionCapacityRegistry generations,
                                          ReplicaStatusSnapshot snapshot,
                                          boolean ownsSnapshot) {
         this.deploymentProviderResolver = deploymentProviderResolver;
         this.registry = registry;
         this.locks = locks;
+        this.generations = generations;
         this.snapshot = snapshot;
         this.ownsSnapshot = ownsSnapshot;
     }
@@ -103,37 +116,67 @@ public class ManagedDeploymentCoordinator implements AutoCloseable {
         if (replicas < 0) {
             throw new IllegalArgumentException("replicas must be >= 0");
         }
-        return locks.withLock(target.functionName(), () -> {
-            RegisteredFunction existing = registry.getRegistered(target.functionName()).orElse(null);
-            if (existing == null) {
-                return false;
-            }
-            if (existing.managedDeploymentTarget().filter(target::equals).isEmpty()) {
-                // A stale target (removed and re-registered under a different backend between the
-                // caller's lookup and this locked re-check) is a no-op, not an error.
-                return false;
-            }
+        return locks.withLock(target.functionName(), () -> setReplicasLocked(target, replicas));
+    }
 
-            RegisteredFunction updated = existing.withDesiredReplicas(replicas);
-            // ponytail: durable-first. Persisting before applying keeps the target across a crash
-            // after a successful scale, but a provider failure whose rollback save also fails leaves
-            // a never-applied target that the next restart's reconcile enforces. A full fix needs an
-            // intent journal, out of scope for the MVP.
-            registry.put(updated);
-            try {
-                requireProvider(target).setReplicas(target.functionName(), replicas);
-            } catch (RuntimeException failure) {
-                try {
-                    registry.put(existing);
-                } catch (RuntimeException rollback) {
-                    failure.addSuppressed(rollback);
-                }
-                throw failure;
+    /** Applies a replica mutation only to the exact still-active P07 generation. */
+    public boolean setReplicas(FunctionGeneration expectedGeneration,
+                               ManagedDeploymentTarget target,
+                               int replicas) {
+        if (replicas < 0) {
+            throw new IllegalArgumentException("replicas must be >= 0");
+        }
+        if (!expectedGeneration.functionName().equals(target.functionName())) {
+            throw new IllegalArgumentException("generation and target must name the same function");
+        }
+        return locks.withLock(target.functionName(), () -> {
+            if (!expectedGeneration.equals(generations.activeGeneration(target.functionName()))) {
+                return false;
             }
-            // The target changed: forget the cached read so the next one re-fetches the new count.
-            snapshot.invalidate(target.functionName());
-            return true;
+            return setReplicasLocked(target, replicas);
         });
+    }
+
+    /** Captures a generation only while the registry entry is still the observed object. */
+    public FunctionGeneration generationOf(RegisteredFunction observed) {
+        return locks.withLock(observed.name(), () -> {
+            if (registry.getRegistered(observed.name()).orElse(null) != observed) {
+                return null;
+            }
+            return generations.activeGeneration(observed.name());
+        });
+    }
+
+    private boolean setReplicasLocked(ManagedDeploymentTarget target, int replicas) {
+        RegisteredFunction existing = registry.getRegistered(target.functionName()).orElse(null);
+        if (existing == null) {
+            return false;
+        }
+        if (existing.managedDeploymentTarget().filter(target::equals).isEmpty()) {
+            // A stale target (removed and re-registered under a different backend between the
+            // caller's lookup and this locked re-check) is a no-op, not an error.
+            return false;
+        }
+
+        RegisteredFunction updated = existing.withDesiredReplicas(replicas);
+        // ponytail: durable-first. Persisting before applying keeps the target across a crash
+        // after a successful scale, but a provider failure whose rollback save also fails leaves
+        // a never-applied target that the next restart's reconcile enforces. A full fix needs an
+        // intent journal, out of scope for the MVP.
+        registry.put(updated);
+        try {
+            requireProvider(target).setReplicas(target.functionName(), replicas);
+        } catch (RuntimeException failure) {
+            try {
+                registry.put(existing);
+            } catch (RuntimeException rollback) {
+                failure.addSuppressed(rollback);
+            }
+            throw failure;
+        }
+        // The target changed: forget the cached read so the next one re-fetches the new count.
+        snapshot.invalidate(target.functionName());
+        return true;
     }
 
     public void deprovision(ManagedDeploymentTarget target) {

@@ -14,6 +14,7 @@ import it.unimib.datai.nanofaas.controlplane.registry.DeploymentMetadata;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -41,6 +42,7 @@ class InternalScalerBranchTest {
     private ManagedDeploymentCoordinator deploymentCoordinator;
 
     private InternalScaler scaler;
+    private final WakeUpTestResources wakeUpResources = new WakeUpTestResources();
 
     @BeforeEach
     void setUp() {
@@ -49,8 +51,17 @@ class InternalScalerBranchTest {
                 metricsReader,
                 deploymentCoordinator,
                 new ScalingProperties(5000L, 0, 10),
-                new ColdStartTracker()
+                new ColdStartTracker(),
+                wakeUpResources.coordinator()
         );
+        lenient().when(deploymentCoordinator.generationOf(any())).thenAnswer(invocation ->
+                wakeUpResources.generation(invocation.getArgument(0, RegisteredFunction.class).name()));
+        lenient().when(deploymentCoordinator.setReplicas(any(), any(), anyInt())).thenReturn(true);
+    }
+
+    @AfterEach
+    void closeWakeUpResources() {
+        wakeUpResources.close();
     }
 
     @Test
@@ -73,7 +84,7 @@ class InternalScalerBranchTest {
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator).setReplicas(target(good), 3);
+        verify(deploymentCoordinator).setReplicas(any(), eq(target(good)), eq(3));
     }
 
     @Test
@@ -87,7 +98,7 @@ class InternalScalerBranchTest {
         scaler.scalingLoop();
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator, times(1)).setReplicas(target(spec), 3);
+        verify(deploymentCoordinator, times(1)).setReplicas(any(), eq(target(spec)), eq(3));
     }
 
     @Test
@@ -101,7 +112,7 @@ class InternalScalerBranchTest {
         scaler.scalingLoop();
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator, times(1)).setReplicas(target(spec), 0);
+        verify(deploymentCoordinator, times(1)).setReplicas(any(), eq(target(spec)), eq(0));
     }
 
     @Test
@@ -117,7 +128,7 @@ class InternalScalerBranchTest {
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator, never()).setReplicas(any(), anyInt());
+        verify(deploymentCoordinator, never()).setReplicas(any(), any(), anyInt());
     }
 
     @Test

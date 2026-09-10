@@ -2,6 +2,8 @@ package it.unimib.datai.nanofaas.controlplane.registry;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProperties;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
@@ -154,6 +156,49 @@ class ManagedDeploymentCoordinatorTest {
         } finally {
             executor.shutdownNow();
         }
+    }
+
+    @Test
+    void generationAwareSetReplicasCannotMutateAReplacementRegistration() throws Exception {
+        FunctionRegistry sharedRegistry = new FunctionRegistry();
+        FunctionOperationLocks sharedLocks = new FunctionOperationLocks();
+        FunctionCapacityRegistry generations = new FunctionCapacityRegistry();
+        DeploymentProviderResolver resolver =
+                new DeploymentProviderResolver(List.of(provider), new DeploymentProperties(null));
+        ManagedDeploymentCoordinator sharedCoordinator = new ManagedDeploymentCoordinator(
+                resolver, sharedRegistry, sharedLocks, generations,
+                ReplicaStatusSnapshot.withDefaults(java.time.InstantSource.system()));
+        sharedRegistry.put(managedFunction("fn", 1));
+        generations.register("fn", 1);
+        FunctionGeneration oldGeneration = generations.activeGeneration("fn");
+        CountDownLatch replacementInstalled = new CountDownLatch(1);
+        CountDownLatch releaseLifecycleLock = new CountDownLatch(1);
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            Future<?> replacement = executor.submit(() -> sharedLocks.withLock("fn", () -> {
+                generations.remove("fn");
+                sharedRegistry.remove("fn");
+                generations.register("fn", 1);
+                sharedRegistry.put(managedFunction("fn", 7));
+                replacementInstalled.countDown();
+                await(releaseLifecycleLock);
+            }));
+            assertThat(replacementInstalled.await(5, TimeUnit.SECONDS)).isTrue();
+
+            Future<Boolean> staleScale = executor.submit(
+                    () -> sharedCoordinator.setReplicas(oldGeneration, target, 3));
+            assertThatThrownBy(() -> staleScale.get(100, TimeUnit.MILLISECONDS))
+                    .isInstanceOf(TimeoutException.class);
+
+            releaseLifecycleLock.countDown();
+            replacement.get(5, TimeUnit.SECONDS);
+            assertThat(staleScale.get(5, TimeUnit.SECONDS)).isFalse();
+        }
+
+        assertThat(sharedRegistry.getRegistered("fn")).get()
+                .extracting(RegisteredFunction::desiredReplicas)
+                .isEqualTo(7);
+        verify(provider, never()).setReplicas("fn", 3);
     }
 
     @Test

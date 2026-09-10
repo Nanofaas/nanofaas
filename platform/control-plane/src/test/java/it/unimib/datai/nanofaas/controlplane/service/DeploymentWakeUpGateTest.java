@@ -8,6 +8,7 @@ import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpProperties;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinator;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaObservation;
@@ -19,6 +20,7 @@ import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -28,6 +30,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.InstantSource;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -36,6 +39,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -52,11 +57,20 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyLong;
 
 class DeploymentWakeUpGateTest {
 
     private final FunctionRegistry registry = mock(FunctionRegistry.class);
     private final ManagedDeploymentCoordinator coordinator = mock(ManagedDeploymentCoordinator.class);
+    private final List<ScheduledThreadPoolExecutor> schedulers = new ArrayList<>();
+
+    @AfterEach
+    void stopSchedulers() {
+        schedulers.forEach(ScheduledThreadPoolExecutor::shutdownNow);
+    }
 
     @Test
     void ensureReady_thousandsOfFreshReadyObservationsDoNotFetchOrRetainTimers() {
@@ -71,7 +85,7 @@ class DeploymentWakeUpGateTest {
         ScheduledThreadPoolExecutor scheduler = scheduler();
         try {
             DeploymentWakeUpGate gate = gate(Duration.ofSeconds(30), Duration.ofSeconds(1), Runnable::run,
-                    scheduler, new DeploymentWakeUpCoordinator());
+                    scheduler);
 
             for (int invocation = 0; invocation < 2_000; invocation++) {
                 gate.ensureReady(task).join();
@@ -105,7 +119,7 @@ class DeploymentWakeUpGateTest {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
             DeploymentWakeUpGate gate = gate(Duration.ofSeconds(30), Duration.ofSeconds(1), executor,
-                    scheduler, new DeploymentWakeUpCoordinator());
+                    scheduler);
             CompletableFuture<Void> shortCaller = gate.ensureReady(task);
             assertThat(readEntered.await(1, TimeUnit.SECONDS)).isTrue();
             assertThat(gate.ownedWakeUpCount()).isEqualTo(1);
@@ -144,17 +158,17 @@ class DeploymentWakeUpGateTest {
         ScheduledThreadPoolExecutor scheduler = scheduler();
         try {
             gate(Duration.ofSeconds(2), Duration.ofMillis(1), Runnable::run,
-                    scheduler, new DeploymentWakeUpCoordinator())
+                    scheduler)
                     .ensureReady(task).get(1, TimeUnit.SECONDS);
 
-            verify(coordinator, never()).setReplicas(target, 1);
+            verify(coordinator, never()).setReplicas(any(FunctionGeneration.class), eq(target), eq(1));
         } finally {
             scheduler.shutdownNow();
         }
     }
 
     @Test
-    void ensureReady_asyncReadFailureRemovesItsTimeoutTask() {
+    void ensureReady_asyncReadFailureRemovesItsTimeoutTask() throws Exception {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
         when(registry.getRegistered("echo"))
@@ -167,11 +181,12 @@ class DeploymentWakeUpGateTest {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
             DeploymentWakeUpGate gate = gate(Duration.ofSeconds(30), Duration.ofSeconds(1), executor,
-                    scheduler, new DeploymentWakeUpCoordinator());
+                    scheduler);
             CompletableFuture<Void> ready = gate.ensureReady(task);
 
             assertThatThrownBy(() -> ready.get(1, TimeUnit.SECONDS))
                     .hasRootCauseMessage("provider unavailable");
+            executor.submit(() -> { }).get(1, TimeUnit.SECONDS);
             assertThat(gate.ownedWakeUpCount()).isZero();
             assertThat(scheduler.getQueue()).isEmpty();
         } finally {
@@ -200,15 +215,18 @@ class DeploymentWakeUpGateTest {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
             DeploymentWakeUpGate gate = gate(Duration.ofSeconds(30), Duration.ofSeconds(1), executor,
-                    scheduler, new DeploymentWakeUpCoordinator());
+                    scheduler);
             CompletableFuture<Void> removed = gate.ensureReady(task);
             assertThat(readEntered.await(1, TimeUnit.SECONDS)).isTrue();
 
             ((FunctionRegistrationListener) gate).onRemove("echo");
 
             assertThatThrownBy(removed::join).hasRootCauseMessage("DEPLOYMENT_WAKE_UP_REMOVED");
-            assertThat(gate.ownedWakeUpCount()).isZero();
+            assertThat(gate.ownedWakeUpCount()).isEqualTo(1);
             assertThat(scheduler.getQueue()).isEmpty();
+            releaseRead.countDown();
+            executor.submit(() -> { }).get(1, TimeUnit.SECONDS);
+            assertThat(gate.ownedWakeUpCount()).isZero();
             ((AutoCloseable) gate).close();
             assertThatThrownBy(() -> gate.ensureReady(task).join())
                     .hasRootCauseMessage("DEPLOYMENT_WAKE_UP_CLOSED");
@@ -253,9 +271,10 @@ class DeploymentWakeUpGateTest {
             closingGate.close();
 
             assertThatThrownBy(pending::join).hasRootCauseMessage("DEPLOYMENT_WAKE_UP_CLOSED");
-            assertThat(closingGate.ownedWakeUpCount()).isZero();
+            assertThat(closingGate.ownedWakeUpCount()).isEqualTo(1);
             assertThat(scheduler.getQueue()).isEmpty();
             submitted.get().run();
+            assertThat(closingGate.ownedWakeUpCount()).isZero();
             verify(coordinator, never()).getFreshReplicaStatus(target);
         } finally {
             scheduler.shutdownNow();
@@ -306,7 +325,8 @@ class DeploymentWakeUpGateTest {
                     registry, coordinator, generations,
                     new DeploymentWakeUpProperties(Duration.ofSeconds(30), Duration.ofSeconds(1),
                             Duration.ofSeconds(5)),
-                    Runnable::run, scheduler, new DeploymentWakeUpCoordinator(), clock, System::nanoTime);
+                    Runnable::run, scheduler, new DeploymentWakeUpCoordinator(generations, scheduler),
+                    clock, System::nanoTime);
 
             when(coordinator.observeReplicaStatus(target))
                     .thenReturn(ReplicaObservation.fresh(new ReplicaStatus(1, 1), Instant.EPOCH));
@@ -383,10 +403,19 @@ class DeploymentWakeUpGateTest {
 
         ScheduledThreadPoolExecutor scheduler = scheduler();
         ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch callbacksDrained = new CountDownLatch(2);
+        java.util.concurrent.Executor trackingExecutor = action -> executor.execute(() -> {
+            try {
+                action.run();
+            } finally {
+                callbacksDrained.countDown();
+            }
+        });
         try {
             DeploymentWakeUpGate gate = new DeploymentWakeUpGate(
-                    registry, coordinator, generations, new DeploymentWakeUpProperties(), executor,
-                    scheduler, new DeploymentWakeUpCoordinator(), InstantSource.system(), System::nanoTime);
+                    registry, coordinator, generations, new DeploymentWakeUpProperties(), trackingExecutor,
+                    scheduler, new DeploymentWakeUpCoordinator(generations, scheduler),
+                    InstantSource.system(), System::nanoTime);
             CompletableFuture<Void> old = gate.ensureReady(task);
             assertThat(oldReadEntered.await(1, TimeUnit.SECONDS)).isTrue();
 
@@ -397,10 +426,11 @@ class DeploymentWakeUpGateTest {
 
             replacement.get(1, TimeUnit.SECONDS);
             releaseOldRead.countDown();
+            assertThat(callbacksDrained.await(1, TimeUnit.SECONDS)).isTrue();
             assertThatThrownBy(old::join).hasRootCauseMessage("DEPLOYMENT_WAKE_UP_REMOVED");
             assertThat(gate.ownedWakeUpCount()).isZero();
             assertThat(scheduler.getQueue()).isEmpty();
-            verify(coordinator, never()).setReplicas(target, 1);
+            verify(coordinator, never()).setReplicas(any(FunctionGeneration.class), eq(target), eq(1));
         } finally {
             releaseOldRead.countDown();
             executor.shutdownNow();
@@ -423,7 +453,8 @@ class DeploymentWakeUpGateTest {
         try {
             DeploymentWakeUpGate gate = new DeploymentWakeUpGate(
                     registry, coordinator, generations, new DeploymentWakeUpProperties(), submitted::set,
-                    scheduler, new DeploymentWakeUpCoordinator(), InstantSource.system(), System::nanoTime);
+                    scheduler, new DeploymentWakeUpCoordinator(generations, scheduler),
+                    InstantSource.system(), System::nanoTime);
             CompletableFuture<Void> ready = gate.ensureReady(task);
             assertThat(gate.ownedWakeUpCount()).isEqualTo(1);
             assertThat(scheduler.getQueue()).hasSize(1);
@@ -431,13 +462,59 @@ class DeploymentWakeUpGateTest {
             ((Runnable) scheduler.getQueue().peek()).run();
 
             assertThatThrownBy(ready::join).hasRootCauseMessage("DEPLOYMENT_WAKE_UP_TIMEOUT");
-            assertThat(gate.ownedWakeUpCount()).isZero();
+            assertThat(gate.ownedWakeUpCount()).isEqualTo(1);
             assertThat(scheduler.getQueue()).isEmpty();
             submitted.get().run();
+            assertThat(gate.ownedWakeUpCount()).isZero();
             verify(coordinator, never()).getFreshReplicaStatus(target);
         } finally {
             scheduler.shutdownNow();
         }
+    }
+
+    @Test
+    void pollThatExecutesBeforeScheduleReturnsCannotCancelItsSuccessorPublication() {
+        InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
+        ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
+        FunctionCapacityRegistry generations = generations();
+        when(registry.getRegistered("echo"))
+                .thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
+        when(coordinator.observeReplicaStatus(target))
+                .thenReturn(ReplicaObservation.unavailable(Instant.EPOCH, "missing"));
+        when(coordinator.getFreshReplicaStatus(target))
+                .thenReturn(new ReplicaStatus(0, 0), new ReplicaStatus(0, 0), new ReplicaStatus(1, 1));
+        ScheduledExecutorService scheduler = mock(ScheduledExecutorService.class);
+        AtomicInteger pollSchedules = new AtomicInteger();
+        AtomicReference<Runnable> successor = new AtomicReference<>();
+        AtomicReference<ScheduledFuture<?>> successorFuture = new AtomicReference<>();
+        when(scheduler.schedule(any(Runnable.class), anyLong(), eq(TimeUnit.NANOSECONDS)))
+                .thenAnswer(invocation -> {
+                    ScheduledFuture<?> future = mock(ScheduledFuture.class);
+                    if (invocation.getArgument(1, Long.class) == 1L) {
+                        if (pollSchedules.incrementAndGet() == 1) {
+                            invocation.getArgument(0, Runnable.class).run();
+                        } else {
+                            successor.set(invocation.getArgument(0, Runnable.class));
+                            successorFuture.set(future);
+                        }
+                    }
+                    return future;
+                });
+        DeploymentWakeUpCoordinator wakeUpCoordinator =
+                new DeploymentWakeUpCoordinator(generations, scheduler);
+        DeploymentWakeUpGate gate = new DeploymentWakeUpGate(
+                registry, coordinator, generations,
+                new DeploymentWakeUpProperties(Duration.ofSeconds(30), Duration.ofNanos(1)),
+                Runnable::run, scheduler, wakeUpCoordinator, InstantSource.system(), System::nanoTime);
+
+        CompletableFuture<Void> ready = gate.ensureReady(task);
+        assertThat(successor.get()).isNotNull();
+        verify(successorFuture.get(), never()).cancel(false);
+        successor.get().run();
+
+        assertThat(ready).isCompletedWithValue(null);
+        assertThat(gate.ownedWakeUpCount()).isZero();
+        verify(coordinator, times(3)).getFreshReplicaStatus(target);
     }
 
     @Test
@@ -454,7 +531,7 @@ class DeploymentWakeUpGateTest {
 
         var order = inOrder(coordinator);
         order.verify(coordinator).getFreshReplicaStatus(target);
-        order.verify(coordinator).setReplicas(target, 1);
+        order.verify(coordinator).setReplicas(any(FunctionGeneration.class), eq(target), eq(1));
         order.verify(coordinator).getFreshReplicaStatus(target);
         assertThat(ready).isCompletedWithValue(null);
     }
@@ -466,13 +543,17 @@ class DeploymentWakeUpGateTest {
         when(registry.getRegistered("echo")).thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
         when(coordinator.getFreshReplicaStatus(target)).thenReturn(new ReplicaStatus(0, 0), new ReplicaStatus(1, 1));
 
-        DeploymentWakeUpCoordinator wakeUpCoordinator = new DeploymentWakeUpCoordinator();
-        gate(Duration.ofSeconds(1), Duration.ofMillis(1), Runnable::run, wakeUpCoordinator).ensureReady(task).join();
+        FunctionCapacityRegistry generations = generations();
+        ScheduledThreadPoolExecutor scheduler = scheduler();
+        DeploymentWakeUpCoordinator wakeUpCoordinator = new DeploymentWakeUpCoordinator(generations, scheduler);
+        gate(Duration.ofSeconds(1), Duration.ofMillis(1), Runnable::run,
+                scheduler, generations, wakeUpCoordinator).ensureReady(task).join();
 
         var order = inOrder(coordinator);
         order.verify(coordinator).getFreshReplicaStatus(target);
-        order.verify(coordinator).setReplicas(target, 1);
-        assertThat(wakeUpCoordinator.scaleDownIfUnprotected(target, () -> { })).isTrue();
+        order.verify(coordinator).setReplicas(any(FunctionGeneration.class), eq(target), eq(1));
+        assertThat(wakeUpCoordinator.scaleDownIfUnprotected(
+                generations.activeGeneration("echo"), target, () -> true)).isTrue();
     }
 
     @Test
@@ -485,7 +566,7 @@ class DeploymentWakeUpGateTest {
         gate().ensureReady(task).join();
 
         verify(coordinator).getFreshReplicaStatus(target);
-        verify(coordinator, never()).setReplicas(target, 1);
+        verify(coordinator, never()).setReplicas(any(FunctionGeneration.class), eq(target), eq(1));
     }
 
     @Test
@@ -501,7 +582,7 @@ class DeploymentWakeUpGateTest {
         gate.ensureReady(task).join();
         gate.ensureReady(task).join();
 
-        verify(coordinator, times(2)).setReplicas(target, 1);
+        verify(coordinator, times(2)).setReplicas(any(FunctionGeneration.class), eq(target), eq(1));
     }
 
     @Test
@@ -541,7 +622,7 @@ class DeploymentWakeUpGateTest {
             CompletableFuture.allOf(first, second).join();
 
             assertThat(first).isNotSameAs(second);
-            verify(coordinator, times(1)).setReplicas(target, 1);
+            verify(coordinator, times(1)).setReplicas(any(FunctionGeneration.class), eq(target), eq(1));
         }
     }
 
@@ -647,7 +728,7 @@ class DeploymentWakeUpGateTest {
             executor.shutdown();
             assertThat(executor.awaitTermination(1, TimeUnit.SECONDS)).isTrue();
         }
-        verify(coordinator, never()).setReplicas(target, 1);
+        verify(coordinator, never()).setReplicas(any(FunctionGeneration.class), eq(target), eq(1));
     }
 
     @Test
@@ -685,7 +766,7 @@ class DeploymentWakeUpGateTest {
                 .thenReturn(ReplicaObservation.unavailable(Instant.EPOCH, "missing"));
         when(coordinator.getFreshReplicaStatus(target)).thenReturn(new ReplicaStatus(0, 0));
         doThrow(new IllegalStateException("provider unavailable"))
-                .when(coordinator).setReplicas(target, 1);
+                .when(coordinator).setReplicas(any(FunctionGeneration.class), eq(target), eq(1));
 
         FunctionCapacityRegistry generations = new FunctionCapacityRegistry();
         generations.register("echo", 1);
@@ -719,7 +800,7 @@ class DeploymentWakeUpGateTest {
         ScheduledThreadPoolExecutor scheduler = scheduler();
         try {
             DeploymentWakeUpGate gate = gate(Duration.ofSeconds(30), Duration.ofSeconds(1), Runnable::run,
-                    scheduler, new DeploymentWakeUpCoordinator());
+                    scheduler);
             CompletableFuture<Void> ready = gate.ensureReady(task);
 
             assertThatThrownBy(ready::join)
@@ -760,33 +841,45 @@ class DeploymentWakeUpGateTest {
     }
 
     private DeploymentWakeUpGate gate(Duration timeout, Duration pollInterval) {
-        return new DeploymentWakeUpGate(registry, coordinator, timeout, pollInterval);
+        return gate(timeout, pollInterval, Runnable::run, scheduler());
     }
 
     private DeploymentWakeUpGate gate(Duration timeout, Duration pollInterval, ExecutorService executor) {
-        return new DeploymentWakeUpGate(registry, coordinator, timeout, pollInterval, executor);
+        return gate(timeout, pollInterval, executor, scheduler());
     }
 
     private DeploymentWakeUpGate gate(Duration timeout,
                                       Duration pollInterval,
                                       java.util.concurrent.Executor executor,
-                                      DeploymentWakeUpCoordinator wakeUpCoordinator) {
-        return new DeploymentWakeUpGate(registry, coordinator, timeout, pollInterval, executor, wakeUpCoordinator);
+                                      ScheduledThreadPoolExecutor scheduler) {
+        FunctionCapacityRegistry generations = generations();
+        return gate(timeout, pollInterval, executor, scheduler, generations,
+                new DeploymentWakeUpCoordinator(generations, scheduler));
     }
 
     private DeploymentWakeUpGate gate(Duration timeout,
-                                      Duration pollInterval,
-                                      java.util.concurrent.Executor executor,
-                                      ScheduledThreadPoolExecutor scheduler,
-                                      DeploymentWakeUpCoordinator wakeUpCoordinator) {
+                                       Duration pollInterval,
+                                       java.util.concurrent.Executor executor,
+                                       ScheduledThreadPoolExecutor scheduler,
+                                       FunctionCapacityRegistry generations,
+                                       DeploymentWakeUpCoordinator wakeUpCoordinator) {
         return new DeploymentWakeUpGate(
-                registry, coordinator, timeout, pollInterval, executor, scheduler, wakeUpCoordinator);
+                registry, coordinator, generations,
+                new DeploymentWakeUpProperties(timeout, pollInterval), executor, scheduler,
+                wakeUpCoordinator, InstantSource.system(), System::nanoTime);
     }
 
-    private static ScheduledThreadPoolExecutor scheduler() {
+    private ScheduledThreadPoolExecutor scheduler() {
         ScheduledThreadPoolExecutor scheduler = new ScheduledThreadPoolExecutor(1);
         scheduler.setRemoveOnCancelPolicy(true);
+        schedulers.add(scheduler);
         return scheduler;
+    }
+
+    private static FunctionCapacityRegistry generations() {
+        FunctionCapacityRegistry generations = new FunctionCapacityRegistry();
+        generations.register("echo", 1);
+        return generations;
     }
 
     private static RegisteredFunction deployment(String name, String backend, ScalingStrategy strategy, int minReplicas) {

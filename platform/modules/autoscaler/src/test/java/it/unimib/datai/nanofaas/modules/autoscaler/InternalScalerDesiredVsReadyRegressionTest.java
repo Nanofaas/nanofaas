@@ -15,6 +15,7 @@ import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -56,6 +57,7 @@ class InternalScalerDesiredVsReadyRegressionTest {
     private ManagedDeploymentCoordinator deploymentCoordinator;
 
     private InternalScaler scaler;
+    private final WakeUpTestResources wakeUpResources = new WakeUpTestResources();
 
     private static final ScalingProperties PROPS = new ScalingProperties(5000L, 1, 10);
     private final ColdStartTracker coldStartTracker = new ColdStartTracker();
@@ -63,7 +65,18 @@ class InternalScalerDesiredVsReadyRegressionTest {
     @BeforeEach
     void setUp() {
         scaler = new InternalScaler(registry, metricsReader, deploymentCoordinator, PROPS,
-                coldStartTracker, new DeploymentWakeUpCoordinator());
+                coldStartTracker, wakeUpResources.coordinator());
+        org.mockito.Mockito.lenient().when(deploymentCoordinator.generationOf(
+                org.mockito.ArgumentMatchers.any())).thenAnswer(invocation ->
+                wakeUpResources.generation(invocation.getArgument(0, RegisteredFunction.class).name()));
+        org.mockito.Mockito.lenient().when(deploymentCoordinator.setReplicas(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyInt())).thenReturn(true);
+    }
+
+    @AfterEach
+    void closeWakeUpResources() {
+        wakeUpResources.close();
     }
 
     private RegisteredFunction functionSpec(String name, ScalingConfig scaling) {
@@ -109,7 +122,8 @@ class InternalScalerDesiredVsReadyRegressionTest {
 
         ArgumentCaptor<Integer> replicaCounts = ArgumentCaptor.forClass(Integer.class);
         org.mockito.Mockito.verify(deploymentCoordinator, org.mockito.Mockito.atLeastOnce())
-                .setReplicas(org.mockito.ArgumentMatchers.eq(target), replicaCounts.capture());
+                .setReplicas(org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.eq(target), replicaCounts.capture());
 
         int firstCommandedTarget = replicaCounts.getAllValues().get(0);
         int lastCommandedTarget = replicaCounts.getAllValues().get(replicaCounts.getAllValues().size() - 1);

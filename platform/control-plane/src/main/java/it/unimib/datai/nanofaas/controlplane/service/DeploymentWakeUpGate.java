@@ -33,15 +33,12 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.LongSupplier;
 
 @Service
 public class DeploymentWakeUpGate implements FunctionRegistrationListener, AutoCloseable {
-
-    private static final ScheduledThreadPoolExecutor FALLBACK_TIMEOUT_SCHEDULER = fallbackScheduler();
 
     private final FunctionRegistry registry;
     private final ManagedDeploymentCoordinator coordinator;
@@ -54,7 +51,6 @@ public class DeploymentWakeUpGate implements FunctionRegistrationListener, AutoC
     private final DeploymentWakeUpCoordinator wakeUpCoordinator;
     private final InstantSource clock;
     private final LongSupplier nanoTime;
-    private final boolean standaloneGenerations;
     private final ConcurrentMap<FunctionGeneration, WakeUp> inFlight = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
 
@@ -67,52 +63,7 @@ public class DeploymentWakeUpGate implements FunctionRegistrationListener, AutoC
                                 @Qualifier("deploymentWakeUpTimeoutScheduler") ScheduledExecutorService timeoutScheduler,
                                 DeploymentWakeUpCoordinator wakeUpCoordinator) {
         this(registry, coordinator, generations, properties, executor, timeoutScheduler, wakeUpCoordinator,
-                InstantSource.system(), System::nanoTime, false);
-    }
-
-    public DeploymentWakeUpGate(FunctionRegistry registry,
-                                ManagedDeploymentCoordinator coordinator,
-                                Duration timeout,
-                                Duration pollInterval) {
-        this(registry, coordinator, standaloneGenerations(),
-                new DeploymentWakeUpProperties(timeout, pollInterval), Runnable::run,
-                FALLBACK_TIMEOUT_SCHEDULER, new DeploymentWakeUpCoordinator(),
-                InstantSource.system(), System::nanoTime, true);
-    }
-
-    DeploymentWakeUpGate(FunctionRegistry registry,
-                         ManagedDeploymentCoordinator coordinator,
-                         Duration timeout,
-                         Duration pollInterval,
-                         Executor executor) {
-        this(registry, coordinator, standaloneGenerations(),
-                new DeploymentWakeUpProperties(timeout, pollInterval), executor,
-                FALLBACK_TIMEOUT_SCHEDULER, new DeploymentWakeUpCoordinator(),
-                InstantSource.system(), System::nanoTime, true);
-    }
-
-    public DeploymentWakeUpGate(FunctionRegistry registry,
-                                ManagedDeploymentCoordinator coordinator,
-                                Duration timeout,
-                                Duration pollInterval,
-                                Executor executor,
-                                DeploymentWakeUpCoordinator wakeUpCoordinator) {
-        this(registry, coordinator, standaloneGenerations(),
-                new DeploymentWakeUpProperties(timeout, pollInterval), executor,
-                FALLBACK_TIMEOUT_SCHEDULER, wakeUpCoordinator,
-                InstantSource.system(), System::nanoTime, true);
-    }
-
-    DeploymentWakeUpGate(FunctionRegistry registry,
-                         ManagedDeploymentCoordinator coordinator,
-                         Duration timeout,
-                         Duration pollInterval,
-                         Executor executor,
-                         ScheduledExecutorService timeoutScheduler,
-                         DeploymentWakeUpCoordinator wakeUpCoordinator) {
-        this(registry, coordinator, standaloneGenerations(),
-                new DeploymentWakeUpProperties(timeout, pollInterval), executor,
-                timeoutScheduler, wakeUpCoordinator, InstantSource.system(), System::nanoTime, true);
+                InstantSource.system(), System::nanoTime);
     }
 
     DeploymentWakeUpGate(FunctionRegistry registry,
@@ -124,20 +75,6 @@ public class DeploymentWakeUpGate implements FunctionRegistrationListener, AutoC
                          DeploymentWakeUpCoordinator wakeUpCoordinator,
                          InstantSource clock,
                          LongSupplier nanoTime) {
-        this(registry, coordinator, generations, properties, executor, timeoutScheduler, wakeUpCoordinator,
-                clock, nanoTime, false);
-    }
-
-    private DeploymentWakeUpGate(FunctionRegistry registry,
-                                 ManagedDeploymentCoordinator coordinator,
-                                 FunctionCapacityRegistry generations,
-                                 DeploymentWakeUpProperties properties,
-                                 Executor executor,
-                                 ScheduledExecutorService timeoutScheduler,
-                                 DeploymentWakeUpCoordinator wakeUpCoordinator,
-                                 InstantSource clock,
-                                 LongSupplier nanoTime,
-                                 boolean standaloneGenerations) {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.coordinator = Objects.requireNonNull(coordinator, "coordinator");
         this.generations = Objects.requireNonNull(generations, "generations");
@@ -149,7 +86,6 @@ public class DeploymentWakeUpGate implements FunctionRegistrationListener, AutoC
         this.wakeUpCoordinator = Objects.requireNonNull(wakeUpCoordinator, "wakeUpCoordinator");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime");
-        this.standaloneGenerations = standaloneGenerations;
     }
 
     public CompletableFuture<Void> ensureReady(InvocationTask task) {
@@ -226,12 +162,7 @@ public class DeploymentWakeUpGate implements FunctionRegistrationListener, AutoC
     }
 
     private FunctionGeneration activeGeneration(RegisteredFunction function) {
-        FunctionGeneration generation = generations.activeGeneration(function.name());
-        if (generation == null && standaloneGenerations) {
-            generations.register(function.name(), function.spec().concurrency());
-            generation = generations.activeGeneration(function.name());
-        }
-        return generation;
+        return generations.activeGeneration(function.name());
     }
 
     private boolean isReadyWithinPolicy(ReplicaObservation observation, Instant now) {
@@ -250,9 +181,19 @@ public class DeploymentWakeUpGate implements FunctionRegistrationListener, AutoC
     }
 
     private void submit(Runnable action, WakeUp owner) {
+        if (!owner.callbackStarted()) {
+            return;
+        }
         try {
-            executor.execute(action);
+            executor.execute(() -> {
+                try {
+                    action.run();
+                } finally {
+                    owner.callbackFinished();
+                }
+            });
         } catch (RuntimeException | Error failure) {
+            owner.callbackFinished();
             owner.completeExceptionally(failure);
         }
     }
@@ -278,41 +219,34 @@ public class DeploymentWakeUpGate implements FunctionRegistrationListener, AutoC
         return CompletableFuture.failedFuture(new IllegalStateException(message));
     }
 
-    private static FunctionCapacityRegistry standaloneGenerations() {
-        return new FunctionCapacityRegistry();
-    }
-
-    private static ScheduledThreadPoolExecutor fallbackScheduler() {
-        ScheduledThreadPoolExecutor scheduler = new ScheduledThreadPoolExecutor(1, runnable -> {
-            Thread thread = new Thread(runnable, "deployment-wakeup-timeout-");
-            thread.setDaemon(true);
-            return thread;
-        });
-        scheduler.setRemoveOnCancelPolicy(true);
-        scheduler.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
-        return scheduler;
-    }
-
     private final class WakeUp {
         private final FunctionGeneration generation;
         private final ManagedDeploymentTarget target;
         private final CompletableFuture<Void> result = new CompletableFuture<>();
-        private final AtomicBoolean cleaned = new AtomicBoolean();
-        private volatile ScheduledFuture<?> timeoutTask;
-        private volatile ScheduledFuture<?> pollTask;
-        private volatile DeploymentWakeUpCoordinator.WakeUpLease wakeUpLease;
+        private ScheduledFuture<?> timeoutTask;
+        private ScheduledFuture<?> pollTask;
+        private DeploymentWakeUpCoordinator.WakeUpLease wakeUpLease;
+        private int runningCallbacks;
+        private long pollVersion;
+        private boolean schedulingPoll;
+        private boolean pollRanWhileScheduling;
+        private boolean retired;
+        private boolean drained;
 
         private WakeUp(FunctionGeneration generation, ManagedDeploymentTarget target) {
             this.generation = generation;
             this.target = target;
-            result.whenComplete((ignored, failure) -> cleanup());
+            result.whenComplete((ignored, failure) -> retire());
         }
 
         private void start() {
             long deadline = nanoTime.getAsLong() + timeout.toNanos();
             try {
-                installTimeout(timeoutScheduler.schedule(
-                        () -> fail("DEPLOYMENT_WAKE_UP_TIMEOUT"), timeout.toNanos(), TimeUnit.NANOSECONDS));
+                synchronized (this) {
+                    timeoutTask = timeoutScheduler.schedule(
+                            () -> fail("DEPLOYMENT_WAKE_UP_TIMEOUT"), timeout.toNanos(), TimeUnit.NANOSECONDS);
+                    if (result.isDone()) timeoutTask.cancel(false);
+                }
                 submit(() -> readAndWake(deadline), this);
             } catch (RuntimeException | Error failure) {
                 completeExceptionally(failure);
@@ -340,7 +274,7 @@ public class DeploymentWakeUpGate implements FunctionRegistrationListener, AutoC
                 DeploymentWakeUpCoordinator.WakeUpLease lease = wakeUpCoordinator.protectAndScaleUp(
                         generation, target, deadline, () -> {
                     if (status.desiredReplicas() == 0 && canContinue()) {
-                        coordinator.setReplicas(target, 1);
+                        coordinator.setReplicas(generation, target, 1);
                     }
                 });
                 installLease(lease);
@@ -369,13 +303,44 @@ public class DeploymentWakeUpGate implements FunctionRegistrationListener, AutoC
                 return;
             }
             try {
-                ScheduledFuture<?> scheduled = timeoutScheduler.schedule(
-                        () -> submit(() -> poll(deadline), this),
-                        Math.min(pollInterval.toNanos(), remaining), TimeUnit.NANOSECONDS);
-                installPoll(scheduled);
+                boolean runDeferred;
+                long version;
+                synchronized (this) {
+                    if (retired) return;
+                    schedulingPoll = true;
+                    pollRanWhileScheduling = false;
+                    version = ++pollVersion;
+                    ScheduledFuture<?> scheduled;
+                    try {
+                        scheduled = timeoutScheduler.schedule(
+                                () -> pollScheduled(version, deadline),
+                                Math.min(pollInterval.toNanos(), remaining), TimeUnit.NANOSECONDS);
+                    } finally {
+                        schedulingPoll = false;
+                    }
+                    ScheduledFuture<?> previous = pollTask;
+                    pollTask = scheduled;
+                    if (previous != null) previous.cancel(false);
+                    runDeferred = pollRanWhileScheduling;
+                    if (runDeferred) pollTask = null;
+                    if (retired) scheduled.cancel(false);
+                }
+                if (runDeferred) submit(() -> poll(deadline), this);
             } catch (RuntimeException | Error failure) {
                 completeExceptionally(failure);
             }
+        }
+
+        private void pollScheduled(long version, long deadline) {
+            synchronized (this) {
+                if (retired || version != pollVersion) return;
+                if (schedulingPoll) {
+                    pollRanWhileScheduling = true;
+                    return;
+                }
+                pollTask = null;
+            }
+            submit(() -> poll(deadline), this);
         }
 
         private boolean canContinue() {
@@ -391,21 +356,9 @@ public class DeploymentWakeUpGate implements FunctionRegistrationListener, AutoC
             return true;
         }
 
-        private void installTimeout(ScheduledFuture<?> scheduled) {
-            timeoutTask = scheduled;
-            if (result.isDone()) scheduled.cancel(false);
-        }
-
-        private void installPoll(ScheduledFuture<?> scheduled) {
-            ScheduledFuture<?> previous = pollTask;
-            pollTask = scheduled;
-            if (previous != null) previous.cancel(false);
-            if (result.isDone()) scheduled.cancel(false);
-        }
-
-        private void installLease(DeploymentWakeUpCoordinator.WakeUpLease lease) {
-            wakeUpLease = lease;
-            if (cleaned.get()) lease.close();
+        private synchronized void installLease(DeploymentWakeUpCoordinator.WakeUpLease lease) {
+            if (retired) lease.close();
+            else wakeUpLease = lease;
         }
 
         private void fail(String message) {
@@ -416,14 +369,31 @@ public class DeploymentWakeUpGate implements FunctionRegistrationListener, AutoC
             result.completeExceptionally(failure);
         }
 
-        private void cleanup() {
-            if (!cleaned.compareAndSet(false, true)) return;
+        private synchronized boolean callbackStarted() {
+            if (retired) return false;
+            runningCallbacks++;
+            return true;
+        }
+
+        private synchronized void callbackFinished() {
+            runningCallbacks--;
+            drainIfPossible();
+        }
+
+        private synchronized void retire() {
+            if (retired) return;
+            retired = true;
+            if (timeoutTask != null) timeoutTask.cancel(false);
+            if (pollTask != null) pollTask.cancel(false);
+            drainIfPossible();
+        }
+
+        private void drainIfPossible() {
+            if (!retired || drained || runningCallbacks != 0) return;
+            drained = true;
             inFlight.remove(generation, this);
-            ScheduledFuture<?> timeout = timeoutTask;
-            if (timeout != null) timeout.cancel(false);
-            ScheduledFuture<?> poll = pollTask;
-            if (poll != null) poll.cancel(false);
             DeploymentWakeUpCoordinator.WakeUpLease lease = wakeUpLease;
+            wakeUpLease = null;
             if (lease != null) lease.close();
         }
     }

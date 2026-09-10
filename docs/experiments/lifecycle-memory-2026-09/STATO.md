@@ -2117,3 +2117,29 @@ HIGH/CRITICAL results. UNKNOWN constructors, configuration/property binding and
 `isScaleDownProtected` were resolved with exact text searches before editing. The P10 refresh-pool
 cancellation note remains outside P11 and was not changed; async-queue invoke/enqueue behavior and
 P12+ scope are untouched.
+
+### P11 fix round 1 — generation-fenced mutation and physical drain
+
+Replica mutation now has a generation-aware path that acquires the shared function-operation lock
+and validates both the exact P07 generation and managed target before changing the registry or
+provider. The wake-up gate uses that path. `InternalScaler` captures the generation only while its
+observed `RegisteredFunction` is still the current registry object, carries it through evaluation,
+and uses it for both scale-up and scale-down. The wake-up coordinator no longer has a name-only
+downscale branch: a stale or absent expected generation cannot execute the mutation callback.
+
+Gate and coordinator removal/close now retire owners and cancel queued timers immediately while
+retaining generation attribution until already-submitted synchronous callbacks exit. Package-visible
+owner counts deliberately expose this physical drain in tests; no Actuator metric was added. Poll
+publication also handles a scheduler executing the callback before `schedule()` returns, without
+allowing the predecessor to cancel the successor. Static fallback schedulers, no-argument wake-up
+coordinators and implicit standalone generation creation were removed; tests now supply and close
+their own generation authorities and removable schedulers.
+
+Deterministic coverage uses latches, controlled nanotime, raw captured expiry callbacks, executor
+completion barriers and a pre-return scheduler; the coordinator tests contain no park/sleep ordering.
+The final focused core suite (gate, wake-up coordinator and managed deployment coordinator) is green
+in 6 seconds, and all `InternalScaler*Test` cases are green in 4 seconds. Packaging is green for
+`none`, `async-queue`, `sync-queue,runtime-config`, `container-deployment-provider` and `all`. After
+correcting two test-harness synchronization defects exposed by integration, the final full offline
+repository suite completed with **BUILD SUCCESSFUL in 2m32s** (190 actionable tasks: 26 executed,
+164 up-to-date).
