@@ -1,33 +1,133 @@
 import json
+import subprocess
+import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 
-CORPUS = Path(__file__).resolve().parents[2] / "runtime-contract" / "saturation-wire-corpus.json"
+CONTRACT_DIR = Path(__file__).resolve().parents[2] / "runtime-contract"
+CORPUS = CONTRACT_DIR / "saturation-wire-corpus.json"
+VALIDATOR = CONTRACT_DIR / "validate_saturation_wire_corpus.py"
+
+
+@dataclass(frozen=True)
+class ScenarioProjection:
+    scenario_id: str
+    kind: str
+    owners: tuple[str, ...]
+    runtime_config: str
+    request_ids: tuple[str, ...]
+    action_count: int
+    deadline_ms: int
+    callback_states: tuple[tuple[bool, bool, bool, int], ...]
+    observations: tuple[str, ...]
+    final_counters: tuple[tuple[str, int], ...]
+
+
+def _reject_constant(value):
+    raise ValueError(f"non-finite JSON number {value}")
+
+
+def _touch_complete_typed_model(corpus):
+    assert isinstance(corpus["schemaVersion"], str)
+    policy = corpus["policy"]
+    assert isinstance(policy["maximumScenarioDeadlineMs"], int)
+    assert all(isinstance(value, str) for value in policy["identity"].values())
+    assert all(
+        isinstance(item, str)
+        for values in policy["vocabulary"].values()
+        for item in values
+    )
+    assert all(
+        isinstance(value, int)
+        for config in corpus["runtimeConfigurations"].values()
+        for value in config.values()
+    )
+    for scenario in corpus["scenarios"]:
+        assert all(isinstance(owner, str) for owner in scenario["implementationOwners"])
+        assert isinstance(scenario["runtimeConfigRef"], str)
+        assert all(isinstance(value, int) for value in scenario["initialCounters"].values())
+        for request in scenario["requests"]:
+            assert all(key in request["metadata"] for key in (
+                "executionId", "dispatchAttempt", "traceId", "callbackUrl"
+            ))
+            assert isinstance(request["payload"]["inputBytes"], int)
+            assert isinstance(request["payload"]["relationToInputLimit"], str)
+        for handler in scenario["backend"]["handlers"]:
+            assert all(key in handler for key in (
+                "requestId", "behavior", "outputBytes", "outputRelationToLimit", "barrier"
+            ))
+        for callback in scenario["backend"]["callbacks"]:
+            assert all(key in callback for key in ("requestId", "behavior", "barrier"))
+        for barrier in scenario["harness"]["barriers"]:
+            assert isinstance(barrier["id"], str) and isinstance(barrier["initialState"], str)
+        for action in scenario["harness"]["actions"]:
+            assert all(key in action for key in ("sequence", "actor", "action", "requestId", "barrier"))
+        expected = scenario["expected"]
+        for response in expected["responses"]:
+            assert all(key in response for key in (
+                "requestId", "connectionOutcome", "status", "body", "requiredHeaders"
+            ))
+        for handler in expected["handlers"]:
+            assert isinstance(handler["started"], bool)
+            assert isinstance(handler["cancelRequested"], bool)
+        for callback in expected["callbacks"]:
+            assert isinstance(callback["required"], bool)
+            assert isinstance(callback["attempted"], bool)
+            assert isinstance(callback["delivered"], bool)
+            assert isinstance(callback["dispatchAttempts"], list)
+        assert all(key in expected["identity"] for key in (
+            "executionId", "requestDispatchAttempts", "runtimeRedispatchCount"
+        ))
+        assert all(isinstance(item, str) for item in expected["observations"])
+        assert all(isinstance(value, int) for value in expected["finalCounters"].values())
+    for mutation in corpus["mutationTests"]:
+        assert all(key in mutation for key in ("id", "operation", "path", "value"))
 
 
 def test_consumes_the_shared_runtime_saturation_wire_contract():
-    corpus = json.loads(CORPUS.read_text(encoding="utf-8"))
+    validation = subprocess.run(
+        [sys.executable, str(VALIDATOR), "--run-mutations", str(CORPUS)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert validation.returncode == 0, validation.stdout + validation.stderr
+    corpus = json.loads(CORPUS.read_text(encoding="utf-8"), parse_constant=_reject_constant)
+    _touch_complete_typed_model(corpus)
 
-    assert corpus["version"] > 0
-    runner = corpus["runner"]
-    assert corpus["releaseOn"] == runner["requiredReleaseEvents"]
-    assert corpus["scope"] and corpus["admissionPoint"]
-    assert all(corpus["retryIdentity"].values())
-
-    cases = corpus["cases"]
-    ids = [case["id"] for case in cases]
-    assert len(ids) == len(set(ids))
-    assert set(ids) == set(runner["requiredCaseIds"])
-    for case in cases:
-        assert case["implementationOwner"] and case["stimulus"]
-        assert 0 < case["timeoutMs"] <= runner["maximumCaseTimeoutMs"]
-        expected = case["expected"]
-        assert expected["httpStatus"] == runner["noSecondResponseStatus"] or (
-            runner["minimumHttpStatus"] <= expected["httpStatus"] <= runner["maximumHttpStatus"]
+    projections = tuple(
+        ScenarioProjection(
+            scenario_id=scenario["id"],
+            kind=scenario["kind"],
+            owners=tuple(scenario["implementationOwners"]),
+            runtime_config=scenario["runtimeConfigRef"],
+            request_ids=tuple(request["id"] for request in scenario["requests"]),
+            action_count=len(scenario["harness"]["actions"]),
+            deadline_ms=scenario["deadlineMs"],
+            callback_states=tuple(
+                (callback["required"], callback["attempted"], callback["delivered"], callback["attempts"])
+                for callback in scenario["expected"]["callbacks"]
+            ),
+            observations=tuple(scenario["expected"]["observations"]),
+            final_counters=tuple(sorted(scenario["expected"]["finalCounters"].items())),
         )
-        assert expected["errorCode"].replace("_", "").isalnum()
-        assert expected["errorCode"] == expected["errorCode"].upper()
-        assert expected["message"] and expected["release"]
-        assert isinstance(expected["retryable"], bool)
-        assert isinstance(expected["handlerStarted"], bool)
-        assert isinstance(expected["callbackExpected"], bool)
+        for scenario in corpus["scenarios"]
+    )
+
+    assert {projection.kind for projection in projections} == set(
+        corpus["policy"]["vocabulary"]["scenarioKinds"]
+    )
+    assert all(projection.request_ids and projection.action_count > 0 for projection in projections)
+    assert all(
+        0 < projection.deadline_ms <= corpus["policy"]["maximumScenarioDeadlineMs"]
+        for projection in projections
+    )
+    assert all(
+        all(isinstance(value, bool) for value in callback[:3])
+        for projection in projections
+        for callback in projection.callback_states
+    )
+    assert all(not any(dict(projection.final_counters).values()) for projection in projections)
+    assert corpus["mutationTests"]

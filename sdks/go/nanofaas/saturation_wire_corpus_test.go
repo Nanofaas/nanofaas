@@ -1,117 +1,256 @@
 package nanofaas
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
-	"slices"
-	"strings"
 	"testing"
+	"time"
 )
 
-type saturationWireCorpus struct {
-	Version        int                    `json:"version"`
-	Scope          string                 `json:"scope"`
-	AdmissionPoint string                 `json:"admissionPoint"`
-	ReleaseOn      []string               `json:"releaseOn"`
-	RetryIdentity  map[string]string      `json:"retryIdentity"`
-	Runner         saturationCorpusRunner `json:"runner"`
-	Cases          []saturationWireCase   `json:"cases"`
+type saturationCorpus struct {
+	SchemaVersion         string                         `json:"schemaVersion"`
+	Policy                corpusPolicy                   `json:"policy"`
+	RuntimeConfigurations map[string]corpusRuntimeConfig `json:"runtimeConfigurations"`
+	Scenarios             []corpusScenario               `json:"scenarios"`
+	MutationTests         []map[string]any               `json:"mutationTests"`
 }
 
-type saturationCorpusRunner struct {
-	RequiredCaseIDs       []string `json:"requiredCaseIds"`
-	RequiredReleaseEvents []string `json:"requiredReleaseEvents"`
-	MaximumCaseTimeoutMS  int      `json:"maximumCaseTimeoutMs"`
-	MinimumHTTPStatus     int      `json:"minimumHttpStatus"`
-	MaximumHTTPStatus     int      `json:"maximumHttpStatus"`
-	NoSecondResponse      int      `json:"noSecondResponseStatus"`
+type corpusPolicy struct {
+	MaximumScenarioDeadlineMS int                 `json:"maximumScenarioDeadlineMs"`
+	Identity                  map[string]string   `json:"identity"`
+	Vocabulary                map[string][]string `json:"vocabulary"`
 }
 
-type saturationWireCase struct {
-	ID                  string `json:"id"`
-	ImplementationOwner string `json:"implementationOwner"`
-	Stimulus            string `json:"stimulus"`
-	TimeoutMS           int    `json:"timeoutMs"`
-	Expected            struct {
-		HTTPStatus     int      `json:"httpStatus"`
-		ErrorCode      string   `json:"errorCode"`
-		Message        string   `json:"message"`
-		Retryable      bool     `json:"retryable"`
-		HandlerStarted bool     `json:"handlerStarted"`
-		Callback       bool     `json:"callbackExpected"`
-		Release        []string `json:"release"`
-	} `json:"expected"`
+type corpusRuntimeConfig struct {
+	MaxConcurrentHandlers, MaxInputBytes, MaxOutputBytes, MaxPendingCallbacks int
+	MaxPendingCallbackBytes, HandlerTimeoutMS, CallbackAttemptTimeoutMS       int
+	CallbackMaxAttempts, BodyReadTimeoutMS, ShutdownTimeoutMS                 int
+}
+
+func (c *corpusRuntimeConfig) UnmarshalJSON(body []byte) error {
+	type wire struct {
+		MaxConcurrentHandlers    int `json:"maxConcurrentHandlers"`
+		MaxInputBytes            int `json:"maxInputBytes"`
+		MaxOutputBytes           int `json:"maxOutputBytes"`
+		MaxPendingCallbacks      int `json:"maxPendingCallbacks"`
+		MaxPendingCallbackBytes  int `json:"maxPendingCallbackBytes"`
+		HandlerTimeoutMS         int `json:"handlerTimeoutMs"`
+		CallbackAttemptTimeoutMS int `json:"callbackAttemptTimeoutMs"`
+		CallbackMaxAttempts      int `json:"callbackMaxAttempts"`
+		BodyReadTimeoutMS        int `json:"bodyReadTimeoutMs"`
+		ShutdownTimeoutMS        int `json:"shutdownTimeoutMs"`
+	}
+	var value wire
+	if err := json.Unmarshal(body, &value); err != nil {
+		return err
+	}
+	*c = corpusRuntimeConfig{value.MaxConcurrentHandlers, value.MaxInputBytes, value.MaxOutputBytes,
+		value.MaxPendingCallbacks, value.MaxPendingCallbackBytes, value.HandlerTimeoutMS,
+		value.CallbackAttemptTimeoutMS, value.CallbackMaxAttempts, value.BodyReadTimeoutMS,
+		value.ShutdownTimeoutMS}
+	return nil
+}
+
+type corpusScenario struct {
+	ID, Kind, RuntimeConfigRef string
+	ImplementationOwners       []string
+	Requests                   []corpusRequest
+	Backend                    corpusBackend
+	Harness                    corpusHarness
+	InitialCounters            map[string]int
+	Expected                   corpusExpected
+	DeadlineMS                 int
+}
+
+func (s *corpusScenario) UnmarshalJSON(body []byte) error {
+	type wire struct {
+		ID                   string          `json:"id"`
+		Kind                 string          `json:"kind"`
+		ImplementationOwners []string        `json:"implementationOwners"`
+		RuntimeConfigRef     string          `json:"runtimeConfigRef"`
+		Requests             []corpusRequest `json:"requests"`
+		Backend              corpusBackend   `json:"backend"`
+		Harness              corpusHarness   `json:"harness"`
+		InitialCounters      map[string]int  `json:"initialCounters"`
+		Expected             corpusExpected  `json:"expected"`
+		DeadlineMS           int             `json:"deadlineMs"`
+	}
+	var value wire
+	if err := json.Unmarshal(body, &value); err != nil {
+		return err
+	}
+	*s = corpusScenario{value.ID, value.Kind, value.RuntimeConfigRef, value.ImplementationOwners,
+		value.Requests, value.Backend, value.Harness, value.InitialCounters, value.Expected, value.DeadlineMS}
+	return nil
+}
+
+type corpusRequest struct {
+	ID, Role, Method, Path string
+	Metadata               corpusMetadata
+	Payload                corpusPayload
+}
+type corpusMetadata struct {
+	ExecutionID     *string `json:"executionId"`
+	DispatchAttempt *int    `json:"dispatchAttempt"`
+	TraceID         *string `json:"traceId"`
+	CallbackURL     *string `json:"callbackUrl"`
+}
+type corpusPayload struct {
+	InputBytes           int    `json:"inputBytes"`
+	RelationToInputLimit string `json:"relationToInputLimit"`
+}
+
+func (r *corpusRequest) UnmarshalJSON(body []byte) error {
+	type wire struct {
+		ID       string         `json:"id"`
+		Role     string         `json:"role"`
+		Method   string         `json:"method"`
+		Path     string         `json:"path"`
+		Metadata corpusMetadata `json:"metadata"`
+		Payload  corpusPayload  `json:"payload"`
+	}
+	var value wire
+	if err := json.Unmarshal(body, &value); err != nil {
+		return err
+	}
+	*r = corpusRequest{value.ID, value.Role, value.Method, value.Path, value.Metadata, value.Payload}
+	return nil
+}
+
+type corpusBackend struct {
+	Handlers  []corpusHandlerBackend  `json:"handlers"`
+	Callbacks []corpusCallbackBackend `json:"callbacks"`
+}
+type corpusHandlerBackend struct {
+	RequestID             string  `json:"requestId"`
+	Behavior              string  `json:"behavior"`
+	OutputBytes           int     `json:"outputBytes"`
+	OutputRelationToLimit string  `json:"outputRelationToLimit"`
+	Barrier               *string `json:"barrier"`
+}
+type corpusCallbackBackend struct {
+	RequestID string  `json:"requestId"`
+	Behavior  string  `json:"behavior"`
+	Barrier   *string `json:"barrier"`
+}
+type corpusHarness struct {
+	Barriers []corpusBarrier `json:"barriers"`
+	Actions  []corpusAction  `json:"actions"`
+}
+type corpusBarrier struct {
+	ID           string `json:"id"`
+	InitialState string `json:"initialState"`
+}
+type corpusAction struct {
+	Sequence  int     `json:"sequence"`
+	Actor     string  `json:"actor"`
+	Action    string  `json:"action"`
+	RequestID *string `json:"requestId"`
+	Barrier   *string `json:"barrier"`
+}
+type corpusExpected struct {
+	Responses     []corpusResponse         `json:"responses"`
+	Handlers      []corpusHandlerExpected  `json:"handlers"`
+	Callbacks     []corpusCallbackExpected `json:"callbacks"`
+	Identity      corpusIdentityExpected   `json:"identity"`
+	Observations  []string                 `json:"observations"`
+	FinalCounters map[string]int           `json:"finalCounters"`
+}
+type corpusResponse struct {
+	RequestID         string            `json:"requestId"`
+	ConnectionOutcome string            `json:"connectionOutcome"`
+	Status            int               `json:"status"`
+	Body              any               `json:"body"`
+	RequiredHeaders   map[string]string `json:"requiredHeaders"`
+}
+type corpusHandlerExpected struct {
+	RequestID       string `json:"requestId"`
+	Started         *bool  `json:"started"`
+	CancelRequested *bool  `json:"cancelRequested"`
+	Terminal        string `json:"terminal"`
+}
+type corpusCallbackExpected struct {
+	RequestID        string `json:"requestId"`
+	Required         *bool  `json:"required"`
+	Attempted        *bool  `json:"attempted"`
+	Delivered        *bool  `json:"delivered"`
+	Attempts         int    `json:"attempts"`
+	Terminal         string `json:"terminal"`
+	DispatchAttempts []int  `json:"dispatchAttempts"`
+}
+type corpusIdentityExpected struct {
+	ExecutionID             *string `json:"executionId"`
+	RequestDispatchAttempts []int   `json:"requestDispatchAttempts"`
+	RuntimeRedispatchCount  int     `json:"runtimeRedispatchCount"`
 }
 
 func TestConsumesSharedRuntimeSaturationWireContract(t *testing.T) {
-	_, source, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("cannot locate test source")
+	corpusPath := saturationCorpusPath(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	validator := filepath.Join(filepath.Dir(corpusPath), "validate_saturation_wire_corpus.py")
+	output, err := exec.CommandContext(ctx, "python3", validator, "--run-mutations", corpusPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("shared validator failed: %v\n%s", err, output)
 	}
-	corpusPath := os.Getenv("NANOFAAS_SATURATION_CORPUS")
-	if corpusPath == "" {
-		corpusPath = filepath.Join(filepath.Dir(source), "..", "..", "runtime-contract", "saturation-wire-corpus.json")
+	if ctx.Err() != nil {
+		t.Fatal("shared validator exceeded finite adapter deadline")
 	}
+
 	body, err := os.ReadFile(corpusPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var corpus saturationWireCorpus
-	if err := json.Unmarshal(body, &corpus); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.DisallowUnknownFields()
+	var corpus saturationCorpus
+	if err := decoder.Decode(&corpus); err != nil {
 		t.Fatal(err)
 	}
-
-	if corpus.Version <= 0 || corpus.Scope == "" || corpus.AdmissionPoint == "" {
-		t.Fatalf("incomplete corpus metadata")
+	if len(corpus.Scenarios) != len(corpus.Policy.Vocabulary["scenarioKinds"]) {
+		t.Fatal("scenario projection mismatch")
 	}
-	if stringSliceSet(corpus.ReleaseOn) != stringSliceSet(corpus.Runner.RequiredReleaseEvents) {
-		t.Fatalf("release policy and runner contract differ")
-	}
-	for key, value := range corpus.RetryIdentity {
-		if key == "" || value == "" {
-			t.Fatalf("empty retry identity entry")
+	for _, scenario := range corpus.Scenarios {
+		if scenario.ID == "" || scenario.Kind == "" || scenario.RuntimeConfigRef == "" || len(scenario.Requests) == 0 ||
+			len(scenario.Backend.Handlers) != len(scenario.Requests) || len(scenario.Backend.Callbacks) != len(scenario.Requests) ||
+			len(scenario.Harness.Actions) == 0 || len(scenario.Expected.Observations) == 0 ||
+			scenario.DeadlineMS <= 0 || scenario.DeadlineMS > corpus.Policy.MaximumScenarioDeadlineMS {
+			t.Fatalf("incomplete typed projection for %q", scenario.ID)
+		}
+		for _, expected := range scenario.Expected.Handlers {
+			if expected.Started == nil || expected.CancelRequested == nil {
+				t.Fatalf("missing handler boolean in %q", scenario.ID)
+			}
+		}
+		for _, expected := range scenario.Expected.Callbacks {
+			if expected.Required == nil || expected.Attempted == nil || expected.Delivered == nil {
+				t.Fatalf("missing callback boolean in %q", scenario.ID)
+			}
+		}
+		for name, count := range scenario.Expected.FinalCounters {
+			if name == "" || count != 0 {
+				t.Fatalf("undrained final counter in %q", scenario.ID)
+			}
 		}
 	}
-
-	actualIDs := make(map[string]struct{}, len(corpus.Cases))
-	errorCode := regexp.MustCompile(`^[A-Z][A-Z0-9_]+$`)
-	for _, testCase := range corpus.Cases {
-		if _, exists := actualIDs[testCase.ID]; exists {
-			t.Fatalf("duplicate case id %q", testCase.ID)
-		}
-		actualIDs[testCase.ID] = struct{}{}
-		if testCase.ImplementationOwner == "" || testCase.Stimulus == "" || testCase.TimeoutMS <= 0 ||
-			testCase.TimeoutMS > corpus.Runner.MaximumCaseTimeoutMS || len(testCase.Expected.Release) == 0 ||
-			testCase.Expected.Message == "" || !errorCode.MatchString(testCase.Expected.ErrorCode) {
-			t.Fatalf("case %q is incomplete", testCase.ID)
-		}
-		status := testCase.Expected.HTTPStatus
-		if status != corpus.Runner.NoSecondResponse &&
-			(status < corpus.Runner.MinimumHTTPStatus || status > corpus.Runner.MaximumHTTPStatus) {
-			t.Fatalf("case %q has invalid HTTP status %d", testCase.ID, status)
-		}
-	}
-	if stringMapSet(actualIDs) != stringSliceSet(corpus.Runner.RequiredCaseIDs) {
-		t.Fatalf("actual and required case ids differ")
+	if len(corpus.MutationTests) == 0 {
+		t.Fatal("mutation fixtures are required")
 	}
 }
 
-func stringSliceSet(values []string) string {
-	seen := make(map[string]struct{}, len(values))
-	for _, value := range values {
-		seen[value] = struct{}{}
+func saturationCorpusPath(t *testing.T) string {
+	t.Helper()
+	_, source, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("cannot locate test source")
 	}
-	return stringMapSet(seen)
-}
-
-func stringMapSet(values map[string]struct{}) string {
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
+	if configured := os.Getenv("NANOFAAS_SATURATION_CORPUS"); configured != "" {
+		return configured
 	}
-	slices.Sort(keys)
-	return strings.Join(keys, "\x00")
+	return filepath.Join(filepath.Dir(source), "..", "..", "runtime-contract", "saturation-wire-corpus.json")
 }

@@ -2732,3 +2732,33 @@ the forced-added P16a report.
 **Next step.** P17 and P18 establish their physical ownership primitives, then P16b drives
 the shared corpus through real direct invocations and implements/observes all remaining
 count and byte quotas.
+
+## P16a fix round 1 — structured executable policy
+
+Starting from `1cd7a295caca889e00960d7813974267d281ecc5`, the one Critical, four
+Important findings and report-accuracy issue are addressed without runtime production
+changes. The v1 free-form stimulus corpus is superseded by versioned v2 scenarios with
+finite runtime limits, requests and identity, byte relations, deterministic backend
+behavior, sequenced actions/barriers, full retained-resource counters, exact wire
+responses/headers, explicit handler/callback lifecycle and finite deadlines.
+
+The eleven scenario kinds cover success drain, separate ingress/output oversize,
+callback saturation, handler timeout, cancellation, health under saturation, stop with a
+full queue, restart, delivery exhaustion and two-attempt dispatch identity. P01 identity
+is explicit: execution ID stable, invocation attempt incremented by control-plane
+redispatch, callback retries echoing that attempt, and zero runtime redispatch.
+
+One shared Python validator owns structural and semantic rules. Ten embedded mutation
+fixtures and one raw non-finite-number mutation prove missing booleans, headers and
+observations; invalid limits/deadlines; contradictory lifecycle; impossible callback
+delivery; altered identity; and wrong output lifecycle are rejected. All five native
+adapters invoke it with a finite process deadline and parse typed projections from the
+single corpus. This executes policy/schema semantics only—not scenario actions against
+real runtimes or real timing/counter conformance, which remain P16b/P17/P18.
+
+Inventory now also records the Go dispatcher leak on bind failure, JavaScript
+non-positive/non-finite callback queue configuration, and absent runtime-owned ingress
+body-read deadlines in all five SDKs. Go/JavaScript fixes and common ingress conformance
+route to P16b; Python physical ownership remains P17 and Java-lite lifecycle ownership
+remains P18. Verification and final graph gates are recorded in the force-added P16a
+report. Next: P17/P18, then P16b.
