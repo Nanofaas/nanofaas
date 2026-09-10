@@ -464,6 +464,13 @@
           "expected": "callback.dispatchAttempts"
         },
         {
+          "id": "callback-dispatch-attempt-count-matches-delivery-attempts",
+          "scope": "callback",
+          "operator": "length-equals",
+          "source": "callback.dispatchAttempts",
+          "expected": "callback.attempts"
+        },
+        {
           "id": "runtime-never-redispatches",
           "scope": "scenario",
           "operator": "equals",
@@ -499,6 +506,59 @@
           "operator": "presence-iff-positive",
           "source": "callback.requestProjection",
           "expected": "callback.attempts"
+        },
+        {
+          "id": "handler-lifecycle-controls-wire-outcome",
+          "scope": "request",
+          "operator": "mapped-member",
+          "source": "handler.lifecycleRef",
+          "expected": "response.outcomeRef",
+          "value": {
+            "succeeded": ["success"],
+            "output-rejected": ["output-too-large"],
+            "timed-out": ["handler-timeout"],
+            "cancelled": ["client-cancelled"],
+            "failed": ["handler-error"],
+            "not-started": [
+              "input-too-large",
+              "callback-saturated",
+              "health-ok",
+              "runtime-stopping"
+            ]
+          }
+        },
+        {
+          "id": "wire-outcome-controls-callback-envelope",
+          "scope": "request",
+          "operator": "mapped-member",
+          "source": "response.outcomeRef",
+          "expected": "callback.envelopeRef",
+          "value": {
+            "success": ["success"],
+            "input-too-large": ["none"],
+            "output-too-large": ["output-too-large"],
+            "callback-saturated": ["none"],
+            "handler-timeout": ["handler-timeout"],
+            "client-cancelled": ["cancelled"],
+            "health-ok": ["none"],
+            "runtime-stopping": ["none"],
+            "handler-error": ["handler-error"]
+          }
+        },
+        {
+          "id": "request-actions-name-a-request",
+          "scope": "action",
+          "operator": "member-requires-presence",
+          "source": "action.requestId",
+          "expected": "action.action",
+          "value": [
+            "send-request",
+            "probe-health",
+            "cancel-request",
+            "await-response",
+            "await-callback",
+            "control-plane-redispatch"
+          ]
         }
       ],
       "observationSets": {

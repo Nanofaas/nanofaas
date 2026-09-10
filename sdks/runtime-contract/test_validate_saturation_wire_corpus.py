@@ -29,7 +29,68 @@ def load_validator_module():
     return module
 
 
+def scenario(document, scenario_id):
+    return next(item for item in document["scenarios"] if item["id"] == scenario_id)
+
+
 class SaturationWireCorpusMutationTest(unittest.TestCase):
+    def test_rejects_failed_handler_with_success_wire_and_callback(self):
+        validator = load_validator_module()
+        document = json.loads(CORPUS.read_text(encoding="utf-8"))
+        mutated = scenario(document, "success-drain")
+        mutated["backend"]["handlers"][0]["behavior"] = "fail"
+        mutated["expected"]["handlers"][0].update({
+            "lifecycleRef": "failed",
+            "started": True,
+            "cancelRequested": False,
+            "terminal": "failed",
+        })
+
+        with self.assertRaises(validator.ContractError):
+            validator.validate_document(document)
+
+    def test_rejects_output_too_large_with_handler_error_callback(self):
+        validator = load_validator_module()
+        document = json.loads(CORPUS.read_text(encoding="utf-8"))
+        mutated = scenario(document, "output-too-large")
+        callback = mutated["expected"]["callbacks"][0]
+        callback["envelopeRef"] = "handler-error"
+        callback["requestProjection"]["payload"] = {
+            "success": False,
+            "output": None,
+            "error": {
+                "code": "HANDLER_ERROR",
+                "message": "Handler failed",
+            },
+        }
+
+        with self.assertRaises(validator.ContractError):
+            validator.validate_document(document)
+
+    def test_rejects_send_request_without_request_id(self):
+        validator = load_validator_module()
+        document = json.loads(CORPUS.read_text(encoding="utf-8"))
+        mutated = scenario(document, "success-drain")
+        send = next(
+            action for action in mutated["harness"]["actions"]
+            if action["action"] == "send-request"
+        )
+        send["requestId"] = None
+
+        with self.assertRaises(validator.ContractError):
+            validator.validate_document(document)
+
+    def test_rejects_callback_attempts_without_dispatch_attempt_entries(self):
+        validator = load_validator_module()
+        document = json.loads(CORPUS.read_text(encoding="utf-8"))
+        mutated = scenario(document, "callback-delivery-exhausted")
+        callback = mutated["expected"]["callbacks"][0]
+        self.assertEqual(3, callback["attempts"])
+        callback["dispatchAttempts"] = []
+
+        with self.assertRaises(validator.ContractError):
+            validator.validate_document(document)
+
     def test_rejects_all_review_round_two_contradictions(self):
         validator = load_validator_module()
         document = json.loads(CORPUS.read_text(encoding="utf-8"))

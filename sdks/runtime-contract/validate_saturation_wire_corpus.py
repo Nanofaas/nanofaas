@@ -47,6 +47,8 @@ RULE_KEYS = {
     "implies": {"id", "scope", "operator", "source", "expected"},
     "length-equals": {"id", "scope", "operator", "source", "expected"},
     "presence-iff-positive": {"id", "scope", "operator", "source", "expected"},
+    "mapped-member": {"id", "scope", "operator", "source", "expected", "value"},
+    "member-requires-presence": {"id", "scope", "operator", "source", "expected", "value"},
 }
 
 
@@ -140,7 +142,7 @@ def validate_rule(rule_value: Any, path: str) -> dict[str, Any]:
         fail(f"{path}/operator", "is not a supported generic validation operator")
     exact_keys(rule, keys, path)
     string(rule["id"], f"{path}/id")
-    member(rule["scope"], ["scenario", "callback"], f"{path}/scope")
+    member(rule["scope"], ["scenario", "request", "callback", "action"], f"{path}/scope")
     string(rule["source"], f"{path}/source")
     if "expected" in rule:
         string(rule["expected"], f"{path}/expected")
@@ -148,6 +150,12 @@ def validate_rule(rule_value: Any, path: str) -> dict[str, Any]:
         boolean(rule["ignoreNull"], f"{path}/ignoreNull")
     if "increment" in rule:
         integer(rule["increment"], f"{path}/increment", minimum=1)
+    if operator == "mapped-member":
+        mapping = object_map(rule["value"], f"{path}/value", nonempty=True)
+        for key, choices in mapping.items():
+            unique_strings(choices, f"{path}/value/{key}", nonempty=True)
+    elif operator == "member-requires-presence":
+        unique_strings(rule["value"], f"{path}/value", nonempty=True)
     finite_json(rule.get("value"), f"{path}/value")
     return rule
 
@@ -708,9 +716,25 @@ def validate_expected(scenario: dict[str, Any], requests: list[dict[str, Any]],
     )
     apply_final_rule(final, definitions["finalCountersRule"], scenario_path)
 
-    context = {"requests": requests, "expected": expected}
-    apply_rules(definitions["identityRules"], context, callbacks, request_by_id, scenario_path)
-    apply_rules(definitions["crossFieldRules"], context, callbacks, request_by_id, scenario_path)
+    request_contexts = [
+        {
+            "request": request_by_id[request_id],
+            "handlerBackend": backend["handlers"][request_id],
+            "callbackBackend": backend["callbacks"][request_id],
+            "response": responses[request_id],
+            "handler": handlers[request_id],
+            "callback": callbacks[request_id],
+        }
+        for request_id in request_by_id
+    ]
+    scope_contexts = {
+        "scenario": [{"requests": requests, "expected": expected}],
+        "request": request_contexts,
+        "callback": request_contexts,
+        "action": [{"action": action} for action in actions],
+    }
+    apply_rules(definitions["identityRules"], scope_contexts, scenario_path)
+    apply_rules(definitions["crossFieldRules"], scope_contexts, scenario_path)
     if not actions:
         fail(f"{scenario_path}/harness/actions", "must be non-empty")
 
@@ -806,20 +830,12 @@ def resolve_rule_source(context: dict[str, Any], path: str) -> Any:
     return [resolve_path(item, tail) if tail else item for item in sequence]
 
 
-def apply_rules(rules: list[dict[str, Any]], scenario_context: dict[str, Any],
-                callbacks: dict[str, dict[str, Any]],
-                request_by_id: dict[str, dict[str, Any]], scenario_path: str) -> None:
+def apply_rules(rules: list[dict[str, Any]],
+                scope_contexts: dict[str, list[dict[str, Any]]],
+                scenario_path: str) -> None:
     for rule in rules:
         path = f"{scenario_path}/rule/{rule['id']}"
-        contexts: list[dict[str, Any]]
-        if rule["scope"] == "scenario":
-            contexts = [scenario_context]
-        else:
-            contexts = [
-                {"request": request_by_id[request_id], "callback": callback}
-                for request_id, callback in callbacks.items()
-            ]
-        for context in contexts:
+        for context in scope_contexts[rule["scope"]]:
             source = resolve_rule_source(context, rule["source"])
             expected = (resolve_rule_source(context, rule["expected"])
                         if "expected" in rule else None)
@@ -850,6 +866,10 @@ def apply_rules(rules: list[dict[str, Any]], scenario_context: dict[str, Any],
                 valid = len(source) == expected
             elif operator == "presence-iff-positive":
                 valid = (source is not None) == (expected > 0)
+            elif operator == "mapped-member":
+                valid = expected in rule["value"].get(source, [])
+            elif operator == "member-requires-presence":
+                valid = expected not in rule["value"] or source is not None
             else:
                 fail(path, "uses an unsupported generic validation operator")
             if not valid:

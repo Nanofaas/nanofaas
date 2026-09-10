@@ -68,9 +68,12 @@ generic operators. It checks finite configurations/deadlines, required fields, a
 references, behavior/lifecycle compatibility, callback-URL requirement, exact response status,
 content type, body/error/message/headers, exact callback method/URL/headers/payload, callback
 required/attempted/delivered/count relations, P01 identity projections, observations and drained
-final counters. The embedded mutation suite includes the seven round-two contradictions plus
-broken-reference and projection-drift probes; the standalone test also demonstrates all seven
-fail independently.
+final counters. Declarative maps also connect handler lifecycle to wire outcome and wire outcome
+to callback envelope, while declarative action and cardinality rules require request-bearing
+actions to name a request and require one dispatch-attempt entry per callback delivery attempt.
+The embedded mutation suite includes the seven round-two contradictions plus broken-reference and
+projection-drift probes; standalone tests also reject coordinated, internally canonical changes
+that would otherwise disconnect those sections.
 
 Each language adapter runs that validator with a finite 10 s process deadline and then parses the
 same JSON source. Java and Java-lite deserialize the complete typed model; Go disallows unknown

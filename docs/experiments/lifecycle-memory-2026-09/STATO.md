@@ -2795,3 +2795,17 @@ plus package build, and the full Gradle repository build (240/240 actions, 4 min
 Go vet retains only the pre-existing `cold_start.go:27` atomic no-copy warning. An initial
 full-build run saw one EOF in an existing container-provider timeout test; the exact test,
 its complete 92-test module and the full rerun all passed, so no out-of-scope edit was made.
+
+## P16a fix round 3 — coordinated semantic consistency
+
+Starting from `5e6a0eeb372b308f4111a9c466c7d1df14c6cfe5`, the independent reviewer confirmed
+the seven individual contradictions were rejected and the corpus remained the sole policy
+authority, but found coordinated canonical mutations could still disconnect handler, wire and
+callback semantics; callback delivery attempts also did not constrain dispatch-attempt sequence
+length. Four event-free deterministic RED tests reproduced all cases.
+
+The GREEN model adds declarative lifecycle-to-wire, wire-to-envelope, action request-reference
+and callback-attempt cardinality rules to the corpus. The validator implements only generic
+mapping, presence and length operators. Exact upstream GitNexus impacts for `validate_rule`,
+`validate_expected` and `apply_rules` were LOW and limited to the Runtime-contract validator
+flow. Focused and full verification plus final graph gates are recorded in the P16a report.

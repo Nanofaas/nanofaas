@@ -1,5 +1,35 @@
 # Task P16a report — common SDK memory inventory and saturation wire contract
 
+## Fix round 3 — coordinated semantic consistency
+
+This section supersedes the fix-round-2 connectivity claims where they conflict. Starting
+revision: `5e6a0eeb372b308f4111a9c466c7d1df14c6cfe5`.
+
+The round-two validator rejected all seven individual review mutations but still accepted
+coordinated changes whose individual references remained canonical. Four focused RED tests
+reproduced the gap: a failed handler paired with a success response/callback, an
+output-too-large handler paired with the canonical handler-error callback, a `send-request`
+action without a request ID, and three callback delivery attempts with an empty
+`dispatchAttempts` sequence. All four failed because `ContractError` was not raised.
+
+GREEN keeps policy values in `saturation-wire-corpus.json` and adds only generic operators to
+the Python validator. Declarative rules now connect handler lifecycle to allowed wire outcomes,
+wire outcomes to allowed callback envelopes, request-bearing action names to request-ID
+presence, and callback attempt counts to dispatch-attempt sequence length. Existing
+per-element dispatch identity remains independently enforced. The four coordinated tests,
+the prior seven review probes, all 23 embedded mutations and the non-finite JSON probe pass.
+
+GitNexus upstream impact before the GREEN edit was exact and LOW for `validate_rule`,
+`validate_expected` and `apply_rules`; only the validator's `main` flow and Runtime-contract
+module are affected. Python's seven validator tests and all embedded mutations passed. All five
+focused adapters passed: Java/Java-lite completed 16/16 Gradle actions, Python and Go each passed
+their focused test, and JavaScript compiled its test tree and passed the Node test. The first
+Python command was blocked only by sandbox access to the existing uv cache; the approved rerun
+passed. Complete GitNexus detection was non-partial/non-truncated: all-worktree scope reported
+eight files/17 symbols including the two protected overload files, zero affected processes and
+LOW risk; staged scope reported exactly the six P16a files/16 symbols, zero affected processes
+and LOW risk.
+
 ## Fix round 2 — single policy authority and connected semantics
 
 This section supersedes the fix-round-1 validator and corpus claims where they conflict.
