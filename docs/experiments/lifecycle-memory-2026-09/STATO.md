@@ -2166,3 +2166,19 @@ The covering gate/coordinator/managed-coordinator and `InternalScaler*Test` suit
 seconds. `bootJar` is green for `none`, `async-queue`, `sync-queue,runtime-config`,
 `container-deployment-provider` and `all`. The one full offline repository suite completed with
 **BUILD SUCCESSFUL in 2m33s** (190 actionable tasks: 20 executed, 170 up-to-date).
+
+### P11 fix round 3 — lasting coordinator removal fence
+
+Coordinator removal now records the exact active generation under the same lifecycle monitor used
+by every state-publication path. While capacity removal is still pending, both scale-up lease
+publication and autoscaler downscale publication reject that generation even after the original
+state has physically drained. Fences are pruned when capacity ownership advances, so a distinct
+replacement generation is admitted while historical generations do not accumulate.
+
+The deterministic regression pauses an old-generation caller before coordinator admission, lets
+coordinator removal return while that generation remains active, and proves both its scale-up and
+downscale callbacks are rejected. It then removes and re-registers capacity, verifies the new
+generation publishes a lease successfully, and drains its timer and state. Focused coordinator,
+gate, managed-coordinator and autoscaler tests are green in 9 seconds; all five packaging profiles
+are green; the full offline suite is green in 2 minutes 33 seconds (190 actionable tasks: 20
+executed, 170 up-to-date).

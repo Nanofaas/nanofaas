@@ -33,6 +33,65 @@ class DeploymentWakeUpCoordinatorTest {
 
     private final ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
 
+    @Test
+    void removalFenceRejectsPausedOldPublicationAndAllowsReplacementGeneration() throws Exception {
+        FunctionCapacityRegistry generations = generations();
+        FunctionGeneration oldGeneration = generations.activeGeneration("echo");
+        ScheduledThreadPoolExecutor scheduler = scheduler();
+        DeploymentWakeUpCoordinator coordinator = new DeploymentWakeUpCoordinator(generations, scheduler);
+        CountDownLatch oldPublicationPaused = new CountDownLatch(1);
+        CountDownLatch allowOldPublication = new CountDownLatch(1);
+        AtomicInteger oldCallbacks = new AtomicInteger();
+
+        try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
+            Future<DeploymentWakeUpCoordinator.WakeUpLease> oldPublication = executor.submit(() -> {
+                oldPublicationPaused.countDown();
+                await(allowOldPublication);
+                return coordinator.protectAndScaleUp(
+                        oldGeneration, target, Long.MAX_VALUE, oldCallbacks::incrementAndGet);
+            });
+            assertThat(oldPublicationPaused.await(1, TimeUnit.SECONDS)).isTrue();
+
+            coordinator.removeFunctionState("echo");
+            assertThat(generations.activeGeneration("echo")).isEqualTo(oldGeneration);
+            allowOldPublication.countDown();
+
+            org.assertj.core.api.Assertions.assertThatThrownBy(
+                            () -> oldPublication.get(1, TimeUnit.SECONDS))
+                    .hasRootCauseMessage("DEPLOYMENT_WAKE_UP_REMOVED");
+            assertThat(coordinator.scaleDownIfUnprotected(oldGeneration, target, () -> {
+                oldCallbacks.incrementAndGet();
+                return true;
+            })).isFalse();
+            assertThat(oldCallbacks).hasValue(0);
+            assertThat(coordinator.ownedStateCount()).isZero();
+            assertThat(scheduler.getQueue()).isEmpty();
+
+            generations.remove("echo");
+            generations.register("echo", 1);
+            FunctionGeneration replacement = generations.activeGeneration("echo");
+            assertThat(replacement).isNotEqualTo(oldGeneration);
+            AtomicInteger replacementCallbacks = new AtomicInteger();
+            DeploymentWakeUpCoordinator.WakeUpLease lease = coordinator.protectAndScaleUp(
+                    replacement, target, Long.MAX_VALUE, replacementCallbacks::incrementAndGet);
+
+            assertThat(replacementCallbacks).hasValue(1);
+            assertThat(coordinator.ownedStateCount()).isEqualTo(1);
+            assertThat(coordinator.ownedLeaseCount()).isEqualTo(1);
+            assertThat(scheduler.getQueue()).hasSize(1);
+
+            lease.close();
+            generations.remove("echo");
+            coordinator.removeFunctionState("echo");
+            assertThat(coordinator.ownedStateCount()).isZero();
+            assertThat(scheduler.getQueue()).isEmpty();
+        } finally {
+            allowOldPublication.countDown();
+            coordinator.close();
+            scheduler.shutdownNow();
+        }
+    }
+
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
     void statePublicationIsAtomicWithRemovalAndClose(boolean close) throws Exception {

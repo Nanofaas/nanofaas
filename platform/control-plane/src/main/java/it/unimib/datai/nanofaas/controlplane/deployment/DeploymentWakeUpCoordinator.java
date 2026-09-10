@@ -7,7 +7,9 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ScheduledExecutorService;
@@ -26,6 +28,7 @@ public class DeploymentWakeUpCoordinator implements AutoCloseable {
     private final ScheduledExecutorService scheduler;
     private final LongSupplier nanoTime;
     private final ConcurrentMap<FunctionGeneration, FunctionState> functions = new ConcurrentHashMap<>();
+    private final Set<FunctionGeneration> removedGenerations = new HashSet<>();
     private final AtomicLong leaseIds = new AtomicLong();
     private final AtomicBoolean closed = new AtomicBoolean();
     private final Object stateLifecycle = new Object();
@@ -61,7 +64,8 @@ public class DeploymentWakeUpCoordinator implements AutoCloseable {
         }
         FunctionState state;
         synchronized (stateLifecycle) {
-            if (closed.get() || !isCurrent(generation)) {
+            pruneRemovalFences();
+            if (closed.get() || removedGenerations.contains(generation) || !isCurrent(generation)) {
                 throw new IllegalStateException(closed.get()
                         ? "DEPLOYMENT_WAKE_UP_CLOSED" : "DEPLOYMENT_WAKE_UP_REMOVED");
             }
@@ -106,7 +110,11 @@ public class DeploymentWakeUpCoordinator implements AutoCloseable {
         Objects.requireNonNull(scaleDown, "scaleDown");
         FunctionState state;
         synchronized (stateLifecycle) {
-            if (!generation.functionName().equals(target.functionName()) || closed.get() || !isCurrent(generation)) {
+            pruneRemovalFences();
+            if (!generation.functionName().equals(target.functionName())
+                    || closed.get()
+                    || removedGenerations.contains(generation)
+                    || !isCurrent(generation)) {
                 return false;
             }
             state = functions.computeIfAbsent(generation, ignored -> new FunctionState());
@@ -154,6 +162,11 @@ public class DeploymentWakeUpCoordinator implements AutoCloseable {
 
     public void removeFunctionState(String functionName) {
         synchronized (stateLifecycle) {
+            pruneRemovalFences();
+            FunctionGeneration activeGeneration = generations.activeGeneration(functionName);
+            if (activeGeneration != null) {
+                removedGenerations.add(activeGeneration);
+            }
             for (var entry : new ArrayList<>(functions.entrySet())) {
                 if (entry.getKey().functionName().equals(functionName)) {
                     retire(entry.getKey(), entry.getValue());
@@ -276,6 +289,14 @@ public class DeploymentWakeUpCoordinator implements AutoCloseable {
 
     private boolean isCurrent(FunctionGeneration generation) {
         return generation.equals(generations.activeGeneration(generation.functionName()));
+    }
+
+    /**
+     * Removal fences remain until capacity ownership advances. This bounds them to generations that
+     * can still be current while old callback attribution drains independently through {@link #functions}.
+     */
+    private void pruneRemovalFences() {
+        removedGenerations.removeIf(generation -> !isCurrent(generation));
     }
 
     private static void cancel(ScheduledFuture<?> future) {
