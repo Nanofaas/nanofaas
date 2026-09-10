@@ -2214,7 +2214,11 @@ metric registration (739–752), background eviction and its shared Reactor sche
 not exposed as an aggregate cap. `ConnectionPoolMetrics.java` defines acquired, allocated, idle and
 pending counts (20–55). `PooledConnectionProvider.java` confirms one map entry per destination,
 metric register/deregister on pool create/remove, map clearing during `disposeLater`, and inactive
-pool checks scheduled on shared `Schedulers.parallel()`.
+pool checks scheduled on shared `Schedulers.parallel()`. The exact 1.3.6 implementation schedules
+that callback at lines 422–426 and unconditionally schedules it again at line 466, even after
+provider disposal. P12 therefore no longer enables that helper. Its single owner-cancellable task
+uses the supported `ConnectionProvider.disposeWhen(SocketAddress)` API (interface lines 204–213;
+implementation lines 248–278).
 
 One context-owned `DispatchConnectionPool` now builds and reuses the provider, exports only its
 facade, aggregates destination/allocated/active/idle/pending gauges without destination tags, and
@@ -2223,9 +2227,13 @@ policy is 30 s maximum idle time, disabled maximum lifetime (`0`, applied condit
 eviction checks, and empty-pool checks every 5 s after 30 s inactivity. The existing 500
 connections-per-destination, derived 1,000 pending-per-destination and **45 s** acquisition timeout
 remain unchanged. These are transport retention controls; P07 remains the aggregate execution,
-retained-input and waiter admission owner across all destinations. The pool owner creates no
-executor. Reactor Netty's inactive-pool check uses the process-wide shared parallel scheduler, so
-context shutdown owns and drains pools/connections but does not shut down that shared scheduler.
+retained-input and waiter admission owner across all destinations. The pool owner has exactly one
+daemon `ScheduledThreadPoolExecutor` thread and one fixed-delay task. Remove-on-cancel is enabled;
+close cancels and removes the task, shuts down the executor and waits for observable termination,
+leaving no recurring callback on Reactor's shared scheduler. Real `FunctionService`
+registration/removal events retire an endpoint pool after its last function owner disappears, and
+re-registration can immediately use a replacement host. All five aggregate meter handles are
+removed exactly once during shutdown, so a reused registry cannot retain a stale owner.
 
 Deterministic controlled-server tests use latches, wire request counts, connection sequence numbers,
 pool metrics and explicit Awaitility deadlines; the P12 ordering tests contain no sleeps. The
@@ -2248,3 +2256,20 @@ record, `HttpClientConfig.dispatchConnectionProvider#1` and `HttpClientConfig.we
 were UNKNOWN; exact constructor/type and direct-call searches resolved them before editing (Spring
 bean calls are reflective). The final complete staged/all detection and staged diff audit are
 recorded in the P12 task report.
+
+### P12 review fix round 1
+
+All four review findings have deterministic regressions. The scheduler test observes exactly one
+recurring queue entry, remove-on-cancel, idempotent close, a cancelled future, an empty queue and
+executor termination. The endpoint test drives actual `FunctionService.register`, `remove` and
+re-register operations: the old pending dispatch fails without reaching the wire, the old pool
+drains, and the replacement endpoint succeeds. A same-registry close/recreate test proves all five
+aggregate gauges disappear and return with live zero-valued targets. An isolated Netty 4.2.15
+`UnpooledByteBufAllocator` provides independent byte accounting: after eight bounded 16 KiB error
+responses, active cancellation and acquisition timeout, heap-plus-direct allocation returns to the
+exact pre-test baseline. This changes no P13 buffering/deadline policy.
+
+The focused pool/P07 suite is green in 19 seconds. All five packaging profiles are green. The full
+offline serial repository suite is green in 2 minutes 57 seconds (190 actionable tasks: 21
+executed, 169 up-to-date). The per-destination budget and 45-second acquisition timeout remain
+unchanged, and P07 aggregate admission remains independently green across hosts.

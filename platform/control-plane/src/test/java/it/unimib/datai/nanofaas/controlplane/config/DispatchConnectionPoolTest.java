@@ -1,11 +1,19 @@
 package it.unimib.datai.nanofaas.controlplane.config;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.netty.buffer.ByteBufAllocatorMetric;
+import io.netty.buffer.UnpooledByteBufAllocator;
+import io.netty.channel.ChannelOption;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
+import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcher;
+import it.unimib.datai.nanofaas.controlplane.registry.FunctionDefaults;
+import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
+import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
+import it.unimib.datai.nanofaas.controlplane.registry.ImageValidator;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import okhttp3.mockwebserver.Dispatcher;
@@ -14,9 +22,12 @@ import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.netty.http.client.HttpClient;
 import reactor.netty.resources.ConnectionProvider;
 
+import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -24,14 +35,64 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
+import static org.mockito.Mockito.mock;
 
 class DispatchConnectionPoolTest {
+
+    private static final List<String> AGGREGATE_METERS = List.of(
+            "nanofaas_http_pool_destinations",
+            "nanofaas_http_pool_connections",
+            "nanofaas_http_pool_active_connections",
+            "nanofaas_http_pool_idle_connections",
+            "nanofaas_http_pool_pending_acquisitions");
+
+    @Test
+    void closeCancelsTheSingleOwnedInactivePoolTaskAndTerminatesItsScheduler() {
+        TrackingScheduler scheduler = new TrackingScheduler();
+        DispatchConnectionPool pool = new DispatchConnectionPool(
+                properties(1, 2, 1_000, 0, 50, 60_000, 5_000),
+                new SimpleMeterRegistry(), scheduler, System::nanoTime);
+
+        assertThat(scheduler.scheduleCount()).isOne();
+        assertThat(scheduler.getRemoveOnCancelPolicy()).isTrue();
+        assertThat(scheduler.getQueue()).hasSize(1);
+
+        pool.close();
+        pool.close();
+
+        assertThat(scheduler.scheduledTask().isCancelled()).isTrue();
+        assertThat(scheduler.getQueue()).isEmpty();
+        await().atMost(Duration.ofSeconds(3)).untilAsserted(() ->
+                assertThat(scheduler.isTerminated()).isTrue());
+    }
+
+    @Test
+    void closeRemovesAggregateMetersAndTheSameRegistryCanBeReused() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        HttpClientProperties properties = properties(1, 2, 1_000, 0, 50, 50, 200);
+
+        DispatchConnectionPool first = new DispatchConnectionPool(properties, registry);
+        AGGREGATE_METERS.forEach(name -> assertThat(registry.find(name).gauge()).isNotNull());
+        first.close();
+        first.close();
+        AGGREGATE_METERS.forEach(name -> assertThat(registry.find(name).gauge()).isNull());
+
+        DispatchConnectionPool replacement = new DispatchConnectionPool(properties, registry);
+        AGGREGATE_METERS.forEach(name -> {
+            assertThat(registry.find(name).gauge()).isNotNull();
+            assertThat(registry.find(name).gauge().value()).isZero();
+        });
+        replacement.close();
+        AGGREGATE_METERS.forEach(name -> assertThat(registry.find(name).gauge()).isNull());
+    }
 
     @Test
     void applicationContextOwnsOneAggregatePoolAndExportsItsProvider() {
@@ -322,7 +383,7 @@ class DispatchConnectionPoolTest {
     }
 
     @Test
-    void endpointReplacementAndRemovalCancelTheOldPendingAcquireWithoutBlockingTheNewHost() throws Exception {
+    void functionServiceRemovalDisposesTheOldEndpointBeforeReregistration() throws Exception {
         BlockingDispatcher oldBackend = new BlockingDispatcher();
         HttpClientProperties properties = properties(1, 4, 5_000, 0, 50, 50, 5_000);
         try (MockWebServer oldServer = server(oldBackend);
@@ -334,29 +395,103 @@ class DispatchConnectionPoolTest {
             replacement.start();
             ExternalDispatcher dispatcher = new ExternalDispatcher(new HttpClientConfig().webClient(
                     WebClient.builder(), properties, pool.provider()));
+            FunctionService functions = new FunctionService(
+                    new FunctionRegistry(),
+                    new FunctionDefaults(30_000, 1, 10, 0),
+                    mock(ImageValidator.class),
+                    List.of(pool),
+                    mock(DeploymentProviderResolver.class));
+            FunctionSpec oldSpec = externalSpec("external", oldServer.url("/invoke").toString());
+            FunctionSpec replacementSpec = externalSpec("external", replacement.url("/invoke").toString());
+            assertThat(functions.register(oldSpec)).isPresent();
 
             CompletableFuture<DispatchResult> activeOld = dispatcher.dispatch(
-                    task("old-active", oldServer.url("/invoke").toString()));
+                    task("old-active", functions.get("external").orElseThrow()));
             oldBackend.awaitFirstRequest();
             CompletableFuture<DispatchResult> removedEndpoint = dispatcher.dispatch(
-                    task("old-pending", oldServer.url("/invoke").toString()));
+                    task("old-pending", functions.get("external").orElseThrow()));
             await().atMost(Duration.ofSeconds(3)).untilAsserted(() ->
                     assertThat(pool.pendingAcquireCount()).isOne());
 
-            DispatchResult replacementResult = dispatcher.dispatch(
-                    task("replacement", replacement.url("/invoke").toString()))
-                    .get(3, TimeUnit.SECONDS);
-            assertThat(replacementResult.result().success()).isTrue();
-            assertThat(removedEndpoint.cancel(true)).isTrue();
+            assertThat(functions.remove("external")).isPresent();
+            DispatchResult removedResult = removedEndpoint.get(3, TimeUnit.SECONDS);
+            assertThat(removedResult.result().success()).isFalse();
+            assertThat(oldBackend.requestCount()).isOne();
+            await().atMost(Duration.ofSeconds(3)).untilAsserted(() -> {
+                assertThat(pool.pendingAcquireCount()).isZero();
+                assertThat(pool.activeConnectionCount()).isZero();
+                assertThat(pool.connectionCount()).isZero();
+            });
             oldBackend.releaseFirstRequest();
-            await().atMost(Duration.ofSeconds(3)).untilAsserted(() ->
-                    assertThat(pool.pendingAcquireCount()).isZero());
-
             assertThat(activeOld.get(3, TimeUnit.SECONDS).result().success()).isTrue();
+
+            assertThat(functions.register(replacementSpec)).isPresent();
+            DispatchResult replacementResult = dispatcher.dispatch(
+                    task("replacement", functions.get("external").orElseThrow()))
+                    .get(3, TimeUnit.SECONDS);
+
+            assertThat(replacementResult.result().success()).isTrue();
             assertThat(oldBackend.requestCount()).isOne();
             assertThat(replacement.getRequestCount()).isOne();
-            assertThat(pool.destinationCount()).isEqualTo(2);
+            assertThat(pool.destinationCount()).isOne();
         }
+    }
+
+    @Test
+    void errorCancellationAndAcquireTimeoutReleaseIsolatedClientBuffers() throws Exception {
+        HttpClientProperties properties = new HttpClientProperties(
+                1_000, 10_000, 1, 1, 4, 150, 5_000, 0, 50, 50, 5_000);
+        UnpooledByteBufAllocator allocator = new UnpooledByteBufAllocator(false);
+        ByteBufAllocatorMetric allocatorMetric = allocator.metric();
+        long baseline = allocatedBytes(allocatorMetric);
+        try (DispatchConnectionPool pool = new DispatchConnectionPool(properties, new SimpleMeterRegistry())) {
+            WebClient client = WebClient.builder()
+                    .clientConnector(new ReactorClientHttpConnector(HttpClient.create(pool.provider())
+                            .option(ChannelOption.ALLOCATOR, allocator)
+                            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, properties.connectTimeoutMs())
+                            .responseTimeout(Duration.ofMillis(properties.readTimeoutMs()))))
+                    .build();
+
+            try (MockWebServer errorServer = new MockWebServer()) {
+                for (int i = 0; i < 8; i++) {
+                    errorServer.enqueue(new MockResponse().setResponseCode(500).setBody("x".repeat(16_384)));
+                }
+                errorServer.start();
+                for (int i = 0; i < 8; i++) {
+                    assertThatThrownBy(() -> client.get().uri(errorServer.url("/error").uri())
+                            .retrieve().bodyToMono(String.class).block(Duration.ofSeconds(3)))
+                            .isInstanceOf(org.springframework.web.reactive.function.client.WebClientResponseException.class);
+                }
+                pool.provider().disposeWhen(remoteAddress(errorServer));
+                awaitAllocatorBaseline(allocatorMetric, baseline);
+            }
+
+            BlockingDispatcher cancelledBackend = new BlockingDispatcher();
+            try (MockWebServer cancelledServer = server(cancelledBackend)) {
+                CompletableFuture<String> cancelled = get(client, cancelledServer, "/cancelled");
+                cancelledBackend.awaitFirstRequest();
+                assertThat(cancelled.cancel(true)).isTrue();
+                cancelledBackend.releaseFirstRequest();
+                await().atMost(Duration.ofSeconds(3)).untilAsserted(() ->
+                        assertThat(pool.activeConnectionCount()).isZero());
+                pool.provider().disposeWhen(remoteAddress(cancelledServer));
+                awaitAllocatorBaseline(allocatorMetric, baseline);
+            }
+
+            BlockingDispatcher timeoutBackend = new BlockingDispatcher();
+            try (MockWebServer timeoutServer = server(timeoutBackend)) {
+                CompletableFuture<String> active = get(client, timeoutServer, "/active");
+                timeoutBackend.awaitFirstRequest();
+                assertThatThrownBy(() -> client.get().uri(timeoutServer.url("/timed-out").uri())
+                        .retrieve().bodyToMono(String.class).block(Duration.ofSeconds(3)))
+                        .hasStackTraceContaining("Pool#acquire(Duration) has been pending");
+                timeoutBackend.releaseFirstRequest();
+                assertThat(active.get(3, TimeUnit.SECONDS)).isEqualTo("{}");
+                pool.provider().disposeWhen(remoteAddress(timeoutServer));
+                awaitAllocatorBaseline(allocatorMetric, baseline);
+            }
+        }
+        assertThat(allocatedBytes(allocatorMetric)).isEqualTo(baseline);
     }
 
     private static HttpClientProperties properties(
@@ -388,12 +523,36 @@ class DispatchConnectionPoolTest {
     }
 
     private static InvocationTask task(String executionId, String endpoint, int timeoutMs) {
-        FunctionSpec spec = new FunctionSpec(
-                "external", "image", List.of(), Map.of(), null,
-                timeoutMs, 1, 10, 0, endpoint, ExecutionMode.EXTERNAL, null, null, null);
+        FunctionSpec spec = externalSpec("external", endpoint, timeoutMs);
+        return task(executionId, spec);
+    }
+
+    private static InvocationTask task(String executionId, FunctionSpec spec) {
         return new InvocationTask(executionId, spec.name(), spec,
                 new InvocationRequest("payload", Map.of()), null, null, Instant.now(), 1,
                 InvocationKind.SYNC);
+    }
+
+    private static FunctionSpec externalSpec(String name, String endpoint) {
+        return externalSpec(name, endpoint, 10_000);
+    }
+
+    private static FunctionSpec externalSpec(String name, String endpoint, int timeoutMs) {
+        return new FunctionSpec(name, "image", List.of(), Map.of(), null,
+                timeoutMs, 1, 10, 0, endpoint, ExecutionMode.EXTERNAL, null, null, null);
+    }
+
+    private static InetSocketAddress remoteAddress(MockWebServer server) {
+        return InetSocketAddress.createUnresolved(server.getHostName(), server.getPort());
+    }
+
+    private static long allocatedBytes(ByteBufAllocatorMetric metric) {
+        return metric.usedHeapMemory() + metric.usedDirectMemory();
+    }
+
+    private static void awaitAllocatorBaseline(ByteBufAllocatorMetric metric, long baseline) {
+        await().atMost(Duration.ofSeconds(3)).untilAsserted(() ->
+                assertThat(allocatedBytes(metric)).isEqualTo(baseline));
     }
 
     private static final class BlockingDispatcher extends Dispatcher {
@@ -422,6 +581,31 @@ class DispatchConnectionPoolTest {
 
         int requestCount() {
             return requests.get();
+        }
+    }
+
+    private static final class TrackingScheduler extends ScheduledThreadPoolExecutor {
+        private final AtomicInteger scheduleCount = new AtomicInteger();
+        private volatile ScheduledFuture<?> scheduledTask;
+
+        private TrackingScheduler() {
+            super(1);
+        }
+
+        @Override
+        public ScheduledFuture<?> scheduleWithFixedDelay(
+                Runnable command, long initialDelay, long delay, TimeUnit unit) {
+            scheduleCount.incrementAndGet();
+            scheduledTask = super.scheduleWithFixedDelay(command, initialDelay, delay, unit);
+            return scheduledTask;
+        }
+
+        int scheduleCount() {
+            return scheduleCount.get();
+        }
+
+        ScheduledFuture<?> scheduledTask() {
+            return scheduledTask;
         }
     }
 }
