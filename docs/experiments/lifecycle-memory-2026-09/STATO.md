@@ -2385,3 +2385,29 @@ The remaining concerns are that JDK `HttpServer` interrupts a slow-upload socket
 `408` is best effort and the client may observe an immediate close; actual `nativeCompile` was
 not run; and GitNexus could not publish a refreshed index because its own full-process analysis
 truncated. Next: P14; retain these P13 measurements for the P23 comparison.
+
+## P13 fix round 1 — physical publisher ownership and deterministic write deadline
+
+Starting revision `9955abbc`. The proxy now reserves the JDK byte-array publisher's additional
+body-length copy while the original bounded request array remains owned, then releases that
+reservation immediately after `HttpClient.send` returns. A blocked-backend regression observes both
+simultaneous owners (16 + 16 = 32 bytes) and returns to zero afterward. The elapsed-time/kernel-
+backpressure response test was replaced by package-private injected deadline/output seams: futures
+prove backend-deadline close precedes response-deadline start, and manual expiry interrupts a
+latch-blocked writer without sleep or elapsed-time ordering.
+
+The original compilation-only TDD RED remains historical fact and was not rewritten. Uncommitted,
+isolated mutation/revert runs supplied behavioral evidence: fixed overflow failed 413/200; chunked
+input failed 413/503; slow upload failed with `SocketTimeoutException`; oversized response failed
+502/503; saturation failed 503/500; and publisher accounting failed 32/16. Exact commands and full
+context are in `task-P13-report.md`. After every production mutation was restored, focused P13 tests
+succeeded in 8 s (39 tasks executed), the complete provider module succeeded in 11 s (39 executed),
+bootJar succeeded in 1 s, and native-profile AOT generation/Java compilation succeeded in 3 s.
+The initial P13 revision's fresh uncached full-suite result remains the broad gate because this round
+only changes package-private proxy seams and request-copy accounting. P07/P12 lifecycle and I3/I7
+generation/removal paths are unchanged. Final native linking remains P23 scope.
+
+GitNexus fix-round detection used the uncapped direct backend. All-scope returned 8/8 changed
+symbols and 3/3 affected processes across five files (the three P13 files plus two unrelated
+overload files); staged scope returned 7/7 and 3/3 across exactly three P13 files. Both were medium
+risk with `partial=false`, `truncated=false`, and no error. `git diff --cached --check` was clean.

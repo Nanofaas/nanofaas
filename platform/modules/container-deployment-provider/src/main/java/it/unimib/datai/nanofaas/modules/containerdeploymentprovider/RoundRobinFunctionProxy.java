@@ -77,6 +77,8 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
     private final HttpClient httpClient;
     private final ContainerProxyProperties proxyProperties;
     private final BufferBudget bufferBudget;
+    private final DeadlineFactory deadlineFactory;
+    private final ResponseBodyWriter responseBodyWriter;
     private final java.util.Set<HttpExchange> activeExchanges = ConcurrentHashMap.newKeySet();
     private final AtomicReference<List<String>> backends = new AtomicReference<>(List.of());
     private final AtomicInteger counter = new AtomicInteger();
@@ -109,6 +111,17 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
                             Duration singleHopTimeout,
                             HttpClient httpClient,
                             ContainerProxyProperties proxyProperties) {
+        this(bindHost, maxInFlight, singleHopTimeout, httpClient, proxyProperties, null,
+                RoundRobinFunctionProxy::writeResponseBody);
+    }
+
+    RoundRobinFunctionProxy(String bindHost,
+                            int maxInFlight,
+                            Duration singleHopTimeout,
+                            HttpClient httpClient,
+                            ContainerProxyProperties proxyProperties,
+                            DeadlineFactory deadlineFactory,
+                            ResponseBodyWriter responseBodyWriter) {
         if (maxInFlight < 1) {
             throw new IllegalArgumentException("maxInFlight must be >= 1, was " + maxInFlight);
         }
@@ -127,6 +140,8 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
                 .factory());
         this.deadlineExecutor.setRemoveOnCancelPolicy(true);
         this.deadlineExecutor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
+        this.deadlineFactory = deadlineFactory == null ? this::newPhaseDeadline : deadlineFactory;
+        this.responseBodyWriter = java.util.Objects.requireNonNull(responseBodyWriter, "responseBodyWriter");
         this.httpClient = httpClient == null
                 ? HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()
                 : httpClient;
@@ -204,6 +219,22 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
     }
 
     record Snapshot(int inFlight, long bufferedBytes) {
+    }
+
+    interface DeadlineFactory {
+        Deadline start(Duration duration, Runnable abort);
+    }
+
+    interface Deadline extends AutoCloseable {
+        boolean expired();
+
+        @Override
+        void close();
+    }
+
+    @FunctionalInterface
+    interface ResponseBodyWriter {
+        void write(HttpExchange exchange, byte[] bytes, int length) throws IOException;
     }
 
     private static RuntimeException releaseStage(RuntimeException failure, Runnable stage) {
@@ -294,30 +325,36 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
             URI target = URI.create(backend + exchange.getRequestURI().getPath()
                     + (exchange.getRequestURI().getRawQuery() == null
                     ? "" : "?" + exchange.getRequestURI().getRawQuery()));
-            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(target)
-                    .timeout(singleHopTimeout.get())
-                    .method(exchange.getRequestMethod(), HttpRequest.BodyPublishers.ofByteArray(
-                            requestBody.bytes(), 0, requestBody.length()));
-            copyRequestHeaders(exchange, requestBuilder);
+            try (BufferReservation publisherCopy = bufferBudget.reserve(requestBody.length())) {
+                HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(target)
+                        .timeout(singleHopTimeout.get())
+                        .method(exchange.getRequestMethod(), HttpRequest.BodyPublishers.ofByteArray(
+                                requestBody.bytes(), 0, requestBody.length()));
+                copyRequestHeaders(exchange, requestBuilder);
 
-            BackendResponse backendResponse = readBackendResponse(requestBuilder.build(), requestBody);
-            try (BufferedBody responseBody = backendResponse.body()) {
-                writeBackendResponse(exchange, backendResponse.response(), responseBody);
+                BackendResponse backendResponse = readBackendResponse(
+                        requestBuilder.build(), requestBody, publisherCopy);
+                try (BufferedBody responseBody = backendResponse.body()) {
+                    writeBackendResponse(exchange, backendResponse.response(), responseBody);
+                }
             }
         } finally {
             requestBody.close();
         }
     }
 
-    private BackendResponse readBackendResponse(HttpRequest request, BufferedBody requestBody)
+    private BackendResponse readBackendResponse(HttpRequest request,
+                                                BufferedBody requestBody,
+                                                BufferReservation publisherCopy)
             throws IOException, InterruptedException {
         AtomicReference<InputStream> responseStream = new AtomicReference<>();
         BufferedBody responseBody = null;
-        try (PhaseDeadline deadline = deadline(singleHopTimeout.get(), () -> close(responseStream.get()))) {
+        try (Deadline deadline = deadline(singleHopTimeout.get(), () -> close(responseStream.get()))) {
             try {
                 HttpResponse<InputStream> response =
                         httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
                 responseStream.set(response.body());
+                publisherCopy.close();
                 requestBody.close();
                 responseBody = BufferedBody.read(
                         response.body(), proxyProperties.maxResponseBytes(), bufferBudget, true);
@@ -342,7 +379,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
     }
 
     private BufferedBody readInboundBody(HttpExchange exchange) throws IOException {
-        try (PhaseDeadline deadline = deadline(proxyProperties.inboundReadTimeout(), () -> { })) {
+        try (Deadline deadline = deadline(proxyProperties.inboundReadTimeout(), () -> { })) {
             try {
                 BufferedBody body = BufferedBody.read(
                         exchange.getRequestBody(), proxyProperties.maxRequestBytes(), bufferBudget, false);
@@ -369,15 +406,11 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
                                       HttpResponse<InputStream> response,
                                       BufferedBody body) throws IOException {
         copyResponseHeaders(response, exchange);
-        try (PhaseDeadline deadline = deadline(
+        try (Deadline deadline = deadline(
                 proxyProperties.responseWriteTimeout(), exchange::close)) {
             try {
                 exchange.sendResponseHeaders(response.statusCode(), body.length() == 0 ? -1 : body.length());
-                try (OutputStream outputStream = exchange.getResponseBody()) {
-                    if (body.length() > 0) {
-                        outputStream.write(body.bytes(), 0, body.length());
-                    }
-                }
+                responseBodyWriter.write(exchange, body.bytes(), body.length());
                 if (deadline.expired()) {
                     throw new ResponseWriteTimeoutException();
                 }
@@ -412,8 +445,20 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
         return ("Proxy error: " + e.getMessage()).getBytes(StandardCharsets.UTF_8);
     }
 
-    private PhaseDeadline deadline(Duration duration, Runnable abort) {
+    private Deadline deadline(Duration duration, Runnable abort) {
+        return deadlineFactory.start(duration, abort);
+    }
+
+    private Deadline newPhaseDeadline(Duration duration, Runnable abort) {
         return new PhaseDeadline(duration, abort);
+    }
+
+    private static void writeResponseBody(HttpExchange exchange, byte[] bytes, int length) throws IOException {
+        try (OutputStream outputStream = exchange.getResponseBody()) {
+            if (length > 0) {
+                outputStream.write(bytes, 0, length);
+            }
+        }
     }
 
     private static void close(InputStream stream) {
@@ -427,7 +472,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
         }
     }
 
-    private final class PhaseDeadline implements AutoCloseable {
+    private final class PhaseDeadline implements Deadline {
         private final Thread owner = Thread.currentThread();
         private final AtomicBoolean completed = new AtomicBoolean();
         private final AtomicBoolean expired = new AtomicBoolean();
@@ -443,7 +488,8 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
             }, duration.toNanos(), TimeUnit.NANOSECONDS);
         }
 
-        private boolean expired() {
+        @Override
+        public boolean expired() {
             return expired.get();
         }
 
@@ -481,6 +527,11 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
             } while (true);
         }
 
+        private BufferReservation reserve(int bytes) throws BufferCapacityExceededException {
+            reserveUpTo(bytes, bytes);
+            return new BufferReservation(this, bytes);
+        }
+
         private void release(long bytes) {
             if (bytes != 0) {
                 used.addAndGet(-bytes);
@@ -489,6 +540,24 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
 
         private long used() {
             return used.get();
+        }
+    }
+
+    private static final class BufferReservation implements AutoCloseable {
+        private final BufferBudget budget;
+        private final long bytes;
+        private final AtomicBoolean closed = new AtomicBoolean();
+
+        private BufferReservation(BufferBudget budget, long bytes) {
+            this.budget = budget;
+            this.bytes = bytes;
+        }
+
+        @Override
+        public void close() {
+            if (closed.compareAndSet(false, true)) {
+                budget.release(bytes);
+            }
         }
     }
 
