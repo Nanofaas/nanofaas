@@ -1,5 +1,12 @@
 # Task P16a report — common SDK memory inventory and saturation wire contract
 
+## Completion
+
+P16a is complete at `86fb6b17`: the final fresh review reported 0 Critical, 0 Important and
+0 Minor findings. Fresh completion verification ran the full repository build with every task
+rerun; `./gradlew build --rerun-tasks --no-parallel --continue --console=plain --offline`
+completed 240/240 actionable tasks with `BUILD SUCCESSFUL` in 4 min 2 s.
+
 ## Fix round 10 — anchor dispatch-attempt origin
 
 This section supersedes fix-round-9 P01 completeness claims. Starting revision: `fc32aeca`.

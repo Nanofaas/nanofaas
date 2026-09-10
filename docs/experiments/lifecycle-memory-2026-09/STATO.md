@@ -2877,3 +2877,10 @@ and increment checks. A deterministic RED updated metadata, identity and callbac
 together. JSON policy now fixes the dispatch-attempt sequence per kind, including `[1,2]` for retry
 and `[2]` for the standalone second-attempt callback scenario. Python is unchanged; validator
 GREEN is 25/25.
+
+## P16a complete
+
+Final revision `86fb6b17` passed fresh independent review with 0 Critical, 0 Important and
+0 Minor findings. The final validator suite is 25/25, all embedded mutations and five focused SDK
+adapters are GREEN, and fresh full-repository verification reran 240/240 Gradle tasks with
+`BUILD SUCCESSFUL` in 4 min 2 s. P16a is closed; next is P17, then P18, then P16b.
