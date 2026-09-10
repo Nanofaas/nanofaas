@@ -1,5 +1,25 @@
 # Task P16a report — common SDK memory inventory and saturation wire contract
 
+## Fix round 5 — causal program and ordered retry
+
+This section supersedes fix-round-4 program-connectivity claims. Starting revision: `bb081205`.
+
+The next fresh review reduced the remaining gap to harness causality. Five RED tests reproduced
+accepted contradictions: success followed by a failed redispatch, redispatch replaced by a second
+send, stop without `begin-stop`, callback saturation without capacity fill, and swapped
+`success-drain`/`restart` kinds. These changes preserved local references and canonical outcome
+chains but invalidated the scenario program.
+
+GREEN adds exact per-kind action, actor and ordered outcome sequences to the JSON policy. Python
+adds one generic `mapped-sequence-equals` operator; repeated sequence elements are valid data and
+no action, actor, outcome or kind value is copied into the validator. The full validator suite is
+17/17 GREEN and all embedded mutations remain GREEN. The GitNexus index was refreshed before the
+edit; exact upstream impacts for `validate_rule` and `apply_rules` were LOW and limited to the
+Runtime-contract validator flow. All five focused adapters passed again (Java/Java-lite 16/16
+Gradle actions, Python, Go and JavaScript). Complete non-partial/non-truncated detection reported
+eight worktree files/16 symbols including the protected overload files, and six staged P16a
+files/15 symbols; both scopes had zero affected processes and LOW risk.
+
 ## Fix round 4 — anchor semantics to stimuli and scenario kind
 
 This section supersedes broader fix-round-3 connectivity claims. Starting revision:

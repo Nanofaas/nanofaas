@@ -48,6 +48,7 @@ RULE_KEYS = {
     "length-equals": {"id", "scope", "operator", "source", "expected"},
     "presence-iff-positive": {"id", "scope", "operator", "source", "expected"},
     "mapped-member": {"id", "scope", "operator", "source", "expected", "value"},
+    "mapped-sequence-equals": {"id", "scope", "operator", "source", "expected", "value"},
     "member-requires-presence": {"id", "scope", "operator", "source", "expected", "value"},
 }
 
@@ -158,6 +159,13 @@ def validate_rule(rule_value: Any, path: str) -> dict[str, Any]:
         mapping = object_map(rule["value"], f"{path}/value", nonempty=True)
         for key, choices in mapping.items():
             unique_strings(choices, f"{path}/value/{key}", nonempty=True)
+    elif operator == "mapped-sequence-equals":
+        mapping = object_map(rule["value"], f"{path}/value", nonempty=True)
+        for key, sequence in mapping.items():
+            for index, item in enumerate(
+                array(sequence, f"{path}/value/{key}", nonempty=True)
+            ):
+                string(item, f"{path}/value/{key}/{index}")
     elif operator == "member-requires-presence":
         unique_strings(rule["value"], f"{path}/value", nonempty=True)
     finite_json(rule.get("value"), f"{path}/value")
@@ -733,7 +741,12 @@ def validate_expected(scenario: dict[str, Any], requests: list[dict[str, Any]],
         for request_id in request_by_id
     ]
     scope_contexts = {
-        "scenario": [{"requests": requests, "expected": expected}],
+        "scenario": [{
+            "scenario": scenario,
+            "requests": requests,
+            "actions": actions,
+            "expected": expected,
+        }],
         "request": request_contexts,
         "callback": request_contexts,
         "action": [{"action": action} for action in actions],
@@ -878,6 +891,8 @@ def apply_rules(rules: list[dict[str, Any]],
                 valid = (source is not None) == (expected > 0)
             elif operator == "mapped-member":
                 valid = expected in rule["value"].get(source, [])
+            elif operator == "mapped-sequence-equals":
+                valid = expected == rule["value"].get(source)
             elif operator == "member-requires-presence":
                 valid = expected not in rule["value"] or source is not None
             else:

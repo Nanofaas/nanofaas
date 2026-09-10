@@ -480,6 +480,66 @@
       ],
       "crossFieldRules": [
         {
+          "id": "scenario-kind-controls-action-sequence",
+          "scope": "scenario",
+          "operator": "mapped-sequence-equals",
+          "source": "scenario.kind",
+          "expected": "actions[].action",
+          "value": {
+            "success-drain": ["start-runtime", "send-request", "await-response", "await-callback"],
+            "input-too-large": ["start-runtime", "send-request", "await-response"],
+            "output-too-large": ["start-runtime", "send-request", "await-response", "await-callback"],
+            "callback-saturated": ["start-runtime", "fill-callback-capacity", "send-request", "await-response", "drain-callbacks"],
+            "handler-timeout": ["start-runtime", "send-request", "await-barrier", "await-response", "await-callback"],
+            "cancellation": ["start-runtime", "send-request", "await-barrier", "cancel-request", "await-callback"],
+            "health-under-saturation": ["start-runtime", "fill-callback-capacity", "probe-health", "await-response", "drain-callbacks"],
+            "stop-with-full-queue": ["start-runtime", "fill-callback-capacity", "begin-stop", "await-barrier", "send-request", "await-response", "await-stop"],
+            "restart": ["start-runtime", "begin-stop", "await-stop", "start-runtime-again", "send-request", "await-response", "await-callback"],
+            "callback-delivery-exhausted": ["start-runtime", "send-request", "await-response", "await-callback"],
+            "dispatch-retry-identity": ["start-runtime", "send-request", "await-response", "await-callback", "control-plane-redispatch", "send-request", "await-response", "await-callback"]
+          }
+        },
+        {
+          "id": "scenario-kind-controls-actor-sequence",
+          "scope": "scenario",
+          "operator": "mapped-sequence-equals",
+          "source": "scenario.kind",
+          "expected": "actions[].actor",
+          "value": {
+            "success-drain": ["harness", "client", "client", "harness"],
+            "input-too-large": ["harness", "client", "client"],
+            "output-too-large": ["harness", "client", "client", "harness"],
+            "callback-saturated": ["harness", "harness", "client", "client", "harness"],
+            "handler-timeout": ["harness", "client", "harness", "client", "harness"],
+            "cancellation": ["harness", "client", "harness", "client", "harness"],
+            "health-under-saturation": ["harness", "harness", "client", "client", "harness"],
+            "stop-with-full-queue": ["harness", "harness", "harness", "harness", "client", "client", "harness"],
+            "restart": ["harness", "harness", "harness", "harness", "client", "client", "harness"],
+            "callback-delivery-exhausted": ["harness", "client", "client", "harness"],
+            "dispatch-retry-identity": ["harness", "control-plane", "control-plane", "harness", "control-plane", "control-plane", "control-plane", "harness"]
+          }
+        },
+        {
+          "id": "scenario-kind-controls-outcome-sequence",
+          "scope": "scenario",
+          "operator": "mapped-sequence-equals",
+          "source": "scenario.kind",
+          "expected": "expected.responses[].outcomeRef",
+          "value": {
+            "success-drain": ["success"],
+            "input-too-large": ["input-too-large"],
+            "output-too-large": ["output-too-large"],
+            "callback-saturated": ["callback-saturated"],
+            "handler-timeout": ["handler-timeout"],
+            "cancellation": ["client-cancelled"],
+            "health-under-saturation": ["health-ok"],
+            "stop-with-full-queue": ["runtime-stopping"],
+            "restart": ["success"],
+            "callback-delivery-exhausted": ["success"],
+            "dispatch-retry-identity": ["handler-error", "success"]
+          }
+        },
+        {
           "id": "callback-url-controls-requirement",
           "scope": "callback",
           "operator": "presence-equals",

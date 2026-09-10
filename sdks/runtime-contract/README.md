@@ -73,7 +73,9 @@ to callback envelope, while declarative action and cardinality rules require req
 actions to name a request and require one dispatch-attempt entry per callback delivery attempt.
 The embedded mutation suite includes the seven round-two contradictions plus broken-reference and
 projection-drift probes. Standalone tests additionally reject the reviewed coordinated changes
-across size relation, lifecycle, outcome, envelope, scenario kind and request/action role.
+across size relation, lifecycle, outcome, envelope, scenario kind and request/action role. Exact
+per-kind action, actor and ordered outcome sequences anchor causal phases such as capacity fill,
+stop, restart and control-plane redispatch.
 
 Each language adapter runs that validator with a finite 10 s process deadline and then parses the
 same JSON source. Java and Java-lite deserialize the complete typed model; Go disallows unknown

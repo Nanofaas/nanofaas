@@ -34,6 +34,109 @@ def scenario(document, scenario_id):
 
 
 class SaturationWireCorpusMutationTest(unittest.TestCase):
+    def test_rejects_retry_after_success_with_failure_second(self):
+        validator = load_validator_module()
+        document = json.loads(CORPUS.read_text(encoding="utf-8"))
+        mutated = scenario(document, "dispatch-retry-identity")
+
+        mutated["backend"]["handlers"][0].update({
+            "behavior": "succeed",
+            "outputBytes": 128,
+            "outputRelationToLimit": "below-limit",
+        })
+        mutated["expected"]["handlers"][0].update({
+            "lifecycleRef": "succeeded",
+            "started": True,
+            "cancelRequested": False,
+            "terminal": "succeeded",
+        })
+        mutated["expected"]["responses"][0].update({
+            "outcomeRef": "success",
+            "status": 200,
+            "body": {"result": "ok"},
+        })
+        mutated["expected"]["callbacks"][0]["envelopeRef"] = "success"
+        mutated["expected"]["callbacks"][0]["requestProjection"]["payload"] = {
+            "success": True,
+            "output": {"result": "ok"},
+            "error": None,
+        }
+
+        mutated["backend"]["handlers"][1].update({
+            "behavior": "fail",
+            "outputBytes": 0,
+            "outputRelationToLimit": "not-applicable",
+        })
+        mutated["expected"]["handlers"][1].update({
+            "lifecycleRef": "failed",
+            "started": True,
+            "cancelRequested": False,
+            "terminal": "failed",
+        })
+        mutated["expected"]["responses"][1].update({
+            "outcomeRef": "handler-error",
+            "status": 500,
+            "body": {"error": {"code": "HANDLER_ERROR", "message": "Handler failed"}},
+        })
+        mutated["expected"]["callbacks"][1]["envelopeRef"] = "handler-error"
+        mutated["expected"]["callbacks"][1]["requestProjection"]["payload"] = {
+            "success": False,
+            "output": None,
+            "error": {"code": "HANDLER_ERROR", "message": "Handler failed"},
+        }
+
+        with self.assertRaises(validator.ContractError):
+            validator.validate_document(document)
+
+    def test_rejects_redispatch_replaced_by_send(self):
+        validator = load_validator_module()
+        document = json.loads(CORPUS.read_text(encoding="utf-8"))
+        mutated = scenario(document, "dispatch-retry-identity")
+        redispatch = next(
+            action for action in mutated["harness"]["actions"]
+            if action["action"] == "control-plane-redispatch"
+        )
+        redispatch["action"] = "send-request"
+
+        with self.assertRaises(validator.ContractError):
+            validator.validate_document(document)
+
+    def test_rejects_stop_program_without_begin_stop(self):
+        validator = load_validator_module()
+        document = json.loads(CORPUS.read_text(encoding="utf-8"))
+        mutated = scenario(document, "stop-with-full-queue")
+        actions = mutated["harness"]["actions"]
+        actions[:] = [action for action in actions if action["action"] != "begin-stop"]
+        for sequence, action in enumerate(actions, start=1):
+            action["sequence"] = sequence
+
+        with self.assertRaises(validator.ContractError):
+            validator.validate_document(document)
+
+    def test_rejects_saturation_program_without_capacity_fill(self):
+        validator = load_validator_module()
+        document = json.loads(CORPUS.read_text(encoding="utf-8"))
+        mutated = scenario(document, "callback-saturated")
+        actions = mutated["harness"]["actions"]
+        actions[:] = [
+            action for action in actions if action["action"] != "fill-callback-capacity"
+        ]
+        for sequence, action in enumerate(actions, start=1):
+            action["sequence"] = sequence
+
+        with self.assertRaises(validator.ContractError):
+            validator.validate_document(document)
+
+    def test_rejects_swapped_success_and_restart_kinds(self):
+        validator = load_validator_module()
+        document = json.loads(CORPUS.read_text(encoding="utf-8"))
+        success = scenario(document, "success-drain")
+        restart = scenario(document, "restart")
+        success["kind"], restart["kind"] = restart["kind"], success["kind"]
+
+        with self.assertRaises(validator.ContractError):
+            validator.validate_document(document)
+
     def test_rejects_below_limit_output_with_output_rejection_chain(self):
         validator = load_validator_module()
         document = json.loads(CORPUS.read_text(encoding="utf-8"))

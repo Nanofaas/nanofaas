@@ -2821,3 +2821,14 @@ The corpus now declares scenario-kind/outcome, size-relation/lifecycle and actio
 compatibility. Python only exposes generic scenario and referenced-request contexts to generic
 mapping rules. The validator suite is 12/12 GREEN; adapter and graph verification are recorded in
 the P16a report after completion.
+
+## P16a fix round 5 — causal harness programs
+
+Starting from `bb081205`, fresh review isolated the final semantic gap to unanchored harness and
+retry ordering. Five deterministic RED tests covered reversed retry outcomes, missing redispatch,
+missing stop/capacity-fill phases and swapped success/restart kinds.
+
+The JSON policy now owns exact action, actor and ordered outcome sequences for every scenario kind;
+the Python validator adds only a generic mapped-sequence comparison. The refreshed-index impacts
+for `validate_rule` and `apply_rules` were exact LOW. Validator GREEN is 17/17; adapter and graph
+verification are recorded in the P16a report after completion.
