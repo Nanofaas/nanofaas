@@ -2143,3 +2143,26 @@ in 6 seconds, and all `InternalScaler*Test` cases are green in 4 seconds. Packag
 correcting two test-harness synchronization defects exposed by integration, the final full offline
 repository suite completed with **BUILD SUCCESSFUL in 2m32s** (190 actionable tasks: 26 executed,
 164 up-to-date).
+
+### P11 fix round 2 — atomic provenance and owner publication
+
+The wake-up gate now obtains its generation through the managed deployment coordinator's atomic
+registry-object check. A remove/re-register between the gate's registry lookup and generation
+capture therefore cannot combine an old `RegisteredFunction` or target with the replacement
+generation. Gate owner publication and coordinator state publication are each serialized with
+their corresponding remove/close scan. Publication linearizes before lifecycle retirement and is
+observed by that retirement, or lifecycle wins and no owner/state can appear after it returns.
+Logical cancellation remains immediate while already-submitted callbacks keep their exact
+generation attribution until physical drain.
+
+Deterministic regressions pause the exact registry lookup/capture gap and the real map publication
+operations. They use latches plus an explicit monitor-blocked barrier, then release publication and
+assert caller failure, empty timer queues and zero physically owned gate/coordinator entries after
+the captured callback drains. The stale generation-aware replica mutation test now observes the
+writer waiting inside `FunctionOperationLocks.withLock` by thread state and stack frame before
+releasing the lifecycle lock; its ordering proof no longer uses a 100 ms `Future.get` timeout.
+
+The covering gate/coordinator/managed-coordinator and `InternalScaler*Test` suites are green in 10
+seconds. `bootJar` is green for `none`, `async-queue`, `sync-queue,runtime-config`,
+`container-deployment-provider` and `all`. The one full offline repository suite completed with
+**BUILD SUCCESSFUL in 2m33s** (190 actionable tasks: 20 executed, 170 up-to-date).

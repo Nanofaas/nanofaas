@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -17,7 +18,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.Future;
+import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -29,6 +32,46 @@ import static org.mockito.Mockito.when;
 class DeploymentWakeUpCoordinatorTest {
 
     private final ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void statePublicationIsAtomicWithRemovalAndClose(boolean close) throws Exception {
+        FunctionCapacityRegistry generations = generations();
+        FunctionGeneration generation = generations.activeGeneration("echo");
+        ScheduledThreadPoolExecutor scheduler = scheduler();
+        DeploymentWakeUpCoordinator coordinator = new DeploymentWakeUpCoordinator(generations, scheduler);
+        BlockingComputeMap<FunctionGeneration, Object> states = new BlockingComputeMap<>();
+        replaceMap(coordinator, "functions", states);
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            Future<?> publication = executor.submit(() -> coordinator.protectAndScaleUp(
+                    generation, target, Long.MAX_VALUE, () -> { }));
+            assertThat(states.publicationEntered.await(1, TimeUnit.SECONDS)).isTrue();
+            AtomicReference<Thread> lifecycleThread = new AtomicReference<>();
+            Future<?> lifecycle = executor.submit(() -> {
+                lifecycleThread.set(Thread.currentThread());
+                if (close) coordinator.close();
+                else coordinator.removeFunctionState("echo");
+            });
+
+            awaitDoneOrMonitorBlocked(lifecycle, lifecycleThread);
+            states.allowPublication.countDown();
+            lifecycle.get(1, TimeUnit.SECONDS);
+            try {
+                publication.get(1, TimeUnit.SECONDS);
+            } catch (java.util.concurrent.ExecutionException expectedRetirement) {
+                assertThat(expectedRetirement).hasRootCauseMessage(
+                        close ? "DEPLOYMENT_WAKE_UP_CLOSED" : "DEPLOYMENT_WAKE_UP_REMOVED");
+            }
+
+            assertThat(coordinator.ownedStateCount()).isZero();
+            assertThat(scheduler.getQueue()).isEmpty();
+        } finally {
+            states.allowPublication.countDown();
+            coordinator.close();
+            scheduler.shutdownNow();
+        }
+    }
 
     @Test
     void leaseCloseAndExpiryRemoveQueuedTasksAndReleaseOwnershipExactlyOnce() {
@@ -254,5 +297,33 @@ class DeploymentWakeUpCoordinatorTest {
         FunctionCapacityRegistry generations = new FunctionCapacityRegistry();
         generations.register("echo", 1);
         return generations;
+    }
+
+    private static void replaceMap(Object owner, String fieldName, Object replacement) throws Exception {
+        java.lang.reflect.Field field = owner.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(owner, replacement);
+    }
+
+    private static void awaitDoneOrMonitorBlocked(Future<?> lifecycle, AtomicReference<Thread> thread) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+        while (!lifecycle.isDone()) {
+            Thread current = thread.get();
+            if (current != null && current.getState() == Thread.State.BLOCKED) return;
+            if (System.nanoTime() >= deadline) throw new AssertionError("lifecycle did not return or block on admission");
+            Thread.onSpinWait();
+        }
+    }
+
+    private static final class BlockingComputeMap<K, V> extends ConcurrentHashMap<K, V> {
+        private final CountDownLatch publicationEntered = new CountDownLatch(1);
+        private final CountDownLatch allowPublication = new CountDownLatch(1);
+
+        @Override
+        public V computeIfAbsent(K key, Function<? super K, ? extends V> mappingFunction) {
+            publicationEntered.countDown();
+            await(allowPublication);
+            return super.computeIfAbsent(key, mappingFunction);
+        }
     }
 }

@@ -24,6 +24,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
@@ -173,6 +174,8 @@ class ManagedDeploymentCoordinatorTest {
         FunctionGeneration oldGeneration = generations.activeGeneration("fn");
         CountDownLatch replacementInstalled = new CountDownLatch(1);
         CountDownLatch releaseLifecycleLock = new CountDownLatch(1);
+        CountDownLatch staleMutationAttempted = new CountDownLatch(1);
+        AtomicReference<Thread> staleMutationThread = new AtomicReference<>();
 
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
             Future<?> replacement = executor.submit(() -> sharedLocks.withLock("fn", () -> {
@@ -185,10 +188,13 @@ class ManagedDeploymentCoordinatorTest {
             }));
             assertThat(replacementInstalled.await(5, TimeUnit.SECONDS)).isTrue();
 
-            Future<Boolean> staleScale = executor.submit(
-                    () -> sharedCoordinator.setReplicas(oldGeneration, target, 3));
-            assertThatThrownBy(() -> staleScale.get(100, TimeUnit.MILLISECONDS))
-                    .isInstanceOf(TimeoutException.class);
+            Future<Boolean> staleScale = executor.submit(() -> {
+                staleMutationThread.set(Thread.currentThread());
+                staleMutationAttempted.countDown();
+                return sharedCoordinator.setReplicas(oldGeneration, target, 3);
+            });
+            assertThat(staleMutationAttempted.await(5, TimeUnit.SECONDS)).isTrue();
+            awaitFunctionLockContention(staleMutationThread);
 
             releaseLifecycleLock.countDown();
             replacement.get(5, TimeUnit.SECONDS);
@@ -330,5 +336,20 @@ class ManagedDeploymentCoordinatorTest {
             Thread.currentThread().interrupt();
             throw new AssertionError(interrupted);
         }
+    }
+
+    private static void awaitFunctionLockContention(AtomicReference<Thread> thread) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            Thread contender = thread.get();
+            if (contender != null && contender.getState() == Thread.State.WAITING
+                    && java.util.Arrays.stream(contender.getStackTrace()).anyMatch(frame ->
+                    frame.getClassName().equals(FunctionOperationLocks.class.getName())
+                            && frame.getMethodName().equals("withLock"))) {
+                return;
+            }
+            Thread.onSpinWait();
+        }
+        throw new AssertionError("stale mutation never contended for the function-operation lock");
     }
 }

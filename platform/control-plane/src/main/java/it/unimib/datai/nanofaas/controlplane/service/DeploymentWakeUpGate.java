@@ -53,6 +53,7 @@ public class DeploymentWakeUpGate implements FunctionRegistrationListener, AutoC
     private final LongSupplier nanoTime;
     private final ConcurrentMap<FunctionGeneration, WakeUp> inFlight = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
+    private final Object ownerLifecycle = new Object();
 
     @Autowired
     public DeploymentWakeUpGate(FunctionRegistry registry,
@@ -123,10 +124,20 @@ public class DeploymentWakeUpGate implements FunctionRegistrationListener, AutoC
             return failed(closed.get() ? "DEPLOYMENT_WAKE_UP_CLOSED" : "DEPLOYMENT_WAKE_UP_REMOVED");
         }
 
-        WakeUp candidate = new WakeUp(generation, target);
-        WakeUp owner = inFlight.putIfAbsent(generation, candidate);
-        if (owner == null) {
-            owner = candidate;
+        WakeUp owner;
+        boolean startOwner = false;
+        synchronized (ownerLifecycle) {
+            if (closed.get() || !isActive(generation)) {
+                return failed(closed.get() ? "DEPLOYMENT_WAKE_UP_CLOSED" : "DEPLOYMENT_WAKE_UP_REMOVED");
+            }
+            WakeUp candidate = new WakeUp(generation, target);
+            owner = inFlight.putIfAbsent(generation, candidate);
+            if (owner == null) {
+                owner = candidate;
+                startOwner = true;
+            }
+        }
+        if (startOwner) {
             owner.start();
         }
         return owner.callerView();
@@ -139,9 +150,11 @@ public class DeploymentWakeUpGate implements FunctionRegistrationListener, AutoC
 
     @Override
     public void onRemove(String functionName) {
-        for (WakeUp wakeUp : new ArrayList<>(inFlight.values())) {
-            if (wakeUp.generation.functionName().equals(functionName)) {
-                wakeUp.fail("DEPLOYMENT_WAKE_UP_REMOVED");
+        synchronized (ownerLifecycle) {
+            for (WakeUp wakeUp : new ArrayList<>(inFlight.values())) {
+                if (wakeUp.generation.functionName().equals(functionName)) {
+                    wakeUp.fail("DEPLOYMENT_WAKE_UP_REMOVED");
+                }
             }
         }
         wakeUpCoordinator.removeFunctionState(functionName);
@@ -149,11 +162,13 @@ public class DeploymentWakeUpGate implements FunctionRegistrationListener, AutoC
 
     @Override
     public void close() {
-        if (!closed.compareAndSet(false, true)) {
-            return;
-        }
-        for (WakeUp wakeUp : new ArrayList<>(inFlight.values())) {
-            wakeUp.fail("DEPLOYMENT_WAKE_UP_CLOSED");
+        synchronized (ownerLifecycle) {
+            if (!closed.compareAndSet(false, true)) {
+                return;
+            }
+            for (WakeUp wakeUp : new ArrayList<>(inFlight.values())) {
+                wakeUp.fail("DEPLOYMENT_WAKE_UP_CLOSED");
+            }
         }
     }
 
@@ -162,7 +177,7 @@ public class DeploymentWakeUpGate implements FunctionRegistrationListener, AutoC
     }
 
     private FunctionGeneration activeGeneration(RegisteredFunction function) {
-        return generations.activeGeneration(function.name());
+        return coordinator.generationOf(function);
     }
 
     private boolean isReadyWithinPolicy(ReplicaObservation observation, Instant now) {

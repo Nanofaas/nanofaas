@@ -28,6 +28,7 @@ public class DeploymentWakeUpCoordinator implements AutoCloseable {
     private final ConcurrentMap<FunctionGeneration, FunctionState> functions = new ConcurrentHashMap<>();
     private final AtomicLong leaseIds = new AtomicLong();
     private final AtomicBoolean closed = new AtomicBoolean();
+    private final Object stateLifecycle = new Object();
 
     @Autowired
     public DeploymentWakeUpCoordinator(
@@ -58,12 +59,14 @@ public class DeploymentWakeUpCoordinator implements AutoCloseable {
         if (!generation.functionName().equals(target.functionName())) {
             throw new IllegalArgumentException("wake-up generation and target must name the same function");
         }
-        if (closed.get() || !isCurrent(generation)) {
-            throw new IllegalStateException(closed.get()
-                    ? "DEPLOYMENT_WAKE_UP_CLOSED" : "DEPLOYMENT_WAKE_UP_REMOVED");
+        FunctionState state;
+        synchronized (stateLifecycle) {
+            if (closed.get() || !isCurrent(generation)) {
+                throw new IllegalStateException(closed.get()
+                        ? "DEPLOYMENT_WAKE_UP_CLOSED" : "DEPLOYMENT_WAKE_UP_REMOVED");
+            }
+            state = functions.computeIfAbsent(generation, ignored -> new FunctionState());
         }
-
-        FunctionState state = functions.computeIfAbsent(generation, ignored -> new FunctionState());
         state.mutationLock.lock();
         long leaseId = 0;
         try {
@@ -101,10 +104,13 @@ public class DeploymentWakeUpCoordinator implements AutoCloseable {
         Objects.requireNonNull(generation, "generation");
         Objects.requireNonNull(target, "target");
         Objects.requireNonNull(scaleDown, "scaleDown");
-        if (!generation.functionName().equals(target.functionName()) || closed.get() || !isCurrent(generation)) {
-            return false;
+        FunctionState state;
+        synchronized (stateLifecycle) {
+            if (!generation.functionName().equals(target.functionName()) || closed.get() || !isCurrent(generation)) {
+                return false;
+            }
+            state = functions.computeIfAbsent(generation, ignored -> new FunctionState());
         }
-        FunctionState state = functions.computeIfAbsent(generation, ignored -> new FunctionState());
         state.mutationLock.lock();
         try {
             synchronized (state) {
@@ -147,9 +153,11 @@ public class DeploymentWakeUpCoordinator implements AutoCloseable {
     }
 
     public void removeFunctionState(String functionName) {
-        for (var entry : new ArrayList<>(functions.entrySet())) {
-            if (entry.getKey().functionName().equals(functionName)) {
-                retire(entry.getKey(), entry.getValue());
+        synchronized (stateLifecycle) {
+            for (var entry : new ArrayList<>(functions.entrySet())) {
+                if (entry.getKey().functionName().equals(functionName)) {
+                    retire(entry.getKey(), entry.getValue());
+                }
             }
         }
     }
@@ -172,11 +180,13 @@ public class DeploymentWakeUpCoordinator implements AutoCloseable {
 
     @Override
     public void close() {
-        if (!closed.compareAndSet(false, true)) {
-            return;
-        }
-        for (var entry : new ArrayList<>(functions.entrySet())) {
-            retire(entry.getKey(), entry.getValue());
+        synchronized (stateLifecycle) {
+            if (!closed.compareAndSet(false, true)) {
+                return;
+            }
+            for (var entry : new ArrayList<>(functions.entrySet())) {
+                retire(entry.getKey(), entry.getValue());
+            }
         }
     }
 
