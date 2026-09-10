@@ -1,5 +1,7 @@
 [project]
 name = "fn-init"
+license = "MIT"
+license-files = ["LICENSE"]
 version = "0.1.0"
 description = "Function scaffolding tool for nanofaas"
 requires-python = ">=3.11"
@@ -12,7 +14,7 @@ dependencies = [
 fn-init = "fn_init.main:entry"
 
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
