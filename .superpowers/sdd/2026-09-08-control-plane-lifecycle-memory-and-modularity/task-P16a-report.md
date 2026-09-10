@@ -1,5 +1,23 @@
 # Task P16a report — common SDK memory inventory and saturation wire contract
 
+## Fix round 10 — anchor dispatch-attempt origin
+
+This section supersedes fix-round-9 P01 completeness claims. Starting revision: `fc32aeca`.
+
+Fresh review found a coordinated translation of retry attempts from `[1,2]` to `[2,3]` remained
+valid because increment and cross-section equality were enforced without anchoring the origin.
+One RED updated request metadata, identity, callback retry sequences and callback headers together;
+the validator accepted it.
+
+GREEN adds the exact per-kind dispatch-attempt sequence to JSON policy. It preserves `[1,2]` for
+the full retry, `[2]` for the standalone callback-delivery-exhausted second-attempt scenario,
+`[null]` for health and `[1]` for ordinary initial invocations. Existing generic sequence logic
+enforces it; Python is unchanged. Validator tests are 25/25 GREEN and all embedded mutations pass.
+All five focused adapters passed again (Java/Java-lite 16/16 Gradle actions, Python, Go and
+JavaScript). Complete non-partial/non-truncated detection reported seven worktree files/five
+symbols including the protected overload files, and five staged P16a files/four symbols; both
+scopes had zero affected processes and LOW risk.
+
 ## Fix round 9 — bind collection order to request identity
 
 This section supersedes broader fix-round-8 P01 identity claims. Starting revision: `0b00c17c`.

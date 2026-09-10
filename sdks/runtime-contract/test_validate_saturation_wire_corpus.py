@@ -34,6 +34,21 @@ def scenario(document, scenario_id):
 
 
 class SaturationWireCorpusMutationTest(unittest.TestCase):
+    def test_rejects_shifted_dispatch_attempt_sequence(self):
+        validator = load_validator_module()
+        document = json.loads(CORPUS.read_text(encoding="utf-8"))
+        mutated = scenario(document, "dispatch-retry-identity")
+        mutated["expected"]["identity"]["requestDispatchAttempts"] = [2, 3]
+        for request, callback, attempt in zip(
+            mutated["requests"], mutated["expected"]["callbacks"], (2, 3)
+        ):
+            request["metadata"]["dispatchAttempt"] = attempt
+            callback["dispatchAttempts"] = [attempt]
+            callback["requestProjection"]["headers"]["x-dispatch-attempt"] = str(attempt)
+
+        with self.assertRaises(validator.ContractError):
+            validator.validate_document(document)
+
     def test_rejects_request_order_hiding_swapped_dispatch_attempts(self):
         validator = load_validator_module()
         document = json.loads(CORPUS.read_text(encoding="utf-8"))

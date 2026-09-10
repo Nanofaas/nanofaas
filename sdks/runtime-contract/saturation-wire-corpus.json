@@ -454,6 +454,26 @@
           }
         },
         {
+          "id": "scenario-kind-controls-dispatch-attempt-sequence",
+          "scope": "scenario",
+          "operator": "mapped-sequence-equals",
+          "source": "scenario.kind",
+          "expected": "requests[].metadata.dispatchAttempt",
+          "value": {
+            "success-drain": [1],
+            "input-too-large": [1],
+            "output-too-large": [1],
+            "callback-saturated": [1],
+            "handler-timeout": [1],
+            "cancellation": [1],
+            "health-under-saturation": [null],
+            "stop-with-full-queue": [1],
+            "restart": [1],
+            "callback-delivery-exhausted": [2],
+            "dispatch-retry-identity": [1, 2]
+          }
+        },
+        {
           "id": "response-order-follows-requests",
           "scope": "scenario",
           "operator": "sequence-equals",

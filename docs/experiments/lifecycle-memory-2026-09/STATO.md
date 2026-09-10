@@ -2869,3 +2869,11 @@ covered swapped attempts hidden by request order and success-then-failure hidden
 The JSON policy now declares canonical request-ID order per kind and aligns response, handler,
 callback and backend collection order to `requests[]`. Python remains unchanged. Validator GREEN
 is 24/24.
+
+## P16a fix round 10 — dispatch-attempt origin
+
+Starting from `fc32aeca`, fresh review found a coordinated `[1,2]` to `[2,3]` shift passed equality
+and increment checks. A deterministic RED updated metadata, identity and callback projections
+together. JSON policy now fixes the dispatch-attempt sequence per kind, including `[1,2]` for retry
+and `[2]` for the standalone second-attempt callback scenario. Python is unchanged; validator
+GREEN is 25/25.

@@ -79,6 +79,8 @@ such as capacity fill, stop, restart and control-plane redispatch. Per-kind barr
 and initial states plus handler/callback producer sequences connect backend signals to those
 action waits. Request order is canonical per kind, and backend plus expected collections must
 follow it, binding dispatch metadata and ordered outcomes to the request IDs targeted by actions.
+Each kind also fixes its dispatch-attempt sequence, including `[1, 2]` for control-plane retry and
+`[2]` for the standalone second-attempt callback-delivery scenario.
 
 Each language adapter runs that validator with a finite 10 s process deadline and then parses the
 same JSON source. Java and Java-lite deserialize the complete typed model; Go disallows unknown
