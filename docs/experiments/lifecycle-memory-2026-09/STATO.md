@@ -2852,3 +2852,10 @@ the harness still waited on `handler-started`, reproducing an accepted deadlock.
 The JSON policy now anchors barrier declarations plus handler/callback producer sequences per kind.
 The generic sequence validator permits empty finite sequences for barrier-free scenarios. Exact
 impact for `validate_rule` was LOW; validator GREEN is 22/22.
+
+## P16a fix round 8 — barrier initial state
+
+Starting from `7504bf9a`, fresh review identified the last free barrier field: `initialState`.
+A parameterized RED accepted `open` in timeout/cancellation/stop and an arbitrary `banana` value.
+The JSON policy now fixes `closed` for all barrier scenarios and empty state sequences elsewhere;
+the generic validator code is unchanged. Validator GREEN is 23/23.

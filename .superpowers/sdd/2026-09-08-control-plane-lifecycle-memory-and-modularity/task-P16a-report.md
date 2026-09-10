@@ -1,5 +1,23 @@
 # Task P16a report — common SDK memory inventory and saturation wire contract
 
+## Fix round 8 — barrier initial state
+
+This section supersedes fix-round-7 barrier-completeness claims. Starting revision: `7504bf9a`.
+
+Fresh review found barrier `initialState` remained free-form. One parameterized RED proved that
+`open` was accepted for timeout, cancellation and stop, and that an arbitrary `banana` value was
+also accepted. An initially open barrier invalidates the producer-before-consumer ordering.
+
+GREEN adds the exact per-kind initial-state sequence to the JSON policy: `closed` for the three
+barrier scenarios and an empty sequence elsewhere. The existing generic sequence operator needs no
+code change. Validator tests are 23/23 GREEN and all embedded mutations remain GREEN. GitNexus
+reported the test class as UNKNOWN because unittest discovery is dynamic; exact text search found
+only the definition and confirmed framework-owned discovery. All five focused adapters passed
+again (Java/Java-lite 16/16 Gradle actions, Python, Go and JavaScript). Complete non-partial/
+non-truncated detection reported seven worktree files/five symbols including the protected
+overload files, and five staged P16a files/four symbols; both scopes had zero affected processes
+and LOW risk.
+
 ## Fix round 7 — barrier producer/consumer connection
 
 This section supersedes fix-round-6 barrier-completeness claims. Starting revision: `a9b90fad`.

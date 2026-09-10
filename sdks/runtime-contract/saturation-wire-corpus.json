@@ -580,6 +580,26 @@
           }
         },
         {
+          "id": "scenario-kind-controls-barrier-initial-states",
+          "scope": "scenario",
+          "operator": "mapped-sequence-equals",
+          "source": "scenario.kind",
+          "expected": "scenario.harness.barriers[].initialState",
+          "value": {
+            "success-drain": [],
+            "input-too-large": [],
+            "output-too-large": [],
+            "callback-saturated": [],
+            "handler-timeout": ["closed"],
+            "cancellation": ["closed"],
+            "health-under-saturation": [],
+            "stop-with-full-queue": ["closed"],
+            "restart": [],
+            "callback-delivery-exhausted": [],
+            "dispatch-retry-identity": []
+          }
+        },
+        {
           "id": "scenario-kind-controls-handler-barrier-producers",
           "scope": "scenario",
           "operator": "mapped-sequence-equals",

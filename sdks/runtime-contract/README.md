@@ -76,7 +76,8 @@ projection-drift probes. Standalone tests additionally reject the reviewed coord
 across size relation, lifecycle, outcome, envelope, scenario kind and request/action role. Exact
 per-kind action, actor, request-target, barrier and ordered outcome sequences anchor causal phases
 such as capacity fill, stop, restart and control-plane redispatch. Per-kind barrier declarations
-and handler/callback producer sequences connect backend signals to those action waits.
+and initial states plus handler/callback producer sequences connect backend signals to those
+action waits.
 
 Each language adapter runs that validator with a finite 10 s process deadline and then parses the
 same JSON source. Java and Java-lite deserialize the complete typed model; Go disallows unknown

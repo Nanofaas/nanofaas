@@ -34,6 +34,21 @@ def scenario(document, scenario_id):
 
 
 class SaturationWireCorpusMutationTest(unittest.TestCase):
+    def test_rejects_noncanonical_barrier_initial_state(self):
+        validator = load_validator_module()
+        for scenario_id, initial_state in (
+            ("handler-timeout", "open"),
+            ("cancellation", "open"),
+            ("stop-with-full-queue", "open"),
+            ("handler-timeout", "banana"),
+        ):
+            with self.subTest(scenario=scenario_id, initial_state=initial_state):
+                document = json.loads(CORPUS.read_text(encoding="utf-8"))
+                mutated = scenario(document, scenario_id)
+                mutated["harness"]["barriers"][0]["initialState"] = initial_state
+                with self.assertRaises(validator.ContractError):
+                    validator.validate_document(document)
+
     def test_rejects_backend_barrier_disconnected_from_wait(self):
         validator = load_validator_module()
         document = json.loads(CORPUS.read_text(encoding="utf-8"))
