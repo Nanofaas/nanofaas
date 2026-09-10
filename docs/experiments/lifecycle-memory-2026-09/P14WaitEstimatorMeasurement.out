@@ -1,0 +1,6 @@
+contract window=30s bucket=1000ms slots=31 warmups=3 repetitions=7 tolerance=one-boundary-bucket/10%-relative-and-identical-admission
+comparison regularMaxAbs=9 maxEventsPerBucket=10 maxRelativeWaitError=2.90% boundaryExact=0 boundaryBucket=100 exactAdmit=false bucketAdmit=true fairnessOrderSame=true retryAfterChanged=false decision=retain-exact
+workload=one-low functions=1 rate=1/s exactNs=302 bucketNs=16 exactBytes=120 bucketBytes=0 exactRetained=31+31 bucketCells=62 afterIdleCleanup=1+1
+workload=one-high functions=1 rate=1000/s exactNs=202 bucketNs=11 exactBytes=120 bucketBytes=0 exactRetained=30001+30001 bucketCells=62 afterIdleCleanup=1+1
+workload=many-low functions=1000 rate=1/s exactNs=920 bucketNs=13 exactBytes=475 bucketBytes=0 exactRetained=31+31 bucketCells=31031 afterIdleCleanup=63+63
+workload=many-high functions=1000 rate=1000/s exactNs=990 bucketNs=15 exactBytes=456 bucketBytes=0 exactRetained=30001+30059 bucketCells=31031 afterIdleCleanup=63+63

@@ -2429,3 +2429,51 @@ provider test task are GREEN, as are bootJar and native-profile AOT generation/J
 The earlier full-suite evidence remains the broad gate because this round is confined to one
 provider proxy and its package-private test seams; no shared lifecycle or provider contract changed.
 The original TDD chronology and round-1 mutation evidence remain unchanged.
+
+## P14 — WaitEstimator bounded retention and measured bucket rejection
+
+Starting revision `3ee63002e325b7fbf2a376000e711e9cd3c20232` on
+`control-plane-lifecycle-memory`.
+
+`WaitEstimator` retains exact timestamps while bounding state to 262,144 global
+samples, 262,144 total per-function samples, 32,768 samples per function, 8,192
+function states, and 16 distinct cleanup candidates per call. Dispatch and admission
+calls clean inactive states through a rotation queue rather than a map scan. Direct
+target checks retire their own empty state conditionally under the state lock;
+explicit removal remains immediate. A monotonic high-water mark prevents backward
+clock reordering, and saturated cutoff arithmetic covers the `Instant` range.
+
+The predeclared bucket candidate used a 30 s window, 1 s resolution, 31 slots,
+one-boundary-bucket absolute tolerance, at most 10% relative wait error after ten
+samples, and identical admission/fairness/`Retry-After` decisions. Deterministic
+one/1,000-function streams at 1/s and 1,000/s used three warm-ups and seven measured
+repetitions. Regular-stream error was 9 events against a 10-event boundary bucket
+and 2.90% relative wait error; fairness order was unchanged. The decisive boundary
+burst had exact=0 and bucket=100 at 30.999 s, causing exact rejection but bucket
+admission. Buckets were rejected despite lower cost/allocation.
+
+Measured exact dispatch medians were 302/202 ns and 120 B per dispatch for one
+function at low/high rate, and 920/990 ns with 475/456 B for 1,000 functions.
+Bucket medians were 11–16 ns and 0 steady-state B. Exact retained samples were
+31+31 at low rate and approximately 30,001+30,001/30,059 at high rate; after
+idle plus the bounded cleanup calls, only the 1 or 63 newly active global/function
+samples remained. Source and raw output are in
+`P14WaitEstimatorMeasurement.java` and `P14WaitEstimatorMeasurement.out`.
+
+Strict RED/GREEN evidence: the first retention test failed compilation with 16
+missing bounded-state symbols; estimate-side idle cleanup then failed at line 45;
+direct target retirement failed at line 57. Each corresponding focused GREEN passed.
+The final sync-queue module ran 39/39 tasks, the control-plane `Retry-After`
+integration ran 78/78 tasks, JVM packaging and native-profile AOT generation/Java
+compilation passed, and the final full repository suite ran 190/190 actionable tasks
+in 4 min 16 s.
+
+GitNexus pre-edit risk was CRITICAL for `estimateWaitSeconds`, HIGH for private
+`snapshot`, MEDIUM for the class, and LOW for resolved constructors/record/remove/
+prune paths. The index was four commits stale; UNKNOWN constructor/field results
+were resolved by exact text search and no absence was treated as safety. Final
+all/staged detection and staged diff validation are recorded in the P14 report.
+Remaining bounded-policy concern: beyond 8,192 represented functions, additional
+functions use the existing global fallback rather than individual history.
+
+Next: P15.
