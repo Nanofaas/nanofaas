@@ -1,5 +1,23 @@
 # Task P16a report — common SDK memory inventory and saturation wire contract
 
+## Fix round 9 — bind collection order to request identity
+
+This section supersedes broader fix-round-8 P01 identity claims. Starting revision: `0b00c17c`.
+
+Fresh review found the ordered request metadata, action targets and outcomes could be reassigned by
+coordinated collection reordering. Two RED tests reproduced swapped dispatch attempts hidden by a
+reordered `requests[]` list and a success-then-failure retry hidden by reversed response entries.
+
+GREEN declares canonical request-ID order per kind and requires response, handler, callback and
+both backend collections to follow `requests[]`. Existing generic sequence operators enforce the
+relations; Python is unchanged and contains no request ID or outcome literal. Validator tests are
+24/24 GREEN and all embedded mutations remain GREEN. The test-class impact remains dynamically
+discovered UNKNOWN, text-resolved to unittest discovery and its sole local definition. All five
+focused adapters passed again (Java/Java-lite 16/16 Gradle actions, Python, Go and JavaScript).
+Complete non-partial/non-truncated detection reported seven worktree files/six symbols including
+the protected overload files, and five staged P16a files/five symbols; both scopes had zero
+affected processes and LOW risk.
+
 ## Fix round 8 — barrier initial state
 
 This section supersedes fix-round-7 barrier-completeness claims. Starting revision: `7504bf9a`.

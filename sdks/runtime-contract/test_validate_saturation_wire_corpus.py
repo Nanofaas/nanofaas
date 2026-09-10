@@ -34,6 +34,25 @@ def scenario(document, scenario_id):
 
 
 class SaturationWireCorpusMutationTest(unittest.TestCase):
+    def test_rejects_request_order_hiding_swapped_dispatch_attempts(self):
+        validator = load_validator_module()
+        document = json.loads(CORPUS.read_text(encoding="utf-8"))
+        mutated = scenario(document, "dispatch-retry-identity")
+        mutated["requests"][0]["metadata"]["dispatchAttempt"] = 2
+        mutated["requests"][1]["metadata"]["dispatchAttempt"] = 1
+        mutated["expected"]["callbacks"][0]["dispatchAttempts"] = [2]
+        mutated["expected"]["callbacks"][0]["requestProjection"]["headers"][
+            "x-dispatch-attempt"
+        ] = "2"
+        mutated["expected"]["callbacks"][1]["dispatchAttempts"] = [1]
+        mutated["expected"]["callbacks"][1]["requestProjection"]["headers"][
+            "x-dispatch-attempt"
+        ] = "1"
+        mutated["requests"].reverse()
+
+        with self.assertRaises(validator.ContractError):
+            validator.validate_document(document)
+
     def test_rejects_noncanonical_barrier_initial_state(self):
         validator = load_validator_module()
         for scenario_id, initial_state in (
@@ -164,6 +183,7 @@ class SaturationWireCorpusMutationTest(unittest.TestCase):
             "output": None,
             "error": {"code": "HANDLER_ERROR", "message": "Handler failed"},
         }
+        mutated["expected"]["responses"].reverse()
 
         with self.assertRaises(validator.ContractError):
             validator.validate_document(document)

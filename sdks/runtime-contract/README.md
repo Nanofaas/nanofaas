@@ -77,7 +77,8 @@ across size relation, lifecycle, outcome, envelope, scenario kind and request/ac
 per-kind action, actor, request-target, barrier and ordered outcome sequences anchor causal phases
 such as capacity fill, stop, restart and control-plane redispatch. Per-kind barrier declarations
 and initial states plus handler/callback producer sequences connect backend signals to those
-action waits.
+action waits. Request order is canonical per kind, and backend plus expected collections must
+follow it, binding dispatch metadata and ordered outcomes to the request IDs targeted by actions.
 
 Each language adapter runs that validator with a finite 10 s process deadline and then parses the
 same JSON source. Java and Java-lite deserialize the complete typed model; Go disallows unknown

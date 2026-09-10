@@ -2859,3 +2859,13 @@ Starting from `7504bf9a`, fresh review identified the last free barrier field: `
 A parameterized RED accepted `open` in timeout/cancellation/stop and an arbitrary `banana` value.
 The JSON policy now fixes `closed` for all barrier scenarios and empty state sequences elsewhere;
 the generic validator code is unchanged. Validator GREEN is 23/23.
+
+## P16a fix round 9 — ordered request identity
+
+Starting from `0b00c17c`, fresh review showed coordinated collection reordering could detach
+dispatch metadata and ordered outcomes from action request targets. Two deterministic RED tests
+covered swapped attempts hidden by request order and success-then-failure hidden by response order.
+
+The JSON policy now declares canonical request-ID order per kind and aligns response, handler,
+callback and backend collection order to `requests[]`. Python remains unchanged. Validator GREEN
+is 24/24.

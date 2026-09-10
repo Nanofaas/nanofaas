@@ -434,6 +434,66 @@
       },
       "identityRules": [
         {
+          "id": "scenario-kind-controls-request-order",
+          "scope": "scenario",
+          "operator": "mapped-sequence-equals",
+          "source": "scenario.kind",
+          "expected": "requests[].id",
+          "value": {
+            "success-drain": ["invoke-1"],
+            "input-too-large": ["invoke-1"],
+            "output-too-large": ["invoke-1"],
+            "callback-saturated": ["invoke-1"],
+            "handler-timeout": ["invoke-1"],
+            "cancellation": ["invoke-1"],
+            "health-under-saturation": ["health-1"],
+            "stop-with-full-queue": ["invoke-after-stop"],
+            "restart": ["invoke-after-restart"],
+            "callback-delivery-exhausted": ["invoke-1"],
+            "dispatch-retry-identity": ["attempt-1", "attempt-2"]
+          }
+        },
+        {
+          "id": "response-order-follows-requests",
+          "scope": "scenario",
+          "operator": "sequence-equals",
+          "source": "expected.responses[].requestId",
+          "expected": "requests[].id",
+          "ignoreNull": false
+        },
+        {
+          "id": "handler-expectation-order-follows-requests",
+          "scope": "scenario",
+          "operator": "sequence-equals",
+          "source": "expected.handlers[].requestId",
+          "expected": "requests[].id",
+          "ignoreNull": false
+        },
+        {
+          "id": "callback-expectation-order-follows-requests",
+          "scope": "scenario",
+          "operator": "sequence-equals",
+          "source": "expected.callbacks[].requestId",
+          "expected": "requests[].id",
+          "ignoreNull": false
+        },
+        {
+          "id": "handler-backend-order-follows-requests",
+          "scope": "scenario",
+          "operator": "sequence-equals",
+          "source": "scenario.backend.handlers[].requestId",
+          "expected": "requests[].id",
+          "ignoreNull": false
+        },
+        {
+          "id": "callback-backend-order-follows-requests",
+          "scope": "scenario",
+          "operator": "sequence-equals",
+          "source": "scenario.backend.callbacks[].requestId",
+          "expected": "requests[].id",
+          "ignoreNull": false
+        },
+        {
           "id": "execution-id-stable",
           "scope": "scenario",
           "operator": "all-equal",
