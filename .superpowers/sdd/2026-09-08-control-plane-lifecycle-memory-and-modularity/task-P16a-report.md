@@ -1,5 +1,24 @@
 # Task P16a report — common SDK memory inventory and saturation wire contract
 
+## Fix round 6 — complete action target projection
+
+This section supersedes fix-round-5 causal-completeness claims. Starting revision: `79decd42`.
+
+Fresh review found the remaining action-program projection omitted request targets. Four RED tests
+proved that the retry scenario accepted swapped attempt targets, waiting for attempt two before it
+was sent, redispatch targeting attempt one, and waiting for attempt two's callback before its send.
+
+GREEN adds exact per-kind request-target and barrier sequences beside the existing action, actor
+and outcome sequences. Together they cover the full action projection. The existing generic
+`mapped-sequence-equals` operator now accepts arbitrary finite JSON sequence values, including the
+required `null` slots; it still contains no domain policy literals. Validator verification is
+21/21 GREEN and every embedded mutation remains GREEN. Refreshed-index upstream impact for
+`validate_rule` was exact LOW and limited to the Runtime-contract validator flow. All five focused
+adapters passed again (Java/Java-lite 16/16 Gradle actions, Python, Go and JavaScript). Complete
+non-partial/non-truncated detection reported eight worktree files/eight symbols including the two
+protected overload files, and six staged P16a files/seven symbols; both scopes had zero affected
+processes and LOW risk.
+
 ## Fix round 5 — causal program and ordered retry
 
 This section supersedes fix-round-4 program-connectivity claims. Starting revision: `bb081205`.

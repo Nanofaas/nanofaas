@@ -520,6 +520,46 @@
           }
         },
         {
+          "id": "scenario-kind-controls-request-target-sequence",
+          "scope": "scenario",
+          "operator": "mapped-sequence-equals",
+          "source": "scenario.kind",
+          "expected": "actions[].requestId",
+          "value": {
+            "success-drain": [null, "invoke-1", "invoke-1", "invoke-1"],
+            "input-too-large": [null, "invoke-1", "invoke-1"],
+            "output-too-large": [null, "invoke-1", "invoke-1", "invoke-1"],
+            "callback-saturated": [null, null, "invoke-1", "invoke-1", null],
+            "handler-timeout": [null, "invoke-1", "invoke-1", "invoke-1", "invoke-1"],
+            "cancellation": [null, "invoke-1", "invoke-1", "invoke-1", "invoke-1"],
+            "health-under-saturation": [null, null, "health-1", "health-1", null],
+            "stop-with-full-queue": [null, null, null, null, "invoke-after-stop", "invoke-after-stop", null],
+            "restart": [null, null, null, null, "invoke-after-restart", "invoke-after-restart", "invoke-after-restart"],
+            "callback-delivery-exhausted": [null, "invoke-1", "invoke-1", "invoke-1"],
+            "dispatch-retry-identity": [null, "attempt-1", "attempt-1", "attempt-1", "attempt-2", "attempt-2", "attempt-2", "attempt-2"]
+          }
+        },
+        {
+          "id": "scenario-kind-controls-barrier-sequence",
+          "scope": "scenario",
+          "operator": "mapped-sequence-equals",
+          "source": "scenario.kind",
+          "expected": "actions[].barrier",
+          "value": {
+            "success-drain": [null, null, null, null],
+            "input-too-large": [null, null, null],
+            "output-too-large": [null, null, null, null],
+            "callback-saturated": [null, null, null, null, null],
+            "handler-timeout": [null, null, "handler-started", null, null],
+            "cancellation": [null, null, "handler-started", null, null],
+            "health-under-saturation": [null, null, null, null, null],
+            "stop-with-full-queue": [null, null, "stop-begun", "stop-begun", null, null, null],
+            "restart": [null, null, null, null, null, null, null],
+            "callback-delivery-exhausted": [null, null, null, null],
+            "dispatch-retry-identity": [null, null, null, null, null, null, null, null]
+          }
+        },
+        {
           "id": "scenario-kind-controls-outcome-sequence",
           "scope": "scenario",
           "operator": "mapped-sequence-equals",

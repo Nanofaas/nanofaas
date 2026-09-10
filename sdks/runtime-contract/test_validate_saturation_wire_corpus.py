@@ -34,6 +34,58 @@ def scenario(document, scenario_id):
 
 
 class SaturationWireCorpusMutationTest(unittest.TestCase):
+    def test_rejects_swapped_retry_action_targets(self):
+        validator = load_validator_module()
+        document = json.loads(CORPUS.read_text(encoding="utf-8"))
+        mutated = scenario(document, "dispatch-retry-identity")
+        for action in mutated["harness"]["actions"]:
+            if action["requestId"] == "attempt-1":
+                action["requestId"] = "attempt-2"
+            elif action["requestId"] == "attempt-2":
+                action["requestId"] = "attempt-1"
+
+        with self.assertRaises(validator.ContractError):
+            validator.validate_document(document)
+
+    def test_rejects_waiting_for_second_attempt_before_send(self):
+        validator = load_validator_module()
+        document = json.loads(CORPUS.read_text(encoding="utf-8"))
+        mutated = scenario(document, "dispatch-retry-identity")
+        first_wait = next(
+            action for action in mutated["harness"]["actions"]
+            if action["action"] == "await-response"
+        )
+        first_wait["requestId"] = "attempt-2"
+
+        with self.assertRaises(validator.ContractError):
+            validator.validate_document(document)
+
+    def test_rejects_redispatch_targeting_first_attempt(self):
+        validator = load_validator_module()
+        document = json.loads(CORPUS.read_text(encoding="utf-8"))
+        mutated = scenario(document, "dispatch-retry-identity")
+        redispatch = next(
+            action for action in mutated["harness"]["actions"]
+            if action["action"] == "control-plane-redispatch"
+        )
+        redispatch["requestId"] = "attempt-1"
+
+        with self.assertRaises(validator.ContractError):
+            validator.validate_document(document)
+
+    def test_rejects_second_callback_wait_before_second_send(self):
+        validator = load_validator_module()
+        document = json.loads(CORPUS.read_text(encoding="utf-8"))
+        mutated = scenario(document, "dispatch-retry-identity")
+        first_callback_wait = next(
+            action for action in mutated["harness"]["actions"]
+            if action["action"] == "await-callback"
+        )
+        first_callback_wait["requestId"] = "attempt-2"
+
+        with self.assertRaises(validator.ContractError):
+            validator.validate_document(document)
+
     def test_rejects_retry_after_success_with_failure_second(self):
         validator = load_validator_module()
         document = json.loads(CORPUS.read_text(encoding="utf-8"))

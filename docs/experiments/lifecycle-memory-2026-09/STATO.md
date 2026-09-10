@@ -2832,3 +2832,13 @@ The JSON policy now owns exact action, actor and ordered outcome sequences for e
 the Python validator adds only a generic mapped-sequence comparison. The refreshed-index impacts
 for `validate_rule` and `apply_rules` were exact LOW. Validator GREEN is 17/17; adapter and graph
 verification are recorded in the P16a report after completion.
+
+## P16a fix round 6 — action request targets
+
+Starting from `79decd42`, fresh review found causal action/actor/outcome sequences did not anchor
+their request targets. Four deterministic RED tests covered swapped retry targets, pre-send waits,
+wrong redispatch target and premature callback wait.
+
+The JSON policy now adds exact per-kind request-target and barrier sequences, completing the
+action projection. The generic sequence operator accepts finite JSON values so `null` slots remain
+first-class. Refreshed-index impact for `validate_rule` was exact LOW; validator GREEN is 21/21.

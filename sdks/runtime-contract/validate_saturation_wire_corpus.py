@@ -162,10 +162,8 @@ def validate_rule(rule_value: Any, path: str) -> dict[str, Any]:
     elif operator == "mapped-sequence-equals":
         mapping = object_map(rule["value"], f"{path}/value", nonempty=True)
         for key, sequence in mapping.items():
-            for index, item in enumerate(
-                array(sequence, f"{path}/value/{key}", nonempty=True)
-            ):
-                string(item, f"{path}/value/{key}/{index}")
+            finite_json(array(sequence, f"{path}/value/{key}", nonempty=True),
+                        f"{path}/value/{key}")
     elif operator == "member-requires-presence":
         unique_strings(rule["value"], f"{path}/value", nonempty=True)
     finite_json(rule.get("value"), f"{path}/value")
