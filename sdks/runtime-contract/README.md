@@ -56,13 +56,29 @@ replaced merely for API uniformity.
 
 ## What executes in P16a
 
-`validate_saturation_wire_corpus.py` is the single authoritative schema/semantic validator.
-It validates the versioned vocabulary, finite configurations/deadlines, exact required fields,
-ordered actions and barrier references, size relations, exact error bodies/headers, lifecycle
-consistency, P01 identity, observations and zero final counters. It also applies every embedded
-mutation fixture and proves each invalid document is rejected. Each language adapter runs that
-validator with a finite 10 s process deadline, parses the same JSON with native typed projections,
-and consumes requests, actions, required booleans, observations, identity and counters.
+The v3 `contractDefinitions` object is the only policy authority. Scenarios reference its
+vocabularies, actor/action permissions, size operators, handler- and callback-behavior lifecycle
+maps, exact wire outcomes, callback transport template and payload envelopes, identity and
+cross-field rules, observation sets, and final-counter rule. Scenario response and callback
+projections are executable fixture data: the validator requires them to equal the referenced
+definition, so they cannot become an independent policy oracle.
+
+`validate_saturation_wire_corpus.py` implements only schema mechanics, reference resolution and
+generic operators. It checks finite configurations/deadlines, required fields, action/barrier
+references, behavior/lifecycle compatibility, callback-URL requirement, exact response status,
+content type, body/error/message/headers, exact callback method/URL/headers/payload, callback
+required/attempted/delivered/count relations, P01 identity projections, observations and drained
+final counters. The embedded mutation suite includes the seven round-two contradictions plus
+broken-reference and projection-drift probes; the standalone test also demonstrates all seven
+fail independently.
+
+Each language adapter runs that validator with a finite 10 s process deadline and then parses the
+same JSON source. Java and Java-lite deserialize the complete typed model; Go disallows unknown
+fields and uses pointer booleans for presence; Python and JavaScript presence-check every scenario
+section and meaningfully project definitions, requests, actions, lifecycle references, exact
+callback requests, observations, identities and counters. The adapters prove validator execution,
+single-source parsability and typed/presence-safe consumption. They do not independently prove the
+policy values and they do not execute a runtime.
 
 These are **policy-schema and semantic-model assertions**, not timed runtime conformance. No
 adapter in P16a starts a language runtime, fills a real queue, transfers payload bytes, measures

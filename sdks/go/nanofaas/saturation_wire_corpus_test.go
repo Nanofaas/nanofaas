@@ -14,6 +14,7 @@ import (
 
 type saturationCorpus struct {
 	SchemaVersion         string                         `json:"schemaVersion"`
+	ContractDefinitions   map[string]corpusDefinitions   `json:"contractDefinitions"`
 	Policy                corpusPolicy                   `json:"policy"`
 	RuntimeConfigurations map[string]corpusRuntimeConfig `json:"runtimeConfigurations"`
 	Scenarios             []corpusScenario               `json:"scenarios"`
@@ -21,9 +22,65 @@ type saturationCorpus struct {
 }
 
 type corpusPolicy struct {
-	MaximumScenarioDeadlineMS int                 `json:"maximumScenarioDeadlineMs"`
-	Identity                  map[string]string   `json:"identity"`
-	Vocabulary                map[string][]string `json:"vocabulary"`
+	MaximumScenarioDeadlineMS int    `json:"maximumScenarioDeadlineMs"`
+	DefinitionsRef            string `json:"definitionsRef"`
+}
+
+type corpusDefinitions struct {
+	Vocabulary                    map[string][]string                `json:"vocabulary"`
+	ActorActionCompatibility      map[string][]string                `json:"actorActionCompatibility"`
+	HandlerLifecycles             map[string]corpusHandlerLifecycle  `json:"handlerLifecycles"`
+	HandlerBehaviorLifecycleRefs  map[string][]string                `json:"handlerBehaviorLifecycleRefs"`
+	CallbackLifecycles            map[string]corpusCallbackLifecycle `json:"callbackLifecycles"`
+	CallbackBehaviorLifecycleRefs map[string][]string                `json:"callbackBehaviorLifecycleRefs"`
+	WireOutcomes                  map[string]corpusWireOutcome       `json:"wireOutcomes"`
+	CallbackEnvelopes             map[string]corpusCallbackEnvelope  `json:"callbackEnvelopes"`
+	CallbackRequestTemplate       corpusCallbackRequestTemplate      `json:"callbackRequestTemplate"`
+	SizeRelationOperators         map[string]string                  `json:"sizeRelationOperators"`
+	FinalCountersRule             corpusExpression                   `json:"finalCountersRule"`
+	IdentityRules                 []corpusRule                       `json:"identityRules"`
+	CrossFieldRules               []corpusRule                       `json:"crossFieldRules"`
+	ObservationSets               map[string][]string                `json:"observationSets"`
+}
+type corpusHandlerLifecycle struct {
+	Started, CancelRequested *bool
+	Terminal                 string `json:"terminal"`
+}
+type corpusCallbackLifecycle struct {
+	Required, Attempted, Delivered *bool
+	Attempts                       corpusExpression `json:"attempts"`
+	Terminal                       string           `json:"terminal"`
+}
+type corpusWireOutcome struct {
+	ConnectionOutcome string            `json:"connectionOutcome"`
+	Status            int               `json:"status"`
+	Body              any               `json:"body"`
+	RequiredHeaders   map[string]string `json:"requiredHeaders"`
+}
+type corpusCallbackEnvelope struct {
+	EmitsRequest *bool `json:"emitsRequest"`
+	Payload      any   `json:"payload"`
+}
+type corpusCallbackRequestTemplate struct {
+	Method  string                      `json:"method"`
+	URL     corpusExpression            `json:"url"`
+	Headers map[string]corpusExpression `json:"headers"`
+}
+type corpusExpression struct {
+	Operator        string `json:"operator"`
+	Value           any    `json:"value,omitempty"`
+	Path            string `json:"path,omitempty"`
+	CallbackURLPath string `json:"callbackUrlPath,omitempty"`
+	ExecutionIDPath string `json:"executionIdPath,omitempty"`
+	Suffix          string `json:"suffix,omitempty"`
+	Field           string `json:"field,omitempty"`
+}
+type corpusRule struct {
+	ID, Scope, Operator, Source string
+	Expected                    *string `json:"expected,omitempty"`
+	IgnoreNull                  *bool   `json:"ignoreNull,omitempty"`
+	Increment                   *int    `json:"increment,omitempty"`
+	Value                       any     `json:"value,omitempty"`
 }
 
 type corpusRuntimeConfig struct {
@@ -154,15 +211,17 @@ type corpusAction struct {
 	Barrier   *string `json:"barrier"`
 }
 type corpusExpected struct {
-	Responses     []corpusResponse         `json:"responses"`
-	Handlers      []corpusHandlerExpected  `json:"handlers"`
-	Callbacks     []corpusCallbackExpected `json:"callbacks"`
-	Identity      corpusIdentityExpected   `json:"identity"`
-	Observations  []string                 `json:"observations"`
-	FinalCounters map[string]int           `json:"finalCounters"`
+	Responses         []corpusResponse         `json:"responses"`
+	Handlers          []corpusHandlerExpected  `json:"handlers"`
+	Callbacks         []corpusCallbackExpected `json:"callbacks"`
+	Identity          corpusIdentityExpected   `json:"identity"`
+	ObservationSetRef string                   `json:"observationSetRef"`
+	Observations      []string                 `json:"observations"`
+	FinalCounters     map[string]int           `json:"finalCounters"`
 }
 type corpusResponse struct {
 	RequestID         string            `json:"requestId"`
+	OutcomeRef        string            `json:"outcomeRef"`
 	ConnectionOutcome string            `json:"connectionOutcome"`
 	Status            int               `json:"status"`
 	Body              any               `json:"body"`
@@ -170,18 +229,28 @@ type corpusResponse struct {
 }
 type corpusHandlerExpected struct {
 	RequestID       string `json:"requestId"`
+	LifecycleRef    string `json:"lifecycleRef"`
 	Started         *bool  `json:"started"`
 	CancelRequested *bool  `json:"cancelRequested"`
 	Terminal        string `json:"terminal"`
 }
 type corpusCallbackExpected struct {
-	RequestID        string `json:"requestId"`
-	Required         *bool  `json:"required"`
-	Attempted        *bool  `json:"attempted"`
-	Delivered        *bool  `json:"delivered"`
-	Attempts         int    `json:"attempts"`
-	Terminal         string `json:"terminal"`
-	DispatchAttempts []int  `json:"dispatchAttempts"`
+	RequestID         string                           `json:"requestId"`
+	LifecycleRef      string                           `json:"lifecycleRef"`
+	EnvelopeRef       string                           `json:"envelopeRef"`
+	Required          *bool                            `json:"required"`
+	Attempted         *bool                            `json:"attempted"`
+	Delivered         *bool                            `json:"delivered"`
+	Attempts          int                              `json:"attempts"`
+	Terminal          string                           `json:"terminal"`
+	DispatchAttempts  []int                            `json:"dispatchAttempts"`
+	RequestProjection *corpusCallbackRequestProjection `json:"requestProjection"`
+}
+type corpusCallbackRequestProjection struct {
+	Method  string            `json:"method"`
+	URL     string            `json:"url"`
+	Headers map[string]string `json:"headers"`
+	Payload any               `json:"payload"`
 }
 type corpusIdentityExpected struct {
 	ExecutionID             *string `json:"executionId"`
@@ -212,7 +281,8 @@ func TestConsumesSharedRuntimeSaturationWireContract(t *testing.T) {
 	if err := decoder.Decode(&corpus); err != nil {
 		t.Fatal(err)
 	}
-	if len(corpus.Scenarios) != len(corpus.Policy.Vocabulary["scenarioKinds"]) {
+	definitions, ok := corpus.ContractDefinitions[corpus.Policy.DefinitionsRef]
+	if !ok || len(corpus.Scenarios) != len(definitions.Vocabulary["scenarioKinds"]) {
 		t.Fatal("scenario projection mismatch")
 	}
 	for _, scenario := range corpus.Scenarios {
@@ -230,6 +300,10 @@ func TestConsumesSharedRuntimeSaturationWireContract(t *testing.T) {
 		for _, expected := range scenario.Expected.Callbacks {
 			if expected.Required == nil || expected.Attempted == nil || expected.Delivered == nil {
 				t.Fatalf("missing callback boolean in %q", scenario.ID)
+			}
+			if expected.LifecycleRef == "" || expected.EnvelopeRef == "" ||
+				(expected.Attempts > 0 && expected.RequestProjection == nil) {
+				t.Fatalf("missing callback projection in %q", scenario.ID)
 			}
 		}
 		for name, count := range scenario.Expected.FinalCounters {

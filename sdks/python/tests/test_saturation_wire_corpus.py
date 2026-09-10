@@ -32,12 +32,26 @@ def _touch_complete_typed_model(corpus):
     assert isinstance(corpus["schemaVersion"], str)
     policy = corpus["policy"]
     assert isinstance(policy["maximumScenarioDeadlineMs"], int)
-    assert all(isinstance(value, str) for value in policy["identity"].values())
+    assert isinstance(policy["definitionsRef"], str)
+    definitions = corpus["contractDefinitions"][policy["definitionsRef"]]
     assert all(
         isinstance(item, str)
-        for values in policy["vocabulary"].values()
+        for values in definitions["vocabulary"].values()
         for item in values
     )
+    for field in (
+        "actorActionCompatibility", "handlerLifecycles", "handlerBehaviorLifecycleRefs",
+        "callbackLifecycles", "callbackBehaviorLifecycleRefs", "wireOutcomes",
+        "callbackEnvelopes", "callbackRequestTemplate", "sizeRelationOperators",
+        "finalCountersRule", "identityRules", "crossFieldRules", "observationSets",
+    ):
+        assert field in definitions
+    assert all(isinstance(value, list) for value in definitions["actorActionCompatibility"].values())
+    assert all(isinstance(rule["operator"], str) for rule in (
+        definitions["identityRules"] + definitions["crossFieldRules"]
+    ))
+    callback_template = definitions["callbackRequestTemplate"]
+    assert all(key in callback_template for key in ("method", "url", "headers"))
     assert all(
         isinstance(value, int)
         for config in corpus["runtimeConfigurations"].values()
@@ -66,19 +80,26 @@ def _touch_complete_typed_model(corpus):
         expected = scenario["expected"]
         for response in expected["responses"]:
             assert all(key in response for key in (
-                "requestId", "connectionOutcome", "status", "body", "requiredHeaders"
+                "requestId", "outcomeRef", "connectionOutcome", "status", "body", "requiredHeaders"
             ))
         for handler in expected["handlers"]:
+            assert isinstance(handler["lifecycleRef"], str)
             assert isinstance(handler["started"], bool)
             assert isinstance(handler["cancelRequested"], bool)
         for callback in expected["callbacks"]:
+            assert isinstance(callback["lifecycleRef"], str)
+            assert isinstance(callback["envelopeRef"], str)
             assert isinstance(callback["required"], bool)
             assert isinstance(callback["attempted"], bool)
             assert isinstance(callback["delivered"], bool)
             assert isinstance(callback["dispatchAttempts"], list)
+            projection = callback["requestProjection"]
+            if projection is not None:
+                assert all(key in projection for key in ("method", "url", "headers", "payload"))
         assert all(key in expected["identity"] for key in (
             "executionId", "requestDispatchAttempts", "runtimeRedispatchCount"
         ))
+        assert isinstance(expected["observationSetRef"], str)
         assert all(isinstance(item, str) for item in expected["observations"])
         assert all(isinstance(value, int) for value in expected["finalCounters"].values())
     for mutation in corpus["mutationTests"]:
@@ -117,7 +138,7 @@ def test_consumes_the_shared_runtime_saturation_wire_contract():
     )
 
     assert {projection.kind for projection in projections} == set(
-        corpus["policy"]["vocabulary"]["scenarioKinds"]
+        corpus["contractDefinitions"][corpus["policy"]["definitionsRef"]]["vocabulary"]["scenarioKinds"]
     )
     assert all(projection.request_ids and projection.action_count > 0 for projection in projections)
     assert all(

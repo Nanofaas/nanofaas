@@ -85,17 +85,26 @@ function projectScenario(value: unknown): ScenarioProjection {
     Object.entries(initialCounters).forEach(([key, item]) => number(item, `initialCounter.${key}`));
     for (const entry of array(expected.responses, "expected.responses")) {
         const response = record(entry, "response"); string(response.requestId, "response.requestId");
+        string(response.outcomeRef, "response.outcomeRef");
         string(response.connectionOutcome, "response.connectionOutcome"); number(response.status, "response.status");
         record(response.requiredHeaders, "response.requiredHeaders"); assert.ok("body" in response);
     }
     for (const entry of array(expected.handlers, "expected.handlers")) {
         const handler = record(entry, "expected handler"); string(handler.requestId, "handler.requestId");
+        string(handler.lifecycleRef, "handler.lifecycleRef");
         boolean(handler.started, "handler.started"); boolean(handler.cancelRequested, "handler.cancelRequested");
         string(handler.terminal, "handler.terminal");
     }
     const callbackStates = array(expected.callbacks, "expected.callbacks").map((entry): [boolean, boolean, boolean, number] => {
         const callback = record(entry, "expected callback"); string(callback.requestId, "callback.requestId");
+        string(callback.lifecycleRef, "callback.lifecycleRef"); string(callback.envelopeRef, "callback.envelopeRef");
         string(callback.terminal, "callback.terminal"); array(callback.dispatchAttempts, "callback.dispatchAttempts");
+        assert.ok("requestProjection" in callback);
+        if (callback.requestProjection !== null) {
+            const projection = record(callback.requestProjection, "callback.requestProjection");
+            string(projection.method, "callback request method"); string(projection.url, "callback request url");
+            record(projection.headers, "callback request headers"); assert.ok("payload" in projection);
+        }
         return [boolean(callback.required, "callback.required"), boolean(callback.attempted, "callback.attempted"),
             boolean(callback.delivered, "callback.delivered"), number(callback.attempts, "callback.attempts")];
     });
@@ -103,6 +112,7 @@ function projectScenario(value: unknown): ScenarioProjection {
     assert.ok("executionId" in identity); array(identity.requestDispatchAttempts, "identity.requestDispatchAttempts");
     number(identity.runtimeRedispatchCount, "identity.runtimeRedispatchCount");
     const counters = record(expected.finalCounters, "expected.finalCounters");
+    string(expected.observationSetRef, "expected.observationSetRef");
     return {
         id: string(scenario.id, "scenario.id"), kind: string(scenario.kind, "scenario.kind"),
         requestIds: requests, actionCount: array(harness.actions, "harness.actions").length,
@@ -120,12 +130,26 @@ test("consumes the shared runtime saturation wire contract", async () => {
     string(corpus.schemaVersion, "schemaVersion");
     const policy = record(corpus.policy, "policy");
     const maximum = number(policy.maximumScenarioDeadlineMs, "maximumScenarioDeadlineMs");
-    const identity = record(policy.identity, "policy.identity");
-    Object.entries(identity).forEach(([key, item]) => string(item, `policy.identity.${key}`));
-    const vocabulary = record(policy.vocabulary, "policy.vocabulary");
+    const definitionsRef = string(policy.definitionsRef, "policy.definitionsRef");
+    const definitions = record(record(corpus.contractDefinitions, "contractDefinitions")[definitionsRef], "definitions");
+    const vocabulary = record(definitions.vocabulary, "definitions.vocabulary");
     Object.entries(vocabulary).forEach(([key, items]) =>
         array(items, `vocabulary.${key}`).forEach((item) => string(item, `vocabulary.${key} value`)));
     const scenarioKinds = array(vocabulary.scenarioKinds, "vocabulary.scenarioKinds").map((item) => string(item, "scenarioKind"));
+    for (const field of ["actorActionCompatibility", "handlerLifecycles", "handlerBehaviorLifecycleRefs",
+        "callbackLifecycles", "callbackBehaviorLifecycleRefs", "wireOutcomes", "callbackEnvelopes",
+        "callbackRequestTemplate", "sizeRelationOperators", "finalCountersRule", "identityRules",
+        "crossFieldRules", "observationSets"]) {
+        assert.ok(field in definitions, `definitions.${field} is required`);
+    }
+    for (const rule of [...array(definitions.identityRules, "identityRules"),
+        ...array(definitions.crossFieldRules, "crossFieldRules")]) {
+        const typed = record(rule, "rule"); string(typed.id, "rule.id"); string(typed.scope, "rule.scope");
+        string(typed.operator, "rule.operator"); string(typed.source, "rule.source");
+    }
+    const callbackTemplate = record(definitions.callbackRequestTemplate, "callbackRequestTemplate");
+    string(callbackTemplate.method, "callback method"); record(callbackTemplate.url, "callback url expression");
+    record(callbackTemplate.headers, "callback headers");
     const configurations = record(corpus.runtimeConfigurations, "runtimeConfigurations");
     Object.entries(configurations).forEach(([name, item]) =>
         Object.entries(record(item, `runtimeConfigurations.${name}`))

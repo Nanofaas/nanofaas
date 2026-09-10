@@ -1,5 +1,63 @@
 # Task P16a report — common SDK memory inventory and saturation wire contract
 
+## Fix round 2 — single policy authority and connected semantics
+
+This section supersedes the fix-round-1 validator and corpus claims where they conflict.
+Starting revision: `68e347bb17af9cf61a2c45e52b718eb8abc6ea41`.
+
+The corpus is now `nanofaas.runtime-saturation/v3`. Its referenced `contractDefinitions`
+set is the sole policy authority for vocabularies, actor/action compatibility, size
+relations, backend behavior-to-lifecycle compatibility, exact wire outcomes, callback
+transport/envelopes, identity/cross-field rules, observation sets and final counter state.
+The Python validator contains generic schema, reference, projection and relation operators;
+it contains no scenario IDs, behavior values, status codes, content types, error codes or
+messages. Materialized scenario response/callback projections are executable fixtures and
+must equal their canonical references.
+
+Callback expectations now specify the exact `POST` URL, content type, trace and dispatch
+attempt headers, and success/error payload. One canonical transport template is combined
+with referenced payload envelopes. A scenario stores one exact request projection and its
+per-delivery dispatch-attempt sequence, avoiding repeated whole envelopes for retries.
+The corpus was restored to compact scenario formatting (660 lines); its remaining size is
+the eleven exact structured scenario programs and canonical definitions, not repeated
+adapter policy.
+
+Honest RED preceded the semantic fix. A focused test applied all seven accepted review
+contradictions independently; all seven failed because no `ContractError` was raised, and
+the embedded runner separately reported `handler-failure-with-success-outcome` as accepted.
+GREEN rejects all seven: handler failure with success, callback success with exhaustion,
+handler actor request send, callback requirement without URL, arbitrary success body,
+arbitrary error message and noncanonical content type. Six additional mutations cover
+missing wire/lifecycle/envelope references, callback payload/projection drift and identity
+projection drift. Together with prior probes there are 23 embedded mutations plus the raw
+non-finite JSON-number test.
+
+All five adapters remain source-driven and have a finite 10-second validator deadline.
+Java/Java-lite deserialize the complete model, Go disallows unknown fields and preserves
+boolean presence, and Python/JavaScript consume required definition and scenario
+projections. This proves shared semantic validation and native parsability only. Runtime
+queue admission, real byte transfer, live callback delivery, observed deadlines and live
+counters remain conformance work assigned row-by-row in the README to P16b/P17/P18. No
+runtime production file changed.
+
+Round-two verification: focused adapters passed in Java, Java-lite, Python, Go and
+JavaScript. Complete Java/Java-lite builds passed 18/18 actions; Python passed 61 tests with
+35 existing warnings and built wheel/sdist; Go tests passed and vet still reports only the
+existing `cold_start.go:27` atomic no-copy issue; JavaScript passed 39/39 and its package
+build. The first full repository run reached 239/240 actions but one existing tight-timeout
+container-provider test observed an HTTP EOF. Its exact test and complete 92-test module
+both passed on immediate isolated rerun; the complete repository rerun then passed 240/240
+actions in 4 min 17 s. No workaround or out-of-scope edit was made.
+
+GitNexus 1.6.11 was refreshed at the round-two base. Exact pre-edit impacts covered every
+existing validator and adapter symbol: the shared `fail` funnel was HIGH because it reaches
+all validator branches and the `main` flow; that exception contract was preserved. Other
+resolved impacts were MEDIUM/LOW, while UNKNOWN test-entry/type results were text-resolved
+to these adapter files and framework invocation. Complete, non-partial/non-truncated change
+detection used `--limit 10000`: all-worktree scope reported 13 files/210 symbols (including
+the two protected overload files), one flow and medium risk; staged-only scope reported
+exactly 11 P16a files/209 symbols, the same validator flow and medium risk.
+
 ## Fix round 1 — review findings
 
 This section supersedes the initial corpus/adapter claims below where they conflict. Starting

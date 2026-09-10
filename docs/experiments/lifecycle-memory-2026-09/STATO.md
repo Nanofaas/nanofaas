@@ -2762,3 +2762,36 @@ body-read deadlines in all five SDKs. Go/JavaScript fixes and common ingress con
 route to P16b; Python physical ownership remains P17 and Java-lite lifecycle ownership
 remains P18. Verification and final graph gates are recorded in the force-added P16a
 report. Next: P17/P18, then P16b.
+
+## P16a fix round 2 — sole policy definitions and semantic connections
+
+Starting from `68e347bb17af9cf61a2c45e52b718eb8abc6ea41`, the open one Critical and
+two Important findings are addressed without runtime production changes. Honest RED added
+seven independent mutation probes and observed all seven accepted by v2. Version v3 now
+places every policy value in one referenced `contractDefinitions` set: vocabularies,
+actor/action permissions, size relations, backend behavior/lifecycle compatibility, exact
+wire outcomes, callback transport and envelopes, identity/cross-field rules, observation
+sets and final-counter policy.
+
+The validator now supplies schema mechanics plus generic reference/projection/relation
+operators only. It resolves each scenario's exact response, handler/callback lifecycle and
+callback request projection from those definitions. Callback URL presence controls
+requirement; behavior controls legal lifecycle; attempt/delivery booleans and counts agree;
+callback retries preserve the invocation dispatch attempt; and runtime redispatch remains
+zero. Exact callback method, URL, content type, trace/attempt headers and success/error
+payload are available to P17/P18/P16b without runtime-specific invention.
+
+GREEN rejects all seven review contradictions and six additional broken-reference/relation
+probes; all 23 embedded mutations and the raw non-finite JSON probe pass. The corpus is kept
+compact at 660 lines by defining callback transport once and storing one exact request
+projection plus per-attempt identity sequence. All five adapters invoke the same validator
+under a finite 10-second deadline and parse the one JSON source with native typed,
+presence-safe projections. This is schema/semantic execution, not timed runtime
+conformance; P16b/P17/P18 ownership assignments in the README remain unchanged.
+
+Round-two verification passed all five focused adapters, Java/Java-lite complete builds
+(18/18 actions), Python 61 tests plus wheel/sdist, Go's complete suite, JavaScript 39/39
+plus package build, and the full Gradle repository build (240/240 actions, 4 min 17 s).
+Go vet retains only the pre-existing `cold_start.go:27` atomic no-copy warning. An initial
+full-build run saw one EOF in an existing container-provider timeout test; the exact test,
+its complete 92-test module and the full rerun all passed, so no out-of-scope edit was made.
