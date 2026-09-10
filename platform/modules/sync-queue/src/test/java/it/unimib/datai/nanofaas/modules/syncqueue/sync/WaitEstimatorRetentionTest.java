@@ -73,7 +73,7 @@ class WaitEstimatorRetentionTest {
     }
 
     @Test
-    void capsFunctionCardinalityAndFallsBackToBoundedGlobalHistory() {
+    void fullLiveFunctionCapacityRejectsUnknownFunctionConservatively() {
         WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(10), 3, 5, 3, 1);
         Instant now = Instant.parse("2026-09-10T10:00:00Z");
         for (int i = 0; i < 20; i++) {
@@ -82,7 +82,52 @@ class WaitEstimatorRetentionTest {
 
         assertTrue(estimator.retentionSnapshot().functionStates() <= 5);
         assertTrue(estimator.retentionSnapshot().perFunctionSamples() <= 5);
-        assertEquals(10.0, estimator.estimateWaitSeconds("not-retained", 5, now), 0.0);
+        assertEquals(Double.POSITIVE_INFINITY,
+                estimator.estimateWaitSeconds("not-retained", 5, now), 0.0);
+    }
+
+    @Test
+    void overflowEvictsExpiredStateBeforeUsingLiveGlobalHistory() {
+        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(10), 1, 3, 3, 1);
+        Instant start = Instant.parse("2026-09-10T10:00:00Z");
+        estimator.recordDispatch("expired", start);
+        estimator.recordDispatch("live-a", start.plusSeconds(10));
+        estimator.recordDispatch("live-b", start.plusSeconds(10));
+
+        double wait = estimator.estimateWaitSeconds(
+                "recovered", 1, start.plusSeconds(10).plusNanos(1));
+
+        assertEquals(5.0, wait, 0.0);
+        assertEquals(2, estimator.retentionSnapshot().functionStates());
+    }
+
+    @Test
+    void maintenanceGivesGlobalAndFunctionHistoryIndependentBoundedShares() {
+        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(10), 1, 20, 10, 2, 2);
+        Instant start = Instant.parse("2026-09-10T10:00:00Z");
+        for (int i = 0; i < 6; i++) {
+            estimator.recordDispatch("a", start);
+            estimator.recordDispatch("b", start);
+        }
+
+        estimator.maintain(start.plusSeconds(11));
+
+        WaitEstimator.RetentionSnapshot retained = estimator.retentionSnapshot();
+        assertEquals(10, retained.globalSamples());
+        assertEquals(10, retained.perFunctionSamples());
+    }
+
+    @Test
+    void maintenanceRotationKeepsOneBoundedCandidatePerFunction() {
+        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(10), 1, 5, 5, 1);
+        Instant now = Instant.parse("2026-09-10T10:00:00Z");
+        for (int i = 0; i < 100; i++) {
+            estimator.recordDispatch("same", now.plusNanos(i));
+            estimator.maintain(now.plusNanos(i));
+        }
+
+        assertEquals(1, estimator.retentionSnapshot().functionStates());
+        assertEquals(1, estimator.retentionSnapshot().cleanupCandidates());
     }
 
     @Test

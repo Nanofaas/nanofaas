@@ -2477,3 +2477,36 @@ Remaining bounded-policy concern: beyond 8,192 represented functions, additional
 functions use the existing global fallback rather than individual history.
 
 Next: P15.
+
+## P14 fix round 1 — review findings closed
+
+Starting revision e0aa2673. The existing owned SyncScheduler now invokes bounded
+estimator maintenance on every cycle, including its 500 ms empty-queue safety
+wake. No executor was added; SmartLifecycle.stop() interrupts and shuts down the
+worker. The real scheduler/queue test proves idle cadence and no post-stop
+maintenance with condition-based deadlines.
+
+Scheduled maintenance gives global and function history independent shares:
+4,096 global timestamps and 16 unique function candidates with 256 timestamps
+per candidate per cycle. Atomic queue markers prevent duplicate amplification.
+At the 8,192-state or total-sample ceiling, a bounded full-map check evicts an
+actually expired state first. Conservative infinite wait occurs only while all
+slots are live; production admission turns it into EST_WAIT with finite configured
+Retry-After 7. Later expiry recovers the slot and finite fallback.
+
+The bucket prototype now cleans idle slots/states, supports explicit removal and
+caps function state. Fresh exact/bucket instances receive identical forward-only
+streams. Admission, fairness, zero-approximation error, lifecycle, 8,192/8,193,
+recovery and sample-cap behavior are assertions; post-idle cost and allocation
+are measured. Buckets remain rejected because the boundary burst changes
+admission. Full data and commands are appended to the P14 report.
+
+Focused sync-queue tests passed 39/39, HTTP integration 78/78, JVM/native-profile
+AOT checks passed, and the final repository suite passed 190/190 in 3 min 44 s.
+GitNexus pre-edit risk: CRITICAL estimate, HIGH snapshot, MEDIUM estimator/service,
+LOW scheduler/resolved cleanup paths; stale-index limits are in the report.
+Final GitNexus all scope returned 12 files/14 symbols and staged scope exactly ten
+P14 files/13 symbols; both reported the eight audited scheduler flows at HIGH
+risk, with no partial/truncated marker. Staged diff validation passed.
+
+Next: P15.

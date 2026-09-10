@@ -147,6 +147,7 @@ public class SyncScheduler implements SmartLifecycle {
         // through the change - the lost-wakeup window between the state check and the wait.
         long observedEpoch = queue.wakeupEpoch();
         Instant now = Instant.now();
+        queue.maintainEstimator(now);
         SyncQueueItem item = queue.findReadyMatching(now, task -> {
             boolean available = enqueuer.hasAvailableSlot(task.functionName());
             if (!available && diagnostics != null) {

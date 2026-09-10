@@ -184,3 +184,117 @@ functions, additional functions use the global estimate rather than individual
 fairness history. State and samples remain hard bounded in that condition.
 
 Next task: P15.
+
+## Fix round 1 — five Important review findings
+
+Fix round 1 starts from P14 commit e0aa2673.
+
+### Owned time-driven cleanup
+
+No scheduler or executor was added. The unconditional SyncScheduler
+SmartLifecycle bean remains the sole resource owner. Every scheduler cycle calls
+SyncQueueService.maintainEstimator(now) before inspecting the queue. When all
+queues are empty, the existing notification wait returns at its bounded 500 ms
+safety timeout, so maintenance continues without estimator traffic. stop()
+interrupts that wait and synchronously shuts down the same executor.
+
+The integration test uses the real scheduler, queue and estimator. A 100 ms
+history remains live on the first empty cycle, is physically removed after the
+bounded idle wake, and history recorded after lifecycle stop remains unchanged
+for longer than the cadence. It uses condition-based deadlines, not sleep-based
+ordering.
+
+Each scheduled cycle has independent non-starving shares: at most 4,096 global
+timestamps, plus at most 16 distinct function states with at most 256 timestamps
+removed from each. A full global history cannot consume the function share.
+Incomplete states rotate to the tail. The per-state AtomicBoolean cleanup marker
+admits one queue reference; poll clears it before requeue, preventing duplicate
+amplification. Constructors admit at most 8,192 states, and each later state
+creation consumes cleanup work before adding at most one candidate, bounding the
+rotation by the function-state ceiling.
+
+### Admission-preserving overflow
+
+Before conservative overflow, WaitEstimator checks mapped states, bounded by the
+hard 8,192-state ceiling, and conditionally removes the first state whose newest
+exact timestamp is older than the inclusive cutoff. The map computation and state
+lock recheck prevent eviction of a concurrently refreshed state. Only when no
+state is expired and either function-state or total-sample capacity is genuinely
+full does an unrepresented function receive infinite wait. Once a state expires,
+the next admission check frees it and immediately resumes finite global fallback.
+
+The production queue test drives infinity through SyncQueueAdmissionController
+and SyncQueueService.enqueueOrThrow: it yields EST_WAIT with finite configured
+Retry-After 7 and performs no arithmetic on infinity. At 8,192/8,193 functions,
+measurement gives 30.000000 s for a represented function, infinity for live
+overflow, then 0.003663 s after one slot expires. At the 32,768 sample cap,
+40,000 exact samples become a conservative 0.009155 s instead of 0.007500 s.
+This can reject at an 0.008 s threshold but never creates a false admission;
+hot/cold ordering remains unchanged.
+
+### Bucket lifecycle and corrected measurement
+
+The bucket prototype now has an 8,192-function ceiling, unique 16-state rotation,
+physical expired-slot cleanup, empty-state retirement and explicit removal.
+Assertions require zero bucket function states after idle and removal. Buckets
+remain rejected: the boundary fixture still produces exact=0 versus bucket=100
+and changes admission.
+
+Every warm-up and repetition creates fresh exact and bucket instances and feeds
+each one the same strictly forward-moving timestamps exactly once. Post-idle
+maintenance latency/allocation is sampled separately. Assertions enforce count
+and relative-error tolerances, regular admission equality, fairness, lifecycle,
+8,192/8,193 behavior, recovery and sample-cap conservatism. Approximate zero with
+at least ten exact samples is infinite relative error. The hard-coded
+retryAfterChanged claim was removed; Retry-After is asserted in production.
+
+Exact measurement command (run as one shell command):
+
+    measure_dir=$(mktemp -d /tmp/nanofaas-p14-measurement.XXXXXX) && javac -cp platform/modules/sync-queue/build/classes/java/main -d "$measure_dir" docs/experiments/lifecycle-memory-2026-09/P14WaitEstimatorMeasurement.java && java -cp "$measure_dir":platform/modules/sync-queue/build/classes/java/main it.unimib.datai.nanofaas.modules.syncqueue.sync.P14WaitEstimatorMeasurement
+
+Recorded medians are in P14WaitEstimatorMeasurement.out. Exact steady dispatch
+spans 245–1,125 ns/op in the recorded run; bucket dispatch spans 11–1,256 ns/op.
+Exact post-idle maintenance spans 190–32,118 ns/cycle and bucket maintenance
+44–1,283 ns/cycle. Allocation and all workloads are in the output; both
+representations end at zero retained function state after idle.
+
+### Round-1 RED/GREEN and verification
+
+The focused RED failed compileTestJava on the absent six-argument constructor,
+maintain(Instant), and cleanup-candidate diagnostic. Executable measurement then
+caught a contradictory range fixture and an undercounted function cleanup-cycle
+bound; both were corrected at their fixture/accounting source.
+
+- Full sync-queue module: GREEN, 39/39 executed in 10 s.
+- HTTP backpressure/Retry-After integration: GREEN, 78/78 in 23 s.
+- JVM package and native-profile AOT generation/Java compilation: GREEN; native
+  linking remains outside this task.
+- Final repository suite: GREEN, 190/190 in 3 min 44 s.
+
+GitNexus was five commits stale. Pre-edit upstream risk was CRITICAL for
+estimateWaitSeconds, HIGH for snapshot, MEDIUM for WaitEstimator and
+SyncQueueService, and LOW for resolved scheduler/cleanup paths. UNKNOWN new P14
+helpers and measurement symbols were resolved by exact text search. The
+CRITICAL/HIGH admission, dispatch, API rejection, fairness and Retry-After paths
+were covered by focused, integration and full-suite verification.
+
+Remaining behavior is intentional: while all 8,192 slots are genuinely live, an
+unrepresented function can be conservatively rejected; at sample saturation,
+high-throughput functions can tie sooner or reject conservatively. Neither case
+creates a false admission. Native linking and the minor injected-constructor cap
+finding remain deferred.
+
+### Round-1 GitNexus and staging gate
+
+Final detection used limit 100000. Complete all scope returned 12 files, all 14
+listed symbols, eight affected scheduler flows and HIGH risk; it correctly
+included the two unrelated tracked overload-experiment files. Complete staged
+scope returned exactly the ten P14 round-1 files, all 13 listed symbols, the same
+eight scheduler flows and HIGH risk. The affected tickOnceInternal flows cover
+queue timeout, task, configuration, transition, execution and function data;
+sync-queue and full-suite tests exercised them. The stale index attributed the
+new nearby service test hunk to timesOutQueuedItem and omitted new helper symbols,
+so these results are lower-bound tooling evidence rather than an all-clear.
+Neither output had a partial/truncated marker and each listed count matched its
+declared total. The staged file list excluded all unrelated files and
+git diff --cached --check passed.

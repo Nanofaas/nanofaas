@@ -18,6 +18,7 @@ public class WaitEstimator {
     private static final int DEFAULT_MAX_FUNCTION_STATES = 8_192;
     private static final int DEFAULT_MAX_TOTAL_PER_FUNCTION_SAMPLES = 262_144;
     private static final int DEFAULT_CLEANUP_BUDGET = 16;
+    private static final int DEFAULT_MAINTENANCE_SAMPLE_BUDGET = 4_096;
 
     private final Duration window;
     private final int perFunctionMinSamples;
@@ -26,6 +27,7 @@ public class WaitEstimator {
     private final int maxFunctionStates;
     private final int maxTotalPerFunctionSamples;
     private final int cleanupBudget;
+    private final int maintenanceSampleBudget;
     private final Deque<Instant> globalEvents;
     private final Map<String, FunctionEvents> perFunctionEvents = new ConcurrentHashMap<>();
     private final ConcurrentLinkedQueue<FunctionEvents> cleanupCandidates = new ConcurrentLinkedQueue<>();
@@ -38,7 +40,7 @@ public class WaitEstimator {
         this(window, perFunctionMinSamples, new ConcurrentLinkedDeque<>(), Map.of(),
                 DEFAULT_MAX_GLOBAL_SAMPLES, DEFAULT_MAX_PER_FUNCTION_SAMPLES,
                 DEFAULT_MAX_FUNCTION_STATES, DEFAULT_MAX_TOTAL_PER_FUNCTION_SAMPLES,
-                DEFAULT_CLEANUP_BUDGET);
+                DEFAULT_CLEANUP_BUDGET, DEFAULT_MAINTENANCE_SAMPLE_BUDGET);
     }
 
     WaitEstimator(Duration window,
@@ -48,7 +50,7 @@ public class WaitEstimator {
         this(window, perFunctionMinSamples, globalEvents, perFunctionEvents,
                 DEFAULT_MAX_GLOBAL_SAMPLES, DEFAULT_MAX_PER_FUNCTION_SAMPLES,
                 DEFAULT_MAX_FUNCTION_STATES, DEFAULT_MAX_TOTAL_PER_FUNCTION_SAMPLES,
-                DEFAULT_CLEANUP_BUDGET);
+                DEFAULT_CLEANUP_BUDGET, DEFAULT_MAINTENANCE_SAMPLE_BUDGET);
     }
 
     WaitEstimator(Duration window,
@@ -58,7 +60,18 @@ public class WaitEstimator {
                   int cleanupBudget) {
         this(window, perFunctionMinSamples, new ConcurrentLinkedDeque<>(), Map.of(),
                 maxGlobalSamples, maxPerFunctionSamples, maxGlobalSamples, maxGlobalSamples,
-                cleanupBudget);
+                cleanupBudget, DEFAULT_MAINTENANCE_SAMPLE_BUDGET);
+    }
+
+    WaitEstimator(Duration window,
+                  int perFunctionMinSamples,
+                  int maxGlobalSamples,
+                  int maxPerFunctionSamples,
+                  int cleanupBudget,
+                  int maintenanceSampleBudget) {
+        this(window, perFunctionMinSamples, new ConcurrentLinkedDeque<>(), Map.of(),
+                maxGlobalSamples, maxPerFunctionSamples, maxGlobalSamples, maxGlobalSamples,
+                cleanupBudget, maintenanceSampleBudget);
     }
 
     private WaitEstimator(Duration window,
@@ -69,7 +82,8 @@ public class WaitEstimator {
                           int maxPerFunctionSamples,
                           int maxFunctionStates,
                           int maxTotalPerFunctionSamples,
-                          int cleanupBudget) {
+                          int cleanupBudget,
+                          int maintenanceSampleBudget) {
         this.window = window;
         this.perFunctionMinSamples = perFunctionMinSamples;
         this.globalEvents = globalEvents;
@@ -79,6 +93,8 @@ public class WaitEstimator {
         this.maxTotalPerFunctionSamples = positive(maxTotalPerFunctionSamples,
                 "maxTotalPerFunctionSamples");
         this.cleanupBudget = positive(cleanupBudget, "cleanupBudget");
+        this.maintenanceSampleBudget = positive(
+                maintenanceSampleBudget, "maintenanceSampleBudget");
         this.retainedGlobalSamples.set(globalEvents.size());
         perFunctionEvents.forEach((name, events) -> {
             if (!reserveFunctionState()) {
@@ -102,6 +118,9 @@ public class WaitEstimator {
                     globalEvents, retainedGlobalSamples.get(), maxGlobalSamples));
         }
 
+        if (!perFunctionEvents.containsKey(functionName)) {
+            makeRoomForFunction(effectiveNow);
+        }
         FunctionEvents state = perFunctionEvents.compute(functionName, (name, existing) -> {
             FunctionEvents current = existing;
             if (current == null) {
@@ -155,7 +174,13 @@ public class WaitEstimator {
             runBoundedCleanup(effectiveNow, null);
             return 0.0;
         }
-        ThroughputSnapshot perFunction = snapshot(perFunctionEvents.get(functionName), effectiveNow);
+        FunctionEvents functionEvents = perFunctionEvents.get(functionName);
+        if (functionEvents == null && !makeRoomForFunction(effectiveNow)) {
+            cleanupGlobal(effectiveNow);
+            runBoundedCleanup(effectiveNow, null);
+            return Double.POSITIVE_INFINITY;
+        }
+        ThroughputSnapshot perFunction = snapshot(functionEvents, effectiveNow);
         double estimate;
         if (perFunction.samples() >= perFunctionMinSamples && perFunction.throughput() > 0) {
             estimate = queueDepth / perFunction.throughput();
@@ -172,7 +197,13 @@ public class WaitEstimator {
 
     RetentionSnapshot retentionSnapshot() {
         return new RetentionSnapshot(functionStates.get(), retainedGlobalSamples.get(),
-                retainedPerFunctionSamples.get());
+                retainedPerFunctionSamples.get(), cleanupCandidates.size());
+    }
+
+    public void maintain(Instant now) {
+        Instant effectiveNow = advanceTime(now);
+        cleanupGlobal(effectiveNow, maintenanceSampleBudget);
+        runBoundedCleanup(effectiveNow, null, maintenanceSampleBudget);
     }
 
     private ThroughputSnapshot snapshot(FunctionEvents state, Instant now) {
@@ -212,8 +243,21 @@ public class WaitEstimator {
         }
     }
 
+    private void cleanupGlobal(Instant now, int maximumRemovals) {
+        synchronized (globalEvents) {
+            retainedGlobalSamples.addAndGet(-prune(globalEvents, now, maximumRemovals));
+        }
+    }
+
     private void runBoundedCleanup(Instant now, String excludedFunction) {
+        runBoundedCleanup(now, excludedFunction, Integer.MAX_VALUE);
+    }
+
+    private void runBoundedCleanup(Instant now,
+                                   String excludedFunction,
+                                   int sampleBudget) {
         FunctionEvents first = null;
+        int perStateSampleBudget = Math.max(1, sampleBudget / cleanupBudget);
         for (int checked = 0; checked < cleanupBudget; checked++) {
             FunctionEvents state = cleanupCandidates.poll();
             if (state == null) {
@@ -233,7 +277,7 @@ public class WaitEstimator {
             }
             boolean empty;
             synchronized (state.events) {
-                int removed = prune(state.events, now);
+                int removed = prune(state.events, now, perStateSampleBudget);
                 state.samples -= removed;
                 retainedPerFunctionSamples.addAndGet(-removed);
                 empty = state.samples == 0;
@@ -256,6 +300,47 @@ public class WaitEstimator {
                 return state;
             });
         }
+    }
+
+    private boolean makeRoomForFunction(Instant now) {
+        if (functionStates.get() < maxFunctionStates
+                && retainedPerFunctionSamples.get() < maxTotalPerFunctionSamples) {
+            return true;
+        }
+        if (evictExpiredFunctionState(now)) {
+            return functionStates.get() < maxFunctionStates
+                    && retainedPerFunctionSamples.get() < maxTotalPerFunctionSamples;
+        }
+        return false;
+    }
+
+    private boolean evictExpiredFunctionState(Instant now) {
+        Instant cutoff = cutoff(now);
+        int inspected = 0;
+        for (String functionName : perFunctionEvents.keySet()) {
+            if (inspected++ >= maxFunctionStates) {
+                break;
+            }
+            AtomicBoolean removed = new AtomicBoolean();
+            perFunctionEvents.computeIfPresent(functionName, (name, state) -> {
+                synchronized (state.events) {
+                    Instant latest = state.events.peekLast();
+                    if (latest != null && !latest.isBefore(cutoff)) {
+                        return state;
+                    }
+                    retainedPerFunctionSamples.addAndGet(-state.samples);
+                    state.events.clear();
+                    state.samples = 0;
+                    functionStates.decrementAndGet();
+                    removed.set(true);
+                    return null;
+                }
+            });
+            if (removed.get()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void queueForCleanup(FunctionEvents state) {
@@ -293,9 +378,13 @@ public class WaitEstimator {
     }
 
     private int prune(Deque<Instant> events, Instant now) {
+        return prune(events, now, Integer.MAX_VALUE);
+    }
+
+    private int prune(Deque<Instant> events, Instant now, int maximumRemovals) {
         int removed = 0;
         Instant cutoff = cutoff(now);
-        while (true) {
+        while (removed < maximumRemovals) {
             Instant first = events.peekFirst();
             if (first == null || !first.isBefore(cutoff)) {
                 return removed;
@@ -304,6 +393,7 @@ public class WaitEstimator {
                 removed++;
             }
         }
+        return removed;
     }
 
     private static int cap(Deque<Instant> events, int current, int maximum) {
@@ -343,7 +433,10 @@ public class WaitEstimator {
         return value;
     }
 
-    record RetentionSnapshot(int functionStates, int globalSamples, int perFunctionSamples) {
+    record RetentionSnapshot(int functionStates,
+                             int globalSamples,
+                             int perFunctionSamples,
+                             int cleanupCandidates) {
     }
 
     private record ThroughputSnapshot(int samples, double throughput) {

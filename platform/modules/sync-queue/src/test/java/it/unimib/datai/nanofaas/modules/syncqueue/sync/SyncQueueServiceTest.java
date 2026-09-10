@@ -218,6 +218,30 @@ class SyncQueueServiceTest {
     }
 
     @Test
+    void liveEstimatorOverflowUsesProductionRejectionWithFiniteRetryAfter() {
+        SyncQueueProperties props = new SyncQueueProperties(
+                true, true, 10, Duration.ofSeconds(2), Duration.ofSeconds(30), 7,
+                Duration.ofSeconds(10), 1);
+        Instant now = Instant.parse("2026-09-10T10:00:00Z");
+        WaitEstimator estimator = new WaitEstimator(Duration.ofSeconds(10), 1, 3, 3, 1);
+        estimator.recordDispatch("live-a", now);
+        estimator.recordDispatch("live-b", now);
+        estimator.recordDispatch("live-c", now);
+        SyncQueueService service = createService(
+                props, new ExecutionStore(), estimator,
+                new SyncQueueMetrics(new SimpleMeterRegistry()), Clock.fixed(now, ZoneOffset.UTC));
+        service.enqueueOrThrow(task("queued", "e-overflow-queued"));
+
+        SyncQueueRejectedException rejection = assertThrows(
+                SyncQueueRejectedException.class,
+                () -> service.enqueueOrThrow(task("overflow", "e-overflow-rejected")));
+
+        assertEquals(SyncQueueRejectReason.EST_WAIT, rejection.reason());
+        assertEquals(7, rejection.retryAfterSeconds());
+        assertTrue(rejection.retryAfterSeconds() > 0);
+    }
+
+    @Test
     void timesOutQueuedItem() {
         Instant t0 = Instant.parse("2026-02-01T00:00:00Z");
         Clock fixed = Clock.fixed(t0, ZoneOffset.UTC);

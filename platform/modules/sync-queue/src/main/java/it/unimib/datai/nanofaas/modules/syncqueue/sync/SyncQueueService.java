@@ -514,6 +514,10 @@ public class SyncQueueService implements SyncQueueGateway {
         estimator.recordDispatch(functionName, now);
     }
 
+    public void maintainEstimator(Instant now) {
+        estimator.maintain(now);
+    }
+
     public void removeFunctionState(String functionName) {
         LifecycleLock lifecycleLock = acquireLifecycleLock(functionName);
         try {
