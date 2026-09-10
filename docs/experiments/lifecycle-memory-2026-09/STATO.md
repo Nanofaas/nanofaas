@@ -2273,3 +2273,115 @@ The focused pool/P07 suite is green in 19 seconds. All five packaging profiles a
 offline serial repository suite is green in 2 minutes 57 seconds (190 actionable tasks: 21
 executed, 169 up-to-date). The per-destination budget and 45-second acquisition timeout remain
 unchanged, and P07 aggregate admission remains independently green across hosts.
+
+
+## P13 — Bounded container-proxy buffers and phase deadlines
+
+Starting revision: `30751213a9032c9b1c278545f51155a71e7e8edd` on
+`control-plane-lifecycle-memory`.
+
+The container-local proxy now reads request and backend response bodies through a capacity-accounted
+bounded buffer. Actual bytes are checked independently of `Content-Length`, including raw chunked
+requests. The per-proxy aggregate owner accounts for backing-array capacity and temporary resize overlap;
+it is separate from, and does not replace or duplicate, P07's platform execution/input/waiter owners.
+The P12 `HttpClient` remains the sole outbound connection owner. Request overflow is `413`,
+response overflow is a cancelled backend body plus `502`, and aggregate exhaustion is `503`.
+Request bytes are released after the outbound body has been sent; response bytes are released after
+the caller write or any error.
+
+One owner-scoped, remove-on-cancel `ScheduledThreadPoolExecutor` supplies sequential inbound-read,
+function-configured backend, and response-write deadlines. Its queue has at most one current phase
+deadline per admitted invocation, hence remains bounded by `maxInFlight`; `close()` stops admission,
+closes active exchanges, interrupts handlers, shuts down the deadline owner, and closes the existing
+P12 client. `/health` does not consume count or byte admission.
+
+Selected production policy: 2 MiB request, 4 MiB response, 32 MiB aggregate, 5 s inbound-read and
+5 s response-write deadlines; backend deadline remains each function's `timeoutMs`. The 2 MiB
+request cap provides envelope/escaping headroom over P07's 1 MiB ingress cap. Repository payload
+measurement found the largest individual canonical performance input is 440,571 bytes
+(`word-stats/performance-large.json`), with JSON Transform next at 412,979 bytes. A warm real-proxy
+1 KiB loop measured 200 calls at 3,390.4 us/call and 295.0 calls/s on this host. Those values fit the
+bounded policy, so P13 retains bounded integral buffering and does not introduce streaming.
+
+Strict TDD evidence:
+
+- Initial RED:
+  `./gradlew :control-plane-modules:container-deployment-provider:test --tests '*P13BoundedProxyTest' --tests '*P13ProxyConfigurationTest' --console=plain --offline`
+  failed at `compileTestJava` with 17 expected missing-symbol errors for
+  `ContainerProxyProperties`, the configured constructor and `snapshot()`.
+- Cleanup RED:
+  `./gradlew :control-plane-modules:container-deployment-provider:test --tests '*P13BoundedProxyTest.invalidBackendUriAfterReadingBodyStillReleasesTheRequestBuffer' --console=plain --offline`
+  failed because the observed snapshot retained the request buffer after URI construction failed.
+- Growth RED:
+  `./gradlew :control-plane-modules:container-deployment-provider:test --tests '*P13BoundedProxyTest.aggregateBudgetSmallerThanGrowthChunkStillAcceptsARepresentableBody' --console=plain --offline`
+  failed at line 178 because a fixed 8 KiB growth reservation rejected a 3-byte body under a
+  representable 7-byte aggregate budget.
+- Focused GREEN after the corresponding minimal changes:
+  the P13/configuration pair succeeded in 11 s; the cleanup case succeeded in 4 s; and the aggregate
+  growth plus close-race pair succeeded in 4 s.
+- Deadline separation RED/GREEN:
+  `./gradlew :control-plane-modules:container-deployment-provider:test --tests '*P13BoundedProxyTest.callerWriteGetsItsOwnDeadlineAfterTheBackendBodyHasCompleted' --rerun-tasks --console=plain --offline`
+  failed against the restored regression because the caller write was cut off 0.409 s after backend
+  completion rather than receiving its independent 2 s deadline; after moving caller writing outside
+  the backend-read deadline scope, the same command succeeded in 8 s.
+- Existing plus new proxy suite:
+  `./gradlew :control-plane-modules:container-deployment-provider:test --tests '*RoundRobinFunctionProxyTest' --tests '*P13BoundedProxyTest' --tests '*P13ProxyConfigurationTest' --console=plain --offline`
+  succeeded in 8 s.
+- Complete provider integration:
+  `./gradlew :control-plane-modules:container-deployment-provider:test --rerun-tasks --no-parallel --console=plain --offline`
+  succeeded after the final correction in 20 s (39 actionable tasks, all executed).
+- Packaging:
+  `./gradlew :control-plane:bootJar :control-plane:processAot --no-parallel --console=plain --offline`
+  succeeded (JVM boot JAR; AOT intentionally skipped by the non-native profile). Native-profile AOT
+  was then actually generated and compiled with
+  `./gradlew :control-plane:processAot :control-plane:compileAotJava :control-plane:nativeCompile -x :control-plane:nativeCompile --no-parallel --console=plain --offline`,
+  which succeeded in 4 s. The final native linker was not run.
+- Full suite RED/fix/GREEN: the first all-task run exposed the close race retaining
+  `Snapshot[inFlight=1, bufferedBytes=64]` after `close()`. `close()` now interrupts and closes its
+  existing P12 owners, then waits for both owned executors to terminate before returning. The focused
+  race test succeeded in 7 s. The final command
+  `./gradlew test --rerun-tasks --no-parallel --continue --console=plain --offline` then succeeded in
+  3 min 39 s (190 actionable tasks, all executed).
+
+The controlled tests contain no fixed sleeps for ordering. Latches establish backend phases; raw
+sockets exercise chunked framing, slow upload, caller non-consumption, and disconnect; bounded
+futures/state waits provide failure deadlines. They cover fixed/chunked request overflow, aggregate
+contention, a sub-chunk aggregate budget, inbound and full-backend deadlines, backend cancellation
+on oversized response, response-write cutoff, disconnect/deprovision, health under count+byte
+saturation, success, pre-dispatch URI failure, and zero count/byte ownership after every terminal
+path and immediately after close.
+
+GitNexus was bound to `nanofaas` at this exact worktree. Before editing,
+`RoundRobinFunctionProxy` was HIGH (94 impacted, 15 direct, two process families);
+`close` was HIGH (111/12, four process families); the one-argument constructor was HIGH (76/1);
+and `RoundRobinFunctionProxyFactory.create` was HIGH (86/2). The audit preserved the interface,
+existing constructors, provider ownership, provision/reconcile paths, and close retry semantics,
+and exercised all provider dependants. `handleInvoke`, `forward`, `writeBackendResponse`,
+`copyResponseHeaders`, factory class/constructor were LOW; the three-argument constructor was
+MEDIUM. The Spring `managedFunctionProxyFactory` bean was UNKNOWN; exact text search resolved the
+reflective Spring consumer and `ManagedFunctionProxyFactory` injection into
+`ContainerLocalDeploymentProvider`, then the configuration real-path test covered it.
+
+GitNexus 1.6.11's index was one commit behind at `c921af94`. Both
+`analyze --index-only` and `analyze --force --index-only` failed with
+`truncated:true`: 1,467/1,667 entry-point candidates dropped, 1,760 callees dropped and 48 walks
+cut, leaving `incremental-in-progress`. The installed direct CLI backend was used for every exact
+impact and pre-commit detection. Its uncapped all-scope structured result reported seven tracked
+files, 28/28 returned changed symbols, three/three affected processes, medium risk,
+`partial=false`, `truncated=false`, and `error=null`. The two unrelated tracked overload experiment
+files are included in that all-scope count; the newly tracked P13 files are covered by the staged
+rerun recorded in the P13 report.
+
+P13 files: `application.yml`, `ContainerProxyProperties.java`,
+`ContainerDeploymentProviderConfiguration.java`, `RoundRobinFunctionProxyFactory.java`,
+`RoundRobinFunctionProxy.java`, `P13BoundedProxyTest.java`,
+`P13ProxyConfigurationTest.java`, this status file, and the task report. Preserved without staging:
+the two modified overload experiment files, six untracked GitNexus skill directories, and
+`ReplicaStatusSnapshotConfigurationTest.java`.
+
+Self-review and the full-suite gate found and fixed URI-failure ownership, sub-chunk allocation,
+deadline-scope separation, and synchronous close ownership via additional RED cycles.
+The remaining concerns are that JDK `HttpServer` interrupts a slow-upload socket, so the attempted
+`408` is best effort and the client may observe an immediate close; actual `nativeCompile` was
+not run; and GitNexus could not publish a refreshed index because its own full-process analysis
+truncated. Next: P14; retain these P13 measurements for the P23 comparison.

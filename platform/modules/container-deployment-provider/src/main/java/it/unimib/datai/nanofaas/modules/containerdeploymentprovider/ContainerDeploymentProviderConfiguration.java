@@ -16,7 +16,7 @@ import org.springframework.context.annotation.ImportRuntimeHints;
 import java.time.Duration;
 
 @AutoConfiguration
-@EnableConfigurationProperties(ContainerLocalProperties.class)
+@EnableConfigurationProperties({ContainerLocalProperties.class, ContainerProxyProperties.class})
 @ImportRuntimeHints(DockerJavaRuntimeHints.class)
 public class ContainerDeploymentProviderConfiguration {
 
@@ -68,8 +68,9 @@ public class ContainerDeploymentProviderConfiguration {
     }
 
     @Bean
-    ManagedFunctionProxyFactory managedFunctionProxyFactory(ContainerLocalProperties properties) {
-        return new RoundRobinFunctionProxyFactory(properties.bindHost());
+    ManagedFunctionProxyFactory managedFunctionProxyFactory(ContainerLocalProperties properties,
+                                                            ContainerProxyProperties proxyProperties) {
+        return new RoundRobinFunctionProxyFactory(properties.bindHost(), proxyProperties);
     }
 
     @Bean

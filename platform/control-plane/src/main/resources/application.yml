@@ -32,6 +32,16 @@ management:
         enabled: true
 
 nanofaas:
+  container-local:
+    proxy:
+      # Bounded integral buffering at the local container hop. The aggregate cap
+      # includes backing-array capacity (and resize overlap), not only logical bytes.
+      # Request headroom is twice the 1 MiB ingress cap for envelope reserialization.
+      max-request-bytes: 2097152
+      max-response-bytes: 4194304
+      max-buffered-bytes: 33554432
+      inbound-read-timeout: 5s
+      response-write-timeout: 5s
   registry:
     path: "${NANOFAAS_REGISTRY_PATH:build/nanofaas/functions.json}"
   metrics:
