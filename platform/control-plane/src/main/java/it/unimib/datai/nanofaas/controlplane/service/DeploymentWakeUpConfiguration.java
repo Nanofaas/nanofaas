@@ -4,8 +4,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
-import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 
 @Configuration(proxyBeanMethods = false)
 class DeploymentWakeUpConfiguration {
@@ -22,10 +22,14 @@ class DeploymentWakeUpConfiguration {
 
     @Bean(name = "deploymentWakeUpTimeoutScheduler", destroyMethod = "shutdown")
     ScheduledExecutorService deploymentWakeUpTimeoutScheduler() {
-        return Executors.newSingleThreadScheduledExecutor(runnable -> {
+        ScheduledThreadPoolExecutor scheduler = new ScheduledThreadPoolExecutor(1, runnable -> {
             Thread thread = new Thread(runnable, "deployment-wakeup-timeout-");
             thread.setDaemon(true);
             return thread;
         });
+        scheduler.setRemoveOnCancelPolicy(true);
+        scheduler.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
+        scheduler.setContinueExistingPeriodicTasksAfterShutdownPolicy(false);
+        return scheduler;
     }
 }

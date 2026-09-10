@@ -2081,3 +2081,39 @@ and both profile calibrations are green. The corrected integrated core + async-q
 and runtime-config gate is green in 36 seconds (89 actionable tasks: 13 executed, 76 up-to-date).
 The single fix-round full repository run, `./gradlew test --console=plain --offline`, is also green
 in 2 minutes 9 seconds (190 actionable tasks: 23 executed, 167 up-to-date).
+
+## P11 — Shared wake-up, cancellable timers and warm fast path
+
+`DeploymentWakeUpGate` now has one wake-up owner per exact P07 function generation and gives every
+caller an independent future. Cancelling or timing out one caller therefore cannot complete the
+shared owner or the other callers. The owner retains its absolute timeout, current poll and
+scale-protection lease handles; its single idempotent cleanup path cancels all three on success,
+failure, removal or shutdown. `DeploymentWakeUpCoordinator` uses the same generation authority and
+scheduler, retains only a bounded lock state per active generation, and removes that state on
+function removal or context close. It refuses post-close scale-down work, so shutdown cannot
+recreate coordinator state.
+
+The already-ready path consumes P10's immutable `ReplicaObservation`. Only an available, `FRESH`,
+ready observation whose timestamp is within `nanofaas.deployment.wakeup.ready-observation-max-age`
+bypasses the gate. The packaged default is 5 seconds, matching the snapshot TTL. Missing, expired,
+`STALE`, `UNAVAILABLE` and fresh-but-unready observations enter the forced-fresh gate. Generation
+and registration are revalidated after observation, fencing a concurrent detach. A fresh read with
+desired replicas above zero waits for readiness without writing `1`, so desired 10 / ready 0 is
+never reduced.
+
+The shared wake-up scheduler is a `ScheduledThreadPoolExecutor` with remove-on-cancel enabled and
+delayed/periodic work disabled after shutdown. Deterministic tests use controlled clocks, queued
+futures and latches. The 37 focused gate/coordinator tests are green in 14 seconds and prove 2,000
+warm calls create no forced GETs or queued timers, 100 callers share one owner while a short caller
+detaches independently, all freshness states route correctly, synchronous/async failures and the
+absolute deadline return owner/timer counts to zero, and removal/re-registration/shutdown fence late
+work. The final full offline repository suite is green in 2 minutes 29 seconds (190 actionable
+tasks: 18 executed, 172 up-to-date). Separate `bootJar` builds for `none`, `async-queue`,
+`sync-queue,runtime-config`, `container-deployment-provider` and `all` are also green.
+
+Pre-edit GitNexus analysis reported LOW risk for `DeploymentWakeUpGate`, MEDIUM for
+`DeploymentWakeUpCoordinator`, and LOW for their disambiguated existing methods; there were no
+HIGH/CRITICAL results. UNKNOWN constructors, configuration/property binding and
+`isScaleDownProtected` were resolved with exact text searches before editing. The P10 refresh-pool
+cancellation note remains outside P11 and was not changed; async-queue invoke/enqueue behavior and
+P12+ scope are untouched.

@@ -59,6 +59,11 @@ nanofaas:
   deployment:
     # Optional backend id to prefer when multiple managed deployment providers are available.
     default-backend: ""
+    wakeup:
+      timeout: 30s
+      poll-interval: 250ms
+      # A ready observation at or below this age bypasses forced provider reads and timer creation.
+      ready-observation-max-age: 5s
   execution-store:
     # Retention of an outcome someone can still read: an ASYNC caller, which holds
     # nothing but the execution's id, or a retry replaying a key.
