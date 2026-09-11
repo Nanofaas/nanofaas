@@ -94,7 +94,9 @@ class SyncQueueInvocationEnqueuerRetryIntegrationTest {
                                         ExecutionCompletionHandler handler, String functionName) {
         SyncQueueItem item = queue.pollReady(Instant.now());
         assertThat(item).isNotNull();
-        handler.dispatch(item.task().withDispatchLease(enqueuer.tryAcquireLease(item.task())));
+        var lease = enqueuer.tryAcquireLease(item.task());
+        assertThat(lease).isNotNull();
+        handler.dispatch(item.task().withDispatchLease(lease));
     }
 
     @Test

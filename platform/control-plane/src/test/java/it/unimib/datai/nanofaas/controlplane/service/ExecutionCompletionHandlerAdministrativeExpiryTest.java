@@ -55,7 +55,11 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
             assertThat(store.outcomeOf("exec-queued")).isNotNull();
         });
 
-        assertThat(ownership.releases()).isEqualTo(0);
+        // "Without releasing any slot" is now structural rather than observable here: the
+        // record never dispatched, so no capacity lease was ever attached and the release
+        // path has nothing to take. The former name-based counter cannot move for this
+        // fixture, so the assertions below (and the ones above) carry the behaviour.
+        assertThat(executionRecord.holdsDispatchLease()).isFalse();
         InvocationResult result = executionRecord.completion().join();
         assertThat(result.success()).isFalse();
         assertThat(result.error().code()).isEqualTo(ExecutionCompletionHandler.EXECUTION_EXPIRED_CODE);

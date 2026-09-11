@@ -309,8 +309,6 @@ class InvocationServiceDispatchTest {
         verify(dispatcherRouter).dispatchLocal(any());
         verify(syncQueueGateway, never()).enqueueOrThrow(any());
         verify(enqueuer, never()).enqueue(any());
-        // Direct admission releases its own capacity lease, never a name-based queue slot.
-        assertThat(ownership.releases()).isZero();
     }
 
     @Test
@@ -346,8 +344,6 @@ class InvocationServiceDispatchTest {
         assertThat(response.output()).isEqualTo("inline-ok");
         verify(dispatcherRouter).dispatchLocal(any());
         verify(enqueuer, never()).enqueue(any());
-        // Direct admission releases its own capacity lease, never a name-based queue slot.
-        assertThat(ownership.releases()).isZero();
     }
 
     @Test

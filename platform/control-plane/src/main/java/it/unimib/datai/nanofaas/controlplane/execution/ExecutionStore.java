@@ -241,8 +241,10 @@ public class ExecutionStore implements QueueLifecycle {
 
     @Override
     public void rejected(InvocationTask task, Throwable failure) {
-        concludeQueued(task, new ErrorInfo(
-                "DISPATCH_REJECTED", failure.getMessage()));
+        // Throwable.getMessage() is routinely null (NullPointerException and most
+        // transport wrappers); a rejected outcome must still say something.
+        String message = failure.getMessage() != null ? failure.getMessage() : failure.toString();
+        concludeQueued(task, new ErrorInfo("DISPATCH_REJECTED", message));
     }
 
     private void concludeQueued(InvocationTask task,
