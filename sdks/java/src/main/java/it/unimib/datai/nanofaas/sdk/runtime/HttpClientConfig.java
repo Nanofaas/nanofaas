@@ -31,11 +31,16 @@ public class HttpClientConfig {
         return new ObjectMapper();
     }
 
-    @Bean
-    public RestClient restClient() {
-        HttpClient httpClient = HttpClient.newBuilder()
+    @Bean(destroyMethod = "close")
+    @ConditionalOnMissingBean(HttpClient.class)
+    public HttpClient callbackHttpClient() {
+        return HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(CONNECT_TIMEOUT_MS))
                 .build();
+    }
+
+    @Bean
+    public RestClient restClient(HttpClient httpClient) {
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
         factory.setReadTimeout(Duration.ofMillis(READ_TIMEOUT_MS));
         return RestClient.builder()

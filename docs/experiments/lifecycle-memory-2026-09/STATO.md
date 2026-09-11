@@ -2920,3 +2920,50 @@ P17 implementation is committed as `a6824ba6`. Its final pre-commit GitNexus all
 gate completed with six files/24 symbols and LOW risk (including protected user dirt);
 the staged gate completed with exactly four P17 files/23 symbols and LOW risk. Both had
 zero affected processes and neither was partial or truncated. The staged diff was clean.
+
+## P18 — Java-lite executor/client ownership and bounded shutdown
+
+Starting from `398387ba`, P18 gives every Java-lite asynchronous resource an explicit
+lifecycle owner. `NanofaasRuntime` retains its HTTP executor and callback client, fences
+admission before closing the listener, performs idempotent bounded shutdown, releases the
+blocking `start()` caller, removes its shutdown hook and preserves interrupts. The builder
+cleans up a client/executor/server created before bind or another partial-build failure.
+`InvokeHandler` retains physical handler task/thread handles through real exit, owns only
+the callback executor it creates, drains callbacks before cancellation and returns the P16a
+`503 RUNTIME_STOPPING` outcome for work arriving after stop begins. `CallbackClient`
+boundedly closes only the JDK client it created.
+
+The Spring Java SDK had one confirmed ownership gap: `HttpClientConfig.restClient()`
+created a local JDK client that no bean owned. The client is now a conditional Spring bean
+with explicit `close` destruction and is injected into `RestClient`; an external client
+bean retains its declared ownership. Existing `HandlerExecutor` and `CallbackDispatcher`
+`@PreDestroy` owners were verified and left unchanged.
+
+Twelve deterministic RED/GREEN groups cover blocking start release, active physical handler,
+owned/injected callback client, bind and partial-start failure, owned/injected HTTP executor,
+owned/injected callback executor, active callback drain and named worker exit, finite stop,
+stop admission, Spring owned/injected client, and interrupted start. Three warmed HTTP cycles
+prove only controlled named threads exit and each exact listening socket refuses connections
+after stop; no unrelated JVM thread/socket count is asserted.
+
+Focused P18 verification passed 18/18 tests. The complete Java-lite and Spring Java suites
+passed respectively 37/37 and 94/94 tests with no failure/error/skip. Both P16a Java corpus
+adapters passed, and
+`./gradlew :sdks:java-lite:build :sdks:java:build --rerun-tasks --no-parallel --console=plain --offline`
+executed 18/18 tasks with `BUILD SUCCESSFUL` in 13 seconds.
+
+GitNexus was refreshed on this checkout. Exact impacts were LOW for
+`NanofaasRuntime`, `start`, `stop`, `Builder.build`,
+`InvokeHandler.shutdownCallbacks`, `invokeWithTimeout`, callback-executor creation and
+`handle`. Java-lite `CallbackClient` was HIGH (58 symbols/four modules/one build process);
+the change was limited to ownership and full callback/corpus suites remained green.
+Spring `restClient` was UNKNOWN because bean wiring has no call edge; text search resolved
+the callback consumer and the 94-test Spring suite verified it. Pre-stage all-scope detection
+completed at HIGH aggregate risk for 6 indexed files/37 symbols and 8 flows, including the
+protected overload-path dirt that remains unstaged. Final staged detection and commit SHA are
+recorded in the P18 report.
+
+No hard termination is claimed for a handler that ignores virtual-thread interruption: stop
+returns at its configured deadline, logs the still-active physical owner, and that owner
+releases only on real exit. P16b remains responsible for common callback/input/output quotas
+and full direct-runtime corpus conformance.

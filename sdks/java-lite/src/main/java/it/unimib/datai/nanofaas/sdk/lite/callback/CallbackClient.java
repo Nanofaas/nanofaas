@@ -15,8 +15,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-public final class CallbackClient {
+public final class CallbackClient implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(CallbackClient.class);
     private static final int MAX_RETRIES = 3;
     private static final int[] RETRY_DELAYS_MS = {100, 500, 2000};
@@ -24,6 +25,8 @@ public final class CallbackClient {
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final String baseUrl;
+    private final boolean ownsHttpClient;
+    private final AtomicBoolean closed = new AtomicBoolean();
 
     public CallbackClient(ObjectMapper objectMapper, String baseUrl) {
         this.objectMapper = objectMapper;
@@ -31,6 +34,7 @@ public final class CallbackClient {
         this.httpClient = (baseUrl != null && !baseUrl.isBlank())
                 ? HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
                 : null;
+        this.ownsHttpClient = this.httpClient != null;
     }
 
     // Visible for testing
@@ -38,6 +42,31 @@ public final class CallbackClient {
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
         this.baseUrl = baseUrl;
+        this.ownsHttpClient = false;
+    }
+
+    @Override
+    public void close() {
+        close(Duration.ofSeconds(5));
+    }
+
+    public void close(Duration timeout) {
+        if (!ownsHttpClient || httpClient == null || !closed.compareAndSet(false, true)) {
+            return;
+        }
+        httpClient.shutdown();
+        if (timeout.isZero() || timeout.isNegative()) {
+            httpClient.shutdownNow();
+            return;
+        }
+        try {
+            if (!httpClient.awaitTermination(timeout)) {
+                httpClient.shutdownNow();
+            }
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+            httpClient.shutdownNow();
+        }
     }
 
     private static boolean isPermanentFailure(int status) {

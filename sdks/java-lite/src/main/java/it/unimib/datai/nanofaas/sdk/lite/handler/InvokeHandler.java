@@ -14,7 +14,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.time.Duration;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
@@ -23,10 +26,13 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 public final class InvokeHandler implements HttpHandler {
     private static final Logger log = LoggerFactory.getLogger(InvokeHandler.class);
     private static final String ERROR_KEY = "error";
+    private static final AtomicInteger CALLBACK_THREAD_COUNTER = new AtomicInteger();
     private final FunctionHandler functionHandler;
     private final CallbackClient callbackClient;
     private final RuntimeMetrics metrics;
@@ -34,19 +40,32 @@ public final class InvokeHandler implements HttpHandler {
     private final String functionName;
     private final String envExecutionId;
     private final ThreadPoolExecutor callbackExecutor;
+    private final boolean ownsCallbackExecutor;
     private final long handlerTimeoutMs;
+    private final Object handlerLifecycle = new Object();
+    private final Set<HandlerWork> activeHandlers = new HashSet<>();
+    private boolean accepting = true;
     private final long containerStartNanos = System.nanoTime();
     private final AtomicBoolean firstInvocation = new AtomicBoolean(true);
 
     public InvokeHandler(FunctionHandler functionHandler, CallbackClient callbackClient,
                          RuntimeMetrics metrics, ObjectMapper objectMapper, String functionName) {
         this(functionHandler, callbackClient, metrics, objectMapper, functionName,
-                newCallbackExecutor(), setting("nanofaas.handler.timeout.ms", "NANOFAAS_HANDLER_TIMEOUT", 30_000));
+                newCallbackExecutor(), setting("nanofaas.handler.timeout.ms", "NANOFAAS_HANDLER_TIMEOUT", 30_000),
+                true);
     }
 
     InvokeHandler(FunctionHandler functionHandler, CallbackClient callbackClient,
                   RuntimeMetrics metrics, ObjectMapper objectMapper, String functionName,
                   ThreadPoolExecutor callbackExecutor, long handlerTimeoutMs) {
+        this(functionHandler, callbackClient, metrics, objectMapper, functionName,
+                callbackExecutor, handlerTimeoutMs, false);
+    }
+
+    private InvokeHandler(FunctionHandler functionHandler, CallbackClient callbackClient,
+                          RuntimeMetrics metrics, ObjectMapper objectMapper, String functionName,
+                          ThreadPoolExecutor callbackExecutor, long handlerTimeoutMs,
+                          boolean ownsCallbackExecutor) {
         this.functionHandler = functionHandler;
         this.callbackClient = callbackClient;
         this.metrics = metrics;
@@ -54,6 +73,7 @@ public final class InvokeHandler implements HttpHandler {
         this.functionName = functionName;
         this.envExecutionId = System.getenv("EXECUTION_ID");
         this.callbackExecutor = callbackExecutor;
+        this.ownsCallbackExecutor = ownsCallbackExecutor;
         this.handlerTimeoutMs = handlerTimeoutMs;
     }
 
@@ -61,7 +81,12 @@ public final class InvokeHandler implements HttpHandler {
         int workers = setting("nanofaas.callback.worker.count", "NANOFAAS_CALLBACK_WORKER_COUNT", 2);
         int capacity = setting("nanofaas.callback.queue.capacity", "NANOFAAS_CALLBACK_QUEUE_CAPACITY", 128);
         return new ThreadPoolExecutor(workers, workers, 0L, TimeUnit.MILLISECONDS,
-                new ArrayBlockingQueue<>(capacity), Thread.ofPlatform().daemon().factory(),
+                new ArrayBlockingQueue<>(capacity), runnable -> {
+                    Thread thread = new Thread(runnable,
+                            "nanofaas-lite-callback-" + CALLBACK_THREAD_COUNTER.incrementAndGet());
+                    thread.setDaemon(true);
+                    return thread;
+                },
                 new ThreadPoolExecutor.AbortPolicy());
     }
 
@@ -81,6 +106,10 @@ public final class InvokeHandler implements HttpHandler {
         if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
             exchange.sendResponseHeaders(405, -1);
             exchange.close();
+            return;
+        }
+        if (!isAccepting()) {
+            sendStopping(exchange);
             return;
         }
 
@@ -137,6 +166,8 @@ public final class InvokeHandler implements HttpHandler {
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             handleHandlerFailure(ex, exchange, effectiveExecutionId, traceId, dispatchAttempt);
+        } catch (RejectedExecutionException _) {
+            sendStopping(exchange);
         } catch (Exception ex) {
             handleHandlerFailure(ex, exchange, effectiveExecutionId, traceId, dispatchAttempt);
         } finally {
@@ -176,10 +207,32 @@ public final class InvokeHandler implements HttpHandler {
 
     private Object invokeWithTimeout(InvocationRequest request) throws InterruptedException, TimeoutException {
         FutureTask<Object> task = new FutureTask<>(() -> functionHandler.handle(request));
-        Thread.ofVirtual().start(task);
+        AtomicReference<HandlerWork> workReference = new AtomicReference<>();
+        Thread thread = Thread.ofVirtual().unstarted(() -> {
+            try {
+                task.run();
+            } finally {
+                synchronized (handlerLifecycle) {
+                    activeHandlers.remove(workReference.get());
+                    handlerLifecycle.notifyAll();
+                }
+            }
+        });
+        HandlerWork work = new HandlerWork(task, thread);
+        workReference.set(work);
+        synchronized (handlerLifecycle) {
+            if (!accepting) {
+                throw new RejectedExecutionException("Runtime is stopping");
+            }
+            activeHandlers.add(work);
+        }
+        thread.start();
         try {
             return task.get(handlerTimeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException ex) {
+            task.cancel(true);
+            throw ex;
+        } catch (InterruptedException ex) {
             task.cancel(true);
             throw ex;
         } catch (ExecutionException ex) {
@@ -204,7 +257,70 @@ public final class InvokeHandler implements HttpHandler {
     }
 
     public void shutdownCallbacks() {
-        callbackExecutor.shutdownNow();
+        shutdown(Duration.ofSeconds(5));
+    }
+
+    public boolean shutdown(Duration timeout) {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        beginStop();
+        synchronized (handlerLifecycle) {
+            activeHandlers.forEach(HandlerWork::cancel);
+            while (!activeHandlers.isEmpty()) {
+                long remaining = deadline - System.nanoTime();
+                if (remaining <= 0) {
+                    break;
+                }
+                try {
+                    TimeUnit.NANOSECONDS.timedWait(handlerLifecycle, remaining);
+                } catch (InterruptedException _) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+
+        boolean callbacksDrained = true;
+        if (ownsCallbackExecutor) {
+            callbackExecutor.shutdown();
+            callbacksDrained = awaitCallbacks(deadline);
+            if (!callbacksDrained) {
+                callbackExecutor.shutdownNow();
+            }
+        }
+        synchronized (handlerLifecycle) {
+            return activeHandlers.isEmpty() && callbacksDrained;
+        }
+    }
+
+    public void beginStop() {
+        synchronized (handlerLifecycle) {
+            accepting = false;
+        }
+    }
+
+    private boolean isAccepting() {
+        synchronized (handlerLifecycle) {
+            return accepting;
+        }
+    }
+
+    private void sendStopping(HttpExchange exchange) throws IOException {
+        exchange.getResponseHeaders().set("Retry-After", "1");
+        sendJson(exchange, 503, Map.of(
+                ERROR_KEY, Map.of("code", "RUNTIME_STOPPING", "message", "Runtime is stopping")));
+    }
+
+    private boolean awaitCallbacks(long deadline) {
+        long remaining = deadline - System.nanoTime();
+        if (remaining <= 0) {
+            return callbackExecutor.isTerminated();
+        }
+        try {
+            return callbackExecutor.awaitTermination(remaining, TimeUnit.NANOSECONDS);
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
     }
 
     private void sendJson(HttpExchange exchange, int status, Object body) throws IOException {
@@ -213,5 +329,12 @@ public final class InvokeHandler implements HttpHandler {
         exchange.sendResponseHeaders(status, bytes.length);
         exchange.getResponseBody().write(bytes);
         exchange.close();
+    }
+
+    private record HandlerWork(FutureTask<?> task, Thread thread) {
+        private void cancel() {
+            task.cancel(true);
+            thread.interrupt();
+        }
     }
 }
