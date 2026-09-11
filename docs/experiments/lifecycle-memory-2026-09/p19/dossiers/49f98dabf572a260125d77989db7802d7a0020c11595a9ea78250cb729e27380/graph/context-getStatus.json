@@ -1,0 +1,31 @@
+{
+  "status": "ambiguous",
+  "message": "Found 3 symbols matching 'getStatus'. Use uid, file_path, or kind to disambiguate.",
+  "totalCandidates": 3,
+  "candidates": [
+    {
+      "uid": "Method:clients/cli/src/main/java/it/unimib/datai/nanofaas/cli/http/ControlPlaneHttpException.java:ControlPlaneHttpException.getStatus#0",
+      "name": "getStatus",
+      "kind": "Method",
+      "filePath": "clients/cli/src/main/java/it/unimib/datai/nanofaas/cli/http/ControlPlaneHttpException.java",
+      "line": 21,
+      "score": 0.54
+    },
+    {
+      "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/InvocationService.java:InvocationService.getStatus#1",
+      "name": "getStatus",
+      "kind": "Method",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/InvocationService.java",
+      "line": 148,
+      "score": 0.54
+    },
+    {
+      "uid": "Method:experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/InvocationService.java:InvocationService.getStatus#1",
+      "name": "getStatus",
+      "kind": "Method",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/InvocationService.java",
+      "line": 173,
+      "score": 0.54
+    }
+  ]
+}

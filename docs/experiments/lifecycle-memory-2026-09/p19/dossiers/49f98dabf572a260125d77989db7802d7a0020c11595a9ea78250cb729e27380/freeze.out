@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/dossier.py", line 223, in <module>
+    (freeze if args.action == 'freeze' else verify)(args.path)
+  File "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/dossier.py", line 213, in freeze
+    verify(destination)
+  File "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/dossier.py", line 37, in verify
+    raise ValueError('checksum list mismatch')
+ValueError: checksum list mismatch

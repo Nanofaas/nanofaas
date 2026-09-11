@@ -1,0 +1,9 @@
+{
+  "error": "Target 'sample' not found",
+  "target": {
+    "name": "sample"
+  },
+  "direction": "upstream",
+  "impactedCount": null,
+  "risk": "UNKNOWN"
+}

@@ -1,0 +1,33 @@
+{
+  "label": "selector-tests",
+  "command": [
+    "./gradlew",
+    "-p",
+    "platform/gradle-plugin",
+    "test",
+    "--tests",
+    "it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.gradle.ModuleConstraintResolverTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.gradle.RepositoryModuleDescriptorsTest",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "exit_code": 1,
+  "expected_exit_code": 0,
+  "started_unix_s": 1789128074.4437294,
+  "elapsed_s": 10.909739017486572,
+  "cases": [],
+  "counts": {
+    "passed": 0,
+    "failed": 0,
+    "skipped": 0
+  },
+  "output_sha256": "79178b88e708f2b05ca26a6efb2db668a5107c39f38377fbfa53271ba63d00f5"
+}

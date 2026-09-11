@@ -1,0 +1,43 @@
+{
+  "status": "ambiguous",
+  "message": "Found 4 symbols matching 'InvocationController'. Use uid, file_path, or kind to disambiguate.",
+  "totalCandidates": 4,
+  "candidates": [
+    {
+      "uid": "Class:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/InvocationController.java:InvocationController",
+      "name": "InvocationController",
+      "kind": "Class",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/InvocationController.java",
+      "line": 37,
+      "score": 0.6
+    },
+    {
+      "uid": "Class:experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/InvocationController.java:InvocationController",
+      "name": "InvocationController",
+      "kind": "Class",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/InvocationController.java",
+      "line": 21,
+      "score": 0.6
+    },
+    {
+      "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/InvocationController.java:InvocationController.InvocationController#1",
+      "name": "InvocationController",
+      "kind": "Constructor",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/InvocationController.java",
+      "line": 55,
+      "score": 0.52
+    },
+    {
+      "uid": "Constructor:experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/InvocationController.java:InvocationController.InvocationController#1",
+      "name": "InvocationController",
+      "kind": "Constructor",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/InvocationController.java",
+      "line": 27,
+      "score": 0.52
+    }
+  ],
+  "staleness": {
+    "commitsBehind": 2,
+    "hint": "⚠️ Index is 2 commits behind HEAD. Run analyze tool to update."
+  }
+}

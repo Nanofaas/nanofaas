@@ -1,0 +1,71 @@
+{
+  "status": "ambiguous",
+  "message": "Found 8 symbols matching 'ExecutionRecord'. Use uid, file_path, or kind to disambiguate.",
+  "totalCandidates": 8,
+  "candidates": [
+    {
+      "uid": "Class:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionRecord.java:ExecutionRecord",
+      "name": "ExecutionRecord",
+      "kind": "Class",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionRecord.java",
+      "line": 28,
+      "score": 0.6
+    },
+    {
+      "uid": "Class:experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionRecord.java:ExecutionRecord",
+      "name": "ExecutionRecord",
+      "kind": "Class",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionRecord.java",
+      "line": 21,
+      "score": 0.6
+    },
+    {
+      "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionRecord.java:ExecutionRecord.ExecutionRecord#2",
+      "name": "ExecutionRecord",
+      "kind": "Constructor",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionRecord.java",
+      "line": 129,
+      "score": 0.52
+    },
+    {
+      "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionRecord.java:ExecutionRecord.ExecutionRecord#3",
+      "name": "ExecutionRecord",
+      "kind": "Constructor",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionRecord.java",
+      "line": 133,
+      "score": 0.52
+    },
+    {
+      "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionRecord.java:ExecutionRecord.ExecutionRecord#4",
+      "name": "ExecutionRecord",
+      "kind": "Constructor",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionRecord.java",
+      "line": 147,
+      "score": 0.52
+    },
+    {
+      "uid": "Constructor:experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionRecord.java:ExecutionRecord.ExecutionRecord#2",
+      "name": "ExecutionRecord",
+      "kind": "Constructor",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionRecord.java",
+      "line": 48,
+      "score": 0.52
+    },
+    {
+      "uid": "Impl:experiments/control-plane-staging/versions/control-plane-rust-m3-20260222-200159/snapshot/control-plane-rust/src/execution.rs:ExecutionRecord",
+      "name": "ExecutionRecord",
+      "kind": "",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-rust-m3-20260222-200159/snapshot/control-plane-rust/src/execution.rs",
+      "line": 125,
+      "score": 0.5
+    },
+    {
+      "uid": "Struct:experiments/control-plane-staging/versions/control-plane-rust-m3-20260222-200159/snapshot/control-plane-rust/src/execution.rs:ExecutionRecord",
+      "name": "ExecutionRecord",
+      "kind": "",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-rust-m3-20260222-200159/snapshot/control-plane-rust/src/execution.rs",
+      "line": 80,
+      "score": 0.5
+    }
+  ]
+}

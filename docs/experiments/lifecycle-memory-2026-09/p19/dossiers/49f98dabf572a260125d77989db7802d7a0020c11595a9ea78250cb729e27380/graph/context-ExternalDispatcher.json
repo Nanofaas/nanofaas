@@ -1,0 +1,234 @@
+{
+  "status": "found",
+  "symbol": {
+    "uid": "Class:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcher.java:ExternalDispatcher",
+    "name": "ExternalDispatcher",
+    "kind": "Class",
+    "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcher.java",
+    "startLine": 21,
+    "endLine": 175,
+    "bean": {
+      "framework": "spring",
+      "role": "component",
+      "annotation": "org.springframework.stereotype.Component"
+    }
+  },
+  "epistemic": "exact",
+  "incoming": {
+    "calls": [
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/config/DispatchConnectionPoolTest.java:DispatchConnectionPoolTest.functionServiceRemovalDisposesTheOldEndpointBeforeReregistration#0",
+        "name": "functionServiceRemovalDisposesTheOldEndpointBeforeReregistration",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/config/DispatchConnectionPoolTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/config/DispatchConnectionPoolTest.java:DispatchConnectionPoolTest.functionTimeoutCancelsThePhysicalRequestAndDrainsTheConnection#0",
+        "name": "functionTimeoutCancelsThePhysicalRequestAndDrainsTheConnection",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/config/DispatchConnectionPoolTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherColdStartTest.java:ExternalDispatcherColdStartTest.dispatch_extractsColdStartHeaders#0",
+        "name": "dispatch_extractsColdStartHeaders",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherColdStartTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherColdStartTest.java:ExternalDispatcherColdStartTest.dispatch_warmStart_noColdStartHeaders#0",
+        "name": "dispatch_warmStart_noColdStartHeaders",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherColdStartTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java:ExternalDispatcherTest.dispatch_functionStatusMarkerPresent_encodingSurvivesTheHop#0",
+        "name": "dispatch_functionStatusMarkerPresent_encodingSurvivesTheHop",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java:ExternalDispatcherTest.dispatch_functionStatusMarkerPresent_malformedBodyIsExternalErrorNotSilentNull#0",
+        "name": "dispatch_functionStatusMarkerPresent_malformedBodyIsExternalErrorNotSilentNull",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java:ExternalDispatcherTest.dispatch_functionStatusMarkerPresent_noEncodingHeaderYieldsNullEncoding#0",
+        "name": "dispatch_functionStatusMarkerPresent_noEncodingHeaderYieldsNullEncoding",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java:ExternalDispatcherTest.dispatch_functionStatusMarkerPresent_propagatesAllowedHeaders#0",
+        "name": "dispatch_functionStatusMarkerPresent_propagatesAllowedHeaders",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java:ExternalDispatcherTest.dispatch_functionStatusMarkerPresent_treatsNon2xxAsSuccess#0",
+        "name": "dispatch_functionStatusMarkerPresent_treatsNon2xxAsSuccess",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java:ExternalDispatcherTest.dispatch_functionStatusMarkerPresent_unrecognizedContentTypeWithEmptyBody_yieldsNullOutput#0",
+        "name": "dispatch_functionStatusMarkerPresent_unrecognizedContentTypeWithEmptyBody_yieldsNullOutput",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java:ExternalDispatcherTest.dispatch_functionStatusMarkerPresent_unrecognizedContentTypeWithJsonBody_survivesIntact#0",
+        "name": "dispatch_functionStatusMarkerPresent_unrecognizedContentTypeWithJsonBody_survivesIntact",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java:ExternalDispatcherTest.dispatch_functionStatusMarkerWithOutOfRangeStatus_isPlatformErrorNotPassthrough#0",
+        "name": "dispatch_functionStatusMarkerWithOutOfRangeStatus_isPlatformErrorNotPassthrough",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java:ExternalDispatcherTest.dispatch_functionStatusMarkerWithTextPlain_decodesBodyAsString#0",
+        "name": "dispatch_functionStatusMarkerWithTextPlain_decodesBodyAsString",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java:ExternalDispatcherTest.dispatch_noFunctionStatusMarker_non2xxIsStillExternalError#0",
+        "name": "dispatch_noFunctionStatusMarker_non2xxIsStillExternalError",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java:ExternalDispatcherTest.dispatch_noFunctionStatusMarker_unrecognizedContentTypeIsStillExternalError#0",
+        "name": "dispatch_noFunctionStatusMarker_unrecognizedContentTypeIsStillExternalError",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java:ExternalDispatcherTest.poolDispatchCallsEndpoint#0",
+        "name": "poolDispatchCallsEndpoint",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java:ExternalDispatcherTest.poolDispatchHandlesEmptySuccessfulResponse#0",
+        "name": "poolDispatchHandlesEmptySuccessfulResponse",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java:ExternalDispatcherTest.poolDispatchHandlesTextPlain#0",
+        "name": "poolDispatchHandlesTextPlain",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java:ExternalDispatcherTest.poolDispatchSendsDispatchAttemptHeader#0",
+        "name": "poolDispatchSendsDispatchAttemptHeader",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTimeoutTest.java:ExternalDispatcherTimeoutTest.dispatch_missingEndpoint_returnsPoolEndpointMissing#0",
+        "name": "dispatch_missingEndpoint_returnsPoolEndpointMissing",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTimeoutTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTimeoutTest.java:ExternalDispatcherTimeoutTest.dispatch_serverError_returnsPoolError#0",
+        "name": "dispatch_serverError_returnsPoolError",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTimeoutTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTimeoutTest.java:ExternalDispatcherTimeoutTest.dispatch_slowServer_returnsPoolTimeout#0",
+        "name": "dispatch_slowServer_returnsPoolTimeout",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTimeoutTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/DispatchLifecycleAndCancellationTest.java:DispatchLifecycleAndCancellationTest.administrativeExpiryCancelsTheHttpTransportAndArchivesTheOutcome#0",
+        "name": "administrativeExpiryCancelsTheHttpTransportAndArchivesTheOutcome",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/DispatchLifecycleAndCancellationTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/DispatchLifecycleAndCancellationTest.java:DispatchLifecycleAndCancellationTest.cancellingTheRawHttpFutureDisposesTheTransportSubscription#0",
+        "name": "cancellingTheRawHttpFutureDisposesTheTransportSubscription",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/DispatchLifecycleAndCancellationTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P12CrossHostAdmissionTest.java:P12CrossHostAdmissionTest.perDestinationPoolsDoNotBypassP07AggregateExecutionInputOrWaiterAdmission#0",
+        "name": "perDestinationPoolsDoNotBypassP07AggregateExecutionInputOrWaiterAdmission",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P12CrossHostAdmissionTest.java"
+      }
+    ],
+    "imports": [
+      {
+        "uid": "File:docs/experiments/pre-soak-review-2026-09-08/Audit.java",
+        "name": "Audit.java",
+        "filePath": "docs/experiments/pre-soak-review-2026-09-08/Audit.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/config/DispatchConnectionPoolTest.java",
+        "name": "DispatchConnectionPoolTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/config/DispatchConnectionPoolTest.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/DispatchLifecycleAndCancellationTest.java",
+        "name": "DispatchLifecycleAndCancellationTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/DispatchLifecycleAndCancellationTest.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P12CrossHostAdmissionTest.java",
+        "name": "P12CrossHostAdmissionTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P12CrossHostAdmissionTest.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/ReviewLifecycleGateTest.java",
+        "name": "ReviewLifecycleGateTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/ReviewLifecycleGateTest.java"
+      }
+    ],
+    "accesses": [
+      {
+        "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/DispatcherRouter.java:DispatcherRouter.DispatcherRouter#2",
+        "name": "DispatcherRouter",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/DispatcherRouter.java"
+      }
+    ]
+  },
+  "outgoing": {
+    "has_method": [
+      {
+        "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcher.java:ExternalDispatcher.ExternalDispatcher#1",
+        "name": "ExternalDispatcher",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcher.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcher.java:ExternalDispatcher.decodeBody#2",
+        "name": "decodeBody",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcher.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcher.java:ExternalDispatcher.dispatch#1",
+        "name": "dispatch",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcher.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcher.java:ExternalDispatcher.extractAllowedHeaders#1",
+        "name": "extractAllowedHeaders",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcher.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcher.java:ExternalDispatcher.parseInitDuration#1",
+        "name": "parseInitDuration",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcher.java"
+      }
+    ],
+    "has_property": [
+      {
+        "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcher.java:ExternalDispatcher.JSON_FALLBACK_MAPPER",
+        "name": "JSON_FALLBACK_MAPPER",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcher.java"
+      },
+      {
+        "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcher.java:ExternalDispatcher.webClient",
+        "name": "webClient",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcher.java"
+      }
+    ]
+  },
+  "typed_properties": [
+    {
+      "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/DispatcherRouter.java:DispatcherRouter.poolDispatcher",
+      "name": "poolDispatcher",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/DispatcherRouter.java",
+      "declaredType": "ExternalDispatcher"
+    }
+  ],
+  "processes": [],
+  "staleness": {
+    "commitsBehind": 2,
+    "hint": "⚠️ Index is 2 commits behind HEAD. Run analyze tool to update."
+  }
+}

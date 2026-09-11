@@ -1,0 +1,36 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogCostMeasurementTest",
+      "name": "measuresSnapshotMutationCostsAtDeclaredCatalogSizes()",
+      "seconds": "1.903",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    ":control-plane:test",
+    "-PcontrolPlaneModules=none",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogCostMeasurementTest",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 1,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 15.67089295387268,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "catalog-cost",
+  "output_sha256": "40ac2694c1ed9618a9e6b7574244e2d457e2f3fea239af82144f9b2ffaad0ab1",
+  "started_unix_s": 1789127990.4158123
+}

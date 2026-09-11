@@ -1,0 +1,184 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest",
+      "name": "usesEnvironmentWhenProjectPropertyIsAbsent()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest",
+      "name": "rejectsDuplicateSelectedModules()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest",
+      "name": "rejectsMissingStrongModuleWhenItIsNotSelected()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest",
+      "name": "doesNotAddOneOfProviderAsGradleDependency()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest",
+      "name": "doesNotAutoSelectOneOfProvider()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest",
+      "name": "rejectsNoneCombinedWithModule()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest",
+      "name": "rejectsConflictExpandedByAll()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest",
+      "name": "allowsMissingWeakModuleWhenItIsNotSelected()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest",
+      "name": "selectsAValidSingleModule()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest",
+      "name": "rejectsDescriptorIdMismatch()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest",
+      "name": "composesSelectedModuleFragmentsIntoControlPlaneOpenApi()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest",
+      "name": "rejectsMissingDescriptor()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest",
+      "name": "selectsNoModules()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest",
+      "name": "publishesSelectionAsImmutableExtraProperty()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest",
+      "name": "projectPropertyTakesPrecedenceOverEnvironment()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest",
+      "name": "usesDefaultEnabledWhenSelectorEnvironmentIsAbsent()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest",
+      "name": "rejectsConflictingModules()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest",
+      "name": "allRejectsConflictBetweenNonDefaultModules()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest",
+      "name": "allSelectsEveryCompatibleModuleInSortedOrder()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest",
+      "name": "allPrefersDefaultEnabledModuleOnConflict()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest",
+      "name": "rejectsUnknownModule()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ModuleConstraintResolverTest",
+      "name": "rejectsDuplicatesUnknownReferencesMissingStrongAndConflicts()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ModuleConstraintResolverTest",
+      "name": "doesNotMutateSelectedModules()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ModuleConstraintResolverTest",
+      "name": "enforcesTransitiveStrongRequirementsAndRejectsCycles()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ModuleConstraintResolverTest",
+      "name": "requiresAtLeastOneSelectedOneOfProvider()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ModuleConstraintResolverTest",
+      "name": "oneOfDoesNotAutoSelectOrCreateStrongCycles()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ModuleConstraintResolverTest",
+      "name": "validatesOneOfReferencesEvenForUnselectedDeclaringModules()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.ModuleConstraintResolverTest",
+      "name": "acceptsStrongAndWeakRequirementsWhenSatisfied()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.RepositoryModuleDescriptorsTest",
+      "name": "everyImmediateGradleModuleHasExactlyOneValidDescriptor()",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.gradle.RepositoryModuleDescriptorsTest",
+      "name": "deploymentProvidersHaveComplementaryDefaultsAndMutualConflicts()",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    "-p",
+    "platform/gradle-plugin",
+    "test",
+    "--tests",
+    "it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.gradle.ModuleConstraintResolverTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.gradle.RepositoryModuleDescriptorsTest",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 30,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 18.714643478393555,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "selector-tests",
+  "output_sha256": "57d1fa319c92bd0cead1a7d920406c634cc69daa654e017b869538a1646c8e56",
+  "started_unix_s": 1789128142.0439792
+}

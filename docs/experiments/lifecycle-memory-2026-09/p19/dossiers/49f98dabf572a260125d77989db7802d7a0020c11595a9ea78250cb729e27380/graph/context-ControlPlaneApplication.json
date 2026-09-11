@@ -1,0 +1,27 @@
+{
+  "status": "ambiguous",
+  "message": "Found 2 symbols matching 'ControlPlaneApplication'. Use uid, file_path, or kind to disambiguate.",
+  "totalCandidates": 2,
+  "candidates": [
+    {
+      "uid": "Class:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/ControlPlaneApplication.java:ControlPlaneApplication",
+      "name": "ControlPlaneApplication",
+      "kind": "Class",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/ControlPlaneApplication.java",
+      "line": 13,
+      "score": 0.6
+    },
+    {
+      "uid": "Class:experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/ControlPlaneApplication.java:ControlPlaneApplication",
+      "name": "ControlPlaneApplication",
+      "kind": "Class",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/ControlPlaneApplication.java",
+      "line": 18,
+      "score": 0.6
+    }
+  ],
+  "staleness": {
+    "commitsBehind": 2,
+    "hint": "⚠️ Index is 2 commits behind HEAD. Run analyze tool to update."
+  }
+}

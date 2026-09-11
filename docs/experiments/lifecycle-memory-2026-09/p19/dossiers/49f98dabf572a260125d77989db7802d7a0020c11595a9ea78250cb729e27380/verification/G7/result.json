@@ -1,0 +1,112 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigServiceTest",
+      "name": "staleAndUnknownUpdatesHaveNoSideEffects()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigServiceTest",
+      "name": "failedSnapshotRestoresStateWithoutAdvancingRevision()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigServiceTest",
+      "name": "failedSuccessMetricRestoresStateWithoutAdvancingRevision()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigServiceTest",
+      "name": "failedApplyRestoresPreviousStateAndRevision()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigServiceTest",
+      "name": "rejectedUpdatesAreNotTimed()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigServiceTest",
+      "name": "failedFailureMetricDoesNotMaskRuntimeConfigApplyException()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigServiceTest",
+      "name": "updatesOneNamespaceAndIncrementsRevision()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.runtimeconfig.ControlPlaneRuntimeConfigExtensionTest",
+      "name": "reducesQuotaBelowOccupancyWithoutEvictionAndResumesAfterDrain()",
+      "seconds": "0.038",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.runtimeconfig.ControlPlaneRuntimeConfigExtensionTest",
+      "name": "validatesAndAppliesPositiveRateLimit()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.runtimeconfig.ControlPlaneRuntimeConfigExtensionTest",
+      "name": "validatesTheEffectiveMergedQuotaPatch()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.runtimeconfig.ControlPlaneRuntimeConfigExtensionTest",
+      "name": "acceptsOnlyPositiveIntRateLimits()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.runtimeconfig.AdminRuntimeConfigIntegrationTest",
+      "name": "validatesAndRejectsUnknownNamespace()",
+      "seconds": "0.6",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.runtimeconfig.AdminRuntimeConfigIntegrationTest",
+      "name": "exposesNamespacedSnapshotAndPatch()",
+      "seconds": "0.023",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    ":control-plane-modules:runtime-config:test",
+    "-PcontrolPlaneModules=sync-queue,runtime-config",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.runtimeconfig.ControlPlaneRuntimeConfigExtensionTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigServiceTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.runtimeconfig.AdminRuntimeConfigIntegrationTest",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 13,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 8.243496894836426,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "G7",
+  "output_sha256": "6b45785ed7891ca6319acb67cb621f117e76844560048835685547b695b21a46",
+  "started_unix_s": 1789127448.8015788
+}

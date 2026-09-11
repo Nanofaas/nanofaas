@@ -1,0 +1,1451 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.FunctionContextTest",
+      "name": "getLogger_returnsNonNull()",
+      "seconds": "0.091",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.FunctionContextTest",
+      "name": "getExecutionId_returnsNullWhenNotSet()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.FunctionContextTest",
+      "name": "getExecutionId_returnsMdcValue()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.FunctionContextTest",
+      "name": "getTraceId_returnsMdcValue()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackDispatcherBoundedSerializationTest",
+      "name": "abortsPathologicalCallbackSerializationBeforeQueueing()",
+      "seconds": "0.075",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.NanofaasRuntimeHintsTest",
+      "name": "registersCallbackPayloadAndErrorInfoForJacksonBinding()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.BoundedJsonTest",
+      "name": "abortsCustomSerializationAtTheByteLimit()",
+      "seconds": "0.009",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.BoundedJsonTest",
+      "name": "returnsTheSingleBoundedSerializationForReuse()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.MetricsEndpointTest",
+      "name": "metrics_isExposed()",
+      "seconds": "0.196",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.MetricsEndpointTest",
+      "name": "health_isExposed()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackClientSerializedTest",
+      "name": "sendsTheAlreadyBoundedBytesWithoutObjectGraphReserialization()",
+      "seconds": "0.051",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackDispatcherTest",
+      "name": "submit_dispatchesMultipleCallbacksConcurrently()",
+      "seconds": "0.014",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackDispatcherTest",
+      "name": "shutdown_waitsForRunningCallbacksToFinish()",
+      "seconds": "0.107",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackDispatcherTest",
+      "name": "submit_delegatesToCallbackClient()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackDispatcherTest",
+      "name": "submit_returnsFalseWhenQueueIsFull()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.SharedSaturationWireCorpusTest",
+      "name": "success-drain",
+      "seconds": "0.023",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.SharedSaturationWireCorpusTest",
+      "name": "input-too-large",
+      "seconds": "0.015",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.SharedSaturationWireCorpusTest",
+      "name": "output-too-large",
+      "seconds": "0.017",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.SharedSaturationWireCorpusTest",
+      "name": "callback-saturated",
+      "seconds": "0.022",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.SharedSaturationWireCorpusTest",
+      "name": "handler-timeout",
+      "seconds": "0.082",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.SharedSaturationWireCorpusTest",
+      "name": "cancellation",
+      "seconds": "0.032",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.SharedSaturationWireCorpusTest",
+      "name": "health-under-saturation",
+      "seconds": "0.029",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.SharedSaturationWireCorpusTest",
+      "name": "stop-with-full-queue",
+      "seconds": "0.135",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.SharedSaturationWireCorpusTest",
+      "name": "restart",
+      "seconds": "0.03",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.SharedSaturationWireCorpusTest",
+      "name": "callback-delivery-exhausted",
+      "seconds": "0.021",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.SharedSaturationWireCorpusTest",
+      "name": "dispatch-retry-identity",
+      "seconds": "0.023",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.SharedSaturationWireCorpusTest",
+      "name": "handler-saturated",
+      "seconds": "0.015",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.MetricsControllerTest",
+      "name": "metrics_registryAvailable_returnsOkWithScrape()",
+      "seconds": "0.16",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.MetricsControllerTest",
+      "name": "metrics_registryNull_returns503()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.SaturationAdapterMutationTest",
+      "name": "structurally valid \"status\" mutation must fail runtime comparison",
+      "seconds": "0.093",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.SaturationAdapterMutationTest",
+      "name": "structurally valid \"outcome\" mutation must fail runtime comparison",
+      "seconds": "0.065",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.SaturationAdapterMutationTest",
+      "name": "structurally valid \"callback\" mutation must fail runtime comparison",
+      "seconds": "0.109",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.SaturationAdapterMutationTest",
+      "name": "structurally valid \"attempts\" mutation must fail runtime comparison",
+      "seconds": "0.079",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.SaturationAdapterMutationTest",
+      "name": "structurally valid \"counters\" mutation must fail runtime comparison",
+      "seconds": "0.069",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.SaturationAdapterMutationTest",
+      "name": "structurally valid \"observations\" mutation must fail runtime comparison",
+      "seconds": "0.059",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.HandlerExecutorLimitsTest",
+      "name": "rejectsAdmissionAfterStopWithLifecycleSpecificSignal()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.HandlerExecutorLimitsTest",
+      "name": "rejectsASecondPhysicalHandlerAndReleasesCapacityOnRealExit()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.RuntimePayloadLimitsBoundedTest",
+      "name": "normalizesFromOneBoundedSerializationWithoutUnlimitedTraversal()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.RuntimePayloadLimitsBoundedTest",
+      "name": "returnsTheNormalizedTreeFromTheBoundedBytes()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerBoundedOutputTest",
+      "name": "rejectsCustomOutputBeforeBuildingAnUnlimitedJsonTree()",
+      "seconds": "0.066",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.autoconfigure.NanofaasAutoConfigurationTest",
+      "name": "runtimeSettings_convertsBlankValuesToNull()",
+      "seconds": "0.084",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.autoconfigure.NanofaasAutoConfigurationTest",
+      "name": "runtimeSettings_bindsAndNormalizesEnvironmentValues()",
+      "seconds": "0.079",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.TraceLoggingFilterTest",
+      "name": "filterChainException_mdcStillCleaned()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.TraceLoggingFilterTest",
+      "name": "onlyTraceHeader_setsOnlyTraceId()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.TraceLoggingFilterTest",
+      "name": "noHeaders_mdcRemainsEmpty()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.TraceLoggingFilterTest",
+      "name": "bothHeaders_populatesMDC()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.TraceLoggingFilterTest",
+      "name": "blankExecutionHeader_fallsBackToEnvExecutionId()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.TraceLoggingFilterTest",
+      "name": "blankTraceHeader_fallsBackToEnvTraceId()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.HandlerExecutorCancellationTest",
+      "name": "interruptRequestsHandlerCancellationButRetainsPermitUntilPhysicalExit()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.RuntimePayloadLimitFilterTest",
+      "name": "rejectsOversizedChunkedBodyBeforeControllerAndDoesNotRetainAnUnlimitedCopy()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerLimitsTest",
+      "name": "callbackSaturationRejectsBeforeHandlerWithCanonicalRetryable429()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerLimitsTest",
+      "name": "handlerSaturationReturnsCanonicalRetryable429()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerLimitsTest",
+      "name": "oversizedOutputReturnsCanonical500AndStillSubmitsBoundedErrorCallback()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerLimitsTest",
+      "name": "stoppedRuntimeReturnsCanonicalRetryable503()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerTest",
+      "name": "invoke_callbackFails_stillReturnsOk()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerTest",
+      "name": "invoke_handlerCannotSpoofEncodingHeaderThroughItsOwnHeadersMap()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerTest",
+      "name": "invoke_handlerThrowsWithoutMessage_returnsStable500AndCallbackPayload()",
+      "seconds": "0.009",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerTest",
+      "name": "invoke_normalizesOutputOnceForResponseAndCallback()",
+      "seconds": "0.009",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerTest",
+      "name": "invoke_handlerReturnsHandlerResponse_usesItsStatusAndHeaders()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerTest",
+      "name": "invoke_blankHeaderAndBlankEnv_returnsBadRequest()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerTest",
+      "name": "invokeController_delegatesExecutionIdAndTraceResolution()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerTest",
+      "name": "invoke_noExecutionId_returnsBadRequest()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerTest",
+      "name": "invoke_handlerReturnsHandlerResponse_dropsDisallowedHeaders()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerTest",
+      "name": "invoke_base64EnvelopeWithBinaryContentType_preservesContentTypeAndWritesJsonString()",
+      "seconds": "0.014",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerTest",
+      "name": "invoke_handlerThrows_returns500AndSendsErrorCallback()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerTest",
+      "name": "invoke_handlerReturnsHandlerResponseWithEncoding_emitsEncodingHeader()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerTest",
+      "name": "invoke_success_returnsOkWithOutput()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerTest",
+      "name": "invoke_handlerReturnsPlainValue_neverEmitsEncodingHeader()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerTest",
+      "name": "invoke_handlerReturnsHandlerResponse_disallowedHeaderLogsWarnWithHeaderNameAndExecutionId()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerTest",
+      "name": "invoke_handlerTimesOut_returns504AndSendsErrorCallback()",
+      "seconds": "0.057",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerTest",
+      "name": "invoke_handlerReturnsHandlerResponseWithoutEncoding_omitsEncodingHeader()",
+      "seconds": "0.01",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerTest",
+      "name": "invoke_handlerReturnsHandlerResponse_dedupedHeaderIsNamedInWarnAlongsideDisallowedOne()",
+      "seconds": "0.016",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerTest",
+      "name": "invoke_withDispatchAttemptHeader_sendsAttemptOnCallback()",
+      "seconds": "0.013",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerTest",
+      "name": "invoke_passesCallerHeadersFromBodyToHandler()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerTest",
+      "name": "coldStartHeader_isReportedOnlyForFirstResolvedInvocation()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerTest",
+      "name": "invoke_handlerReturnsPlainValue_behavesExactlyAsToday()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerTest",
+      "name": "invoke_handlerReturnsHandlerResponse_invalidStatusCodeFallsBackToPlatformError()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackClientDeadlineTest",
+      "name": "configuredAttemptCountAndReadDeadlineBoundCallbackRetention()",
+      "seconds": "1.369",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvocationRuntimeContextResolverTest",
+      "name": "resolve_nullTraceIdFallsBackToInjectedTraceId()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvocationRuntimeContextResolverTest",
+      "name": "resolve_blankHeaderExecutionIdFallsBackToInjectedExecutionId()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvocationRuntimeContextResolverTest",
+      "name": "resolve_headerExecutionIdOverridesInjectedExecutionId()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.ColdStartTrackerTest",
+      "name": "markFirstRequestArrival_isIdempotent()",
+      "seconds": "0.02",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.ColdStartTrackerTest",
+      "name": "initDurationMs_doesNotIncludeHandlerTime()",
+      "seconds": "0.05",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.ColdStartTrackerTest",
+      "name": "initDurationMs_beforeMarkFirstRequestArrival_returnsMinusOne()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.ColdStartTrackerTest",
+      "name": "firstInvocation_returnsTrueOnlyOnce()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.ColdStartTrackerTest",
+      "name": "initDurationMs_isNonNegative()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.HandlerExecutorTest",
+      "name": "commonTimeoutEnvironmentValueUsesMilliseconds()",
+      "seconds": "0.029",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.HandlerExecutorTest",
+      "name": "execute_handlerThrowsRuntimeException_propagatesException()",
+      "seconds": "0.035",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.HandlerExecutorTest",
+      "name": "execute_handlerCompletesBeforeTimeout_returnsResult()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.HandlerExecutorTest",
+      "name": "execute_handlerExceedsTimeout_throwsTimeoutException()",
+      "seconds": "0.102",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.HttpClientConfigOwnershipTest",
+      "name": "unrelatedHttpClientsDoNotMakeCallbackClientResolutionAmbiguous()",
+      "seconds": "0.013",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.HttpClientConfigOwnershipTest",
+      "name": "springClosesTheHttpClientCreatedByItsConfiguration()",
+      "seconds": "0.116",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.HttpClientConfigOwnershipTest",
+      "name": "configurationDoesNotCloseAnUnrelatedHttpClient()",
+      "seconds": "0.022",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.HttpClientConfigOwnershipTest",
+      "name": "namedCallbackClientOverrideWinsAlongsideUnrelatedClient()",
+      "seconds": "0.009",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.HandlerRegistryTest",
+      "name": "resolve_noHandlers_throwsIllegalState()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.HandlerRegistryTest",
+      "name": "resolve_singleHandler_returnsIt()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.HandlerRegistryTest",
+      "name": "resolve_multipleHandlers_withoutFunctionHandlerSet_throwsIllegalState()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.HandlerRegistryTest",
+      "name": "resolve_singleHandler_resolve_twice_returnsSameInstance()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.HandlerRegistryTest",
+      "name": "resolve_multipleHandlers_errorMessageListsAvailableBeans()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.HandlerRegistryTest",
+      "name": "resolve_multipleHandlers_withFunctionHandlerSet_returnsNamedBean()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.HandlerRegistryTest",
+      "name": "resolve_multipleHandlers_unknownFunctionHandlerName_throwsIllegalState()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeLimitsWireTest",
+      "name": "stoppingHasCanonicalWireResponse()",
+      "seconds": "0.025",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeLimitsWireTest",
+      "name": "inputAndOutputCapsHaveCanonicalWireResponses()",
+      "seconds": "0.022",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeLimitsWireTest",
+      "name": "callbackAndHandlerSaturationHaveDistinctCanonicalWireResponses()",
+      "seconds": "0.032",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackDispatcherLimitsTest",
+      "name": "rejectsAnOversizedSerializedCallbackBeforeQueueing()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackDispatcherLimitsTest",
+      "name": "reservesCallbackCountAndBytesBeforeHandlerAndReleasesThemExactlyOnce()",
+      "seconds": "0.042",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackDispatcherLimitsTest",
+      "name": "submittedReservationIsOwnedUntilPhysicalCallbackExit()",
+      "seconds": "0.112",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackDispatcherLimitsTest",
+      "name": "boundedStopReleasesRunningAndQueuedReservations()",
+      "seconds": "0.126",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackDispatcherLimitsTest",
+      "name": "legacySubmitAlsoReservesTheFiniteCallbackByteBudget()",
+      "seconds": "0.11",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackPayloadTest",
+      "name": "serializedFieldNamesMatchInvocationResult()",
+      "seconds": "0.007",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackPayloadTest",
+      "name": "successWithEnvelope_carriesFields()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackPayloadTest",
+      "name": "success_hasNullEnvelopeFieldsByDefault()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.NanofaasFunctionAnnotationTest",
+      "name": "annotationHasRuntimeRetention()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.NanofaasFunctionAnnotationTest",
+      "name": "annotationIsMetaAnnotatedWithComponent()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.RuntimePayloadLimitFilterDeadlineTest",
+      "name": "stalledBodyReadIsCancelledAtConfiguredDeadline()",
+      "seconds": "0.042",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.InvokeControllerCancellationTest",
+      "name": "interruptedInvocationEmitsCanonicalTerminalCallbackAndNoWireSuccess()",
+      "seconds": "0.092",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.RuntimePayloadLimitsTest",
+      "name": "measuresSerializedOutputAgainstFiniteLimit()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.RuntimePayloadLimitsTest",
+      "name": "rejectsNonPositiveLimit()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.SaturationRuntimeObservationTest",
+      "name": "outputCounterObservesRealOutputBeforeDraining()",
+      "seconds": "0.023",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackCorpusProjectionTest",
+      "name": "actualCallbacksOmitOnlyAbsentEnvelopeFields()",
+      "seconds": "0.013",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackClientTest",
+      "name": "sendResult_blankBaseUrl_returnsFalse()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackClientTest",
+      "name": "sendResult_normalizesTrailingSlashAndCompleteSuffix()",
+      "seconds": "0.028",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackClientTest",
+      "name": "sendResult_interruptedDuringRetry_returnsFalseAndRestoresInterruptFlag()",
+      "seconds": "0.013",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackClientTest",
+      "name": "sendResult_urlEndsWithComplete_stillUsesCorrectExecutionId()",
+      "seconds": "0.009",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackClientTest",
+      "name": "sendResult_success_buildsUrlAndSendsBody()",
+      "seconds": "0.015",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackClientTest",
+      "name": "sendResult_allRetriesFail_returnsFalse()",
+      "seconds": "0.024",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackClientTest",
+      "name": "sendResult_errorResult_sendsErrorPayload()",
+      "seconds": "0.01",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackClientTest",
+      "name": "sendResult_sendsStructuredJsonNodeOutputWithoutMessageConverter()",
+      "seconds": "0.02",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackClientTest",
+      "name": "sendResult_urlWithTrailingWhitespaceAndSlash_isNormalized()",
+      "seconds": "0.011",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackClientTest",
+      "name": "sendResult_doesNotStringifySuccessfulOutputs()",
+      "seconds": "0.009",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackClientTest",
+      "name": "sendResult_nullExecutionId_returnsFalse()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackClientTest",
+      "name": "sendResult_blankExecutionId_returnsFalse()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackClientTest",
+      "name": "sendResult_usesInjectedCallbackSettings()",
+      "seconds": "0.007",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackClientTest",
+      "name": "sendResult_urlAlreadyEndsWithComplete_usesUrlAsIs()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackClientTest",
+      "name": "sendResult_permanent4xxFailure_isNotRetried()",
+      "seconds": "0.013",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackClientTest",
+      "name": "sendResult_nullBaseUrl_returnsFalse()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackClientTest",
+      "name": "sendResult_retryable\"500\"Failure_isRetried",
+      "seconds": "0.016",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackClientTest",
+      "name": "sendResult_retryable\"429\"Failure_isRetried",
+      "seconds": "0.009",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackClientTest",
+      "name": "sendResult_retryable\"408\"Failure_isRetried",
+      "seconds": "0.008",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.CallbackClientTest",
+      "name": "sendResult_successWithoutTraceId_usesInjectedDefaultTraceHeader()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.JsonOutputNormalizerTest",
+      "name": "toJsonNode_preservesStructuredMapOutput()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.JsonOutputNormalizerTest",
+      "name": "toJsonNode_wrapsSerializationFailureWithClearException()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.runtime.JsonOutputNormalizerTest",
+      "name": "toJsonNode_preservesNullAsJsonNull()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.callback.CallbackClientInterruptionTest",
+      "name": "interruptionDuringSendIsPreservedAndNeverRetried()",
+      "seconds": "10.008",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.callback.CallbackClientInterruptionTest",
+      "name": "interruptionDuringRetryDelayIsPreservedAndStopsRetries()",
+      "seconds": "0.016",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.SharedSaturationWireCorpusTest",
+      "name": "success-drain",
+      "seconds": "0.013",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.SharedSaturationWireCorpusTest",
+      "name": "input-too-large",
+      "seconds": "0.012",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.SharedSaturationWireCorpusTest",
+      "name": "output-too-large",
+      "seconds": "0.011",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.SharedSaturationWireCorpusTest",
+      "name": "callback-saturated",
+      "seconds": "0.014",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.SharedSaturationWireCorpusTest",
+      "name": "handler-timeout",
+      "seconds": "0.073",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.SharedSaturationWireCorpusTest",
+      "name": "cancellation",
+      "seconds": "0.019",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.SharedSaturationWireCorpusTest",
+      "name": "health-under-saturation",
+      "seconds": "0.017",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.SharedSaturationWireCorpusTest",
+      "name": "stop-with-full-queue",
+      "seconds": "0.113",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.SharedSaturationWireCorpusTest",
+      "name": "restart",
+      "seconds": "0.022",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.SharedSaturationWireCorpusTest",
+      "name": "callback-delivery-exhausted",
+      "seconds": "0.02",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.SharedSaturationWireCorpusTest",
+      "name": "dispatch-retry-identity",
+      "seconds": "0.015",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.SharedSaturationWireCorpusTest",
+      "name": "handler-saturated",
+      "seconds": "0.011",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.callback.CallbackClientOwnershipTest",
+      "name": "closeTerminatesTheHttpClientCreatedByTheCallbackClient()",
+      "seconds": "0.106",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.callback.CallbackClientOwnershipTest",
+      "name": "closeDoesNotTerminateAnInjectedHttpClient()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.callback.CallbackClientBoundedSerializationTest",
+      "name": "directCallbackSerializationAbortsCustomValuesAtThePayloadCap()",
+      "seconds": "0.014",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.SaturationCorpusRuntimeMismatchTest",
+      "name": "dispatchRetryIdentityMatchesRealResponsesAndCallbacks()",
+      "seconds": "0.342",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerCancellationTest",
+      "name": "requestCancellationEmitsCanonicalCallbackAndRetainsPhysicalHandlerOwnership()",
+      "seconds": "0.024",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerInterruptedCallbackShutdownTest",
+      "name": "boundedShutdownWaitsForInterruptedCallbackToReleaseReservation()",
+      "seconds": "0.093",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerInterruptedCallbackShutdownTest",
+      "name": "stopPreservesCallerInterruptWhileStillDrainingCallbackOwnership()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.BoundedJsonTest",
+      "name": "abortsCustomSerializationAtTheByteLimit()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.BoundedJsonTest",
+      "name": "returnsTheSingleBoundedSerializationForReuse()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerCallbackFailureMetricTest",
+      "name": "exhaustedCallbackIncrementsBoundedFailureMetricOnce()",
+      "seconds": "0.663",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.RuntimeLimitsTest",
+      "name": "callbackReservationPrecedesHandlerAndBothReleaseExactlyOnce()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.RuntimeLimitsTest",
+      "name": "rejectsInvalidOrInconsistentLimits()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerLimitsWireTest",
+      "name": "inputAndOutputCapsUseCanonicalWireOutcomes()",
+      "seconds": "0.043",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerLimitsWireTest",
+      "name": "boundedStopReleasesAFullOwnedCallbackQueueAndTheActiveCallbackOnExit()",
+      "seconds": "0.056",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerLimitsWireTest",
+      "name": "stopBetweenHandlerReservationAndRegistrationReleasesThePermit()",
+      "seconds": "0.05",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerLimitsWireTest",
+      "name": "callbackAndHandlerSaturationAreDistinctRetryableOutcomes()",
+      "seconds": "0.05",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.metrics.RuntimeMetricsTest",
+      "name": "registryIsDedicated()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.metrics.RuntimeMetricsTest",
+      "name": "countersIncrementCorrectly()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerBodyDeadlineTest",
+      "name": "stalledRequestBodyGetsFiniteCanonicalTimeout()",
+      "seconds": "0.05",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerTest",
+      "name": "getMethodReturns405()",
+      "seconds": "0.018",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerTest",
+      "name": "malformedJsonReturns400()",
+      "seconds": "0.022",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerTest",
+      "name": "coldStartHeaders()",
+      "seconds": "0.024",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerTest",
+      "name": "handlerErrorReturns500()",
+      "seconds": "0.03",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerTest",
+      "name": "handlerTimeoutReturns504()",
+      "seconds": "0.054",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerTest",
+      "name": "handlerRejectedExecutionExceptionRemainsAHandlerError()",
+      "seconds": "0.032",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerTest",
+      "name": "missingExecutionIdReturns400()",
+      "seconds": "0.017",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerTest",
+      "name": "successfulInvocation_sendsDispatchAttemptOnCallback()",
+      "seconds": "0.028",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerTest",
+      "name": "successfulInvocation()",
+      "seconds": "0.032",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerTest",
+      "name": "callbackDispatchUsesBoundedWorkerAndQueue()",
+      "seconds": "0.164",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.callback.CallbackClientDeadlineTest",
+      "name": "boundedAttemptsEachHaveTheConfiguredDeadline()",
+      "seconds": "0.126",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.callback.CallbackClientTest",
+      "name": "permanent4xxIsNotRetried()",
+      "seconds": "0.018",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.callback.CallbackClientTest",
+      "name": "nullCallbackUrlReturnsFalse()",
+      "seconds": "0.007",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.callback.CallbackClientTest",
+      "name": "callbackUrlAlwaysUsesAuthoritativeExecutionId()",
+      "seconds": "0.014",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.callback.CallbackClientTest",
+      "name": "serializationFailureIsNotRetried()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.callback.CallbackClientTest",
+      "name": "successfulCallback()",
+      "seconds": "0.013",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.callback.CallbackClientTest",
+      "name": "blankExecutionIdReturnsFalse()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.callback.CallbackClientTest",
+      "name": "retryOnFailure()",
+      "seconds": "0.625",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.callback.CallbackClientTest",
+      "name": "sendsAlreadyBoundedSerializedPayloadWithoutReserializingAnObjectGraph()",
+      "seconds": "0.016",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.SaturationAdapterMutationTest",
+      "name": "structurally valid \"status\" mutation must fail runtime comparison",
+      "seconds": "0.151",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.SaturationAdapterMutationTest",
+      "name": "structurally valid \"outcome\" mutation must fail runtime comparison",
+      "seconds": "0.093",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.SaturationAdapterMutationTest",
+      "name": "structurally valid \"callback\" mutation must fail runtime comparison",
+      "seconds": "0.1",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.SaturationAdapterMutationTest",
+      "name": "structurally valid \"attempts\" mutation must fail runtime comparison",
+      "seconds": "0.047",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.SaturationAdapterMutationTest",
+      "name": "structurally valid \"counters\" mutation must fail runtime comparison",
+      "seconds": "0.061",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.SaturationAdapterMutationTest",
+      "name": "structurally valid \"observations\" mutation must fail runtime comparison",
+      "seconds": "0.057",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.RuntimeControlTest",
+      "name": "corpusDeadlineAndAttemptControlsAreRetained()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.NanofaasRuntimeOwnershipTest",
+      "name": "concurrentStopCannotPassAnUnpublishedShutdownHook()",
+      "seconds": "0.554",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.NanofaasRuntimeOwnershipTest",
+      "name": "interruptingTheBlockingStartCallerStopsOwnedResourcesAndPreservesInterrupt()",
+      "seconds": "0.556",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.NanofaasRuntimeOwnershipTest",
+      "name": "repeatedStartStopAndDoubleStopReleaseOnlyOwnedThreadsAndSockets()",
+      "seconds": "1.255",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.NanofaasRuntimeOwnershipTest",
+      "name": "stopLeavesAnInjectedServerExecutorOpen()",
+      "seconds": "0.109",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.NanofaasRuntimeOwnershipTest",
+      "name": "stopReleasesTheBlockingStartCaller()",
+      "seconds": "0.12",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.NanofaasRuntimeOwnershipTest",
+      "name": "stopClosesTheRuntimeOwnedServerExecutorAndItsControlledThread()",
+      "seconds": "0.319",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.NanofaasRuntimeOwnershipTest",
+      "name": "shutdownHookRegistrationFailureCleansAlreadyOwnedResources()",
+      "seconds": "1.214",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.NanofaasRuntimeOwnershipTest",
+      "name": "stopPreservesTheCallingThreadsInterruptStatus()",
+      "seconds": "0.116",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.NanofaasRuntimeOwnershipTest",
+      "name": "partialBuildFailureClosesTheAlreadyCreatedCallbackClient()",
+      "seconds": "0.108",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.NanofaasRuntimeOwnershipTest",
+      "name": "bindFailureClosesResourcesCreatedBeforeTheServer()",
+      "seconds": "0.109",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.NanofaasRuntimeOwnershipTest",
+      "name": "stopIsBoundedWhenAnActiveHandlerIgnoresInterruption()",
+      "seconds": "0.372",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.NanofaasRuntimeOwnershipTest",
+      "name": "stopCancelsAnActiveHandlerAndWaitsForItsPhysicalExit()",
+      "seconds": "0.238",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerCriticalTest",
+      "name": "customOutputIsRejectedBeforeUnlimitedTraversalOrTreeMaterialization()",
+      "seconds": "0.03",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerCriticalTest",
+      "name": "malformedJsonTransfersReservationUntilPhysicalCallbackExit()",
+      "seconds": "0.036",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerCriticalTest",
+      "name": "callbackQueueRejectionAfterHandlerNeverReturnsSuccess()",
+      "seconds": "0.029",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.SaturationRuntimeObservationTest",
+      "name": "outputCounterObservesRealOutputBeforeDraining()",
+      "seconds": "0.012",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.NanofaasRuntimeTest",
+      "name": "startAndStop()",
+      "seconds": "0.114",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.NanofaasRuntimeTest",
+      "name": "builderRequiresHandler()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerOwnershipTest",
+      "name": "shutdownClosesTheCallbackExecutorCreatedByTheHandler()",
+      "seconds": "0.106",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerOwnershipTest",
+      "name": "requestAdmittedAfterStopBeginsGetsTheContractStoppingOutcome()",
+      "seconds": "0.013",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerOwnershipTest",
+      "name": "shutdownLeavesAnInjectedCallbackExecutorOpen()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.sdk.lite.handler.InvokeHandlerOwnershipTest",
+      "name": "shutdownDrainsAnActiveOwnedCallbackWorkerAndLeavesNoNamedThread()",
+      "seconds": "0.212",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.services.warmecho.core.TraceLoggingFilterTest",
+      "name": "issue016_traceIdStoredInMdc()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.services.warmecho.InvokeControllerTest",
+      "name": "invokeUsesExecutionIdFromHeader()",
+      "seconds": "0.902",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.services.warmecho.InvokeControllerTest",
+      "name": "invokeHeaderTakesPrecedenceOverEnv()",
+      "seconds": "0.017",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.services.warmecho.InvokeControllerTest",
+      "name": "issue014_invokeContractReturnsInput()",
+      "seconds": "0.042",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.services.warmecho.InvokeControllerTest",
+      "name": "invokeUsesEnvExecutionIdWhenHeaderNotProvided()",
+      "seconds": "0.007",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.services.warmecho.InvokeControllerTest",
+      "name": "invokePropagatesTraceIdToCallback()",
+      "seconds": "0.016",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.services.warmecho.InvokeControllerTest",
+      "name": "invokePropagatesNullTraceIdWhenHeaderNotProvided()",
+      "seconds": "0.022",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.services.warmecho.WarmEchoApplicationTest",
+      "name": "main_startsApplication()",
+      "seconds": "0.501",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.services.warmecho.WarmEchoApplicationTest",
+      "name": "issue015_contextLoads()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.services.warmecho.core.TraceLoggingFilterHeaderPriorityTest",
+      "name": "mdcCleanedUp_evenOnException()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.services.warmecho.core.TraceLoggingFilterHeaderPriorityTest",
+      "name": "executionId_fromHeader_takesPriorityOverEnv()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.services.warmecho.core.TraceLoggingFilterHeaderPriorityTest",
+      "name": "bothHeaders_setCorrectMdcEntries()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.services.warmecho.core.TraceLoggingFilterHeaderPriorityTest",
+      "name": "executionId_noHeader_fallsBackToEnv()",
+      "seconds": "0.001",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    ":sdks:java:test",
+    ":sdks:java-lite:test",
+    ":services:java:warm-echo:test",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 237,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 40.96606111526489,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "jvm-sdk-full",
+  "output_sha256": "b09343cf5c656498e9d35ab1a5e00a71acc2961823075bb2c81e76cdf25c7cac",
+  "started_unix_s": 1789128033.465984
+}

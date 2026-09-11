@@ -1,0 +1,186 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerResilienceTest",
+      "name": "scalingLoop_continuesWhenOneFunctionHasInvalidMetricTarget()",
+      "seconds": "0.01",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerResilienceTest",
+      "name": "scalingLoop_skipsAFunctionWithoutAReplicaReadingInsteadOfTreatingItAsZeroReplicas()",
+      "seconds": "0.008",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerResilienceTest",
+      "name": "scalingLoop_skipsAFunctionWhoseObservationThrowsInsteadOfBlockingTheLoop()",
+      "seconds": "0.015",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerTargetAwareScalingTest",
+      "name": "midRolloutRecommendation_doesNotWalkBackTheAlreadyRequestedTarget()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerTargetAwareScalingTest",
+      "name": "downscaleEvaluatedForAnOldGenerationCannotMutateItsReplacement()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerTargetAwareScalingTest",
+      "name": "concurrentRemoval_doesNotThrowWhenSetReplicasReturnsFalse()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerTargetAwareScalingTest",
+      "name": "stuckReplicas_doNotBlockAGenuineLoadDrivenDownscale()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerTargetAwareScalingTest",
+      "name": "removeFunctionState_resetsLackOfProgressForARecreatedFunction()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerTargetAwareScalingTest",
+      "name": "stuckRollout_isReconciledDownAfterTheProgressWindow()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerTargetAwareScalingTest",
+      "name": "slowStartup_readyAdvancing_keepsTheHigherTargetAcrossProgressWindows()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerDesiredVsReadyRegressionTest",
+      "name": "ongoingRolloutWithStablePressure_shouldNeverReduceTheAlreadyCommandedTarget()",
+      "seconds": "0.853",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerTest",
+      "name": "scalingLoop_ignoresNonDeploymentFunctions()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerTest",
+      "name": "scalingLoop_doesNotScaleDownWhileWakeUpProtectionIsActive()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerTest",
+      "name": "scalingLoop_ignoresFunctionsWithHpaStrategy()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerTest",
+      "name": "scalingLoop_ignoresFunctionsWithoutScalingConfig()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerTest",
+      "name": "scalingLoop_cannotScaleDownAfterWakeUpScalesToOne()",
+      "seconds": "0.018",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerTest",
+      "name": "scalingLoop_scalesFromZeroWhenLoadPresent()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerTest",
+      "name": "scalingLoop_scalesToZeroWhenNoLoad()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerTest",
+      "name": "doesNotStartWithoutDeploymentCoordinator()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerTest",
+      "name": "scalingLoop_scalesUpWhenMetricExceedsTarget()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerTest",
+      "name": "scalingLoop_doesNotScaleWhenMetricMatchesTarget()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerTest",
+      "name": "removeFunctionState_clearsScaleCooldownsForRecreatedFunction()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerTest",
+      "name": "scalingLoop_clampsToMaxReplicas()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerTest",
+      "name": "scalingLoop_ignoresFunctionsWithNoneStrategy()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerTest",
+      "name": "scalingLoop_scalesDownAfterWakeUpProtectionExpires()",
+      "seconds": "0.001",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    ":control-plane-modules:autoscaler:test",
+    "-PcontrolPlaneModules=async-queue,autoscaler",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerResilienceTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerDesiredVsReadyRegressionTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.autoscaler.InternalScalerTargetAwareScalingTest",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 25,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 6.12727165222168,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "G12",
+  "output_sha256": "d3a0c80d5fa880ade2036ab689b63d36adc0d9356e9ba9205b44b9d2b94e981f",
+  "started_unix_s": 1789127529.5268633
+}

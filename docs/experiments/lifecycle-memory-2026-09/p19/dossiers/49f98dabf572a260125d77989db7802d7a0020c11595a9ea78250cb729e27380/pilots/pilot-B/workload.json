@@ -1,0 +1,1 @@
+{"async_shapes":["flat","deep20","wide4096","large262144"],"offered":500,"outstanding_bound":32,"rate_per_s":200,"scenario":"sync","schema":"p19-http-workload-v1","seed":19,"sync_input":{"id":"cohort-index"},"warmup":200}

@@ -1,0 +1,574 @@
+---
+# Source: nanofaas/templates/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: "nanofaas"
+---
+# Source: nanofaas/templates/prometheus-serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nanofaas-prometheus
+  namespace: "nanofaas"
+---
+# Source: nanofaas/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: "nanofaas-control-plane"
+  namespace: "nanofaas"
+---
+# Source: nanofaas/templates/prometheus-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nanofaas-prometheus-config
+  namespace: "nanofaas"
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    rule_files:
+      - /etc/prometheus/rules.yml
+
+    scrape_configs:
+      - job_name: prometheus
+        scrape_interval: 10s
+        static_configs:
+          - targets: ['localhost:9090']
+
+      # Scrape Services/Endpoints annotated with prometheus.io/scrape=true in the Nanofaas namespace.
+      - job_name: nanofaas-endpoints
+        scrape_interval: 5s
+        honor_labels: false
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - nanofaas
+        relabel_configs:
+          - action: keep
+            source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+            regex: true
+          - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+            action: replace
+            separator: ;
+            regex: ([^:]+)(?::\\d+)?;(\\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: replace
+            regex: (.+)
+            source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+            target_label: __metrics_path__
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            action: replace
+            target_label: kubernetes_service_name
+        metric_relabel_configs:
+          # OpenFaaS-style label alias
+          - source_labels: [function]
+            regex: (.+)
+            target_label: function_name
+            replacement: $1
+            action: replace
+
+      # Scrape Pods annotated with prometheus.io/scrape=true in the Nanofaas namespace.
+      - job_name: nanofaas-pods
+        scrape_interval: 5s
+        honor_labels: false
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - nanofaas
+        relabel_configs:
+          - action: keep
+            source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            regex: true
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\\d+)?;(\\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: replace
+            regex: (.+)
+            source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            target_label: __metrics_path__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+        metric_relabel_configs:
+          # OpenFaaS-style label alias
+          - source_labels: [function]
+            regex: (.+)
+            target_label: function_name
+            replacement: $1
+            action: replace
+  rules.yml: |
+    groups:
+      # Best-effort OpenFaaS metric name compatibility using Nanofaas control-plane counters/gauges.
+      #
+      # Notes:
+      # - Nanofaas does not have an OpenFaaS "gateway", so these are derived from control-plane metrics.
+      # - "code" is approximated (success=200, error=500, timeout=504, queue_rejected=429).
+      - name: openfaas_compat
+        interval: 15s
+        rules:
+          - record: gateway_function_invocation_total
+            expr: label_replace(function_success_total, "code", "200", "function", ".*")
+          - record: gateway_function_invocation_total
+            expr: label_replace(function_error_total, "code", "500", "function", ".*")
+          - record: gateway_function_invocation_total
+            expr: label_replace(function_timeout_total, "code", "504", "function", ".*")
+          - record: gateway_function_invocation_total
+            expr: label_replace(function_queue_rejected_total, "code", "429", "function", ".*")
+
+          # Approximate "started" as "dispatch" (execution handed off to a function pod).
+          - record: gateway_function_invocation_started
+            expr: function_dispatch_total
+
+          # Approximate "inflight" using the control-plane queue in-flight gauge.
+          - record: gateway_function_invocation_inflight
+            expr: function_in_flight OR function_inFlight
+
+          # Approximate OpenFaaS queue-worker pending messages using Nanofaas per-function queue depth.
+          - record: queue_worker_pending_messages
+            expr: function_queue_depth
+
+          # Approximate OpenFaaS function duration metrics using Micrometer Timer output.
+          - record: gateway_function_invocation_duration_seconds_count
+            expr: function_latency_ms_seconds_count
+          - record: gateway_function_invocation_duration_seconds_sum
+            expr: function_latency_ms_seconds_sum
+
+      # Best-effort OpenFaaS Pro recording rules for "current load" (subset: rps/queue/capacity).
+      - name: openfaas_pro_load
+        interval: 15s
+        rules:
+          - record: job:function_current_load:sum
+            expr: ceil(sum by (function_name) ( rate( gateway_function_invocation_total{}[30s] ) ) and on (function_name) avg by (function_name) (gateway_service_target_load{scaling_type="rps"}) > 1)
+            labels:
+              scaling_type: rps
+          - record: job:function_current_load:sum
+            expr: avg(queue_worker_pending_messages{}) by (function_name) and on (function_name) avg by (function_name) (gateway_service_target_load{scaling_type="queue"}) > bool 1
+            labels:
+              scaling_type: queue
+          - record: job:function_current_load:sum
+            expr: ceil(sum by (function_name) ( max_over_time( gateway_function_invocation_inflight[45s:5s])) and on (function_name) avg by(function_name) (gateway_service_target_load{scaling_type="capacity"}) > bool 1)
+            labels:
+              scaling_type: capacity
+
+          - record: job:function_current_started:max_sum
+            expr: max_over_time(sum by (function_name) (rate( gateway_function_invocation_started{}[1m]))[1m:5s]) > 0
+
+      # OpenFaaS CE ships a basic alert example; keep it for parity.
+      - name: openfaas_alerts
+        rules:
+          - alert: APIHighInvocationRate
+            expr: sum(rate(gateway_function_invocation_total{code="200"}[10s])) BY (function_name) > 5
+            for: 5s
+            labels:
+              service: nanofaas
+              severity: major
+            annotations:
+              description: High invocation total on "{{$labels.function_name}}"
+              summary: High invocation total on "{{$labels.function_name}}"
+---
+# Source: nanofaas/templates/control-plane-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nanofaas-control-plane-data
+  namespace: "nanofaas"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: "1Gi"
+---
+# Source: nanofaas/templates/prometheus-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: nanofaas-prometheus
+  namespace: "nanofaas"
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints"]
+    verbs: ["get", "list", "watch"]
+
+---
+# Source: nanofaas/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: nanofaas-control-plane
+  namespace: "nanofaas"
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create", "delete", "get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+
+---
+# Source: nanofaas/templates/prometheus-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nanofaas-prometheus
+  namespace: "nanofaas"
+subjects:
+  - kind: ServiceAccount
+    name: nanofaas-prometheus
+    namespace: "nanofaas"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: nanofaas-prometheus
+
+
+---
+# Source: nanofaas/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nanofaas-control-plane
+  namespace: "nanofaas"
+subjects:
+  - kind: ServiceAccount
+    name: "nanofaas-control-plane"
+    namespace: "nanofaas"
+roleRef:
+  kind: Role
+  name: nanofaas-control-plane
+  apiGroup: rbac.authorization.k8s.io
+---
+# Source: nanofaas/templates/control-plane-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: "control-plane"
+  namespace: "nanofaas"
+  labels:
+    app: nanofaas-control-plane
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: "/actuator/prometheus"
+    prometheus.io/port: "8081"
+spec:
+  type: ClusterIP
+  selector:
+    app: nanofaas-control-plane
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: actuator
+      port: 8081
+      targetPort: 8081
+
+---
+# Source: nanofaas/templates/prometheus-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: "prometheus"
+  namespace: "nanofaas"
+  labels:
+    app: nanofaas-prometheus
+spec:
+  type: ClusterIP
+  selector:
+    app: nanofaas-prometheus
+  ports:
+    - name: http
+      port: 9090
+      targetPort: http
+---
+# Source: nanofaas/templates/control-plane-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nanofaas-control-plane
+  namespace: "nanofaas"
+  labels:
+    app.kubernetes.io/name: nanofaas
+    app.kubernetes.io/component: control-plane
+    app.kubernetes.io/instance: p19
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nanofaas-control-plane
+  template:
+    metadata:
+      labels:
+        app: nanofaas-control-plane
+    spec:
+      serviceAccountName: "nanofaas-control-plane"
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+      containers:
+        - name: control-plane
+          image: "ghcr.io/miciav/nanofaas/control-plane:v0.21.0"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+            - containerPort: 8081
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: NANOFAAS_REGISTRY_PATH
+              value: /var/lib/nanofaas/functions.json
+            - name: NANOFAAS_INVOCATION_CAPACITY_INGRESS_BODY_BYTES
+              value: "1.048576e+06"
+            - name: NANOFAAS_INVOCATION_CAPACITY_EXECUTIONS_GLOBAL
+              value: "4096"
+            - name: NANOFAAS_INVOCATION_CAPACITY_EXECUTIONS_PER_FUNCTION
+              value: "512"
+            - name: NANOFAAS_INVOCATION_CAPACITY_CANONICAL_INPUT_BYTES_GLOBAL
+              value: "1.34217728e+08"
+            - name: NANOFAAS_INVOCATION_CAPACITY_CANONICAL_INPUT_BYTES_PER_FUNCTION
+              value: "3.3554432e+07"
+            - name: NANOFAAS_INVOCATION_CAPACITY_PHYSICAL_INPUT_COPY_BYTES_GLOBAL
+              value: "6.7108864e+07"
+            - name: NANOFAAS_INVOCATION_CAPACITY_PHYSICAL_INPUT_COPY_BYTES_PER_FUNCTION
+              value: "1.6777216e+07"
+            - name: NANOFAAS_INVOCATION_CAPACITY_WAITERS_GLOBAL
+              value: "8192"
+            - name: NANOFAAS_INVOCATION_CAPACITY_WAITERS_PER_FUNCTION
+              value: "1024"
+            - name: NANOFAAS_INVOCATION_CAPACITY_MAX_INPUT_REFERENCES
+              value: "64"
+            - name: NANOFAAS_INVOCATION_CAPACITY_RETAINED_INPUT_MAX_DEPTH
+              value: "32"
+            - name: NANOFAAS_INVOCATION_CAPACITY_RETAINED_INPUT_MAX_CONTAINER_ENTRIES
+              value: "16384"
+            - name: NANOFAAS_INVOCATION_CAPACITY_RETAINED_INPUT_MAX_VISITED_NODES
+              value: "65536"
+            - name: NANOFAAS_INVOCATION_CAPACITY_RETAINED_INPUT_MAX_BYTES_PER_EXECUTION
+              value: "1.048576e+06"
+            # JAVA_TOOL_OPTIONS, not the Dockerfile's @jvm.options argfile: the event
+            # loop count depends on this chart's own CPU limit above, not on the
+            # image, and the JVM reads this env var itself at launch - no shell
+            # expansion needed even with the distroless exec-form ENTRYPOINT.
+            # controlPlane.jvm.ioWorkerCount overrides the auto-derived value when
+            # set; empty (the default) derives it from resources.limits.cpu.
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Dreactor.netty.ioWorkerCount=1"
+          volumeMounts:
+            - name: registry-data
+              mountPath: /var/lib/nanofaas
+          resources:
+            limits:
+              cpu: "1"
+              memory: 2Gi
+            requests:
+              cpu: 250m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8081
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+      volumes:
+        - name: registry-data
+          persistentVolumeClaim:
+            claimName: "nanofaas-control-plane-data"
+
+---
+# Source: nanofaas/templates/prometheus-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nanofaas-prometheus
+  namespace: "nanofaas"
+  labels:
+    app: nanofaas-prometheus
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: nanofaas-prometheus
+  template:
+    metadata:
+      labels:
+        app: nanofaas-prometheus
+      annotations:
+        checksum/prometheus-config: "40ad7bdec6a391c4b4bb33ab2cfac8ea6c3854a7a976f32894b9ff8391c148c7"
+    spec:
+      serviceAccountName: nanofaas-prometheus
+      containers:
+        - name: prometheus
+          image: "prom/prometheus:v3.9.1"
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+            - "--storage.tsdb.retention.time=15d"
+          ports:
+            - name: http
+              containerPort: 9090
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            initialDelaySeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+            initialDelaySeconds: 10
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 500m
+              memory: 1Gi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus/
+            - name: data
+              mountPath: /prometheus
+      volumes:
+        - name: config
+          configMap:
+            name: nanofaas-prometheus-config
+            items:
+              - key: prometheus.yml
+                path: prometheus.yml
+              - key: rules.yml
+                path: rules.yml
+        - name: data
+          emptyDir: {}
+---
+# Source: nanofaas/templates/demo-register-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: p19-register-demos
+  namespace: "nanofaas"
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: register
+          image: "curlimages/curl:latest"
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -euo pipefail
+
+              CP_API="http://control-plane:8080"
+              CP_MGMT="http://control-plane:8081"
+
+              echo "Waiting for control-plane readiness..."
+              ready=0
+              for i in $(seq 1 60); do
+                if curl -sf "${CP_MGMT}/actuator/health/readiness" >/dev/null; then
+                  echo "control-plane ready"
+                  ready=1
+                  break
+                fi
+                sleep 2
+              done
+              if [ "${ready}" -ne 1 ]; then
+                echo "control-plane readiness check failed after timeout" >&2
+                exit 1
+              fi
+
+              echo "Registering demo functions..."
+              echo "  - word-stats-java"
+              curl -fsS -X POST "${CP_API}/v1/functions" \
+                -H 'Content-Type: application/json' \
+                -d '{"concurrency":2,"executionMode":"DEPLOYMENT","image":"ghcr.io/miciav/nanofaas/java-word-stats:v0.21.0","maxRetries":3,"name":"word-stats-java","queueSize":50,"scalingConfig":{"maxReplicas":5,"metrics":[{"target":"2","type":"in_flight"}],"minReplicas":1,"strategy":"INTERNAL"},"timeoutMs":10000}' >/dev/null
+              echo "  - json-transform-java"
+              curl -fsS -X POST "${CP_API}/v1/functions" \
+                -H 'Content-Type: application/json' \
+                -d '{"concurrency":2,"executionMode":"DEPLOYMENT","image":"ghcr.io/miciav/nanofaas/java-json-transform:v0.21.0","maxRetries":3,"name":"json-transform-java","queueSize":50,"scalingConfig":{"maxReplicas":5,"metrics":[{"target":"2","type":"in_flight"}],"minReplicas":1,"strategy":"INTERNAL"},"timeoutMs":10000}' >/dev/null
+              echo "  - word-stats-go"
+              curl -fsS -X POST "${CP_API}/v1/functions" \
+                -H 'Content-Type: application/json' \
+                -d '{"concurrency":2,"executionMode":"DEPLOYMENT","image":"ghcr.io/miciav/nanofaas/go-word-stats:v0.21.0","maxRetries":3,"name":"word-stats-go","queueSize":50,"scalingConfig":{"maxReplicas":5,"metrics":[{"target":"2","type":"in_flight"}],"minReplicas":1,"strategy":"INTERNAL"},"timeoutMs":10000}' >/dev/null
+              echo "  - json-transform-go"
+              curl -fsS -X POST "${CP_API}/v1/functions" \
+                -H 'Content-Type: application/json' \
+                -d '{"concurrency":2,"executionMode":"DEPLOYMENT","image":"ghcr.io/miciav/nanofaas/go-json-transform:v0.21.0","maxRetries":3,"name":"json-transform-go","queueSize":50,"scalingConfig":{"maxReplicas":5,"metrics":[{"target":"2","type":"in_flight"}],"minReplicas":1,"strategy":"INTERNAL"},"timeoutMs":10000}' >/dev/null
+              echo "  - word-stats-python"
+              curl -fsS -X POST "${CP_API}/v1/functions" \
+                -H 'Content-Type: application/json' \
+                -d '{"concurrency":2,"executionMode":"DEPLOYMENT","image":"ghcr.io/miciav/nanofaas/python-word-stats:v0.21.0","maxRetries":3,"name":"word-stats-python","queueSize":50,"scalingConfig":{"maxReplicas":5,"metrics":[{"target":"2","type":"in_flight"}],"minReplicas":1,"strategy":"INTERNAL"},"timeoutMs":10000}' >/dev/null
+              echo "  - json-transform-python"
+              curl -fsS -X POST "${CP_API}/v1/functions" \
+                -H 'Content-Type: application/json' \
+                -d '{"concurrency":2,"executionMode":"DEPLOYMENT","image":"ghcr.io/miciav/nanofaas/python-json-transform:v0.21.0","maxRetries":3,"name":"json-transform-python","queueSize":50,"scalingConfig":{"maxReplicas":5,"metrics":[{"target":"2","type":"in_flight"}],"minReplicas":1,"strategy":"INTERNAL"},"timeoutMs":10000}' >/dev/null
+              echo "  - word-stats-exec"
+              curl -fsS -X POST "${CP_API}/v1/functions" \
+                -H 'Content-Type: application/json' \
+                -d '{"concurrency":2,"executionMode":"DEPLOYMENT","image":"ghcr.io/miciav/nanofaas/bash-word-stats:v0.21.0","maxRetries":3,"name":"word-stats-exec","queueSize":50,"scalingConfig":{"maxReplicas":5,"metrics":[{"target":"2","type":"in_flight"}],"minReplicas":1,"strategy":"INTERNAL"},"timeoutMs":10000}' >/dev/null
+              echo "  - json-transform-exec"
+              curl -fsS -X POST "${CP_API}/v1/functions" \
+                -H 'Content-Type: application/json' \
+                -d '{"concurrency":2,"executionMode":"DEPLOYMENT","image":"ghcr.io/miciav/nanofaas/bash-json-transform:v0.21.0","maxRetries":3,"name":"json-transform-exec","queueSize":50,"scalingConfig":{"maxReplicas":5,"metrics":[{"target":"2","type":"in_flight"}],"minReplicas":1,"strategy":"INTERNAL"},"timeoutMs":10000}' >/dev/null
+              echo "  - word-stats-java-lite"
+              curl -fsS -X POST "${CP_API}/v1/functions" \
+                -H 'Content-Type: application/json' \
+                -d '{"concurrency":2,"executionMode":"DEPLOYMENT","image":"ghcr.io/miciav/nanofaas/java-lite-word-stats:v0.21.0","maxRetries":3,"name":"word-stats-java-lite","queueSize":50,"scalingConfig":{"maxReplicas":5,"metrics":[{"target":"2","type":"in_flight"}],"minReplicas":1,"strategy":"INTERNAL"},"timeoutMs":10000}' >/dev/null
+              echo "  - json-transform-java-lite"
+              curl -fsS -X POST "${CP_API}/v1/functions" \
+                -H 'Content-Type: application/json' \
+                -d '{"concurrency":2,"executionMode":"DEPLOYMENT","image":"ghcr.io/miciav/nanofaas/java-lite-json-transform:v0.21.0","maxRetries":3,"name":"json-transform-java-lite","queueSize":50,"scalingConfig":{"maxReplicas":5,"metrics":[{"target":"2","type":"in_flight"}],"minReplicas":1,"strategy":"INTERNAL"},"timeoutMs":10000}' >/dev/null
+
+              echo "Done"

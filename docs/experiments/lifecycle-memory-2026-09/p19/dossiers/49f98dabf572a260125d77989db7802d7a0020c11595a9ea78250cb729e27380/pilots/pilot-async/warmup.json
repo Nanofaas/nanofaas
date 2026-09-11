@@ -1,0 +1,1 @@
+{"admitted":20,"offered":20,"refusal_latency_ns":{"count":0,"p50":null,"p95":null,"p99":null},"refused":0,"success_latency_ns":{"count":0,"p50":null,"p95":null,"p99":null},"terminal_failures":0,"transport_errors":20,"unique_successes":0,"unresolved":20,"useful_successes_per_s":0.0}

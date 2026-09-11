@@ -1,0 +1,19 @@
+{
+  "schema": "nanofaas-p19-protocol-v1",
+  "production_source_B": "6d08303371d803f44187ec5f4e37827d54fec597",
+  "diagnostic_source_A": "61d72e73528db62cf8ca465c6a037981d7ec13b0",
+  "order": ["A1", "B1", "A2", "B2", "A3", "B3"],
+  "common_surface": "Real configured core-only HTTP SYNC EXTERNAL, separate deterministic backend echoing input, no retries or keys",
+  "affinity": "taskset -c 5-8; inherited by server, backend and generator; four Cortex-X925 cores",
+  "jvm": ["-Xms256m", "-Xmx512m", "-XX:+UseG1GC", "-XX:ActiveProcessorCount=4"],
+  "sync": {"warmup_offers": 6000, "measured_offers": 12000, "rate_per_s": 200, "outstanding_bound": 32, "retention_wait_s": 36},
+  "async": {"revision": "B", "repeats": 3, "warmup_offers": 20, "measured_offers": 120, "rate_per_s": 50, "shapes": ["flat", "deep20", "wide4096", "large262144"], "outcome_budget_bytes": 1048576, "ttl_s": 2, "max_lifetime_s": 3, "retention_wait_s": 6, "replay":"Recent deep output is conservatively declined (404), and replay of its still-valid key returns 410 with no new attempt. Capacity eviction separately covered by fresh R2.", "calibration":"Prior 100/120-offer eviction probes are rejected and preserved. Caffeine did not deterministically evict a previously read flat result, and terminal keys expire ttl after completion, not maxLifetime+ttl. Common SYNC runs used the exact archived executed-common-harness, whose SYNC branch is unchanged."},
+  "latency": "All successful samples, nearest-rank ceil(n*q), nanoseconds; report send-to-terminal-observation and intended-arrival-to-observation separately. ASYNC acknowledgement is separate. Terminal event timestamp is also retained.",
+  "allocation": "JDK25 getTotalThreadAllocatedBytes process cumulative delta through cohort drain, including probe, retries/failures if any, divided by unique terminal successes. Validated 64MiB escaped platform and virtual allocations after thread exit. No heap delta substitution.",
+  "sampling": "Every 1s plus snapshot response/Prometheus cost; coarse sampled peaks, independently read counters, not atomic maxima. Separate no-periodic-sampling auxiliary passes were not run under the authoring timebox; observer overhead is included and unquantified.",
+  "async_terminal_observer": "Read-only bounded best-effort listener on existing ExecutionStore.onTerminal; keeps only execution identity/state/output id/timestamp, consumes each event on observation. Enabled only for B ASYNC; no payload/record retained. Required because R1 correctly declines deep/wide archive outcomes.",
+  "gc": "Warm idle, drained, post-policy, removed. Existing cache size accessors perform maintenance before System.gc. Verify GC count increase, then measure used heap. All checkpoints outside latency/allocation windows. Class histograms use -all after verified GC and may include observer-created dead objects.",
+  "accounting": "Fixed unique request IDs and execution IDs. Require offered=admitted=unique terminal successes for ordinary common surface. Refusals, transport failures, terminal errors and unresolved admissions are separate. Backend attempt IDs reconcile warm-up plus measured work. Never count replay as useful new work.",
+  "scope": "Moderate-load latency/cost/retention control, not sustainable peak capacity or statistical equivalence. A contains known bugs and cannot be an acceptance control. P23 reruns frozen B versus C contemporaneously; investigate repeatable >5% useful throughput loss or p95/p99 increase.",
+  "limitations": ["Host has unrelated background services; affinity is not exclusive CPU reservation", "Three repeats cannot establish statistical equivalence", "Polling observer adds bounded ASYNC observation lag", "Short profiles do not replace P24 soak", "Unselected/external owners use explicit unavailable/not_applicable states"]
+}

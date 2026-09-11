@@ -1,0 +1,18 @@
+{
+  "schema": "p19-external-gates-v1",
+  "checks": [
+    {"command":"docker info --format '{{.ServerVersion}}'", "sandbox_exit":1, "sandbox_result":"permission denied on Docker socket", "escalated_exit":0, "result":"29.2.1"},
+    {"command":"multipass list --format json", "exit_code":0, "result":{"list":[]}, "kubernetes_infrastructure_status":"unavailable: no provisioned VM/cluster; kubectl absent; NanoLab provisioning not undertaken"},
+    {"command":"command -v kubectl native-image helm multipass", "result":{"kubectl":"not_on_PATH", "native-image":"not_on_PATH", "helm":"/snap/bin/helm", "multipass":"/snap/bin/multipass"}},
+    {"command":"CONTROL_PLANE_MODULES=none NATIVE_BUILD_MEMORY=4g NATIVE_PARALLELISM=4 timeout 900 scripts/native-java-image.sh control-plane nanofaas/control-plane:p19-6d083033-none", "cwd":"/tmp/nanofaas-p19.AitJMN/native-source", "source":"6d08303371d803f44187ec5f4e37827d54fec597", "exit_code":0, "image":"sha256:e5cd87f4e0d6c0a12c9a8a9563e0cb4d138682ef38b1b52c35774b48910d76af", "log":"native-build.log.gz", "scope":"native compile and separate health/OpenAPI/start-stop smoke; no native performance claim"},
+    {"command":"CONTROL_PLANE_MODULES=k8s-deployment-provider NATIVE_BUILD_MEMORY=4g NATIVE_PARALLELISM=4 timeout 900 scripts/native-java-image.sh control-plane nanofaas/control-plane:p19-6d083033-k8s", "cwd":"/tmp/nanofaas-p19.AitJMN/native-source", "source":"6d08303371d803f44187ec5f4e37827d54fec597", "exit_code":1, "native_image_exit":3, "status":"not_green", "reason":"Native Image compiler Java heap space OutOfMemoryError under -Xmx4g, logged at 414.4s; not a product runtime failure or absent Docker prerequisite", "fallback":"Fresh JVM G11/G16 and packaged all/default startup. Larger compiler-memory run deferred per user's smallest valid fallback direction.", "log":"native-k8s-build.log.gz"},
+    {"command":"helm lint deploy/helm/nanofaas", "exit_code":0, "log":"helm-lint-confirmed.out", "result":"1 chart linted, 0 charts failed; icon recommendation only; empty initial capture was rechecked"},
+    {"command":"helm template p19 deploy/helm/nanofaas", "exit_code":0, "scope":"local rendering only", "output":"helm-render-confirmed.out"},
+    {"command":"docker compose -f deploy/compose/compose.yaml config --quiet", "exit_code":0, "log":"compose-config.log.gz"}
+  ],
+  "excluded": [
+    {"gate":"NanoLab deployment-lifecycle-k8s", "status":"unavailable", "reason":"No provisioned VM/cluster; no infrastructure provisioning performed"},
+    {"gate":"NanoLab full container multi-runtime scenario", "status":"not_run", "reason":"Proportional P19 uses existing real Docker adapter lifecycle plus separate per-hop proxy and five SDK runtime-backed suites; no integrated multi-container claim"},
+    {"gate":"Native managed HTTP performance", "status":"unavailable", "reason":"No successful managed-native binary at the attempted 4GiB compiler bound"}
+  ]
+}

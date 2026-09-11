@@ -1,0 +1,170 @@
+{
+  "status": "found",
+  "symbol": {
+    "uid": "Class:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest",
+    "name": "ControlPlaneModulesPluginTest",
+    "kind": "Class",
+    "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java",
+    "startLine": 19,
+    "endLine": 310
+  },
+  "epistemic": "exact",
+  "incoming": {},
+  "outgoing": {
+    "has_method": [
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.allPrefersDefaultEnabledModuleOnConflict#0",
+        "name": "allPrefersDefaultEnabledModuleOnConflict",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.allRejectsConflictBetweenNonDefaultModules#0",
+        "name": "allRejectsConflictBetweenNonDefaultModules",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.allSelectsEveryCompatibleModuleInSortedOrder#0",
+        "name": "allSelectsEveryCompatibleModuleInSortedOrder",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.allowsMissingWeakModuleWhenItIsNotSelected#0",
+        "name": "allowsMissingWeakModuleWhenItIsNotSelected",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.composesSelectedModuleFragmentsIntoControlPlaneOpenApi#0",
+        "name": "composesSelectedModuleFragmentsIntoControlPlaneOpenApi",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.descriptor#6",
+        "name": "descriptor",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.doesNotAddOneOfProviderAsGradleDependency#0",
+        "name": "doesNotAddOneOfProviderAsGradleDependency",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.doesNotAutoSelectOneOfProvider#0",
+        "name": "doesNotAutoSelectOneOfProvider",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.failsWith#2",
+        "name": "failsWith",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.projectPropertyTakesPrecedenceOverEnvironment#0",
+        "name": "projectPropertyTakesPrecedenceOverEnvironment",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.publishesSelectionAsImmutableExtraProperty#0",
+        "name": "publishesSelectionAsImmutableExtraProperty",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.rejectsConflictExpandedByAll#0",
+        "name": "rejectsConflictExpandedByAll",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.rejectsConflictingModules#0",
+        "name": "rejectsConflictingModules",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.rejectsDescriptorIdMismatch#0",
+        "name": "rejectsDescriptorIdMismatch",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.rejectsDuplicateSelectedModules#0",
+        "name": "rejectsDuplicateSelectedModules",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.rejectsMissingDescriptor#0",
+        "name": "rejectsMissingDescriptor",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.rejectsMissingStrongModuleWhenItIsNotSelected#0",
+        "name": "rejectsMissingStrongModuleWhenItIsNotSelected",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.rejectsNoneCombinedWithModule#0",
+        "name": "rejectsNoneCombinedWithModule",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.rejectsUnknownModule#0",
+        "name": "rejectsUnknownModule",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.run",
+        "name": "run",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.runWithEnvironment",
+        "name": "runWithEnvironment",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.runner",
+        "name": "runner",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.selectsAValidSingleModule#0",
+        "name": "selectsAValidSingleModule",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.selectsNoModules#0",
+        "name": "selectsNoModules",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.usesDefaultEnabledWhenSelectorEnvironmentIsAbsent#0",
+        "name": "usesDefaultEnabledWhenSelectorEnvironmentIsAbsent",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.usesEnvironmentWhenProjectPropertyIsAbsent#0",
+        "name": "usesEnvironmentWhenProjectPropertyIsAbsent",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.writeBuildFiles#0",
+        "name": "writeBuildFiles",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.writeFragment#2",
+        "name": "writeFragment",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      },
+      {
+        "uid": "Method:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.writeModule#6",
+        "name": "writeModule",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      }
+    ],
+    "has_property": [
+      {
+        "uid": "Property:platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java:ControlPlaneModulesPluginTest.projectDir",
+        "name": "projectDir",
+        "filePath": "platform/gradle-plugin/src/test/java/it/unimib/datai/nanofaas/gradle/ControlPlaneModulesPluginTest.java"
+      }
+    ]
+  },
+  "processes": []
+}

@@ -1,0 +1,8 @@
+// The user's untracked test is neither compiled nor run as frozen P19 evidence.
+allprojects {
+    afterEvaluate {
+        if (plugins.hasPlugin('java')) {
+            sourceSets.test.java.exclude('**/ReplicaStatusSnapshotConfigurationTest.java')
+        }
+    }
+}

@@ -1,0 +1,105 @@
+{
+  "target": {
+    "id": "Method:docs/experiments/lifecycle-memory-2026-09/p19/P19Probe.java:P19Probe.inspect#4",
+    "name": "inspect",
+    "type": "Method",
+    "filePath": "docs/experiments/lifecycle-memory-2026-09/p19/P19Probe.java"
+  },
+  "direction": "upstream",
+  "impactedCount": 2,
+  "risk": "LOW",
+  "riskSharedAxes": "LOW",
+  "riskScale": {
+    "comparableAcrossKinds": true,
+    "unusedAxes": []
+  },
+  "epistemic": "exact",
+  "summary": {
+    "direct": 1,
+    "processes_affected": 1,
+    "modules_affected": 1
+  },
+  "byDepthCounts": {
+    "1": 1,
+    "2": 1
+  },
+  "affected_processes": [
+    {
+      "name": "main",
+      "type": "Function",
+      "filePath": "docs/experiments/lifecycle-memory-2026-09/p19/P19Probe.java",
+      "affected_process_count": 3,
+      "total_hits": 6,
+      "earliest_broken_step": 1
+    }
+  ],
+  "affected_modules": [
+    {
+      "name": "P19",
+      "hits": 2,
+      "impact": "direct"
+    }
+  ],
+  "byDepth": {
+    "1": [
+      {
+        "depth": 1,
+        "id": "Method:docs/experiments/lifecycle-memory-2026-09/p19/P19Probe.java:P19Probe.snapshot#0",
+        "name": "snapshot",
+        "filePath": "docs/experiments/lifecycle-memory-2026-09/p19/P19Probe.java",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": [
+          {
+            "id": "proc_305_main",
+            "label": "Main → GcCount",
+            "processType": "intra_community",
+            "step": 2
+          },
+          {
+            "id": "proc_304_main",
+            "label": "Main → Bean",
+            "processType": "intra_community",
+            "step": 2
+          },
+          {
+            "id": "proc_171_main",
+            "label": "Main → Call",
+            "processType": "intra_community",
+            "step": 2
+          }
+        ]
+      }
+    ],
+    "2": [
+      {
+        "depth": 2,
+        "id": "Method:docs/experiments/lifecycle-memory-2026-09/p19/P19Probe.java:P19Probe.main#1",
+        "name": "main",
+        "filePath": "docs/experiments/lifecycle-memory-2026-09/p19/P19Probe.java",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": [
+          {
+            "id": "proc_305_main",
+            "label": "Main → GcCount",
+            "processType": "intra_community",
+            "step": 1
+          },
+          {
+            "id": "proc_171_main",
+            "label": "Main → Call",
+            "processType": "intra_community",
+            "step": 1
+          },
+          {
+            "id": "proc_304_main",
+            "label": "Main → Bean",
+            "processType": "intra_community",
+            "step": 1
+          }
+        ]
+      }
+    ]
+  }
+}

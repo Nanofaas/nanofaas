@@ -1,0 +1,287 @@
+{
+  "status": "found",
+  "symbol": {
+    "uid": "Class:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java:WaiterCapacity",
+    "name": "WaiterCapacity",
+    "kind": "Class",
+    "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java",
+    "startLine": 17,
+    "endLine": 132
+  },
+  "epistemic": "exact",
+  "incoming": {
+    "calls": [
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/InvocationCapacityConfiguration.java:InvocationCapacityConfiguration.waiterCapacity#2",
+        "name": "waiterCapacity",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/InvocationCapacityConfiguration.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacityTest.java:WaiterCapacityTest.closeFencesAdmissionAndDrainsPublishedWaiters#0",
+        "name": "closeFencesAdmissionAndDrainsPublishedWaiters",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacityTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacityTest.java:WaiterCapacityTest.lateOldGenerationCloseCannotReleaseAReplacementWaiter#0",
+        "name": "lateOldGenerationCloseCannotReleaseAReplacementWaiter",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacityTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacityTest.java:WaiterCapacityTest.reservationsEnforceGlobalAndPerFunctionCapsAndDrainExactlyOnce#0",
+        "name": "reservationsEnforceGlobalAndPerFunctionCapsAndDrainExactlyOnce",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacityTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/InvocationQuotaLifecycleIntegrationTest.java:InvocationQuotaLifecycleIntegrationTest.pendingOffloadKeepsInputChargedAfterAdministrativeTerminalUntilRemoteDrain#0",
+        "name": "pendingOffloadKeepsInputChargedAfterAdministrativeTerminalUntilRemoteDrain",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/InvocationQuotaLifecycleIntegrationTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/InvocationQuotaLifecycleIntegrationTest.java:InvocationQuotaLifecycleIntegrationTest.synchronousOffloadFailureClosesPhysicalAndAdmissionReservations#0",
+        "name": "synchronousOffloadFailureClosesPhysicalAndAdmissionReservations",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/InvocationQuotaLifecycleIntegrationTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P07cReviewFixTest.java:Fixture.waiters#0",
+        "name": "waiters",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P07cReviewFixTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P07dWaiterAdmissionTest.java:P07dWaiterAdmissionTest.harness#6",
+        "name": "harness",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P07dWaiterAdmissionTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P12CrossHostAdmissionTest.java:P12CrossHostAdmissionTest.perDestinationPoolsDoNotBypassP07AggregateExecutionInputOrWaiterAdmission#0",
+        "name": "perDestinationPoolsDoNotBypassP07AggregateExecutionInputOrWaiterAdmission",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P12CrossHostAdmissionTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/TestWaiterCapacity.java:TestWaiterCapacity.runtime",
+        "name": "runtime",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/TestWaiterCapacity.java"
+      },
+      {
+        "uid": "Method:platform/modules/async-queue/src/test/java/it/unimib/datai/nanofaas/modules/asyncqueue/AsyncQueueInvokeEnqueueContractRegressionTest.java:AsyncQueueInvokeEnqueueContractRegressionTest.admissionRuntime#2",
+        "name": "admissionRuntime",
+        "filePath": "platform/modules/async-queue/src/test/java/it/unimib/datai/nanofaas/modules/asyncqueue/AsyncQueueInvokeEnqueueContractRegressionTest.java"
+      },
+      {
+        "uid": "Method:platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/ReviewOffloadWaiterBudgetTest.java:ReviewOffloadWaiterBudgetTest.firstWaitersBudgetMustNotBecomeTheSharedOffloadDeadline#0",
+        "name": "firstWaitersBudgetMustNotBecomeTheSharedOffloadDeadline",
+        "filePath": "platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/ReviewOffloadWaiterBudgetTest.java"
+      },
+      {
+        "uid": "Method:platform/modules/runtime-config/src/test/java/it/unimib/datai/nanofaas/modules/runtimeconfig/ControlPlaneRuntimeConfigExtensionTest.java:ControlPlaneRuntimeConfigExtensionTest.fixture#1",
+        "name": "fixture",
+        "filePath": "platform/modules/runtime-config/src/test/java/it/unimib/datai/nanofaas/modules/runtimeconfig/ControlPlaneRuntimeConfigExtensionTest.java"
+      }
+    ],
+    "imports": [
+      {
+        "uid": "File:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ReactiveInvocationCoordinator.java",
+        "name": "ReactiveInvocationCoordinator.java",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ReactiveInvocationCoordinator.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/InvocationQuotaHttpTest.java",
+        "name": "InvocationQuotaHttpTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/InvocationQuotaHttpTest.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/P07ConfiguredHttpCalibrationTest.java",
+        "name": "P07ConfiguredHttpCalibrationTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/P07ConfiguredHttpCalibrationTest.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/InvocationQuotaLifecycleIntegrationTest.java",
+        "name": "InvocationQuotaLifecycleIntegrationTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/InvocationQuotaLifecycleIntegrationTest.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P07cReviewFixTest.java",
+        "name": "P07cReviewFixTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P07cReviewFixTest.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P07dWaiterAdmissionTest.java",
+        "name": "P07dWaiterAdmissionTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P07dWaiterAdmissionTest.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P12CrossHostAdmissionTest.java",
+        "name": "P12CrossHostAdmissionTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P12CrossHostAdmissionTest.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/ReviewLifecycleGateTest.java",
+        "name": "ReviewLifecycleGateTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/ReviewLifecycleGateTest.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/TestWaiterCapacity.java",
+        "name": "TestWaiterCapacity.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/TestWaiterCapacity.java"
+      },
+      {
+        "uid": "File:platform/modules/async-queue/src/test/java/it/unimib/datai/nanofaas/modules/asyncqueue/AsyncQueueInvokeEnqueueContractRegressionTest.java",
+        "name": "AsyncQueueInvokeEnqueueContractRegressionTest.java",
+        "filePath": "platform/modules/async-queue/src/test/java/it/unimib/datai/nanofaas/modules/asyncqueue/AsyncQueueInvokeEnqueueContractRegressionTest.java"
+      },
+      {
+        "uid": "File:platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/ReviewOffloadWaiterBudgetTest.java",
+        "name": "ReviewOffloadWaiterBudgetTest.java",
+        "filePath": "platform/modules/offload/src/test/java/it/unimib/datai/nanofaas/modules/offload/ReviewOffloadWaiterBudgetTest.java"
+      },
+      {
+        "uid": "File:platform/modules/runtime-config/src/main/java/it/unimib/datai/nanofaas/modules/runtimeconfig/ControlPlaneRuntimeConfigExtension.java",
+        "name": "ControlPlaneRuntimeConfigExtension.java",
+        "filePath": "platform/modules/runtime-config/src/main/java/it/unimib/datai/nanofaas/modules/runtimeconfig/ControlPlaneRuntimeConfigExtension.java"
+      },
+      {
+        "uid": "File:platform/modules/runtime-config/src/main/java/it/unimib/datai/nanofaas/modules/runtimeconfig/RuntimeConfigConfiguration.java",
+        "name": "RuntimeConfigConfiguration.java",
+        "filePath": "platform/modules/runtime-config/src/main/java/it/unimib/datai/nanofaas/modules/runtimeconfig/RuntimeConfigConfiguration.java"
+      },
+      {
+        "uid": "File:platform/modules/runtime-config/src/test/java/it/unimib/datai/nanofaas/modules/runtimeconfig/ControlPlaneRuntimeConfigExtensionTest.java",
+        "name": "ControlPlaneRuntimeConfigExtensionTest.java",
+        "filePath": "platform/modules/runtime-config/src/test/java/it/unimib/datai/nanofaas/modules/runtimeconfig/ControlPlaneRuntimeConfigExtensionTest.java"
+      }
+    ],
+    "accesses": [
+      {
+        "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ReactiveInvocationCoordinator.java:ReactiveInvocationCoordinator.ReactiveInvocationCoordinator#7",
+        "name": "ReactiveInvocationCoordinator",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ReactiveInvocationCoordinator.java"
+      },
+      {
+        "uid": "Constructor:platform/modules/runtime-config/src/main/java/it/unimib/datai/nanofaas/modules/runtimeconfig/ControlPlaneRuntimeConfigExtension.java:ControlPlaneRuntimeConfigExtension.ControlPlaneRuntimeConfigExtension#3",
+        "name": "ControlPlaneRuntimeConfigExtension",
+        "filePath": "platform/modules/runtime-config/src/main/java/it/unimib/datai/nanofaas/modules/runtimeconfig/ControlPlaneRuntimeConfigExtension.java"
+      }
+    ]
+  },
+  "outgoing": {
+    "has_method": [
+      {
+        "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java:WaiterCapacity.WaiterCapacity#3",
+        "name": "WaiterCapacity",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java:WaiterCapacity.close#0",
+        "name": "close",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java:WaiterCapacity.limits#0",
+        "name": "limits",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java:WaiterCapacity.quotaExceeded#0",
+        "name": "quotaExceeded",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java:WaiterCapacity.reserve#2~FunctionGeneration,String",
+        "name": "reserve",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java:WaiterCapacity.reserve#2~String,String",
+        "name": "reserve",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java:WaiterCapacity.reservedForFunction#1",
+        "name": "reservedForFunction",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java:WaiterCapacity.reservedForGeneration#1",
+        "name": "reservedForGeneration",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java:WaiterCapacity.reservedGlobally#0",
+        "name": "reservedGlobally",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java:WaiterCapacity.retainedWaiters#0",
+        "name": "retainedWaiters",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java:WaiterCapacity.updateLimits#2",
+        "name": "updateLimits",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java"
+      }
+    ],
+    "has_property": [
+      {
+        "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java:WaiterCapacity.closed",
+        "name": "closed",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java"
+      },
+      {
+        "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java:WaiterCapacity.generations",
+        "name": "generations",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java"
+      },
+      {
+        "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java:WaiterCapacity.lock",
+        "name": "lock",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java"
+      },
+      {
+        "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java:WaiterCapacity.nextId",
+        "name": "nextId",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java"
+      },
+      {
+        "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java:WaiterCapacity.quota",
+        "name": "quota",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java"
+      },
+      {
+        "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java:WaiterCapacity.retained",
+        "name": "retained",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java"
+      }
+    ]
+  },
+  "typed_properties": [
+    {
+      "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ReactiveInvocationCoordinator.java:ReactiveInvocationCoordinator.waiterCapacity",
+      "name": "waiterCapacity",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ReactiveInvocationCoordinator.java",
+      "declaredType": "WaiterCapacity"
+    },
+    {
+      "uid": "Property:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/InvocationQuotaHttpTest.java:InvocationQuotaHttpTest.waiters",
+      "name": "waiters",
+      "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/InvocationQuotaHttpTest.java",
+      "declaredType": "WaiterCapacity"
+    },
+    {
+      "uid": "Property:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/P07ConfiguredHttpCalibrationTest.java:P07ConfiguredHttpCalibrationTest.waiters",
+      "name": "waiters",
+      "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/P07ConfiguredHttpCalibrationTest.java",
+      "declaredType": "WaiterCapacity"
+    },
+    {
+      "uid": "Property:platform/modules/runtime-config/src/main/java/it/unimib/datai/nanofaas/modules/runtimeconfig/ControlPlaneRuntimeConfigExtension.java:ControlPlaneRuntimeConfigExtension.waiterCapacity",
+      "name": "waiterCapacity",
+      "filePath": "platform/modules/runtime-config/src/main/java/it/unimib/datai/nanofaas/modules/runtimeconfig/ControlPlaneRuntimeConfigExtension.java",
+      "declaredType": "WaiterCapacity"
+    }
+  ],
+  "processes": [],
+  "staleness": {
+    "commitsBehind": 2,
+    "hint": "⚠️ Index is 2 commits behind HEAD. Run analyze tool to update."
+  }
+}

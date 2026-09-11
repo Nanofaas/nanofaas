@@ -1,0 +1,99 @@
+{
+  "status": "ambiguous",
+  "message": "Found 11 symbols matching 'ExecutionStore'. Use uid, file_path, or kind to disambiguate.",
+  "totalCandidates": 11,
+  "candidates": [
+    {
+      "uid": "Class:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java:ExecutionStore",
+      "name": "ExecutionStore",
+      "kind": "Class",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java",
+      "line": 49,
+      "score": 0.6
+    },
+    {
+      "uid": "Class:experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java:ExecutionStore",
+      "name": "ExecutionStore",
+      "kind": "Class",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java",
+      "line": 25,
+      "score": 0.6
+    },
+    {
+      "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java:ExecutionStore.ExecutionStore#0",
+      "name": "ExecutionStore",
+      "kind": "Constructor",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java",
+      "line": 105,
+      "score": 0.52
+    },
+    {
+      "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java:ExecutionStore.ExecutionStore#1",
+      "name": "ExecutionStore",
+      "kind": "Constructor",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java",
+      "line": 121,
+      "score": 0.52
+    },
+    {
+      "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java:ExecutionStore.ExecutionStore#2~ExecutionStoreProperties,MeterRegistry",
+      "name": "ExecutionStore",
+      "kind": "Constructor",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java",
+      "line": 111,
+      "score": 0.52
+    },
+    {
+      "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java:ExecutionStore.ExecutionStore#2~ExecutionStoreProperties,Ticker",
+      "name": "ExecutionStore",
+      "kind": "Constructor",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java",
+      "line": 126,
+      "score": 0.52
+    },
+    {
+      "uid": "Constructor:experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java:ExecutionStore.ExecutionStore#0",
+      "name": "ExecutionStore",
+      "kind": "Constructor",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java",
+      "line": 34,
+      "score": 0.52
+    },
+    {
+      "uid": "Constructor:experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java:ExecutionStore.ExecutionStore#1",
+      "name": "ExecutionStore",
+      "kind": "Constructor",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java",
+      "line": 38,
+      "score": 0.52
+    },
+    {
+      "uid": "Constructor:experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java:ExecutionStore.ExecutionStore#4",
+      "name": "ExecutionStore",
+      "kind": "Constructor",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/ExecutionStore.java",
+      "line": 42,
+      "score": 0.52
+    },
+    {
+      "uid": "Impl:experiments/control-plane-staging/versions/control-plane-rust-m3-20260222-200159/snapshot/control-plane-rust/src/execution.rs:ExecutionStore",
+      "name": "ExecutionStore",
+      "kind": "",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-rust-m3-20260222-200159/snapshot/control-plane-rust/src/execution.rs",
+      "line": 339,
+      "score": 0.5
+    },
+    {
+      "uid": "Struct:experiments/control-plane-staging/versions/control-plane-rust-m3-20260222-200159/snapshot/control-plane-rust/src/execution.rs:ExecutionStore",
+      "name": "ExecutionStore",
+      "kind": "",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-rust-m3-20260222-200159/snapshot/control-plane-rust/src/execution.rs",
+      "line": 332,
+      "score": 0.5
+    }
+  ],
+  "staleness": {
+    "commitsBehind": 2,
+    "hint": "⚠️ Index is 2 commits behind HEAD. Run analyze tool to update."
+  }
+}

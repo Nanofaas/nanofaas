@@ -3019,3 +3019,107 @@ the selectively staged gate completed with 116 files/1,771 symbols/67 flows. Bot
 aggregate risk, are analytically complete, and reported neither `partial` nor `truncated`; the
 staged CLI output capped only the displayed symbol list while retaining complete counts and risk.
 P16b is closed at `1432cc5d`; therefore the requested P13–P18 block is complete.
+
+## P19 — corrected immutable control for P23 (2026-09-11)
+
+Status: **DONE_WITH_CONCERNS**. Production B remains exactly
+`6d08303371d803f44187ec5f4e37827d54fec597`; diagnostic A is
+`61d72e73528db62cf8ca465c6a037981d7ec13b0`, never an acceptance control.
+No production behavior changed and P20b was not started. The sole implementer
+used no subagents. The final authoring timebox stopped additional framework work.
+
+The repository-owned artifact is
+`p19/dossiers/49f98dabf572a260125d77989db7802d7a0020c11595a9ea78250cb729e27380/`.
+Its manifest SHA-256 is the directory name; schema `nanofaas-p19-dossier-v1`.
+`p19/baseline.json` is the P23 pointer. There are 714 hashed payload files,
+52,472,766 payload bytes: raw request records, snapshots, complete Prometheus
+samples, verified-GC checkpoints, histograms, role-separated process observations,
+commands/exits/test methods, environment/configuration/workload identities,
+per-entry build hashes, exact measured JVM jars and production/build source archives.
+The exact common runner is in `executed-common-harness.tar.gz`; the final ASYNC
+observer refinement and dossier tools are separately in `harness.tar.gz`.
+
+Fresh G1–G18 passed **752 tests, 0 failures, 0 skips**, including every R1–R8
+(nine regression methods). Counts by group: 7/68/96/44/33/73/13/1/21/40/85/25/12/68/54/28/38/46.
+Supplemental Java/module/SDK/selector selections passed 486 tests; actual Docker
+adapter lifecycle passed 2: **1,240 Java test invocations** overall, including
+intentional profile repeats. Python 139, JavaScript 80, Go normal 116 and race 116
+(including subtests), shared validator 26 all passed with zero failures/skips;
+Go vet exited 0. Nine dossier/accounting contract tests passed. Four invalid module
+selections exited the expected 1 with genuine selector diagnostics. Seven JVM
+packages built and passed real health/OpenAPI/start-stop smoke. Exact commands and
+method-level results are in `verification/`, `external/`, `smoke/` and
+`verification-summary.json`; non-test commands have not_applicable counts.
+
+Real configured HTTP SYNC/EXTERNAL ran fresh alternating A1/B1/A2/B2/A3/B3,
+each 6,000 warm-up then 12,000 offered/admitted/unique terminal successes at
+200 offers/s, zero refusal/unresolved work, identical four-core affinity, JDK25,
+G1 and 256/512 MiB initial/max heap. Ordinary latency excludes warm-up and explicit
+GC/checkpoints. Useful throughput was 199.945–199.994/s for B. B p50/p95/p99 (ms):
+1.671/3.428/4.161, 1.634/3.304/3.920, 1.695/3.350/3.956.
+Paired p99 deltas: +3.349%, −2.546%, −1.963%; allocation/success deltas:
++4.250%, +3.674%, +4.056%. B allocations were 143,947–144,014 bytes/success.
+These are fixed-load diagnostic costs, not sustainable peak throughput or statistical
+equivalence. The JDK process-total allocation collector passed escaping 64 MiB
+platform-thread and completed-virtual-thread validation; backend/generator are separate.
+
+Three current configured ASYNC processes each completed 120/120 unique successes
+at 50 offers/s across flat/deep/wide/large shapes. p50/p95/p99 (ms):
+12.487/22.933/26.891, 11.476/20.634/27.089, 15.209/22.937/25.130.
+R1 correctly declines deep/wide archive outcomes; a bounded scalar-only terminal
+observer counts actual completions and drains to zero. Declined deep replay returned
+410 without another backend attempt; actual eviction race is covered by fresh R2.
+The separate fresh configured T2 saturation case admitted 63/100 large offers and
+refused 37 on input quota, explicitly separated from useful work. Its older P07
+percentile/allocation semantics are not used for comparative acceptance.
+
+All B quiescent checkpoints show zero live/execution/input/copy/waiter/observer-event
+owners; function-capacity/name/registered-meter/retiring-offload owners reach zero
+after removal. Post-policy used heap: B SYNC 41.14–41.44 MB; B ASYNC 25.49–25.65 MB.
+Store size accessors perform existing cache maintenance before verified GC: this is
+observer-assisted post-policy evidence, not an untouched-idle sweep guarantee.
+Warm-up-to-drain framework/Prometheus heap growth is not classified as a new retainer;
+the short repeat/profile, histograms and owner census do not substitute for P24 soak
+or dominator analysis. The observer dictionary explicitly marks unobservable,
+unselected and external populations unavailable/not_applicable, never fictional zero.
+Fresh focused T3–T9/SDK ownership tests cover physical cancellation, churn, wake-up,
+transport/proxy, bounded stop and catalog mutation; no second integration framework
+or full cross-hop numerical-memory claim is made. P14's prior accepted measurement
+decision is retained; its retention tests are fresh, not its standalone benchmark.
+
+Docker was available after sandbox escalation. Minimal native compilation and
+health/OpenAPI/start-stop smoke passed (image digest
+`sha256:e5cd87f4e0d6c0a12c9a8a9563e0cb4d138682ef38b1b52c35774b48910d76af`).
+Managed Kubernetes native compilation failed with Java heap OOM at 414.4 s under
+the explicit 4 GiB compiler bound (native-image exit 3, outer build exit 1).
+Per user direction, fresh JVM provider gates/startup are the bounded fallback;
+the failed native gate is **not green**. No provisioned VM/cluster exists, so no
+Kubernetes NanoLab lifecycle claim. Full NanoLab multi-container scenario not run;
+real Docker adapter plus existing per-hop and five SDK suites are the proportional
+fallback. Helm lint/render and Compose config passed; these are not deployment tests.
+Separate observer-overhead passes were not run under the timebox; observer cost is
+included and unquantified. Affinity is not exclusive host CPU reservation.
+
+Systematic debugging rejected exploratory ASYNC polling/expiry assumptions without
+changing runtime code. A real dossier verification RED exposed Path-vs-JSON checksum
+ordering; sorted checksum emission fixed it, and full freeze/verify plus all nine
+contracts passed. Rejected/pilot evidence is labeled, not counted as acceptance.
+GitNexus graph context and upstream exact-symbol checks cover consumed/edited harness
+symbols; UNKNOWN Python/dynamic edges were resolved by text search, not treated as
+unused. One probe-main refinement's exact check was retrospective, a workflow caveat;
+no runtime symbol was edited. Final complete all/staged gates and commit identities
+are recorded in `task-P19-report.md`. Self-review checked denominators, identities,
+missing-observer semantics, archive integrity and preserved production source.
+
+Reverify from the repository root:
+
+```bash
+python3 -m unittest discover -s docs/experiments/lifecycle-memory-2026-09/p19 -p 'test_*.py'
+python3 docs/experiments/lifecycle-memory-2026-09/p19/dossier.py verify docs/experiments/lifecycle-memory-2026-09/p19/dossiers/49f98dabf572a260125d77989db7802d7a0020c11595a9ea78250cb729e27380
+```
+
+Both exited 0. Baseline protected-file SHA-256 audit passed for both dirty overload
+files, the untracked snapshot test and all six GitNexus skill directories. Those
+files remain unstaged; their original patch is retained only outside the repository
+dossier. Production diff against B is empty. Full implementation report:
+`.superpowers/sdd/2026-09-08-control-plane-lifecycle-memory-and-modularity/task-P19-report.md`.

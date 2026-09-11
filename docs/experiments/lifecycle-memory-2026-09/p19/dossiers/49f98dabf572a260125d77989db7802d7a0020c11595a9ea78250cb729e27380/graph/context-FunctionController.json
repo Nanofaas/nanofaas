@@ -1,0 +1,43 @@
+{
+  "status": "ambiguous",
+  "message": "Found 4 symbols matching 'FunctionController'. Use uid, file_path, or kind to disambiguate.",
+  "totalCandidates": 4,
+  "candidates": [
+    {
+      "uid": "Class:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/FunctionController.java:FunctionController",
+      "name": "FunctionController",
+      "kind": "Class",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/FunctionController.java",
+      "line": 18,
+      "score": 0.6
+    },
+    {
+      "uid": "Class:experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/FunctionController.java:FunctionController",
+      "name": "FunctionController",
+      "kind": "Class",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/FunctionController.java",
+      "line": 14,
+      "score": 0.6
+    },
+    {
+      "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/FunctionController.java:FunctionController.FunctionController#1",
+      "name": "FunctionController",
+      "kind": "Constructor",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/FunctionController.java",
+      "line": 24,
+      "score": 0.52
+    },
+    {
+      "uid": "Constructor:experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/FunctionController.java:FunctionController.FunctionController#1",
+      "name": "FunctionController",
+      "kind": "Constructor",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/FunctionController.java",
+      "line": 20,
+      "score": 0.52
+    }
+  ],
+  "staleness": {
+    "commitsBehind": 2,
+    "hint": "⚠️ Index is 2 commits behind HEAD. Run analyze tool to update."
+  }
+}

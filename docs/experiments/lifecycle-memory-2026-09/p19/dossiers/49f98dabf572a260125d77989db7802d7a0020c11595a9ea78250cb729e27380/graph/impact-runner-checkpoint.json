@@ -1,0 +1,9 @@
+{
+  "error": "Target 'checkpoint' not found",
+  "target": {
+    "name": "checkpoint"
+  },
+  "direction": "upstream",
+  "impactedCount": null,
+  "risk": "UNKNOWN"
+}

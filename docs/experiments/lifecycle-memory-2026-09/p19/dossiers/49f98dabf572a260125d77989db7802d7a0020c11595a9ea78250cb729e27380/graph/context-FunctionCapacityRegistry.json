@@ -1,0 +1,661 @@
+{
+  "status": "found",
+  "symbol": {
+    "uid": "Class:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry",
+    "name": "FunctionCapacityRegistry",
+    "kind": "Class",
+    "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java",
+    "startLine": 36,
+    "endLine": 415
+  },
+  "epistemic": "exact",
+  "incoming": {
+    "calls": [
+      {
+        "uid": "Class:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/InvocationQuotaLifecycleIntegrationTest.java:Fixture",
+        "name": "Fixture",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/InvocationQuotaLifecycleIntegrationTest.java"
+      },
+      {
+        "uid": "Class:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P07cReviewFixTest.java:Fixture",
+        "name": "Fixture",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P07cReviewFixTest.java"
+      },
+      {
+        "uid": "Class:platform/modules/autoscaler/src/test/java/it/unimib/datai/nanofaas/modules/autoscaler/WakeUpTestResources.java:WakeUpTestResources",
+        "name": "WakeUpTestResources",
+        "filePath": "platform/modules/autoscaler/src/test/java/it/unimib/datai/nanofaas/modules/autoscaler/WakeUpTestResources.java"
+      },
+      {
+        "uid": "Class:platform/modules/sync-queue/src/test/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueInvocationEnqueuerTest.java:SyncQueueInvocationEnqueuerTest",
+        "name": "SyncQueueInvocationEnqueuerTest",
+        "filePath": "platform/modules/sync-queue/src/test/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueInvocationEnqueuerTest.java"
+      },
+      {
+        "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.FunctionCapacityRegistry#0",
+        "name": "FunctionCapacityRegistry",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/ManagedDeploymentCoordinator.java:ManagedDeploymentCoordinator.ManagedDeploymentCoordinator#3",
+        "name": "ManagedDeploymentCoordinator",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/ManagedDeploymentCoordinator.java"
+      },
+      {
+        "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/ManagedDeploymentCoordinator.java:ManagedDeploymentCoordinator.ManagedDeploymentCoordinator#4",
+        "name": "ManagedDeploymentCoordinator",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/ManagedDeploymentCoordinator.java"
+      },
+      {
+        "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ExecutionCompletionHandler.java:ExecutionCompletionHandler.ExecutionCompletionHandler#6",
+        "name": "ExecutionCompletionHandler",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ExecutionCompletionHandler.java"
+      },
+      {
+        "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ExecutorBackedInvocationEnqueuer.java:ExecutorBackedInvocationEnqueuer.ExecutorBackedInvocationEnqueuer#2",
+        "name": "ExecutorBackedInvocationEnqueuer",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ExecutorBackedInvocationEnqueuer.java"
+      },
+      {
+        "uid": "Constructor:platform/modules/async-queue/src/main/java/it/unimib/datai/nanofaas/modules/asyncqueue/QueueManager.java:QueueManager.QueueManager#2~MeterRegistry,WorkloadDiagnostics",
+        "name": "QueueManager",
+        "filePath": "platform/modules/async-queue/src/main/java/it/unimib/datai/nanofaas/modules/asyncqueue/QueueManager.java"
+      },
+      {
+        "uid": "Constructor:platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/sync/SyncQueueService.java:SyncQueueService.SyncQueueService#4",
+        "name": "SyncQueueService",
+        "filePath": "platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/sync/SyncQueueService.java"
+      },
+      {
+        "uid": "Constructor:platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/sync/SyncQueueService.java:SyncQueueService.SyncQueueService#6~SyncQueueProperties,ExecutionStore,WaitEstimator,SyncQueueMetrics,Clock,SyncQueueConfigSource",
+        "name": "SyncQueueService",
+        "filePath": "platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/sync/SyncQueueService.java"
+      },
+      {
+        "uid": "Method:docs/experiments/control-plane-tuning-2026-09/bench/T2QueueBench.java:T2QueueBench.newQueue#0",
+        "name": "newQueue",
+        "filePath": "docs/experiments/control-plane-tuning-2026-09/bench/T2QueueBench.java"
+      },
+      {
+        "uid": "Method:docs/experiments/pre-soak-review-2026-09-08/Audit.java:Audit.disabledSyncSlot#0",
+        "name": "disabledSyncSlot",
+        "filePath": "docs/experiments/pre-soak-review-2026-09-08/Audit.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/RegistryDefaultsConfiguration.java:RegistryDefaultsConfiguration.functionCapacityRegistry#0",
+        "name": "functionCapacityRegistry",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/RegistryDefaultsConfiguration.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/InvocationExecutionFactory.java:InvocationExecutionFactory.standaloneCapacity#0",
+        "name": "standaloneCapacity",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/InvocationExecutionFactory.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java:FunctionCapacityRegistryTest.aGenerationClosesOnlyOnceItsLastSlotComesBack#0",
+        "name": "aGenerationClosesOnlyOnceItsLastSlotComesBack",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java:FunctionCapacityRegistryTest.capacityIsBoundedAndReleaseReturnsHoldDuration#0",
+        "name": "capacityIsBoundedAndReleaseReturnsHoldDuration",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java:FunctionCapacityRegistryTest.capacityListenerFiresOnlyWhenARaiseOpensADispatchableSlot#0",
+        "name": "capacityListenerFiresOnlyWhenARaiseOpensADispatchableSlot",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java:FunctionCapacityRegistryTest.concurrentAcquisitionNeverExceedsLoweredEffectiveBound#0",
+        "name": "concurrentAcquisitionNeverExceedsLoweredEffectiveBound",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java:FunctionCapacityRegistryTest.configuredConcurrencyAndRemovalAreSafe#0",
+        "name": "configuredConcurrencyAndRemovalAreSafe",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java:FunctionCapacityRegistryTest.differentFunctionsDoNotShareLifecycleLock#0",
+        "name": "differentFunctionsDoNotShareLifecycleLock",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java:FunctionCapacityRegistryTest.directDeactivationOfIdleReturnedStateRemovesRegistryEntry#0",
+        "name": "directDeactivationOfIdleReturnedStateRemovesRegistryEntry",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java:FunctionCapacityRegistryTest.lateReleaseCannotAffectReRegisteredGeneration#0",
+        "name": "lateReleaseCannotAffectReRegisteredGeneration",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java:FunctionCapacityRegistryTest.reRegistersWhileRemovedFunctionStillDrains#0",
+        "name": "reRegistersWhileRemovedFunctionStillDrains",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java:FunctionCapacityRegistryTest.removalWithoutActiveSlotsAllowsImmediateReRegistration#0",
+        "name": "removalWithoutActiveSlotsAllowsImmediateReRegistration",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java:FunctionCapacityRegistryTest.removeAndReRegisterMintANewIdentityAndFenceTheOldLease#0",
+        "name": "removeAndReRegisterMintANewIdentityAndFenceTheOldLease",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java:FunctionCapacityRegistryTest.removedReturnedStateCannotAcquireAndLateDirectReleaseDoesNotTouchNewGeneration#0",
+        "name": "removedReturnedStateCannotAcquireAndLateDirectReleaseDoesNotTouchNewGeneration",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java:FunctionCapacityRegistryTest.uniqueRemovedFunctionsDoNotRetainLifecycleEntries#0",
+        "name": "uniqueRemovedFunctionsDoNotRetainLifecycleEntries",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistryTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/InvocationCapacityTest.java:InvocationCapacityTest.registry",
+        "name": "registry",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/capacity/InvocationCapacityTest.java"
+      }
+    ],
+    "imports": [
+      {
+        "uid": "File:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/deployment/DeploymentWakeUpCoordinator.java",
+        "name": "DeploymentWakeUpCoordinator.java",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/deployment/DeploymentWakeUpCoordinator.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/ManagedDeploymentCoordinator.java",
+        "name": "ManagedDeploymentCoordinator.java",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/ManagedDeploymentCoordinator.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/RegistryDefaultsConfiguration.java",
+        "name": "RegistryDefaultsConfiguration.java",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/RegistryDefaultsConfiguration.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/DeploymentWakeUpGate.java",
+        "name": "DeploymentWakeUpGate.java",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/DeploymentWakeUpGate.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ExecutionCompletionHandler.java",
+        "name": "ExecutionCompletionHandler.java",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ExecutionCompletionHandler.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ExecutorBackedInvocationEnqueuer.java",
+        "name": "ExecutorBackedInvocationEnqueuer.java",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ExecutorBackedInvocationEnqueuer.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/InvocationEnqueuerAutoConfiguration.java",
+        "name": "InvocationEnqueuerAutoConfiguration.java",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/InvocationEnqueuerAutoConfiguration.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/InvocationExecutionFactory.java",
+        "name": "InvocationExecutionFactory.java",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/InvocationExecutionFactory.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/Metrics.java",
+        "name": "Metrics.java",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/Metrics.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/deployment/DeploymentWakeUpCoordinatorTest.java",
+        "name": "DeploymentWakeUpCoordinatorTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/deployment/DeploymentWakeUpCoordinatorTest.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/registry/CoreCapacityRegistrationTest.java",
+        "name": "CoreCapacityRegistrationTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/registry/CoreCapacityRegistrationTest.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/registry/ManagedDeploymentCoordinatorTest.java",
+        "name": "ManagedDeploymentCoordinatorTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/registry/ManagedDeploymentCoordinatorTest.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/CompletionMetricsGenerationFenceRegressionTest.java",
+        "name": "CompletionMetricsGenerationFenceRegressionTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/CompletionMetricsGenerationFenceRegressionTest.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/DeploymentWakeUpGateTest.java",
+        "name": "DeploymentWakeUpGateTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/DeploymentWakeUpGateTest.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/DeploymentWakeUpRemovalRollbackTest.java",
+        "name": "DeploymentWakeUpRemovalRollbackTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/DeploymentWakeUpRemovalRollbackTest.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/DispatchLifecycleAndCancellationTest.java",
+        "name": "DispatchLifecycleAndCancellationTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/DispatchLifecycleAndCancellationTest.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/InvocationQuotaLifecycleIntegrationTest.java",
+        "name": "InvocationQuotaLifecycleIntegrationTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/InvocationQuotaLifecycleIntegrationTest.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P07cReviewFixTest.java",
+        "name": "P07cReviewFixTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P07cReviewFixTest.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P07dWaiterAdmissionTest.java",
+        "name": "P07dWaiterAdmissionTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P07dWaiterAdmissionTest.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P12CrossHostAdmissionTest.java",
+        "name": "P12CrossHostAdmissionTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P12CrossHostAdmissionTest.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/ReviewLifecycleGateTest.java",
+        "name": "ReviewLifecycleGateTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/ReviewLifecycleGateTest.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/TestWaiterCapacity.java",
+        "name": "TestWaiterCapacity.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/TestWaiterCapacity.java"
+      },
+      {
+        "uid": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/UnavailableFunctionWakeUpVisibilityTest.java",
+        "name": "UnavailableFunctionWakeUpVisibilityTest.java",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/UnavailableFunctionWakeUpVisibilityTest.java"
+      },
+      {
+        "uid": "File:platform/modules/async-queue/src/main/java/it/unimib/datai/nanofaas/modules/asyncqueue/AsyncQueueConfiguration.java",
+        "name": "AsyncQueueConfiguration.java",
+        "filePath": "platform/modules/async-queue/src/main/java/it/unimib/datai/nanofaas/modules/asyncqueue/AsyncQueueConfiguration.java"
+      },
+      {
+        "uid": "File:platform/modules/async-queue/src/main/java/it/unimib/datai/nanofaas/modules/asyncqueue/QueueManager.java",
+        "name": "QueueManager.java",
+        "filePath": "platform/modules/async-queue/src/main/java/it/unimib/datai/nanofaas/modules/asyncqueue/QueueManager.java"
+      },
+      {
+        "uid": "File:platform/modules/async-queue/src/test/java/it/unimib/datai/nanofaas/modules/asyncqueue/AsyncQueueInvokeEnqueueContractRegressionTest.java",
+        "name": "AsyncQueueInvokeEnqueueContractRegressionTest.java",
+        "filePath": "platform/modules/async-queue/src/test/java/it/unimib/datai/nanofaas/modules/asyncqueue/AsyncQueueInvokeEnqueueContractRegressionTest.java"
+      },
+      {
+        "uid": "File:platform/modules/async-queue/src/test/java/it/unimib/datai/nanofaas/modules/asyncqueue/QueueBackedEnqueuerTest.java",
+        "name": "QueueBackedEnqueuerTest.java",
+        "filePath": "platform/modules/async-queue/src/test/java/it/unimib/datai/nanofaas/modules/asyncqueue/QueueBackedEnqueuerTest.java"
+      },
+      {
+        "uid": "File:platform/modules/async-queue/src/test/java/it/unimib/datai/nanofaas/modules/asyncqueue/QueueLeaseGenerationTest.java",
+        "name": "QueueLeaseGenerationTest.java",
+        "filePath": "platform/modules/async-queue/src/test/java/it/unimib/datai/nanofaas/modules/asyncqueue/QueueLeaseGenerationTest.java"
+      },
+      {
+        "uid": "File:platform/modules/async-queue/src/test/java/it/unimib/datai/nanofaas/modules/asyncqueue/QueueManagerTest.java",
+        "name": "QueueManagerTest.java",
+        "filePath": "platform/modules/async-queue/src/test/java/it/unimib/datai/nanofaas/modules/asyncqueue/QueueManagerTest.java"
+      },
+      {
+        "uid": "File:platform/modules/async-queue/src/test/java/it/unimib/datai/nanofaas/modules/asyncqueue/SchedulerLeaseTestSupport.java",
+        "name": "SchedulerLeaseTestSupport.java",
+        "filePath": "platform/modules/async-queue/src/test/java/it/unimib/datai/nanofaas/modules/asyncqueue/SchedulerLeaseTestSupport.java"
+      }
+    ],
+    "accesses": [
+      {
+        "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/InvocationCapacity.java:InvocationCapacity.InvocationCapacity#5",
+        "name": "InvocationCapacity",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/InvocationCapacity.java"
+      },
+      {
+        "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/ResourceQuota.java:ResourceQuota.ResourceQuota#3",
+        "name": "ResourceQuota",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/ResourceQuota.java"
+      },
+      {
+        "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java:WaiterCapacity.WaiterCapacity#3",
+        "name": "WaiterCapacity",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java"
+      },
+      {
+        "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/deployment/DeploymentWakeUpCoordinator.java:DeploymentWakeUpCoordinator.DeploymentWakeUpCoordinator#3",
+        "name": "DeploymentWakeUpCoordinator",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/deployment/DeploymentWakeUpCoordinator.java"
+      },
+      {
+        "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/ManagedDeploymentCoordinator.java:ManagedDeploymentCoordinator.ManagedDeploymentCoordinator#6",
+        "name": "ManagedDeploymentCoordinator",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/ManagedDeploymentCoordinator.java"
+      },
+      {
+        "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/DeploymentWakeUpGate.java:DeploymentWakeUpGate.DeploymentWakeUpGate#9",
+        "name": "DeploymentWakeUpGate",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/DeploymentWakeUpGate.java"
+      },
+      {
+        "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ExecutionCompletionHandler.java:ExecutionCompletionHandler.ExecutionCompletionHandler#6",
+        "name": "ExecutionCompletionHandler",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ExecutionCompletionHandler.java"
+      },
+      {
+        "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ExecutorBackedInvocationEnqueuer.java:ExecutorBackedInvocationEnqueuer.ExecutorBackedInvocationEnqueuer#3",
+        "name": "ExecutorBackedInvocationEnqueuer",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ExecutorBackedInvocationEnqueuer.java"
+      },
+      {
+        "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/Metrics.java:Metrics.Metrics#2",
+        "name": "Metrics",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/Metrics.java"
+      },
+      {
+        "uid": "Constructor:platform/modules/async-queue/src/main/java/it/unimib/datai/nanofaas/modules/asyncqueue/QueueManager.java:QueueManager.QueueManager#3",
+        "name": "QueueManager",
+        "filePath": "platform/modules/async-queue/src/main/java/it/unimib/datai/nanofaas/modules/asyncqueue/QueueManager.java"
+      },
+      {
+        "uid": "Constructor:platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueInvocationEnqueuer.java:SyncQueueInvocationEnqueuer.SyncQueueInvocationEnqueuer#4",
+        "name": "SyncQueueInvocationEnqueuer",
+        "filePath": "platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueInvocationEnqueuer.java"
+      },
+      {
+        "uid": "Constructor:platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueWorkloadMetricsSource.java:SyncQueueWorkloadMetricsSource.SyncQueueWorkloadMetricsSource#2",
+        "name": "SyncQueueWorkloadMetricsSource",
+        "filePath": "platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueWorkloadMetricsSource.java"
+      },
+      {
+        "uid": "Constructor:platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/sync/SyncQueueService.java:SyncQueueService.SyncQueueService#8",
+        "name": "SyncQueueService",
+        "filePath": "platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/sync/SyncQueueService.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P07cReviewFixTest.java:P07cReviewFixTest.lateOldGenerationOffloadDoesNotUpdateReplacementMetrics#0",
+        "name": "lateOldGenerationOffloadDoesNotUpdateReplacementMetrics",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P07cReviewFixTest.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P07cReviewFixTest.java:P07cReviewFixTest.lateOldGenerationOffloadFailureDoesNotUpdateReplacementMetrics#0",
+        "name": "lateOldGenerationOffloadFailureDoesNotUpdateReplacementMetrics",
+        "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P07cReviewFixTest.java"
+      }
+    ]
+  },
+  "outgoing": {
+    "has_method": [
+      {
+        "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.FunctionCapacityRegistry#0",
+        "name": "FunctionCapacityRegistry",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.FunctionCapacityRegistry#1",
+        "name": "FunctionCapacityRegistry",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.activeGeneration#1",
+        "name": "activeGeneration",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.activeState#2",
+        "name": "activeState",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.addCapacityListener#1",
+        "name": "addCapacityListener",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.configuredConcurrency#1",
+        "name": "configuredConcurrency",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.effectiveConcurrency#1",
+        "name": "effectiveConcurrency",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.entryCount#0",
+        "name": "entryCount",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.fullyDrained#1",
+        "name": "fullyDrained",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.hasGeneration#1",
+        "name": "hasGeneration",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.inFlight#1",
+        "name": "inFlight",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.onStateDrained#3",
+        "name": "onStateDrained",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.register#2",
+        "name": "register",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.register#3",
+        "name": "register",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.releaseAnySlot#1",
+        "name": "releaseAnySlot",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.releaseSlot#1",
+        "name": "releaseSlot",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.releaseSlotAndGetHoldNanos#1",
+        "name": "releaseSlotAndGetHoldNanos",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.remove#1",
+        "name": "remove",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.setEffectiveConcurrency#2",
+        "name": "setEffectiveConcurrency",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.state#1",
+        "name": "state",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.tryAcquireLease#2",
+        "name": "tryAcquireLease",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.tryAcquireLease#3",
+        "name": "tryAcquireLease",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.tryAcquireSlot#1",
+        "name": "tryAcquireSlot",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.withActiveGeneration#2",
+        "name": "withActiveGeneration",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      }
+    ],
+    "has_property": [
+      {
+        "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.capacityListeners",
+        "name": "capacityListeners",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.entries",
+        "name": "entries",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.log",
+        "name": "log",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.nanoTime",
+        "name": "nanoTime",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      },
+      {
+        "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java:FunctionCapacityRegistry.nextGeneration",
+        "name": "nextGeneration",
+        "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.java"
+      }
+    ]
+  },
+  "typed_properties": [
+    {
+      "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/InvocationCapacity.java:InvocationCapacity.generations",
+      "name": "generations",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/InvocationCapacity.java",
+      "declaredType": "FunctionCapacityRegistry"
+    },
+    {
+      "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/ResourceQuota.java:ResourceQuota.generationAuthority",
+      "name": "generationAuthority",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/ResourceQuota.java",
+      "declaredType": "FunctionCapacityRegistry"
+    },
+    {
+      "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java:WaiterCapacity.generations",
+      "name": "generations",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/capacity/WaiterCapacity.java",
+      "declaredType": "FunctionCapacityRegistry"
+    },
+    {
+      "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/deployment/DeploymentWakeUpCoordinator.java:DeploymentWakeUpCoordinator.generations",
+      "name": "generations",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/deployment/DeploymentWakeUpCoordinator.java",
+      "declaredType": "FunctionCapacityRegistry"
+    },
+    {
+      "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/ManagedDeploymentCoordinator.java:ManagedDeploymentCoordinator.generations",
+      "name": "generations",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/ManagedDeploymentCoordinator.java",
+      "declaredType": "FunctionCapacityRegistry"
+    },
+    {
+      "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/DeploymentWakeUpGate.java:DeploymentWakeUpGate.generations",
+      "name": "generations",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/DeploymentWakeUpGate.java",
+      "declaredType": "FunctionCapacityRegistry"
+    },
+    {
+      "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ExecutionCompletionHandler.java:ExecutionCompletionHandler.capacityRegistry",
+      "name": "capacityRegistry",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ExecutionCompletionHandler.java",
+      "declaredType": "FunctionCapacityRegistry"
+    },
+    {
+      "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ExecutorBackedInvocationEnqueuer.java:ExecutorBackedInvocationEnqueuer.capacityRegistry",
+      "name": "capacityRegistry",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ExecutorBackedInvocationEnqueuer.java",
+      "declaredType": "FunctionCapacityRegistry"
+    },
+    {
+      "uid": "Property:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/Metrics.java:Metrics.capacityRegistry",
+      "name": "capacityRegistry",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/Metrics.java",
+      "declaredType": "FunctionCapacityRegistry"
+    },
+    {
+      "uid": "Property:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/InvocationQuotaLifecycleIntegrationTest.java:Fixture.generations",
+      "name": "generations",
+      "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/InvocationQuotaLifecycleIntegrationTest.java",
+      "declaredType": "FunctionCapacityRegistry"
+    },
+    {
+      "uid": "Property:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P07cReviewFixTest.java:Fixture.generations",
+      "name": "generations",
+      "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P07cReviewFixTest.java",
+      "declaredType": "FunctionCapacityRegistry"
+    },
+    {
+      "uid": "Property:platform/modules/async-queue/src/main/java/it/unimib/datai/nanofaas/modules/asyncqueue/QueueManager.java:QueueManager.capacityRegistry",
+      "name": "capacityRegistry",
+      "filePath": "platform/modules/async-queue/src/main/java/it/unimib/datai/nanofaas/modules/asyncqueue/QueueManager.java",
+      "declaredType": "FunctionCapacityRegistry"
+    },
+    {
+      "uid": "Property:platform/modules/autoscaler/src/test/java/it/unimib/datai/nanofaas/modules/autoscaler/WakeUpTestResources.java:WakeUpTestResources.generations",
+      "name": "generations",
+      "filePath": "platform/modules/autoscaler/src/test/java/it/unimib/datai/nanofaas/modules/autoscaler/WakeUpTestResources.java",
+      "declaredType": "FunctionCapacityRegistry"
+    },
+    {
+      "uid": "Property:platform/modules/concurrency-control/src/test/java/it/unimib/datai/nanofaas/modules/concurrencycontrol/SyncConcurrencyControlE2eTest.java:SyncConcurrencyControlE2eTest.capacityRegistry",
+      "name": "capacityRegistry",
+      "filePath": "platform/modules/concurrency-control/src/test/java/it/unimib/datai/nanofaas/modules/concurrencycontrol/SyncConcurrencyControlE2eTest.java",
+      "declaredType": "FunctionCapacityRegistry"
+    },
+    {
+      "uid": "Property:platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueInvocationEnqueuer.java:SyncQueueInvocationEnqueuer.capacityRegistry",
+      "name": "capacityRegistry",
+      "filePath": "platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueInvocationEnqueuer.java",
+      "declaredType": "FunctionCapacityRegistry"
+    },
+    {
+      "uid": "Property:platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueWorkloadMetricsSource.java:SyncQueueWorkloadMetricsSource.capacityRegistry",
+      "name": "capacityRegistry",
+      "filePath": "platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueWorkloadMetricsSource.java",
+      "declaredType": "FunctionCapacityRegistry"
+    },
+    {
+      "uid": "Property:platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/sync/SyncQueueService.java:SyncQueueService.capacityRegistry",
+      "name": "capacityRegistry",
+      "filePath": "platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/sync/SyncQueueService.java",
+      "declaredType": "FunctionCapacityRegistry"
+    },
+    {
+      "uid": "Property:platform/modules/sync-queue/src/test/java/it/unimib/datai/nanofaas/modules/syncqueue/scheduler/SyncSchedulerWakeupTest.java:SyncSchedulerWakeupTest.capacity",
+      "name": "capacity",
+      "filePath": "platform/modules/sync-queue/src/test/java/it/unimib/datai/nanofaas/modules/syncqueue/scheduler/SyncSchedulerWakeupTest.java",
+      "declaredType": "FunctionCapacityRegistry"
+    }
+  ],
+  "processes": [],
+  "staleness": {
+    "commitsBehind": 2,
+    "hint": "⚠️ Index is 2 commits behind HEAD. Run analyze tool to update."
+  }
+}

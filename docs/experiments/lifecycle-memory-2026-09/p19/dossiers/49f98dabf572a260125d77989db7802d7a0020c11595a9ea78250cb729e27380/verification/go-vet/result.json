@@ -1,0 +1,17 @@
+{
+  "cases": [],
+  "command": [
+    "/home/michele/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.0.linux-arm64/bin/go",
+    "vet",
+    "./..."
+  ],
+  "counts": null,
+  "counts_status": "not_applicable: command has no test cases",
+  "cwd": "/home/michele/Documenti/nanofaas/sdks/go",
+  "elapsed_s": 0.1642472743988037,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "go-vet",
+  "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "started_unix_s": 1789127964.2779646
+}

@@ -1,0 +1,9 @@
+{
+  "error": "Target 'invoke' not found",
+  "target": {
+    "name": "invoke"
+  },
+  "direction": "upstream",
+  "impactedCount": null,
+  "risk": "UNKNOWN"
+}

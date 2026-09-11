@@ -1,0 +1,115 @@
+{
+  "status": "ambiguous",
+  "message": "Found 13 symbols matching 'IdempotencyStore'. Use uid, file_path, or kind to disambiguate.",
+  "totalCandidates": 13,
+  "candidates": [
+    {
+      "uid": "Class:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStore.java:IdempotencyStore",
+      "name": "IdempotencyStore",
+      "kind": "Class",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStore.java",
+      "line": 67,
+      "score": 0.6
+    },
+    {
+      "uid": "Class:experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStore.java:IdempotencyStore",
+      "name": "IdempotencyStore",
+      "kind": "Class",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStore.java",
+      "line": 23,
+      "score": 0.6
+    },
+    {
+      "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStore.java:IdempotencyStore.IdempotencyStore#0",
+      "name": "IdempotencyStore",
+      "kind": "Constructor",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStore.java",
+      "line": 89,
+      "score": 0.52
+    },
+    {
+      "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStore.java:IdempotencyStore.IdempotencyStore#1~Duration",
+      "name": "IdempotencyStore",
+      "kind": "Constructor",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStore.java",
+      "line": 109,
+      "score": 0.52
+    },
+    {
+      "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStore.java:IdempotencyStore.IdempotencyStore#1~ExecutionStoreProperties",
+      "name": "IdempotencyStore",
+      "kind": "Constructor",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStore.java",
+      "line": 159,
+      "score": 0.52
+    },
+    {
+      "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStore.java:IdempotencyStore.IdempotencyStore#2~Duration,Ticker",
+      "name": "IdempotencyStore",
+      "kind": "Constructor",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStore.java",
+      "line": 113,
+      "score": 0.52
+    },
+    {
+      "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStore.java:IdempotencyStore.IdempotencyStore#2~ExecutionStoreProperties,MeterRegistry",
+      "name": "IdempotencyStore",
+      "kind": "Constructor",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStore.java",
+      "line": 93,
+      "score": 0.52
+    },
+    {
+      "uid": "Constructor:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStore.java:IdempotencyStore.IdempotencyStore#2~ExecutionStoreProperties,Ticker",
+      "name": "IdempotencyStore",
+      "kind": "Constructor",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStore.java",
+      "line": 117,
+      "score": 0.52
+    },
+    {
+      "uid": "Constructor:experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStore.java:IdempotencyStore.IdempotencyStore#0",
+      "name": "IdempotencyStore",
+      "kind": "Constructor",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStore.java",
+      "line": 30,
+      "score": 0.52
+    },
+    {
+      "uid": "Constructor:experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStore.java:IdempotencyStore.IdempotencyStore#1",
+      "name": "IdempotencyStore",
+      "kind": "Constructor",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStore.java",
+      "line": 34,
+      "score": 0.52
+    },
+    {
+      "uid": "Constructor:experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStore.java:IdempotencyStore.IdempotencyStore#2",
+      "name": "IdempotencyStore",
+      "kind": "Constructor",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/execution/IdempotencyStore.java",
+      "line": 38,
+      "score": 0.52
+    },
+    {
+      "uid": "Impl:experiments/control-plane-staging/versions/control-plane-rust-m3-20260222-200159/snapshot/control-plane-rust/src/idempotency.rs:IdempotencyStore",
+      "name": "IdempotencyStore",
+      "kind": "",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-rust-m3-20260222-200159/snapshot/control-plane-rust/src/idempotency.rs",
+      "line": 48,
+      "score": 0.5
+    },
+    {
+      "uid": "Struct:experiments/control-plane-staging/versions/control-plane-rust-m3-20260222-200159/snapshot/control-plane-rust/src/idempotency.rs:IdempotencyStore",
+      "name": "IdempotencyStore",
+      "kind": "",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-rust-m3-20260222-200159/snapshot/control-plane-rust/src/idempotency.rs",
+      "line": 43,
+      "score": 0.5
+    }
+  ],
+  "staleness": {
+    "commitsBehind": 2,
+    "hint": "⚠️ Index is 2 commits behind HEAD. Run analyze tool to update."
+  }
+}
