@@ -3262,3 +3262,8 @@ Complete all/staged GitNexus HIGH aggregate risk reviewed: final 82/81 symbols,
 all 19 process groups and native smoke containers absent. Raw RED XML whitespace
 warnings preserved; non-dossier staged whitespace check exit 0. Full evidence and
 remaining pool-drain failure are in the report; no accepted P23 control yet.
+
+Round-2 commits: product/native fix `b4770d6675adc99f53444260dcf0200f10b517cf`;
+profiles and frozen candidate `3345396ed51e8c070629c0d2d4fc1677526f04dc`.
+Post-commit status preserves only the protected pre-existing dirty/untracked
+targets. This documentation receipt does not change source B or artifact hashes.

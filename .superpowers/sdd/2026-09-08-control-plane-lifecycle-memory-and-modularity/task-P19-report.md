@@ -759,3 +759,11 @@ The same check excluding immutable dossiers exits 0. Do not alter raw failure or
 requirements evidence to cosmetically erase those warnings. Final 19 owned process
 groups currently empty; `docker ps -a --filter name=nanofaas-p19-smoke` empty/exit 0.
 Protected SHA-256 audit remains green. Final report/digest additions are prose only.
+
+Commit receipt: product fix **b4770d6675adc99f53444260dcf0200f10b517cf**;
+measurement/profile/dossier delivery **3345396ed51e8c070629c0d2d4fc1677526f04dc**,
+`Freeze P19 round-two evidence`, 726 scoped files. Post-commit status contains only
+the two protected dirty files, six protected untracked skill directories and the
+protected untracked snapshot test. This receipt is documentation-only; it does
+not advance B or alter the immutable dossier. Final status remains BLOCKED for
+the explicit managed pool-drain gate, not for unavailable tooling/infrastructure.
