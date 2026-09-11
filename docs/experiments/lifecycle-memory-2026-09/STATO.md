@@ -3018,4 +3018,4 @@ callback-thread exception. The all-scope GitNexus gate completed with 49 files/6
 the selectively staged gate completed with 116 files/1,771 symbols/67 flows. Both retain CRITICAL
 aggregate risk, are analytically complete, and reported neither `partial` nor `truncated`; the
 staged CLI output capped only the displayed symbol list while retaining complete counts and risk.
-P16b, and therefore the requested P13–P18 block, is complete pending commit.
+P16b is closed at `1432cc5d`; therefore the requested P13–P18 block is complete.

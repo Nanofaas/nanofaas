@@ -4,6 +4,7 @@
 
 - Status: complete; final independent re-reviews CLEAN in every runtime slice.
 - Base revision: `7f8f4c2eff03dc317fc0459f371c514631fd93c9`.
+- Implementation revision: `1432cc5d6d9e7a5a83b7e3abb1388f82f3509545`.
 - Branch: `control-plane-lifecycle-memory`.
 - Scope: Java, Java-lite, Python, Go and JavaScript runtimes; shared saturation corpus;
   runtime-backed adapters; warm-echo callback integration test; this report and campaign ledger.
