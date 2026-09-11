@@ -2989,3 +2989,8 @@ Important wire collision: a user handler's `RejectedExecutionException` was mist
 runtime's stop-admission signal. A deterministic HTTP RED reproduced 503 instead of the pre-P18
 500 handler-error path. Stop admission now uses a private lifecycle-only exception; handler and
 ownership tests are GREEN. Full verification and a clean independent re-review remain pending.
+
+P18 is closed at `fadc20f5`: the final fresh independent re-review is CLEAN (0 Critical,
+0 Important, 0 Minor). It independently confirmed the private stop-admission signal, the four
+earlier lifecycle/Spring fixes, Java-lite 40/40, Spring Java 96/96 and a focused 13/13 run.
+P16b is now unblocked.

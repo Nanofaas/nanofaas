@@ -2,7 +2,7 @@
 
 ## Status and revision
 
-- Status: implementation complete; first independent review fixes applied, final re-review pending.
+- Status: complete; final independent re-review CLEAN (0 Critical, 0 Important, 0 Minor).
 - Base revision: `398387bac07ca04dc421b3d2944ea1e25b0a4d3d`.
 - Branch: `control-plane-lifecycle-memory`.
 - Scope: Java-lite runtime lifecycle, callback client/executor ownership, the Spring Java SDK
@@ -188,6 +188,11 @@ five affected invocation flows and MEDIUM risk. The staged gate reports exactly 
 symbols with the same five flows and MEDIUM risk. Both are complete and non-truncated; the flow
 risk is covered by the new handler-error regression plus the full Java-lite and corpus suites.
 
+The final fresh independent re-review is CLEAN: 0 Critical, 0 Important and 0 Minor findings. It
+confirmed the private stop-admission signal, all four earlier lifecycle/Spring findings, bounded
+shutdown and owned-vs-injected contracts. Its focused collision/lifecycle run passed 13/13; its
+complete suites independently confirmed Java-lite 40/40 and Spring Java 96/96.
+
 ## Changed files
 
 - `sdks/java-lite/src/main/java/it/unimib/datai/nanofaas/sdk/lite/NanofaasRuntime.java`
@@ -208,4 +213,4 @@ risk is covered by the new handler-error regression plus the full Java-lite and 
   explicit warning. No hard-kill claim is made.
 - P16b still owns callback/input/output count and byte quotas and full runtime execution of the
   shared wire corpus. P18 supplies the Java-lite lifecycle primitives and Spring client owner only.
-- A fresh independent re-review of the two first-review fixes is the remaining P18 closure gate.
+- P18 is closed. P16b is the next dependent task.
