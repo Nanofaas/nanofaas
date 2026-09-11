@@ -2,7 +2,7 @@
 
 ## Status and revision
 
-- Status: implementation complete; final independent task review intentionally not run per dispatch.
+- Status: implementation complete; first independent review fixes applied, final re-review pending.
 - Base revision: `398387bac07ca04dc421b3d2944ea1e25b0a4d3d`.
 - Branch: `control-plane-lifecycle-memory`.
 - Scope: Java-lite runtime lifecycle, callback client/executor ownership, the Spring Java SDK
@@ -77,6 +77,13 @@ owners and were not changed.
     GREEN.
 12. Interrupting the blocking `start` caller left the listener/executor alive: Awaitility timed
     out; routing this exit through `stop` made it GREEN while preserving interrupt status.
+13. Independent review found that concurrent stop could complete between shutdown-hook registration
+    and publication. A deterministic blocking hook registrar was RED before the seam existed;
+    lifecycle serialization now guarantees one matching removal and the focused test is GREEN.
+14. Independent review found that a failed shutdown-hook registration bypassed cleanup. A
+    deterministic rejecting registrar was RED before the seam existed; startup failure now runs
+    the normal owned-resource cleanup, preserves the original exception, closes the exact socket,
+    client and executor, and the focused test is GREEN.
 
 The acceptance tests use latches, executor state and finite futures. No sleep is used as ordering
 proof. The one 50 ms negative await only proves that a deliberately non-cooperative handler has
@@ -90,7 +97,7 @@ the handler-start latch and stop future.
   — BUILD SUCCESSFUL, 16 tasks; 18 focused tests (10 + 4 + 2 + 2), zero failures.
 - Complete SDK suites:
   `./gradlew :sdks:java-lite:test :sdks:java:test --rerun-tasks --no-parallel --console=plain --offline`
-  — BUILD SUCCESSFUL; Java-lite 37/37 and Java 94/94, zero failures/errors/skips.
+  — initial BUILD SUCCESSFUL; Java-lite 37/37 and Java 94/94, zero failures/errors/skips.
 - P16a shared corpus adapters:
   `./gradlew :sdks:java-lite:test :sdks:java:test --tests *SharedSaturationWireCorpusTest --rerun-tasks --no-parallel --console=plain --offline`
   — BUILD SUCCESSFUL, both adapters passed.
@@ -134,6 +141,23 @@ staging. Final staged detect-changes completed with exactly 10 P18 files/38 symb
 affected flows and HIGH aggregate risk. Neither result reported a partial or truncated analysis;
 the explicit high risk is retained rather than waived.
 
+## First independent review and fixes
+
+The first independent review reported two Important findings and no Critical/Minor findings.
+Both concerned startup-hook ownership. Exact follow-up impacts were LOW for `stop`,
+`removeShutdownHook` and the constructor. `start`, `Builder.build` and the lifecycle fields were
+UNKNOWN/lower-bound and were resolved with exact text search to the Java-lite runtime, examples
+and tests; no HIGH/CRITICAL impact was found. GitNexus was refreshed to 20,547 nodes, 58,269
+edges and 766 flows before these edits.
+
+The follow-up focused runtime test is GREEN with 12/12 tests. Fresh complete suites are GREEN
+with Java-lite 39/39 and Java 94/94 tests. Both shared P16a Java adapters remain GREEN, and the
+fresh artifact build executed 18/18 tasks with `BUILD SUCCESSFUL` in 12 seconds. The complete
+pre-stage all-scope change gate reports 6 indexed files/29 symbols, zero affected processes and
+LOW risk; this includes protected overload-path dirt and is neither partial nor truncated. The
+follow-up staged gate reports exactly 4 P18 files/28 symbols, zero affected processes and LOW
+risk, also complete and non-truncated.
+
 ## Changed files
 
 - `sdks/java-lite/src/main/java/it/unimib/datai/nanofaas/sdk/lite/NanofaasRuntime.java`
@@ -154,5 +178,4 @@ the explicit high risk is retained rather than waived.
   explicit warning. No hard-kill claim is made.
 - P16b still owns callback/input/output count and byte quotas and full runtime execution of the
   shared wire corpus. P18 supplies the Java-lite lifecycle primitives and Spring client owner only.
-- Final independent task review was excluded by the dispatch and remains the controller's next
-  action if desired.
+- A fresh independent re-review of the two first-review fixes is the remaining P18 closure gate.

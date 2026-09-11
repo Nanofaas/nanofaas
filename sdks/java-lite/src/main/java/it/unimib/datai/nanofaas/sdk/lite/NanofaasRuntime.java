@@ -19,7 +19,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 public final class NanofaasRuntime {
@@ -34,15 +33,18 @@ public final class NanofaasRuntime {
     private final ExecutorService serverExecutor;
     private final boolean ownsServerExecutor;
     private final Duration shutdownTimeout;
+    private final ShutdownHooks shutdownHooks;
     private final CountDownLatch stopped = new CountDownLatch(1);
-    private final AtomicBoolean started = new AtomicBoolean();
-    private final AtomicBoolean stopping = new AtomicBoolean();
-    private final AtomicBoolean shutdownHookRegistered = new AtomicBoolean();
+    private final Object lifecycleMonitor = new Object();
+    private boolean started;
+    private boolean stopping;
+    private boolean shutdownHookRegistered;
     private final Thread shutdownHook;
 
     private NanofaasRuntime(HttpServer server, int port, String functionName, InvokeHandler invokeHandler,
                             CallbackClient callbackClient, ExecutorService serverExecutor,
-                            boolean ownsServerExecutor, Duration shutdownTimeout) {
+                            boolean ownsServerExecutor, Duration shutdownTimeout,
+                            ShutdownHooks shutdownHooks) {
         this.server = server;
         this.port = port;
         this.functionName = functionName;
@@ -51,6 +53,7 @@ public final class NanofaasRuntime {
         this.serverExecutor = serverExecutor;
         this.ownsServerExecutor = ownsServerExecutor;
         this.shutdownTimeout = shutdownTimeout;
+        this.shutdownHooks = shutdownHooks;
         this.shutdownHook = new Thread(() -> {
             log.info("Shutting down nanofaas-lite runtime for function '{}'", functionName);
             stop();
@@ -65,17 +68,23 @@ public final class NanofaasRuntime {
      * Starts the server, registers a shutdown hook, and blocks the calling thread.
      */
     public void start() {
-        if (!started.compareAndSet(false, true) || stopping.get()) {
-            throw new IllegalStateException("Runtime has already been started or stopped");
+        RuntimeException startupFailure = null;
+        synchronized (lifecycleMonitor) {
+            if (started || stopping) {
+                throw new IllegalStateException("Runtime has already been started or stopped");
+            }
+            started = true;
+            try {
+                shutdownHooks.add(shutdownHook);
+                shutdownHookRegistered = true;
+                server.start();
+            } catch (RuntimeException ex) {
+                startupFailure = ex;
+            }
         }
-        Runtime.getRuntime().addShutdownHook(shutdownHook);
-        shutdownHookRegistered.set(true);
-
-        try {
-            server.start();
-        } catch (RuntimeException ex) {
+        if (startupFailure != null) {
             stop();
-            throw ex;
+            throw startupFailure;
         }
         log.info("nanofaas-lite runtime started on port {} for function '{}'", port, functionName);
 
@@ -92,7 +101,14 @@ public final class NanofaasRuntime {
      * Stops the server (for testing).
      */
     public void stop() {
-        if (!stopping.compareAndSet(false, true)) {
+        boolean cleanupOwner;
+        synchronized (lifecycleMonitor) {
+            cleanupOwner = !stopping;
+            if (cleanupOwner) {
+                stopping = true;
+            }
+        }
+        if (!cleanupOwner) {
             awaitStopped();
             return;
         }
@@ -144,12 +160,17 @@ public final class NanofaasRuntime {
     }
 
     private void removeShutdownHook() {
-        if (!shutdownHookRegistered.compareAndSet(true, false)
-                || Thread.currentThread() == shutdownHook) {
-            return;
+        synchronized (lifecycleMonitor) {
+            if (!shutdownHookRegistered) {
+                return;
+            }
+            shutdownHookRegistered = false;
+            if (Thread.currentThread() == shutdownHook) {
+                return;
+            }
         }
         try {
-            Runtime.getRuntime().removeShutdownHook(shutdownHook);
+            shutdownHooks.remove(shutdownHook);
         } catch (IllegalStateException _) {
             // JVM shutdown is already in progress.
         }
@@ -167,6 +188,7 @@ public final class NanofaasRuntime {
         private Supplier<ExecutorService> serverExecutorFactory = Executors::newVirtualThreadPerTaskExecutor;
         private ExecutorService injectedServerExecutor;
         private Duration shutdownTimeout = DEFAULT_SHUTDOWN_TIMEOUT;
+        private ShutdownHooks shutdownHooks = ShutdownHooks.jvm();
 
         private Builder() {}
 
@@ -198,6 +220,11 @@ public final class NanofaasRuntime {
 
         Builder serverExecutor(ExecutorService serverExecutor) {
             this.injectedServerExecutor = serverExecutor;
+            return this;
+        }
+
+        Builder shutdownHooks(ShutdownHooks shutdownHooks) {
+            this.shutdownHooks = shutdownHooks;
             return this;
         }
 
@@ -249,7 +276,7 @@ public final class NanofaasRuntime {
                 server.createContext("/metrics", new MetricsHandler(metrics.getRegistry()));
 
                 return new NanofaasRuntime(server, port, effectiveName, invokeHandler, callbackClient,
-                        serverExecutor, ownsServerExecutor, shutdownTimeout);
+                        serverExecutor, ownsServerExecutor, shutdownTimeout, shutdownHooks);
             } catch (IOException e) {
                 cleanupPartialBuild(server, invokeHandler, callbackClient, serverExecutor,
                         ownsServerExecutor, shutdownTimeout);
@@ -277,6 +304,26 @@ public final class NanofaasRuntime {
             if (ownsServerExecutor && serverExecutor != null) {
                 shutdownExecutor(serverExecutor, deadline);
             }
+        }
+    }
+
+    interface ShutdownHooks {
+        void add(Thread hook);
+
+        void remove(Thread hook);
+
+        static ShutdownHooks jvm() {
+            return new ShutdownHooks() {
+                @Override
+                public void add(Thread hook) {
+                    Runtime.getRuntime().addShutdownHook(hook);
+                }
+
+                @Override
+                public void remove(Thread hook) {
+                    Runtime.getRuntime().removeShutdownHook(hook);
+                }
+            };
         }
     }
 }

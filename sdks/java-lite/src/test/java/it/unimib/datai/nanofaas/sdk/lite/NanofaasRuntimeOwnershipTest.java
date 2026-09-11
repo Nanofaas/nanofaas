@@ -21,15 +21,120 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NanofaasRuntimeOwnershipTest {
+
+    @Test
+    void concurrentStopCannotPassAnUnpublishedShutdownHook() throws Exception {
+        CountDownLatch addEntered = new CountDownLatch(1);
+        CountDownLatch releaseAdd = new CountDownLatch(1);
+        AtomicInteger added = new AtomicInteger();
+        AtomicInteger removed = new AtomicInteger();
+        NanofaasRuntime.ShutdownHooks hooks = new NanofaasRuntime.ShutdownHooks() {
+            @Override
+            public void add(Thread hook) {
+                addEntered.countDown();
+                try {
+                    releaseAdd.await();
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(interrupted);
+                }
+                added.incrementAndGet();
+            }
+
+            @Override
+            public void remove(Thread hook) {
+                removed.incrementAndGet();
+            }
+        };
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        NanofaasRuntime runtime = baseBuilder(availablePort(), "concurrent-hook-stop")
+                .serverExecutorFactory(() -> executor)
+                .shutdownHooks(hooks)
+                .build();
+        Thread startThread = Thread.ofPlatform().start(runtime::start);
+        assertTrue(addEntered.await(2, TimeUnit.SECONDS));
+        CountDownLatch stopEntered = new CountDownLatch(1);
+        FutureTask<Void> stop = new FutureTask<>(() -> {
+            stopEntered.countDown();
+            runtime.stop();
+            return null;
+        });
+        Thread stopThread = Thread.ofPlatform().start(stop);
+
+        try {
+            assertTrue(stopEntered.await(2, TimeUnit.SECONDS));
+            releaseAdd.countDown();
+            stop.get(2, TimeUnit.SECONDS);
+            assertTrue(startThread.join(Duration.ofSeconds(2)));
+
+            assertEquals(1, added.get());
+            assertEquals(1, removed.get(), "every published hook must be removed by completed stop");
+            await().atMost(2, TimeUnit.SECONDS).until(executor::isTerminated);
+        } finally {
+            releaseAdd.countDown();
+            runtime.stop();
+            executor.shutdownNow();
+            startThread.interrupt();
+            stopThread.interrupt();
+            startThread.join(TimeUnit.SECONDS.toMillis(2));
+            stopThread.join(TimeUnit.SECONDS.toMillis(2));
+        }
+    }
+
+    @Test
+    void shutdownHookRegistrationFailureCleansAlreadyOwnedResources() throws Exception {
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        CallbackClient callbackClient = new CallbackClient(new ObjectMapper(), "http://127.0.0.1:1");
+        HttpClient ownedHttpClient = httpClientOf(callbackClient);
+        int port = availablePort();
+        NanofaasRuntime.ShutdownHooks rejectingHooks = new NanofaasRuntime.ShutdownHooks() {
+            @Override
+            public void add(Thread hook) {
+                throw new IllegalStateException("hook registration rejected");
+            }
+
+            @Override
+            public void remove(Thread hook) {
+                throw new AssertionError("an unpublished hook must not be removed");
+            }
+        };
+        NanofaasRuntime runtime = baseBuilder(port, "hook-registration-failure")
+                .callbackClientFactory(() -> callbackClient)
+                .serverExecutorFactory(() -> executor)
+                .shutdownHooks(rejectingHooks)
+                .build();
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class, runtime::start);
+
+        assertEquals("hook registration rejected", failure.getMessage());
+        await().atMost(2, TimeUnit.SECONDS).until(executor::isTerminated);
+        await().atMost(2, TimeUnit.SECONDS).until(ownedHttpClient::isTerminated);
+        try (HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(250))
+                .build()) {
+            assertThrows(IOException.class, () -> client.send(
+                    HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/health"))
+                            .timeout(Duration.ofSeconds(1))
+                            .GET()
+                            .build(),
+                    HttpResponse.BodyHandlers.discarding()));
+        } finally {
+            runtime.stop();
+            executor.shutdownNow();
+            callbackClient.close();
+        }
+    }
 
     @Test
     void stopClosesTheRuntimeOwnedServerExecutorAndItsControlledThread() throws Exception {

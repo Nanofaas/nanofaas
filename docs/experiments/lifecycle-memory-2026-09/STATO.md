@@ -2967,3 +2967,11 @@ No hard termination is claimed for a handler that ignores virtual-thread interru
 returns at its configured deadline, logs the still-active physical owner, and that owner
 releases only on real exit. P16b remains responsible for common callback/input/output quotas
 and full direct-runtime corpus conformance.
+
+The first independent P18 review found two Important startup-hook gaps: stop could pass hook
+publication in a forced concurrent interleaving, and registration failure skipped cleanup of
+resources already created by `build()`. Deterministic RED tests now inject a blocking or rejecting
+hook owner. Hook publication and the lifecycle transition are serialized, and registration
+failure enters the same bounded cleanup path while preserving the original exception. Focused
+GREEN verification also proves matching hook removal plus exact listener, callback-client and
+server-executor closure. Final suite verification and clean re-review remain pending.
