@@ -1,11 +1,9 @@
 [build-system]
-requires = ["setuptools>=77"]
+requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "nanofaas-sdk"
-license = "MIT"
-license-files = ["LICENSE"]
 version = "0.21.0"
 description = "SDK for developing Python functions on nanoFaaS"
 readme = "README.md"
