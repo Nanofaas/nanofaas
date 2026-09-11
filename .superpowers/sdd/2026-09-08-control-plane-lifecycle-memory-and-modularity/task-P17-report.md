@@ -104,3 +104,11 @@ before handler start, so P17 does not claim the `callback-saturated` runtime sce
 
 Next: P18 establishes Java-lite executor/client ownership; P16b then applies the common
 wire/count/byte policy using the P17/P18 primitives.
+
+## Commit closure
+
+Implementation commit: `a6824ba69e68b9b86db9ab202968871754ac523d`.
+The final pre-commit all-scope gate completed with six files/24 symbols, zero affected
+processes and LOW risk; the two extra files were protected user dirt. The staged gate
+completed with exactly four P17 files/23 symbols, zero affected processes and LOW risk.
+Neither result reported `partial` or `truncated`, and the staged diff check was clean.

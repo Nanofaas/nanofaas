@@ -2915,3 +2915,8 @@ gates and commit revision are recorded in the P17 report closure.
 P16b retains two explicit contract tasks: reserve callback count/bytes before handler
 start, and canonically adopt or replace the currently Python-specific retryable
 `429 RUNTIME_HANDLER_SATURATED` outcome. Next: P18, then P16b.
+
+P17 implementation is committed as `a6824ba6`. Its final pre-commit GitNexus all-scope
+gate completed with six files/24 symbols and LOW risk (including protected user dirt);
+the staged gate completed with exactly four P17 files/23 symbols and LOW risk. Both had
+zero affected processes and neither was partial or truncated. The staged diff was clean.
