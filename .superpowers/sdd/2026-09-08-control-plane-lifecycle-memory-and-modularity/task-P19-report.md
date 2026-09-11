@@ -980,3 +980,19 @@ is empty. `git diff --cached --check`: exit2 only for unchanged raw RED XML
 assertion trailing spaces and verbatim requirements' final blank lines inside
 the immutable dossier. Excluding immutable dossiers: exit0. Raw evidence was
 not cosmetically rewritten. Protected audit remains exit0; P20b untouched.
+
+Commit receipt: product **d93b68cdf1cca6e7af17e1c641c8e236c80d0fca**;
+delivery **58c56941aec6487f12a939c935b6aa54371a05ba**, `Freeze corrected P19
+control`, 663 files. Post-commit status contains only the two protected dirty
+overload files, six protected skill directories and protected snapshot test.
+Final confirmation raw at `/tmp/nanofaas-p19-r3-final-gates-confirm.json` has all
+**200 files / 8 symbols / 0 flows LOW**, staged **198 / 7 / 0 LOW**, complete,
+no partial/truncated/UNKNOWN. These supersede the preceding 9/8-symbol counts:
+STATO prose section mapping changed after adding audit text; the code-symbol sets
+and all flow sets did not change. A strict wrapper equality assertion failed on
+the section difference, but the orchestration continued to commit before reading
+that difference. Full confirmation was inspected immediately afterward; this
+inspection-timing debt is explicitly disclosed, not claimed as a successful
+equality check. The complete graph commands themselves ran before commit. This
+receipt corrects the counts and relocates the audit prose to the final ledger
+section; no runtime, harness or immutable payload changes. Final B/digest unchanged.

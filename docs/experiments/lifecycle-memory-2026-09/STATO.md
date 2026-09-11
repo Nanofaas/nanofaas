@@ -3124,13 +3124,6 @@ files remain unstaged; their original patch is retained only outside the reposit
 dossier. Production diff against B is empty. Full implementation report:
 `.superpowers/sdd/2026-09-08-control-plane-lifecycle-memory-and-modularity/task-P19-report.md`.
 
-Round-3 final delivery audit: 663 staged files, all 654 dossier files accounted,
-protected paths absent. Complete GitNexus all 200 text/indexed files/9 symbols/0
-flows LOW; staged 198/8/0 LOW; no partial/truncated/UNKNOWN. Binary/unindexed gaps
-covered by manifest/staging enumeration. Production diff against d93b68cd empty.
-Whitespace check exit2 only for immutable raw RED XML/verbatim requirements;
-excluding dossiers exit0. This is an evidence-format warning, not a test failure.
-
 ## P19 fix round 1 — 2026-09-11 — BLOCKED
 
 This section supersedes the earlier P19 acceptance claim. The latest user timebox
@@ -3385,3 +3378,15 @@ by text/diff/hash inventory. Final staged audit/commit receipt follows in the re
 H=`docs/experiments/lifecycle-memory-2026-09/p19`, W=`/tmp/nanofaas-p19-r3.QxIGIR`.
 Full commands/results/limits and commit receipts:
 `.superpowers/sdd/2026-09-08-control-plane-lifecycle-memory-and-modularity/task-P19-report.md`.
+Round-3 delivery commit: **58c56941aec6487f12a939c935b6aa54371a05ba**,
+`Freeze corrected P19 control`, 663 scoped files including all 654 dossier files;
+protected targets absent. Product B remains **d93b68cdf1cca6e7af17e1c641c8e236c80d0fca**.
+Final complete GitNexus confirmation before delivery: all 200 text/indexed files /
+8 symbols / 0 flows LOW; staged 198 / 7 / 0 LOW; no partial/truncated/UNKNOWN.
+Earlier 9/8-symbol counts changed only in stale STATO prose section mapping after
+the audit text addition. A wrapper equality assertion failed on that difference;
+the commit orchestration continued. Full results were then read and code-symbol
+sets confirmed unchanged; no missing/truncated graph result or runtime change.
+This post-commit inspection timing is disclosed, not called a clean equality check.
+Whitespace check exit2 only for immutable raw RED XML/verbatim requirements;
+excluding dossiers exit0. Final artifact verification/preservation remains green.
