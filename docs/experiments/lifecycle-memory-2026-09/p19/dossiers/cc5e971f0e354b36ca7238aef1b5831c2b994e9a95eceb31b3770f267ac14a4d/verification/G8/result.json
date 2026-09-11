@@ -1,0 +1,36 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.SyncQueueBackpressureApiTest",
+      "name": "syncInvokeReturns429WithRetryAfter()",
+      "seconds": "0.601",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    ":control-plane:test",
+    "-PcontrolPlaneModules=sync-queue,runtime-config",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.SyncQueueBackpressureApiTest",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 1,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 15.41368293762207,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "G8",
+  "output_sha256": "be8105f23dac4b03d13f00b9c0f8fa29c2d969bfd848b025b490456e1e812a68",
+  "started_unix_s": 1789127457.0464447
+}

@@ -1,0 +1,158 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.ReviewOffloadWaiterBudgetTest",
+      "name": "firstWaitersBudgetMustNotBecomeTheSharedOffloadDeadline()",
+      "seconds": "0.735",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.DefaultOffloadGatewayTest",
+      "name": "invokeRemote_404WithoutMarker_stillReportsNotRegistered()",
+      "seconds": "1.22",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.DefaultOffloadGatewayTest",
+      "name": "lazyMeterRegistryConstructorCleansLegacyOwnersAndMetersAfterEachCall()",
+      "seconds": "0.509",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.DefaultOffloadGatewayTest",
+      "name": "successResponseMapsToSuccessResultAndForwardsHeaders()",
+      "seconds": "0.039",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.DefaultOffloadGatewayTest",
+      "name": "unreachableRemoteErrorsWithOffloadFailed()",
+      "seconds": "0.041",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.DefaultOffloadGatewayTest",
+      "name": "remote404ErrorsWithOffloadFailedAndClearMessage()",
+      "seconds": "0.016",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.DefaultOffloadGatewayTest",
+      "name": "slowRemoteErrorsWithGatewayTimeoutFlavor()",
+      "seconds": "2.011",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.DefaultOffloadGatewayTest",
+      "name": "removedGenerationDoesNotRecreateOffloadMetersWhenOldRemoteFails()",
+      "seconds": "0.214",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.DefaultOffloadGatewayTest",
+      "name": "invokeRemote_contentCodingHeadersDescribeTheEnvelopeAndAreNotForwarded()",
+      "seconds": "0.012",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.DefaultOffloadGatewayTest",
+      "name": "invokeRemote_non2xxWithoutMarker_isStillOffloadFailure()",
+      "seconds": "0.007",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.DefaultOffloadGatewayTest",
+      "name": "invokeRemote_functionDecidedNon2xx_isNotAnOffloadFailure()",
+      "seconds": "0.009",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.DefaultOffloadGatewayTest",
+      "name": "remoteErrorStatusKeepsRemoteErrorInfo()",
+      "seconds": "0.016",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.DefaultOffloadGatewayTest",
+      "name": "invokeRemote_hopByHopHeadersAreNotForwarded()",
+      "seconds": "0.012",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.DefaultOffloadGatewayTest",
+      "name": "empty2xxBodyErrorsWithOffloadFailed()",
+      "seconds": "0.012",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.DefaultOffloadGatewayTest",
+      "name": "invokeRemote_forwardsApplicationHeadersAsRealHttpHeaders()",
+      "seconds": "0.009",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.DefaultOffloadGatewayTest",
+      "name": "decisions()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.DefaultOffloadGatewayTest",
+      "name": "invokeRemote_reservedHeadersCannotOverrideGatewayOwnedHeaders()",
+      "seconds": "0.02",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.DefaultOffloadGatewayTest",
+      "name": "remote5xxErrorsWithOffloadFailed()",
+      "seconds": "0.012",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.DefaultOffloadGatewayTest",
+      "name": "invokeRemote_functionDecided404_isNotReportedAsNotRegistered()",
+      "seconds": "0.01",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.DefaultOffloadGatewayTest",
+      "name": "perFunctionTargetAloneActivatesOffload()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.DefaultOffloadGatewayTest",
+      "name": "invokeRemote_2xx_propagatesEnvelopeFields()",
+      "seconds": "0.023",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    ":control-plane-modules:offload:test",
+    "-PcontrolPlaneModules=async-queue,offload",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.offload.DefaultOffloadGatewayTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.offload.ReviewOffloadWaiterBudgetTest",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 21,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 9.75071406364441,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "offload-async",
+  "output_sha256": "a03587e259cc88e6fd27a9566b52fca544e9b9665c921cb20e79c5f4969879f2",
+  "started_unix_s": 1789127862.0187852
+}

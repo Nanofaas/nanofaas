@@ -1,0 +1,11 @@
+
+  GitNexus Impact (1.6.11)
+{
+  "error": "Target 'P19SdkJava' not found",
+  "target": {
+    "name": "P19SdkJava"
+  },
+  "direction": "upstream",
+  "impactedCount": null,
+  "risk": "UNKNOWN"
+}

@@ -1,0 +1,32 @@
+{
+  "command": [
+    "/usr/bin/python3",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/http_runner.py",
+    "--jar",
+    "/tmp/nanofaas-p19-r2.wEbAOQ/artifacts/B-none.jar",
+    "--probe",
+    "/tmp/nanofaas-p19-r2.wEbAOQ/probe",
+    "--output",
+    "/tmp/nanofaas-p19-r2.wEbAOQ/runs/B3",
+    "--label",
+    "B3",
+    "--revision",
+    "b4770d6675adc99f53444260dcf0200f10b517cf",
+    "--warmup",
+    "6000",
+    "--count",
+    "12000",
+    "--rate",
+    "200"
+  ],
+  "ended_ns": 177248683915018,
+  "exit_code": 0,
+  "grace_s": 25,
+  "kill_sent": false,
+  "owned_pgid": 3859390,
+  "pid": 3859390,
+  "remaining_live_pids": [],
+  "started_ns": 177116339947113,
+  "status": "exited",
+  "timeout_s": 300
+}

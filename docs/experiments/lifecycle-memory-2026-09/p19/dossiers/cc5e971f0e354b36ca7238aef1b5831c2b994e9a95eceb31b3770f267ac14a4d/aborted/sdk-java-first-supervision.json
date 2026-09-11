@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/usr/bin/python3",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/sdk_profiles.py",
+    "/tmp/nanofaas-p19-r2.wEbAOQ",
+    "java"
+  ],
+  "ended_ns": 177442631191466,
+  "exit_code": 1,
+  "grace_s": 25,
+  "kill_sent": false,
+  "owned_pgid": 3873195,
+  "pid": 3873195,
+  "remaining_live_pids": [],
+  "started_ns": 177432421185493,
+  "status": "exited",
+  "timeout_s": 150
+}

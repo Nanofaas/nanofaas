@@ -9,6 +9,7 @@ import sys
 import threading
 import time
 from http_runner import encoded, request, write_json, proc_snapshot
+from contract import REVISIONS
 
 
 def fault_backend():
@@ -74,7 +75,7 @@ def profiles(work, selection):
     log = (folder/'server.log').open('wb')
     result = dict(schema='p19-short-http-v1', selection=selection, command=java, valid=False,
                   started_ns=time.monotonic_ns(), max_duration_s=120, sampling_s=.05,
-                  revision='6d08303371d803f44187ec5f4e37827d54fec597', jar_sha256=hashlib.sha256(jar.read_bytes()).hexdigest())
+                  revision=REVISIONS['B'], jar_sha256=hashlib.sha256(jar.read_bytes()).hexdigest())
     names = set()
 
     def sample(phase):

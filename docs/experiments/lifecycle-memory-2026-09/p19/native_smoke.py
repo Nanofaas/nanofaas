@@ -4,6 +4,7 @@ import subprocess
 import sys
 import time
 from http_runner import request, write_json
+from contract import REVISIONS
 
 # A dependency-free managed function fixture, not a numerical SDK benchmark.
 ECHO = '''import http.server,json
@@ -16,10 +17,15 @@ http.server.ThreadingHTTPServer(('0.0.0.0',8080),H).serve_forever()
 '''
 
 
+def native_errors(log):
+    return [line for line in log.splitlines() if any(marker in line for marker in
+            ['MissingReflectionRegistrationError', 'UnsupportedFeatureError', 'Failed to invoke custom destroy method'])]
+
+
 def smoke(work, selection):
     folder = work / 'smoke' / ('native-' + selection)
     folder.mkdir(parents=True, exist_ok=False)
-    image = 'nanofaas/control-plane:p19-6d083033-' + selection
+    image = 'nanofaas/control-plane:p19-' + REVISIONS['B'][:8] + '-' + selection
     name = 'nanofaas-p19-smoke-' + selection + '-' + str(time.time_ns())
     function = name + '-fn'
     command = ['docker', 'run', '-d', '--name', name, '--network=host', '--user=0', '--memory=512m', '--cpus=4']
@@ -95,8 +101,10 @@ def smoke(work, selection):
                 backend.kill()
                 backend.wait(timeout=5)
         record['ended_ns'] = time.monotonic_ns()
-        record['valid'] = record.get('checks_passed', False) and record.get('stop_exit') == 0 and record.get('remove_exit') == 0
+        record['application_errors'] = native_errors((folder/'output.log').read_text()) if (folder/'output.log').exists() else ['native log unavailable']
+        record['valid'] = record.get('checks_passed', False) and record.get('stop_exit') == 0 and record.get('remove_exit') == 0 and not record['application_errors']
         write_json(folder / 'result.json', record)
+    assert record['valid'], record
     print('native-' + selection, record['valid'], flush=True)
 
 

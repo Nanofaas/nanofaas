@@ -1,0 +1,17 @@
+{
+  "round": 2,
+  "status": "BLOCKED",
+  "production_source": "b4770d6675adc99f53444260dcf0200f10b517cf",
+  "previous_production_source": "6d08303371d803f44187ec5f4e37827d54fec597",
+  "finding_1": "All missing bounded T6/proxy/five-SDK/multi-destination profiles executed with real numerical owner evidence. Latest managed multi-destination profile fails pool registry drain; enters re-review, no accepted control.",
+  "finding_2": "Closed: separately reproduced native response serialization and concrete scheduler shutdown reflection errors; focused metadata tests RED then GREEN; rebuilt minimal/managed images and actual invocation/replay/removal/shutdown green.",
+  "findings_3_4": "Remain closed; 27 portable contract tests and owned process-group cleanup checks green.",
+  "concerns": [
+    "Latest managed profile exit 1: empty destination-pool registry entries persist after 4s plus bounded 10s drain; active/idle/allocated/pending connections and backend work are zero. Root cause not established. Earlier partial passes do not waive this failure.",
+    "User round-2 timebox stops code changes and sends remaining numerical failure to re-review.",
+    "Observer overhead attribution unavailable. Sampled peaks are lower bounds; reflective aliases must not be summed.",
+    "Slow-body wire admission/refusal unavailable when no headers arrive; no invented zero. Raw physical owner drain remains observed.",
+    "Native container provider uses available Docker docker-java adapter; no Kubernetes/native cluster claim.",
+    "Retrospective impact debt from pre-round-2 work remains disclosed; new production edits had exact upstream checks before editing."
+  ]
+}

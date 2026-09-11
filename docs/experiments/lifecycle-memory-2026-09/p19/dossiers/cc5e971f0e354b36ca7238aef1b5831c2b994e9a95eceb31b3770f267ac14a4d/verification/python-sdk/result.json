@@ -1,0 +1,24 @@
+{
+  "cases": [],
+  "command": [
+    ".venv/bin/python",
+    "-m",
+    "pytest",
+    "tests",
+    "-q",
+    "--junitxml=/tmp/nanofaas-p19.AitJMN/verification/python-junit.xml"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 139,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas/sdks/python",
+  "elapsed_s": 2.32261061668396,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "python-sdk",
+  "output_sha256": "24e7c7af4f201b846135e286af60da0194113dc1466074e56248b01946677228",
+  "started_unix_s": 1789127949.6177976
+}

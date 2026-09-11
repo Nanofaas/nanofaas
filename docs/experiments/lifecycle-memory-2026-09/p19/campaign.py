@@ -6,6 +6,7 @@ import sys
 import time
 from http_runner import write_json
 from supervision import supervise
+from contract import REVISIONS
 
 work = pathlib.Path(sys.argv[1])
 harness = pathlib.Path(__file__).resolve().parent
@@ -20,7 +21,7 @@ for path in ['/proc/meminfo', '/proc/loadavg', '/proc/self/cgroup', '/sys/fs/cgr
         environment[path] = {'status': 'unavailable', 'reason': str(error)}
 write_json(work / 'environment.json', environment)
 for repeat in range(1, 4):
-    for side, revision in [('A', '61d72e73528db62cf8ca465c6a037981d7ec13b0'), ('B', '6d08303371d803f44187ec5f4e37827d54fec597')]:
+    for side, revision in REVISIONS.items():
         label = side + str(repeat)
         command = [sys.executable, str(harness / 'http_runner.py'), '--jar', str(work / 'artifacts' / (side + '-none.jar')),
                    '--probe', str(work / 'probe'), '--output', str(work / 'runs' / label), '--label', label,
@@ -33,7 +34,7 @@ for repeat in range(1, 4):
     label = 'B-async-' + str(repeat)
     command = [sys.executable, str(harness / 'http_runner.py'), '--jar', str(work / 'artifacts/B-async-queue.jar'),
                '--probe', str(work / 'probe'), '--output', str(work / 'runs' / label), '--label', label,
-               '--revision', '6d08303371d803f44187ec5f4e37827d54fec597', '--profile', 'async-queue', '--scenario', 'async',
+               '--revision', REVISIONS['B'], '--profile', 'async-queue', '--scenario', 'async',
                '--warmup', '20', '--count', '120', '--rate', '50']
     print('START', label, time.time(), flush=True)
     result = supervise(command, work / 'supervision' / (label + '.json'), timeout=120)

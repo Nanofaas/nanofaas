@@ -1,0 +1,298 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest" tests="21" skipped="0" failures="0" errors="0" timestamp="2026-09-11T12:02:30.687Z" hostname="gx10-1b52" time="9.756">
+  <properties/>
+  <testcase name="usesEnvironmentWhenProjectPropertyIsAbsent()" classname="it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest" time="6.088"/>
+  <testcase name="rejectsDuplicateSelectedModules()" classname="it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest" time="0.241"/>
+  <testcase name="rejectsMissingStrongModuleWhenItIsNotSelected()" classname="it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest" time="0.167"/>
+  <testcase name="doesNotAddOneOfProviderAsGradleDependency()" classname="it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest" time="0.559"/>
+  <testcase name="doesNotAutoSelectOneOfProvider()" classname="it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest" time="0.102"/>
+  <testcase name="rejectsNoneCombinedWithModule()" classname="it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest" time="0.144"/>
+  <testcase name="rejectsConflictExpandedByAll()" classname="it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest" time="0.151"/>
+  <testcase name="allowsMissingWeakModuleWhenItIsNotSelected()" classname="it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest" time="0.134"/>
+  <testcase name="selectsAValidSingleModule()" classname="it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest" time="0.211"/>
+  <testcase name="rejectsDescriptorIdMismatch()" classname="it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest" time="0.092"/>
+  <testcase name="composesSelectedModuleFragmentsIntoControlPlaneOpenApi()" classname="it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest" time="0.495"/>
+  <testcase name="rejectsMissingDescriptor()" classname="it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest" time="0.101"/>
+  <testcase name="selectsNoModules()" classname="it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest" time="0.134"/>
+  <testcase name="publishesSelectionAsImmutableExtraProperty()" classname="it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest" time="0.198"/>
+  <testcase name="projectPropertyTakesPrecedenceOverEnvironment()" classname="it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest" time="0.133"/>
+  <testcase name="usesDefaultEnabledWhenSelectorEnvironmentIsAbsent()" classname="it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest" time="0.179"/>
+  <testcase name="rejectsConflictingModules()" classname="it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest" time="0.084"/>
+  <testcase name="allRejectsConflictBetweenNonDefaultModules()" classname="it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest" time="0.117"/>
+  <testcase name="allSelectsEveryCompatibleModuleInSortedOrder()" classname="it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest" time="0.155"/>
+  <testcase name="allPrefersDefaultEnabledModuleOnConflict()" classname="it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest" time="0.126"/>
+  <testcase name="rejectsUnknownModule()" classname="it.unimib.datai.nanofaas.gradle.ControlPlaneModulesPluginTest" time="0.101"/>
+  <system-out><![CDATA[
+> Task :printSelection
+[beta]
+
+BUILD SUCCESSFUL in 5s
+1 actionable task: 1 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.7.1/userguide/configuration_cache_enabling.html
+
+FAILURE: Build failed with an exception.
+
+* Where:
+Settings file '/tmp/junit4567276294561131052/settings.gradle' line: 1
+
+* What went wrong:
+An exception occurred applying plugin request [id: 'it.unimib.datai.nanofaas.control-plane-modules']
+> Failed to apply plugin 'it.unimib.datai.nanofaas.control-plane-modules'.
+   > Duplicate control-plane module 'alpha'
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 102ms
+
+FAILURE: Build failed with an exception.
+
+* Where:
+Settings file '/tmp/junit6976853552196843517/settings.gradle' line: 1
+
+* What went wrong:
+An exception occurred applying plugin request [id: 'it.unimib.datai.nanofaas.control-plane-modules']
+> Failed to apply plugin 'it.unimib.datai.nanofaas.control-plane-modules'.
+   > Invalid module constraints: module 'required' requires strong module 'base'
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 104ms
+
+> Task :control-plane-modules:consumer:printModuleDependencies
+implementation=[]
+compileOnly=[]
+testImplementation=[]
+
+BUILD SUCCESSFUL in 527ms
+1 actionable task: 1 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.7.1/userguide/configuration_cache_enabling.html
+
+FAILURE: Build failed with an exception.
+
+* Where:
+Settings file '/tmp/junit12948602574693051139/settings.gradle' line: 1
+
+* What went wrong:
+An exception occurred applying plugin request [id: 'it.unimib.datai.nanofaas.control-plane-modules']
+> Failed to apply plugin 'it.unimib.datai.nanofaas.control-plane-modules'.
+   > Invalid module constraints: module 'consumer' requires at least one oneOf module: [provider]
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 49ms
+
+FAILURE: Build failed with an exception.
+
+* Where:
+Settings file '/tmp/junit7049225837691452592/settings.gradle' line: 1
+
+* What went wrong:
+An exception occurred applying plugin request [id: 'it.unimib.datai.nanofaas.control-plane-modules']
+> Failed to apply plugin 'it.unimib.datai.nanofaas.control-plane-modules'.
+   > Module selector 'none' cannot be combined with other values
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 74ms
+
+FAILURE: Build failed with an exception.
+
+* Where:
+Settings file '/tmp/junit5820982039848785422/settings.gradle' line: 1
+
+* What went wrong:
+An exception occurred applying plugin request [id: 'it.unimib.datai.nanofaas.control-plane-modules']
+> Failed to apply plugin 'it.unimib.datai.nanofaas.control-plane-modules'.
+   > Invalid module constraints: modules 'async-queue' and 'sync-queue' conflict with equal defaultEnabled priority
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 90ms
+
+> Task :printSelection
+[optional]
+
+BUILD SUCCESSFUL in 102ms
+1 actionable task: 1 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.7.1/userguide/configuration_cache_enabling.html
+
+> Task :printSelection
+[beta]
+
+BUILD SUCCESSFUL in 179ms
+1 actionable task: 1 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.7.1/userguide/configuration_cache_enabling.html
+
+FAILURE: Build failed with an exception.
+
+* Where:
+Settings file '/tmp/junit12272476505162184600/settings.gradle' line: 1
+
+* What went wrong:
+An exception occurred applying plugin request [id: 'it.unimib.datai.nanofaas.control-plane-modules']
+> Failed to apply plugin 'it.unimib.datai.nanofaas.control-plane-modules'.
+   > Module directory name 'actual' does not match descriptor id 'declared'
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 52ms
+> Task :control-plane:composeControlPlaneOpenApi
+> Task :control-plane:processResources
+
+BUILD SUCCESSFUL in 440ms
+2 actionable tasks: 2 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.7.1/userguide/configuration_cache_enabling.html
+
+FAILURE: Build failed with an exception.
+
+* Where:
+Settings file '/tmp/junit4490553704950335422/settings.gradle' line: 1
+
+* What went wrong:
+An exception occurred applying plugin request [id: 'it.unimib.datai.nanofaas.control-plane-modules']
+> Failed to apply plugin 'it.unimib.datai.nanofaas.control-plane-modules'.
+   > Module directory 'missing' is missing module.properties
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 69ms
+
+> Task :printSelection
+[]
+
+BUILD SUCCESSFUL in 100ms
+1 actionable task: 1 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.7.1/userguide/configuration_cache_enabling.html
+> Task :mutateSelection FAILED
+
+FAILURE: Build failed with an exception.
+
+* Where:
+Build file '/tmp/junit14656160859641035421/build.gradle' line: 2
+
+* What went wrong:
+Execution failed for task ':mutateSelection' (registered in build file 'build.gradle').
+> java.lang.UnsupportedOperationException (no error message)
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 153ms
+1 actionable task: 1 executed
+
+> Task :printSelection
+[alpha]
+
+BUILD SUCCESSFUL in 110ms
+1 actionable task: 1 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.7.1/userguide/configuration_cache_enabling.html
+
+> Task :printSelection
+[alpha]
+
+BUILD SUCCESSFUL in 144ms
+1 actionable task: 1 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.7.1/userguide/configuration_cache_enabling.html
+
+FAILURE: Build failed with an exception.
+
+* Where:
+Settings file '/tmp/junit4614681232924255172/settings.gradle' line: 1
+
+* What went wrong:
+An exception occurred applying plugin request [id: 'it.unimib.datai.nanofaas.control-plane-modules']
+> Failed to apply plugin 'it.unimib.datai.nanofaas.control-plane-modules'.
+   > Invalid module constraints: modules 'async-queue' and 'sync-queue' conflict
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 51ms
+
+FAILURE: Build failed with an exception.
+
+* Where:
+Settings file '/tmp/junit8202056803802785880/settings.gradle' line: 1
+
+* What went wrong:
+An exception occurred applying plugin request [id: 'it.unimib.datai.nanofaas.control-plane-modules']
+> Failed to apply plugin 'it.unimib.datai.nanofaas.control-plane-modules'.
+   > Invalid module constraints: modules 'async-queue' and 'sync-queue' conflict with equal defaultEnabled priority
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 72ms
+
+> Task :printSelection
+[alpha, beta]
+
+BUILD SUCCESSFUL in 134ms
+1 actionable task: 1 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.7.1/userguide/configuration_cache_enabling.html
+Skipping control-plane module 'sync-queue': conflicts with default-enabled module 'async-queue'
+
+> Task :printSelection
+[async-queue]
+
+BUILD SUCCESSFUL in 103ms
+1 actionable task: 1 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.7.1/userguide/configuration_cache_enabling.html
+
+FAILURE: Build failed with an exception.
+
+* Where:
+Settings file '/tmp/junit2854538329665310350/settings.gradle' line: 1
+
+* What went wrong:
+An exception occurred applying plugin request [id: 'it.unimib.datai.nanofaas.control-plane-modules']
+> Failed to apply plugin 'it.unimib.datai.nanofaas.control-plane-modules'.
+   > Unknown control-plane module(s): [unknown]
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 65ms
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

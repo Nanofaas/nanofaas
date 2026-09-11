@@ -4,7 +4,7 @@ import hashlib
 import json
 
 REVISIONS = {'A': '61d72e73528db62cf8ca465c6a037981d7ec13b0',
-             'B': '6d08303371d803f44187ec5f4e37827d54fec597'}
+             'B': 'b4770d6675adc99f53444260dcf0200f10b517cf'}
 
 
 def terminal_status(response):

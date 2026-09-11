@@ -1,0 +1,11 @@
+platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/ControlPlaneApplication.java:17:public class ControlPlaneApplication {
+platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/ControlPlaneApplication.java:20:        SpringApplication.run(ControlPlaneApplication.class, args);
+platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/ControlPlaneApplicationMainTest.java:14:class ControlPlaneApplicationMainTest {
+platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/ControlPlaneApplicationMainTest.java:20:            springApp.when(() -> SpringApplication.run(eq(ControlPlaneApplication.class), any(String[].class)))
+platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/ControlPlaneApplicationMainTest.java:22:            ControlPlaneApplication.main(args);
+platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/ControlPlaneApplicationMainTest.java:23:            springApp.verify(() -> SpringApplication.run(ControlPlaneApplication.class, args));
+platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/DeploymentWakeUpGate.java:64:                                @Qualifier("deploymentWakeUpTimeoutScheduler") ScheduledExecutorService timeoutScheduler,
+platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/DeploymentWakeUpConfiguration.java:23:    @Bean(name = "deploymentWakeUpTimeoutScheduler", destroyMethod = "shutdown")
+platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/DeploymentWakeUpConfiguration.java:24:    ScheduledExecutorService deploymentWakeUpTimeoutScheduler() {
+platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/deployment/DeploymentWakeUpCoordinator.java:39:            @Qualifier("deploymentWakeUpTimeoutScheduler") ScheduledExecutorService scheduler) {
+platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/DeploymentWakeUpGateTest.java:411:                new DeploymentWakeUpConfiguration().deploymentWakeUpTimeoutScheduler();

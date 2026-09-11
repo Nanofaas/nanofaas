@@ -1,0 +1,21 @@
+// Compile measurement launchers as test-only sources, never into the accepted production jars.
+def p19Sources = new File(System.getProperty('p19.sources'))
+allprojects { project ->
+    afterEvaluate {
+        if (!plugins.hasPlugin('java')) return
+        sourceSets.test.java.exclude('**/ReplicaStatusSnapshotConfigurationTest.java')
+        def launchers = [':sdks:java':'P19SdkJava.java', ':sdks:java-lite':'P19SdkLite.java',
+                         ':control-plane':'P19T6Profile.java',
+                         ':control-plane-modules:container-deployment-provider':'P19ProxyProfile.java']
+        if (launchers.containsKey(path)) {
+            def launcher = launchers[project.path]
+            tasks.named('compileTestJava') {
+                source files(new File(p19Sources, launcher), new File(p19Sources, 'SdkObservation.java'), new File(p19Sources,'P19Probe.java'))
+            }
+            tasks.register('p19Classpath') {
+                dependsOn tasks.named('testClasses')
+                doLast { println('P19_CLASSPATH=' + sourceSets.test.runtimeClasspath.asPath) }
+            }
+        }
+    }
+}

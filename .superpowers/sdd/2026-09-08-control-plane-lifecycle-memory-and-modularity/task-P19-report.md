@@ -572,3 +572,190 @@ new registrar method refinement. UNKNOWN class/dynamic-entrypoint results were
 resolved with rg: application bootstrap, two injected scheduler consumers and
 focused tests identified; no HIGH/CRITICAL result. New test consumed graph-checked
 application/model/scheduler symbols. Protected SHA-256 audit remains green.
+
+### Fix round 2 — final execution and re-review handoff
+
+Status **BLOCKED**, `accepted_control: null`. Finding 2 is closed by actual minimal
+and managed native execution. All missing finding-1 surfaces now have numerical
+HTTP attempts, but strict multi-destination pool drain fails. Findings 3/4 remain
+closed. Per final user timebox, no further code/design: send the failure to re-review.
+No subagents, no P20b.
+
+Product B: **b4770d6675adc99f53444260dcf0200f10b517cf**, `Register native invocation
+and scheduler lifecycle hints`, explicitly superseding 6d083033. A remains
+61d72e73528db62cf8ca465c6a037981d7ec13b0, diagnostic only. Subsequent changes are
+measurement/docs only: diff against B for platform/sdks/services/build files is
+empty. Measurement commit and new dossier digest appear in the closing addendum.
+
+W=`/tmp/nanofaas-p19-r2.wEbAOQ`; H=`docs/experiments/lifecycle-memory-2026-09/p19`.
+All command logs, structured supervision, XML and per-run raw records are retained.
+
+#### Exact verification and native RED/GREEN
+
+- Preserved XML: initial RED 7 tests/2 failures/0 skips; response-only GREEN with
+  scheduler RED 7/1/0; final GREEN **46/0/0** (2 invocation hints, 36 wake-up gate,
+  3 catalog hints, 5 architecture). Additional exact native parent-method RED is
+  native-parent-hint-red.log/XML. Commands and hypotheses are above.
+- `./gradlew :control-plane:bootJar -PcontrolPlaneModules=<selection>
+  -PnanofaasBuildRevision=b4770d6675adc99f53444260dcf0200f10b517cf
+  -PnanofaasBuildDirty=false --console=plain`: none, async-queue, all,
+  sync-queue,runtime-config, container-deployment-provider; **all five exit 0**.
+- `python3 H/verification.py W/verification G1`: exit 0, **7 passed/0 failed/0
+  skipped**, R1/R2/R3/R4/R5/R7/R8. `... G14 G11`: exit 0; **G14 68/0/0** includes
+  R6; **G11 85/0/0**. All R1–R8 fresh green on B. Other unchanged groups explicitly
+  inherited from round 1 via inherited-evidence.json, not claimed fresh on B.
+- Native source exported from committed B, excluding dirty checkout files.
+  `CONTROL_PLANE_MODULES=none NATIVE_BUILD_MEMORY=8g NATIVE_PARALLELISM=4 timeout
+  600 W/native-source/scripts/native-java-image.sh control-plane
+  nanofaas/control-plane:p19-b4770d66-none`: exit 0. Same command with
+  container-deployment-provider/tag suffix container: exit 0. Both under 3 minutes.
+- `python3 H/native_smoke.py W none container`: final repeat **exit 0**, exact
+  output `native-none True` and `native-container True`. Both check health/OpenAPI,
+  actual invocation, same-key/same-execution replay, removal/no owned function
+  container, stop/remove exit 0, empty application_errors. Prior green checks are
+  preserved under aborted/native-first-green (superseded, not failed).
+  Minimal image sha256:6c81f6f25a54a17beb3cf598ec63af1930cc0a581c259716db76d104104ab40e;
+  managed sha256:ebafd45e0e6ce6eb3457b94922f2329a64aea311c1c37c157da8aec0dbe8d7c3.
+  Existing Docker docker-java adapter used; no Kubernetes/native-cluster claim.
+- `python3 -m unittest discover -s H -p 'test_*.py'`: final **exit 0, 27 tests,
+  no failures/errors/skips**, contracts-timebox-final.log. New native scanner
+  tests were RED for missing helper then GREEN. Census HTML regression RED
+  ValueError parsing `-`, then GREEN. Acceptance regressions RED 2 AttributeErrors
+  before validator, then GREEN. Earlier accounting/census RED/GREEN logs retained.
+
+#### Final corrected-B campaign
+
+`taskset -c 5-8 python3 H/campaign.py W`: **exit 0**. Actual fresh alternating
+A1/B1/A2/B2/A3/B3 generator/server/backend identities and chronological non-overlap
+validated, then three B ASYNC processes. No native builds/smokes or SDK/profile
+load overlapped this final sequence. Each common run: 6000 warm-up, 12000 measured
+offered/admitted/unique terminal successes, fixed 200/s, no refusal/unresolved.
+Each ASYNC: 120 offered/admitted/completed, four payload shapes. Raw requests,
+allocation validation and post-GC checkpoints retained; GC outside ordinary windows.
+
+| Run | useful successes/s | p50 ms | p95 ms | p99 ms | bytes allocated/success |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| A1 | 199.9838 | 1.668732 | 3.468505 | 4.853174 | 138075.864 |
+| B1 | 199.9768 | 1.575036 | 3.202664 | 3.754150 | 143898.151 |
+| A2 | 199.9616 | 1.686027 | 3.225911 | 3.781141 | 137960.619 |
+| B2 | 199.9543 | 2.140777 | 3.326997 | 3.872692 | 143952.312 |
+| A3 | 199.9803 | 1.412603 | 3.043894 | 3.636852 | 137933.339 |
+| B3 | 199.9573 | 1.443883 | 3.149173 | 3.759858 | 144274.245 |
+| B async 1 | 50.1613 | 12.181059 | 20.765715 | 24.615492 | 1137578.400 |
+| B async 2 | 50.0851 | 12.236642 | 20.960322 | 27.911768 | 1144352.400 |
+| B async 3 | 49.9283 | 11.552068 | 23.347128 | 27.506665 | 1147779.467 |
+
+#### Actual bounded owner profiles
+
+Java fixture builds: `./gradlew :sdks:java:p19Classpath :sdks:java-lite:p19Classpath
+-I H/profiles.init.gradle -Dp19.sources=<absolute H> --console=plain`, exit 0 after
+correcting a fixture Gradle closure lookup error. Same init/properties with
+`:control-plane:p19Classpath :control-plane-modules:container-deployment-provider:p19Classpath
+-PcontrolPlaneModules=all`, exit 0. Go fixture copied only to isolated B SDK source:
+`go test -c -o W/sdk-go ./nanofaas`, exit 0. JavaScript `npm run build`, exit 0.
+Python uses existing SDK venv without resolving the executable symlink out of it.
+Exact commands, classpath hashes and environments: *-commands.json and
+profile-build-identities.json. Fixtures use real SDKs/provider/proxy seams, not
+replacement runtime logic. Loopback observation endpoints are not deployable.
+
+Execution via existing `supervise(..., timeout=150)`: `sdk_profiles.py W <language>`,
+`owner_profiles.py W managed|proxy`, `short_profiles.py W <selection>`, serial
+owned groups. All remaining_live_pids arrays empty, including the failed profile.
+
+| Profile | Ordinary offers/admitted/refused; result | Sampled peak → drain |
+| --- | --- | --- |
+| Short none/all/sync+runtime-config | exit 0; 7/8/8 cases T3/T4/T5/T7/T9 | live/futures/waiters/input drain; post-policy GC/raw owners |
+| T6 managed | 10/10/0: 6 blocked terminal errors, 4 healthy successes | physical provider reads 1→0; gate/timers 2→0 including healthy owner; release/removal/no resurrection |
+| Multi-destination | prior complete records: 12 names, 3 destinations, 12 successes + 12 protected replays | **latest strict gate fails: empty pool registry 3→3**; connections/acquisitions/function mappings/backend work 0 |
+| Actual proxy | 11/9/2: 8 successes, 1 output-limit error; exit 0 | exchanges 2→0; bytes 12591169→0 below 16MiB; deadlines 2→0; owned close flags observed |
+| Java SDK, each of 2 generations | 19/6/13: 2 successes, 4 errors; 14 callbacks total | handler permits fully returned; callbacks 2→0, reservation bytes 16777216→0, executor active/queue→0 |
+| Java-lite, each generation | 19/6/13: 1 success, 5 errors; 16 callbacks total | active handlers/set 2→0, callback reservation 16777216→0 |
+| Python, each generation | 19/10/9: 1 sync success, 7 errors, 2 callback acknowledgements; 4 callbacks total | handlers/callbacks 2→0; callback bytes 524428→0; active task sets drain |
+| JavaScript, each generation | 19/10/9: 1 sync success, 7 errors, 2 acknowledgements; 4 callbacks total | handlers/callbacks 2→0; reservation 16777216→0; output 4194336→0 |
+| Go, each generation | 19/6/13: 1 success, 5 errors; 14 callbacks total | handlers/callbacks 2→0; reservation 16777216→0; output 4194337→0 |
+
+Each SDK generation and proxy also offers 2 separately recorded slow clients.
+Java/lite/Go return synchronous output plus callback side effects; Python/JS
+acknowledgements are not counted as terminal successes. Callback records keep
+hashes/byte counts, not repeated payloads. SDK child exit codes: Java/lite 143
+after SIGTERM, Python -15, JavaScript/Go 0; all supervisors exit 0 and verify
+process absence. Do not relabel all child exits 0. Java-lite incomplete-body
+headers are unavailable at client deadline; proxy closes without headers. Their
+admission/refusal are unavailable, not zero; completed useful wire bodies=0.
+
+Initial launcher defects (Java/Go environment callback URL missing, Python venv
+symlink resolution, JSON Accept on a Prometheus endpoint) were corrected and rerun;
+failed/superseded evidence retained under aborted. Some earliest failures predate
+failure-populations preservation; no data is invented to fill that gap.
+
+Remaining failure: repeated managed runs retain 2–3 empty destination entries.
+Latest managed-policy-drain.log ends **exit 1** after 4s plus bounded 10s extra wait;
+registry=3, active/idle/allocated/pending connections and backend work=0. Source
+trace reaches DispatchConnectionPool.disposeInactivePools→disposeDestination→
+delegate.disposeWhen; **root cause not established**. Do not call it a proved
+product retainer or fixture-only issue yet. Latest failure preserves raw populations,
+backend identities, first T6 case and assertion point; final combined rows/census
+were not reached. Earlier complete attempts supply full accounting but do not
+waive the strict failure. Per timebox, no more code: finding 1 enters re-review.
+
+Observer dictionary updated. Unobservable Netty aliases/kernel buffers, JS private
+closures, JDK internal queues and unselected owners stay unavailable/not_applicable.
+Numeric limits/cumulative IDs/observer handles are not retained workload; aliases
+must not be summed. Pool drain is not inferred from process exit. Observer overhead
+unquantified; moderate-load costs are not peak capacity/equivalence/P07 acceptance;
+short profiles do not replace P24 soak.
+
+#### Graph, self-review and preservation
+
+Native production edits had exact upstream impact first; no HIGH/CRITICAL result.
+UNKNOWN bootstrap/dynamic symbols resolved with rg. Fixtures consumed graph-checked
+SDK/provider/proxy/wake-up symbols. Initially absent new census/profile symbols
+were checked with exact-file impact plus text search; ambiguous profiles/profile
+were not treated as clean. W/graph contains raw evidence. Completed refresh:
+28.1s, 22787 nodes/63835 edges/763 flows. The final diagnostic tool call was
+interrupted before execution; no pool production edit followed. Retrospective debt
+from earlier rounds remains disclosed. Final complete all/staged gates below.
+
+Self-review preserves refusal/admission/replay distinctions and failed evidence;
+does not claim process exit proves in-process owner policy, or immutable integrity
+proves acceptance. SHA-256 audit green for both overload-path dirty files, the
+untracked ReplicaStatusSnapshotConfigurationTest.java and all six skill files.
+None is staged. Unrelated dirty/untracked state is preserved. Files added are P19
+SDK/provider/proxy fixtures, process drivers and focused contracts; modified files
+are revision bindings, native error scanner, dossier/protocol/observer documentation,
+README, baseline pointer, STATO and this report. Full file list is in the commit.
+
+#### Closing artifact and pre-commit checks
+
+Dossier: `docs/experiments/lifecycle-memory-2026-09/p19/dossiers/cc5e971f0e354b36ca7238aef1b5831c2b994e9a95eceb31b3770f267ac14a4d`.
+Manifest SHA-256 **cc5e971f0e354b36ca7238aef1b5831c2b994e9a95eceb31b3770f267ac14a4d**,
+schema nanofaas-p19-dossier-v2, 698 payload files/63,768,471 bytes, status BLOCKED,
+accepted_control null, source B b4770d6675adc99f53444260dcf0200f10b517cf.
+
+`python3 H/dossier.py freeze W`: exit 0; separate `... verify <dossier>` exit 0,
+`VERIFIED cc5e971f...7ac14a4d 698 payload files`. Independent `sha256sum -c
+SHA256SUMS` exit 0, **699 checks**. All three archived measured jar hashes match
+build-identities.json; Git archive pax comments match exact A and B revisions.
+Frozen harness tests: 27/0/0 exit 0 when extracted under the repository's
+docs/experiments/lifecycle-memory-2026-09/p19 layout. A shallow /tmp extraction
+first failed with 2 import errors (HERE.parents[3]); preserved log, no code change.
+Reproduction must preserve that layout. This is a packaging limitation, not a
+waiver of failed profile acceptance.
+
+Complete raw all/staged GitNexus checks saved before freeze in graph/pre-freeze-gates.json:
+all 27 files/82 symbols/11 flows; staged 25/81/11; **HIGH aggregate risk** reported
+to user, attributable to new fixture/provider/profile links (not waived as LOW).
+After staging the dossier, final raw checks at /tmp/nanofaas-p19-r2-final-gates.json:
+all 245 indexed/text files/82 symbols/11 flows; staged 243/81/11, same HIGH risk,
+same symbol/flow sets, no partial/truncated/UNKNOWN verdict. Binary/unindexed
+artifact files were supplemented by exact manifest/staging enumeration: **726 staged
+files including all 700 artifact files**, protected targets absent. Main source
+diff against B empty. Raw evidence is complete; long console transport output was
+read back via a lossless field comparison/complete symbol and flow listing.
+
+`git diff --cached --check` exit 2 only for preserved raw RED XML assertion trailing
+spaces and original requirements' final blank lines inside the frozen dossier.
+The same check excluding immutable dossiers exits 0. Do not alter raw failure or
+requirements evidence to cosmetically erase those warnings. Final 19 owned process
+groups currently empty; `docker ps -a --filter name=nanofaas-p19-smoke` empty/exit 0.
+Protected SHA-256 audit remains green. Final report/digest additions are prose only.

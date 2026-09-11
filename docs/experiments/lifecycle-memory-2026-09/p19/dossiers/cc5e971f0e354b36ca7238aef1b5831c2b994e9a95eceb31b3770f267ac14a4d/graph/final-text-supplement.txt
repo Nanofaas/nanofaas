@@ -1,0 +1,19 @@
+docs/experiments/lifecycle-memory-2026-09/p19/P19ProxyProfile.java:15:        var fields=Class.forName("SdkObservation").getMethod("fields",Object.class);
+docs/experiments/lifecycle-memory-2026-09/p19/P19T6Profile.java:13:public class P19T6Profile {
+docs/experiments/lifecycle-memory-2026-09/p19/P19T6Profile.java:21:        SdkObservation.serve(()->{
+docs/experiments/lifecycle-memory-2026-09/p19/dossier.py:28:def validate_round2(folder):
+docs/experiments/lifecycle-memory-2026-09/p19/dossier.py:78:        validate_round2(folder)
+docs/experiments/lifecycle-memory-2026-09/p19/dossier.py:132:    if review.get('round')==2 and review.get('status')!='BLOCKED': validate_round2(work)
+docs/experiments/lifecycle-memory-2026-09/p19/owner_profiles.py:17:def profile(work,kind):
+docs/experiments/lifecycle-memory-2026-09/p19/P19SdkJava.java:11:    @Bean FunctionHandler measuredHandler(){return request->SdkObservation.handle(request.input());}
+docs/experiments/lifecycle-memory-2026-09/p19/P19SdkJava.java:14:        SdkObservation.serve(()->{
+docs/experiments/lifecycle-memory-2026-09/p19/P19SdkJava.java:19:                    values.put(name,SdkObservation.fields(bean));
+docs/experiments/lifecycle-memory-2026-09/p19/P19SdkLite.java:6:                .handler(request->SdkObservation.handle(request.input())).build();
+docs/experiments/lifecycle-memory-2026-09/p19/P19SdkLite.java:7:        SdkObservation.serve(()->SdkObservation.fields(runtime));
+docs/experiments/lifecycle-memory-2026-09/p19/SdkObservation.java:11:public final class SdkObservation {
+docs/experiments/lifecycle-memory-2026-09/p19/sdk_profiles.py:51:def profiles(work, language):
+docs/experiments/lifecycle-memory-2026-09/p19/test_round2_acceptance.py:12:                dossier.validate_round2(pathlib.Path(root))
+docs/experiments/lifecycle-memory-2026-09/p19/test_round2_acceptance.py:19:                dossier.validate_round2(pathlib.Path(root))
+docs/experiments/lifecycle-memory-2026-09/p19/profiles.init.gradle:8:                         ':control-plane':'P19T6Profile.java',
+docs/experiments/lifecycle-memory-2026-09/p19/profiles.init.gradle:13:                source files(new File(p19Sources, launcher), new File(p19Sources, 'SdkObservation.java'), new File(p19Sources,'P19Probe.java'))
+docs/experiments/lifecycle-memory-2026-09/p19/short_profiles.py:59:def profiles(work, selection):

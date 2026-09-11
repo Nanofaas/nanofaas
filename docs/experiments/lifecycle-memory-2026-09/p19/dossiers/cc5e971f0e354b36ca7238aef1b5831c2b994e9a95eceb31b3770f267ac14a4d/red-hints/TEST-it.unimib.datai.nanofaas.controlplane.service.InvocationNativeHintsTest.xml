@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="it.unimib.datai.nanofaas.controlplane.service.InvocationNativeHintsTest" tests="2" skipped="0" failures="2" errors="0" timestamp="2026-09-11T13:50:04.939Z" hostname="gx10-1b52" time="0.247">
+  <properties/>
+  <testcase name="erasedHttpResponseRetainsEveryRecordAccessorForNativeJackson()" classname="it.unimib.datai.nanofaas.controlplane.service.InvocationNativeHintsTest" time="0.199">
+    <failure message="org.opentest4j.AssertionFailedError: [native Jackson record accessor executionId] &#10;Expecting value to be true but was false" type="org.opentest4j.AssertionFailedError">org.opentest4j.AssertionFailedError: [native Jackson record accessor executionId] 
+Expecting value to be true but was false
+	at it.unimib.datai.nanofaas.controlplane.service.InvocationNativeHintsTest.erasedHttpResponseRetainsEveryRecordAccessorForNativeJackson(InvocationNativeHintsTest.java:28)
+</failure>
+  </testcase>
+  <testcase name="concreteWakeUpSchedulerDestroyMethodIsInvocableInNativeImage()" classname="it.unimib.datai.nanofaas.controlplane.service.InvocationNativeHintsTest" time="0.039">
+    <failure message="org.opentest4j.AssertionFailedError: [Spring resolves the concrete inherited destroy method public void java.util.concurrent.ScheduledThreadPoolExecutor.shutdown()] &#10;Expecting value to be true but was false" type="org.opentest4j.AssertionFailedError">org.opentest4j.AssertionFailedError: [Spring resolves the concrete inherited destroy method public void java.util.concurrent.ScheduledThreadPoolExecutor.shutdown()] 
+Expecting value to be true but was false
+	at it.unimib.datai.nanofaas.controlplane.service.InvocationNativeHintsTest.concreteWakeUpSchedulerDestroyMethodIsInvocableInNativeImage(InvocationNativeHintsTest.java:38)
+</failure>
+  </testcase>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

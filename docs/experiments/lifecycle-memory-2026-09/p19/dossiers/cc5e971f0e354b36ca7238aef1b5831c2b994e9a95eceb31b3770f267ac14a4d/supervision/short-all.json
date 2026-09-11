@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/usr/bin/python3",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/short_profiles.py",
+    "/tmp/nanofaas-p19-r2.wEbAOQ",
+    "all"
+  ],
+  "ended_ns": 177708926180899,
+  "exit_code": 0,
+  "grace_s": 25,
+  "kill_sent": false,
+  "owned_pgid": 3885787,
+  "pid": 3885787,
+  "remaining_live_pids": [],
+  "started_ns": 177688391198411,
+  "status": "exited",
+  "timeout_s": 150
+}

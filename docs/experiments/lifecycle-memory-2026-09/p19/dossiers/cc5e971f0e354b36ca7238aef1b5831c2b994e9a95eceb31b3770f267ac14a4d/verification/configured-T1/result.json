@@ -1,0 +1,36 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.P07ConfiguredHttpCalibrationTest",
+      "name": "t1CoreOnlySyncUnkeyedThroughConfiguredHttpRuntime()",
+      "seconds": "5.523",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    ":control-plane:test",
+    "-PcontrolPlaneModules=none",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.P07ConfiguredHttpCalibrationTest.t1CoreOnlySyncUnkeyedThroughConfiguredHttpRuntime",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 1,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 24.34908127784729,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "configured-T1",
+  "output_sha256": "4c140e3b17d971502df8d3b46690af9d38af4e4b24aab868f07d493e4d574708",
+  "started_unix_s": 1789127899.8295157
+}

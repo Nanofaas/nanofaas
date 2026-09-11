@@ -1,12 +1,14 @@
-# P19 candidate evidence — BLOCKED after fix round 1
+# P19 candidate evidence — BLOCKED after fix round 2
 
-The immutable dossier named in `baseline.json` is NOT an accepted P23 control. Native
-invocation fails on missing reflection metadata in exact B; replay is therefore
-unreached. Short T6/T8 and full proxy/SDK numerical coverage remain open. Integrity
-verification is not correctness acceptance. Earlier evidence is preserved unchanged.
-Its production
-source is `6d08303371d803f44187ec5f4e37827d54fec597`. P19 adds measurement and
-verification files only. P00 (`61d72e73528db62cf8ca465c6a037981d7ec13b0`) remains a
+The immutable dossier named in `baseline.json` is NOT an accepted P23 control.
+Native minimal and managed invocation/replay/shutdown now pass. All missing bounded
+owner profiles were executed, but multi-destination churn leaves empty pool registry
+entries beyond the configured drain window. That concrete failure enters re-review;
+earlier partial managed-profile passes are not acceptance. Integrity verification is
+not correctness acceptance. Earlier dossiers are preserved unchanged.
+The corrected product source is `b4770d6675adc99f53444260dcf0200f10b517cf`,
+advancing B with only the two native reflection metadata repairs. P00
+(`61d72e73528db62cf8ca465c6a037981d7ec13b0`) remains a
 known-defective diagnostic comparator, never a correctness acceptance control.
 
 `protocol.json` freezes the actual common HTTP surface and denominators. The
@@ -76,7 +78,13 @@ manifest and every file hash first, extract the frozen measured
 jars and recompile the archived probe. Use `executed-common-harness.tar.gz` for
 the exact common SYNC runner; `harness.tar.gz` contains the final ASYNC refinement
 and dossier tools. Fix round 1 remeasured all six common runs and three ASYNC runs
-with fresh-process validation and owned process-group supervision. Run B and C using the
+with fresh-process validation and owned process-group supervision. Round 2 reran
+the same six plus three processes on the new B, without native/profile overlap.
+`profiles.init.gradle` compiles measurement-only launchers; `sdk_profiles.py` and
+`owner_profiles.py` exercise actual SDKs and the existing provider/proxy seams.
+Commands, classpath identities, selected numeric owner fields and unavailable
+observations are retained. None of these loopback observation endpoints is for deployment.
+Run B and C using the
 same protocol and environment, with fresh alternating processes. A harness or
 configuration change requires a new protocol identity and remeasurement of B.
 Create a new dossier referencing this digest; never overwrite the P19 directory.

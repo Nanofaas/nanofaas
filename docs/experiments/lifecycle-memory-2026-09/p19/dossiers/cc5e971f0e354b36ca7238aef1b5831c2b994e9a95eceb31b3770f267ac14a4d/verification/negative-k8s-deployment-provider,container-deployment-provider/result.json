@@ -1,0 +1,19 @@
+{
+  "cases": [],
+  "command": [
+    "./gradlew",
+    "help",
+    "-PcontrolPlaneModules=k8s-deployment-provider,container-deployment-provider",
+    "--offline",
+    "--console=plain"
+  ],
+  "counts": null,
+  "counts_status": "not_applicable: command has no test cases",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 0.7165992259979248,
+  "exit_code": 1,
+  "expected_exit_code": 1,
+  "label": "negative-k8s-deployment-provider,container-deployment-provider",
+  "output_sha256": "970120745158af9f75c72902a7955b7c7b321986885c22eb33c38e7fe02a1cc2",
+  "started_unix_s": 1789128161.6265733
+}

@@ -10,7 +10,7 @@ import subprocess
 import tarfile
 import xml.etree.ElementTree as ET
 import zipfile
-from contract import summarize, validate_pairs, percentiles
+from contract import summarize, validate_pairs, percentiles, REVISIONS
 
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
@@ -23,6 +23,36 @@ def digest(path):
 def write(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, sort_keys=True, indent=2) + '\n')
+
+
+def validate_round2(folder):
+    for name in ['none','all','sync-queue,runtime-config','managed','proxy',
+                 'sdk-java','sdk-java-lite','sdk-python','sdk-javascript','sdk-go']:
+        path=folder/'profiles'/name/'result.json'
+        if not path.exists(): raise ValueError('missing profile: '+name)
+        record=json.loads(path.read_text())
+        if not record.get('valid') or record.get('revision')!=REVISIONS['B']:
+            raise ValueError('invalid profile: '+name)
+        label=('short-'+name) if name in ['none','all','sync-queue,runtime-config'] else name
+        supervision=json.loads((folder/'supervision'/(label+'.json')).read_text())
+        if supervision['status']!='exited' or supervision['exit_code']!=0 or supervision['remaining_live_pids']:
+            raise ValueError('profile process cleanup: '+name)
+        if name.startswith('sdk-'):
+            generations=record['generations']
+            if len(generations)!=2 or not all(g['process_absent'] for g in generations):
+                raise ValueError('SDK generation drain: '+name)
+            if generations[0]['process']['pid']==generations[1]['process']['pid']:
+                raise ValueError('SDK generation freshness: '+name)
+            if not record['callbacks']: raise ValueError('missing actual SDK callback: '+name)
+        elif name in ['managed','proxy']:
+            if not record['process_absent']: raise ValueError('owner process drain: '+name)
+        elif not all(record['shutdown'].values()): raise ValueError('short process drain: '+name)
+    for name in ['none','container']:
+        record=json.loads((folder/'smoke'/('native-'+name)/'result.json').read_text())
+        if not record['valid'] or record['application_errors'] or record['stop_exit'] or record['remove_exit']:
+            raise ValueError('native invocation/shutdown: '+name)
+        if record['invocation']['status']!=200 or record['replay']['status']!=200 or record['invocation']['response']['executionId']!=record['replay']['response']['executionId']:
+            raise ValueError('native replay: '+name)
 
 
 def verify(folder):
@@ -44,6 +74,8 @@ def verify(folder):
     expected = set(manifest['files']) | {'manifest.json', 'SHA256SUMS'}
     if {str(p.relative_to(folder)) for p in folder.rglob('*') if p.is_file()} != expected:
         raise ValueError('unmanifested or missing payload')
+    if manifest.get('review',{}).get('round')==2 and manifest.get('accepted_control'):
+        validate_round2(folder)
     runs = [json.loads((folder / 'runs' / (side + str(i)) / 'run.json').read_text()) for i in range(1, 4) for side in 'AB']
     builds = json.loads((folder/'build-identities.json').read_text())
     validate_pairs(runs, {side: builds[side+'-none.jar'] for side in 'AB'})
@@ -97,9 +129,10 @@ def verify(folder):
 
 def freeze(work):
     review = json.loads((work/'fix-round.json').read_text()) if (work/'fix-round.json').exists() else {}
+    if review.get('round')==2 and review.get('status')!='BLOCKED': validate_round2(work)
     staging = work / 'dossier'
     staging.mkdir(exist_ok=False)
-    for name in ['runs', 'verification', 'external', 'smoke', 'graph', 'aborted', 'auxiliary', 'profiles', 'supervision', 'probe', 'red-native', 'native-container-cli-unavailable']:
+    for name in ['runs', 'verification', 'external', 'smoke', 'graph', 'aborted', 'auxiliary', 'profiles', 'supervision', 'probe', 'red-native', 'native-container-cli-unavailable', 'red-hints', 'green-hints', 'response-green-scheduler-red']:
         source = work / name
         if source.exists():
             shutil.copytree(source, staging / name)
@@ -184,7 +217,7 @@ def freeze(work):
     source_paths = ['.dockerignore', '.gitattributes', '.gitignore', 'README.md', 'build.gradle', 'settings.gradle',
                     'gradle.properties', 'gradlew', 'gradlew.bat', 'gradle', 'platform', 'sdks', 'services', 'functions',
                     'runtimes', 'scripts', 'tools', 'clients', 'openapi', 'deploy']
-    for side, revision in [('A', '61d72e73528db62cf8ca465c6a037981d7ec13b0'), ('B', '6d08303371d803f44187ec5f4e37827d54fec597')]:
+    for side, revision in REVISIONS.items():
         available = set(subprocess.check_output(['git', 'ls-tree', '--name-only', revision], cwd=ROOT, text=True).splitlines())
         paths = [path for path in source_paths if path in available]
         archive_bytes = subprocess.check_output(['git', 'archive', revision, *paths], cwd=ROOT)
@@ -198,7 +231,7 @@ def freeze(work):
         assert run['valid'] and run['shutdown']['server_proc_absent'], run['label']
         checkpoints = json.loads((run_file.parent / 'checkpoints.json').read_text())
         assert all(c['gc_verified'] for c in checkpoints)
-        if run['revision'].startswith('6d083033'):
+        if run['revision'] == REVISIONS['B']:
             for point in checkpoints:
                 for population in ['live', 'execution_reservations', 'canonical_input_bytes', 'physical_input_copy_bytes', 'waiters', 'retained_waiters']:
                     assert point['populations'][population]['value'] == 0, (run['label'], point['phase'], population)
@@ -226,15 +259,15 @@ def freeze(work):
           verdict=('BLOCKED candidate B, not an accepted P23 control; diagnostic costs only.' if review.get('status') == 'BLOCKED'
                    else 'Diagnostic A/B costs only; corrected B is the P23 control. No maximum-throughput or equivalence claim.')))
     # Logs are generated output: deterministic compression keeps the repository small.
-    for file in list(staging.rglob('*.log')) + list(staging.rglob('*-histogram.txt')) + list(staging.rglob('backend-executions.json')):
+    for file in list(staging.rglob('*.log')) + list(staging.rglob('*-histogram.txt')) + list(staging.rglob('backend-executions.json')) + list(staging.rglob('*populations*.json')):
         with gzip.GzipFile(filename=str(file) + '.gz', mode='wb', mtime=0) as stream:
             stream.write(file.read_bytes())
         file.unlink()
     manifest = dict(schema='nanofaas-p19-dossier-v2', status=review.get('status', 'DONE_WITH_CONCERNS'),
                     accepted_control=None if review.get('status') == 'BLOCKED' else 'B',
-                    review=review, production_source='6d08303371d803f44187ec5f4e37827d54fec597',
-                    production_tree=subprocess.check_output(['git', 'rev-parse', '6d083033^{tree}'], cwd=ROOT, text=True).strip(),
-                    diagnostic_source='61d72e73528db62cf8ca465c6a037981d7ec13b0',
+                    review=review, production_source=REVISIONS['B'],
+                    production_tree=subprocess.check_output(['git', 'rev-parse', REVISIONS['B']+'^{tree}'], cwd=ROOT, text=True).strip(),
+                    diagnostic_source=REVISIONS['A'],
                     build_source_archive_scope='All listed production/build input roots; historical experiments and prose omitted. Exact full Git tree recorded.',
                     binary_archive_scope='Exact measured JVM jars; other profile jar entry hashes and native image digest retained.',
                     concerns=review.get('concerns', ['Consult protocol limitations; no peak-capacity or soak claim.']),

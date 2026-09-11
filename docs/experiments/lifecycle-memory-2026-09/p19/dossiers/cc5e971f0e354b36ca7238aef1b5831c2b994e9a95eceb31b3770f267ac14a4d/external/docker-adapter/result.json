@@ -1,0 +1,39 @@
+{
+  "label": "docker-adapter",
+  "command": [
+    "./gradlew",
+    ":control-plane-modules:container-deployment-provider:test",
+    "-PcontrolPlaneModules=container-deployment-provider",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.DockerJavaContainerRuntimeAdapterIntegrationTest",
+    "--rerun-tasks",
+    "--offline",
+    "--console=plain",
+    "--no-parallel"
+  ],
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "started_unix_s": 1789128066.8772132,
+  "elapsed_s": 23.55925703048706,
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.DockerJavaContainerRuntimeAdapterIntegrationTest",
+      "name": "adapterCompletesLifecycleAgainstRealDockerEngine()",
+      "state": "passed",
+      "seconds": "2.133"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.DockerJavaContainerRuntimeAdapterIntegrationTest",
+      "name": "adapterJoinsReplicaToDockerNetworkWithoutPublishingPorts()",
+      "state": "passed",
+      "seconds": "1.284"
+    }
+  ],
+  "counts": {
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0
+  },
+  "output_sha256": "414f62372b1954cbecb4885892384f4bf2b58f6b9346aacff4cdbbf8d36d169b"
+}

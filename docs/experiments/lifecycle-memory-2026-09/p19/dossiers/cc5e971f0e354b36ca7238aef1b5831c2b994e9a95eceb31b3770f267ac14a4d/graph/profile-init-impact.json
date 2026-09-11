@@ -1,0 +1,11 @@
+
+  GitNexus Impact (1.6.11)
+{
+  "error": "Target 'File:docs/experiments/lifecycle-memory-2026-09/p19/profiles.init.gradle' not found",
+  "target": {
+    "name": "File:docs/experiments/lifecycle-memory-2026-09/p19/profiles.init.gradle"
+  },
+  "direction": "upstream",
+  "impactedCount": null,
+  "risk": "UNKNOWN"
+}

@@ -1,0 +1,70 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.OffloadHeaderLossE2eTest",
+      "name": "applicationHeaderSurvivesAnEagerOffloadHop()",
+      "seconds": "0.344",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.OffloadHeaderLossE2eTest",
+      "name": "connectionNominatedHeaderDoesNotReachTheRemoteFunction()",
+      "seconds": "0.023",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.OffloadHeaderLossE2eTest",
+      "name": "applicationHeaderSurvivesDirectInvocationWithoutOffload()",
+      "seconds": "0.054",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.OffloadPressureE2eTest",
+      "name": "saturatedSyncQueueOffloadsOverflowToTheCloudInstance()",
+      "seconds": "4.104",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.OffloadHopGuardE2eTest",
+      "name": "offloadedRequestIsNotReOffloadedAndHeadersAreReconstructed()",
+      "seconds": "0.094",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.offload.OffloadHopGuardE2eTest",
+      "name": "withoutTheHopMarkerTheSameCloudFunctionWouldOffload()",
+      "seconds": "0.026",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    ":control-plane-modules:offload:test",
+    "-PcontrolPlaneModules=sync-queue,offload",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.offload.OffloadPressureE2eTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.offload.OffloadHeaderLossE2eTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.offload.OffloadHopGuardE2eTest",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 6,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 21.841360330581665,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "offload-http",
+  "output_sha256": "5774243b1b7f40e791232f4571c7d362794c6028a043008acaf0b8ba0a465ae0",
+  "started_unix_s": 1789128006.0889897
+}

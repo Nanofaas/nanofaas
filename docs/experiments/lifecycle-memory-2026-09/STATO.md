@@ -3217,3 +3217,48 @@ InvocationLifecycleRuntimeHints, its application import and InvocationNativeHint
 Native rebuild/smoke, missing bounded numerical profiles, fresh R1–R8 and alternating
 A/B remeasurement remain pending; no accepted control is declared at this stage.
 Full commands, expected failures and graph evidence are in the round-2 report.
+
+### P19 round 2 — executed, BLOCKED for re-review
+
+Product B is now `b4770d6675adc99f53444260dcf0200f10b517cf` (native binding metadata
+only); A remains diagnostic. Native TDD RED 7/2, intermediate 7/1, GREEN 46/0/0;
+both rebuilt minimal/managed images pass real invocation/replay/removal/shutdown
+twice, final stop/remove exit 0 and no native reflection/destroy errors. Finding 2
+closed. Fresh R1–R8 green: G1 7/0/0, G14 68/0/0 including R6; G11 85/0/0.
+Portable contracts 27/0/0; five JVM selections rebuilt. Unaffected prior groups are
+explicitly inherited, not mislabeled fresh.
+
+Fresh A1/B1/A2/B2/A3/B3 all exit 0, each 12000 offered/admitted/unique terminal
+successes at fixed 200/s, plus three B ASYNC runs of 120. Complete latency,
+allocation/post-GC and owner records retained. No native/profile overlap in this
+campaign. Observer overhead remains unavailable; no peak-capacity/equivalence claim.
+
+All missing bounded surfaces executed: real blocked provider/shared wake-up with
+healthy traffic, three-destination churn, actual proxy/large payload/slow clients,
+and all five actual SDKs in two fresh process generations with non-cooperative
+handlers and actual callbacks. Proxy, SDKs and three configured short profiles
+exit 0; observed owned work/bytes drain; no live child remains.
+
+**Finding 1 remains open:** latest strict managed profile exit 1, three empty pool
+registry entries after 4s policy wait plus bounded 10s drain, despite zero physical
+connections/acquisitions/function mappings/backend work. Earlier partial passes
+do not waive it. Root cause not established. Per user timebox stop code changes,
+freeze a BLOCKED candidate with accepted_control null, send failure to re-review.
+Missing wire status/private owners remain unavailable, not invented zero.
+
+Full exact commands/counts, run table, limits and RED/GREEN/graph/preservation
+evidence are in task-P19-report.md and the new dossier (closing digest below).
+Protected dirt untouched; no P20b; no subagents.
+
+Round-2 candidate dossier:
+`p19/dossiers/cc5e971f0e354b36ca7238aef1b5831c2b994e9a95eceb31b3770f267ac14a4d`;
+manifest SHA-256 `cc5e971f0e354b36ca7238aef1b5831c2b994e9a95eceb31b3770f267ac14a4d`.
+698 payloads, 63,768,471 bytes, schema v2, BLOCKED/accepted_control null.
+Freeze+separate verify exit 0, 699 independent SHA256SUMS checks green; archived
+jar hashes and exact A/B source archives verified. Frozen harness 27 tests green
+with repository directory layout (shallow extraction import limitation disclosed).
+Complete all/staged GitNexus HIGH aggregate risk reviewed: final 82/81 symbols,
+11 flows, no partial/truncated/UNKNOWN verdict. Protected staging/hash audit green;
+all 19 process groups and native smoke containers absent. Raw RED XML whitespace
+warnings preserved; non-dossier staged whitespace check exit 0. Full evidence and
+remaining pool-drain failure are in the report; no accepted P23 control yet.

@@ -1,0 +1,204 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.MockK8sDeploymentReplicaSetFlowTest",
+      "name": "deploymentWithZeroMinReplicas_scalesToOneAndReportsReadyStatus()",
+      "seconds": "0.158",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.MockK8sDeploymentReplicaSetFlowTest",
+      "name": "deploymentReplicaSetPodFlow_updatesReadyReplicasAndScaling()",
+      "seconds": "0.157",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManagerTest",
+      "name": "provision_doesNotCreateHpaForNoneStrategy()",
+      "seconds": "0.965",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManagerTest",
+      "name": "reconcile_deletesStaleHpaWhenNotHpaManaged()",
+      "seconds": "0.504",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManagerTest",
+      "name": "provision_serviceCreationFailure_removesNewDeployment()",
+      "seconds": "0.358",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManagerTest",
+      "name": "provision_hpaCreationFailure_removesNewServiceAndDeployment()",
+      "seconds": "0.18",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManagerTest",
+      "name": "provision_updatesExistingHpaWithoutDeletingFirst()",
+      "seconds": "0.245",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManagerTest",
+      "name": "reconcile_createsMissingDeploymentAndService()",
+      "seconds": "0.202",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManagerTest",
+      "name": "deprovision_deletesAllResources()",
+      "seconds": "0.142",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManagerTest",
+      "name": "provision_deletesStaleHpaWhenStrategyChangesFromHpa()",
+      "seconds": "0.188",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManagerTest",
+      "name": "reconcile_preservesExistingDeploymentAndService()",
+      "seconds": "0.592",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManagerTest",
+      "name": "getReplicaStatus_readsDesiredAndReadyFromOneDeployment()",
+      "seconds": "0.168",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManagerTest",
+      "name": "provision_doesNotCreateHpaForInternalStrategy()",
+      "seconds": "0.146",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManagerTest",
+      "name": "reconcile_failsOnMalformedPersistedNames()",
+      "seconds": "0.11",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManagerTest",
+      "name": "reconcile_patchesNonHpaDeploymentToDesiredReplicasIncludingZero()",
+      "seconds": "0.171",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManagerTest",
+      "name": "provision_createsHpaForHpaStrategy()",
+      "seconds": "0.205",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManagerTest",
+      "name": "reconcile_failsOnMismatchedPersistedNames()",
+      "seconds": "0.101",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManagerTest",
+      "name": "provision_createsDeploymentAndService()",
+      "seconds": "0.104",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManagerTest",
+      "name": "reconcile_preservesExistingHpa()",
+      "seconds": "0.552",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManagerTest",
+      "name": "getReadyReplicas_returnsZeroWhenDeploymentNotFound()",
+      "seconds": "0.096",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManagerTest",
+      "name": "provision_updatesExistingResourcesWithoutDeletingFirst()",
+      "seconds": "0.205",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManagerTest",
+      "name": "reconcile_hpaManagedLeavesReplicasAloneAndRecreatesMissingHpa()",
+      "seconds": "0.16",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManagerTest",
+      "name": "provision_serviceCreationFailure_preservesExistingDeployment()",
+      "seconds": "0.113",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManagerTest",
+      "name": "provision_isIdempotent()",
+      "seconds": "0.192",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.K8sDeploymentProviderContextTest",
+      "name": "publishesTheDeploymentCoordinatorTheScalerNeeds()",
+      "seconds": "0.439",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.deployment.KubernetesManagedDeploymentProviderTest",
+      "name": "provision_namesTheObjectsItCreatedSoClientsNeedNotGuessThem()",
+      "seconds": "0.139",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.deployment.KubernetesManagedDeploymentProviderTest",
+      "name": "provider_reportsK8sBackendAndDelegatesToResourceManager()",
+      "seconds": "0.014",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.k8s.deployment.KubernetesManagedDeploymentProviderTest",
+      "name": "reconcileDelegatesThePersistedReplicaTargetAndObjectNames()",
+      "seconds": "0.001",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    ":control-plane-modules:k8s-deployment-provider:test",
+    "-PcontrolPlaneModules=k8s-deployment-provider",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.k8s.deployment.KubernetesManagedDeploymentProviderTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.k8s.dispatch.KubernetesResourceManagerTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.k8s.dispatch.MockK8sDeploymentReplicaSetFlowTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.k8s.K8sDeploymentProviderContextTest",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 28,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 12.498454093933105,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "G16",
+  "output_sha256": "85568821852cfee5da4b56e1bad8c451ea4ce4016f5e975dac424d0ef361394b",
+  "started_unix_s": 1789127570.5012856
+}

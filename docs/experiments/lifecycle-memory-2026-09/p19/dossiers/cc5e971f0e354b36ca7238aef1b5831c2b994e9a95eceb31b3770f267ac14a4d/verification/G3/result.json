@@ -1,0 +1,632 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DirectAdmissionWithoutQueueBoundedRegressionTest",
+      "name": "noQueueModuleStillBoundsLiveDispatchesToTheConfiguredConcurrency()",
+      "seconds": "0.099",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.InvocationQuotaLifecycleIntegrationTest",
+      "name": "enqueueAbandonmentRollsBackPublishedRecordReservations()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.InvocationQuotaLifecycleIntegrationTest",
+      "name": "synchronousOffloadFailureClosesPhysicalAndAdmissionReservations()",
+      "seconds": "0.06",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.InvocationQuotaLifecycleIntegrationTest",
+      "name": "storePublicationFailureRollsBackBothReservations()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.InvocationQuotaLifecycleIntegrationTest",
+      "name": "pendingOffloadKeepsInputChargedAfterAdministrativeTerminalUntilRemoteDrain()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.InvocationQuotaLifecycleIntegrationTest",
+      "name": "administrativelySettledQueueEntryKeepsCanonicalInputUntilTheEntryIsRemoved()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.InvocationQuotaLifecycleIntegrationTest",
+      "name": "newExecutionPublishesCanonicalInputAndTerminalStateWaitsForPhysicalDrain()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.InvocationQuotaLifecycleIntegrationTest",
+      "name": "replayAndRetryReuseTheExistingCanonicalReservation()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.InvocationQuotaLifecycleIntegrationTest",
+      "name": "repeatedInputSaturationDoesNotGrowReservations()",
+      "seconds": "0.023",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.InvocationQuotaLifecycleIntegrationTest",
+      "name": "nonCooperativeLocalWorkKeepsInputChargedAfterAdministrativeTerminalUntilRawDrain()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.InvocationQuotaLifecycleIntegrationTest",
+      "name": "oldGenerationPhysicalDrainCannotReleaseNewGenerationInput()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistryTest",
+      "name": "concurrentAcquisitionNeverExceedsLoweredEffectiveBound()",
+      "seconds": "0.061",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistryTest",
+      "name": "lateReleaseCannotAffectReRegisteredGeneration()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistryTest",
+      "name": "capacityIsBoundedAndReleaseReturnsHoldDuration()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistryTest",
+      "name": "capacityListenerFiresOnlyWhenARaiseOpensADispatchableSlot()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistryTest",
+      "name": "removalWithoutActiveSlotsAllowsImmediateReRegistration()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistryTest",
+      "name": "uniqueRemovedFunctionsDoNotRetainLifecycleEntries()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistryTest",
+      "name": "reRegistersWhileRemovedFunctionStillDrains()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistryTest",
+      "name": "configuredConcurrencyAndRemovalAreSafe()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistryTest",
+      "name": "aGenerationClosesOnlyOnceItsLastSlotComesBack()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistryTest",
+      "name": "concurrentAcquisitionNeverExceedsConfiguredBound()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistryTest",
+      "name": "removeAndReRegisterMintANewIdentityAndFenceTheOldLease()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistryTest",
+      "name": "differentFunctionsDoNotShareLifecycleLock()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistryTest",
+      "name": "acquisitionAndReleaseKeepSlotTimestampTogether()",
+      "seconds": "0.051",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistryTest",
+      "name": "directDeactivationOfIdleReturnedStateRemovesRegistryEntry()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistryTest",
+      "name": "removedReturnedStateCannotAcquireAndLateDirectReleaseDoesNotTouchNewGeneration()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DispatchLifecycleAndCancellationTest",
+      "name": "directDispatchAcquiresAndReleasesItsLeaseExactlyOnce()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DispatchLifecycleAndCancellationTest",
+      "name": "cancellingTheRawHttpFutureDisposesTheTransportSubscription()",
+      "seconds": "0.994",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DispatchLifecycleAndCancellationTest",
+      "name": "directAdmissionAtConcurrencyOneAdmitsExactlyOneOfOneHundred()",
+      "seconds": "0.008",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DispatchLifecycleAndCancellationTest",
+      "name": "doubleCallbackReleasesCapacityOnce()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DispatchLifecycleAndCancellationTest",
+      "name": "leaseReleaseIsIdempotentAndFencedByGeneration()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DispatchLifecycleAndCancellationTest",
+      "name": "administrativeExpiryCancelsTheHttpTransportAndArchivesTheOutcome()",
+      "seconds": "0.421",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DispatchLifecycleAndCancellationTest",
+      "name": "retiredLeaseDoesNotDecrementTheNewRegistration()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DispatchLifecycleAndCancellationTest",
+      "name": "administrativeExpiryCancelsTheRawTransportAndReleasesTheLease()",
+      "seconds": "1.142",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DispatchLifecycleAndCancellationTest",
+      "name": "nonInterruptibleLocalHandlerKeepsItsSlotUntilTheWorkEnds()",
+      "seconds": "0.307",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.WaiterCapacityTest",
+      "name": "reservationsEnforceGlobalAndPerFunctionCapsAndDrainExactlyOnce()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.WaiterCapacityTest",
+      "name": "closeFencesAdmissionAndDrainsPublishedWaiters()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.WaiterCapacityTest",
+      "name": "lateOldGenerationCloseCannotReleaseAReplacementWaiter()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P05WaiterTimeoutSharedOutcomeTest",
+      "name": "whenEveryWaiterTimesOut_theSharedExecutionStillConcludesForTheReplay()",
+      "seconds": "0.007",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P05WaiterTimeoutSharedOutcomeTest",
+      "name": "aShortWaiterTimeoutAcrossARetry_leavesTheRealSuccessForTheLongWaiterAndReplay()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P05WaiterTimeoutSharedOutcomeTest",
+      "name": "anErrorBackendAnswer_stillReachesTheLongWaiterAndTheReplay()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P05WaiterTimeoutSharedOutcomeTest",
+      "name": "anExecutionLevelDeadline_concludesEveryObserverWithTheSameTerminal()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P05WaiterTimeoutSharedOutcomeTest",
+      "name": "anOffloadedFailureAfterAShortWaiterTimeout_stillConcludesTheLocalAttempt()",
+      "seconds": "0.007",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P05WaiterTimeoutSharedOutcomeTest",
+      "name": "aShortWaiterArrivingBeforeALongWaiter_leavesTheRealSuccessForBoth()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacityTest",
+      "name": "retryReadersShareOneCanonicalReservationWithoutDoubleCharging()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacityTest",
+      "name": "concurrentAdmissionNeverExceedsTheGlobalCap()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacityTest",
+      "name": "inputReferenceCountHasAnExplicitBoundAndNeverChangesQuotaOnRefusal()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacityTest",
+      "name": "inputReservationErrorRollsBackTheExecutionReservation()",
+      "seconds": "0.584",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacityTest",
+      "name": "globalExecutionLimitAggregatesAcrossFunctionNames()",
+      "seconds": "0.009",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacityTest",
+      "name": "inputSaturationRollsBackTheDistinctExecutionReservation()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacityTest",
+      "name": "perFunctionLimitIncludesOldAndNewGenerations()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacityTest",
+      "name": "canonicalInputDrainsOnlyAfterBaseAndEveryPhysicalReaderClose()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.ResourceQuotaTest",
+      "name": "aSuccessfulReservationAttributesUnitsToItsOwnerAndGeneration()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.ResourceQuotaTest",
+      "name": "anUncommittedBatchRollsBackEverySuccessfulIntermediateReservation()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.ResourceQuotaTest",
+      "name": "closeIsIdempotentAndCountersCannotGoNegative()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.ResourceQuotaTest",
+      "name": "transferCannotMoveAttributionToAnotherGeneration()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.ResourceQuotaTest",
+      "name": "aLateOldGenerationCloseCannotReleaseTheNewGenerationsReservation()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.ResourceQuotaTest",
+      "name": "committingABatchLeavesItsReservationWithThePublishedOwner()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.ResourceQuotaTest",
+      "name": "concurrentReservationsNeverExceedGlobalOrPerFunctionCaps()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.ResourceQuotaTest",
+      "name": "rollbackFollowsAReservationTransferredBeforePublication()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.ResourceQuotaTest",
+      "name": "aRetiredGenerationCannotRecreateAccountingAfterItDrains()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.ResourceQuotaTest",
+      "name": "transferMovesOneReservationWithoutDoubleCountingOrLeavingTheOldHandleLive()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.ResourceQuotaTest",
+      "name": "perFunctionSaturationIncludesEveryGenerationOfTheSameName()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.ResourceQuotaTest",
+      "name": "globalSaturationRejectsAReservationWithoutChangingAnyCounter()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.ResourceQuotaRuntimeLimitsTest",
+      "name": "reducingBelowOccupancyDoesNotEvictAndAdmissionResumesAfterDrain()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.ResourceQuotaRuntimeLimitsTest",
+      "name": "increasingLimitsPreservesGenerationOwnership()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P07cReviewFixTest",
+      "name": "canceledOffloadKeepsPhysicalInputUntilTheRawRemotePublisherCompletes()",
+      "seconds": "0.206",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P07cReviewFixTest",
+      "name": "retryKeepsTheLogicalAdmissionsGenerationIdentity()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P07cReviewFixTest",
+      "name": "cancellationBeforeDeploymentWakeUpKeepsPhysicalInputUntilReadinessReallyDrains()",
+      "seconds": "0.245",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P07cReviewFixTest",
+      "name": "canceledDeploymentWaitsForANonCooperativeTransportToReallyComplete()",
+      "seconds": "0.207",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P07cReviewFixTest",
+      "name": "directPhysicalCopySaturationPropagatesOverloadAndRollsBackAdmission()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P07cReviewFixTest",
+      "name": "lateOldGenerationOffloadFailureDoesNotUpdateReplacementMetrics()",
+      "seconds": "0.105",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P07cReviewFixTest",
+      "name": "lateOldGenerationOffloadDoesNotUpdateReplacementMetrics()",
+      "seconds": "0.106",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P07cReviewFixTest",
+      "name": "synchronousDispatchErrorRollsBackAdmissionAndBothQuotaDimensions()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.CompletionMetricsGenerationFenceRegressionTest",
+      "name": "aLateCompletionAfterRemoveAndReRegisterDoesNotContaminateTheNewGenerationsMeters()",
+      "seconds": "0.075",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.GenerationLifecycleTest",
+      "name": "aReleaseOfNothingNeverGoesNegative()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.GenerationLifecycleTest",
+      "name": "retainIfBelowEnforcesTheOwnersCeilingTogetherWithTheIncrement()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.GenerationLifecycleTest",
+      "name": "underContentionExactlyOneReleaseSeesTheGenerationClose()",
+      "seconds": "0.01",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.GenerationLifecycleTest",
+      "name": "aFreshGenerationIsActiveAndHoldsNothing()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.GenerationLifecycleTest",
+      "name": "onlyAnActiveGenerationAdmitsNewWork()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.GenerationLifecycleTest",
+      "name": "theClosingTransitionIsReportedExactlyOnce()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.GenerationLifecycleTest",
+      "name": "retiredStateSurvivesUntilItsLastResourceComesBack()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.GenerationLifecycleTest",
+      "name": "retiringAnEmptyGenerationClosesItAtOnce()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.FunctionGenerationTest",
+      "name": "anIdentityWithoutANameOrAnIncarnationIsRejected()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.FunctionGenerationTest",
+      "name": "twoIncarnationsOfTheSameNameAreDifferentIdentities()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.FunctionGenerationTest",
+      "name": "generationsOfDifferentFunctionsNeverSupersedeEachOther()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.FunctionGenerationTest",
+      "name": "theTextualFormIsDiagnosticOnly()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P07dWaiterAdmissionTest",
+      "name": "newExecutionIsPublishedBeforeWaiterAdmissionAndRolledBackWhenTheWaiterIsRefused()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P07dWaiterAdmissionTest",
+      "name": "oldGenerationCompletionAndDoubleCancelCannotReleaseReplacementWaiter()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P07dWaiterAdmissionTest",
+      "name": "globalAndPerFunctionCapsApplyBeforeDirectAsyncAndSyncAttachments()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P07dWaiterAdmissionTest",
+      "name": "divergentDeadlinesDetachOnlyTheShortWaiter()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P07dWaiterAdmissionTest",
+      "name": "archivedReplayStillRequiresTransientWaiterAdmission()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P07dWaiterAdmissionTest",
+      "name": "massivePendingReplaySaturatesWaitersWithoutRedispatchOrRetainedRejections()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P07dWaiterAdmissionTest",
+      "name": "cancellationRacingCompletionDetachesExactlyOnce()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P07dWaiterAdmissionTest",
+      "name": "productionConstructorsCannotBypassFiniteWaiterCapacity()",
+      "seconds": "0.008",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P07dWaiterAdmissionTest",
+      "name": "enqueuePublicationFailureRollsBackWaiterExecutionAndInput()",
+      "seconds": "0.001",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    ":control-plane:test",
+    "-PcontrolPlaneModules=none",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.service.DirectAdmissionWithoutQueueBoundedRegressionTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.service.DispatchLifecycleAndCancellationTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistryTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.capacity.FunctionGenerationTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.capacity.GenerationLifecycleTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.capacity.ResourceQuotaTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.capacity.ResourceQuotaRuntimeLimitsTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacityTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.capacity.WaiterCapacityTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.service.InvocationQuotaLifecycleIntegrationTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.service.P07cReviewFixTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.service.P07dWaiterAdmissionTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.service.P05WaiterTimeoutSharedOutcomeTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.service.CompletionMetricsGenerationFenceRegressionTest",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 96,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 15.522321224212646,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "G3",
+  "output_sha256": "67df913dcf5b04dc5f915dd1a2a34ad530716b39d636acae25c8e3cf24869ac9",
+  "started_unix_s": 1789127396.7452857
+}

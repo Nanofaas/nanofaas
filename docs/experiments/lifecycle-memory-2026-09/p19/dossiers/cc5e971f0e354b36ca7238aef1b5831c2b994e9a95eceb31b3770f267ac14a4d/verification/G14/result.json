@@ -1,0 +1,450 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.P13BoundedProxyTest",
+      "name": "oversizedBackendResponseIsCancelledAndReturnsControlled502()",
+      "seconds": "0.102",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.P13BoundedProxyTest",
+      "name": "aggregateBufferBudgetAccountsForOriginalRequestArrayAndPublisherCopy()",
+      "seconds": "0.012",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.P13BoundedProxyTest",
+      "name": "healthRemainsResponsiveWhileInvocationCountAndRequestOwnerBudgetAreSaturated()",
+      "seconds": "0.009",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.P13BoundedProxyTest",
+      "name": "inboundDeadlineStartsBeforeTheWholeBodyArrives()",
+      "seconds": "0.156",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.P13BoundedProxyTest",
+      "name": "successfulRoundTripReleasesRequestAndResponseBuffers()",
+      "seconds": "0.01",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.P13BoundedProxyTest",
+      "name": "aggregateBudgetSmallerThanGrowthChunkStillAcceptsARepresentableBody()",
+      "seconds": "0.009",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.P13BoundedProxyTest",
+      "name": "fixedLengthBodyOverPerRequestLimitIsRejectedBeforeDispatchAndReleasesOwnership()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.P13BoundedProxyTest",
+      "name": "requestGraphOwnersRemainReservedWhileCallerResponseWriteIsBlocked()",
+      "seconds": "0.01",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.P13BoundedProxyTest",
+      "name": "callerDisconnectRacingDeprovisionDoesNotRetainPermitOrBytes()",
+      "seconds": "0.007",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.P13BoundedProxyTest",
+      "name": "callerWriteStartsAfterBackendDeadlineClosesAndUsesItsOwnControlledDeadline()",
+      "seconds": "0.012",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.P13BoundedProxyTest",
+      "name": "ordinaryOneKiBPayloadMeasurement()",
+      "seconds": "0.625",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.P13BoundedProxyTest",
+      "name": "invalidBackendUriAfterReadingBodyStillReleasesTheRequestBuffer()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.P13BoundedProxyTest",
+      "name": "backendDeadlineIncludesResponseBodyAndReleasesAllOwnership()",
+      "seconds": "0.157",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.P13BoundedProxyTest",
+      "name": "chunkedBodyWithoutContentLengthIsBoundedByBytesActuallyReceived()",
+      "seconds": "0.008",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "provision_pushesFunctionTimeoutAndAdmissionBoundToProxy()",
+      "seconds": "0.012",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "reconcile_replacesOnlyUnhealthyOrMissingReplicas()",
+      "seconds": "0.014",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "provision_passesResourcesToEveryReplica()",
+      "seconds": "0.013",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "provision_onDockerNetworkUsesContainerDnsWithoutAllocatingHostPorts()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "supports_rejectsImagePullSecretsInFirstMilestone()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "provision_secondReplicaFailure_removesAllStartedContainersAndAllowsRetry()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "reconcile_adoptsHealthyOwnedContainersAndCreatesOnlyMissingReplicas()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "deprovision_removesDiscoveredOwnedContainersWhenRestoreDidNotBuildState()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "reconcile_creationFailure_removesOnlyContainersCreatedDuringReconcile()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "updateSpec_pushesTheNewTimeoutAndConcurrencyToTheProxy()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "updateSpec_ofAnUnknownFunctionIsIgnored()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "provision_injectsConfiguredCallbackUrl()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "provision_startFailureAfterCreation_removesContainer()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "setReplicas_scalesUpAndDownAndTracksReadyReplicas()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "setReplicas_refreshesAdmissionBoundAndKeepsFunctionTimeout()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "reconcile_wrongPersistedPrefix_failsWithoutRemovingAdoptedContainers()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "provisionWithZeroMinReplicas_scalesToOneAndReportsReadyStatus()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "provision_readinessFailure_removesContainerAndClosesProxy()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "getReadyReplicas_otherFunction_doesNotBlockDuringSlowProvision()",
+      "seconds": "0.009",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "provision_reportsThePrefixTheReplicaContainersAreActuallyNamedWith()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "replicaStatus_distinguishesDesiredFromReadyReplicas()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "reconcile_removesOnlyReplicasAboveThePersistedTarget()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "provision_failedReplicaCleanup_preservesProvisioningFailure()",
+      "seconds": "0.007",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "provision_startsMinReplicasAndReturnsStableProxyEndpoint()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "reconcile_duplicateReplicaIndex_failsWithoutRemovingAdoptedContainers()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+      "name": "provision_startFailure_closesFailedProxyAndAllowsRetry()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.RoundRobinFunctionProxyTest",
+      "name": "handleInvoke_emptyBodyUpstream_returnsStatusWithoutChunkedEncoding()",
+      "seconds": "0.016",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.RoundRobinFunctionProxyTest",
+      "name": "backendDisconnectMidRequest_returns502_andProxyRecoversOnNewBackend()",
+      "seconds": "0.016",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.RoundRobinFunctionProxyTest",
+      "name": "saturatedProxy_rejectsExcessInvocationWith503()",
+      "seconds": "0.007",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.RoundRobinFunctionProxyTest",
+      "name": "endpointUrl_isStableAndRoundRobinsAcrossBackends()",
+      "seconds": "0.009",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.RoundRobinFunctionProxyTest",
+      "name": "outboundRequest_carriesFunctionTimeoutGreaterThan30Seconds()",
+      "seconds": "0.959",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.RoundRobinFunctionProxyTest",
+      "name": "close_stageFailure_stillReleasesTheOtherStages_andStaysRetryable()",
+      "seconds": "0.014",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.RoundRobinFunctionProxyTest",
+      "name": "health_doesNotConsumeInvocationPermits_andStaysUpDuringBlockedInvocations()",
+      "seconds": "0.014",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.RoundRobinFunctionProxyTest",
+      "name": "close_shutsDownServerAndHttpClient_andIsIdempotent()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.RoundRobinFunctionProxyTest",
+      "name": "latchBlockedBackend_seesAllAdmittedRequestsInFlightBeforeRelease()",
+      "seconds": "0.015",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.RoundRobinFunctionProxyTest",
+      "name": "singleHopTimeout_returns504_whenBackendExceedsIt()",
+      "seconds": "0.306",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.RoundRobinFunctionProxyTest",
+      "name": "close_interruptsInFlightRequest_andReturnsPromptlyInsteadOfWaitingOutTheTimeout()",
+      "seconds": "0.008",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.RoundRobinFunctionProxyTest",
+      "name": "close_afterAnErrorPath_stillShutsDownCleanly()",
+      "seconds": "0.011",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.RoundRobinFunctionProxyTest",
+      "name": "updateBackends_switchesTrafficAndNoBackendsYields503()",
+      "seconds": "0.028",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerDeploymentProviderConfigurationTest",
+      "name": "k8sBackendDoesNotRegisterTheDockerImageValidator()",
+      "seconds": "0.691",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerDeploymentProviderConfigurationTest",
+      "name": "configuration_selectsDockerJavaRuntimeAdapterExplicitly()",
+      "seconds": "0.306",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerDeploymentProviderConfigurationTest",
+      "name": "configuration_registersRuntimeAdapterAndManagedProvider()",
+      "seconds": "0.033",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.R6DeprovisionFailureOwnershipRegressionTest",
+      "name": "failedDeprovisionDoesNotLeakAnUntrackedProxy()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.P13ProxyConfigurationTest",
+      "name": "configuredLimitsReachFactoryCreatedProxy()",
+      "seconds": "0.037",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeprovisionRecoveryTest",
+      "name": "aNewProviderRediscoversAndRemovesTheContainersLeftByTheOldOne()",
+      "seconds": "0.013",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeprovisionRecoveryTest",
+      "name": "reconcileRebuildsAPendingRemovalIntoAVerifiedDeployment()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeprovisionRecoveryTest",
+      "name": "contextShutdownClosesTheProxiesAndKeepsTheContainersRecoverable()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeprovisionRecoveryTest",
+      "name": "aFailedDiscoveryDoesNotStopTheRemovalOfWhatIsTracked()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeprovisionRecoveryTest",
+      "name": "aScaleDownWhoseRemovalFailsKeepsTheReplicaTracked()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeprovisionRecoveryTest",
+      "name": "aSecondAttemptResumesTheCleanupAndLeavesNothingBehind()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeprovisionRecoveryTest",
+      "name": "aFailingProxyCloseIsReportedAndTheRetryClosesItForGood()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeprovisionRecoveryTest",
+      "name": "aCleanDeprovisionSweepsAContainerWhoseTrackingWasLostWhileItWasCreated()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeprovisionRecoveryTest",
+      "name": "aFunctionInPendingRemovalIsNeitherReprovisionedNorScaled()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeprovisionRecoveryTest",
+      "name": "oneFailingReplicaStillRemovesTheOthersAndKeepsOnlyTheSurvivorTracked()",
+      "seconds": "0.003",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    ":control-plane-modules:container-deployment-provider:test",
+    "-PcontrolPlaneModules=container-deployment-provider",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.R6DeprovisionFailureOwnershipRegressionTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeprovisionRecoveryTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerLocalDeploymentProviderTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.RoundRobinFunctionProxyTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.P13BoundedProxyTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.P13ProxyConfigurationTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerDeploymentProviderConfigurationTest",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 68,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 8.5878005027771,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "G14",
+  "output_sha256": "dee0c90fd488352699655dc8ae381cc686a8e2212f7a3f213d584896a97ddafa",
+  "started_unix_s": 1789135444.4523659
+}

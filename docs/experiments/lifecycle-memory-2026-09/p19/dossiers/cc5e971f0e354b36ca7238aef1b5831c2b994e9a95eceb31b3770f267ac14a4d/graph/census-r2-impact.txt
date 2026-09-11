@@ -1,0 +1,11 @@
+
+  GitNexus Impact (1.6.11)
+{
+  "error": "Target 'census' not found",
+  "target": {
+    "name": "census"
+  },
+  "direction": "upstream",
+  "impactedCount": null,
+  "risk": "UNKNOWN"
+}

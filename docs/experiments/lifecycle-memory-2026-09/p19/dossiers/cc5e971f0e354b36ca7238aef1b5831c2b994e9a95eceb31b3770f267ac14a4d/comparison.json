@@ -1,0 +1,683 @@
+{
+  "paired": [
+    {
+      "allocation_pct": 4.216730690407511,
+      "p95_pct": -7.664426027928462,
+      "p99_pct": -22.64546871799775,
+      "pair": "A1/B1",
+      "useful_rate_pct": -0.0034757604457147373
+    },
+    {
+      "allocation_pct": 4.343045642749588,
+      "p95_pct": 3.1335644411764507,
+      "p99_pct": 2.4212532672016174,
+      "pair": "A2/B2",
+      "useful_rate_pct": -0.0036436454747490465
+    },
+    {
+      "allocation_pct": 4.597079548701233,
+      "p95_pct": 3.458694685163155,
+      "p99_pct": 3.3822107690937075,
+      "pair": "A3/B3",
+      "useful_rate_pct": -0.01150801489434583
+    }
+  ],
+  "runs": [
+    {
+      "admitted": 12000,
+      "allocated_bytes_per_success": 138075.864,
+      "label": "A1",
+      "offered": 12000,
+      "post_gc_heap_bytes": {
+        "cohort_drained": 41816512,
+        "post_policy": 40446760,
+        "removed": 40487608,
+        "warmed_idle": 30793136
+      },
+      "profile": "none",
+      "refused": 0,
+      "scenario": "sync",
+      "segments": [
+        {
+          "start_index": 0,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1606349,
+            "p95": 3576377,
+            "p99": 4435495
+          }
+        },
+        {
+          "start_index": 2000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1528717,
+            "p95": 3571833,
+            "p99": 4292792
+          }
+        },
+        {
+          "start_index": 4000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1582861,
+            "p95": 4622231,
+            "p99": 8909982
+          }
+        },
+        {
+          "start_index": 6000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 2315931,
+            "p95": 3263273,
+            "p99": 3785432
+          }
+        },
+        {
+          "start_index": 8000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1709100,
+            "p95": 3337961,
+            "p99": 3810472
+          }
+        },
+        {
+          "start_index": 10000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1567869,
+            "p95": 3282601,
+            "p99": 3828296
+          }
+        }
+      ],
+      "success_latency_ns": {
+        "count": 12000,
+        "p50": 1668732,
+        "p95": 3468505,
+        "p99": 4853174
+      },
+      "unique_successes": 12000,
+      "useful_successes_per_s": 199.9837709403521
+    },
+    {
+      "admitted": 12000,
+      "allocated_bytes_per_success": 137960.61933333334,
+      "label": "A2",
+      "offered": 12000,
+      "post_gc_heap_bytes": {
+        "cohort_drained": 41803152,
+        "post_policy": 40441680,
+        "removed": 40482560,
+        "warmed_idle": 30744648
+      },
+      "profile": "none",
+      "refused": 0,
+      "scenario": "sync",
+      "segments": [
+        {
+          "start_index": 0,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1540716,
+            "p95": 3313862,
+            "p99": 4103893
+          }
+        },
+        {
+          "start_index": 2000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 2247657,
+            "p95": 3149431,
+            "p99": 3535718
+          }
+        },
+        {
+          "start_index": 4000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1797931,
+            "p95": 3309078,
+            "p99": 3914693
+          }
+        },
+        {
+          "start_index": 6000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1606139,
+            "p95": 3233399,
+            "p99": 3652373
+          }
+        },
+        {
+          "start_index": 8000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1524267,
+            "p95": 3173511,
+            "p99": 3636342
+          }
+        },
+        {
+          "start_index": 10000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1509852,
+            "p95": 3184102,
+            "p99": 3710501
+          }
+        }
+      ],
+      "success_latency_ns": {
+        "count": 12000,
+        "p50": 1686027,
+        "p95": 3225911,
+        "p99": 3781141
+      },
+      "unique_successes": 12000,
+      "useful_successes_per_s": 199.9615806616458
+    },
+    {
+      "admitted": 12000,
+      "allocated_bytes_per_success": 137933.33933333334,
+      "label": "A3",
+      "offered": 12000,
+      "post_gc_heap_bytes": {
+        "cohort_drained": 41827416,
+        "post_policy": 40389360,
+        "removed": 40425648,
+        "warmed_idle": 30605752
+      },
+      "profile": "none",
+      "refused": 0,
+      "scenario": "sync",
+      "segments": [
+        {
+          "start_index": 0,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1544650,
+            "p95": 3257445,
+            "p99": 3958274
+          }
+        },
+        {
+          "start_index": 2000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1504683,
+            "p95": 3110677,
+            "p99": 3718979
+          }
+        },
+        {
+          "start_index": 4000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1452235,
+            "p95": 3122533,
+            "p99": 3555972
+          }
+        },
+        {
+          "start_index": 6000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1364971,
+            "p95": 2817030,
+            "p99": 3354420
+          }
+        },
+        {
+          "start_index": 8000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1303195,
+            "p95": 2816135,
+            "p99": 3311940
+          }
+        },
+        {
+          "start_index": 10000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1338075,
+            "p95": 2893526,
+            "p99": 3400277
+          }
+        }
+      ],
+      "success_latency_ns": {
+        "count": 12000,
+        "p50": 1412603,
+        "p95": 3043894,
+        "p99": 3636852
+      },
+      "unique_successes": 12000,
+      "useful_successes_per_s": 199.98029720452533
+    },
+    {
+      "admitted": 120,
+      "allocated_bytes_per_success": 1137578.4,
+      "by_shape": {
+        "deep": {
+          "count": 30,
+          "p50": 11712724,
+          "p95": 18563259,
+          "p99": 20320004
+        },
+        "flat": {
+          "count": 30,
+          "p50": 12829808,
+          "p95": 19081689,
+          "p99": 20976178
+        },
+        "large": {
+          "count": 30,
+          "p50": 13042816,
+          "p95": 24615492,
+          "p99": 25508929
+        },
+        "wide": {
+          "count": 30,
+          "p50": 11936276,
+          "p95": 19348472,
+          "p99": 23303161
+        }
+      },
+      "label": "B-async-1",
+      "offered": 120,
+      "post_gc_heap_bytes": {
+        "cohort_drained": 26007144,
+        "post_policy": 25594512,
+        "removed": 25583976,
+        "warmed_idle": 25739560
+      },
+      "profile": "async-queue",
+      "refused": 0,
+      "scenario": "async",
+      "segments": [
+        {
+          "start_index": 0,
+          "success_latency_ns": {
+            "count": 120,
+            "p50": 12181059,
+            "p95": 20765715,
+            "p99": 24615492
+          }
+        }
+      ],
+      "success_latency_ns": {
+        "count": 120,
+        "p50": 12181059,
+        "p95": 20765715,
+        "p99": 24615492
+      },
+      "unique_successes": 120,
+      "useful_successes_per_s": 50.16133224174527
+    },
+    {
+      "admitted": 120,
+      "allocated_bytes_per_success": 1144352.4,
+      "by_shape": {
+        "deep": {
+          "count": 30,
+          "p50": 10880696,
+          "p95": 20304964,
+          "p99": 20960322
+        },
+        "flat": {
+          "count": 30,
+          "p50": 11156790,
+          "p95": 21509056,
+          "p99": 21936574
+        },
+        "large": {
+          "count": 30,
+          "p50": 13021504,
+          "p95": 27911768,
+          "p99": 31311692
+        },
+        "wide": {
+          "count": 30,
+          "p50": 11859140,
+          "p95": 19174137,
+          "p99": 19386104
+        }
+      },
+      "label": "B-async-2",
+      "offered": 120,
+      "post_gc_heap_bytes": {
+        "cohort_drained": 25865248,
+        "post_policy": 25457128,
+        "removed": 25484152,
+        "warmed_idle": 25606496
+      },
+      "profile": "async-queue",
+      "refused": 0,
+      "scenario": "async",
+      "segments": [
+        {
+          "start_index": 0,
+          "success_latency_ns": {
+            "count": 120,
+            "p50": 12236642,
+            "p95": 20960322,
+            "p99": 27911768
+          }
+        }
+      ],
+      "success_latency_ns": {
+        "count": 120,
+        "p50": 12236642,
+        "p95": 20960322,
+        "p99": 27911768
+      },
+      "unique_successes": 120,
+      "useful_successes_per_s": 50.085064870683134
+    },
+    {
+      "admitted": 120,
+      "allocated_bytes_per_success": 1147779.4666666666,
+      "by_shape": {
+        "deep": {
+          "count": 30,
+          "p50": 10516617,
+          "p95": 22260460,
+          "p99": 23347128
+        },
+        "flat": {
+          "count": 30,
+          "p50": 11349366,
+          "p95": 22359100,
+          "p99": 23726167
+        },
+        "large": {
+          "count": 30,
+          "p50": 12803968,
+          "p95": 27506665,
+          "p99": 28605013
+        },
+        "wide": {
+          "count": 30,
+          "p50": 11552068,
+          "p95": 21587391,
+          "p99": 24364181
+        }
+      },
+      "label": "B-async-3",
+      "offered": 120,
+      "post_gc_heap_bytes": {
+        "cohort_drained": 25843456,
+        "post_policy": 25432408,
+        "removed": 25464272,
+        "warmed_idle": 25572848
+      },
+      "profile": "async-queue",
+      "refused": 0,
+      "scenario": "async",
+      "segments": [
+        {
+          "start_index": 0,
+          "success_latency_ns": {
+            "count": 120,
+            "p50": 11552068,
+            "p95": 23347128,
+            "p99": 27506665
+          }
+        }
+      ],
+      "success_latency_ns": {
+        "count": 120,
+        "p50": 11552068,
+        "p95": 23347128,
+        "p99": 27506665
+      },
+      "unique_successes": 120,
+      "useful_successes_per_s": 49.9282684727541
+    },
+    {
+      "admitted": 12000,
+      "allocated_bytes_per_success": 143898.15133333334,
+      "label": "B1",
+      "offered": 12000,
+      "post_gc_heap_bytes": {
+        "cohort_drained": 43094408,
+        "post_policy": 41446976,
+        "removed": 41488912,
+        "warmed_idle": 32010464
+      },
+      "profile": "none",
+      "refused": 0,
+      "scenario": "sync",
+      "segments": [
+        {
+          "start_index": 0,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1557020,
+            "p95": 3462088,
+            "p99": 4127654
+          }
+        },
+        {
+          "start_index": 2000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1478685,
+            "p95": 3078552,
+            "p99": 3481384
+          }
+        },
+        {
+          "start_index": 4000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 2004187,
+            "p95": 3172680,
+            "p99": 3596279
+          }
+        },
+        {
+          "start_index": 6000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1715292,
+            "p95": 3278727,
+            "p99": 3702246
+          }
+        },
+        {
+          "start_index": 8000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1572364,
+            "p95": 3181768,
+            "p99": 3656502
+          }
+        },
+        {
+          "start_index": 10000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1436300,
+            "p95": 3092824,
+            "p99": 3531702
+          }
+        }
+      ],
+      "success_latency_ns": {
+        "count": 12000,
+        "p50": 1575036,
+        "p95": 3202664,
+        "p99": 3754150
+      },
+      "unique_successes": 12000,
+      "useful_successes_per_s": 199.9768199835439
+    },
+    {
+      "admitted": 12000,
+      "allocated_bytes_per_success": 143952.312,
+      "label": "B2",
+      "offered": 12000,
+      "post_gc_heap_bytes": {
+        "cohort_drained": 43081768,
+        "post_policy": 41529256,
+        "removed": 41515904,
+        "warmed_idle": 31990072
+      },
+      "profile": "none",
+      "refused": 0,
+      "scenario": "sync",
+      "segments": [
+        {
+          "start_index": 0,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1821626,
+            "p95": 3439861,
+            "p99": 4333298
+          }
+        },
+        {
+          "start_index": 2000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 2390008,
+            "p95": 3465221,
+            "p99": 3901636
+          }
+        },
+        {
+          "start_index": 4000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 2038729,
+            "p95": 3424773,
+            "p99": 4039939
+          }
+        },
+        {
+          "start_index": 6000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1717802,
+            "p95": 3151990,
+            "p99": 3656293
+          }
+        },
+        {
+          "start_index": 8000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 2158729,
+            "p95": 3236502,
+            "p99": 3743844
+          }
+        },
+        {
+          "start_index": 10000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 2388104,
+            "p95": 3158453,
+            "p99": 3662788
+          }
+        }
+      ],
+      "success_latency_ns": {
+        "count": 12000,
+        "p50": 2140777,
+        "p95": 3326997,
+        "p99": 3872692
+      },
+      "unique_successes": 12000,
+      "useful_successes_per_s": 199.95429477056078
+    },
+    {
+      "admitted": 12000,
+      "allocated_bytes_per_success": 144274.24466666667,
+      "label": "B3",
+      "offered": 12000,
+      "post_gc_heap_bytes": {
+        "cohort_drained": 42931520,
+        "post_policy": 41332088,
+        "removed": 41378632,
+        "warmed_idle": 31851560
+      },
+      "profile": "none",
+      "refused": 0,
+      "scenario": "sync",
+      "segments": [
+        {
+          "start_index": 0,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1712490,
+            "p95": 3416948,
+            "p99": 4116417
+          }
+        },
+        {
+          "start_index": 2000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1514522,
+            "p95": 3215285,
+            "p99": 3766546
+          }
+        },
+        {
+          "start_index": 4000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1441595,
+            "p95": 3135061,
+            "p99": 3772706
+          }
+        },
+        {
+          "start_index": 6000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1477339,
+            "p95": 3133189,
+            "p99": 3728994
+          }
+        },
+        {
+          "start_index": 8000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1318219,
+            "p95": 2973206,
+            "p99": 3606803
+          }
+        },
+        {
+          "start_index": 10000,
+          "success_latency_ns": {
+            "count": 2000,
+            "p50": 1231259,
+            "p95": 2827093,
+            "p99": 3354419
+          }
+        }
+      ],
+      "success_latency_ns": {
+        "count": 12000,
+        "p50": 1443883,
+        "p95": 3149173,
+        "p99": 3759858
+      },
+      "unique_successes": 12000,
+      "useful_successes_per_s": 199.95728344213728
+    }
+  ],
+  "schema": "p19-comparison-v1",
+  "verdict": "BLOCKED candidate B, not an accepted P23 control; diagnostic costs only."
+}

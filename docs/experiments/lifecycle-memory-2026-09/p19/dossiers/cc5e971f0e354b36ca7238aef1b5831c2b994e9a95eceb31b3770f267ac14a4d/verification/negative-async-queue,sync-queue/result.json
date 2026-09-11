@@ -1,0 +1,19 @@
+{
+  "cases": [],
+  "command": [
+    "./gradlew",
+    "help",
+    "-PcontrolPlaneModules=async-queue,sync-queue",
+    "--offline",
+    "--console=plain"
+  ],
+  "counts": null,
+  "counts_status": "not_applicable: command has no test cases",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 0.8669064044952393,
+  "exit_code": 1,
+  "expected_exit_code": 1,
+  "label": "negative-async-queue,sync-queue",
+  "output_sha256": "c6b17dfd47a0ef005d764c9cc29e331f7313f2ccf4faef728d8b6083c24a1aae",
+  "started_unix_s": 1789128160.7593298
+}
