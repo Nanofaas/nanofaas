@@ -1,0 +1,492 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueInvocationEnqueuerRetryIntegrationTest",
+      "name": "enabledStaysFalse_soAsyncEnqueueEndpointStaysUnavailable()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueInvocationEnqueuerRetryIntegrationTest",
+      "name": "oneRetry_errorThenSuccess()",
+      "seconds": "0.111",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueInvocationEnqueuerRetryIntegrationTest",
+      "name": "threeRetries_errorThenSuccess_atMostFourAttempts()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueInvocationEnqueuerRetryIntegrationTest",
+      "name": "zeroRetries_immediateSuccess_singleAttempt()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueInvocationEnqueuerRetryIntegrationTest",
+      "name": "retryQueueFull_terminatesTheRequestWithoutOrphanedQueuedState()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueInvocationEnqueuerRetryIntegrationTest",
+      "name": "zeroRetries_definitiveFailure_singleAttempt()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueInvocationEnqueuerRetryIntegrationTest",
+      "name": "threeRetries_definitiveFailure_neverExceedsFourAttempts()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.R5DirectCompletionUnownedSlotRegressionTest",
+      "name": "directCompletionDoesNotReleaseASlotItNeverAcquired()",
+      "seconds": "0.053",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.scheduler.P07cInputBackpressureTest",
+      "name": "realPhysicalCopyLargerThanHalfQuotaRemainsQueuedUnderInputSaturation()",
+      "seconds": "0.141",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.scheduler.P07cInputBackpressureTest",
+      "name": "dispatchReservationPreventsConcurrentAdmissionFromDisplacingBackpressuredItem()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.scheduler.P07cInputBackpressureTest",
+      "name": "physicalCopySaturationRequeuesInsteadOfSettlingAFunctionFailure()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncSchedulerLifecycleTest",
+      "name": "stopWithoutStart_keepsSchedulerStopped()",
+      "seconds": "0.092",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncSchedulerLifecycleTest",
+      "name": "startAndStop_toggleRunningState()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncSchedulerLifecycleTest",
+      "name": "startStopStart_restartsSchedulerWithoutRejectedExecution()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimatorTest",
+      "name": "estimateWaitSeconds_prunesPerFunctionDequeOnlyOncePerEvaluation()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimatorTest",
+      "name": "removeFunctionState_clearsPerFunctionEvents()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimatorTest",
+      "name": "usesPerFunctionWhenEnoughSamples()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimatorTest",
+      "name": "returnsZeroWhenQueueDepthIsZeroEvenWithoutSamples()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimatorTest",
+      "name": "fallsBackToGlobalWhenSamplesInsufficient()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "aQueueWaitTimeoutStillRecordsTheInvocationsEndToEndConclusion()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "timesOutQueuedItem()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "liveEstimatorOverflowUsesProductionRejectionWithFiniteRetryAfter()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "concurrentRemoveAndRegisterLeavesNewGenerationUsableAndOldSlotSafe()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "capacityRelease_advancesWakeupEpochWhenQueueHasQueuedWork()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "rejectsWhenQueueIsFull()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "lifecycleLocksAreRemovedAfterRepeatedFunctionRemoval()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "sampleSaturationWithUnusedFunctionSlotsRemainsAdmissible()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "awaitWakeup_unblocksWhenTaskIsEnqueued()",
+      "seconds": "0.103",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "removedFunctionMarkersDrainWithTheirLastGeneration()",
+      "seconds": "0.014",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "registerFunctionReenablesSyncQueueMetersBeforeRejectedAdmission()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "perFunctionDepthTracksEveryMutationSite()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "awaitWakeup_returnsImmediatelyWhenTheEpochMovedBeforeTheWait()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "removeFunctionState_drainsQueuedItemsAndRemovesMeters()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "removingUnknownFunctionsDoesNotRetainNameTombstones()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "registration_advancesWakeupEpochWhenQueueHasQueuedWork()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "findReadyMatchingDoesNotDequeueOrRecordWaitMetrics()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "pollReadyMatchingDoesNotSelectMatchBeyondScanLimitOnFirstCall()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "awaitWakeup_returnsWhenTimeoutExpiresWithoutSignal()",
+      "seconds": "0.011",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "enqueueAfterUnregisteredRemovalCompletesAsFunctionRemovedWithoutRetainingTheName()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "lateReleaseCleansUpRetiredFunctionLifecycleLock()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "staleEnqueuesStayRejectedUntilTheirRemovedGenerationDrains()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "findReadyMatching_timesOutStaleItemThenSelectsReadyItem()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "capacityRelease_doesNotWakeWhenQueueIsEmpty()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+      "name": "reRegistrationWhileDrainingReactivatesFunction()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueRuntimeActivationRegressionTest",
+      "name": "enablingSyncQueueAtRuntimeDispatchesThroughTheModuleLoadedScheduler()",
+      "seconds": "0.105",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueContextTest",
+      "name": "publishesTheWorkloadContractTheConsumingModulesConditionOn()",
+      "seconds": "0.37",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueContextTest",
+      "name": "theSchedulerIsCreatedWheneverTheModuleIsLoaded()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueContextTest",
+      "name": "theModuleEnqueuerIsTheOnlyOne()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueRuntimeLifecycleTest",
+      "name": "retryOfAdmittedWorkIsNotAbandonedAfterRuntimeDeactivation()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueRuntimeLifecycleTest",
+      "name": "disablingAfterAdmissionDrainsQueuedWorkAndReactivationDispatchesAgain()",
+      "seconds": "0.247",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.QueueLeaseGenerationTest",
+      "name": "[1] true",
+      "seconds": "0.057",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.QueueLeaseGenerationTest",
+      "name": "[2] false",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueAdmissionControllerTest",
+      "name": "acceptsWhenUnderLimits()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueAdmissionControllerTest",
+      "name": "rejectsWhenDepthExceeded()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueAdmissionControllerTest",
+      "name": "rejectsWhenEstimatedWaitTooHigh()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncSchedulerDispatchExceptionTest",
+      "name": "dispatchException_releasesSlot()",
+      "seconds": "0.015",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncSchedulerDispatchExceptionTest",
+      "name": "dispatchSuccess_doesNotReleaseSlot()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncSchedulerDispatchExceptionTest",
+      "name": "realDispatchFailure_releasesCapacitySlot()",
+      "seconds": "0.016",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimatorRetentionTest",
+      "name": "boundedMaintenanceEventuallyRemovesEveryInactiveFunction()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimatorRetentionTest",
+      "name": "instantRangeBoundariesDoNotOverflowCutoffCalculation()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimatorRetentionTest",
+      "name": "maintenanceGivesGlobalAndFunctionHistoryIndependentBoundedShares()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimatorRetentionTest",
+      "name": "capsExactHistoryWhileKeepingTheNewestSamples()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimatorRetentionTest",
+      "name": "fewHotFunctionsCannotConsumeUnusedFunctionHistorySlots()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimatorRetentionTest",
+      "name": "maintenanceRotationKeepsOneBoundedCandidatePerFunction()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimatorRetentionTest",
+      "name": "expiryAndRemovalRestoreReservedFunctionHistorySlots()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimatorRetentionTest",
+      "name": "checkingAnIdleFunctionRemovesItsOwnExpiredState()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimatorRetentionTest",
+      "name": "anOlderClockReadingCannotReorderOrExpireNewerSamples()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimatorRetentionTest",
+      "name": "exactWindowIncludesTheCutoffAndExcludesAnythingOlder()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimatorRetentionTest",
+      "name": "removalDropsCappedFunctionHistoryImmediately()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimatorRetentionTest",
+      "name": "defaultStateCapacityRejectsOnlyThe8193rdLiveFunction()",
+      "seconds": "0.021",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimatorRetentionTest",
+      "name": "admissionChecksAlsoDrainInactiveHistoryAfterIdle()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimatorRetentionTest",
+      "name": "fullLiveFunctionCapacityRejectsUnknownFunctionConservatively()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimatorRetentionTest",
+      "name": "overflowEvictsExpiredStateBeforeUsingLiveGlobalHistory()",
+      "seconds": "0.0",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    ":control-plane-modules:sync-queue:test",
+    "-PcontrolPlaneModules=sync-queue,runtime-config",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.syncqueue.R5DirectCompletionUnownedSlotRegressionTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.syncqueue.QueueLeaseGenerationTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueRuntimeActivationRegressionTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueRuntimeLifecycleTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueInvocationEnqueuerRetryIntegrationTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncSchedulerDispatchExceptionTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncSchedulerLifecycleTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.syncqueue.scheduler.P07cInputBackpressureTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueServiceTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueContextTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimatorRetentionTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimatorTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueAdmissionControllerTest",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 73,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 6.732381582260132,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "G6",
+  "output_sha256": "56b78d0cbd0838e9d47fe71c3715a6f1d75bb061bfcc31acb0066515108bb7bb",
+  "started_unix_s": 1789127442.0645413
+}

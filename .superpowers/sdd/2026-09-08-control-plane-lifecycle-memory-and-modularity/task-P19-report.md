@@ -1,13 +1,15 @@
 # P19 implementation report
 
-Status: **DONE_WITH_CONCERNS**. Date: 2026-09-11. Sole implementer; no subagents.
+Status: **BLOCKED after fix round 1**. Date: 2026-09-11. Sole implementer; no subagents.
 Branch: `control-plane-lifecycle-memory`. P20b was not started.
+
+The original report below is historical. The appended fix-round section supersedes
+its acceptance, native and short-profile claims. No accepted P23 control is declared.
 
 ## Commits and scope
 
 - `b404e53b5ad78f8915ed4713f6e4670a32e92d74` — Freeze corrected P19 lifecycle baseline.
-- The follow-up commit containing this report records the handoff and final graph
-  evidence only; resolve its identity with `git log -1 --format=%H -- .superpowers/sdd/2026-09-08-control-plane-lifecycle-memory-and-modularity/task-P19-report.md`.
+- `85abb78ef9c1d6edb503a89271f401a829169103` — Record P19 verification and handoff.
 
 Production/build source B is exactly `6d08303371d803f44187ec5f4e37827d54fec597`.
 A is `61d72e73528db62cf8ca465c6a037981d7ec13b0`, the known-defective P00 diagnostic
@@ -292,3 +294,224 @@ python3 docs/experiments/lifecycle-memory-2026-09/p19/dossier.py verify docs/exp
 Results: 9 tests, 0 failures/skips; VERIFIED manifest digest and all 714 payload
 files, including replayable raw common-run accounting. Concerns are bounded-method
 and environment/workflow limitations above, not an R1–R8 known-red exception.
+
+## Fix round 1 — 2026-09-11 — BLOCKED
+
+Latest user timebox was honored: no further harness features after the second
+timebox; current contracts, profiles and native checks executed, evidence frozen.
+Review findings 3/4 are closed; 1 is partial and 2 remains open with a concrete
+production-native failure. Correctness acceptance is not inferred from an integrity
+check. Exact B remains unchanged. Fixing native runtime hints requires owning-task
+TDD and reconciliation of the immutable exact-B requirement, not an unrecorded
+production change in this measurement round.
+
+Commit: the commit containing this section (`git log -1 --format=%H --
+.superpowers/sdd/2026-09-08-control-plane-lifecycle-memory-and-modularity/task-P19-report.md`).
+Previous commits are listed above; this round is measurement/docs only.
+
+### Changes and red-green evidence
+
+Receiving-code-review, systematic-debugging and test-driven-development were used
+to reproduce concrete defects before fixing them. No subagents were used.
+
+- `contract.py`, `dossier.py`, `test_revision_identity.py`, `test_dossier.py`:
+  exact A/B revision-to-jar bindings, stable distinct artifacts, rehashed actual
+  config/workload documents, raw command/function/workload/latency schedule checks,
+  boot/PID/start-tick uniqueness and chronological whole-process non-overlap.
+  Identity RED: 8 tests, 7 failures; binding RED: 4 tests, 1 failure, each exit 1.
+  Final combined portable suite: 20 tests, 0 failures/errors/skips, exit 0.
+- `http_runner.py`, `campaign.py`, `supervision.py`, `test_process_cleanup.py`:
+  first child starts inside cleanup protection; timeout owns a process session,
+  sends TERM, waits bounded grace, then KILL; retained supervisor/failure records
+  and bounded no-live-member verification. RED: both cleanup tests failed, exit 1.
+  GREEN includes second-spawn failure and a grandchild ignoring TERM. Nine current
+  campaign supervisor records report exit 0 and no remaining live group members.
+- `P19Probe.java`, `P19ProbeContract.java`: direct live-store completion-future
+  census; RED missing observer (NoSuchMethodException, exit 1), GREEN real futures
+  retained=2/open=1 then open=0, exit 0. External aliases remain unavailable.
+- `short_profiles.py`: bounded existing HTTP/probe fixtures exercise partial
+  T3/T4/T5/T7/T9; no second integration stack. Rejected initial assumption that a
+  logical timeout is HTTP 504 is preserved: actual wire is HTTP 200 with timeout
+  body. Expectations corrected without runtime changes.
+- `native_smoke.py`, `native_integration.py`: smoke now requires invocation,
+  replay identity and shutdown, with minimal EXTERNAL and managed Docker fixture.
+  The separate native integration wrapper is not included in portable test
+  discovery and was not independently counted; actual smoke commands below fail.
+- `test_contract.py`, protocol, observer dictionary, README, baseline pointer and
+  ledger describe the strengthened evidence and remaining gaps. Old dossier is
+  immutable and preserved. Current strict verifier targets new metadata; use the
+  archived old verifier when inspecting the historical v1 artifact.
+
+### Exact executed commands and outcomes
+
+All paths below are from repository root; W abbreviates
+`/tmp/nanofaas-p19-r1.9kgN9P`, H abbreviates
+`docs/experiments/lifecycle-memory-2026-09/p19`. Raw commands, timestamps and results
+are retained in the dossier. No unavailable external service was waited on.
+
+```bash
+python3 -m unittest discover -s docs/experiments/lifecycle-memory-2026-09/p19 -p 'test_*.py'
+java -cp /tmp/nanofaas-p19-r1.9kgN9P/probe P19ProbeContract
+java -cp /tmp/nanofaas-p19-r1.9kgN9P/probe P19Probe validate-allocation
+taskset -c 5-8 python3 docs/experiments/lifecycle-memory-2026-09/p19/campaign.py /tmp/nanofaas-p19-r1.9kgN9P
+python3 docs/experiments/lifecycle-memory-2026-09/p19/native_smoke.py /tmp/nanofaas-p19-r1.9kgN9P none
+python3 docs/experiments/lifecycle-memory-2026-09/p19/native_smoke.py /tmp/nanofaas-p19-r1.9kgN9P container
+python3 docs/experiments/lifecycle-memory-2026-09/p19/dossier.py freeze /tmp/nanofaas-p19-r1.9kgN9P
+python3 docs/experiments/lifecycle-memory-2026-09/p19/dossier.py verify docs/experiments/lifecycle-memory-2026-09/p19/dossiers/70ea3494d86e6435ac2de1cbb207311079135f129c573af8f45d09968bfd66d0
+```
+
+Exits respectively: 0, 0, 0, 0, **1, 1**, 0, 0. Final contracts output:
+`Ran 20 tests in 0.816s / OK`; Java observer output:
+`P19ProbeContract PASS: 2 retained futures, 1 open, then 0 open`.
+Collector validation: 67,108,864 escaped payload bytes each; platform observed
+67,155,880, virtual observed 67,430,808, both valid after thread exit.
+Short profiles invoked current `short_profiles.py W SELECTION` through the same
+`supervise(..., timeout=120)` helper for `none`, `all`, `sync-queue,runtime-config`;
+all three exit 0. Their exact commands and processes are archived.
+Campaign is six alternating fresh common processes plus three ASYNC processes;
+aggregate campaign exceeded ten minutes by construction, no individual run
+exceeded its 300s/120s bound or required unavailable infrastructure.
+Already-proven G1–G18/R1–R8, SDK and JVM packaging evidence is inherited from the
+previous dossier with original timestamps, NOT rerun or represented as fresh in
+this round. No known-red native gate is excepted into green acceptance.
+
+### Fresh run table
+
+Each common run: 6,000 warm-up offers, 12,000 measured offers/admissions/unique
+terminal successes at 200 offers/s, no refusal/unresolved work. Each ASYNC run:
+20 warm-up and 120 measured offers/admissions/successes at 50 offers/s, no refusal.
+Common actual config digest:
+`2c6df920400cc83eef6842ce17881278453687982963f2a6a4d34b881cde04eb`.
+Latencies below are milliseconds; allocation is process bytes per unique success,
+including observer allocations; heap is post-policy post-GC used bytes, outside
+ordinary latency windows. Raw exact nanoseconds and every checkpoint are archived.
+
+| Run | Useful successes/s | p50 | p95 | p99 | Allocation B/success | Post-policy heap B |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| A1 | 199.995905 | 1.310748 | 3.045463 | 3.664533 | 138309.295 | 40211280 |
+| B1 | 199.965826 | 1.508395 | 3.064343 | 3.711573 | 144070.911 | 41287432 |
+| A2 | 199.995604 | 1.532859 | 2.948183 | 3.709205 | 137954.645 | 40372576 |
+| B2 | 199.962545 | 1.493803 | 3.301638 | 3.868932 | 143852.758 | 41490280 |
+| A3 | 199.994624 | 1.483228 | 3.256278 | 3.819796 | 137572.721 | 40400296 |
+| B3 | 199.973984 | 1.727323 | 3.184199 | 3.781540 | 143690.369 | 41269160 |
+| B-async-1 | 50.206860 | 12.436730 | 22.558171 | 27.502284 | 1138873.067 | 25661720 |
+| B-async-2 | 50.138949 | 11.909852 | 22.228092 | 27.358140 | 1137680.200 | 25422288 |
+| B-async-3 | 50.216336 | 11.524925 | 20.546625 | 24.858820 | 1145156.533 | 25397944 |
+
+Paired deltas and segmented latency distributions are in `comparison.json`.
+A is diagnostic only; these are not maximum-throughput/equivalence results.
+Brief native diagnostic smoke overlapped A2, although native compilation did not;
+host affinity is not exclusive reservation. Observer-overhead paired passes were
+not run under timebox; attribution remains unavailable. These limits prevent an
+unqualified causal attribution of small A/B differences.
+
+### Short profiles: finding 1 PARTIAL, not closed
+
+| Selection | Cases | Snapshots | Duration seconds | Exit |
+| --- | ---: | ---: | ---: | ---: |
+| none | 7 | 331 | 19.098379 | 0 |
+| all | 8 | 343 | 20.467105 | 0 |
+| sync-queue,runtime-config | 8 | 329 | 18.878098 | 0 |
+
+23 case records / 1,003 snapshots, sampled every 50ms plus collection cost.
+T3 exercises divergent short/long waiters on one key, shared terminal success and
+replay identity, including offload false/true on all. T4 exercises retry (two
+physical attempts), administrative expiry while the physical backend remains
+active, and sync queue toggle during work. T5 removes/re-registers three names
+while old HTTP responses are suspended and verifies new-generation replay after
+late completion. T7 uses 256KiB payload/output plus >1MiB refusal (413). T9 checks
+physical backend drain after each case and final post-policy removal/GC.
+Observed maxima per selection: live=1, keys=3, outcomes=6, reservations=1,
+canonical/copy bytes=524802 each, waiters=2, live-store open futures=1.
+Final public live/reservation/input/copy/waiter/key/outcome populations and observed
+live-store open futures are zero; physical backend active=0. Raw owner_fields and
+Prometheus snapshots retain practically mapped owners without summing aliases.
+This does NOT establish zero independent future aliases/timer/subscriber handles.
+
+Still missing: T6 blocked replica-provider/shared wake-up profile, T8 each SDK
+process, complete proxy/callback/slow-client numerical ownership and full
+multi-destination churn. These are **open evidence findings**, not unavailable
+infrastructure and not closed by inherited focused tests. Unselected owners remain
+not_applicable to that process; selected but unobservable owners are unavailable.
+
+### Native: finding 2 OPEN, concrete correctness blocker
+
+Managed build from exact B archive at `/tmp/nanofaas-p19.AitJMN/native-source`:
+
+```bash
+CONTROL_PLANE_MODULES=container-deployment-provider NATIVE_BUILD_MEMORY=8g NATIVE_PARALLELISM=4 timeout 600 scripts/native-java-image.sh control-plane nanofaas/control-plane:p19-6d083033-container
+```
+
+Exit 0; suitable local Docker route exists. Managed image
+`sha256:9d3dc1671abff05834223bdd47c69be5e4630beadb9cc134f5dfd19be658fe1c`;
+minimal image `sha256:e5cd87f4e0d6c0a12c9a8a9563e0cb4d138682ef38b1b52c35774b48910d76af`.
+An initial managed attempt used the CLI adapter, unavailable inside Distroless;
+that rejection is preserved separately. Selecting the existing
+`--nanofaas.container-local.runtime-adapter=docker-java` completes actual managed
+Docker provisioning (201), but invocation still fails with HTTP 500 in both
+minimal and managed selections. Logs identify:
+
+`UnsupportedFeatureError: Record components not available for record class
+it.unimib.datai.nanofaas.common.model.InvocationResponse`.
+
+The controller's erased response type does not supply that DTO's required native
+record reflection metadata. Shutdown also logs `MissingReflectionRegistrationError`
+for `java.util.concurrent.ThreadPoolExecutor.shutdown()` on
+`deploymentWakeUpTimeoutScheduler`. Neither is an infrastructure exception.
+Replay is unreached after invocation fails, so no native replay success claimed.
+Both final smoke commands exit 1, preserve `valid:false` failure records and logs;
+container stop/removal exit 0, but application shutdown correctness is still red.
+Scoped `docker ps -a --filter name=nanofaas-p19-smoke` is empty after cleanup.
+No runtime hint patch, P20b work or external deployment was performed. The old
+k8s 4GiB OOM/absent-cluster limitation remains historical, not a substitute green.
+
+### Artifact and preservation
+
+New schema `nanofaas-p19-dossier-v2`, status BLOCKED, `accepted_control:null`:
+`docs/experiments/lifecycle-memory-2026-09/p19/dossiers/70ea3494d86e6435ac2de1cbb207311079135f129c573af8f45d09968bfd66d0`.
+Manifest SHA-256 `70ea3494d86e6435ac2de1cbb207311079135f129c573af8f45d09968bfd66d0`.
+Freeze/verify output: `VERIFIED` with that digest and **608 payload files**.
+Contains raw runs/profiles/native failures, exact sources/build entry hashes,
+measured binaries, compiled observer, config/workload/environment identities,
+red-green logs, inherited regression results, checksums and `fix-round.json`.
+The previous `49f98d…` immutable dossier is unchanged and superseded, not erased.
+
+Protected SHA-256 audit passed for both overload-path dirty files, all six
+untracked GitNexus skill directories and the untracked snapshot test. No protected
+path is staged. `git diff 6d083033… -- platform sdks services openapi deploy` is
+empty. Self-review covered new diff, raw native failures, real profile scope,
+paired identity rejection and child lifetime records. No new runtime retainer was
+proven, and no claim of full numerical ownership coverage is made.
+
+### GitNexus fix-round evidence
+
+All existing edited symbols were checked upstream before edits; new consumers had
+graph context checks. Raw exact-symbol checks live under dossier `graph/`:
+validate_pairs, run/proc_snapshot, snapshot/liveOwners consumption, smoke,
+profiles, supervise, verify/freeze and affected test fixtures. LOW/UNKNOWN results;
+UNKNOWN/not-found/dynamic edges were resolved with `rg`, not treated as unused.
+No HIGH/CRITICAL result occurred. Prior retrospective P19 probe-main impact debt
+remains disclosed above; this round does not erase it.
+Final index-only refresh: exit 0, 24.9s, 22,372 nodes, 63,147 edges, 763 flows.
+Final complete all/staged detect-changes and preservation results are recorded in
+the precommit gate addendum below; compressed raw gates are outside the immutable
+dossier to avoid self-referential hashing. Text review supplements ignored report,
+new Python/dynamic boundaries and compressed artifacts not mapped as symbols.
+
+Precommit gate addendum: complete LocalBackend `detect_changes` scope all and
+staged, explicitly bound to `/home/michele/Documenti/nanofaas`, both exit 0.
+All: 205 textual files, 62 symbols, five flows, MEDIUM. Staged: 203 textual files,
+61 symbols, five flows, MEDIUM. No error/partial/truncated/UNKNOWN verdict in raw
+payload. An oversized terminal rendering was truncated; complete compact field
+and symbol output was reread, so that rendering was not accepted as the gate.
+Five affected flows are Profiles→Encoded, Main→Call/Bean/GcCount, Run→Encoded,
+all measurement helpers. Text review confirms campaign top-level calls and ignored
+planning report are covered despite absent graph symbols. Compressed binaries/raw
+records are not represented by these textual-file counts.
+Raw payload: `p19/fix-round-1-graph-gates.json.gz`. Final report/addendum and binary
+gate payload are restaged and both scopes rechecked immediately before commit.
+Whitespace check exit 2 is only pre-existing final blank lines in the verbatim
+copied brief/inventory; `git -c core.whitespace=-blank-at-eof diff --cached --check`
+exit 0. Protected staged-path query and old-dossier staged query both empty.
+Final fresh portable recheck: 20 tests, 0 failures/skips, exit 0 (0.847s); full new
+dossier verifier: exit 0, VERIFIED 608 payload files. BLOCKED status is unchanged.

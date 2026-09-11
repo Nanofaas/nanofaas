@@ -1,0 +1,9 @@
+{
+  "error": "Target 'profiles' not found",
+  "target": {
+    "name": "profiles"
+  },
+  "direction": "upstream",
+  "impactedCount": null,
+  "risk": "UNKNOWN"
+}

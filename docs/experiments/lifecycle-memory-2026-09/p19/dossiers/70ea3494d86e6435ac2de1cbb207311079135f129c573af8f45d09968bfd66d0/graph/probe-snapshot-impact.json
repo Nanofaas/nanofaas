@@ -1,0 +1,88 @@
+{
+  "target": {
+    "id": "Method:docs/experiments/lifecycle-memory-2026-09/p19/P19Probe.java:P19Probe.snapshot#0",
+    "name": "snapshot",
+    "type": "Method",
+    "filePath": "docs/experiments/lifecycle-memory-2026-09/p19/P19Probe.java"
+  },
+  "direction": "upstream",
+  "impactedCount": 1,
+  "risk": "LOW",
+  "riskSharedAxes": "LOW",
+  "riskScale": {
+    "comparableAcrossKinds": true,
+    "unusedAxes": []
+  },
+  "epistemic": "lower-bound",
+  "boundaries": [
+    "44 call sites invoking `snapshot` were dropped at index time because the receiver's type could not be established (e.g. an unresolved constructor, factory or chained expression). Those callers are absent from this result — actual impact may be higher."
+  ],
+  "causes": {
+    "scopeExtractionFiles": 0,
+    "receiverTyping": 44,
+    "dispatchBoundary": 0,
+    "externalBoundary": 0,
+    "undecidedSatisfaction": 0
+  },
+  "summary": {
+    "direct": 1,
+    "processes_affected": 1,
+    "modules_affected": 1
+  },
+  "byDepthCounts": {
+    "1": 1
+  },
+  "affected_processes": [
+    {
+      "name": "main",
+      "type": "Function",
+      "filePath": "docs/experiments/lifecycle-memory-2026-09/p19/P19Probe.java",
+      "affected_process_count": 3,
+      "total_hits": 3,
+      "earliest_broken_step": 1
+    }
+  ],
+  "affected_modules": [
+    {
+      "name": "P19",
+      "hits": 1,
+      "impact": "direct"
+    }
+  ],
+  "byDepth": {
+    "1": [
+      {
+        "depth": 1,
+        "id": "Method:docs/experiments/lifecycle-memory-2026-09/p19/P19Probe.java:P19Probe.main#1",
+        "name": "main",
+        "filePath": "docs/experiments/lifecycle-memory-2026-09/p19/P19Probe.java",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": [
+          {
+            "id": "proc_168_main",
+            "label": "Main → Call",
+            "processType": "intra_community",
+            "step": 1
+          },
+          {
+            "id": "proc_302_main",
+            "label": "Main → Bean",
+            "processType": "intra_community",
+            "step": 1
+          },
+          {
+            "id": "proc_303_main",
+            "label": "Main → GcCount",
+            "processType": "intra_community",
+            "step": 1
+          }
+        ]
+      }
+    ]
+  },
+  "staleness": {
+    "commitsBehind": 1,
+    "hint": "⚠️ Index is 1 commit behind HEAD. Run analyze tool to update."
+  }
+}

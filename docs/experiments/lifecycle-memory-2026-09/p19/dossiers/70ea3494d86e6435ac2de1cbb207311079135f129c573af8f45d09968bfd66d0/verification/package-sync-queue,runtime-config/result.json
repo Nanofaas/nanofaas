@@ -1,0 +1,23 @@
+{
+  "cases": [],
+  "command": [
+    "./gradlew",
+    ":control-plane:bootJar",
+    "-PcontrolPlaneModules=sync-queue,runtime-config",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": null,
+  "counts_status": "not_applicable: command has no test cases",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 5.38842511177063,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "package-sync-queue,runtime-config",
+  "output_sha256": "9b1f8775bad4d8c9daaf48e750ba24c3822749e085c1fed0a50aa8e5ee5ecccc",
+  "started_unix_s": 1789128178.2609785
+}

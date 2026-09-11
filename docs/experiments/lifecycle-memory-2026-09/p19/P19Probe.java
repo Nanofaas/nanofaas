@@ -140,6 +140,11 @@ public final class P19Probe {
             }
         }
         result.put("populations", populations);
+        try {
+            result.put("live_owners", liveOwners(bean("execution.ExecutionStore")));
+        } catch (Exception failure) {
+            result.put("live_owners", Map.of("status", "unavailable", "reason", failure.toString()));
+        }
         // Read fields only on already-created singletons. Never instantiate optional beans.
         Object factory = call(context, "getBeanFactory");
         String[] names = (String[]) call(factory, "getSingletonNames");
@@ -160,6 +165,18 @@ public final class P19Probe {
         }
         result.put("buffers", buffers);
         return result;
+    }
+
+    private static Map<String, Object> liveOwners(Object store) throws Exception {
+        Field field = store.getClass().getDeclaredField("inFlight");
+        field.setAccessible(true);
+        Map<?, ?> records = (Map<?, ?>) call(field.get(store), "asMap");
+        long open = 0;
+        for (Object record : records.values()) {
+            if (!((CompletableFuture<?>) call(record, "completion")).isDone()) open++;
+        }
+        return Map.of("status", "observed", "open_futures", open,
+                "scope", "completion futures reachable through live store; independent retained aliases unavailable");
     }
 
     private static void inspect(Object owner, String path, Map<String, Object> result, int depth) {

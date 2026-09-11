@@ -1,0 +1,20 @@
+{
+  "cases": [],
+  "command": [
+    "npm",
+    "test"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 80,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas/sdks/javascript",
+  "elapsed_s": 8.745660781860352,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "javascript-sdk",
+  "output_sha256": "7bd1d5237a4d816c339ea5e8e92ac43519bd27b6a8612577a52a3b6742c474f0",
+  "started_unix_s": 1789127951.940775
+}

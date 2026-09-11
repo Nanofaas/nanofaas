@@ -1,0 +1,23 @@
+{
+  "cases": [],
+  "command": [
+    "/home/michele/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.0.linux-arm64/bin/go",
+    "test",
+    "-count=1",
+    "-json",
+    "./..."
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 116,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas/sdks/go",
+  "elapsed_s": 1.1177175045013428,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "go-sdk",
+  "output_sha256": "9da3ad50f467a116629c8c71ac94ddbcf767b91c9dc70afb3e13215e0a7ea2a7",
+  "started_unix_s": 1789127960.6874397
+}

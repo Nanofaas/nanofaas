@@ -1,0 +1,456 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.OutcomeWeigherTest",
+      "name": "aByteArrayOutputIsCacheableAndFrozen()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.OutcomeWeigherTest",
+      "name": "aMapWiderThanTheLimitIsNotCacheable()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.OutcomeWeigherTest",
+      "name": "deepPayloadsBeyondTheTraversalLimitAreNotCacheable()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.OutcomeWeigherTest",
+      "name": "aSharedReferenceIsNotCacheable()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.OutcomeWeigherTest",
+      "name": "anOpaqueObjectIsNotCacheable()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.OutcomeWeigherTest",
+      "name": "aCyclicStructureIsNotCacheable()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.OutcomeWeigherTest",
+      "name": "aMutableOutputIsFrozenSoLaterMutationDoesNotReachTheRetainedCopy()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.OutcomeWeigherTest",
+      "name": "aListOf256NullsFollowedByALargeStringIsNotCacheable()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.OutcomeWeigherTest",
+      "name": "saturatingAdditionClampsAtLongMaxValue()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.OutcomeWeigherTest",
+      "name": "saturatingMultiplicationClampsAtLongMaxValue()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.OutcomeWeigherTest",
+      "name": "weightAsIntClampsWeightBeyondTheIntRange()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.OutcomeWeigherTest",
+      "name": "aNonLatin1StringWeighsTwoBytesPerChar()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.IdempotentRetentionContractTest",
+      "name": "anExhaustedKeyBudgetRejectsNewKeyedAdmissionsBeforeDispatchAndKeepsReplaysServiceable()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.IdempotentRetentionContractTest",
+      "name": "concurrentReplaysOfASettledKeyAllGetTheSameExecutionWithoutNewOnes()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.IdempotentRetentionContractTest",
+      "name": "aKeyOutlivesALongExecutionForItsTerminalWindowThenAllowsANewExecution()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.IdempotentRetentionContractTest",
+      "name": "aLateSettleOfAReplacedExecutionDoesNotMarkTheCurrentBindingTerminal()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.IdempotentRetentionContractTest",
+      "name": "theKeyStaysBoundAcrossInternalRetries()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.IdempotentRetentionContractTest",
+      "name": "capacityEvictionRepliesGoneEvenWhenTheExecutionSettledBeforeItsClaimWasPublished()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.IdempotentRetentionContractTest",
+      "name": "capacityEvictionLeavesABindingThatRepliesGoneInsteadOfReinvoking()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.IdempotencyKeyBudgetTest",
+      "name": "refusalsAreCountedWithoutLabels()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.IdempotencyKeyBudgetTest",
+      "name": "replayOfAPresentKeyWorksAtSaturation()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.IdempotencyKeyBudgetTest",
+      "name": "replacingAndReclaimingTheSameAssociationNeverConsumesASecondSlot()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.IdempotencyKeyBudgetTest",
+      "name": "concurrentAbandonAndExpiryReleaseEachSlotExactlyOnceAndPermitNewClaims()",
+      "seconds": "0.015",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.IdempotencyKeyBudgetTest",
+      "name": "shutdownReleasesEverySlotAndReopensTheBudget()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.IdempotencyKeyBudgetTest",
+      "name": "abandoningAClaimReleasesItsSlotOnceAndTheSlotIsReusable()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.IdempotencyKeyBudgetTest",
+      "name": "concurrentClaimsOfTheSameKeyProduceASingleOwner()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.IdempotencyKeyLifetimeTest",
+      "name": "aPublishedKeyLivesAsLongAsTheExecutionCanNotAsLongAsTheOutcome()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.IdempotencyKeyLifetimeTest",
+      "name": "aTerminalKeyLivesTtlFromCompletionNotFromPublication()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.IdempotencyKeyLifetimeTest",
+      "name": "markTerminalIsIdempotentAndDoesNotTouchUnkeyedOrPendingKeys()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.IdempotencyKeyLifetimeTest",
+      "name": "markTerminalIgnoresAKeyThatHasSinceBeenReboundToAnotherExecution()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.IdempotencyKeyLifetimeTest",
+      "name": "theDefaultsAgreeWithoutBeingToldTo()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.ReviewLifecycleGateTest",
+      "name": "lateOffloadCompletionMustUseTheAlreadySelectedResult()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.ReviewLifecycleGateTest",
+      "name": "externalAttemptDeadlineMustDisposeItsTransport()",
+      "seconds": "0.161",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.ReviewLifecycleGateTest",
+      "name": "deploymentExpiryMustCancelTheUnderlyingTransportSubscription()",
+      "seconds": "0.141",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.ReviewLifecycleGateTest",
+      "name": "administrativeExpiryMustCancelAHandlePublishedAfterTheExpiry()",
+      "seconds": "0.106",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.ReviewLifecycleGateTest",
+      "name": "administrativeExpiryMustKeepCapacityUntilNonCooperativeLocalWorkEnds()",
+      "seconds": "0.106",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.ReviewLifecycleGateTest",
+      "name": "expiryBeforeDeploymentWakeupMustNotCancelSharedReadinessOrStartHttp()",
+      "seconds": "0.109",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.ReviewLifecycleGateTest",
+      "name": "newQueuedCompletionMustNotReleaseAnOldGenerationsLease()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.ReviewLifecycleGateTest",
+      "name": "metricFailureMustNotLeaveATerminalExecutionLiveWithPendingFuture()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.ReviewLifecycleGateTest",
+      "name": "directDispatchMustObserveAnUpdatedConcurrency()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.ExecutionStoreAdministrativeExpiryTest",
+      "name": "anExplicitRemoveNeverNotifiesTheExpiryListener()",
+      "seconds": "0.318",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.ExecutionStoreAdministrativeExpiryTest",
+      "name": "aNormalSettleNeverNotifiesTheExpiryListener()",
+      "seconds": "0.207",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.ExecutionStoreAdministrativeExpiryTest",
+      "name": "aRecordThatOutlivesMaxLifetimeNotifiesTheRegisteredListenerExactlyOnce()",
+      "seconds": "0.107",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.ExecutionStoreAdministrativeExpiryTest",
+      "name": "expiryFiresOnItsOwnWithoutAnyFurtherCacheActivity()",
+      "seconds": "1.13",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.OutcomeWeightBudgetTest",
+      "name": "aPayloadBeyondTheTraversalBoundIsDeclinedNotPricedAtZero()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.OutcomeWeightBudgetTest",
+      "name": "largePayloadsAreEvictedByWeightLongBeforeTheCountLimit()",
+      "seconds": "0.015",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.OutcomeWeightBudgetTest",
+      "name": "theRetainedCountFollowsTheByteBudgetNotACount()",
+      "seconds": "0.013",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.OutcomeWeightBudgetTest",
+      "name": "aPayloadWithinTheTraversalBoundIsRetained()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.OutcomeWeightBudgetTest",
+      "name": "compactOutcomesStillFitTheirCountBudget()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.IdempotencyOutlivesExecutionTest",
+      "name": "aKeyShorterThanTheRecordDuplicatesTheExecution()",
+      "seconds": "0.105",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.ExecutionStoreEvictionTest",
+      "name": "aStuckRecordExpiresAfterMaxLifetime()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.ExecutionStoreEvictionTest",
+      "name": "settleMovesTheRecordOutOfTheLiving()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.ExecutionStoreEvictionTest",
+      "name": "aNotCacheableOutcomeIsDroppedButTheTerminalTransitionStillRuns()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.ExecutionStoreEvictionTest",
+      "name": "aLiveRecordIsFoundAmongTheLiving()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.ExecutionStoreEvictionTest",
+      "name": "removeDeletesFromBothStructures()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.ExecutionStoreEvictionTest",
+      "name": "settleIgnoresARecordThatIsStillRunning()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.ExecutionStoreEvictionTest",
+      "name": "theOutcomeCapBoundsMemoryWhereTheClockCannot()",
+      "seconds": "0.015",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.ExecutionStoreEvictionTest",
+      "name": "aFreshNonTerminalRecordSurvives()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.ExecutionStoreEvictionTest",
+      "name": "everyTerminalStateSettles()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.ExecutionStoreEvictionTest",
+      "name": "settleIsIdempotent()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.ExecutionStoreEvictionTest",
+      "name": "everyTerminalListenerRunsEvenWhenAnEarlierOneThrows()",
+      "seconds": "0.011",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.ExecutionLifecycleTerminalTransitionTest",
+      "name": "completionAgainstAdministrativeExpirySettlesExactlyOnce()",
+      "seconds": "1.791",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.ExecutionLifecycleTerminalTransitionTest",
+      "name": "ttlEvictionDuringCompletionRespectsTheRetentionBoundary()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.ExecutionLifecycleTerminalTransitionTest",
+      "name": "concurrentReplaysDuringTheTerminalTransitionNeverStartANewExecution()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.ExecutionLifecycleTerminalTransitionTest",
+      "name": "aThrowingTerminalListenerDoesNotInterruptTheTransitionOrCleanup()",
+      "seconds": "0.008",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.ExecutionLifecycleTerminalTransitionTest",
+      "name": "weightEvictionDuringCompletionLeavesATombstoneAndNeverReDispatches()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.ExecutionLifecycleTerminalTransitionTest",
+      "name": "delayedKeyPublishAfterCompletionStillProtectsTheKey()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.ExecutionLifecycleTerminalTransitionTest",
+      "name": "doubleCompletionIsIdempotent()",
+      "seconds": "0.003",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    ":control-plane:test",
+    "-PcontrolPlaneModules=none",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.execution.OutcomeWeigherTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.execution.OutcomeWeightBudgetTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.execution.ExecutionStoreEvictionTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.execution.IdempotencyKeyBudgetTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.execution.IdempotencyKeyLifetimeTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.service.IdempotencyOutlivesExecutionTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.service.IdempotentRetentionContractTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.service.ExecutionLifecycleTerminalTransitionTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.service.ReviewLifecycleGateTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.execution.ExecutionStoreAdministrativeExpiryTest",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 68,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 15.153421640396118,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "G2",
+  "output_sha256": "a96904c870989f0453e06af1643348133992f4384f2ed0b61f4a0d54a76b33ce",
+  "started_unix_s": 1789127381.5882638
+}

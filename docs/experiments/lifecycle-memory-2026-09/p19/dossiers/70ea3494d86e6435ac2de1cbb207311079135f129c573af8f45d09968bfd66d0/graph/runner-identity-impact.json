@@ -1,0 +1,102 @@
+{
+  "target": {
+    "id": "Function:docs/experiments/lifecycle-memory-2026-09/p19/http_runner.py:run",
+    "name": "run",
+    "type": "Function",
+    "filePath": "docs/experiments/lifecycle-memory-2026-09/p19/http_runner.py"
+  },
+  "direction": "upstream",
+  "impactedCount": 6,
+  "risk": "LOW",
+  "riskSharedAxes": "LOW",
+  "riskScale": {
+    "comparableAcrossKinds": true,
+    "unusedAxes": []
+  },
+  "epistemic": "lower-bound",
+  "boundaries": [
+    "14 call sites invoking `run` were dropped at index time because the receiver's type could not be established (e.g. an unresolved constructor, factory or chained expression). Those callers are absent from this result — actual impact may be higher."
+  ],
+  "causes": {
+    "scopeExtractionFiles": 0,
+    "receiverTyping": 14,
+    "dispatchBoundary": 0,
+    "externalBoundary": 2,
+    "undecidedSatisfaction": 0
+  },
+  "summary": {
+    "direct": 1,
+    "processes_affected": 0,
+    "modules_affected": 0
+  },
+  "byDepthCounts": {
+    "1": 1,
+    "2": 5
+  },
+  "affected_processes": [],
+  "affected_modules": [],
+  "byDepth": {
+    "1": [
+      {
+        "depth": 1,
+        "id": "File:docs/experiments/lifecycle-memory-2026-09/p19/http_runner.py",
+        "name": "http_runner.py",
+        "filePath": "docs/experiments/lifecycle-memory-2026-09/p19/http_runner.py",
+        "relationType": "CALLS",
+        "confidence": 0.85,
+        "processes": []
+      }
+    ],
+    "2": [
+      {
+        "depth": 2,
+        "id": "File:docs/experiments/lifecycle-memory-2026-09/p19/auxiliary.py",
+        "name": "auxiliary.py",
+        "filePath": "docs/experiments/lifecycle-memory-2026-09/p19/auxiliary.py",
+        "relationType": "IMPORTS",
+        "confidence": 1,
+        "processes": []
+      },
+      {
+        "depth": 2,
+        "id": "File:docs/experiments/lifecycle-memory-2026-09/p19/campaign.py",
+        "name": "campaign.py",
+        "filePath": "docs/experiments/lifecycle-memory-2026-09/p19/campaign.py",
+        "relationType": "IMPORTS",
+        "confidence": 1,
+        "processes": []
+      },
+      {
+        "depth": 2,
+        "id": "File:docs/experiments/lifecycle-memory-2026-09/p19/native_smoke.py",
+        "name": "native_smoke.py",
+        "filePath": "docs/experiments/lifecycle-memory-2026-09/p19/native_smoke.py",
+        "relationType": "IMPORTS",
+        "confidence": 1,
+        "processes": []
+      },
+      {
+        "depth": 2,
+        "id": "File:docs/experiments/lifecycle-memory-2026-09/p19/package_smoke.py",
+        "name": "package_smoke.py",
+        "filePath": "docs/experiments/lifecycle-memory-2026-09/p19/package_smoke.py",
+        "relationType": "IMPORTS",
+        "confidence": 1,
+        "processes": []
+      },
+      {
+        "depth": 2,
+        "id": "File:docs/experiments/lifecycle-memory-2026-09/p19/summarize_evidence.py",
+        "name": "summarize_evidence.py",
+        "filePath": "docs/experiments/lifecycle-memory-2026-09/p19/summarize_evidence.py",
+        "relationType": "IMPORTS",
+        "confidence": 1,
+        "processes": []
+      }
+    ]
+  },
+  "staleness": {
+    "commitsBehind": 1,
+    "hint": "⚠️ Index is 1 commit behind HEAD. Run analyze tool to update."
+  }
+}

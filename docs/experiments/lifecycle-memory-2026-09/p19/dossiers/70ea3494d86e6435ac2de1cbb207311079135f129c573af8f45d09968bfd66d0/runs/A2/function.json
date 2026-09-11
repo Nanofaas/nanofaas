@@ -1,0 +1,1 @@
+{"command":[],"concurrency":32,"effectiveExecutionMode":"EXTERNAL","endpointUrl":"http://127.0.0.1:18083/","env":{},"image":"unused","maxRetries":0,"name":"p19","queueSize":512,"requestedExecutionMode":"EXTERNAL","timeoutMs":10000}

@@ -11,6 +11,7 @@ import http.client
 import http.server
 import json
 import os
+import signal
 import pathlib
 import subprocess
 import sys
@@ -78,6 +79,11 @@ def backend(port):
 
 def proc_snapshot(pid):
     result = {'pid': pid}
+    try:
+        result['start_ticks'] = int(pathlib.Path(f'/proc/{pid}/stat').read_text().split(') ')[1].split()[19])
+        result['boot_id'] = pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+    except OSError as error:
+        result['identity_status'] = {'status': 'unavailable', 'reason': str(error)}
     for name in ['status', 'smaps_rollup', 'schedstat']:
         try:
             result[name] = pathlib.Path(f'/proc/{pid}/{name}').read_text()
@@ -114,8 +120,7 @@ def run(args):
     write_json(folder / 'workload.json', workload)
     backend_log = (folder / 'backend.log').open('wb')
     server_log = (folder / 'server.log').open('wb')
-    backend_process = subprocess.Popen([sys.executable, __file__, 'backend', str(back)], stdout=backend_log, stderr=subprocess.STDOUT)
-    server = subprocess.Popen(java, stdout=server_log, stderr=subprocess.STDOUT, cwd=folder)
+    backend_process = server = None
     sampler_stop = threading.Event()
     samples = []
     checkpoints = []
@@ -123,7 +128,7 @@ def run(args):
     thread_local = threading.local()
     result = dict(schema='p19-http-run-v1', label=args.label, revision=args.revision,
                   profile=args.profile, scenario=args.scenario, java_command=java,
-                  server_pid=server.pid, backend_pid=backend_process.pid, generator_pid=os.getpid(),
+                  generator_pid=os.getpid(), process_start_ns=time.monotonic_ns(),
                   jar_sha256=hashlib.sha256(args.jar.read_bytes()).hexdigest(),
                   workload=hashlib.sha256(encoded(workload)).hexdigest(), config=config_identity,
                   valid=False)
@@ -222,6 +227,10 @@ def run(args):
         return records, start, end
 
     try:
+        backend_process = subprocess.Popen([sys.executable, __file__, 'backend', str(back)], stdout=backend_log, stderr=subprocess.STDOUT)
+        server = subprocess.Popen(java, stdout=server_log, stderr=subprocess.STDOUT, cwd=folder)
+        result.update(server_pid=server.pid, backend_pid=backend_process.pid,
+                      processes={role: proc_snapshot(pid) for role, pid in [('server', server.pid), ('backend', backend_process.pid), ('generator', os.getpid())]})
         deadline = time.monotonic() + 90
         while time.monotonic() < deadline:
             if server.poll() is not None:
@@ -238,6 +247,13 @@ def run(args):
         status, registration = request(port, 'POST', '/v1/functions', spec)
         assert status == 201, (status, registration)
         write_json(folder / 'function.json', registration)
+        config_document = dict(java_options=java[1:6],
+                               application_options=[c if not c.startswith('--nanofaas.registry.path=') else '--nanofaas.registry.path=<isolated>' for c in config],
+                               function=registration,
+                               environment=dict(boot_id=pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
+                                                affinity=sorted(os.sched_getaffinity(0)), python=sys.version,
+                                                probe_sha256=hashlib.sha256((args.probe/'P19Probe.class').read_bytes()).hexdigest()))
+        result.update(config_document=config_document, config=hashlib.sha256(encoded(config_document)).hexdigest(), workload_document=workload)
         warm_rows, warm_start, warm_end = cohort(args.warmup, True)
         with gzip.GzipFile(filename=str(folder / 'warmup-requests.jsonl.gz'), mode='wb', mtime=0) as stream:
             for row in warm_rows:
@@ -292,14 +308,18 @@ def run(args):
     finally:
         sampler_stop.set()
         for process in [server, backend_process]:
+            if process is None:
+                continue
             process.terminate()
             try:
                 process.wait(timeout=20)
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait()
-        result['shutdown'] = {'server_exit': server.returncode, 'backend_exit': backend_process.returncode,
-                              'server_proc_absent': not pathlib.Path(f'/proc/{server.pid}').exists()}
+        result['shutdown'] = {role + suffix: value for role, process in [('server', server), ('backend', backend_process)]
+                              for suffix, value in [('_exit', process.returncode if process else None),
+                                                    ('_proc_absent', not pathlib.Path(f'/proc/{process.pid}').exists() if process else True)]}
+        result['process_end_ns'] = time.monotonic_ns()
         write_json(folder / 'run.json', result)
         for name, data in [('requests', rows), ('populations', samples)]:
             with gzip.GzipFile(filename=str(folder / (name + '.jsonl.gz')), mode='wb', mtime=0) as stream:
@@ -314,6 +334,9 @@ if __name__ == '__main__':
     if sys.argv[1] == 'backend':
         backend(int(sys.argv[2]))
     else:
+        def interrupted(signum, frame):
+            raise InterruptedError('runner received signal ' + str(signum))
+        signal.signal(signal.SIGTERM, interrupted)
         parser = argparse.ArgumentParser()
         parser.add_argument('--jar', required=True, type=pathlib.Path)
         parser.add_argument('--probe', required=True, type=pathlib.Path)

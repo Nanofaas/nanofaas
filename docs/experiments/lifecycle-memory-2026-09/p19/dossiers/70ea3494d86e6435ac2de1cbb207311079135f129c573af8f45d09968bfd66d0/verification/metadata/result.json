@@ -1,0 +1,160 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.buildmetadata.architecture.ArchitectureTest",
+      "name": "does_not_depend_on_other_modules",
+      "seconds": "1.015",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.buildmetadata.BuildMetadataControllerTest",
+      "name": "httpResponseSerializesRealValues()",
+      "seconds": "1.114",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.buildmetadata.BuildMetadataControllerTest",
+      "name": "httpResponseExposesExactFieldNamesAndNullableValues()",
+      "seconds": "0.071",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.buildmetadata.BuildMetadataControllerTest",
+      "name": "describeReturnsTheProvidersMetadata()",
+      "seconds": "0.069",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.buildmetadata.GeneratedBuildMetadataTest",
+      "name": "generatedPropertiesSatisfyProvider()",
+      "seconds": "0.008",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.buildmetadata.BuildMetadataProviderTest",
+      "name": "vmComesFromJavaVmNameAlone()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.buildmetadata.BuildMetadataProviderTest",
+      "name": "getReturnsSameImmutableInstanceEveryCall()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.buildmetadata.BuildMetadataProviderTest",
+      "name": "productionConstructorLoadsGeneratedBuildPropertiesResource()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.buildmetadata.BuildMetadataProviderTest",
+      "name": "malformedDirtyPropertyIsNull()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.buildmetadata.BuildMetadataProviderTest",
+      "name": "buildTypeFallsBackToNativeImageMarkerWhenPropertyAbsent()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.buildmetadata.BuildMetadataProviderTest",
+      "name": "vmIsNullWhenJavaVmNameAbsentEvenUnderNativeImageMarker()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.buildmetadata.BuildMetadataProviderTest",
+      "name": "productionConstructorToleratesMissingBuildPropertiesResource()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.buildmetadata.BuildMetadataProviderTest",
+      "name": "unknownArchitectureIsNull()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.buildmetadata.BuildMetadataProviderTest",
+      "name": "buildTypePropertyWinsOverNativeImageMarker()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.buildmetadata.BuildMetadataProviderTest",
+      "name": "kernelVersionComesFromOsVersion()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.buildmetadata.BuildMetadataProviderTest",
+      "name": "normalizesAmd64ToX86_64()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.buildmetadata.BuildMetadataProviderTest",
+      "name": "normalizesAarch64ToArm64()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.buildmetadata.BuildMetadataProviderTest",
+      "name": "sortsModulesFromProperties()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.buildmetadata.BuildMetadataProviderTest",
+      "name": "missingEverythingProducesNullFields()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.buildmetadata.BuildMetadataProviderTest",
+      "name": "baseImagesComeFromEnv()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.buildmetadata.BuildMetadataProviderTest",
+      "name": "sortsGarbageCollectorNames()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.buildmetadata.BuildMetadataProviderTest",
+      "name": "readsVersionRevisionDirtyTypeVariantOptimizationFromProperties()",
+      "seconds": "0.0",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    ":control-plane-modules:build-metadata:test",
+    "-PcontrolPlaneModules=all",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 22,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 5.532519340515137,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "metadata",
+  "output_sha256": "78c720cf0d565c54475b9bf3bcc7c30fe84a89ef9eac21f0e42f9c3353cea0e8",
+  "started_unix_s": 1789128027.9318604
+}

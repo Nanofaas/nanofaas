@@ -5,6 +5,7 @@ import subprocess
 import sys
 import time
 from http_runner import write_json
+from supervision import supervise
 
 work = pathlib.Path(sys.argv[1])
 harness = pathlib.Path(__file__).resolve().parent
@@ -25,9 +26,9 @@ for repeat in range(1, 4):
                    '--probe', str(work / 'probe'), '--output', str(work / 'runs' / label), '--label', label,
                    '--revision', revision, '--warmup', '6000', '--count', '12000', '--rate', '200']
         print('START', label, time.time(), flush=True)
-        result = subprocess.run(command, timeout=300)
-        if result.returncode:
-            raise SystemExit(result.returncode)
+        result = supervise(command, work / 'supervision' / (label + '.json'), timeout=300)
+        if result['status'] != 'exited' or result['exit_code']:
+            raise SystemExit(1)
 for repeat in range(1, 4):
     label = 'B-async-' + str(repeat)
     command = [sys.executable, str(harness / 'http_runner.py'), '--jar', str(work / 'artifacts/B-async-queue.jar'),
@@ -35,6 +36,6 @@ for repeat in range(1, 4):
                '--revision', '6d08303371d803f44187ec5f4e37827d54fec597', '--profile', 'async-queue', '--scenario', 'async',
                '--warmup', '20', '--count', '120', '--rate', '50']
     print('START', label, time.time(), flush=True)
-    result = subprocess.run(command, timeout=120)
-    if result.returncode:
-        raise SystemExit(result.returncode)
+    result = supervise(command, work / 'supervision' / (label + '.json'), timeout=120)
+    if result['status'] != 'exited' or result['exit_code']:
+        raise SystemExit(1)

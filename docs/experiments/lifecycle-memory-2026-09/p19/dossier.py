@@ -28,7 +28,7 @@ def write(path, data):
 def verify(folder):
     manifest_path = folder / 'manifest.json'
     manifest = json.loads(manifest_path.read_text())
-    if manifest['schema'] != 'nanofaas-p19-dossier-v1':
+    if manifest['schema'] not in ['nanofaas-p19-dossier-v1', 'nanofaas-p19-dossier-v2']:
         raise ValueError('unknown dossier schema')
     if digest(manifest_path) != folder.name:
         raise ValueError('manifest digest/path mismatch')
@@ -45,7 +45,8 @@ def verify(folder):
     if {str(p.relative_to(folder)) for p in folder.rglob('*') if p.is_file()} != expected:
         raise ValueError('unmanifested or missing payload')
     runs = [json.loads((folder / 'runs' / (side + str(i)) / 'run.json').read_text()) for i in range(1, 4) for side in 'AB']
-    validate_pairs(runs)
+    builds = json.loads((folder/'build-identities.json').read_text())
+    validate_pairs(runs, {side: builds[side+'-none.jar'] for side in 'AB'})
     for run in runs:
         if run['schema'] != 'p19-http-run-v1' or not run['valid'] or run['success_latency_ns']['count'] != run['unique_successes']:
             raise ValueError('missing successful latency samples')
@@ -55,13 +56,50 @@ def verify(folder):
         for field in ['admitted', 'unique_successes', 'unresolved', 'success_latency_ns', 'refused']:
             if rebuilt[field] != run[field]:
                 raise ValueError('raw accounting mismatch: ' + field)
+        if manifest['schema'] == 'nanofaas-p19-dossier-v2':
+            directory = folder/'runs'/run['label']
+            if json.loads((directory/'workload.json').read_text()) != run['workload_document']:
+                raise ValueError('actual workload file differs')
+            config = run['config_document']
+            if json.loads((directory/'function.json').read_text()) != config['function']:
+                raise ValueError('actual configured function differs')
+            java = run['java_command']
+            application = [arg if not arg.startswith('--nanofaas.registry.path=') else '--nanofaas.registry.path=<isolated>'
+                           for arg in java if arg.startswith('--')]
+            if java[1:6] != config['java_options'] or application != config['application_options']:
+                raise ValueError('actual Java configuration differs')
+            jar_path = pathlib.PurePosixPath(java[11])
+            if (len(java) != 13 + len(application) or jar_path.name != run['label'][0]+'-none.jar'
+                    or java[7:10] != ['-Dp19.probePort=18082', '-Dloader.main=P19Probe', '-Dloader.path=' + str(jar_path.parent.parent/'probe')]
+                    or java[10] != '-cp' or java[12] != 'org.springframework.boot.loader.launch.PropertiesLauncher'):
+                raise ValueError('unexpected JVM launcher configuration')
+            if digest(folder/'probe/P19Probe.class') != config['environment']['probe_sha256']:
+                raise ValueError('compiled observer identity differs')
+            for row in rows:
+                if not run['start_ns'] <= row['sent_ns'] <= row['done_ns'] <= run['end_ns']:
+                    raise ValueError('raw request outside measured chronology')
+                if row['latency_ns'] != row['done_ns']-row['sent_ns']:
+                    raise ValueError('raw latency differs from observed timestamps')
+            for index, row in enumerate(rows):
+                if row['intended_ns'] != run['start_ns'] + int(index*1e9/run['workload_document']['rate_per_s']):
+                    raise ValueError('actual offered schedule differs')
+            points = json.loads((directory/'checkpoints.json').read_text())
+            if any(point['pid'] != run['processes']['server']['pid'] or not run['process_start_ns'] <= point['monotonic_ns'] <= run['process_end_ns'] for point in points):
+                raise ValueError('checkpoint process or lifetime differs')
+            for role in ['server', 'backend']:
+                if run[role+'_pid'] != run['processes'][role]['pid']:
+                    raise ValueError('process PID binding differs')
+            supervision = json.loads((folder/'supervision'/(run['label']+'.json')).read_text())
+            if supervision['status'] != 'exited' or supervision['exit_code'] != 0 or supervision['remaining_live_pids'] or supervision['pid'] != run['generator_pid']:
+                raise ValueError('supervisor process exit binding differs')
     print('VERIFIED', digest(manifest_path), len(manifest['files']), 'payload files')
 
 
 def freeze(work):
+    review = json.loads((work/'fix-round.json').read_text()) if (work/'fix-round.json').exists() else {}
     staging = work / 'dossier'
     staging.mkdir(exist_ok=False)
-    for name in ['runs', 'verification', 'external', 'smoke', 'graph', 'aborted', 'auxiliary']:
+    for name in ['runs', 'verification', 'external', 'smoke', 'graph', 'aborted', 'auxiliary', 'profiles', 'supervision', 'probe', 'red-native', 'native-container-cli-unavailable']:
         source = work / name
         if source.exists():
             shutil.copytree(source, staging / name)
@@ -153,7 +191,7 @@ def freeze(work):
         with gzip.GzipFile(filename=str(staging / ('build-source-' + side + '.tar.gz')), mode='wb', mtime=0) as stream:
             stream.write(archive_bytes)
     runs = [json.loads((staging / 'runs' / (side + str(i)) / 'run.json').read_text()) for i in range(1, 4) for side in 'AB']
-    validate_pairs(runs)
+    validate_pairs(runs, {side: identities[side+'-none.jar'] for side in 'AB'})
     table = []
     for run_file in sorted((staging / 'runs').glob('*/run.json')):
         run = json.loads(run_file.read_text())
@@ -185,23 +223,21 @@ def freeze(work):
                            p99_pct=100*(b['success_latency_ns']['p99']/a['success_latency_ns']['p99']-1),
                            allocation_pct=100*(b['allocated_bytes_per_success']/a['allocated_bytes_per_success']-1)))
     write(staging / 'comparison.json', dict(schema='p19-comparison-v1', runs=table, paired=paired,
-          verdict='Diagnostic A/B costs only; corrected B is the P23 control. No maximum-throughput or equivalence claim.'))
+          verdict=('BLOCKED candidate B, not an accepted P23 control; diagnostic costs only.' if review.get('status') == 'BLOCKED'
+                   else 'Diagnostic A/B costs only; corrected B is the P23 control. No maximum-throughput or equivalence claim.')))
     # Logs are generated output: deterministic compression keeps the repository small.
     for file in list(staging.rglob('*.log')) + list(staging.rglob('*-histogram.txt')) + list(staging.rglob('backend-executions.json')):
         with gzip.GzipFile(filename=str(file) + '.gz', mode='wb', mtime=0) as stream:
             stream.write(file.read_bytes())
         file.unlink()
-    manifest = dict(schema='nanofaas-p19-dossier-v1', status='DONE_WITH_CONCERNS',
-                    accepted_control='B', production_source='6d08303371d803f44187ec5f4e37827d54fec597',
+    manifest = dict(schema='nanofaas-p19-dossier-v2', status=review.get('status', 'DONE_WITH_CONCERNS'),
+                    accepted_control=None if review.get('status') == 'BLOCKED' else 'B',
+                    review=review, production_source='6d08303371d803f44187ec5f4e37827d54fec597',
                     production_tree=subprocess.check_output(['git', 'rev-parse', '6d083033^{tree}'], cwd=ROOT, text=True).strip(),
                     diagnostic_source='61d72e73528db62cf8ca465c6a037981d7ec13b0',
                     build_source_archive_scope='All listed production/build input roots; historical experiments and prose omitted. Exact full Git tree recorded.',
                     binary_archive_scope='Exact measured JVM jars; other profile jar entry hashes and native image digest retained.',
-                    concerns=['Managed native build exhausted the explicitly limited 4GiB compiler heap; JVM provider gates and startup passed.',
-                              'No provisioned Kubernetes VM/cluster; NanoLab infrastructure E2E not run.',
-                              'Moderate offered-rate measurement; no peak capacity, statistical equivalence, or full physical-owner soak claim.',
-                              'ASYNC allocation includes bounded terminal observer; SDK resource ownership uses focused runtime-backed assertions, not production-process heap profiles.',
-                              'Separate observer-overhead auxiliary passes were not run under the authoring timebox; observer cost remains included and unquantified.'],
+                    concerns=review.get('concerns', ['Consult protocol limitations; no peak-capacity or soak claim.']),
                     files={str(path.relative_to(staging)): dict(sha256=digest(path), bytes=path.stat().st_size)
                            for path in sorted(staging.rglob('*')) if path.is_file()})
     write(staging / 'manifest.json', manifest)

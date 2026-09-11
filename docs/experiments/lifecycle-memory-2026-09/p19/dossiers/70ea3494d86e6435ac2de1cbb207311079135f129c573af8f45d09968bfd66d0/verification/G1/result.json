@@ -1,0 +1,82 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.R3WaiterTimeoutSharedOutcomeRegressionTest",
+      "name": "shortWaiterTimeoutDoesNotTurnTheSharedSuccessIntoATimeoutForReplays()",
+      "seconds": "0.097",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.R4OffloadCompletionAfterWaiterTimeoutRegressionTest",
+      "name": "offloadedResultArrivingAfterAShortWaiterTimeoutStillConcludesTheLocalAttempt()",
+      "seconds": "0.008",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.R2ArchiveEvictionReplayRegressionTest",
+      "name": "replayDuringOutcomeEvictionAndArchiveDoesNotBecomeANewExecution()",
+      "seconds": "0.041",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.R1OutcomeByteBudgetRegressionTest",
+      "name": "deeplyNestedAndWidePayloadsDoNotSilentlyFitTheOutcomeByteBudget()",
+      "seconds": "0.153",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.R8HistoryCleanupRegressionTest",
+      "name": "removedFunctionNamesDoNotAccumulateAfterChurn()",
+      "seconds": "0.043",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.R8HistoryCleanupRegressionTest",
+      "name": "invalidatedReplicaTargetsAreRemovedNotJustCleared()",
+      "seconds": "0.014",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.execution.R7KeyBudgetAtomicityRegressionTest",
+      "name": "concurrentDistinctClaimsNeverExceedTheConfiguredKeyBudget()",
+      "seconds": "0.007",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    ":control-plane:test",
+    "-PcontrolPlaneModules=none",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.execution.R1OutcomeByteBudgetRegressionTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.service.R2ArchiveEvictionReplayRegressionTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.service.R3WaiterTimeoutSharedOutcomeRegressionTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.service.R4OffloadCompletionAfterWaiterTimeoutRegressionTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.execution.R7KeyBudgetAtomicityRegressionTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.service.R8HistoryCleanupRegressionTest",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 7,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 12.394907474517822,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "G1",
+  "output_sha256": "2cffc058abacb0bc6209f49fca9e5337d327e2c55414c7a95088544517b7e62a",
+  "started_unix_s": 1789127369.1910253
+}

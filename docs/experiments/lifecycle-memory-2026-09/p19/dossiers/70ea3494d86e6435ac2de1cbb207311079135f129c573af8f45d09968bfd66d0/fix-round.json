@@ -1,0 +1,20 @@
+{
+  "round": 1,
+  "status": "BLOCKED",
+  "supersedes": "49f98dabf572a260125d77989db7802d7a0020c11595a9ea78250cb729e27380",
+  "findings": {
+    "1": "PARTIAL: 3 fresh real HTTP profiles, 23 cases, 1003 snapshots; bounded T3/T4/T5/T7/T9 subsets. T6/T8 and complete proxy/SDK/slow-client and multi-destination numerical coverage remain open under authoring timebox, not unavailable infrastructure.",
+    "2": "OPEN: real minimal and Docker-managed native invocation each HTTP 500 due missing InvocationResponse record reflection metadata in exact B; replay unreached; shutdown logs missing ThreadPoolExecutor.shutdown reflection registration. Managed native build and Docker provisioning succeeded, so this is a correctness failure, not an environment exception.",
+    "3": "CLOSED: exact A/B revision and jar bindings, actual workload/config documents, raw chronology, fresh boot/PID/start-tick identities and complete non-overlapping process lifetimes validated with negative contracts and six fresh alternating runs.",
+    "4": "CLOSED: owned process-group timeout TERM/grace/KILL supervision; cleanup protected from first spawn; failure records; two red-green process cleanup regressions. Nine fresh campaign children exited without remaining live group members."
+  },
+  "verification": "20 portable contracts, Java future observer contract and allocation collector validation fresh green. Three current short profiles and nine fresh campaign runs green. Two native smoke invocations fresh red. G1-G18, R1-R8, SDK and JVM packaging evidence inherited unchanged from parent dossier, deliberately not rerun this round.",
+  "concerns": [
+    "Exact B is not accepted as P23 control pending native correctness and missing profile evidence. Runtime hint fixes require owning-task TDD and reconciliation of immutable exact-B constraint; no runtime edit made in this timebox.",
+    "Observer overhead attribution unavailable; observer allocations included.",
+    "Brief native diagnostic smoke overlapped A2; host affinity is not exclusive. No statistical equivalence or peak-throughput claim.",
+    "Independent future aliases, retry handles, offload subscriptions/correlations, proxy and SDK numerical owners remain explicitly unavailable or not_applicable to selected process, not inferred zero.",
+    "Prior P19 retrospective probe-main impact debt remains disclosed; all new edited symbols prechecked, UNKNOWN supplemented with text search.",
+    "Old immutable v1 dossier preserved; use its archived verifier for historical schema/metadata. Current strict validator targets the new complete identities."
+  ]
+}

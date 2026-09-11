@@ -3123,3 +3123,81 @@ files, the untracked snapshot test and all six GitNexus skill directories. Those
 files remain unstaged; their original patch is retained only outside the repository
 dossier. Production diff against B is empty. Full implementation report:
 `.superpowers/sdd/2026-09-08-control-plane-lifecycle-memory-and-modularity/task-P19-report.md`.
+
+## P19 fix round 1 — 2026-09-11 — BLOCKED
+
+This section supersedes the earlier P19 acceptance claim. The latest user timebox
+stopped further harness design; current evidence was executed and frozen. No P20b,
+subagents, runtime changes or protected-file staging. Review findings 3/4 closed;
+finding 1 only partially closed, finding 2 concretely red. No accepted P23 control.
+
+Identity validation now binds exact A/B revisions to distinct measured artifacts,
+actual config/workload documents and raw request schedule, boot/PID/start ticks,
+chronological whole-process non-overlap and process exit evidence. Timeout handling
+supervises an owned process group with bounded TERM/grace/KILL and saved failures;
+cleanup starts before the first child spawn. Systematic-debugging/TDD reproduced
+seven identity rejections, one re-signed artifact-binding rejection and two child
+cleanup failures before fixes. Direct live-store future observation was RED before
+adding the observer, then GREEN with two retained futures, one open, then zero.
+
+Fresh verification (all exit 0 unless explicitly red):
+
+- `python3 -m unittest discover -s docs/experiments/lifecycle-memory-2026-09/p19 -p 'test_*.py'`:
+  20 tests, 0 failures/errors/skips; `java -cp /tmp/nanofaas-p19-r1.9kgN9P/probe P19ProbeContract`:
+  PASS. Allocation validator: 67,108,864 escaped payload bytes per thread mode;
+  observed platform 67,155,880 and virtual 67,430,808 after exit, both valid.
+- `taskset -c 5-8 python3 docs/experiments/lifecycle-memory-2026-09/p19/campaign.py /tmp/nanofaas-p19-r1.9kgN9P`:
+  A1/B1/A2/B2/A3/B3 fresh alternating processes, each 6000 warm/12000 measured
+  offers/admissions/unique terminal successes at 200/s, zero refusals/unresolved.
+  Three fresh ASYNC runs each 120 measured successes at 50 offers/s. All nine
+  supervised processes exit 0, no remaining live group members. Exact p50/p95/p99,
+  useful successes/s, allocations/success, post-GC heap and process populations are
+  in the report run table and immutable `comparison.json`; no P07 numbers reused.
+- Three bounded `short_profiles.py` HTTP executions through 120s supervision:
+  none=7 cases/331 snapshots/19.098379s; all=8/343/20.467105s;
+  sync-queue,runtime-config=8/329/18.878098s. Total 23 cases/1003 observations.
+  Partial T3 divergent waiters, keyed shared success/replay and offload false/true;
+  T4 retry/expiry/non-cooperative backend and toggle during work; T5 remove/re-register
+  with late old response; T7 256KiB payload/output and >1MiB refusal; T9 physical
+  drain and post-policy GC. Peaks per selection: live1/keys3/outcomes6/reservations1,
+  canonical and copy bytes524802 each, waiters2/open-futures1. Final observed public
+  ownership and backend-active counts drain to zero, without inferring alias zeros.
+- `CONTROL_PLANE_MODULES=container-deployment-provider NATIVE_BUILD_MEMORY=8g NATIVE_PARALLELISM=4 timeout 600 scripts/native-java-image.sh control-plane nanofaas/control-plane:p19-6d083033-container`
+  from exact B source archive: managed native build exit0, actual Docker provisioning201.
+  Image `sha256:9d3dc1671abff05834223bdd47c69be5e4630beadb9cc134f5dfd19be658fe1c`.
+- `native_smoke.py /tmp/nanofaas-p19-r1.9kgN9P none` and `... container`:
+  **both exit1, invocation HTTP500**, missing native reflection record components
+  for `InvocationResponse`; replay unreached. Both shutdown logs also contain missing
+  reflection registration for `ThreadPoolExecutor.shutdown()` on wake-up scheduler.
+  Container stop/removal exit0 and no remaining scoped smoke containers do not make
+  native application shutdown green. Docker-java adapter selected explicitly because
+  Distroless lacks CLI; corrected managed run still fails on the same runtime defect.
+  Minimal image `sha256:e5cd87f4e0d6c0a12c9a8a9563e0cb4d138682ef38b1b52c35774b48910d76af`.
+
+Still open: T6 blocked-provider/wakeup, T8 each SDK process, complete proxy/callback/
+slow-client numerical ownership and multi-destination churn. These are timeboxed
+evidence gaps, not unavailable-infrastructure exceptions or replaced by tests.
+Independent future aliases/retry handles/offload subscriptions remain explicitly
+unavailable. Existing G1–G18/R1–R8, SDK and JVM package results are inherited unchanged
+with original timestamps, not rerun this round. Native failures require owning-task
+TDD and agreement on revising exact B; no production fix was silently folded in.
+Observer overhead attribution unavailable; allocations include observer cost.
+Brief native diagnostic smoke overlapped A2, host affinity is not exclusive, and
+three repeats establish neither equivalence nor peak capacity or soak behavior.
+
+New immutable dossier schema v2, BLOCKED, accepted_control=null:
+`p19/dossiers/70ea3494d86e6435ac2de1cbb207311079135f129c573af8f45d09968bfd66d0`.
+Manifest SHA-256 `70ea3494d86e6435ac2de1cbb207311079135f129c573af8f45d09968bfd66d0`.
+Freeze and `dossier.py verify` each exit0: VERIFIED, 608 payload files. Integrity
+is not acceptance. Previous immutable dossier unchanged. Raw runs, short profiles,
+native failures, sources/build identities, compiled observer, exact commands,
+red-green logs and inherited regressions are included; final graph gates live
+outside it to avoid a self-referential digest.
+
+GitNexus exact-symbol pre-edit impacts and consumer contexts retained under graph/;
+LOW/UNKNOWN, no HIGH/CRITICAL. UNKNOWN resolved with text search. Prior retrospective
+probe-main impact debt remains disclosed. Fresh index: 24.9s, 22,372 nodes/63,147
+edges/763 flows. Complete all/staged precommit gates, self-review, exact commit
+identity and full run table are in the fix-round report. Protected SHA audit passes
+for both overload files, all six skill directories and the snapshot test; production
+diff against B remains empty. Commit scope is only P19 measurement/evidence/docs.

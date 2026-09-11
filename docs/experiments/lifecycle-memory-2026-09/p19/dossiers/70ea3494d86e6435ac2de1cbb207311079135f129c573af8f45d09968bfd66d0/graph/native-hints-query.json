@@ -1,0 +1,156 @@
+{
+  "processes": [],
+  "process_symbols": [],
+  "definitions": [
+    {
+      "id": "Class:experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/config/VertxRuntimeHints.java:VertxRuntimeHints",
+      "name": "VertxRuntimeHints",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/config/VertxRuntimeHints.java",
+      "startLine": 36,
+      "endLine": 143
+    },
+    {
+      "id": "Method:experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/config/VertxRuntimeHints.java:VertxResourceHints.registerHints#2",
+      "name": "registerHints",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/config/VertxRuntimeHints.java",
+      "startLine": 47,
+      "endLine": 61,
+      "module": "Config"
+    },
+    {
+      "id": "File:experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/config/VertxRuntimeHints.java",
+      "name": "VertxRuntimeHints.java",
+      "filePath": "experiments/control-plane-staging/versions/control-plane-opt-recovered-decompiled-20260222-192441/snapshot/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/config/VertxRuntimeHints.java"
+    },
+    {
+      "id": "Class:platform/modules/k8s-deployment-provider/src/main/java/it/unimib/datai/nanofaas/modules/k8s/config/VertxRuntimeHints.java:VertxRuntimeHints",
+      "name": "VertxRuntimeHints",
+      "filePath": "platform/modules/k8s-deployment-provider/src/main/java/it/unimib/datai/nanofaas/modules/k8s/config/VertxRuntimeHints.java",
+      "startLine": 37,
+      "endLine": 145
+    },
+    {
+      "id": "Method:platform/modules/k8s-deployment-provider/src/main/java/it/unimib/datai/nanofaas/modules/k8s/config/VertxRuntimeHints.java:VertxResourceHints.registerHints#2",
+      "name": "registerHints",
+      "filePath": "platform/modules/k8s-deployment-provider/src/main/java/it/unimib/datai/nanofaas/modules/k8s/config/VertxRuntimeHints.java",
+      "startLine": 49,
+      "endLine": 63,
+      "module": "Config"
+    },
+    {
+      "id": "File:platform/modules/k8s-deployment-provider/src/main/java/it/unimib/datai/nanofaas/modules/k8s/config/VertxRuntimeHints.java",
+      "name": "VertxRuntimeHints.java",
+      "filePath": "platform/modules/k8s-deployment-provider/src/main/java/it/unimib/datai/nanofaas/modules/k8s/config/VertxRuntimeHints.java"
+    },
+    {
+      "id": "Class:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionCatalogRuntimeHintsTest.java:FunctionCatalogRuntimeHintsTest",
+      "name": "FunctionCatalogRuntimeHintsTest",
+      "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionCatalogRuntimeHintsTest.java",
+      "startLine": 20,
+      "endLine": 67
+    },
+    {
+      "id": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionCatalogRuntimeHintsTest.java:FunctionCatalogRuntimeHintsTest.registeredMethods#2",
+      "name": "registeredMethods",
+      "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionCatalogRuntimeHintsTest.java",
+      "startLine": 29,
+      "endLine": 33,
+      "module": "Registry"
+    },
+    {
+      "id": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionCatalogRuntimeHintsTest.java",
+      "name": "FunctionCatalogRuntimeHintsTest.java",
+      "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionCatalogRuntimeHintsTest.java"
+    },
+    {
+      "id": "Class:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionCatalogRuntimeHints.java:FunctionCatalogRuntimeHints",
+      "name": "FunctionCatalogRuntimeHints",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionCatalogRuntimeHints.java",
+      "startLine": 16,
+      "endLine": 23,
+      "module": "Registry"
+    },
+    {
+      "id": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionCatalogRuntimeHints.java:FunctionCatalogRuntimeHints.registerHints#2",
+      "name": "registerHints",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionCatalogRuntimeHints.java",
+      "startLine": 18,
+      "endLine": 22,
+      "module": "Registry"
+    },
+    {
+      "id": "File:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionCatalogRuntimeHints.java",
+      "name": "FunctionCatalogRuntimeHints.java",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionCatalogRuntimeHints.java"
+    },
+    {
+      "id": "Class:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/config/CaffeineRuntimeHintsTest.java:CaffeineRuntimeHintsTest",
+      "name": "CaffeineRuntimeHintsTest",
+      "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/config/CaffeineRuntimeHintsTest.java",
+      "startLine": 19,
+      "endLine": 61
+    },
+    {
+      "id": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/config/CaffeineRuntimeHintsTest.java:CaffeineRuntimeHintsTest.registeredTypes#0",
+      "name": "registeredTypes",
+      "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/config/CaffeineRuntimeHintsTest.java",
+      "startLine": 21,
+      "endLine": 27,
+      "module": "Config"
+    },
+    {
+      "id": "File:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/config/CaffeineRuntimeHintsTest.java",
+      "name": "CaffeineRuntimeHintsTest.java",
+      "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/config/CaffeineRuntimeHintsTest.java"
+    },
+    {
+      "id": "Class:sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/NanofaasRuntimeHintsTest.java:NanofaasRuntimeHintsTest",
+      "name": "NanofaasRuntimeHintsTest",
+      "filePath": "sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/NanofaasRuntimeHintsTest.java",
+      "startLine": 10,
+      "endLine": 23
+    },
+    {
+      "id": "Method:sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/NanofaasRuntimeHintsTest.java:NanofaasRuntimeHintsTest.registersCallbackPayloadAndErrorInfoForJacksonBinding#0",
+      "name": "registersCallbackPayloadAndErrorInfoForJacksonBinding",
+      "filePath": "sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/NanofaasRuntimeHintsTest.java",
+      "startLine": 12,
+      "endLine": 22,
+      "module": "Runtime"
+    },
+    {
+      "id": "File:sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/NanofaasRuntimeHintsTest.java",
+      "name": "NanofaasRuntimeHintsTest.java",
+      "filePath": "sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/NanofaasRuntimeHintsTest.java"
+    },
+    {
+      "id": "Class:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/config/CaffeineRuntimeHints.java:CaffeineRuntimeHints",
+      "name": "CaffeineRuntimeHints",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/config/CaffeineRuntimeHints.java",
+      "startLine": 26,
+      "endLine": 72,
+      "module": "Config"
+    },
+    {
+      "id": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/config/CaffeineRuntimeHints.java:CaffeineRuntimeHints.registerHints#2",
+      "name": "registerHints",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/config/CaffeineRuntimeHints.java",
+      "startLine": 34,
+      "endLine": 43,
+      "module": "Config"
+    }
+  ],
+  "timing": {
+    "vector": 8.5,
+    "bm25": 578.6,
+    "merge": 0.3,
+    "symbol_lookup": 37.9,
+    "ranking": 0,
+    "formatting": 0,
+    "wall": 617.2
+  },
+  "staleness": {
+    "commitsBehind": 1,
+    "hint": "⚠️ Index is 1 commit behind HEAD. Run analyze tool to update."
+  }
+}

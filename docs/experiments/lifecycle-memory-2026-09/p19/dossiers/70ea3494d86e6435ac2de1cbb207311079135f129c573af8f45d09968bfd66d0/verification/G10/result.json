@@ -1,0 +1,280 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.config.HttpClientPoolTest",
+      "name": "theProviderIsDisposedWhenTheContextCloses()",
+      "seconds": "0.027",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.config.HttpClientPoolTest",
+      "name": "theConfiguredConnectionBudgetReachesTheProvider()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.config.HttpClientPropertiesTest",
+      "name": "constructor_withNonPositiveValues_appliesDefaults()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.config.HttpClientPropertiesTest",
+      "name": "constructor_withNullValues_appliesDefaults()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.config.HttpClientPropertiesTest",
+      "name": "pendingAcquireMaxCount_defaultsToTwiceTheConfiguredConnections()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.config.HttpClientPropertiesTest",
+      "name": "constructor_withPositiveValues_keepsProvidedValues()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest",
+      "name": "callerCancellationRemovesThePhysicalPendingAcquire()",
+      "seconds": "1.021",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest",
+      "name": "oneOwnerAggregatesPoolPopulationConnectionsAndPendingAcquisitions()",
+      "seconds": "0.113",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest",
+      "name": "closeCancelsTheSingleOwnedInactivePoolTaskAndTerminatesItsScheduler()",
+      "seconds": "0.11",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest",
+      "name": "functionTimeoutCancelsThePhysicalRequestAndDrainsTheConnection()",
+      "seconds": "1.132",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest",
+      "name": "repeatedCloseIsIdempotentAndDrainsOwnedPools()",
+      "seconds": "0.023",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest",
+      "name": "errorCancellationAndAcquireTimeoutReleaseIsolatedClientBuffers()",
+      "seconds": "0.903",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest",
+      "name": "zeroMaximumLifetimeLeavesTheConnectionReusable()",
+      "seconds": "0.422",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest",
+      "name": "acquisitionTimeoutRemovesThePhysicalPendingAcquire()",
+      "seconds": "0.262",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest",
+      "name": "configuredMaximumLifetimePhysicallyReplacesTheConnection()",
+      "seconds": "0.22",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest",
+      "name": "idleTimeoutPhysicallyClosesTheConnectionBeforeTheNextRequest()",
+      "seconds": "0.112",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest",
+      "name": "functionServiceRemovalDisposesTheOldEndpointBeforeReregistration()",
+      "seconds": "0.843",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest",
+      "name": "responseErrorDrainsItsBodyAndReturnsTheConnectionToThePool()",
+      "seconds": "0.118",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest",
+      "name": "closeRemovesAggregateMetersAndTheSameRegistryCanBeReused()",
+      "seconds": "0.008",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest",
+      "name": "historicalDestinationPoolsDisappearAfterDrainAndTheEvictionWindow()",
+      "seconds": "1.376",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest",
+      "name": "applicationContextOwnsOneAggregatePoolAndExportsItsProvider()",
+      "seconds": "0.3",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcherTest",
+      "name": "dispatch_noFunctionStatusMarker_unrecognizedContentTypeIsStillExternalError()",
+      "seconds": "0.019",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcherTest",
+      "name": "dispatch_functionStatusMarkerPresent_encodingSurvivesTheHop()",
+      "seconds": "0.008",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcherTest",
+      "name": "dispatch_functionStatusMarkerPresent_treatsNon2xxAsSuccess()",
+      "seconds": "0.008",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcherTest",
+      "name": "dispatch_functionStatusMarkerPresent_unrecognizedContentTypeWithEmptyBody_yieldsNullOutput()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcherTest",
+      "name": "poolDispatchHandlesEmptySuccessfulResponse()",
+      "seconds": "0.009",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcherTest",
+      "name": "dispatch_functionStatusMarkerPresent_propagatesAllowedHeaders()",
+      "seconds": "0.007",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcherTest",
+      "name": "poolDispatchSendsDispatchAttemptHeader()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcherTest",
+      "name": "dispatch_noFunctionStatusMarker_non2xxIsStillExternalError()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcherTest",
+      "name": "dispatch_functionStatusMarkerPresent_malformedBodyIsExternalErrorNotSilentNull()",
+      "seconds": "0.009",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcherTest",
+      "name": "dispatch_functionStatusMarkerWithTextPlain_decodesBodyAsString()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcherTest",
+      "name": "poolDispatchCallsEndpoint()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcherTest",
+      "name": "dispatch_functionStatusMarkerWithOutOfRangeStatus_isPlatformErrorNotPassthrough()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcherTest",
+      "name": "dispatch_functionStatusMarkerPresent_noEncodingHeaderYieldsNullEncoding()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcherTest",
+      "name": "dispatch_functionStatusMarkerPresent_unrecognizedContentTypeWithJsonBody_survivesIntact()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcherTest",
+      "name": "poolDispatchHandlesTextPlain()",
+      "seconds": "0.007",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.P12CrossHostAdmissionTest",
+      "name": "perDestinationPoolsDoNotBypassP07AggregateExecutionInputOrWaiterAdmission()",
+      "seconds": "0.163",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcherTimeoutTest",
+      "name": "dispatch_missingEndpoint_returnsPoolEndpointMissing()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcherTimeoutTest",
+      "name": "dispatch_slowServer_returnsPoolTimeout()",
+      "seconds": "2.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcherTimeoutTest",
+      "name": "dispatch_serverError_returnsPoolError()",
+      "seconds": "0.005",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    ":control-plane:test",
+    "-PcontrolPlaneModules=none",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.config.HttpClientPoolTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.config.HttpClientPropertiesTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.service.P12CrossHostAdmissionTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcherTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcherTimeoutTest",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 40,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 19.735265970230103,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "G10",
+  "output_sha256": "25b10f0f6e89fdc23b474f960ef8ece77ca6e1939b3b2f380727ba99fddbd4bd",
+  "started_unix_s": 1789127480.2006428
+}

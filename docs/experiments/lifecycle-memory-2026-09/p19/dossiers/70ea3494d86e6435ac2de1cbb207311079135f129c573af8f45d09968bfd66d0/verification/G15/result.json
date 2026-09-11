@@ -1,0 +1,368 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionServicePartialDeprovisionTest",
+      "name": "pendingRemoval_refusesInvocationLookupsAndChanges()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionServicePartialDeprovisionTest",
+      "name": "anInvocationLookupRacingTheRemovalIsRefusedBeforeAndAfterTheFailure()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionServicePartialDeprovisionTest",
+      "name": "aRetriedDeleteThatSucceedsEndsThePendingRemoval()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionServicePartialDeprovisionTest",
+      "name": "aRegistrationRollbackThatCannotUndoItselfKeepsTheLeftoversTraceable()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionServicePartialDeprovisionTest",
+      "name": "partialDeprovision_holdsThePendingRemovalInsteadOfFakingARollback()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogMutationContractTest",
+      "name": "patchingOnlyCurrentValuesDoesNotWriteOrNotifyDependents()",
+      "seconds": "0.012",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogMutationContractTest",
+      "name": "providerFailureInvalidatesTheVolatileObservation()",
+      "seconds": "0.059",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogMutationContractTest",
+      "name": "puttingAnEqualRecordDoesNotRewriteTheCatalog()",
+      "seconds": "0.015",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogMutationContractTest",
+      "name": "concurrentDurableUpdatesAreBothPresentAfterReload()",
+      "seconds": "0.026",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogMutationContractTest",
+      "name": "patchProviderFailureIsReportedAfterTheNewDesiredSpecIsDurable()",
+      "seconds": "0.038",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogMutationContractTest",
+      "name": "providerFailureKeepsThePersistedDesiredTargetForRestartReconciliation()",
+      "seconds": "0.028",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogMutationContractTest",
+      "name": "removeProviderFailureLeavesTheExistingSnapshotWithoutRewritingIt()",
+      "seconds": "0.024",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogMutationContractTest",
+      "name": "scalePersistenceFailureDoesNotConfirmOrCallTheProvider()",
+      "seconds": "0.02",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogMutationContractTest",
+      "name": "settingTheCurrentDesiredReplicaCountIsACompleteNoOp()",
+      "seconds": "0.016",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionServiceConcurrencyTest",
+      "name": "remove_persistsDeleteOnlyAfterTeardownCompletes()",
+      "seconds": "0.132",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionServiceConcurrencyTest",
+      "name": "registerAndRemove_sameName_areSerialized()",
+      "seconds": "0.104",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionServiceConcurrencyTest",
+      "name": "register_withDifferentNames_allSucceed()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionServiceConcurrencyTest",
+      "name": "setReplicas_doesNotScaleFunctionWhileTeardownIsInProgress()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionServiceConcurrencyTest",
+      "name": "register_withSameName_onlyOneSucceeds()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionServiceConcurrencyTest",
+      "name": "remove_hidesFunctionWhileTeardownIsInProgress()",
+      "seconds": "0.104",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionServiceConcurrencyTest",
+      "name": "register_existingFunction_returnsEmpty()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionServiceConcurrencyTest",
+      "name": "register_deploymentNotVisibleUntilProvisioningProducesFinalSpec()",
+      "seconds": "0.105",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.PendingRemovalInvocationApiTest",
+      "name": "enqueueOnAFunctionInPendingRemovalReturns409OverHttp()",
+      "seconds": "0.774",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.PendingRemovalInvocationApiTest",
+      "name": "invokeOnAFunctionInPendingRemovalReturns409OverHttp()",
+      "seconds": "0.023",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogRestorerTest",
+      "name": "restoresExactBackendBeforeReplacingCatalogAndReplayingListeners()",
+      "seconds": "0.047",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogRestorerTest",
+      "name": "marksRestoreGateReadyAfterSuccessfulRun()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogRestorerTest",
+      "name": "reconcileReturningChangedBackendIsKeptUnreconciled()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogRestorerTest",
+      "name": "missingBackendDegradesThatFunction()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogRestorerTest",
+      "name": "reconcileReturningDegradedExecutionModeIsKeptUnreconciled()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogRestorerTest",
+      "name": "nonManagedRecordsReplayListenersWithoutProviderCalls()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogRestorerTest",
+      "name": "reconcileErrorDegradesThatFunction()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogRestorerTest",
+      "name": "listenerErrorEscapesRun()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogRestorerTest",
+      "name": "emptyCatalogPerformsNoWork()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogRestorerTest",
+      "name": "finalSnapshotErrorEscapesRun()",
+      "seconds": "0.009",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogRestorerTest",
+      "name": "processesFunctionsInNameOrder()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionApplicationPendingRecoveryTest",
+      "name": "reconcileFailureAfterDeleteSaveFailureStaysUnavailableUntilDeleteRetrySucceeds()",
+      "seconds": "0.194",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionApplicationPendingRecoveryTest",
+      "name": "identicalPatchAfterProviderFailureReappliesWithoutAnotherCatalogWrite()",
+      "seconds": "0.024",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionApplicationPendingRecoveryTest",
+      "name": "identicalScaleAfterProviderFailureReappliesWithoutAnotherCatalogWrite()",
+      "seconds": "0.014",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionApplicationPendingRecoveryTest",
+      "name": "rollbackCannotPublishAnUnavailableRecordToAReaderThatAlreadyStartedLookup()",
+      "seconds": "0.107",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionApplicationPendingRecoveryTest",
+      "name": "unavailableDeleteRetryFailureRetainsRecoveryMarkersUntilDeleteSucceeds()",
+      "seconds": "0.026",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionApplicationPendingRecoveryTest",
+      "name": "pendingMarkersPlateauAtOneEntryPerDurableFunctionAndReturnToZero()",
+      "seconds": "0.011",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionApplicationPendingRecoveryTest",
+      "name": "managedCatalogEntryStaysNonPublicWhilePrecreatedReadersWaitForRestore()",
+      "seconds": "0.029",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionApplicationPendingRecoveryTest",
+      "name": "restoreAndReloadDiscardOldVolatileApplicationMarkers()",
+      "seconds": "0.017",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionApplicationPendingRecoveryTest",
+      "name": "identicalPatchAfterListenerFailureReappliesWithoutAnotherCatalogWrite()",
+      "seconds": "0.017",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionApplicationPendingRecoveryTest",
+      "name": "restartKeepsFailedReconcileUnavailableAndPublishesOnlyAfterAHealthyRestart()",
+      "seconds": "0.025",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionApplicationPendingRecoveryTest",
+      "name": "failedDeletePreservesPendingScaleForAnIdenticalNoWriteRetry()",
+      "seconds": "0.015",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionApplicationPendingRecoveryTest",
+      "name": "failedDeletePreservesPendingPatchForAnIdenticalNoWriteRetry()",
+      "seconds": "0.03",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionApplicationPendingRecoveryTest",
+      "name": "partialDeprovisionThatRacesManualScaleReturnsConflictWithoutProviderScale()",
+      "seconds": "0.055",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionOperationLocksTest",
+      "name": "withLock_releasesLockEntriesWhenDone()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionOperationLocksTest",
+      "name": "withLock_serializesCallsForTheSameFunction()",
+      "seconds": "0.104",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistryPersistenceTest",
+      "name": "managedDesiredReplicasDefaultsAndPersistsZeroWhileNonManagedIsNull()",
+      "seconds": "0.018",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistryPersistenceTest",
+      "name": "mutationsSurviveRestartIncludingPutIfAbsentReplacementAndRemoval()",
+      "seconds": "0.01",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistryPersistenceTest",
+      "name": "failedSaveDoesNotPublishMutation()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistryPersistenceTest",
+      "name": "constructorRestoresCatalogSnapshot()",
+      "seconds": "0.008",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    ":control-plane:test",
+    "-PcontrolPlaneModules=container-deployment-provider",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.registry.FunctionServicePartialDeprovisionTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.PendingRemovalInvocationApiTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogMutationContractTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistryPersistenceTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogRestorerTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.registry.FunctionApplicationPendingRecoveryTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.registry.FunctionOperationLocksTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.registry.FunctionServiceConcurrencyTest",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 54,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 17.46491265296936,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "G15",
+  "output_sha256": "741cca587ccaf88db452cba605257eb7bd5484e03ecbec7b59f2e211a4ef3d44",
+  "started_unix_s": 1789127553.0327718
+}

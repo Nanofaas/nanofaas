@@ -1,7 +1,7 @@
 {
   "control_source": "6d08303371d803f44187ec5f4e37827d54fec597",
-  "manifest_sha256": "49f98dabf572a260125d77989db7802d7a0020c11595a9ea78250cb729e27380",
-  "path": "dossiers/49f98dabf572a260125d77989db7802d7a0020c11595a9ea78250cb729e27380",
+  "manifest_sha256": "70ea3494d86e6435ac2de1cbb207311079135f129c573af8f45d09968bfd66d0",
+  "path": "dossiers/70ea3494d86e6435ac2de1cbb207311079135f129c573af8f45d09968bfd66d0",
   "schema": "nanofaas-p19-pointer-v1",
-  "status": "DONE_WITH_CONCERNS"
+  "status": "BLOCKED"
 }

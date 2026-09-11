@@ -1,6 +1,10 @@
-# P19 corrected control
+# P19 candidate evidence — BLOCKED after fix round 1
 
-The immutable dossier named in `baseline.json` is the P23 control. Its production
+The immutable dossier named in `baseline.json` is NOT an accepted P23 control. Native
+invocation fails on missing reflection metadata in exact B; replay is therefore
+unreached. Short T6/T8 and full proxy/SDK numerical coverage remain open. Integrity
+verification is not correctness acceptance. Earlier evidence is preserved unchanged.
+Its production
 source is `6d08303371d803f44187ec5f4e37827d54fec597`. P19 adds measurement and
 verification files only. P00 (`61d72e73528db62cf8ca465c6a037981d7ec13b0`) remains a
 known-defective diagnostic comparator, never a correctness acceptance control.
@@ -63,13 +67,16 @@ untracked test is excluded from compilation by `verification.init.gradle`.
 `extra_gates.py`, `sdk_gates.py`, `package_smoke.py` and `native_smoke.py` cover
 the additional selectors, SDKs, packaging and available native startup. Exact
 commands, exits, test methods and skips are in the dossier; previous campaign
-counts are not reused. Failed exploratory runs remain in its pilot/aborted
+counts in fix round 1 are explicitly inherited from the preceding dossier, not rerun.
+Failed exploratory runs remain in its pilot/aborted
 evidence, and cannot satisfy acceptance.
 
-For P23, verify the manifest and every file hash first, extract the frozen measured
+Once the open findings are resolved and a control is accepted, P23 must verify the
+manifest and every file hash first, extract the frozen measured
 jars and recompile the archived probe. Use `executed-common-harness.tar.gz` for
 the exact common SYNC runner; `harness.tar.gz` contains the final ASYNC refinement
-and dossier tools. The common SYNC branch is unchanged. Run B and C using the
+and dossier tools. Fix round 1 remeasured all six common runs and three ASYNC runs
+with fresh-process validation and owned process-group supervision. Run B and C using the
 same protocol and environment, with fresh alternating processes. A harness or
 configuration change requires a new protocol identity and remeasurement of B.
 Create a new dossier referencing this digest; never overwrite the P19 directory.

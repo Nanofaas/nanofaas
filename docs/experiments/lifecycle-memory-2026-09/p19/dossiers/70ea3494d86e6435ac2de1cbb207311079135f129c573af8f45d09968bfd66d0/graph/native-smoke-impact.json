@@ -1,0 +1,9 @@
+{
+  "error": "Target 'smoke' not found",
+  "target": {
+    "name": "smoke"
+  },
+  "direction": "upstream",
+  "impactedCount": null,
+  "risk": "UNKNOWN"
+}

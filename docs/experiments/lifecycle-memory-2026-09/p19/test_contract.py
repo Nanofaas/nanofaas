@@ -44,8 +44,8 @@ class ContractTest(unittest.TestCase):
 
     def test_comparison_rejects_missing_repeat_and_mismatched_work(self):
         module = self.validator()
-        runs = [dict(label=f'{side}{repeat}', workload='x', config='x', offered=10, admitted=10, unique_successes=10)
-                for repeat in range(1, 4) for side in 'AB']
+        from test_revision_identity import pairs
+        runs = pairs()
         module.validate_pairs(runs)
         with self.assertRaises(ValueError):
             module.validate_pairs(runs[:-1])
