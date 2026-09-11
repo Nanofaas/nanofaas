@@ -175,6 +175,19 @@ The second-fix all-scope GitNexus gate reports 7 files/13 symbols including prot
 the staged gate reports exactly 5 P18 files/12 symbols. Both report zero affected processes, LOW
 risk, and neither is partial nor truncated.
 
+The following independent review verified all four earlier findings closed, then found one
+Important wire regression: a user handler throwing `RejectedExecutionException` collided with
+the lifecycle admission signal and incorrectly received `503 RUNTIME_STOPPING` instead of the
+pre-P18 handler-error path. A focused HTTP test was RED with 503. Lifecycle rejection now uses a
+private `RuntimeStoppingException`, while user exceptions again produce callback/error handling
+and HTTP 500; the handler and ownership tests are GREEN. No Critical/Minor findings were reported.
+Fresh complete suites pass Java-lite 40/40 and Spring Java 96/96; both P16a adapters remain GREEN,
+and the artifact build executes 18/18 tasks with `BUILD SUCCESSFUL` in 15 seconds.
+The final-fix all-scope GitNexus gate reports 6 files/9 symbols including protected user dirt,
+five affected invocation flows and MEDIUM risk. The staged gate reports exactly 4 P18 files/8
+symbols with the same five flows and MEDIUM risk. Both are complete and non-truncated; the flow
+risk is covered by the new handler-error regression plus the full Java-lite and corpus suites.
+
 ## Changed files
 
 - `sdks/java-lite/src/main/java/it/unimib/datai/nanofaas/sdk/lite/NanofaasRuntime.java`

@@ -20,6 +20,7 @@ import java.net.http.HttpResponse;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -151,6 +152,26 @@ class InvokeHandlerTest {
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
         assertEquals(500, response.statusCode());
         assertTrue(response.body().contains("boom"));
+    }
+
+    @Test
+    void handlerRejectedExecutionExceptionRemainsAHandlerError() throws Exception {
+        startServer(req -> {
+            throw new RejectedExecutionException("handler rejected its own work");
+        });
+
+        String body = objectMapper.writeValueAsString(new InvocationRequest(Map.of(), null));
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:" + port + "/invoke"))
+                .header("Content-Type", "application/json")
+                .header("X-Execution-Id", "exec-handler-rejected")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(500, response.statusCode());
+        assertTrue(response.body().contains("handler rejected its own work"));
     }
 
     @Test

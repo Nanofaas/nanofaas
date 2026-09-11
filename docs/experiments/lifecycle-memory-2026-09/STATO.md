@@ -2983,3 +2983,9 @@ coverage for unrelated clients and an externally owned named override. The hook-
 waits until the stop thread is actually `BLOCKED` on the lifecycle monitor before releasing hook
 registration, so it forces the rejected interleaving. The combined focused suite is GREEN 16/16;
 full verification and another independent re-review remain pending.
+
+The subsequent review verified all four previous findings closed and found one remaining
+Important wire collision: a user handler's `RejectedExecutionException` was mistaken for the
+runtime's stop-admission signal. A deterministic HTTP RED reproduced 503 instead of the pre-P18
+500 handler-error path. Stop admission now uses a private lifecycle-only exception; handler and
+ownership tests are GREEN. Full verification and a clean independent re-review remain pending.

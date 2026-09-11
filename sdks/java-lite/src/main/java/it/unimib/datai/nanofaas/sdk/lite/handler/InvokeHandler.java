@@ -166,7 +166,7 @@ public final class InvokeHandler implements HttpHandler {
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             handleHandlerFailure(ex, exchange, effectiveExecutionId, traceId, dispatchAttempt);
-        } catch (RejectedExecutionException _) {
+        } catch (RuntimeStoppingException _) {
             sendStopping(exchange);
         } catch (Exception ex) {
             handleHandlerFailure(ex, exchange, effectiveExecutionId, traceId, dispatchAttempt);
@@ -222,7 +222,7 @@ public final class InvokeHandler implements HttpHandler {
         workReference.set(work);
         synchronized (handlerLifecycle) {
             if (!accepting) {
-                throw new RejectedExecutionException("Runtime is stopping");
+                throw new RuntimeStoppingException();
             }
             activeHandlers.add(work);
         }
@@ -336,5 +336,8 @@ public final class InvokeHandler implements HttpHandler {
             task.cancel(true);
             thread.interrupt();
         }
+    }
+
+    private static final class RuntimeStoppingException extends RuntimeException {
     }
 }
