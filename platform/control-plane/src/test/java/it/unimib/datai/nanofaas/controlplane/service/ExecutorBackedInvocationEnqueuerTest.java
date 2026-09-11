@@ -27,6 +27,14 @@ class ExecutorBackedInvocationEnqueuerTest {
 
     private ExecutorService executor;
 
+    private static ExecutorBackedInvocationEnqueuer retryScheduler(java.util.function.Consumer<InvocationTask> dispatch,
+                                                                   ExecutorService executor) {
+        return new ExecutorBackedInvocationEnqueuer(task -> {
+            try { dispatch.accept(task); }
+            finally { task.dispatchLease().release(); }
+        }, new it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry(), executor);
+    }
+
     @AfterEach
     void tearDown() {
         if (executor != null) {
@@ -42,21 +50,12 @@ class ExecutorBackedInvocationEnqueuerTest {
     }
 
     @Test
-    void enabledIsAlwaysFalse_soAsyncEnqueueEndpointStaysUnavailable() {
-        executor = it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerLifecycleSupport
-                .newBoundedExecutor("test-retry", 1, 1, 4);
-        ExecutorBackedInvocationEnqueuer enqueuer = new ExecutorBackedInvocationEnqueuer(t -> { }, executor);
-
-        assertThat(enqueuer.enabled()).isFalse();
-    }
-
-    @Test
     void enqueueHandsTheTaskToTheExecutorAsynchronously() {
         executor = it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerLifecycleSupport
                 .newBoundedExecutor("test-retry", 1, 1, 4);
         List<String> observed = new CopyOnWriteArrayList<>();
         ExecutorBackedInvocationEnqueuer enqueuer =
-                new ExecutorBackedInvocationEnqueuer(t -> observed.add(t.executionId()), executor);
+                retryScheduler(t -> observed.add(t.executionId()), executor);
 
         boolean accepted = enqueuer.enqueue(task("exec-1", 1));
 
@@ -84,7 +83,7 @@ class ExecutorBackedInvocationEnqueuerTest {
         assertThat(workerStarted.await(2, TimeUnit.SECONDS)).isTrue();
         executor.execute(() -> { }); // occupies the single queue slot
 
-        ExecutorBackedInvocationEnqueuer enqueuer = new ExecutorBackedInvocationEnqueuer(t -> { }, executor);
+        ExecutorBackedInvocationEnqueuer enqueuer = retryScheduler(t -> { }, executor);
         boolean accepted = enqueuer.enqueue(task("exec-2", 2));
 
         assertThat(accepted).isFalse();
@@ -95,7 +94,7 @@ class ExecutorBackedInvocationEnqueuerTest {
     void enqueueReturnsFalseAfterTheExecutorHasBeenShutDown() {
         executor = it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerLifecycleSupport
                 .newBoundedExecutor("test-retry-shutdown", 1, 1, 4);
-        ExecutorBackedInvocationEnqueuer enqueuer = new ExecutorBackedInvocationEnqueuer(t -> { }, executor);
+        ExecutorBackedInvocationEnqueuer enqueuer = retryScheduler(t -> { }, executor);
 
         executor.shutdown();
 
@@ -117,7 +116,7 @@ class ExecutorBackedInvocationEnqueuerTest {
             @Override public boolean isTerminated() { return false; }
             @Override public boolean awaitTermination(long timeout, TimeUnit unit) { return true; }
         };
-        ExecutorBackedInvocationEnqueuer enqueuer = new ExecutorBackedInvocationEnqueuer(t -> { }, throwingExecutor);
+        ExecutorBackedInvocationEnqueuer enqueuer = retryScheduler(t -> { }, throwingExecutor);
 
         assertThat(enqueuer.enqueue(task("exec-4", 2))).isFalse();
     }
@@ -134,19 +133,9 @@ class ExecutorBackedInvocationEnqueuerTest {
             @Override public boolean isTerminated() { return false; }
             @Override public boolean awaitTermination(long timeout, TimeUnit unit) { return true; }
         };
-        ExecutorBackedInvocationEnqueuer enqueuer = new ExecutorBackedInvocationEnqueuer(t -> { }, throwingExecutor);
+        ExecutorBackedInvocationEnqueuer enqueuer = retryScheduler(t -> { }, throwingExecutor);
 
         assertThat(enqueuer.enqueue(task("exec-error", 2))).isFalse();
     }
 
-    @Test
-    void tryAcquireSlotAndReleaseDispatchSlotMirrorNoOpBehaviour() {
-        executor = it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerLifecycleSupport
-                .newBoundedExecutor("test-retry", 1, 1, 1);
-        ExecutorBackedInvocationEnqueuer enqueuer = new ExecutorBackedInvocationEnqueuer(t -> { }, executor);
-
-        assertThat(enqueuer.tryAcquireSlot("fn")).isTrue();
-        org.assertj.core.api.Assertions.assertThatCode(() -> enqueuer.releaseDispatchSlot("fn"))
-                .doesNotThrowAnyException();
-    }
 }

@@ -36,6 +36,7 @@ import static org.mockito.Mockito.when;
  * concurrency slot and left its caller's shared future pending forever.
  */
 class ExecutionCompletionHandlerAdministrativeExpiryTest {
+    private final TestDispatchOwnership ownership = new TestDispatchOwnership();
 
     private static final Duration SHORT_MAX_LIFETIME = Duration.ofMillis(100);
 
@@ -43,7 +44,7 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
     void aRecordThatNeverDispatchesExpiresWithoutReleasingAnySlot() {
         ExecutionStore store = shortLivedStore();
         CountingEnqueuer enqueuer = new CountingEnqueuer();
-        new ExecutionCompletionHandler(store, enqueuer, mock(DispatcherRouter.class), new Metrics(new SimpleMeterRegistry()));
+        new ExecutionCompletionHandler(store, enqueuer::enqueue, mock(DispatcherRouter.class), new Metrics(new SimpleMeterRegistry()));
         // Never dispatched: task expired while still sitting in a queue, or served
         // by offload - both never call dispatch(), so no slot was ever acquired.
         ExecutionRecord executionRecord = new ExecutionRecord("exec-queued", task("exec-queued", "fn"));
@@ -54,7 +55,7 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
             assertThat(store.outcomeOf("exec-queued")).isNotNull();
         });
 
-        assertThat(enqueuer.releases()).isEqualTo(0);
+        assertThat(ownership.releases()).isEqualTo(0);
         InvocationResult result = executionRecord.completion().join();
         assertThat(result.success()).isFalse();
         assertThat(result.error().code()).isEqualTo(ExecutionCompletionHandler.EXECUTION_EXPIRED_CODE);
@@ -67,7 +68,7 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
         CountingEnqueuer enqueuer = new CountingEnqueuer();
         DispatcherRouter dispatcherRouter = mock(DispatcherRouter.class);
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
-                store, enqueuer, dispatcherRouter, new Metrics(new SimpleMeterRegistry()));
+                store, enqueuer::enqueue, dispatcherRouter, new Metrics(new SimpleMeterRegistry()));
         InvocationTask task = task("exec-stuck", "fn");
         // A dispatch that never calls back - the crashed-runtime / dropped-response case.
         CompletableFuture<DispatchResult> neverCompletes = new CompletableFuture<>();
@@ -75,7 +76,7 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
         ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
         store.put(executionRecord);
 
-        handler.dispatch(task);
+        handler.dispatch(ownership.acquire(task));
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.RUNNING);
 
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
@@ -83,7 +84,7 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
             assertThat(store.outcomeOf("exec-stuck")).isNotNull();
         });
 
-        assertThat(enqueuer.releases())
+        assertThat(ownership.releases())
                 .as("the slot the abandoned dispatch was holding must come back exactly once")
                 .isEqualTo(1);
         assertThat(executionRecord.completion().join().success()).isFalse();
@@ -91,7 +92,7 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
         // The real dispatch outcome finally shows up, long after expiry archived the
         // record. It must be a harmless no-op: no exception, and definitely no second release.
         handler.completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.success("too-late")));
-        assertThat(enqueuer.releases()).isEqualTo(1);
+        assertThat(ownership.releases()).isEqualTo(1);
     }
 
     @Test
@@ -100,13 +101,13 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
         CountingEnqueuer enqueuer = new CountingEnqueuer();
         DispatcherRouter dispatcherRouter = mock(DispatcherRouter.class);
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
-                store, enqueuer, dispatcherRouter, new Metrics(new SimpleMeterRegistry()));
+                store, enqueuer::enqueue, dispatcherRouter, new Metrics(new SimpleMeterRegistry()));
         InvocationTask task = task("exec-timeout-then-expired", "fn");
         CompletableFuture<DispatchResult> neverCompletes = new CompletableFuture<>();
         when(dispatcherRouter.dispatchExternal(any(InvocationTask.class))).thenReturn(neverCompletes);
         ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
         store.put(executionRecord);
-        handler.dispatch(task);
+        handler.dispatch(ownership.acquire(task));
 
         // An execution-level deadline (not a single waiter's budget) marks the record
         // TIMEOUT while the dispatch (and its slot) is still in flight. The administrative
@@ -121,7 +122,7 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
         // The recorded state is the invariant a duplicate-completion test elsewhere
         // already protects: TIMEOUT, not overwritten by the administrative fallback.
         assertThat(store.outcomeOf("exec-timeout-then-expired").state()).isEqualTo(ExecutionState.TIMEOUT);
-        assertThat(enqueuer.releases())
+        assertThat(ownership.releases())
                 .as("the dispatch that outlived the execution timeout still held a slot")
                 .isEqualTo(1);
     }
@@ -144,7 +145,7 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
         );
     }
 
-    private static final class CountingEnqueuer implements InvocationEnqueuer {
+    private static final class CountingEnqueuer implements RetryScheduler {
         private final AtomicInteger releases = new AtomicInteger();
 
         @Override
@@ -152,18 +153,5 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
             return true;
         }
 
-        @Override
-        public boolean enabled() {
-            return true;
-        }
-
-        @Override
-        public void releaseDispatchSlot(String functionName) {
-            releases.incrementAndGet();
-        }
-
-        int releases() {
-            return releases.get();
-        }
     }
 }

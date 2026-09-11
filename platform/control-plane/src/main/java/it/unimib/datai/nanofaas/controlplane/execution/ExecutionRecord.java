@@ -2,7 +2,7 @@ package it.unimib.datai.nanofaas.controlplane.execution;
 
 import it.unimib.datai.nanofaas.common.model.ErrorInfo;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
-import it.unimib.datai.nanofaas.controlplane.capacity.DispatchLease;
+import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacity;
 import it.unimib.datai.nanofaas.controlplane.input.CanonicalInvocationInput;
@@ -12,9 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -70,25 +68,17 @@ public class ExecutionRecord {
     private Integer statusCode;
     private Map<String, String> headers;
     private String encoding;
-    private final Set<Integer> releasedDispatchAttempts = new HashSet<>();
 
     /**
      * The capacity lease the current attempt owns, set at dispatch and released exactly once
      * by the attempt's completion (invariant I4). Null for a path that never acquired local
-     * capacity (offload) or that released through a queue's name-based accounting.
+     * capacity (offload). Physical dispatch, once started, owns the release.
      */
-    private DispatchLease dispatchLease;
-    /**
-     * Whether this attempt acquired its capacity through a lease (direct admission) rather
-     * than a queue scheduler's name-based slot. Kept true even after the lease is detached,
-     * so a second release path knows not to fall through to a name-based release.
-     */
-    private boolean directAdmission;
+    private DispatchOwnership dispatchLease;
     /**
      * The generation the current attempt was admitted under, captured alongside the lease but
      * kept even after {@link #takeDispatchLease()} detaches it (unlike a plain peek at
-     * {@code dispatchLease}, which would go stale the moment that happens). Today
-     * {@link #takeDispatchLease()} is reached only on the legacy name-released path — a real
+     * {@code dispatchLease}, which would go stale the moment that happens). A real
      * dispatch marks {@link #transportOwnsCapacity()}, which makes {@code releaseAttemptCapacity}
      * skip it entirely — but a caller of {@link #currentGeneration()} should not have to know
      * that to trust the answer (I7). Logical admission identity remains stable across retries.
@@ -313,10 +303,15 @@ public class ExecutionRecord {
      * Marks the execution as timed out.
      */
     public synchronized void markTimeout() {
+        markTimeout(null);
+    }
+
+    synchronized void markTimeout(ErrorInfo error) {
         if (!canTransition(ExecutionState.TIMEOUT)) {
             return;
         }
         this.state = ExecutionState.TIMEOUT;
+        this.lastError = error;
         this.finishedAt = timeSource.instant();
         this.finishedAtNanos = timeSource.nanoTime();
     }
@@ -370,17 +365,8 @@ public class ExecutionRecord {
         // from the previous attempt can never be cancelled on the next attempt's behalf.
         this.dispatchLease = null;
         this.dispatchHandle = null;
-        this.directAdmission = false;
         this.dispatchCancellationRequested = false;
         this.transportOwnsCapacity = false;
-    }
-
-    /**
-     * Records that the dispatch slot for the given attempt has been released.
-     * @return true the first time this attempt is released, false on duplicates
-     */
-    public synchronized boolean markDispatchSlotReleased(int attempt) {
-        return releasedDispatchAttempts.add(attempt);
     }
 
     /**
@@ -396,17 +382,11 @@ public class ExecutionRecord {
      * Records the lease the current attempt acquired at dispatch. Called under the record
      * monitor, before the dispatch future is kicked off.
      */
-    public synchronized void attachDispatchLease(DispatchLease lease) {
+    public synchronized void attachDispatchLease(DispatchOwnership lease) {
         this.dispatchLease = lease;
         if (this.admittedGeneration == null) {
             this.admittedGeneration = lease.generation();
         }
-        this.directAdmission = true;
-    }
-
-    /** Whether this attempt admitted directly through a lease (never released by name). */
-    public synchronized boolean wasDirectAdmission() {
-        return directAdmission;
     }
 
     /**
@@ -414,8 +394,8 @@ public class ExecutionRecord {
      * never acquired one. The caller releases the returned lease (idempotently) outside the
      * monitor where possible.
      */
-    public synchronized DispatchLease takeDispatchLease() {
-        DispatchLease lease = dispatchLease;
+    public synchronized DispatchOwnership takeDispatchLease() {
+        DispatchOwnership lease = dispatchLease;
         dispatchLease = null;
         return lease;
     }

@@ -93,8 +93,9 @@ class ReviewLifecycleGateTest {
         var oldLease = capacity.tryAcquireLease("fn", 1);
         capacity.remove("fn");
         var freshState = capacity.register("fn", 1);
-        assertThat(capacity.tryAcquireSlot("fn")).isTrue(); // production queue adapter acquisition
-        capacity.releaseSlotAndGetHoldNanos("fn"); // new queue attempt finishes first
+        var freshLease = capacity.tryAcquireLease(freshState.generation(), ignored -> { });
+        assertThat(freshLease).isNotNull();
+        freshLease.release(); // new queue attempt finishes first
         System.out.println("GENERATION_RELEASE oldActive=" + oldState.inFlight()
                 + " newActive=" + freshState.inFlight());
         oldLease.release(); // old completion cannot recover the consumed generation

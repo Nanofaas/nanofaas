@@ -1,66 +1,35 @@
 package it.unimib.datai.nanofaas.modules.asyncqueue;
 
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import org.junit.jupiter.api.Test;
-
 import static org.assertj.core.api.Assertions.assertThat;
 
 class FunctionQueueStateFloorTest {
-
     @Test
-    void releaseSlot_withoutAcquire_neverGoesNegative() {
-        FunctionQueueState state = new FunctionQueueState("fn", 10, 2);
-
-        // Release without any acquire
-        state.releaseSlot();
-        assertThat(state.inFlight()).isZero();
-
-        // Release multiple times
-        state.releaseSlot();
-        state.releaseSlot();
-        state.releaseSlot();
-        assertThat(state.inFlight()).isZero();
-    }
-
-    @Test
-    void releaseSlot_moreThanAcquired_floorsAtZero() {
-        FunctionQueueState state = new FunctionQueueState("fn", 10, 5);
-
-        // Acquire 2 slots
-        state.tryAcquireSlot();
-        state.tryAcquireSlot();
-        assertThat(state.inFlight()).isEqualTo(2);
-
-        // Release 4 times (2 more than acquired)
-        state.releaseSlot();
-        state.releaseSlot();
-        state.releaseSlot();
-        state.releaseSlot();
-        assertThat(state.inFlight()).isZero();
-    }
-
-    @Test
-    void decrementInFlight_withoutIncrement_neverGoesNegative() {
-        FunctionQueueState state = new FunctionQueueState("fn", 10, 2);
-
-        state.decrementInFlight();
-        assertThat(state.inFlight()).isZero();
-
-        state.decrementInFlight();
-        state.decrementInFlight();
-        assertThat(state.inFlight()).isZero();
-    }
-
-    @Test
-    void releaseSlot_afterFloor_allowsNewAcquire() {
-        FunctionQueueState state = new FunctionQueueState("fn", 10, 1);
-
-        // Over-release
-        state.releaseSlot();
-        state.releaseSlot();
-        assertThat(state.inFlight()).isZero();
-
-        // Should still be able to acquire
-        assertThat(state.tryAcquireSlot()).isTrue();
+    void duplicateLeaseReleaseCannotConsumeAnotherAttempt() {
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        FunctionQueueState state = new FunctionQueueState("fn", 10, registry.register("fn", 2));
+        var first = registry.tryAcquireLease(state.capacity().generation(), held -> { });
+        var second = registry.tryAcquireLease(state.capacity().generation(), held -> { });
+        first.release();
+        first.release();
         assertThat(state.inFlight()).isEqualTo(1);
+        second.release();
+        second.release();
+        assertThat(state.inFlight()).isZero();
+    }
+
+    @Test
+    void releasedLeaseCannotConsumeCapacityAcquiredLater() {
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        FunctionQueueState state = new FunctionQueueState("fn", 10, registry.register("fn", 1));
+        var first = registry.tryAcquireLease(state.capacity().generation(), held -> { });
+        first.release();
+        var next = registry.tryAcquireLease(state.capacity().generation(), held -> { });
+        assertThat(next).isNotNull();
+        first.release();
+        assertThat(state.inFlight()).isEqualTo(1);
+        next.release();
+        assertThat(state.inFlight()).isZero();
     }
 }

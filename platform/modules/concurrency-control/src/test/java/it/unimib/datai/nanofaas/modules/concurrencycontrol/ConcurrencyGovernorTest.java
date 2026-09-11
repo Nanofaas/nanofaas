@@ -252,6 +252,44 @@ class ConcurrencyGovernorTest {
         assertThat(metricsSource.effectiveConcurrency.get("echo")).isGreaterThan(withinPromise);
     }
 
+    @Test
+    void removalCannotBeOvertakenByAnAlreadySampledControlCycle() throws Exception {
+        FunctionSpec function = spec("echo", 12, staticControl(2));
+        when(registry.listRegistered()).thenReturn(List.of(RegisteredFunction.nonManaged(function)));
+        metrics.registerFunction("echo");
+        var sampled = new java.util.concurrent.CountDownLatch(1);
+        var finishSample = new java.util.concurrent.CountDownLatch(1);
+        var removalStarted = new java.util.concurrent.CountDownLatch(1);
+        coordinator = org.mockito.Mockito.spy(coordinator);
+        var governor = new ConcurrencyGovernor(registry, name -> {
+            var snapshot = metrics.snapshot(name);
+            sampled.countDown();
+            try { finishSample.await(); }
+            catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new IllegalStateException(failure); }
+            return snapshot;
+        }, new ConcurrencyGovernor.ConcurrencyControllers(coordinator, new BudgetedConcurrencyController()),
+                properties, null, metricsSource, metricsSource, concurrencyMetrics,
+                InstantSource.fixed(Instant.ofEpochMilli(10_000)));
+        try (var workers = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var cycle = workers.submit(governor::governLoop);
+            assertThat(sampled.await(1, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            var removal = workers.submit(() -> {
+                removalStarted.countDown();
+                governor.removeFunctionState("echo");
+            });
+            try {
+                assertThat(removalStarted.await(1, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                org.junit.jupiter.api.Assertions.assertThrows(java.util.concurrent.TimeoutException.class,
+                        () -> removal.get(100, java.util.concurrent.TimeUnit.MILLISECONDS));
+            } finally { finishSample.countDown(); }
+            cycle.get(1, java.util.concurrent.TimeUnit.SECONDS);
+            removal.get(1, java.util.concurrent.TimeUnit.SECONDS);
+        }
+        var order = org.mockito.Mockito.inOrder(coordinator);
+        order.verify(coordinator).apply(function, 1, 0, 0.0, 10_000);
+        order.verify(coordinator).removeFunctionState("echo");
+    }
+
     private void recordInvocations(int invocations, Duration each) {
         for (int i = 0; i < invocations; i++) {
             metrics.latency("echo").record(each);

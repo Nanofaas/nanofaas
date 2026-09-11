@@ -86,7 +86,7 @@ class InvocationQuotaHttpTest {
 
     @Test
     void syncExecutionSaturationReturnsTheStableQuotaError() {
-        Assumptions.assumeTrue(enqueuer.enabled(), "requires the async-queue profile");
+        Assumptions.assumeTrue(enqueuer.supportsAsync(), "requires the async-queue profile");
         enqueueAccepted("first");
         enqueueAccepted("second");
         await().atMost(Duration.ofSeconds(3)).untilAsserted(() ->
@@ -97,7 +97,7 @@ class InvocationQuotaHttpTest {
 
     @Test
     void asyncExecutionSaturationReturnsTheStableQuotaError() {
-        Assumptions.assumeTrue(enqueuer.enabled(), "requires the async-queue profile");
+        Assumptions.assumeTrue(enqueuer.supportsAsync(), "requires the async-queue profile");
         enqueueAccepted("first");
         enqueueAccepted("second");
         await().atMost(Duration.ofSeconds(3)).untilAsserted(() ->
@@ -108,7 +108,7 @@ class InvocationQuotaHttpTest {
 
     @Test
     void asyncCanonicalInputSaturationReturnsTheStableQuotaError() {
-        Assumptions.assumeTrue(enqueuer.enabled(), "requires the async-queue profile");
+        Assumptions.assumeTrue(enqueuer.supportsAsync(), "requires the async-queue profile");
 
         enqueueAccepted("x");
         assertQuotaError("/v1/functions/{name}:enqueue", "input", "x".repeat(220));

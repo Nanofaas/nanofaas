@@ -30,7 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>When the sync gateway is disabled, {@code ReactiveInvocationCoordinator.admitLocally}
  * falls through to direct dispatch, and that direct path never acquires a concurrency
  * slot. Completion nevertheless releases a slot by function name through the sync
- * enqueuer ({@link SyncQueueInvocationEnqueuer#releaseDispatchSlot}), whose
+ * enqueuer (legacy name-based release), whose
  * {@code enabled()} is deliberately {@code false} — the per-record "released attempts"
  * set only prevents a duplicate release by the same record, it cannot prove the record
  * ever acquired a slot. A direct completion can therefore release a slot owned by an
@@ -56,7 +56,7 @@ class R5DirectCompletionUnownedSlotRegressionTest {
         FunctionCapacityRegistry capacity = new FunctionCapacityRegistry();
         capacity.register("fn", 1);
         // An older queued dispatch is still running and holds the function's only slot.
-        assertThat(capacity.tryAcquireSlot("fn")).isTrue();
+        assertThat(capacity.tryAcquireLease("fn", 1)).isNotNull();
         assertThat(capacity.inFlight("fn")).isEqualTo(1);
 
         // The sync enqueuer reports enabled() == false, so a new arrival is admitted down

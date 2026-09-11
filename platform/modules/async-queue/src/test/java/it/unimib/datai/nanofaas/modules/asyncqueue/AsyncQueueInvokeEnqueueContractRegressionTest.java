@@ -80,11 +80,12 @@ class AsyncQueueInvokeEnqueueContractRegressionTest {
     private static InvocationTask pollAndDispatch(QueueManager queueManager,
                                                   ExecutionCompletionHandler handler,
                                                   String functionName) {
-        assertThat(queueManager.tryAcquireSlot(functionName)).isTrue();
+        var lease = queueManager.tryAcquireLease(functionName, queueManager.get(functionName));
+        assertThat(lease).isNotNull();
         FunctionQueueState state = queueManager.get(functionName);
         InvocationTask polled = state.poll();
         assertThat(polled).isNotNull();
-        handler.dispatch(polled);
+        handler.dispatch(polled.withDispatchLease(lease));
         return polled;
     }
 
@@ -196,7 +197,7 @@ class AsyncQueueInvokeEnqueueContractRegressionTest {
         // the ASYNC task waits in the queue and a second slot acquisition is refused.
         pollAndDispatch(queueManager, handler, "fn");
         assertThat(router.dispatches).hasSize(1);
-        assertThat(queueManager.tryAcquireSlot("fn")).isFalse();
+        assertThat(queueManager.tryAcquireLease("fn", queueManager.get("fn"))).isNull();
         assertThat(syncInvoke).isNotDone();
         assertThat(asyncRecord.completion()).isNotDone();
 

@@ -30,7 +30,7 @@ class AsyncQueueContextTest {
         assertThat(context.getBeansOfType(WorkloadMetricsSource.class)).hasSize(1);
         assertThat(context.getBeansOfType(WorkloadCapacityController.class)).hasSize(1);
         assertThat(context.getBeansOfType(QueueManager.class)).hasSize(1);
-        assertThat(context.getBean(InvocationEnqueuer.class).enabled()).isTrue();
+        assertThat(context.getBean(InvocationEnqueuer.class).supportsAsync()).isTrue();
     }
 
     @Test

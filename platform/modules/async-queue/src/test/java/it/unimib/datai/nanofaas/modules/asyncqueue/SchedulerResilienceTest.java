@@ -7,7 +7,7 @@ import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.capacity.InvocationQuotaExceededException;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
 
@@ -26,18 +26,18 @@ class SchedulerResilienceTest {
     @Test
     void inputCapacityBackpressureRequeuesTaskAndReleasesDispatchLease() {
         QueueManager queueManager = SchedulerLeaseTestSupport.queueManager();
-        InvocationService invocationService = mock(InvocationService.class);
+        InvocationDispatch invocationService = mock(InvocationDispatch.class);
         FunctionQueueState state = mock(FunctionQueueState.class);
         InvocationTask task = task("input-blocked", functionSpec("fn", 1, 10));
         when(queueManager.get("fn")).thenReturn(state);
-        when(state.tryAcquireSlot()).thenReturn(true);
+        SchedulerLeaseTestSupport.allow(queueManager, state, true);
         when(state.pollForDispatch()).thenReturn(task);
         when(state.requeueAfterInputBackpressure(any())).thenReturn(true);
         when(state.queued()).thenReturn(0);
         doThrow(new InvocationQuotaExceededException(
                 InvocationQuotaExceededException.Resource.INPUT))
                 .when(invocationService).dispatch(any(InvocationTask.class));
-        Scheduler scheduler = new Scheduler(queueManager, invocationService, System::nanoTime, 1);
+        Scheduler scheduler = new Scheduler(queueManager, invocationService, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class), System::nanoTime, 1);
         scheduler.init();
         scheduler.start();
         try {
@@ -51,7 +51,7 @@ class SchedulerResilienceTest {
             scheduler.stop();
         }
 
-        verify(queueManager).releaseSlot("fn", state);
+        assertThat(SchedulerLeaseTestSupport.released(queueManager)).isEqualTo(1);
     }
 
     @Test
@@ -61,11 +61,14 @@ class SchedulerResilienceTest {
         FunctionSpec spec = functionSpec("failed", 1, 10);
         FunctionQueueState state = queueManager.getOrCreate(spec);
         InvocationTask task = task("failed-1", spec);
+        var store = new it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore();
+        var record = new it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord(task.executionId(), task);
+        store.put(record);
         assertThat(queueManager.enqueue(task)).isTrue();
-        InvocationService invocationService = mock(InvocationService.class);
+        InvocationDispatch invocationService = mock(InvocationDispatch.class);
         doThrow(new RuntimeException("dispatch failed")).when(invocationService).dispatch(argThat(actual -> actual != null && actual.withDispatchLease(null).equals(task)));
 
-        Scheduler scheduler = new Scheduler(queueManager, invocationService);
+        Scheduler scheduler = new Scheduler(queueManager, invocationService, store);
         scheduler.init();
         scheduler.start();
         try {
@@ -75,6 +78,8 @@ class SchedulerResilienceTest {
                     .atMost(Duration.ofSeconds(2))
                     .untilAsserted(() -> {
                         assertThat(state.inFlight()).isZero();
+                        assertThat(record.completion()).isDone();
+                        assertThat(store.outcomeOf(task.executionId()).error().code()).isEqualTo("DISPATCH_REJECTED");
                         assertThat(registry.get("function_dispatch_slot_hold_events")
                                 .tag("function", "failed")
                                 .counter()
@@ -92,16 +97,16 @@ class SchedulerResilienceTest {
     @Test
     void dispatchException_doesNotKillSchedulerLoop() {
         QueueManager queueManager = SchedulerLeaseTestSupport.queueManager();
-        InvocationService invocationService = mock(InvocationService.class);
+        InvocationDispatch invocationService = mock(InvocationDispatch.class);
         FunctionQueueState state = mock(FunctionQueueState.class);
         InvocationTask task = task("task", functionSpec("testFunc", 1, 10));
 
         when(queueManager.get("testFunc")).thenReturn(state);
-        when(state.tryAcquireSlot()).thenReturn(true).thenReturn(false); // Process once per signal
+        SchedulerLeaseTestSupport.allow(queueManager, state, true, false); // Process once per signal
         when(state.pollForDispatch()).thenReturn(task);
         doThrow(new RuntimeException("dispatch failed")).when(invocationService).dispatch(argThat(actual -> actual != null && actual.withDispatchLease(null).equals(task)));
 
-        Scheduler scheduler = new Scheduler(queueManager, invocationService);
+        Scheduler scheduler = new Scheduler(queueManager, invocationService, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
         scheduler.init();
         scheduler.start();
         try {
@@ -116,7 +121,7 @@ class SchedulerResilienceTest {
             // Signal again to prove loop is still alive
             reset(invocationService);
             doNothing().when(invocationService).dispatch(argThat(actual -> actual != null && actual.withDispatchLease(null).equals(task)));
-            when(state.tryAcquireSlot()).thenReturn(true).thenReturn(false);
+            SchedulerLeaseTestSupport.allow(queueManager, state, true, false);
             when(state.pollForDispatch()).thenReturn(task);
             
             scheduler.signalWork("testFunc");
@@ -128,15 +133,15 @@ class SchedulerResilienceTest {
             scheduler.stop();
         }
 
-        verify(queueManager, atLeastOnce()).releaseSlot("testFunc", state);
+        assertThat(SchedulerLeaseTestSupport.released(queueManager)).isPositive();
     }
 
     @Test
     void startStopStart_restartsSchedulerWithoutRejectedExecution() {
         QueueManager queueManager = SchedulerLeaseTestSupport.queueManager();
-        InvocationService invocationService = mock(InvocationService.class);
+        InvocationDispatch invocationService = mock(InvocationDispatch.class);
 
-        Scheduler scheduler = new Scheduler(queueManager, invocationService);
+        Scheduler scheduler = new Scheduler(queueManager, invocationService, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
         scheduler.init();
         scheduler.start();
         scheduler.stop();
@@ -151,14 +156,14 @@ class SchedulerResilienceTest {
     @Test
     void scheduler_requeuesFunctionAfterBoundedBatchInsteadOfDrainingWholeBurst() {
         QueueManager queueManager = SchedulerLeaseTestSupport.queueManager();
-        InvocationService invocationService = mock(InvocationService.class);
+        InvocationDispatch invocationService = mock(InvocationDispatch.class);
         FunctionQueueState state = mock(FunctionQueueState.class);
         InvocationTask task1 = task("task1", functionSpec("testFunc", 1, 10));
         InvocationTask task2 = task("task2", functionSpec("testFunc", 1, 10));
         InvocationTask task3 = task("task3", functionSpec("testFunc", 1, 10));
 
         when(queueManager.get("hot")).thenReturn(state);
-        when(state.tryAcquireSlot()).thenReturn(true, true, true, false);
+        SchedulerLeaseTestSupport.allow(queueManager, state, true, true, true, false);
         when(state.pollForDispatch()).thenReturn(task1, task2, task3, null);
         when(state.queued()).thenReturn(1, 0);
         when(state.canDispatch()).thenReturn(true);
@@ -169,7 +174,7 @@ class SchedulerResilienceTest {
             return null;
         }).when(invocationService).dispatch(any(InvocationTask.class));
 
-        Scheduler scheduler = new Scheduler(queueManager, invocationService);
+        Scheduler scheduler = new Scheduler(queueManager, invocationService, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
         scheduler.init();
         scheduler.start();
         try {
@@ -189,7 +194,7 @@ class SchedulerResilienceTest {
     @Test
     void blockedBacklog_doesNotSpinUntilSlotIsReleased() {
         CountingQueueManager queueManager = new CountingQueueManager("blocked");
-        InvocationService invocationService = mock(InvocationService.class);
+        InvocationDispatch invocationService = mock(InvocationDispatch.class);
         FunctionSpec spec = functionSpec("blocked", 1, 10);
         FunctionQueueState state = queueManager.getOrCreate(spec);
         InvocationTask task1 = task("blocked-1", spec);
@@ -198,7 +203,7 @@ class SchedulerResilienceTest {
         assertThat(queueManager.enqueue(task1)).isTrue();
         assertThat(queueManager.enqueue(task2)).isTrue();
 
-        Scheduler scheduler = new Scheduler(queueManager, invocationService);
+        Scheduler scheduler = new Scheduler(queueManager, invocationService, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
         scheduler.init();
         scheduler.start();
         try {

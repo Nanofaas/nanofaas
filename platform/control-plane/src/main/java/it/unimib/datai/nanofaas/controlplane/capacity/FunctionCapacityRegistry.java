@@ -1,6 +1,5 @@
 package it.unimib.datai.nanofaas.controlplane.capacity;
 
-import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -28,12 +27,9 @@ import org.slf4j.LoggerFactory;
  * exactly the capacity the attempt acquired (invariant I4) rather than releasing by
  * name alone.
  *
- * <p>The name-based methods ({@link #tryAcquireSlot},
- * {@link #releaseSlotAndGetHoldNanos}, {@link #state}, ...) are the temporary
- * adapters retained for legacy callers; their retirement is P20. Production
- * direct, retry and queue dispatch paths use {@link #tryAcquireLease}.
+ * <p>Only ownership handles release slots; observations never grant release authority.
  */
-public final class FunctionCapacityRegistry {
+public final class FunctionCapacityRegistry implements DispatchCapacity {
     private static final Logger log = LoggerFactory.getLogger(FunctionCapacityRegistry.class);
 
     private final LongSupplier nanoTime;
@@ -83,7 +79,7 @@ public final class FunctionCapacityRegistry {
                 }
                 FunctionGeneration newGeneration =
                         new FunctionGeneration(functionName, nextGeneration.getAndIncrement());
-                FunctionCapacityState fresh = new FunctionCapacityState(configuredConcurrency, nanoTime,
+                FunctionCapacityState fresh = new FunctionCapacityState(newGeneration, configuredConcurrency, nanoTime,
                         () -> onStateDrained(functionName, entry, newGeneration));
                 entry.state = fresh;
                 entry.generation = newGeneration;
@@ -142,12 +138,30 @@ public final class FunctionCapacityRegistry {
         }
     }
 
-    /**
-     * Whether any generation of the name is still known here — the active one, or a
-     * retired one that has not finished draining.
-     */
-    public boolean hasGeneration(String functionName) {
-        return entries.containsKey(functionName);
+    @Override
+    public boolean retainsGeneration(FunctionGeneration generation) {
+        if (generation == null) return false;
+        Entry entry = entries.get(generation.functionName());
+        if (entry == null) return false;
+        entry.lock.lock();
+        try {
+            return entries.get(generation.functionName()) == entry
+                    && (generation.equals(entry.generation) || entry.draining.containsKey(generation));
+        } finally {
+            entry.lock.unlock();
+        }
+    }
+
+    @Override
+    public DispatchOwnership tryAcquireLease(FunctionGeneration generation,
+                                               java.util.function.LongConsumer onReleased) {
+        if (generation == null) return null;
+        return withActiveGeneration(generation, () -> {
+            Entry entry = entries.get(generation.functionName());
+            FunctionCapacityState current = entry.state;
+            if (!current.tryAcquireSlot()) return null;
+            return new DispatchLease(generation, () -> onReleased.accept(releaseSlot(generation)));
+        });
     }
 
     /**
@@ -200,25 +214,6 @@ public final class FunctionCapacityRegistry {
     }
 
     /**
-     * Name-based acquisition (temporary adapter for the queue modules). Acquires against
-     * the active generation only.
-     */
-    public boolean tryAcquireSlot(String functionName) {
-        Entry entry = entries.get(functionName);
-        if (entry == null) {
-            return false;
-        }
-        entry.lock.lock();
-        try {
-            FunctionCapacityState state = activeState(functionName, entry);
-            if (state == null || !state.tryAcquireSlot()) return false;
-            return true;
-        } finally {
-            entry.lock.unlock();
-        }
-    }
-
-    /**
      * Attempt-scoped acquisition used by the core dispatch path. Auto-registers the
      * function for standalone callers on first use. In production the core registration
      * listener owns configuration, so an old task cannot override an update or governor.
@@ -240,26 +235,8 @@ public final class FunctionCapacityRegistry {
             if (state == null) return null;
             if (!entry.lifecycleOwned) state.concurrency(configuredConcurrency);
             if (!state.tryAcquireSlot()) return null;
-            entry.leased.merge(state, 1, Integer::sum);
             FunctionGeneration generation = entry.generation;
             return new DispatchLease(generation, () -> releaseSlot(generation));
-        } finally {
-            entry.lock.unlock();
-        }
-    }
-
-    /**
-     * Legacy release: may drain only slots acquired without leases. Production completion
-     * uses the attempt's lease; the name adapter must never consume a lease-owned slot.
-     */
-    public long releaseSlotAndGetHoldNanos(String functionName) {
-        Entry entry = entries.get(functionName);
-        if (entry == null) {
-            return -1L;
-        }
-        entry.lock.lock();
-        try {
-            return releaseAnySlot(entry);
         } finally {
             entry.lock.unlock();
         }
@@ -324,15 +301,6 @@ public final class FunctionCapacityRegistry {
                 : null;
     }
 
-    private long releaseAnySlot(Entry entry) {
-        for (FunctionCapacityState old : new java.util.ArrayList<>(entry.draining.values())) {
-            if (old.inFlight() > entry.leased.getOrDefault(old, 0)) return old.releaseSlotAndGetHoldNanos();
-        }
-        FunctionCapacityState current = entry.state;
-        return current != null && current.inFlight() > entry.leased.getOrDefault(current, 0)
-                ? current.releaseSlotAndGetHoldNanos() : -1L;
-    }
-
     /** Release for a lease carrying its generation: never crosses into another generation. */
     private long releaseSlot(FunctionGeneration generation) {
         Entry entry = entries.get(generation.functionName());
@@ -342,28 +310,7 @@ public final class FunctionCapacityRegistry {
             FunctionCapacityState acquired = generation.equals(entry.generation)
                     ? entry.state : entry.draining.get(generation);
             if (acquired == null) return -1L;
-            entry.leased.computeIfPresent(acquired, (state, count) -> count == 1 ? null : count - 1);
             return acquired.releaseSlotAndGetHoldNanos();
-        } finally {
-            entry.lock.unlock();
-        }
-    }
-
-    /** Queue admission: bind to the exact state that supplied the queued work. */
-    public DispatchLease tryAcquireLease(String functionName, FunctionCapacityState expectedState,
-                                         java.util.function.LongConsumer onReleased) {
-        Entry entry = entries.get(functionName);
-        if (entry == null) return null;
-        entry.lock.lock();
-        try {
-            FunctionCapacityState current = activeState(functionName, entry);
-            if (current == null || current != expectedState || !current.tryAcquireSlot()) return null;
-            entry.leased.merge(current, 1, Integer::sum);
-            FunctionGeneration generation = entry.generation;
-            return new DispatchLease(generation, () -> {
-                long held = releaseSlot(generation);
-                onReleased.accept(held);
-            });
         } finally {
             entry.lock.unlock();
         }
@@ -407,7 +354,6 @@ public final class FunctionCapacityRegistry {
     private static final class Entry {
         private final ReentrantLock lock = new ReentrantLock();
         private FunctionCapacityState state;
-        private final Map<FunctionCapacityState, Integer> leased = new IdentityHashMap<>();
         private FunctionGeneration generation;
         private boolean lifecycleOwned;
         private final Map<FunctionGeneration, FunctionCapacityState> draining = new LinkedHashMap<>();

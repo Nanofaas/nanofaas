@@ -2,17 +2,18 @@ package it.unimib.datai.nanofaas.modules.autoscaler;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
-import it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinator;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
+import it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator;
+import it.unimib.datai.nanofaas.controlplane.service.InvocationObservations;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import org.springframework.boot.autoconfigure.AutoConfiguration;
 
 @AutoConfiguration
 @AutoConfigureAfter(name = {
@@ -31,8 +32,8 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 public class AutoscalerConfiguration {
 
     @Bean
-    ScalingMetricsReader scalingMetricsReader(WorkloadMetricsSource scalingMetricsSource, MeterRegistry meterRegistry) {
-        return new ScalingMetricsReader(scalingMetricsSource, meterRegistry);
+    ScalingMetricsReader scalingMetricsReader(WorkloadMetricsSource scalingMetricsSource, InvocationObservations observations) {
+        return new ScalingMetricsReader(scalingMetricsSource, observations);
     }
 
     @Bean

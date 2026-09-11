@@ -1,12 +1,12 @@
 package it.unimib.datai.nanofaas.modules.syncqueue.scheduler;
 
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
+import it.unimib.datai.nanofaas.controlplane.scheduler.QueuedDispatchCapacity;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
-import java.util.function.Consumer;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -17,14 +17,14 @@ class SyncSchedulerLifecycleTest {
 
     @Test
     void startAndStop_toggleRunningState() {
-        InvocationEnqueuer enqueuer = mock(InvocationEnqueuer.class);
+        QueuedDispatchCapacity enqueuer = mock(QueuedDispatchCapacity.class);
         SyncQueueService queue = mock(SyncQueueService.class);
         @SuppressWarnings("unchecked")
-        Consumer<InvocationTask> dispatch = mock(Consumer.class);
+        InvocationDispatch dispatch = mock(InvocationDispatch.class);
 
         when(queue.peekReady(any(Instant.class))).thenReturn(null);
 
-        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, dispatch);
+        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, dispatch, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
         assertThat(scheduler.isRunning()).isFalse();
 
         scheduler.start();
@@ -36,12 +36,12 @@ class SyncSchedulerLifecycleTest {
 
     @Test
     void stopWithoutStart_keepsSchedulerStopped() {
-        InvocationEnqueuer enqueuer = mock(InvocationEnqueuer.class);
+        QueuedDispatchCapacity enqueuer = mock(QueuedDispatchCapacity.class);
         SyncQueueService queue = mock(SyncQueueService.class);
         @SuppressWarnings("unchecked")
-        Consumer<InvocationTask> dispatch = mock(Consumer.class);
+        InvocationDispatch dispatch = mock(InvocationDispatch.class);
 
-        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, dispatch);
+        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, dispatch, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
 
         scheduler.stop();
 
@@ -51,14 +51,14 @@ class SyncSchedulerLifecycleTest {
 
     @Test
     void startStopStart_restartsSchedulerWithoutRejectedExecution() {
-        InvocationEnqueuer enqueuer = mock(InvocationEnqueuer.class);
+        QueuedDispatchCapacity enqueuer = mock(QueuedDispatchCapacity.class);
         SyncQueueService queue = mock(SyncQueueService.class);
         @SuppressWarnings("unchecked")
-        Consumer<InvocationTask> dispatch = mock(Consumer.class);
+        InvocationDispatch dispatch = mock(InvocationDispatch.class);
 
         when(queue.peekReady(any(Instant.class))).thenReturn(null);
 
-        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, dispatch);
+        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, dispatch, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
         scheduler.start();
         scheduler.stop();
 

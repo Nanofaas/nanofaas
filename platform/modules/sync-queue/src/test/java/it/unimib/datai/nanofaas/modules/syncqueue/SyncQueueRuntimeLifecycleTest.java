@@ -15,14 +15,13 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.service.ExecutionCompletionHandler;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
 import it.unimib.datai.nanofaas.controlplane.service.Metrics;
 import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
 import it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncScheduler;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueItem;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueMetrics;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
-import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -69,8 +68,8 @@ class SyncQueueRuntimeLifecycleTest {
         }
 
         @Bean
-        InvocationService invocationService() {
-            return mock(InvocationService.class);
+        InvocationDispatch invocationService() {
+            return mock(InvocationDispatch.class);
         }
 
         @Bean
@@ -108,7 +107,7 @@ class SyncQueueRuntimeLifecycleTest {
             ExecutionStore store = context.getBean(ExecutionStore.class);
 
             Queue<String> dispatched = new ConcurrentLinkedQueue<>();
-            InvocationService invocationService = context.getBean(InvocationService.class);
+            InvocationDispatch invocationService = context.getBean(InvocationDispatch.class);
             doAnswer(invocation -> {
                 dispatched.add(((InvocationTask) invocation.getArgument(0)).executionId());
                 return null;
@@ -216,9 +215,8 @@ class SyncQueueRuntimeLifecycleTest {
 
     private static void pollAndDispatch(SyncQueueService queue, SyncQueueInvocationEnqueuer enqueuer,
                                         ExecutionCompletionHandler handler, String functionName) {
-        assertThat(enqueuer.tryAcquireSlot(functionName)).isTrue();
         SyncQueueItem item = queue.pollReady(Instant.now());
         assertThat(item).isNotNull();
-        handler.dispatch(item.task());
+        handler.dispatch(item.task().withDispatchLease(enqueuer.tryAcquireLease(item.task())));
     }
 }

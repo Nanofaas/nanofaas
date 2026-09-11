@@ -23,17 +23,23 @@ class FunctionCapacityRegistryTest {
         assertThat(returned).isSameAs(registry.state("echo"));
         assertThat(registry.configuredConcurrency("echo")).isEqualTo(2);
         assertThat(registry.inFlight("echo")).isZero();
-        assertThat(registry.tryAcquireSlot("echo")).isTrue();
-        assertThat(registry.tryAcquireSlot("echo")).isTrue();
-        assertThat(registry.tryAcquireSlot("echo")).isFalse();
+        AtomicLong held = new AtomicLong(-1);
+        var first = registry.tryAcquireLease(returned.generation(), held::set);
+        var second = registry.tryAcquireLease(returned.generation(), held::set);
+        assertThat(first).isNotNull();
+        assertThat(second).isNotNull();
+        assertThat(registry.tryAcquireLease(returned.generation(), held::set)).isNull();
 
         clock.set(25);
-        assertThat(registry.releaseSlotAndGetHoldNanos("echo")).isEqualTo(15);
+        first.release();
+        assertThat(held).hasValue(15);
         assertThat(registry.inFlight("echo")).isEqualTo(1);
         registry.setEffectiveConcurrency("echo", 1);
-        assertThat(registry.tryAcquireSlot("echo")).isFalse();
-        assertThat(registry.releaseSlotAndGetHoldNanos("echo")).isEqualTo(15);
-        assertThat(registry.releaseSlotAndGetHoldNanos("echo")).isEqualTo(-1);
+        assertThat(registry.tryAcquireLease(registry.activeGeneration("echo"), ignored -> { })).isNull();
+        second.release();
+        assertThat(held).hasValue(15);
+        second.release();
+        assertThat(registry.inFlight("echo")).isZero();
     }
 
     @Test
@@ -44,8 +50,8 @@ class FunctionCapacityRegistryTest {
 
         FunctionCapacityState state = registry.register("echo", 3);
         assertThat(state.canDispatch()).isTrue();
-        assertThat(registry.tryAcquireSlot("echo")).isTrue();
-        assertThat(registry.tryAcquireSlot("echo")).isTrue();
+        assertThat(registry.tryAcquireLease(registry.activeGeneration("echo"), ignored -> { })).isNotNull();
+        assertThat(registry.tryAcquireLease(registry.activeGeneration("echo"), ignored -> { })).isNotNull();
 
         // Lower the effective limit below in-flight: the function is now full, no slot opens.
         registry.setEffectiveConcurrency("echo", 2);
@@ -74,20 +80,20 @@ class FunctionCapacityRegistryTest {
 
         registry.remove("echo");
         assertThat(registry.inFlight("echo")).isZero();
-        assertThat(registry.tryAcquireSlot("echo")).isFalse();
+        assertThat(registry.tryAcquireLease(registry.activeGeneration("echo"), ignored -> { })).isNull();
     }
 
     @Test
     void lateReleaseCannotAffectReRegisteredGeneration() {
         FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
         FunctionCapacityState oldState = registry.register("echo", 1);
-        assertThat(registry.tryAcquireSlot("echo")).isTrue();
+        assertThat(registry.tryAcquireLease(registry.activeGeneration("echo"), ignored -> { })).isNotNull();
 
         registry.remove("echo");
         assertThat(oldState.tryAcquireSlot()).isFalse();
         assertThat(oldState.releaseSlotAndGetHoldNanos()).isGreaterThanOrEqualTo(0);
         registry.register("echo", 1);
-        assertThat(registry.tryAcquireSlot("echo")).isTrue();
+        assertThat(registry.tryAcquireLease(registry.activeGeneration("echo"), ignored -> { })).isNotNull();
         assertThat(oldState.releaseSlotAndGetHoldNanos()).isEqualTo(-1);
         assertThat(registry.inFlight("echo")).isEqualTo(1);
     }
@@ -144,10 +150,10 @@ class FunctionCapacityRegistryTest {
         ExecutorService workers = Executors.newFixedThreadPool(2);
         try {
             CompletableFuture<Boolean> first =
-                    CompletableFuture.supplyAsync(() -> registry.tryAcquireSlot("first"), workers);
+                    CompletableFuture.supplyAsync(() -> registry.tryAcquireLease("first", 1) != null, workers);
             assertThat(firstTimestampEntered.await(1, TimeUnit.SECONDS)).isTrue();
             CompletableFuture<Boolean> second =
-                    CompletableFuture.supplyAsync(() -> registry.tryAcquireSlot("second"), workers);
+                    CompletableFuture.supplyAsync(() -> registry.tryAcquireLease("second", 1) != null, workers);
 
             assertThat(second.get(1, TimeUnit.SECONDS)).isTrue();
             allowFirstTimestamp.countDown();
@@ -185,13 +191,13 @@ class FunctionCapacityRegistryTest {
         CountDownLatch timestampEntered = new CountDownLatch(1);
         CountDownLatch allowTimestamp = new CountDownLatch(1);
         AtomicBoolean firstRead = new AtomicBoolean(true);
-        FunctionCapacityState state = new FunctionCapacityState(1, () -> {
+        FunctionCapacityState state = new FunctionCapacityRegistry(() -> {
             if (firstRead.getAndSet(false)) {
                 timestampEntered.countDown();
                 await(allowTimestamp);
             }
             return 10;
-        });
+        }).register("timed", 1);
 
         // Own threads, not the common pool: the acquiring task parks inside the timestamp read,
         // and on a two-core runner the pool's single worker would never free up for the release.
@@ -220,7 +226,7 @@ class FunctionCapacityRegistryTest {
 
     @Test
     void concurrentAcquisitionNeverExceedsConfiguredBound() throws Exception {
-        FunctionCapacityState state = new FunctionCapacityState(8);
+        FunctionCapacityState state = new FunctionCapacityRegistry().register("concurrent", 8);
         ExecutorService workers = Executors.newFixedThreadPool(32);
         CountDownLatch ready = new CountDownLatch(32);
         CountDownLatch start = new CountDownLatch(1);
@@ -273,11 +279,12 @@ class FunctionCapacityRegistryTest {
                 workers.submit(() -> {
                     ready.countDown();
                     await(start);
-                    if (registry.tryAcquireSlot("echo")) {
+                    var lease = registry.tryAcquireLease(registry.activeGeneration("echo"), ignored -> { });
+                    if (lease != null) {
                         maxInFlight.accumulateAndGet(registry.inFlight("echo"), Math::max);
                         acquired.countDown();
                         await(release);
-                        registry.releaseSlotAndGetHoldNanos("echo");
+                        lease.release();
                     }
                 });
             }
@@ -341,12 +348,12 @@ class FunctionCapacityRegistryTest {
         assertThat(state.phase())
                 .as("removal with work in flight retires, it does not close")
                 .isEqualTo(GenerationPhase.RETIRING);
-        assertThat(registry.hasGeneration("echo")).isTrue();
+        assertThat(registry.retainsGeneration(lease.generation())).isTrue();
 
         lease.release();
 
         assertThat(state.phase()).isEqualTo(GenerationPhase.CLOSED);
-        assertThat(registry.hasGeneration("echo")).isFalse();
+        assertThat(registry.retainsGeneration(lease.generation())).isFalse();
         assertThat(registry.entryCount()).isZero();
 
         // A late duplicate release cannot reopen or recreate anything.
@@ -358,7 +365,8 @@ class FunctionCapacityRegistryTest {
     void reRegistersWhileRemovedFunctionStillDrains() {
         FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
         registry.register("fn", 2);
-        assertThat(registry.tryAcquireSlot("fn")).isTrue();
+        var oldLease = registry.tryAcquireLease("fn", 2);
+        assertThat(oldLease).isNotNull();
         registry.remove("fn");
 
         FunctionCapacityState state = registry.register("fn", 4);
@@ -366,7 +374,7 @@ class FunctionCapacityRegistryTest {
         assertThat(state.isActive()).isTrue();
         assertThat(state.configuredConcurrency()).isEqualTo(4);
         assertThat(state.effectiveConcurrency()).isEqualTo(4);
-        assertThat(registry.releaseSlotAndGetHoldNanos("fn")).isGreaterThanOrEqualTo(0L);
+        oldLease.release();
         assertThat(registry.inFlight("fn")).isZero();
     }
 

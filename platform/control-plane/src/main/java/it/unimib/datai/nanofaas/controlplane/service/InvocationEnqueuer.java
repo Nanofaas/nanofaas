@@ -2,42 +2,16 @@ package it.unimib.datai.nanofaas.controlplane.service;
 
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 
+/** Initial admission only. HTTP response mode does not select the function's queue strategy. */
 public interface InvocationEnqueuer {
+    enum QueueStrategy { DIRECT, FUNCTION_QUEUE }
 
+    QueueStrategy queueStrategy();
+    boolean supportsAsync();
     boolean enqueue(InvocationTask task);
 
-    boolean enabled();
+    /** Advisory early-refusal hint; enqueue remains authoritative. */
+    default boolean isQueueFull(String functionName) { return false; }
 
-    default boolean hasAvailableSlot(String functionName) {
-        return true;
-    }
-
-    /**
-     * Whether {@link #enqueue} would certainly refuse a task right now. A hint:
-     * `enqueue` stays the authority.
-     *
-     * <p>Phrased negatively on purpose. Mockito does not run a default method, it
-     * returns false for an unstubbed boolean - so a test that never heard of this
-     * method gets "not full", which is the answer that leaves behaviour unchanged.
-     * The positive spelling made every such mock report an empty queue as full.
-     */
-    default boolean isQueueFull(String functionName) {
-        return false;
-    }
-
-    default boolean tryAcquireSlot(String functionName) {
-        return true;
-    }
-
-    /** Acquire capacity owned by this task; queue providers override with generation identity. */
-    default it.unimib.datai.nanofaas.controlplane.capacity.DispatchLease tryAcquireLease(InvocationTask task) {
-        throw new UnsupportedOperationException("Queue provider must support attempt-scoped leases");
-    }
-
-    default void releaseDispatchSlot(String functionName) {
-    }
-
-    static InvocationEnqueuer noOp() {
-        return NoOpInvocationEnqueuer.INSTANCE;
-    }
+    static InvocationEnqueuer noOp() { return NoOpInvocationEnqueuer.INSTANCE; }
 }

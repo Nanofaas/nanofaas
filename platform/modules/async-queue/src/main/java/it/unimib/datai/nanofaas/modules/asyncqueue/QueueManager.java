@@ -1,21 +1,23 @@
 package it.unimib.datai.nanofaas.modules.asyncqueue;
 
-import it.unimib.datai.nanofaas.common.model.FunctionSpec;
-import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
-
+import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.controlplane.capacity.DispatchCapacity;
+import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
-import it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics;
-import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
 
 public class QueueManager {
     private static final String FUNCTION_TAG = "function";
@@ -24,7 +26,7 @@ public class QueueManager {
     private final Map<String, List<Meter.Id>> meterIds = new ConcurrentHashMap<>();
     private final Map<String, DiagnosticMeters> diagnosticMeters = new ConcurrentHashMap<>();
     private final MeterRegistry meterRegistry;
-    private final FunctionCapacityRegistry capacityRegistry;
+    private final DispatchCapacity capacityRegistry;
     private final WorkloadDiagnostics workloadDiagnostics;
     private final WorkloadMetricsBinder workloadMetricsBinder;
     private WorkSignaler workSignaler;
@@ -38,7 +40,7 @@ public class QueueManager {
     }
 
     QueueManager(MeterRegistry meterRegistry, WorkloadDiagnostics workloadDiagnostics,
-                 FunctionCapacityRegistry capacityRegistry) {
+                 DispatchCapacity capacityRegistry) {
         this.meterRegistry = meterRegistry;
         this.workloadDiagnostics = workloadDiagnostics;
         this.capacityRegistry = capacityRegistry;
@@ -46,7 +48,7 @@ public class QueueManager {
                 meterRegistry, new AsyncQueueWorkloadMetricsSource(this));
     }
 
-    QueueManager(MeterRegistry meterRegistry, FunctionCapacityRegistry capacityRegistry) {
+    QueueManager(MeterRegistry meterRegistry, DispatchCapacity capacityRegistry) {
         this(meterRegistry, new WorkloadDiagnostics(meterRegistry), capacityRegistry);
     }
 
@@ -94,8 +96,8 @@ public class QueueManager {
                         capacityRegistry.register(name, spec.concurrency())
                 );
                 List<Meter.Id> ids = new ArrayList<>();
-                for (it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind kind :
-                        it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind.values()) {
+                for (InvocationKind kind :
+                        InvocationKind.values()) {
                     ids.add(Gauge.builder("function_queue_depth_by_path", () -> state.queued(kind))
                             .tag(FUNCTION_TAG, name).tag("path", kind.tag())
                             .register(meterRegistry).getId());
@@ -252,25 +254,6 @@ public class QueueManager {
         }
     }
 
-    public void incrementInFlight(String functionName) {
-        FunctionQueueState state = queues.get(functionName);
-        if (state != null) {
-            state.incrementInFlight();
-        }
-    }
-
-    public void decrementInFlight(String functionName) {
-        FunctionQueueState state = queues.get(functionName);
-        if (state != null) {
-            state.decrementInFlight();
-        }
-    }
-
-    public boolean tryAcquireSlot(String functionName) {
-        FunctionQueueState state = queues.get(functionName);
-        return state != null && state.tryAcquireSlot();
-    }
-
     public boolean isQueueFull(String functionName) {
         FunctionQueueState state = queues.get(functionName);
         // Unknown function: let `enqueue` return false and the caller decide.
@@ -286,10 +269,10 @@ public class QueueManager {
         capacityRegistry.setEffectiveConcurrency(functionName, effectiveConcurrency);
     }
 
-
-    it.unimib.datai.nanofaas.controlplane.capacity.DispatchLease tryAcquireLease(
+    DispatchOwnership tryAcquireLease(
             String name, FunctionQueueState expected) {
-        return capacityRegistry.tryAcquireLease(name, expected.capacity(), held -> {
+        if (expected == null) return null;
+        return capacityRegistry.tryAcquireLease(expected.capacity().generation(), held -> {
             try {
                 if (held >= 0 && queues.get(name) == expected)
                     workloadDiagnostics.recordDispatchSlotHold(name, held);
@@ -297,33 +280,6 @@ public class QueueManager {
                 if (queues.get(name) == expected && expected.queued() > 0) notifyWork(name);
             }
         });
-    }
-
-    public void releaseSlot(String functionName) {
-        long holdNanos = capacityRegistry.releaseSlotAndGetHoldNanos(functionName);
-        if (holdNanos >= 0) {
-            workloadDiagnostics.recordDispatchSlotHold(functionName, holdNanos);
-        }
-        FunctionQueueState state = queues.get(functionName);
-        if (state != null && state.queued() > 0 && state.canDispatch()) {
-            notifyWork(functionName);
-        }
-    }
-
-    void releaseSlot(String functionName, FunctionQueueState expectedState) {
-        long holdNanos = expectedState.releaseSlotAndGetHoldNanos();
-        FunctionQueueState currentState = queues.computeIfPresent(functionName, (name, current) -> {
-            if (current != expectedState) {
-                return current;
-            }
-            if (holdNanos >= 0) workloadDiagnostics.recordDispatchSlotHold(name, holdNanos);
-            return current;
-        });
-        if (currentState == expectedState
-                && expectedState.queued() > 0
-                && queues.get(functionName) == expectedState) {
-            notifyWork(functionName);
-        }
     }
 
     private record DiagnosticMeters(

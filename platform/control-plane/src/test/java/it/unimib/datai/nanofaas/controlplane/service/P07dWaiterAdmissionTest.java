@@ -191,7 +191,8 @@ class P07dWaiterAdmissionTest {
         FunctionCapacityRegistry generations = generations("fn");
         InvocationEnqueuer failing = new InvocationEnqueuer() {
             @Override public boolean enqueue(InvocationTask task) { throw new AssertionError("enqueue failed"); }
-            @Override public boolean enabled() { return true; }
+            @Override public boolean supportsAsync() { return true; }
+            @Override public QueueStrategy queueStrategy() { return QueueStrategy.FUNCTION_QUEUE; }
         };
         Harness h = harness(generations, 2, 2, failing, null, new LocalDispatcher());
         var lookup = h.lookup("fn", "new-key");
@@ -309,7 +310,8 @@ class P07dWaiterAdmissionTest {
     private static InvocationEnqueuer acceptingEnqueuer() {
         return new InvocationEnqueuer() {
             @Override public boolean enqueue(InvocationTask task) { return true; }
-            @Override public boolean enabled() { return true; }
+            @Override public boolean supportsAsync() { return true; }
+            @Override public QueueStrategy queueStrategy() { return QueueStrategy.FUNCTION_QUEUE; }
         };
     }
 
@@ -328,7 +330,7 @@ class P07dWaiterAdmissionTest {
                 store, new IdempotencyStore(), metrics, invocations,
                 new RetainedInputEstimator.Limits(12, 128, 1_024, 64 * 1_024));
         ExecutionCompletionHandler completion = new ExecutionCompletionHandler(
-                store, enqueuer, new DispatcherRouter(dispatcher, null), metrics, null, generations);
+                store, enqueuer::enqueue, new DispatcherRouter(dispatcher, null), metrics, null, generations);
         ReactiveInvocationCoordinator coordinator = new ReactiveInvocationCoordinator(
                 enqueuer, metrics, syncGateway, null, completion, new InvocationResponseMapper(), waiters);
         return new Harness(store, factory, invocations, waiters, completion, coordinator);

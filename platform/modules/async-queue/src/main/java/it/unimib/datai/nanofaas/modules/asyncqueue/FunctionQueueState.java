@@ -2,7 +2,7 @@ package it.unimib.datai.nanofaas.modules.asyncqueue;
 
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityState;
+import it.unimib.datai.nanofaas.controlplane.capacity.CapacityView;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -17,19 +17,11 @@ public class FunctionQueueState {
     private final ArrayBlockingQueue<InvocationTask> queue;
     private final int queueSize;
     private final Map<String, InvocationTask> dispatchReservations = new HashMap<>();
-    private final FunctionCapacityState capacity;
+    private final CapacityView capacity;
     private final EnumMap<InvocationKind, AtomicInteger> queuedByKind = new EnumMap<>(InvocationKind.class);
     private boolean closed;
 
-    public FunctionQueueState(String functionName, int queueSize, int concurrency) {
-        this(functionName, queueSize, new FunctionCapacityState(concurrency));
-    }
-
-    FunctionQueueState(String functionName, int queueSize, int concurrency, java.util.function.LongSupplier nanoTime) {
-        this(functionName, queueSize, new FunctionCapacityState(concurrency, nanoTime));
-    }
-
-    FunctionQueueState(String functionName, int queueSize, FunctionCapacityState capacity) {
+    FunctionQueueState(String functionName, int queueSize, CapacityView capacity) {
         this.functionName = functionName;
         this.queueSize = queueSize;
         this.queue = new ArrayBlockingQueue<>(queueSize);
@@ -102,17 +94,10 @@ public class FunctionQueueState {
         return drained;
     }
 
-    FunctionCapacityState capacity() { return capacity; }
+    CapacityView capacity() { return capacity; }
 
     public int inFlight() { return capacity.inFlight(); }
-    public boolean tryAcquireSlot() { return capacity.tryAcquireSlot(); }
-    public void releaseSlot() { capacity.releaseSlot(); }
-    long releaseSlotAndGetHoldNanos() { return capacity.releaseSlotAndGetHoldNanos(); }
     public boolean canDispatch() { return capacity.canDispatch(); }
-    public void incrementInFlight() { capacity.incrementInFlight(); }
-    public void decrementInFlight() { capacity.releaseSlot(); }
-    public void concurrency(int concurrency) { capacity.concurrency(concurrency); }
     public int configuredConcurrency() { return capacity.configuredConcurrency(); }
     public int effectiveConcurrency() { return capacity.effectiveConcurrency(); }
-    public void setEffectiveConcurrency(int concurrency) { capacity.setEffectiveConcurrency(concurrency); }
 }

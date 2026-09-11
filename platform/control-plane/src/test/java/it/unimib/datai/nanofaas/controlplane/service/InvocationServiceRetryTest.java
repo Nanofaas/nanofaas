@@ -31,6 +31,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class InvocationServiceRetryTest {
+    private final TestDispatchOwnership ownership = new TestDispatchOwnership();
 
     @Mock
     private FunctionService functionService;
@@ -59,7 +60,7 @@ class InvocationServiceRetryTest {
         idempotencyStore = new IdempotencyStore();
 
         ExecutionCompletionHandler completionHandler = new ExecutionCompletionHandler(
-                executionStore, enqueuer, dispatcherRouter, metrics);
+                executionStore, enqueuer::enqueue, dispatcherRouter, metrics);
 
         invocationService = TestWaiterCapacity.service(
                 functionService,
@@ -91,7 +92,8 @@ class InvocationServiceRetryTest {
 
         when(functionService.get("testFunc")).thenReturn(Optional.of(testSpec));
         when(enqueuer.enqueue(any())).thenReturn(true);
-        when(enqueuer.enabled()).thenReturn(true);
+        when(enqueuer.supportsAsync()).thenReturn(true);
+        org.mockito.Mockito.lenient().when(enqueuer.queueStrategy()).thenReturn(InvocationEnqueuer.QueueStrategy.FUNCTION_QUEUE);
         when(syncQueueGateway.enabled()).thenReturn(false);
         io.micrometer.core.instrument.simple.SimpleMeterRegistry simpleMeterRegistry = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
         when(metrics.latency(anyString())).thenReturn(io.micrometer.core.instrument.Timer.builder("test-latency").register(simpleMeterRegistry));
@@ -118,6 +120,7 @@ class InvocationServiceRetryTest {
 
         ExecutionRecord executionRecord = executionStore.get(response.executionId()).orElseThrow();
         assertThat(executionRecord.completion().isDone()).isFalse();
+        ownership.attach(executionRecord);
         executionRecord.markRunning();
 
         // Complete with error (should trigger retry since maxRetries=3, attempt=1)
@@ -137,7 +140,7 @@ class InvocationServiceRetryTest {
 
         // Enqueue should have been called twice (initial + retry)
         verify(enqueuer, times(2)).enqueue(any());
-        verify(enqueuer).releaseDispatchSlot("testFunc");
+        assertThat(ownership.releases("testFunc")).isEqualTo(1);
     }
 
     @Test
@@ -154,6 +157,7 @@ class InvocationServiceRetryTest {
 
         // Simulate the initial attempt plus 3 retries (maxRetries=3)
         // Attempt 1
+        ownership.attach(executionRecord);
         executionRecord.markRunning();
         invocationService.completeExecution(
                 response.executionId(),
@@ -163,6 +167,7 @@ class InvocationServiceRetryTest {
         assertThat(executionRecord.task().attempt()).isEqualTo(2);
 
         // Attempt 2
+        ownership.attach(executionRecord);
         executionRecord.markRunning();
         invocationService.completeExecution(
                 response.executionId(),
@@ -172,6 +177,7 @@ class InvocationServiceRetryTest {
         assertThat(executionRecord.task().attempt()).isEqualTo(3);
 
         // Attempt 3
+        ownership.attach(executionRecord);
         executionRecord.markRunning();
         invocationService.completeExecution(
                 response.executionId(),
@@ -181,6 +187,7 @@ class InvocationServiceRetryTest {
         assertThat(executionRecord.task().attempt()).isEqualTo(4);
 
         // Attempt 4 (last one, maxRetries reached)
+        ownership.attach(executionRecord);
         executionRecord.markRunning();
         invocationService.completeExecution(
                 response.executionId(),
@@ -190,7 +197,7 @@ class InvocationServiceRetryTest {
         // NOW the future should be completed with the error
         assertThat(executionRecord.completion().isDone()).isTrue();
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
-        verify(enqueuer, times(4)).releaseDispatchSlot("testFunc");
+        assertThat(ownership.releases("testFunc")).isEqualTo(4);
     }
 
     @Test
@@ -204,6 +211,7 @@ class InvocationServiceRetryTest {
         );
 
         ExecutionRecord executionRecord = executionStore.get(response.executionId()).orElseThrow();
+        ownership.attach(executionRecord);
         executionRecord.markRunning();
 
         // Complete with success
@@ -216,7 +224,7 @@ class InvocationServiceRetryTest {
         assertThat(executionRecord.completion().isDone()).isTrue();
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
         assertThat(executionRecord.output()).isEqualTo("result");
-        verify(enqueuer).releaseDispatchSlot("testFunc");
+        assertThat(ownership.releases("testFunc")).isEqualTo(1);
     }
 
     @Test
@@ -270,7 +278,8 @@ class InvocationServiceRetryTest {
 
     @Test
     void invokeAsync_whenEnqueuerDisabled_throwsAsyncQueueUnavailableException() {
-        when(enqueuer.enabled()).thenReturn(false);
+        when(enqueuer.supportsAsync()).thenReturn(false);
+        org.mockito.Mockito.lenient().when(enqueuer.queueStrategy()).thenReturn(InvocationEnqueuer.QueueStrategy.DIRECT);
 
         InvocationRequest request = new InvocationRequest("payload", null);
         assertThatThrownBy(() -> invocationService.invokeAsync(
@@ -284,7 +293,7 @@ class InvocationServiceRetryTest {
 
     @Test
     void invokeAsync_whenQueueUnavailable_doesNotLeakExecutionOrIdempotencyEntry() {
-        when(enqueuer.enabled()).thenReturn(false, true, true);
+        when(enqueuer.supportsAsync()).thenReturn(false, true, true);
         when(enqueuer.enqueue(any())).thenReturn(true);
 
         InvocationRequest request = new InvocationRequest("payload", null);

@@ -1,33 +1,28 @@
 package it.unimib.datai.nanofaas.modules.asyncqueue;
 
 import io.micrometer.core.instrument.MeterRegistry;
-import it.unimib.datai.nanofaas.common.model.ErrorInfo;
-import it.unimib.datai.nanofaas.common.model.InvocationResult;
-import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
-import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
+import it.unimib.datai.nanofaas.controlplane.capacity.DispatchCapacity;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
-import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
-import org.springframework.context.annotation.Bean;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 
 @AutoConfiguration
 public class AsyncQueueConfiguration {
-    private static final String FUNCTION_REMOVED = "FUNCTION_REMOVED";
 
     @Bean
-    QueueManager queueManager(MeterRegistry meterRegistry, FunctionCapacityRegistry capacityRegistry) {
+    QueueManager queueManager(MeterRegistry meterRegistry, DispatchCapacity capacityRegistry) {
         return new QueueManager(meterRegistry, capacityRegistry);
     }
 
     /** The governor's capacity knob, backed by the shared core registry (P06). */
     @Bean
-    WorkloadCapacityController asyncQueueWorkloadCapacityController(FunctionCapacityRegistry capacityRegistry) {
+    WorkloadCapacityController asyncQueueWorkloadCapacityController(DispatchCapacity capacityRegistry) {
         return capacityRegistry::setEffectiveConcurrency;
     }
 
@@ -42,19 +37,18 @@ public class AsyncQueueConfiguration {
     }
 
     @Bean
-    Scheduler scheduler(QueueManager queueManager, InvocationService invocationService) {
-        return new Scheduler(queueManager, invocationService);
+    Scheduler scheduler(QueueManager queueManager, InvocationDispatch invocationService, QueueLifecycle queueLifecycle) {
+        return new Scheduler(queueManager, invocationService, queueLifecycle);
     }
 
     @Bean
     @Primary
-    InvocationEnqueuer asyncQueueInvocationEnqueuer(QueueManager queueManager) {
+    QueueBackedEnqueuer asyncQueueInvocationEnqueuer(QueueManager queueManager) {
         return new QueueBackedEnqueuer(queueManager);
     }
 
-
     @Bean
-    FunctionRegistrationListener queueLifecycleListener(QueueManager queueManager, ExecutionStore executionStore) {
+    FunctionRegistrationListener queueLifecycleListener(QueueManager queueManager, QueueLifecycle executionStore) {
         return new FunctionRegistrationListener() {
             @Override
             public void onRegister(it.unimib.datai.nanofaas.common.model.FunctionSpec spec) {
@@ -64,32 +58,10 @@ public class AsyncQueueConfiguration {
             @Override
             public void onRemove(String functionName) {
                 for (InvocationTask task : queueManager.remove(functionName)) {
-                    markFunctionRemoved(executionStore, functionName, task);
+                    executionStore.removed(task);
                 }
             }
         };
     }
 
-    private static void markFunctionRemoved(ExecutionStore executionStore, String functionName, InvocationTask task) {
-        task.releaseQueuedInput();
-        ExecutionRecord executionRecord = executionStore.getOrNull(task.executionId());
-        if (executionRecord == null) {
-            return;
-        }
-        InvocationResult result = InvocationResult.error(
-                FUNCTION_REMOVED,
-                "Function '%s' was removed before queued execution could run".formatted(functionName)
-        );
-        ErrorInfo error = result.error();
-        synchronized (executionRecord) {
-            // An already-terminal record must not make this an early return that skips
-            // the settle (finding R4, applied to the queue-side terminal early returns):
-            // the already-definitive result prevails, and the settle below is idempotent.
-            if (!executionRecord.isTerminal()) {
-                executionRecord.markError(error);
-                executionRecord.completion().complete(result);
-            }
-        }
-        executionStore.settle(executionRecord);
-    }
 }

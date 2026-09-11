@@ -14,7 +14,7 @@ import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.service.ExecutionCompletionHandler;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
+import it.unimib.datai.nanofaas.controlplane.service.RetryScheduler;
 import it.unimib.datai.nanofaas.controlplane.service.Metrics;
 import it.unimib.datai.nanofaas.controlplane.service.RecordingWorkloadMetricsSource;
 import org.junit.jupiter.api.Test;
@@ -57,8 +57,9 @@ class SojournRetryTimeoutMixTest {
         when(registry.listRegistered()).thenReturn(List.of(RegisteredFunction.nonManaged(function)));
 
         Metrics metrics = new Metrics(new SimpleMeterRegistry());
+        metrics.registerFunction("mix");
         ExecutionStore store = new ExecutionStore();
-        InvocationEnqueuer enqueuer = mock(InvocationEnqueuer.class);
+        RetryScheduler enqueuer = mock(RetryScheduler.class);
         when(enqueuer.enqueue(any())).thenReturn(true);
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
                 store, enqueuer, mock(DispatcherRouter.class), metrics);

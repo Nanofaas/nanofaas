@@ -66,7 +66,7 @@ class InvocationServiceCoreRetryTest {
                                                                ExecutorService executor) {
         ExecutionCompletionHandler[] handlerHolder = new ExecutionCompletionHandler[1];
         ExecutorBackedInvocationEnqueuer enqueuer =
-                new ExecutorBackedInvocationEnqueuer(t -> handlerHolder[0].dispatch(t), executor);
+                new ExecutorBackedInvocationEnqueuer(t -> handlerHolder[0].dispatch(t), new it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry(), executor);
         ExecutionCompletionHandler handler =
                 new ExecutionCompletionHandler(store, enqueuer, dispatcherRouter, new Metrics(new SimpleMeterRegistry()));
         handlerHolder[0] = handler;

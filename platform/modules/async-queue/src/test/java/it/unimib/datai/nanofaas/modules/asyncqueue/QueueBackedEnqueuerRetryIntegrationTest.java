@@ -71,11 +71,12 @@ class QueueBackedEnqueuerRetryIntegrationTest {
 
     /** Stand-in for the Scheduler loop: acquire the function's dispatch slot, pop the head of its real queue, dispatch it. */
     private static void pollAndDispatch(QueueManager queueManager, ExecutionCompletionHandler handler, String functionName) {
-        assertThat(queueManager.tryAcquireSlot(functionName)).isTrue();
+        var lease = queueManager.tryAcquireLease(functionName, queueManager.get(functionName));
+        assertThat(lease).isNotNull();
         FunctionQueueState state = queueManager.get(functionName);
         InvocationTask polled = state.poll();
         assertThat(polled).isNotNull();
-        handler.dispatch(polled);
+        handler.dispatch(polled.withDispatchLease(lease));
     }
 
     @Test
@@ -226,7 +227,8 @@ class QueueBackedEnqueuerRetryIntegrationTest {
         store.put(record);
         assertThat(enqueuer.enqueue(task)).isTrue(); // fills the one queue slot
 
-        assertThat(queueManager.tryAcquireSlot("fn")).isTrue();
+        var lease = queueManager.tryAcquireLease("fn", queueManager.get("fn"));
+        assertThat(lease).isNotNull();
         InvocationTask polled = queueManager.get("fn").poll(); // frees the slot, queue now empty (0/1)
         assertThat(polled).isEqualTo(task);
 
@@ -236,7 +238,7 @@ class QueueBackedEnqueuerRetryIntegrationTest {
         store.put(new ExecutionRecord(filler.executionId(), filler));
         assertThat(enqueuer.enqueue(filler)).isTrue();
 
-        handler.dispatch(polled); // attempt 1 fails; handleRetry's re-enqueue must now be rejected
+        handler.dispatch(polled.withDispatchLease(lease)); // attempt 1 fails; handleRetry's re-enqueue must now be rejected
 
         assertThat(record.completion().isDone()).isTrue();
         assertThat(record.completion().join().success()).isFalse();

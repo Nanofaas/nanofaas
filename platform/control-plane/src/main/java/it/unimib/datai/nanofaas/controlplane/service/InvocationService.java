@@ -5,7 +5,6 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResponse;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
-import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
@@ -97,11 +96,10 @@ public class InvocationService {
                                           String idempotencyKey,
                                           String traceId) {
         FunctionSpec spec = functionService.get(functionName).orElseThrow(FunctionNotFoundException::new);
-        if (!enqueuer.enabled()) {
+        if (!enqueuer.supportsAsync()) {
             throw new AsyncQueueUnavailableException();
         }
         refuseEarlyIfQueueFull(functionName, spec, idempotencyKey, InvocationKind.ASYNC);
-
 
         InvocationExecutionFactory.ExecutionLookup lookup =
                 executionFactory.createOrReuseExecution(functionName, spec, request, idempotencyKey, traceId,
@@ -136,7 +134,7 @@ public class InvocationService {
 
         // If the execution is new (not a replay), we need to enqueue it for processing.
         InvocationEnqueueSupport.admitIfNew(lookup,
-                () -> InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, executionRecord));
+                () -> InvocationEnqueueSupport.enqueueOrThrow(enqueuer::enqueue, metrics, executionRecord));
             
         // Return a response indicating that the invocation has been queued for processing.
         // This time, we return a new InvocationResponse with the status "queued" to indicate that the invocation has been accepted 
@@ -155,18 +153,6 @@ public class InvocationService {
         return outcome == null
                 ? Optional.empty()
                 : Optional.of(responseMapper.toStatus(executionId, outcome));
-    }
-
-    public void dispatch(InvocationTask task) {
-        completionHandler.dispatch(task);
-    }
-
-    public void completeExecution(String executionId, DispatchResult dispatchResult) {
-        completionHandler.completeExecution(executionId, dispatchResult);
-    }
-
-    public void completeExecution(String executionId, DispatchResult dispatchResult, Integer completedAttempt) {
-        completionHandler.completeExecution(executionId, dispatchResult, completedAttempt);
     }
 
     public void completeExecution(String executionId, InvocationResult result) {

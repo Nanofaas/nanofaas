@@ -32,6 +32,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class InvocationServiceRetryQueueFullTest {
+    private final TestDispatchOwnership ownership = new TestDispatchOwnership();
 
     @Mock private FunctionService functionService;
     @Mock private InvocationEnqueuer enqueuer;
@@ -49,7 +50,7 @@ class InvocationServiceRetryQueueFullTest {
         idempotencyStore = new IdempotencyStore();
 
         ExecutionCompletionHandler completionHandler = new ExecutionCompletionHandler(
-                executionStore, enqueuer, dispatcherRouter, metrics);
+                executionStore, enqueuer::enqueue, dispatcherRouter, metrics);
 
         invocationService = TestWaiterCapacity.service(
                 functionService, enqueuer, executionStore, idempotencyStore,
@@ -62,7 +63,8 @@ class InvocationServiceRetryQueueFullTest {
         );
 
         when(functionService.get("testFunc")).thenReturn(Optional.of(testSpec));
-        when(enqueuer.enabled()).thenReturn(true);
+        when(enqueuer.supportsAsync()).thenReturn(true);
+        org.mockito.Mockito.lenient().when(enqueuer.queueStrategy()).thenReturn(InvocationEnqueuer.QueueStrategy.FUNCTION_QUEUE);
         when(syncQueueGateway.enabled()).thenReturn(false);
         io.micrometer.core.instrument.simple.SimpleMeterRegistry simpleMeterRegistry = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
         when(metrics.latency(anyString())).thenReturn(io.micrometer.core.instrument.Timer.builder("test-latency").register(simpleMeterRegistry));
@@ -93,6 +95,7 @@ class InvocationServiceRetryQueueFullTest {
         when(enqueuer.enqueue(any())).thenReturn(false);
 
         // Complete with error - should attempt retry but queue is full
+        ownership.attach(executionRecord);
         executionRecord.markRunning();
         InvocationResult errorResult = InvocationResult.error("ERROR", "First attempt failed");
         invocationService.completeExecution(response.executionId(), errorResult);
@@ -104,7 +107,7 @@ class InvocationServiceRetryQueueFullTest {
         InvocationResult result = executionRecord.completion().join();
         assertThat(result.success()).isFalse();
         assertThat(result.error().code()).isEqualTo("ERROR");
-        verify(enqueuer).releaseDispatchSlot("testFunc");
+        assertThat(ownership.releases("testFunc")).isEqualTo(1);
     }
 
     @Test
@@ -122,6 +125,7 @@ class InvocationServiceRetryQueueFullTest {
         ExecutionRecord executionRecord = executionStore.get(response.executionId()).orElseThrow();
 
         // First failure -> retry (attempt 2)
+        ownership.attach(executionRecord);
         executionRecord.markRunning();
         invocationService.completeExecution(
                 response.executionId(), InvocationResult.error("ERROR", "Attempt 1")
@@ -130,6 +134,7 @@ class InvocationServiceRetryQueueFullTest {
         assertThat(executionRecord.task().attempt()).isEqualTo(2);
 
         // Second failure -> retry attempt but queue full
+        ownership.attach(executionRecord);
         executionRecord.markRunning();
         invocationService.completeExecution(
                 response.executionId(), InvocationResult.error("ERROR", "Attempt 2")
@@ -138,6 +143,6 @@ class InvocationServiceRetryQueueFullTest {
         // Future should be completed because retry queue was full
         assertThat(executionRecord.completion().isDone()).isTrue();
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
-        verify(enqueuer, times(2)).releaseDispatchSlot("testFunc");
+        assertThat(ownership.releases("testFunc")).isEqualTo(2);
     }
 }

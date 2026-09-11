@@ -9,11 +9,11 @@ final class InvocationEnqueueSupport {
     private InvocationEnqueueSupport() {
     }
 
-    static void enqueueOrThrow(InvocationEnqueuer enqueuer, Metrics metrics, ExecutionRecord executionRecord) {
+    static void enqueueOrThrow(java.util.function.Predicate<InvocationTask> enqueue, Metrics metrics, ExecutionRecord executionRecord) {
         InvocationTask task = executionRecord.prepareForQueue();
         boolean enqueued;
         try {
-            enqueued = enqueuer.enqueue(task);
+            enqueued = enqueue.test(task);
         } catch (RuntimeException | Error failure) {
             task.releaseQueuedInput();
             throw failure;

@@ -35,7 +35,7 @@ import static org.mockito.Mockito.when;
 class ExecutionCompletionHandlerTimingTest {
 
     private ExecutionStore executionStore;
-    private InvocationEnqueuer enqueuer;
+    private RetryScheduler enqueuer;
     private SimpleMeterRegistry meterRegistry;
     private Metrics metrics;
     private ExecutionCompletionHandler completionHandler;
@@ -45,12 +45,12 @@ class ExecutionCompletionHandlerTimingTest {
         executionStore = new ExecutionStore();
         // The owner is mandatory for settle(); attach a minimal one.
         new ExecutionLifecycle(executionStore, new IdempotencyStore());
-        enqueuer = mock(InvocationEnqueuer.class);
+        enqueuer = mock(RetryScheduler.class);
         meterRegistry = new SimpleMeterRegistry();
         metrics = new Metrics(meterRegistry);
         metrics.registerFunction("fn");
         completionHandler = new ExecutionCompletionHandler(
-                executionStore, enqueuer, mock(DispatcherRouter.class), metrics);
+                executionStore, enqueuer::enqueue, mock(DispatcherRouter.class), metrics);
     }
 
     @Test

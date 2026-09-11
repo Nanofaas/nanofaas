@@ -38,12 +38,12 @@ import static org.mockito.Mockito.when;
 class ExecutionCompletionHandlerRetryMetricsRegressionTest {
 
     private final ExecutionStore executionStore = new ExecutionStore();
-    private final InvocationEnqueuer enqueuer = mock(InvocationEnqueuer.class);
+    private final RetryScheduler enqueuer = mock(RetryScheduler.class);
     private final DispatcherRouter dispatcherRouter = mock(DispatcherRouter.class);
     private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     private final Metrics metrics = new Metrics(meterRegistry);
     private final ExecutionCompletionHandler completionHandler =
-            new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics);
+            new ExecutionCompletionHandler(executionStore, enqueuer::enqueue, dispatcherRouter, metrics);
 
     @Test
     void e2eLatencyAfterARetry_shouldReflectTheOriginalAdmissionTime_notJustTheLastAttempt() {

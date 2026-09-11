@@ -3,8 +3,8 @@ package it.unimib.datai.nanofaas.modules.syncqueue.sync;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
+import it.unimib.datai.nanofaas.controlplane.scheduler.QueuedDispatchCapacity;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
 import it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncScheduler;
@@ -37,7 +37,7 @@ class SyncSchedulerMaintenanceTest {
         assertEquals(0, queue.queuedItems());
 
         SyncScheduler scheduler = new SyncScheduler(
-                mock(InvocationEnqueuer.class), queue, mock(InvocationService.class));
+                mock(QueuedDispatchCapacity.class), queue, mock(InvocationDispatch.class), org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
         try {
             scheduler.start();
             awaitTrue(() -> estimator.retentionSnapshot().functionStates() == 0,

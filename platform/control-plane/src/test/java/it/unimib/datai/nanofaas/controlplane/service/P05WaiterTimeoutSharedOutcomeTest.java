@@ -75,7 +75,7 @@ class P05WaiterTimeoutSharedOutcomeTest {
         Metrics metrics = new Metrics(new SimpleMeterRegistry());
         TestWaiterCapacity.Runtime runtime = TestWaiterCapacity.runtime(store, keys, metrics, "fn");
         InvocationExecutionFactory factory = runtime.factory();
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, enqueuer,
+        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, enqueuer::enqueue,
                 new DispatcherRouter(new LocalDispatcher() {
                     @Override
                     public CompletableFuture<DispatchResult> dispatch(InvocationTask task) {
@@ -179,9 +179,7 @@ class P05WaiterTimeoutSharedOutcomeTest {
         Sinks.One<InvocationResult> remote = Sinks.one();
         OffloadGateway gateway = new OffloadGateway() {
             @Override
-            public boolean enabled() {
-                return true;
-            }
+            public boolean enabled() { return true; }
 
             @Override
             public boolean shouldOffloadEagerly(FunctionSpec s) {
@@ -260,12 +258,11 @@ class P05WaiterTimeoutSharedOutcomeTest {
             }
 
             @Override
-            public boolean enabled() {
-                return true;
-            }
+            public boolean supportsAsync() { return true; }
+            @Override public QueueStrategy queueStrategy() { return QueueStrategy.FUNCTION_QUEUE; }
         };
         TestWaiterCapacity.Runtime runtime = TestWaiterCapacity.runtime(store, keys, metrics, "fn");
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, enqueuer, router, metrics);
+        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, enqueuer::enqueue, router, metrics);
         ReactiveInvocationCoordinator coordinator =
                 new ReactiveInvocationCoordinator(enqueuer, metrics, null, null, handler,
                         new InvocationResponseMapper(), runtime.waiters());

@@ -1,15 +1,14 @@
 package it.unimib.datai.nanofaas.modules.syncqueue.sync;
 
-import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
-import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
-import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
+import it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.DispatchCapacity;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics;
 
@@ -31,10 +30,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class SyncQueueService implements SyncQueueGateway {
     public static final int POLL_READY_MATCHING_SCAN_LIMIT = 64;
-    private static final String FUNCTION_REMOVED = "FUNCTION_REMOVED";
 
     private final SyncQueueConfigSource configSource;
-    private final ExecutionStore executionStore;
+    private final QueueLifecycle executionStore;
     private final WaitEstimator estimator;
     private final SyncQueueMetrics metrics;
     private final Clock clock;
@@ -72,11 +70,11 @@ public class SyncQueueService implements SyncQueueGateway {
     /** Fences are owned by a draining generation and/or concrete stale execution records. */
     private final ConcurrentHashMap<String, RemovalFence> removalFences = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, LifecycleLock> lifecycleLocks = new ConcurrentHashMap<>();
-    private final FunctionCapacityRegistry capacityRegistry;
+    private final DispatchCapacity capacityRegistry;
     private final WorkloadDiagnostics diagnostics;
 
     public SyncQueueService(SyncQueueProperties props,
-                            ExecutionStore executionStore,
+                            QueueLifecycle executionStore,
                             SyncQueueMetrics metrics,
                             SyncQueueConfigSource configSource) {
         this(props,
@@ -90,10 +88,10 @@ public class SyncQueueService implements SyncQueueGateway {
     }
 
     public SyncQueueService(SyncQueueProperties props,
-                            ExecutionStore executionStore,
+                            QueueLifecycle executionStore,
                             SyncQueueMetrics metrics,
                             SyncQueueConfigSource configSource,
-                            FunctionCapacityRegistry capacityRegistry,
+                            DispatchCapacity capacityRegistry,
                             WorkloadDiagnostics diagnostics) {
         this(props, executionStore,
                 new WaitEstimator(props.throughputWindow(), props.perFunctionMinSamples()),
@@ -101,7 +99,7 @@ public class SyncQueueService implements SyncQueueGateway {
     }
 
     SyncQueueService(SyncQueueProperties props,
-                     ExecutionStore executionStore,
+                     QueueLifecycle executionStore,
                      WaitEstimator estimator,
                      SyncQueueMetrics metrics,
                      Clock clock,
@@ -114,12 +112,12 @@ public class SyncQueueService implements SyncQueueGateway {
     // constructors above are the ones tests use; this one is the full graph.
     @SuppressWarnings("java:S107")
     public SyncQueueService(SyncQueueProperties props,
-                            ExecutionStore executionStore,
+                            QueueLifecycle executionStore,
                             WaitEstimator estimator,
                             SyncQueueMetrics metrics,
                             Clock clock,
                             SyncQueueConfigSource configSource,
-                            FunctionCapacityRegistry capacityRegistry,
+                            DispatchCapacity capacityRegistry,
                             WorkloadDiagnostics diagnostics) {
         this.configSource = configSource;
         this.executionStore = executionStore;
@@ -137,10 +135,7 @@ public class SyncQueueService implements SyncQueueGateway {
         if (capacityRegistry != null) {
             capacityRegistry.addCapacityListener(this::onCapacityOpened);
         }
-        executionStore.onTerminal(record -> releaseRemovalExecution(
-                record.task().functionName(), record.executionId()));
-        executionStore.onAdministrativeExpiry(record -> releaseRemovalExecution(
-                record.task().functionName(), record.executionId()));
+        executionStore.onExecutionGone(this::releaseRemovalExecution);
     }
 
     private void onCapacityOpened(String functionName) {
@@ -173,7 +168,7 @@ public class SyncQueueService implements SyncQueueGateway {
         signalIfQueueHasWork();
         // Only a drained generation needs cleaning up,
         // and that is exactly when the registry stops carrying the function.
-        if (capacityRegistry.hasGeneration(functionName)) return;
+        if (hasOwnedGeneration(functionName)) return;
         // A removal marker protects only real retiring work.  Once the capacity authority has
         // dropped the final generation there is no callback/lease this queue still owns, so
         // retaining the name would turn a lifecycle fence into an unbounded history cache.
@@ -187,7 +182,7 @@ public class SyncQueueService implements SyncQueueGateway {
     }
 
     private void cleanupLifecycleLock(String functionName, LifecycleLock lock) {
-        if (capacityRegistry.hasGeneration(functionName)) return;
+        if (hasOwnedGeneration(functionName)) return;
         synchronized (lifecycleLocks) {
             if (lock.users == 0) lifecycleLocks.remove(functionName, lock);
         }
@@ -531,7 +526,7 @@ public class SyncQueueService implements SyncQueueGateway {
             estimator.removeFunctionState(functionName);
             metrics.removeFunctionState(functionName);
             capacityRegistry.remove(functionName);
-            if (!capacityRegistry.hasGeneration(functionName)) {
+            if (!hasOwnedGeneration(functionName)) {
                 // No active or draining generation remains. The normal API admission path has
                 // already resolved the function through FunctionService; keeping this internal
                 // marker forever would only retain a deleted name.
@@ -584,9 +579,15 @@ public class SyncQueueService implements SyncQueueGateway {
         cleanupRemovalFence(functionName);
     }
 
+    private boolean hasOwnedGeneration(String functionName) {
+        if (capacityRegistry.activeGeneration(functionName) != null) return true;
+        RemovalFence fence = removalFences.get(functionName);
+        return fence != null && capacityRegistry.retainsGeneration(fence.generation());
+    }
+
     private void cleanupRemovalFence(String functionName) {
         RemovalFence fence = removalFences.get(functionName);
-        if (fence != null && !capacityRegistry.hasGeneration(functionName)
+        if (fence != null && !hasOwnedGeneration(functionName)
                 && fence.staleExecutions().isEmpty()) {
             removalFences.remove(functionName, fence);
         }
@@ -618,28 +619,8 @@ public class SyncQueueService implements SyncQueueGateway {
     }
 
     private void markFunctionRemoved(String functionName, SyncQueueItem item, boolean wasQueued) {
-        item.task().releaseQueuedInput();
-        ExecutionRecord executionRecord = executionStore.getOrNull(item.task().executionId());
-        if (executionRecord == null) {
-            if (wasQueued) {
-                metrics.dequeued(functionName);
-            }
-            return;
-        }
-        InvocationResult result = InvocationResult.error(
-                FUNCTION_REMOVED,
-                "Function '%s' was removed before queued execution could run".formatted(functionName)
-        );
-        synchronized (executionRecord) {
-            if (!executionRecord.isTerminal()) {
-                executionRecord.markError(result.error());
-                executionRecord.completion().complete(result);
-            }
-        }
-        executionStore.settle(executionRecord);
-        if (wasQueued) {
-            metrics.dequeued(functionName);
-        }
+        executionStore.removed(item.task());
+        if (wasQueued) metrics.dequeued(functionName);
     }
 
     private boolean isTimedOut(SyncQueueItem item, Instant now) {
@@ -647,18 +628,7 @@ public class SyncQueueService implements SyncQueueGateway {
     }
 
     private void timeout(SyncQueueItem item) {
-        item.task().releaseQueuedInput();
-        ExecutionRecord executionRecord = executionStore.getOrNull(item.task().executionId());
-        if (executionRecord != null) {
-            // Guard: completeExecution publishes the future outside the record monitor; only complete if not already finalized.
-            synchronized (executionRecord) {
-                if (!executionRecord.isTerminal()) {
-                    executionRecord.markTimeout();
-                    executionRecord.completion().complete(InvocationResult.error("QUEUE_TIMEOUT", "Queue wait exceeded"));
-                }
-            }
-            executionStore.settle(executionRecord);
-        }
+        executionStore.expired(item.task());
         metrics.dequeued(item.task().functionName());
         metrics.timedOut(item.task().functionName());
     }

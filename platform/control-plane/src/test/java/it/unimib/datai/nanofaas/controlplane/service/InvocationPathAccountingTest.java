@@ -57,12 +57,13 @@ class InvocationPathAccountingTest {
         registry = new SimpleMeterRegistry();
         metrics = new Metrics(registry);
         ExecutionStore executionStore = new ExecutionStore();
-        when(enqueuer.enabled()).thenReturn(true);
+        when(enqueuer.supportsAsync()).thenReturn(true);
+        org.mockito.Mockito.lenient().when(enqueuer.queueStrategy()).thenReturn(InvocationEnqueuer.QueueStrategy.FUNCTION_QUEUE);
         when(syncQueueGateway.enabled()).thenReturn(false);
         invocationService = TestWaiterCapacity.service(
                 functionService, enqueuer, executionStore, new IdempotencyStore(),
                 metrics, syncQueueGateway,
-                new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics),
+                new ExecutionCompletionHandler(executionStore, enqueuer::enqueue, dispatcherRouter, metrics),
                 "full-fn", "keyed-fn", "mixed-fn");
     }
 

@@ -2,24 +2,24 @@ package it.unimib.datai.nanofaas.modules.syncqueue;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.controlplane.capacity.DispatchCapacity;
 import it.unimib.datai.nanofaas.controlplane.config.SyncQueueRuntimeDefaults;
-import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
+import it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle;
+import it.unimib.datai.nanofaas.controlplane.scheduler.QueuedDispatchCapacity;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
 import it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncScheduler;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueMetrics;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
-import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.context.annotation.Primary;
 
 @AutoConfiguration
@@ -38,13 +38,13 @@ public class SyncQueueConfiguration {
 
     /** The governor's capacity knob, backed by the shared core registry (P06). */
     @Bean
-    WorkloadCapacityController syncQueueWorkloadCapacityController(FunctionCapacityRegistry capacityRegistry) {
+    WorkloadCapacityController syncQueueWorkloadCapacityController(DispatchCapacity capacityRegistry) {
         return capacityRegistry::setEffectiveConcurrency;
     }
 
     @Bean
     SyncQueueWorkloadMetricsSource syncQueueWorkloadMetricsSource(
-            SyncQueueService syncQueueService, FunctionCapacityRegistry capacityRegistry) {
+            SyncQueueService syncQueueService, DispatchCapacity capacityRegistry) {
         return new SyncQueueWorkloadMetricsSource(syncQueueService, capacityRegistry);
     }
 
@@ -56,7 +56,7 @@ public class SyncQueueConfiguration {
 
     @Bean
     @Primary
-    SyncQueueInvocationEnqueuer syncQueueInvocationEnqueuer(FunctionCapacityRegistry capacityRegistry,
+    SyncQueueInvocationEnqueuer syncQueueInvocationEnqueuer(DispatchCapacity capacityRegistry,
                                                              WorkloadDiagnostics diagnostics,
                                                              SyncQueueService syncQueueService) {
         return new SyncQueueInvocationEnqueuer(capacityRegistry, diagnostics,
@@ -65,10 +65,10 @@ public class SyncQueueConfiguration {
 
     @Bean
     SyncQueueService syncQueueService(SyncQueueProperties props,
-                                      ExecutionStore executionStore,
+                                      QueueLifecycle executionStore,
                                       SyncQueueMetrics metrics,
                                       SyncQueueConfigSource configSource,
-                                      FunctionCapacityRegistry capacityRegistry,
+                                      DispatchCapacity capacityRegistry,
                                       WorkloadDiagnostics diagnostics) {
         return new SyncQueueService(props, executionStore, metrics, configSource,
                 capacityRegistry, diagnostics);
@@ -87,11 +87,12 @@ public class SyncQueueConfiguration {
     // worker idles (parks on the queue's work signal, bounded by a safety timeout) when
     // there is nothing to dispatch, so an always-on scheduler costs nothing while idle.
     @Bean
-    SyncScheduler syncScheduler(InvocationEnqueuer enqueuer,
+    SyncScheduler syncScheduler(QueuedDispatchCapacity enqueuer,
                                 SyncQueueService syncQueueService,
-                                InvocationService invocationService,
+                                InvocationDispatch invocationService,
+                                QueueLifecycle queueLifecycle,
                                 WorkloadDiagnostics diagnostics) {
-        return new SyncScheduler(enqueuer, syncQueueService, invocationService, diagnostics);
+        return new SyncScheduler(enqueuer, syncQueueService, invocationService, queueLifecycle, diagnostics);
     }
 
     @Bean

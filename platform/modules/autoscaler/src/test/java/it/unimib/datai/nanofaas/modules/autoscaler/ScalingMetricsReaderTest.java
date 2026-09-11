@@ -34,13 +34,13 @@ class ScalingMetricsReaderTest {
     private WorkloadMetricsSource scalingMetricsSource;
 
     @Mock
-    private MeterRegistry meterRegistry;
+    private it.unimib.datai.nanofaas.controlplane.service.InvocationObservations observations;
 
     private ScalingMetricsReader reader;
 
     @BeforeEach
     void setUp() {
-        reader = new ScalingMetricsReader(scalingMetricsSource, meterRegistry);
+        reader = new ScalingMetricsReader(scalingMetricsSource, observations);
     }
 
     @Test
@@ -83,7 +83,7 @@ class ScalingMetricsReaderTest {
             public int inFlight(String functionName) { return 0; }
             public int effectiveConcurrency(String functionName) { return 0; }
             public int dispatchableBacklog(String functionName) { return 0; }
-        }, registry);
+        }, new it.unimib.datai.nanofaas.controlplane.service.Metrics(registry));
 
         assertEquals(0.0, r.readMetric("echo", new ScalingMetric("rps", "1", null)));
         assertEquals(0.0, r.readMetric("echo", new ScalingMetric("queue_depth", "5", null)));
@@ -93,10 +93,12 @@ class ScalingMetricsReaderTest {
     @Test
     void readMetric_rps_usesPerIntervalDeltaInsteadOfCumulativeCounter() throws Exception {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        var metrics = new it.unimib.datai.nanofaas.controlplane.service.Metrics(registry);
+        metrics.registerFunction("echo");
         Counter counter = Counter.builder("function_dispatch_total").tag("function", "echo").register(registry);
         counter.increment(3.0);
 
-        ScalingMetricsReader r = new ScalingMetricsReader(scalingMetricsSource, registry);
+        ScalingMetricsReader r = new ScalingMetricsReader(scalingMetricsSource, metrics);
         double first = r.readMetric("echo", new ScalingMetric("rps", "1", null));
 
         Thread.sleep(Duration.ofMillis(1100));
@@ -106,5 +108,27 @@ class ScalingMetricsReaderTest {
 
         assertEquals(0.0, first);
         assertThat(second).isBetween(1.5, 2.5);
+    }
+    @Test
+    void rpsDoesNotRecreateRemovedMetersOrCompareDifferentGenerations() {
+        var registry = new SimpleMeterRegistry();
+        var metrics = new it.unimib.datai.nanofaas.controlplane.service.Metrics(registry);
+        var reader = new ScalingMetricsReader(scalingMetricsSource, metrics);
+        var rps = new ScalingMetric("rps", "1", null);
+        metrics.registerFunction("echo");
+        metrics.dispatch("echo");
+        assertThat(reader.readMetric("echo", rps)).isZero();
+        metrics.removeFunction("echo");
+        reader.removeFunctionState("echo");
+        assertThat(reader.readMetric("echo", rps)).isZero();
+        assertThat(registry.getMeters()).isEmpty();
+        metrics.registerFunction("echo");
+        metrics.dispatch("echo");
+        metrics.dispatch("echo");
+        assertThat(reader.readMetric("echo", rps)).isZero();
+        // Generation changes also reset the sample if a polling cycle races lifecycle cleanup.
+        metrics.removeFunction("echo");
+        metrics.registerFunction("echo");
+        assertThat(reader.readMetric("echo", rps)).isZero();
     }
 }

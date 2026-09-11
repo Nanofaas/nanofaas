@@ -8,20 +8,22 @@ import com.github.benmanes.caffeine.cache.Scheduler;
 import com.github.benmanes.caffeine.cache.Ticker;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import it.unimib.datai.nanofaas.common.model.ErrorInfo;
 import it.unimib.datai.nanofaas.controlplane.config.ExecutionStoreProperties;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
-
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.stream.Collectors;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.function.Consumer;
 
 /**
  * What is executing, and what is left of it afterwards.
@@ -47,7 +49,7 @@ import java.util.function.Consumer;
  * and a liveness probe missed three times in a row.
  */
 @Component
-public class ExecutionStore {
+public class ExecutionStore implements QueueLifecycle {
     private static final Logger log = LoggerFactory.getLogger(ExecutionStore.class);
 
     /**
@@ -225,9 +227,52 @@ public class ExecutionStore {
         return frozen == null ? null : frozen.outcome();
     }
 
+    @Override
+    public void expired(InvocationTask task) {
+        concludeQueued(task, null);
+    }
+
+    @Override
+    public void removed(InvocationTask task) {
+        concludeQueued(task, new ErrorInfo(
+                "FUNCTION_REMOVED", "Function '%s' was removed before queued execution could run"
+                        .formatted(task.functionName())));
+    }
+
+    @Override
+    public void rejected(InvocationTask task, Throwable failure) {
+        concludeQueued(task, new ErrorInfo(
+                "DISPATCH_REJECTED", failure.getMessage()));
+    }
+
+    private void concludeQueued(InvocationTask task,
+                                ErrorInfo error) {
+        task.releaseQueuedInput();
+        ExecutionRecord record = getOrNull(task.executionId());
+        if (record == null) return;
+        synchronized (record) {
+            if (record.task().attempt() != task.attempt()) return;
+            if (!record.isTerminal()) {
+                if (error == null) record.markTimeout(new ErrorInfo(
+                        "QUEUE_TIMEOUT", "Queue wait exceeded"));
+                else record.markError(error);
+            }
+        }
+        // The attached lifecycle protects the key, publishes the canonical answer,
+        // archives, releases logical resources and notifies observers exactly once.
+        settle(record);
+    }
+
+    @Override
+    public void onExecutionGone(java.util.function.BiConsumer<String, String> listener) {
+        java.util.function.Consumer<ExecutionRecord> notification =
+                record -> listener.accept(record.task().functionName(), record.executionId());
+        onTerminal(notification);
+        onAdministrativeExpiry(notification);
+    }
+
     /**
-     * The terminal transition, and the adapter the queue modules and the completion
-     * handler still call. It delegates to the attached {@link ExecutionLifecycle}, which
+     * The terminal transition called by core completion and queue event adapters. It delegates to the attached {@link ExecutionLifecycle}, which
      * owns the key protection as well as the archive and removal.
      *
      * <p>There is no silent downgrade for a <b>keyed</b> record: settling one without an

@@ -15,16 +15,6 @@ import static org.mockito.Mockito.verify;
 class QueueBackedEnqueuerTest {
 
     @Test
-    void releaseDispatchSlot_delegatesToQueueManager() {
-        QueueManager queueManager = mock(QueueManager.class);
-        QueueBackedEnqueuer enqueuer = new QueueBackedEnqueuer(queueManager);
-
-        enqueuer.releaseDispatchSlot("fn");
-
-        verify(queueManager).releaseSlot("fn");
-    }
-
-    @Test
     void releaseAfterRemovalDrainsRetiredGenerationBeforeReregistration() {
         SimpleMeterRegistry meters = new SimpleMeterRegistry();
         FunctionCapacityRegistry capacity = new FunctionCapacityRegistry();
@@ -35,14 +25,16 @@ class QueueBackedEnqueuerTest {
                 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
 
         FunctionQueueState oldState = queueManager.getOrCreate(spec);
-        assertThat(oldState.tryAcquireSlot()).isTrue();
+        var oldLease = queueManager.tryAcquireLease("fn", oldState);
+        assertThat(oldLease).isNotNull();
         queueManager.remove("fn");
 
         // once the last slot drains the generation is dropped, so the next getOrCreate is new
-        enqueuer.releaseDispatchSlot("fn");
+        oldLease.release();
         FunctionQueueState newState = queueManager.getOrCreate(spec);
-        assertThat(newState.tryAcquireSlot()).isTrue();
-        enqueuer.releaseDispatchSlot("fn");
+        var newLease = queueManager.tryAcquireLease("fn", newState);
+        assertThat(newLease).isNotNull();
+        newLease.release();
         assertThat(newState.inFlight()).isZero();
     }
 }

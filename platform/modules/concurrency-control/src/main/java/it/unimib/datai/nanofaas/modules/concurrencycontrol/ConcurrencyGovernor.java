@@ -1,21 +1,17 @@
 package it.unimib.datai.nanofaas.modules.concurrencycontrol;
 
-import io.micrometer.core.instrument.Timer;
 import it.unimib.datai.nanofaas.common.model.ConcurrencyControlMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaObservation;
-import it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
+import it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerLifecycleSupport;
-import it.unimib.datai.nanofaas.controlplane.service.Metrics;
+import it.unimib.datai.nanofaas.controlplane.service.InvocationObservations;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.context.SmartLifecycle;
-
 import java.time.InstantSource;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,6 +21,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.SmartLifecycle;
 
 /**
  * Periodically re-evaluates the per-function concurrency limit.
@@ -37,7 +36,8 @@ public class ConcurrencyGovernor implements SmartLifecycle {
     private static final Logger log = LoggerFactory.getLogger(ConcurrencyGovernor.class);
 
     private final FunctionRegistry registry;
-    private final Metrics metrics;
+    private final InvocationObservations metrics;
+    private final java.util.Map<String, FunctionGeneration> observedGenerations = new java.util.concurrent.ConcurrentHashMap<>();
     private final ConcurrencyControlCoordinator coordinator;
     private final ConcurrencyControlProperties properties;
     private final ManagedDeploymentCoordinator deploymentCoordinator;
@@ -55,7 +55,7 @@ public class ConcurrencyGovernor implements SmartLifecycle {
     // grouping the rest by nothing but arity would make the wiring harder to read.
     @SuppressWarnings("java:S107")
     public ConcurrencyGovernor(FunctionRegistry registry,
-                               Metrics metrics,
+                               InvocationObservations metrics,
                                ConcurrencyControlCoordinator coordinator,
                                ConcurrencyControlProperties properties,
                                ManagedDeploymentCoordinator deploymentCoordinator,
@@ -86,7 +86,7 @@ public class ConcurrencyGovernor implements SmartLifecycle {
 
     @SuppressWarnings("java:S107")   // see the delegating constructor above
     public ConcurrencyGovernor(FunctionRegistry registry,
-                               Metrics metrics,
+                               InvocationObservations metrics,
                                ConcurrencyControllers controllers,
                                ConcurrencyControlProperties properties,
                                ManagedDeploymentCoordinator deploymentCoordinator,
@@ -144,7 +144,9 @@ public class ConcurrencyGovernor implements SmartLifecycle {
     }
 
     // Package-private for testing
-    void governLoop() {
+    // Serialize a sampled cycle with lifecycle cleanup: stale samples cannot repopulate
+    // controller or generation state after removal has returned. Not an invocation lock.
+    synchronized void governLoop() {
         try {
             long now = clock.millis();
             List<BudgetedConcurrencyController.FunctionObservation> budgeted = new ArrayList<>();
@@ -179,16 +181,17 @@ public class ConcurrencyGovernor implements SmartLifecycle {
     private void governSojourn(RegisteredFunction registeredFunction, long nowEpochMs) {
         try {
             String name = registeredFunction.name();
-            Timer e2e = metrics.e2eLatency(name);
-            Timer service = metrics.latency(name);
+            var sample = observation(name);
+            var e2e = sample.endToEnd();
+            var service = sample.service();
             sojournController.apply(
                     new SojournConcurrencyController.FunctionObservation(
                             registeredFunction.spec(),
                             metricsSource.inFlight(name),
                             e2e.count(),
-                            e2e.totalTime(TimeUnit.MILLISECONDS),
+                            e2e.totalMillis(),
                             service.count(),
-                            service.totalTime(TimeUnit.MILLISECONDS)),
+                            service.totalMillis()),
                     metricsSource, capacityController, concurrencyMetrics,
                     nowEpochMs);
         } catch (Exception ex) {
@@ -200,12 +203,12 @@ public class ConcurrencyGovernor implements SmartLifecycle {
     private Optional<BudgetedConcurrencyController.FunctionObservation> observe(
             RegisteredFunction registeredFunction) {
         try {
-            Timer latency = metrics.latency(registeredFunction.name());
+            var latency = observation(registeredFunction.name()).service();
             return Optional.of(new BudgetedConcurrencyController.FunctionObservation(
                     registeredFunction.spec(),
                     metricsSource.inFlight(registeredFunction.name()),
                     latency.count(),
-                    latency.totalTime(TimeUnit.MILLISECONDS)
+                    latency.totalMillis()
             ));
         } catch (Exception ex) {
             // One unreadable function must not cost the others their allocation.
@@ -226,12 +229,12 @@ public class ConcurrencyGovernor implements SmartLifecycle {
                         registeredFunction.name());
                 return;
             }
-            Timer latency = metrics.latency(registeredFunction.name());
+            var latency = observation(registeredFunction.name()).service();
             coordinator.apply(
                     registeredFunction.spec(),
                     readyReplicas.getAsInt(),
                     latency.count(),
-                    latency.totalTime(TimeUnit.MILLISECONDS),
+                    latency.totalMillis(),
                     nowEpochMs
             );
         } catch (Exception ex) {
@@ -259,7 +262,21 @@ public class ConcurrencyGovernor implements SmartLifecycle {
                 : OptionalInt.empty();
     }
 
-    void removeFunctionState(String functionName) {
+    private InvocationObservations.Snapshot observation(String functionName) {
+        var sample = metrics.snapshot(functionName);
+        if (sample.generation() != null) {
+            var previous = observedGenerations.put(functionName, sample.generation());
+            if (previous != null && !previous.equals(sample.generation())) {
+                coordinator.removeFunctionState(functionName);
+                budgetedController.removeFunctionState(functionName);
+                sojournController.removeFunctionState(functionName);
+            }
+        }
+        return sample;
+    }
+
+    synchronized void removeFunctionState(String functionName) {
+        observedGenerations.remove(functionName);
         coordinator.removeFunctionState(functionName);
         budgetedController.removeFunctionState(functionName);
         sojournController.removeFunctionState(functionName);

@@ -1,21 +1,21 @@
 package it.unimib.datai.nanofaas.modules.syncqueue.scheduler;
 
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle;
+import it.unimib.datai.nanofaas.controlplane.scheduler.QueuedDispatchCapacity;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerDispatchSupport;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerLifecycleSupport;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueItem;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.context.SmartLifecycle;
-
 import java.time.Instant;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.SmartLifecycle;
 
 public class SyncScheduler implements SmartLifecycle {
     private static final Logger log = LoggerFactory.getLogger(SyncScheduler.class);
@@ -43,38 +43,25 @@ public class SyncScheduler implements SmartLifecycle {
      */
     private static final long CAPACITY_BLOCKED_AWAIT_MS = 50L;
 
-    private final InvocationEnqueuer enqueuer;
+    private final QueuedDispatchCapacity enqueuer;
     private final SyncQueueService queue;
-    private final Consumer<InvocationTask> dispatch;
+    private final InvocationDispatch dispatch;
+    private final QueueLifecycle queueLifecycle;
     private final WorkloadDiagnostics diagnostics;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final Object lifecycleMonitor = new Object();
     private final AtomicReference<ExecutorService> executor = new AtomicReference<>();
 
-    public SyncScheduler(InvocationEnqueuer enqueuer,
-                         SyncQueueService queue,
-                         it.unimib.datai.nanofaas.controlplane.service.InvocationService invocationService) {
-        this(enqueuer, queue, invocationService::dispatch, null);
+    public SyncScheduler(QueuedDispatchCapacity enqueuer, SyncQueueService queue, InvocationDispatch dispatch, QueueLifecycle queueLifecycle) {
+        this(enqueuer, queue, dispatch, queueLifecycle, null);
     }
 
-    public SyncScheduler(InvocationEnqueuer enqueuer,
-                         SyncQueueService queue,
-                         it.unimib.datai.nanofaas.controlplane.service.InvocationService invocationService,
-                         WorkloadDiagnostics diagnostics) {
-        this(enqueuer, queue, invocationService::dispatch, diagnostics);
-    }
-
-    SyncScheduler(InvocationEnqueuer enqueuer, SyncQueueService queue, Consumer<InvocationTask> dispatch) {
-        this(enqueuer, queue, dispatch, null);
-    }
-
-    SyncScheduler(InvocationEnqueuer enqueuer,
-                  SyncQueueService queue,
-                  Consumer<InvocationTask> dispatch,
-                  WorkloadDiagnostics diagnostics) {
+    public SyncScheduler(QueuedDispatchCapacity enqueuer, SyncQueueService queue,
+                         InvocationDispatch dispatch, QueueLifecycle queueLifecycle, WorkloadDiagnostics diagnostics) {
         this.enqueuer = enqueuer;
         this.queue = queue;
         this.dispatch = dispatch;
+        this.queueLifecycle = queueLifecycle;
         this.diagnostics = diagnostics;
     }
 
@@ -195,8 +182,9 @@ public class SyncScheduler implements SmartLifecycle {
         try {
             result = SchedulerDispatchSupport.dispatchWithFailureCleanup(
                     acquiredTask,
-                    () -> dispatch.accept(acquiredTask),
+                    () -> dispatch.dispatch(acquiredTask),
                     lease::release,
+                    failure -> queueLifecycle.rejected(acquiredTask, failure),
                     log
             );
             if (result == SchedulerDispatchSupport.Result.INPUT_BACKPRESSURED) {

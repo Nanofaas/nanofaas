@@ -36,11 +36,12 @@ class SyncQueueWorkloadMetricsTest {
 
         // The gateway seam has its own test in SyncQueueInvocationEnqueuerTest; what this
         // one pins is that the async endpoint stays disabled.
-        assertFalse(enqueuer.enabled());
+        assertFalse(it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer.class.isInstance(enqueuer));
         assertTrue(enqueuer.hasAvailableSlot("fn"));
-        assertTrue(enqueuer.tryAcquireSlot("fn"));
+        var lease = enqueuer.tryAcquireLease(task("held", "fn"));
+        assertNotNull(lease);
         assertFalse(enqueuer.hasAvailableSlot("fn"));
-        enqueuer.releaseDispatchSlot("fn");
+        lease.release();
         assertTrue(enqueuer.hasAvailableSlot("fn"));
     }
 
@@ -57,14 +58,16 @@ class SyncQueueWorkloadMetricsTest {
         SyncQueueInvocationEnqueuer enqueuer = new SyncQueueInvocationEnqueuer(registry);
         service.registerFunction("fn", 1);
 
-        assertTrue(enqueuer.tryAcquireSlot("fn"));
+        var lease = enqueuer.tryAcquireLease(task("held", "fn"));
+        assertNotNull(lease);
         service.removeFunctionState("fn");
 
-        enqueuer.releaseDispatchSlot("fn");
+        lease.release();
         service.registerFunction("fn", 1);
         var newState = registry.state("fn");
-        assertTrue(newState.tryAcquireSlot());
-        enqueuer.releaseDispatchSlot("fn");
+        var next = enqueuer.tryAcquireLease(task("new", "fn"));
+        assertNotNull(next);
+        next.release();
         assertEquals(0, newState.inFlight());
     }
 
@@ -81,7 +84,7 @@ class SyncQueueWorkloadMetricsTest {
         assertEquals(1, source.effectiveConcurrency("fn"));
         assertEquals(0, source.inFlight("fn"));
 
-        assertTrue(registry.tryAcquireSlot("fn"));
+        assertNotNull(registry.tryAcquireLease("fn", 1));
         assertEquals(0, source.dispatchableBacklog("fn"));
     }
 
@@ -111,13 +114,14 @@ class SyncQueueWorkloadMetricsTest {
     void removalRetainsAcquiredSlotUntilCompletionThenCleansIt() {
         FunctionCapacityRegistry capacity = new FunctionCapacityRegistry();
         capacity.register("fn", 1);
-        assertTrue(capacity.tryAcquireSlot("fn"));
+        var lease = capacity.tryAcquireLease("fn", 1);
+        assertNotNull(lease);
 
         capacity.remove("fn");
         assertEquals(0, capacity.inFlight("fn"));
-        capacity.releaseSlotAndGetHoldNanos("fn");
+        lease.release();
         assertEquals(0, capacity.effectiveConcurrency("fn"));
-        assertFalse(capacity.tryAcquireSlot("fn"));
+        assertNull(capacity.tryAcquireLease(capacity.activeGeneration("fn"), null));
     }
 
     @Test
@@ -126,7 +130,7 @@ class SyncQueueWorkloadMetricsTest {
         InvocationTask task = task("e1", "fn");
         ExecutionRecord execution = new ExecutionRecord(task.executionId(), task);
         fixture.store.put(execution);
-        assertTrue(fixture.enqueuer.tryAcquireSlot("fn"));
+        execution.attachDispatchLease(fixture.enqueuer.tryAcquireLease(task));
         execution.markRunning();
 
         new ExecutionCompletionHandler(fixture.store, fixture.enqueuer,
@@ -142,7 +146,7 @@ class SyncQueueWorkloadMetricsTest {
         InvocationTask task = task("e1", "fn");
         ExecutionRecord execution = new ExecutionRecord(task.executionId(), task);
         fixture.store.put(execution);
-        assertTrue(fixture.enqueuer.tryAcquireSlot("fn"));
+        execution.attachDispatchLease(fixture.enqueuer.tryAcquireLease(task));
         execution.markRunning();
         execution.markTimeout();
 

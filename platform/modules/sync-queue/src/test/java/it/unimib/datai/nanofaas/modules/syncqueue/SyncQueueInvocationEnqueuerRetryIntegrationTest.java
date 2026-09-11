@@ -92,10 +92,9 @@ class SyncQueueInvocationEnqueuerRetryIntegrationTest {
     /** Stand-in for SyncScheduler.tickOnceInternal: acquire the slot, pop the real ready queue, dispatch. */
     private static void pollAndDispatch(SyncQueueService queue, SyncQueueInvocationEnqueuer enqueuer,
                                         ExecutionCompletionHandler handler, String functionName) {
-        assertThat(enqueuer.tryAcquireSlot(functionName)).isTrue();
         SyncQueueItem item = queue.pollReady(Instant.now());
         assertThat(item).isNotNull();
-        handler.dispatch(item.task());
+        handler.dispatch(item.task().withDispatchLease(enqueuer.tryAcquireLease(item.task())));
     }
 
     @Test
@@ -103,7 +102,7 @@ class SyncQueueInvocationEnqueuerRetryIntegrationTest {
         FunctionCapacityRegistry capacityRegistry = new FunctionCapacityRegistry();
         SyncQueueInvocationEnqueuer enqueuer = new SyncQueueInvocationEnqueuer(capacityRegistry);
 
-        assertThat(enqueuer.enabled()).isFalse();
+        assertThat(it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer.class.isInstance(enqueuer)).isFalse();
     }
 
     @Test
@@ -267,7 +266,6 @@ class SyncQueueInvocationEnqueuerRetryIntegrationTest {
         store.put(record);
         assertThat(enqueuer.enqueue(task)).isTrue(); // fills the one queue slot
 
-        assertThat(enqueuer.tryAcquireSlot("fn")).isTrue();
         SyncQueueItem item = queue.pollReady(Instant.now()); // frees the slot, queue now empty
         assertThat(item.task()).isEqualTo(task);
 
@@ -277,7 +275,7 @@ class SyncQueueInvocationEnqueuerRetryIntegrationTest {
         store.put(new ExecutionRecord(filler.executionId(), filler));
         assertThat(enqueuer.enqueue(filler)).isTrue();
 
-        handler.dispatch(item.task()); // attempt 1 fails; handleRetry's re-enqueue must be rejected
+        handler.dispatch(item.task().withDispatchLease(enqueuer.tryAcquireLease(item.task()))); // attempt 1 fails; handleRetry's re-enqueue must be rejected
 
         assertThat(record.completion().isDone()).isTrue();
         assertThat(record.completion().join().success()).isFalse();

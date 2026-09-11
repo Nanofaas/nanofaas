@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * what keeps an old lease from decrementing a re-registered function's state
  * while it drains.
  */
-public final class DispatchLease {
+public final class DispatchLease implements DispatchOwnership {
     private final FunctionGeneration generation;
     private final Runnable releaseAction;
     private final AtomicBoolean released = new AtomicBoolean(false);

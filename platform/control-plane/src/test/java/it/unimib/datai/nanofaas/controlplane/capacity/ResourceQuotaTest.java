@@ -182,13 +182,13 @@ class ResourceQuotaTest {
         original.close();
 
         assertThat(registry.activeGeneration("echo")).isNull();
-        assertThat(registry.hasGeneration("echo")).isTrue();
+        assertThat(registry.retainsGeneration(retired)).isTrue();
         assertThat(quota.reservedForGeneration(retired)).isZero();
         assertThat(quota.tryReserve(retired, owner("late-callback"), 1)).isEmpty();
         assertThat(quota.reservedGlobally()).isZero();
 
         drainingCapacity.release();
-        assertThat(registry.hasGeneration("echo")).isFalse();
+        assertThat(registry.retainsGeneration(retired)).isFalse();
         assertThat(quota.tryReserve(retired, owner("post-drain-callback"), 1)).isEmpty();
         assertThat(quota.reservedGlobally()).isZero();
     }

@@ -1,20 +1,20 @@
 package it.unimib.datai.nanofaas.modules.asyncqueue;
 
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerDispatchSupport;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerLifecycleSupport;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
 import jakarta.annotation.PostConstruct;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.context.SmartLifecycle;
-
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongSupplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.SmartLifecycle;
 
 public class Scheduler implements SmartLifecycle, WorkSignaler {
     private static final Logger log = LoggerFactory.getLogger(Scheduler.class);
@@ -30,7 +30,8 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
     static final int DEFAULT_MAX_BATCH_PER_FUNCTION = 2;
 
     private final QueueManager queueManager;
-    private final InvocationService invocationService;
+    private final InvocationDispatch invocationService;
+    private final QueueLifecycle queueLifecycle;
     private final LongSupplier nanoTime;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final Object lifecycleMonitor = new Object();
@@ -42,23 +43,26 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
     private final Map<String, Long> signalTimes = new ConcurrentHashMap<>();
 
     public Scheduler(QueueManager queueManager,
-                     InvocationService invocationService) {
-        this(queueManager, invocationService, System::nanoTime);
+                     InvocationDispatch invocationService, QueueLifecycle queueLifecycle) {
+        this(queueManager, invocationService, queueLifecycle, System::nanoTime);
     }
 
     Scheduler(QueueManager queueManager,
-              InvocationService invocationService,
+              InvocationDispatch invocationService,
+              QueueLifecycle queueLifecycle,
               LongSupplier nanoTime) {
-        this(queueManager, invocationService, nanoTime, DEFAULT_MAX_BATCH_PER_FUNCTION);
+        this(queueManager, invocationService, queueLifecycle, nanoTime, DEFAULT_MAX_BATCH_PER_FUNCTION);
     }
 
     /** The batch is injectable so it can be compared; production uses the default. */
     Scheduler(QueueManager queueManager,
-              InvocationService invocationService,
+              InvocationDispatch invocationService,
+              QueueLifecycle queueLifecycle,
               LongSupplier nanoTime,
               int maxBatchPerFunction) {
         this.queueManager = queueManager;
         this.invocationService = invocationService;
+        this.queueLifecycle = queueLifecycle;
         this.nanoTime = nanoTime;
         this.maxBatchPerFunction = Math.max(1, maxBatchPerFunction);
     }
@@ -213,12 +217,13 @@ public class Scheduler implements SmartLifecycle, WorkSignaler {
                         task,
                         () -> invocationService.dispatch(task),
                         () -> task.dispatchLease().release(),
+                        failure -> queueLifecycle.rejected(task, failure),
                         log
                 );
                 if (result == SchedulerDispatchSupport.Result.INPUT_BACKPRESSURED) {
                     InvocationTask queuedTask = task.withDispatchLease(null);
                     if (!state.requeueAfterInputBackpressure(queuedTask)) {
-                        queuedTask.releaseQueuedInput();
+                        queueLifecycle.removed(queuedTask);
                     }
                 }
             } finally {

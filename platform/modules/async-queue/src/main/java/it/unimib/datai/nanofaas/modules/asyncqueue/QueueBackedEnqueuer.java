@@ -2,13 +2,16 @@ package it.unimib.datai.nanofaas.modules.asyncqueue;
 
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
+import it.unimib.datai.nanofaas.controlplane.service.RetryScheduler;
 
-public class QueueBackedEnqueuer implements InvocationEnqueuer {
+public class QueueBackedEnqueuer implements InvocationEnqueuer, RetryScheduler {
     private final QueueManager queueManager;
 
     public QueueBackedEnqueuer(QueueManager queueManager) {
         this.queueManager = queueManager;
     }
+
+    @Override public QueueStrategy queueStrategy() { return QueueStrategy.FUNCTION_QUEUE; }
 
     @Override
     public boolean enqueue(InvocationTask task) {
@@ -16,7 +19,7 @@ public class QueueBackedEnqueuer implements InvocationEnqueuer {
     }
 
     @Override
-    public boolean enabled() {
+    public boolean supportsAsync() {
         return true;
     }
 
@@ -25,18 +28,4 @@ public class QueueBackedEnqueuer implements InvocationEnqueuer {
         return queueManager.isQueueFull(functionName);
     }
 
-    @Override
-    public boolean hasAvailableSlot(String functionName) {
-        return queueManager.hasAvailableSlot(functionName);
-    }
-
-    @Override
-    public boolean tryAcquireSlot(String functionName) {
-        return queueManager.tryAcquireSlot(functionName);
-    }
-
-    @Override
-    public void releaseDispatchSlot(String functionName) {
-        queueManager.releaseSlot(functionName);
-    }
 }

@@ -1,7 +1,7 @@
 package it.unimib.datai.nanofaas.modules.autoscaler;
 
-import io.micrometer.core.instrument.Counter;
-import io.micrometer.core.instrument.MeterRegistry;
+import it.unimib.datai.nanofaas.controlplane.service.InvocationObservations;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 import org.slf4j.Logger;
@@ -14,13 +14,12 @@ public class ScalingMetricsReader {
     private static final Logger log = LoggerFactory.getLogger(ScalingMetricsReader.class);
 
     private final WorkloadMetricsSource scalingMetricsSource;
-    private final MeterRegistry meterRegistry;
-    private final Map<String, Counter> dispatchCounters = new ConcurrentHashMap<>();
+    private final InvocationObservations observations;
     private final Map<String, CounterSample> lastDispatchSamples = new ConcurrentHashMap<>();
 
-    public ScalingMetricsReader(WorkloadMetricsSource scalingMetricsSource, MeterRegistry meterRegistry) {
+    public ScalingMetricsReader(WorkloadMetricsSource scalingMetricsSource, InvocationObservations observations) {
         this.scalingMetricsSource = scalingMetricsSource;
-        this.meterRegistry = meterRegistry;
+        this.observations = observations;
     }
 
     public double readMetric(String functionName, ScalingMetric metric) {
@@ -52,18 +51,18 @@ public class ScalingMetricsReader {
     }
 
     void removeFunctionState(String functionName) {
-        dispatchCounters.remove(functionName);
         lastDispatchSamples.remove(functionName);
     }
 
     private double readRps(String functionName) {
-        Counter counter = dispatchCounters.computeIfAbsent(functionName, fn ->
-                Counter.builder("function_dispatch_total")
-                        .tag("function", fn)
-                        .register(meterRegistry));
-        CounterSample current = new CounterSample(counter.count(), System.currentTimeMillis());
+        var sample = observations.snapshot(functionName);
+        if (sample.generation() == null) {
+            lastDispatchSamples.remove(functionName);
+            return 0;
+        }
+        CounterSample current = new CounterSample(sample.generation(), sample.dispatched(), System.currentTimeMillis());
         CounterSample previous = lastDispatchSamples.put(functionName, current);
-        if (previous == null) {
+        if (previous == null || !previous.generation().equals(current.generation())) {
             return 0.0;
         }
 
@@ -75,6 +74,6 @@ public class ScalingMetricsReader {
         return deltaCount / (deltaMs / 1000.0);
     }
 
-    private record CounterSample(double count, long epochMs) {
+    private record CounterSample(FunctionGeneration generation, double count, long epochMs) {
     }
 }

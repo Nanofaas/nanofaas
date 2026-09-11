@@ -102,11 +102,12 @@ class SyncQueueServiceTest {
                 registry, null, service::onDispatchSlotReleased);
         service.registerFunction("fn", 1);
 
-        assertTrue(enqueuer.tryAcquireSlot("fn"));
+        var lease = enqueuer.tryAcquireLease(task("fn", "held"));
+        assertNotNull(lease);
         service.removeFunctionState("fn");
         assertEquals(1, service.lifecycleLockCount());
 
-        enqueuer.releaseDispatchSlot("fn");
+        lease.release();
 
         assertEquals(0, service.lifecycleLockCount());
     }
@@ -136,20 +137,21 @@ class SyncQueueServiceTest {
                 new SyncQueueMetrics(new SimpleMeterRegistry()), Clock.systemUTC(),
                 SyncQueueConfigSource.fixed(props.runtimeDefaults()), capacity, null);
         capacity.register("fn", 1);
-        assertTrue(capacity.tryAcquireSlot("fn"));
+        var lease = capacity.tryAcquireLease("fn", 1);
+        assertNotNull(lease);
 
         service.enqueueOrThrow(task("fn", "queued"));
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
             var remove = executor.submit(() -> service.removeFunctionState("fn"));
             assertTrue(removalBlocked.await(1, TimeUnit.SECONDS));
             var register = executor.submit(() -> service.registerFunction("fn", 1));
-            assertTrue(capacity.releaseSlotAndGetHoldNanos("fn") >= 0);
+            lease.release();
             allowRemoval.countDown();
             assertNull(remove.get());
             assertNull(register.get());
         }
 
-        assertTrue(capacity.tryAcquireSlot("fn"));
+        assertNotNull(capacity.tryAcquireLease("fn", 1));
     }
 
     @Test
@@ -165,7 +167,8 @@ class SyncQueueServiceTest {
                 SyncQueueConfigSource.fixed(props.runtimeDefaults()), capacity, null);
 
         service.registerFunction("fn", 1);
-        assertTrue(capacity.tryAcquireSlot("fn"));
+        var lease = capacity.tryAcquireLease("fn", 1);
+        assertNotNull(lease);
         service.removeFunctionState("fn");
 
         // A redeploy while the previous invocation is still in flight is an ordinary
@@ -178,7 +181,7 @@ class SyncQueueServiceTest {
             assertEquals(4, capacity.effectiveConcurrency("fn"));
             assertDoesNotThrow(() -> service.enqueueOrThrow(task("fn", "replacement")));
         } finally {
-            capacity.releaseSlotAndGetHoldNanos("fn");
+            lease.release();
         }
     }
 
@@ -440,11 +443,12 @@ class SyncQueueServiceTest {
         SyncQueueInvocationEnqueuer enqueuer = new SyncQueueInvocationEnqueuer(
                 registry, null, service::onDispatchSlotReleased, service);
         service.registerFunction("fn", 1);
-        assertTrue(enqueuer.tryAcquireSlot("fn"));
+        var lease = enqueuer.tryAcquireLease(task("fn", "held"));
+        assertNotNull(lease);
         service.enqueueOrThrow(task("queued", "fn"));
 
         long epochBefore = service.wakeupEpoch();
-        enqueuer.releaseDispatchSlot("fn");
+        lease.release();
 
         assertTrue(service.wakeupEpoch() > epochBefore,
                 "a slot release with queued work must advance the wakeup sequence so a parked "
@@ -464,10 +468,11 @@ class SyncQueueServiceTest {
         SyncQueueInvocationEnqueuer enqueuer = new SyncQueueInvocationEnqueuer(
                 registry, null, service::onDispatchSlotReleased, service);
         service.registerFunction("fn", 1);
-        assertTrue(enqueuer.tryAcquireSlot("fn"));
+        var lease = enqueuer.tryAcquireLease(task("fn", "held"));
+        assertNotNull(lease);
 
         long epochBefore = service.wakeupEpoch();
-        enqueuer.releaseDispatchSlot("fn");
+        lease.release();
 
         assertEquals(epochBefore, service.wakeupEpoch(),
                 "a release with no queued work must not wake an idle scheduler");
@@ -629,7 +634,8 @@ class SyncQueueServiceTest {
         store.put(secondRecord);
 
         service.registerFunction("fn", 1);
-        assertTrue(capacity.tryAcquireSlot("fn"));
+        var lease = capacity.tryAcquireLease("fn", 1);
+        assertNotNull(lease);
         service.removeFunctionState("fn");
 
         assertThrows(SyncQueueRejectedException.class, () -> service.enqueueOrThrow(first));
@@ -645,7 +651,7 @@ class SyncQueueServiceTest {
         Field field = SyncQueueService.class.getDeclaredField("removalFences");
         field.setAccessible(true);
         assertEquals(1, ((Map<?, ?>) field.get(service)).size());
-        assertTrue(capacity.releaseSlotAndGetHoldNanos("fn") >= 0);
+        lease.release();
         service.onDispatchSlotReleased("fn");
         assertTrue(((Map<?, ?>) field.get(service)).isEmpty());
     }

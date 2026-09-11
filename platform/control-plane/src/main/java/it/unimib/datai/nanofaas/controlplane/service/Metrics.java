@@ -23,7 +23,7 @@ import java.util.HashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Component
-public class Metrics {
+public class Metrics implements InvocationObservations {
     private static final String FUNCTION_TAG = "function";
     private final MeterRegistry registry;
     private final Map<String, FunctionMeters> meters = new ConcurrentHashMap<>();
@@ -173,6 +173,23 @@ public class Metrics {
             return removedFunctionTimers;
         }
         return metersFor.timers();
+    }
+
+    @Override
+    public Snapshot snapshot(String function) {
+        synchronized (functionStateMonitor) {
+            FunctionMeters current = meters.get(function);
+            OffloadMeterOwner owner = activeOffloadOwners.get(function);
+            if (current == null || owner == null) return Snapshot.absent();
+            if (capacityRegistry != null && !owner.generation().equals(capacityRegistry.activeGeneration(function))) {
+                return Snapshot.absent();
+            }
+            FunctionTimers timers = current.timers();
+            return new Snapshot(owner.generation(),
+                    new DurationTotals(timers.latency().count(), timers.latency().totalTime(java.util.concurrent.TimeUnit.MILLISECONDS)),
+                    new DurationTotals(timers.e2eLatency().count(), timers.e2eLatency().totalTime(java.util.concurrent.TimeUnit.MILLISECONDS)),
+                    current.dispatch().count());
+        }
     }
 
     public void registerFunction(String function) {

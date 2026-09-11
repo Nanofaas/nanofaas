@@ -83,7 +83,7 @@ class P07ConfiguredHttpCalibrationTest {
 
     @Test
     void t1CoreOnlySyncUnkeyedThroughConfiguredHttpRuntime() {
-        Assumptions.assumeFalse(enqueuer.enabled(), "run with -PcontrolPlaneModules=none");
+        Assumptions.assumeFalse(enqueuer.supportsAsync(), "run with -PcontrolPlaneModules=none");
         assertPublishedDefaults();
         String function = "p07-t1-http";
         register(function);
@@ -129,7 +129,7 @@ class P07ConfiguredHttpCalibrationTest {
 
     @Test
     void t2AsyncKeyedShapesThroughConfiguredQueueHttpRuntime() throws Exception {
-        Assumptions.assumeTrue(enqueuer.enabled(), "run with -PcontrolPlaneModules=async-queue");
+        Assumptions.assumeTrue(enqueuer.supportsAsync(), "run with -PcontrolPlaneModules=async-queue");
         assertPublishedDefaults();
         Map<String, Object> shapes = shapes();
 

@@ -15,7 +15,7 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionState;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
+import it.unimib.datai.nanofaas.controlplane.scheduler.QueuedDispatchCapacity;
 import it.unimib.datai.nanofaas.controlplane.service.ExecutionCompletionHandler;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationExecutionFactory;
 import it.unimib.datai.nanofaas.controlplane.service.Metrics;
@@ -46,9 +46,9 @@ class P07cInputBackpressureTest {
 
     @Test
     void physicalCopySaturationRequeuesInsteadOfSettlingAFunctionFailure() {
-        InvocationEnqueuer enqueuer = SchedulerLeaseTestSupport.enqueuer();
+        QueuedDispatchCapacity enqueuer = SchedulerLeaseTestSupport.enqueuer();
         when(enqueuer.hasAvailableSlot("fn")).thenReturn(true);
-        when(enqueuer.tryAcquireSlot("fn")).thenReturn(true);
+        it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.allow(enqueuer, "fn", true);
         ExecutionStore store = new ExecutionStore();
         SyncQueueService queue = queue(store);
         InvocationTask task = task();
@@ -57,7 +57,7 @@ class P07cInputBackpressureTest {
         queue.enqueueOrThrow(task);
         SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, ignored -> {
             throw new InvocationQuotaExceededException(InvocationQuotaExceededException.Resource.INPUT);
-        });
+        }, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
 
         scheduler.tickOnce();
 
@@ -68,9 +68,9 @@ class P07cInputBackpressureTest {
 
     @Test
     void dispatchReservationPreventsConcurrentAdmissionFromDisplacingBackpressuredItem() {
-        InvocationEnqueuer enqueuer = SchedulerLeaseTestSupport.enqueuer();
+        QueuedDispatchCapacity enqueuer = SchedulerLeaseTestSupport.enqueuer();
         when(enqueuer.hasAvailableSlot("fn")).thenReturn(true);
-        when(enqueuer.tryAcquireSlot("fn")).thenReturn(true);
+        it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.allow(enqueuer, "fn", true);
         ExecutionStore store = new ExecutionStore();
         SyncQueueService queue = queue(store, 1);
         InvocationTask first = task("first");
@@ -85,7 +85,7 @@ class P07cInputBackpressureTest {
                 secondRejected.set(true);
             }
             throw new InvocationQuotaExceededException(InvocationQuotaExceededException.Resource.INPUT);
-        });
+        }, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
 
         scheduler.tickOnce();
 
@@ -120,11 +120,11 @@ class P07cInputBackpressureTest {
         InvocationTask queuedTask = lookup.executionRecord().prepareForQueue();
         SyncQueueService queue = queue(store);
         queue.enqueueOrThrow(queuedTask);
-        InvocationEnqueuer enqueuer = SchedulerLeaseTestSupport.enqueuer();
+        QueuedDispatchCapacity enqueuer = SchedulerLeaseTestSupport.enqueuer();
         when(enqueuer.hasAvailableSlot("fn")).thenReturn(true);
-        when(enqueuer.tryAcquireSlot("fn")).thenReturn(true);
+        it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.allow(enqueuer, "fn", true);
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
-                store, enqueuer,
+                store, null,
                 new DispatcherRouter(new LocalDispatcher() {
                     @Override
                     public CompletableFuture<DispatchResult> dispatch(InvocationTask task) {
@@ -133,7 +133,7 @@ class P07cInputBackpressureTest {
                     }
                 }, null),
                 coreMetrics, null, generations);
-        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, handler::dispatch);
+        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, handler::dispatch, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
 
         scheduler.tickOnce();
 

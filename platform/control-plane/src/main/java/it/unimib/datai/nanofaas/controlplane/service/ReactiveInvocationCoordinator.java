@@ -201,7 +201,7 @@ public final class ReactiveInvocationCoordinator {
      * async queue never throws.
      */
     public boolean queueFullMeansRefusal(FunctionSpec spec) {
-        if (syncQueueGateway.enabled() || !enqueuer.enabled()) {
+        if (syncQueueGateway.enabled() || enqueuer.queueStrategy() != InvocationEnqueuer.QueueStrategy.FUNCTION_QUEUE) {
             return false;
         }
         return !offloadGateway.enabled() || !offloadGateway.shouldOffloadEagerly(spec);
@@ -216,8 +216,8 @@ public final class ReactiveInvocationCoordinator {
                 queuedTask.releaseQueuedInput();
                 throw failure;
             }
-        } else if (enqueuer.enabled()) {
-            InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, executionRecord);
+        } else if (enqueuer.queueStrategy() == InvocationEnqueuer.QueueStrategy.FUNCTION_QUEUE) {
+            InvocationEnqueueSupport.enqueueOrThrow(enqueuer::enqueue, metrics, executionRecord);
         } else {
             metrics.admitted(executionRecord.task().functionName(), executionRecord.task().kind());
             // Direct admission: the core acquires the capacity lease and bounds the work;

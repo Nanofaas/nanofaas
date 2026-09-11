@@ -10,7 +10,7 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
 import it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncScheduler;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
 import org.junit.jupiter.api.Test;
@@ -56,8 +56,8 @@ class SyncQueueRuntimeActivationRegressionTest {
         }
 
         @Bean
-        InvocationService invocationService() {
-            return mock(InvocationService.class);
+        InvocationDispatch invocationService() {
+            return mock(InvocationDispatch.class);
         }
 
         @Bean
@@ -95,7 +95,7 @@ class SyncQueueRuntimeActivationRegressionTest {
                             + "activation is drained without a restart")
                     .isTrue();
 
-            InvocationService invocationService = context.getBean(InvocationService.class);
+            InvocationDispatch invocationService = context.getBean(InvocationDispatch.class);
             CountDownLatch dispatched = new CountDownLatch(1);
             doAnswer(invocation -> {
                 dispatched.countDown();

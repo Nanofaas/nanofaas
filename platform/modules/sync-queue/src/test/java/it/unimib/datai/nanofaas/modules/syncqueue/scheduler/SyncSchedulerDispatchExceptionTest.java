@@ -8,7 +8,7 @@ import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
+import it.unimib.datai.nanofaas.controlplane.scheduler.QueuedDispatchCapacity;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueMetrics;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
@@ -30,13 +30,13 @@ class SyncSchedulerDispatchExceptionTest {
     @Test
     void dispatchException_releasesSlot() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
+        QueuedDispatchCapacity enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         FunctionSpec spec = new FunctionSpec(
                 "fn", "image", null, Map.of(), null,
                 1000, 1, 10, 3, null, ExecutionMode.LOCAL, null, null, null
         );
         when(enqueuer.hasAvailableSlot("fn")).thenReturn(true);
-        when(enqueuer.tryAcquireSlot("fn")).thenReturn(true);
+        it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.allow(enqueuer, "fn", true);
 
         SyncQueueProperties props = new SyncQueueProperties(
                 true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
@@ -59,23 +59,25 @@ class SyncSchedulerDispatchExceptionTest {
         // Dispatch that throws an exception
         SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, t -> {
             throw new RuntimeException("dispatch failed");
-        });
+        }, store);
 
         scheduler.tickOnce();
 
-        verify(enqueuer).releaseDispatchSlot("fn");
+        org.junit.jupiter.api.Assertions.assertEquals(1, it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.released(enqueuer, "fn"));
+        org.junit.jupiter.api.Assertions.assertNotNull(store.outcomeOf("e1"));
+        org.junit.jupiter.api.Assertions.assertEquals("DISPATCH_REJECTED", store.outcomeOf("e1").error().code());
     }
 
     @Test
     void dispatchSuccess_doesNotReleaseSlot() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
+        QueuedDispatchCapacity enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         FunctionSpec spec = new FunctionSpec(
                 "fn", "image", null, Map.of(), null,
                 1000, 1, 10, 3, null, ExecutionMode.LOCAL, null, null, null
         );
         when(enqueuer.hasAvailableSlot("fn")).thenReturn(true);
-        when(enqueuer.tryAcquireSlot("fn")).thenReturn(true);
+        it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.allow(enqueuer, "fn", true);
 
         SyncQueueProperties props = new SyncQueueProperties(
                 true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
@@ -96,11 +98,11 @@ class SyncSchedulerDispatchExceptionTest {
         queue.enqueueOrThrow(task);
 
         // Dispatch that succeeds (no exception)
-        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, t -> { /* success */ });
+        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, t -> { /* success */ }, store);
 
         scheduler.tickOnce();
 
-        verify(enqueuer, never()).releaseDispatchSlot("fn");
+        org.junit.jupiter.api.Assertions.assertEquals(0, it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.released(enqueuer, "fn"));
     }
 
     @Test
@@ -130,7 +132,7 @@ class SyncSchedulerDispatchExceptionTest {
 
         new SyncScheduler(enqueuer, queue, ignored -> {
             throw new RuntimeException("dispatch failed");
-        }).tickOnce();
+        }, store).tickOnce();
 
         assertEquals(0, capacity.inFlight("fn"));
     }

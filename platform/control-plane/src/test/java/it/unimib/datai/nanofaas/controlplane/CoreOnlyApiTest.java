@@ -63,13 +63,13 @@ class CoreOnlyApiTest {
 
     @Test
     void disabledInvocationEnqueuerReportsUnavailable() {
-        Assumptions.assumeFalse(invocationEnqueuer.enabled());
-        assertThat(invocationEnqueuer.enabled()).isFalse();
+        Assumptions.assumeFalse(invocationEnqueuer.supportsAsync());
+        assertThat(invocationEnqueuer.supportsAsync()).isFalse();
     }
 
     @Test
     void asyncEnqueueReturns501WhenAsyncQueueModuleIsNotLoaded() {
-        Assumptions.assumeFalse(invocationEnqueuer.enabled());
+        Assumptions.assumeFalse(invocationEnqueuer.supportsAsync());
         webTestClient.post()
                 .uri("/v1/functions/echo:enqueue")
                 .bodyValue(new InvocationRequest("payload", Map.of()))

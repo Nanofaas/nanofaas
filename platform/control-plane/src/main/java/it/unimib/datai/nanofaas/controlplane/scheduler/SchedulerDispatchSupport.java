@@ -10,6 +10,7 @@ public final class SchedulerDispatchSupport {
     public static Result dispatchWithFailureCleanup(InvocationTask task,
                                                     Runnable dispatchAction,
                                                     Runnable failureCleanup,
+                                                    java.util.function.Consumer<Throwable> rejected,
                                                     Logger log) {
         try {
             dispatchAction.run();
@@ -19,8 +20,8 @@ public final class SchedulerDispatchSupport {
             log.debug("Input capacity blocked dispatch for execution {}", task.executionId());
             return Result.INPUT_BACKPRESSURED;
         } catch (RuntimeException | Error ex) {
-            task.releaseQueuedInput();
-            failureCleanup.run();
+            try { failureCleanup.run(); }
+            finally { rejected.accept(ex); }
             log.error("Dispatch failed for execution {}: {}", task.executionId(), ex.getMessage(), ex);
             return Result.FAILED;
         }

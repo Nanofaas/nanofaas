@@ -139,11 +139,11 @@ class DispatchLifecycleAndCancellationTest {
         };
 
         // Production wiring: the core-only retry enqueuer shares the capacity registry and
-        // dispatches through dispatchWithLease, so a retry must re-acquire a slot.
+        // dispatches the immutable task with its ownership handle, so a retry must re-acquire a slot.
         ExecutionCompletionHandler[] holder = new ExecutionCompletionHandler[1];
         ExecutorBackedInvocationEnqueuer enqueuer = new ExecutorBackedInvocationEnqueuer(
-                (task, lease) -> holder[0].dispatchWithLease(task, lease), capacity, retryExecutor);
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, enqueuer,
+                task -> holder[0].dispatch(task), capacity, retryExecutor);
+        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, enqueuer::enqueue,
                 new DispatcherRouter(local, null), metrics, null, capacity);
         holder[0] = handler;
 

@@ -19,7 +19,8 @@ import java.util.function.LongSupplier;
  * transition, and the state is drained only once its last slot comes back
  * ({@link GenerationPhase#CLOSED}).
  */
-public final class FunctionCapacityState {
+public final class FunctionCapacityState implements CapacityView {
+    private final FunctionGeneration generation;
     private final LongSupplier nanoTime;
     private final Runnable onDrained;
     private final Deque<Long> acquiredAt = new ArrayDeque<>();
@@ -27,22 +28,18 @@ public final class FunctionCapacityState {
     private volatile int configuredConcurrency;
     private volatile int effectiveConcurrency;
 
-    public FunctionCapacityState(int concurrency) {
-        this(concurrency, System::nanoTime, null);
-    }
-
-    public FunctionCapacityState(int concurrency, LongSupplier nanoTime) {
-        this(concurrency, nanoTime, null);
-    }
-
-    FunctionCapacityState(int concurrency, LongSupplier nanoTime, Runnable onDrained) {
+    FunctionCapacityState(FunctionGeneration generation, int concurrency, LongSupplier nanoTime, Runnable onDrained) {
+        this.generation = generation;
         this.nanoTime = nanoTime;
         this.onDrained = onDrained;
         configuredConcurrency = Math.max(1, concurrency);
         effectiveConcurrency = configuredConcurrency;
     }
 
-    public synchronized boolean tryAcquireSlot() {
+    @Override
+    public FunctionGeneration generation() { return generation; }
+
+    synchronized boolean tryAcquireSlot() {
         if (!lifecycle.retainIfBelow(effectiveConcurrency)) {
             return false;
         }
@@ -50,13 +47,7 @@ public final class FunctionCapacityState {
         return true;
     }
 
-    public synchronized void incrementInFlight() {
-        if (lifecycle.retain()) {
-            acquiredAt.addLast(nanoTime.getAsLong());
-        }
-    }
-
-    public long releaseSlotAndGetHoldNanos() {
+    long releaseSlotAndGetHoldNanos() {
         long holdNanos;
         boolean drained;
         synchronized (this) {
@@ -74,11 +65,11 @@ public final class FunctionCapacityState {
         return holdNanos;
     }
 
-    public void releaseSlot() {
+    void releaseSlot() {
         releaseSlotAndGetHoldNanos();
     }
 
-    public synchronized void concurrency(int concurrency) {
+    synchronized void concurrency(int concurrency) {
         int previous = configuredConcurrency;
         int normalized = Math.max(1, concurrency);
         configuredConcurrency = normalized;
@@ -87,7 +78,7 @@ public final class FunctionCapacityState {
         }
     }
 
-    public synchronized void setEffectiveConcurrency(int concurrency) {
+    synchronized void setEffectiveConcurrency(int concurrency) {
         effectiveConcurrency = Math.clamp(concurrency, 1, configuredConcurrency);
     }
 
@@ -121,7 +112,7 @@ public final class FunctionCapacityState {
      * Idempotent — the drain callback runs once, on the transition that actually closes
      * the generation.
      */
-    public void deactivate() {
+    void deactivate() {
         boolean drained;
         synchronized (this) {
             drained = lifecycle.retire();

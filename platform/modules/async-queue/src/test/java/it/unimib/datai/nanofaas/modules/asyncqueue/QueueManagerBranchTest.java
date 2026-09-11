@@ -29,18 +29,7 @@ class QueueManagerBranchTest {
     void tryAcquireSlot_unknownFunction_returnsFalse() {
         QueueManager queueManager = new QueueManager(new SimpleMeterRegistry());
 
-        assertThat(queueManager.tryAcquireSlot("missing")).isFalse();
-    }
-
-    @Test
-    void releaseSlot_andIncrementDecrement_unknownFunction_doNotThrow() {
-        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry());
-
-        assertThatCode(() -> {
-            queueManager.releaseSlot("missing");
-            queueManager.incrementInFlight("missing");
-            queueManager.decrementInFlight("missing");
-        }).doesNotThrowAnyException();
+        assertThat(queueManager.tryAcquireLease("missing", queueManager.get("missing"))).isNull();
     }
 
     @Test
@@ -50,11 +39,11 @@ class QueueManagerBranchTest {
         FunctionSpec updated = spec("fn", 2, 10);
 
         queueManager.getOrCreate(initial);
-        assertThat(queueManager.tryAcquireSlot("fn")).isTrue();
-        assertThat(queueManager.tryAcquireSlot("fn")).isFalse();
+        assertThat(queueManager.tryAcquireLease("fn", queueManager.get("fn"))).isNotNull();
+        assertThat(queueManager.tryAcquireLease("fn", queueManager.get("fn"))).isNull();
 
         queueManager.getOrCreate(updated);
-        assertThat(queueManager.tryAcquireSlot("fn")).isTrue();
+        assertThat(queueManager.tryAcquireLease("fn", queueManager.get("fn"))).isNotNull();
     }
 
     private InvocationTask task(String functionName) {

@@ -1,30 +1,30 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.common.model.ErrorInfo;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
-import it.unimib.datai.nanofaas.controlplane.capacity.DispatchLease;
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchAttempt;
+import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.capacity.InvocationQuotaExceededException;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
-import it.unimib.datai.nanofaas.common.model.ErrorInfo;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadGateway;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.lang.Nullable;
-import org.springframework.stereotype.Service;
-
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.lang.Nullable;
+import org.springframework.stereotype.Service;
 
 /**
  * Handles dispatch to execution runtimes and post-dispatch completion (retry, metrics, state transitions).
@@ -34,7 +34,7 @@ import java.util.concurrent.TimeoutException;
  * lifecycle.</p>
  */
 @Service
-public class ExecutionCompletionHandler {
+public class ExecutionCompletionHandler implements InvocationDispatch {
     private static final Logger log = LoggerFactory.getLogger(ExecutionCompletionHandler.class);
 
     /**
@@ -44,7 +44,7 @@ public class ExecutionCompletionHandler {
     static final String EXECUTION_EXPIRED_CODE = "EXECUTION_EXPIRED";
 
     private final ExecutionStore executionStore;
-    private final InvocationEnqueuer enqueuer;
+    private final RetryScheduler enqueuer;
     private final DispatcherRouter dispatcherRouter;
     private final Metrics metrics;
     @Nullable private final DeploymentWakeUpGate wakeUpGate;
@@ -56,13 +56,13 @@ public class ExecutionCompletionHandler {
      */
     @org.springframework.beans.factory.annotation.Autowired
     public ExecutionCompletionHandler(ExecutionStore executionStore,
-                                      @Nullable InvocationEnqueuer enqueuer,
+                                      @Nullable RetryScheduler enqueuer,
                                       DispatcherRouter dispatcherRouter,
                                       Metrics metrics,
                                       DeploymentWakeUpGate wakeUpGate,
                                       FunctionCapacityRegistry capacityRegistry) {
         this.executionStore = executionStore;
-        this.enqueuer = enqueuer == null ? InvocationEnqueuer.noOp() : enqueuer;
+        this.enqueuer = enqueuer == null ? RetryScheduler.unavailable() : enqueuer;
         this.dispatcherRouter = dispatcherRouter;
         this.metrics = metrics;
         this.wakeUpGate = wakeUpGate;
@@ -87,7 +87,7 @@ public class ExecutionCompletionHandler {
      * uses the Spring constructor above.
      */
     public ExecutionCompletionHandler(ExecutionStore executionStore,
-                                      @Nullable InvocationEnqueuer enqueuer,
+                                      @Nullable RetryScheduler enqueuer,
                                       DispatcherRouter dispatcherRouter,
                                       Metrics metrics) {
         this(executionStore, enqueuer, dispatcherRouter, metrics,
@@ -96,7 +96,7 @@ public class ExecutionCompletionHandler {
 
     /** Compatibility constructor that also passes a wake-up gate, without a shared registry. */
     public ExecutionCompletionHandler(ExecutionStore executionStore,
-                                      @Nullable InvocationEnqueuer enqueuer,
+                                      @Nullable RetryScheduler enqueuer,
                                       DispatcherRouter dispatcherRouter,
                                       Metrics metrics,
                                       DeploymentWakeUpGate wakeUpGate) {
@@ -187,7 +187,7 @@ public class ExecutionCompletionHandler {
      * unbounded work. Sync-disabled is not capacity-disabled.
      */
     public void dispatchDirect(InvocationTask task) {
-        DispatchLease lease = capacityRegistry.tryAcquireLease(
+        DispatchOwnership lease = capacityRegistry.tryAcquireLease(
                 task.functionName(), task.functionSpec().concurrency());
         if (lease == null) {
             throw new QueueFullException();
@@ -196,25 +196,15 @@ public class ExecutionCompletionHandler {
     }
 
     /**
-     * Dispatches with a lease already acquired by the caller (the core-only retry enqueuer).
-     * The lease travels with the attempt and is released exactly once by its completion.
-     */
-    public void dispatchWithLease(InvocationTask task, DispatchLease lease) {
-        dispatchInternal(task, lease);
-    }
-
-    /**
      * Shared body for direct, retry and queue dispatch. All production schedulers pass
      * their acquired lease with the task. A null lease supports legacy in-process callers.
      */
-    private void dispatchInternal(InvocationTask task, @Nullable DispatchLease directLease) {
+    private void dispatchInternal(InvocationTask task, @Nullable DispatchOwnership directLease) {
         ExecutionRecord executionRecord = executionStore.getOrNull(task.executionId());
         if (executionRecord == null) {
             task.releaseQueuedInput();
             if (directLease != null) {
                 directLease.release();
-            } else {
-                releaseDispatchSlot(task.functionName());
             }
             return;
         }
@@ -249,8 +239,6 @@ public class ExecutionCompletionHandler {
             task.releaseQueuedInput();
             if (directLease != null) {
                 directLease.release();
-            } else {
-                releaseDispatchSlotOnce(executionRecord, task.attempt(), task.functionName());
             }
             executionStore.settle(executionRecord);
             return;
@@ -258,7 +246,6 @@ public class ExecutionCompletionHandler {
         if (inputFailure != null) {
             if (physicalInput != null) physicalInput.close();
             if (directLease != null) directLease.release();
-            else releaseDispatchSlotOnce(executionRecord, task.attempt(), task.functionName());
             if (inputFailure instanceof InvocationQuotaExceededException quotaFailure) {
                 throw quotaFailure;
             }
@@ -289,7 +276,6 @@ public class ExecutionCompletionHandler {
         } catch (RuntimeException | Error ex) {
             attemptInput.close();
             if (directLease != null) directLease.release();
-            else releaseDispatchSlotOnce(executionRecord, task.attempt(), task.functionName());
             // No transport was created: return the already-acquired capacity here.
             InvocationResult failure = InvocationResult.error(mode.name() + "_ERROR", ex.getMessage());
             if (ex instanceof Error error) {
@@ -315,7 +301,6 @@ public class ExecutionCompletionHandler {
         CompletableFuture<Void> resourcesDrained = dispatch.drained().handle((ignored, drainError) -> {
             try {
                 if (ownership.lease() != null) ownership.lease().release();
-                else releaseDispatchSlotOnce(executionRecord, attemptAtDispatch, task.functionName());
             } finally {
                 attemptInput.close();
             }
@@ -475,7 +460,7 @@ public class ExecutionCompletionHandler {
         // direct-admission path: this is the generation the attempt was admitted under,
         // not whatever the registry considers active by the time metrics are recorded.
         FunctionGeneration generation = executionRecord.currentGeneration();
-        releaseAttemptCapacity(executionRecord, attempt, functionName);
+        releaseAttemptCapacity(executionRecord);
         if (isTerminal(executionRecord.state())) {
             return null;
         }
@@ -550,7 +535,7 @@ public class ExecutionCompletionHandler {
         );
         executionRecord.resetForRetry(retryTask);
         try {
-            InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, executionRecord);
+            InvocationEnqueueSupport.enqueueOrThrow(enqueuer::enqueue, metrics, executionRecord);
             return null;
         } catch (RuntimeException | Error ex) {
             // QueueFullException is the expected refusal; anything else is belt-and-braces.
@@ -680,7 +665,7 @@ public class ExecutionCompletionHandler {
         FunctionGeneration generation = executionRecord.currentGeneration();
         // Compatibility records can own a bookkeeping slot; active transports release
         // their own capacity on completion, including a cancellation acknowledgement.
-        releaseAttemptCapacity(executionRecord, task.attempt(), task.functionName());
+        releaseAttemptCapacity(executionRecord);
         if (handle != null) {
             handle.cancel(true);
         }
@@ -724,27 +709,11 @@ public class ExecutionCompletionHandler {
         }
     }
 
-    private void releaseDispatchSlot(String functionName) {
-        enqueuer.releaseDispatchSlot(functionName);
-    }
-
-    private void releaseDispatchSlotOnce(ExecutionRecord executionRecord, int attempt, String functionName) {
-        if (executionRecord.markDispatchSlotReleased(attempt)) {
-            releaseDispatchSlot(functionName);
-        }
-    }
-
-    /** Legacy completion adapter; production dispatch leases are owned by raw work. */
-    private void releaseAttemptCapacity(ExecutionRecord executionRecord, int attempt, String functionName) {
+    /** Untransferred handles may be concluded here; dispatched capacity belongs to physical work. */
+    private void releaseAttemptCapacity(ExecutionRecord executionRecord) {
         if (executionRecord.capacityOwnedByTransport()) return;
-        if (executionRecord.wasDirectAdmission()) {
-            DispatchLease lease = executionRecord.takeDispatchLease();
-            if (lease != null) {
-                lease.release();
-            }
-        } else if (executionRecord.wasDispatched()) {
-            releaseDispatchSlotOnce(executionRecord, attempt, functionName);
-        }
+        DispatchOwnership lease = executionRecord.takeDispatchLease();
+        if (lease != null) lease.release();
     }
 
     private static void bestEffort(Runnable observer) {

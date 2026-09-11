@@ -82,7 +82,7 @@ class InvocationServiceAsyncReplayTest {
         metrics = spy(new Metrics(new SimpleMeterRegistry()));
 
         ExecutionCompletionHandler completionHandler = new ExecutionCompletionHandler(
-                executionStore, enqueuer, dispatcherRouter, metrics);
+                executionStore, enqueuer::enqueue, dispatcherRouter, metrics);
 
         invocationService = TestWaiterCapacity.service(
                 functionService,
@@ -114,7 +114,8 @@ class InvocationServiceAsyncReplayTest {
 
         when(functionService.get("testFunc")).thenReturn(Optional.of(testSpec));
         when(enqueuer.enqueue(any())).thenReturn(true);
-        when(enqueuer.enabled()).thenReturn(true);
+        when(enqueuer.supportsAsync()).thenReturn(true);
+        org.mockito.Mockito.lenient().when(enqueuer.queueStrategy()).thenReturn(InvocationEnqueuer.QueueStrategy.FUNCTION_QUEUE);
         when(syncQueueGateway.enabled()).thenReturn(false);
     }
 
@@ -249,7 +250,7 @@ class InvocationServiceAsyncReplayTest {
                 new SimpleMeterRegistry());
         idempotencyStore = new IdempotencyStore();
         ExecutionCompletionHandler completionHandler = new ExecutionCompletionHandler(
-                executionStore, enqueuer, dispatcherRouter, metrics);
+                executionStore, enqueuer::enqueue, dispatcherRouter, metrics);
         invocationService = TestWaiterCapacity.service(
                 functionService, enqueuer, executionStore, idempotencyStore, metrics, syncQueueGateway,
                 completionHandler, "testFunc");

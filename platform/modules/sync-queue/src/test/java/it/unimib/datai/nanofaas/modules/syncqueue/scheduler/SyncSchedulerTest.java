@@ -8,7 +8,7 @@ import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
+import it.unimib.datai.nanofaas.controlplane.scheduler.QueuedDispatchCapacity;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueMetrics;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -31,10 +32,10 @@ import static org.mockito.Mockito.when;
 class SyncSchedulerTest {
     @Test
     void dispatchesWhenSlotAvailable() {
-        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
+        QueuedDispatchCapacity enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         when(enqueuer.hasAvailableSlot("fn")).thenReturn(true);
-        when(enqueuer.tryAcquireSlot("fn")).thenReturn(true);
+        it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.allow(enqueuer, "fn", true);
 
         ExecutionStore store = new ExecutionStore();
         SyncQueueService queue = queue(store);
@@ -44,7 +45,7 @@ class SyncSchedulerTest {
         queue.enqueueOrThrow(task);
 
         AtomicInteger dispatchCount = new AtomicInteger();
-        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, t -> dispatchCount.incrementAndGet());
+        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, t -> dispatchCount.incrementAndGet(), org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
 
         scheduler.tickOnce();
 
@@ -53,10 +54,10 @@ class SyncSchedulerTest {
 
     @Test
     void leavesItemQueuedWhenSlotAcquisitionFailsAfterSelection() {
-        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
+        QueuedDispatchCapacity enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         when(enqueuer.hasAvailableSlot("fn")).thenReturn(true);
-        when(enqueuer.tryAcquireSlot("fn")).thenReturn(false, true);
+        it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.allow(enqueuer, "fn", false, true);
 
         ExecutionStore store = new ExecutionStore();
         SyncQueueService queue = queue(store);
@@ -66,7 +67,7 @@ class SyncSchedulerTest {
         queue.enqueueOrThrow(task);
 
         AtomicInteger dispatchCount = new AtomicInteger();
-        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, t -> dispatchCount.incrementAndGet());
+        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, t -> dispatchCount.incrementAndGet(), org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
 
         scheduler.tickOnce();
 
@@ -81,10 +82,10 @@ class SyncSchedulerTest {
 
     @Test
     void failedSlotAcquisitionDoesNotCreateTemporaryQueueCapacity() {
-        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
+        QueuedDispatchCapacity enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         when(enqueuer.hasAvailableSlot("fn")).thenReturn(true);
-        when(enqueuer.tryAcquireSlot("fn")).thenReturn(false);
+        it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.allow(enqueuer, "fn", false);
 
         ExecutionStore store = new ExecutionStore();
         SyncQueueService queue = queue(store, 1);
@@ -96,7 +97,7 @@ class SyncSchedulerTest {
         queue.enqueueOrThrow(task);
 
         AtomicInteger dispatchCount = new AtomicInteger();
-        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, t -> dispatchCount.incrementAndGet());
+        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, t -> dispatchCount.incrementAndGet(), org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
 
         scheduler.tickOnce();
 
@@ -107,7 +108,7 @@ class SyncSchedulerTest {
 
     @Test
     void blockedScanRotationDoesNotCreateTemporaryQueueCapacity() {
-        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
+        QueuedDispatchCapacity enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         FunctionSpec spec = new FunctionSpec("blocked", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         when(enqueuer.hasAvailableSlot("blocked")).thenReturn(false);
 
@@ -121,7 +122,7 @@ class SyncSchedulerTest {
         queue.enqueueOrThrow(task);
 
         SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, t -> {
-        });
+        }, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
 
         scheduler.tickOnce();
 
@@ -131,12 +132,12 @@ class SyncSchedulerTest {
 
     @Test
     void selectsLaterTaskWhenHeadFunctionHasNoAvailableSlot() {
-        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
+        QueuedDispatchCapacity enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         FunctionSpec blockedSpec = new FunctionSpec("blocked", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         FunctionSpec readySpec = new FunctionSpec("ready", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         when(enqueuer.hasAvailableSlot("blocked")).thenReturn(false);
         when(enqueuer.hasAvailableSlot("ready")).thenReturn(true);
-        when(enqueuer.tryAcquireSlot("ready")).thenReturn(true);
+        it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.allow(enqueuer, "ready", true);
 
         ExecutionStore store = new ExecutionStore();
         SyncQueueService queue = queue(store);
@@ -152,7 +153,7 @@ class SyncSchedulerTest {
         SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, t -> {
             assertEquals("ready", t.functionName());
             dispatchCount.incrementAndGet();
-        });
+        }, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
 
         scheduler.tickOnce();
 
@@ -160,18 +161,18 @@ class SyncSchedulerTest {
         assertEquals(1, queue.queuedItems());
         verify(enqueuer).hasAvailableSlot("blocked");
         verify(enqueuer).hasAvailableSlot("ready");
-        verify(enqueuer, never()).tryAcquireSlot("blocked");
+        verify(enqueuer, never()).tryAcquireLease(argThat(t -> t != null && t.functionName().equals("blocked")));
     }
 
     @Test
     void rotatesCandidateWhenFinalSlotAcquisitionFails() {
-        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
+        QueuedDispatchCapacity enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         FunctionSpec hotSpec = new FunctionSpec("hot", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         FunctionSpec readySpec = new FunctionSpec("ready", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         when(enqueuer.hasAvailableSlot("hot")).thenReturn(true);
         when(enqueuer.hasAvailableSlot("ready")).thenReturn(true);
-        when(enqueuer.tryAcquireSlot("hot")).thenReturn(false);
-        when(enqueuer.tryAcquireSlot("ready")).thenReturn(true);
+        it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.allow(enqueuer, "hot", false);
+        it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.allow(enqueuer, "ready", true);
 
         ExecutionStore store = new ExecutionStore();
         SyncQueueService queue = queue(store);
@@ -187,7 +188,7 @@ class SyncSchedulerTest {
         SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, t -> {
             assertEquals("ready", t.functionName());
             dispatchCount.incrementAndGet();
-        });
+        }, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
 
         scheduler.tickOnce();
         assertEquals(0, dispatchCount.get());
@@ -196,18 +197,18 @@ class SyncSchedulerTest {
 
         assertEquals(1, dispatchCount.get());
         assertEquals(1, queue.queuedItems());
-        verify(enqueuer).tryAcquireSlot("hot");
-        verify(enqueuer).tryAcquireSlot("ready");
+        verify(enqueuer).tryAcquireLease(argThat(t -> t != null && t.functionName().equals("hot")));
+        verify(enqueuer).tryAcquireLease(argThat(t -> t != null && t.functionName().equals("ready")));
     }
 
     @Test
     void eventuallySelectsReadyTaskBeyondFirstScanWindow() {
-        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
+        QueuedDispatchCapacity enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
         FunctionSpec blockedSpec = new FunctionSpec("blocked", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         FunctionSpec readySpec = new FunctionSpec("ready", "image", null, Map.of(), null, 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         when(enqueuer.hasAvailableSlot("blocked")).thenReturn(false);
         when(enqueuer.hasAvailableSlot("ready")).thenReturn(true);
-        when(enqueuer.tryAcquireSlot("ready")).thenReturn(true);
+        it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.allow(enqueuer, "ready", true);
 
         ExecutionStore store = new ExecutionStore();
         SyncQueueService queue = queue(store);
@@ -224,7 +225,7 @@ class SyncSchedulerTest {
         SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, t -> {
             assertEquals("ready", t.functionName());
             dispatchCount.incrementAndGet();
-        });
+        }, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
 
         scheduler.tickOnce();
         assertEquals(0, dispatchCount.get());

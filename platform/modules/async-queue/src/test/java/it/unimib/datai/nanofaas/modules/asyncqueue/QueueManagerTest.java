@@ -43,7 +43,8 @@ class QueueManagerTest {
         QueueManager manager = new QueueManager(new SimpleMeterRegistry());
         FunctionSpec spec = spec("race", 1);
         FunctionQueueState oldState = manager.getOrCreate(spec);
-        assertThat(oldState.tryAcquireSlot()).isTrue();
+        var oldLease = manager.tryAcquireLease(spec.name(), oldState);
+        assertThat(oldLease).isNotNull();
 
         AtomicReference<Throwable> removeFailure = new AtomicReference<>();
         Thread remove;
@@ -62,7 +63,7 @@ class QueueManagerTest {
                     .until(() -> remove.getState() == Thread.State.BLOCKED);
             register = executor.submit(() -> manager.getOrCreate(spec));
             assertThat(register.isDone()).isFalse();
-            manager.releaseSlot("race", oldState);
+            oldLease.release();
         }
         remove.join(1000);
         assertThat(remove.isAlive()).isFalse();
@@ -73,7 +74,7 @@ class QueueManagerTest {
         FunctionQueueState newState = manager.get("race");
         assertThat(newState).isNotNull();
         assertThat(oldState.inFlight()).isZero();
-        assertThat(newState.tryAcquireSlot()).isTrue();
+        assertThat(manager.tryAcquireLease(spec.name(), newState)).isNotNull();
     }
 
     @Test
@@ -113,15 +114,16 @@ class QueueManagerTest {
                 null
         );
         FunctionQueueState oldState = manager.getOrCreate(spec);
-        assertThat(oldState.tryAcquireSlot()).isTrue();
+        var oldLease = manager.tryAcquireLease(spec.name(), oldState);
+        assertThat(oldLease).isNotNull();
         manager.remove("recreated");
 
         // once the last slot drains the generation is dropped, so the next getOrCreate is new
-        manager.releaseSlot("recreated", oldState);
+        oldLease.release();
         FunctionQueueState newState = manager.getOrCreate(spec);
-        assertThat(newState.tryAcquireSlot()).isTrue();
+        assertThat(manager.tryAcquireLease(spec.name(), newState)).isNotNull();
 
-        manager.releaseSlot("recreated", oldState);
+        oldLease.release();
 
         assertSoftly(softly -> {
             softly.assertThat(oldState.inFlight()).isZero();
@@ -165,7 +167,7 @@ class QueueManagerTest {
         FunctionQueueState state = manager.getOrCreate(spec);
         AtomicInteger signals = new AtomicInteger();
         manager.setWorkSignaler(_ -> signals.incrementAndGet());
-        assertThat(state.tryAcquireSlot()).isTrue();
+        assertThat(manager.tryAcquireLease(spec.name(), state)).isNotNull();
 
         assertThat(manager.enqueue(new InvocationTask(
                 "exec-busy",

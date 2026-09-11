@@ -1,15 +1,15 @@
 package it.unimib.datai.nanofaas.modules.syncqueue;
 
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
-import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.DispatchCapacity;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 
 public final class SyncQueueWorkloadMetricsSource implements WorkloadMetricsSource {
     private final SyncQueueService queue;
-    private final FunctionCapacityRegistry capacityRegistry;
+    private final DispatchCapacity capacityRegistry;
 
     public SyncQueueWorkloadMetricsSource(SyncQueueService queue,
-                                           FunctionCapacityRegistry capacityRegistry) {
+                                           DispatchCapacity capacityRegistry) {
         this.queue = queue;
         this.capacityRegistry = capacityRegistry;
     }

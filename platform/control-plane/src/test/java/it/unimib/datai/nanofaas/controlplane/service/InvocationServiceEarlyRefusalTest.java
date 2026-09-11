@@ -60,12 +60,13 @@ class InvocationServiceEarlyRefusalTest {
     void setUp() {
         executionStore = new ExecutionStore();
         idempotencyStore = new IdempotencyStore();
-        when(enqueuer.enabled()).thenReturn(true);
+        when(enqueuer.supportsAsync()).thenReturn(true);
+        org.mockito.Mockito.lenient().when(enqueuer.queueStrategy()).thenReturn(InvocationEnqueuer.QueueStrategy.FUNCTION_QUEUE);
         when(syncQueueGateway.enabled()).thenReturn(false);
         invocationService = TestWaiterCapacity.service(
                 functionService, enqueuer, executionStore, idempotencyStore,
                 metrics, syncQueueGateway,
-                new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics),
+                new ExecutionCompletionHandler(executionStore, enqueuer::enqueue, dispatcherRouter, metrics),
                 "full-fn", "hot-fn", "replay-fn", "sync-fn");
     }
 

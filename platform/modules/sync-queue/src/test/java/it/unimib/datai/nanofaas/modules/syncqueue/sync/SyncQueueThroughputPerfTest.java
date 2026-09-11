@@ -10,8 +10,8 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncScheduler;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
+import it.unimib.datai.nanofaas.controlplane.scheduler.QueuedDispatchCapacity;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
@@ -31,14 +31,13 @@ class SyncQueueThroughputPerfTest {
 
     private final ExecutionStore executionStore = new ExecutionStore();
 
-
     @Test
     void syncQueue_readyWorkBehindBlockedHead_stillMakesProgress() {
-        InvocationEnqueuer enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
-        InvocationService invocationService = mock(InvocationService.class);
+        QueuedDispatchCapacity enqueuer = it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.enqueuer();
+        InvocationDispatch invocationService = mock(InvocationDispatch.class);
         when(enqueuer.hasAvailableSlot("blocked-fn")).thenReturn(false);
         when(enqueuer.hasAvailableSlot("ready-fn")).thenReturn(true);
-        when(enqueuer.tryAcquireSlot("ready-fn")).thenReturn(true);
+        it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.allow(enqueuer, "ready-fn", true);
 
         SyncQueueProperties props = new SyncQueueProperties(
                 true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2, Duration.ofSeconds(30), 3
@@ -61,7 +60,7 @@ class SyncQueueThroughputPerfTest {
             return null;
         }).when(invocationService).dispatch(org.mockito.ArgumentMatchers.any());
 
-        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, invocationService);
+        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, invocationService, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
         scheduler.start();
         try {
             queue.enqueueOrThrow(blocked);

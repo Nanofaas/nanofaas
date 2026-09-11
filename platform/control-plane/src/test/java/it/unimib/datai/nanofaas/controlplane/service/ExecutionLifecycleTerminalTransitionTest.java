@@ -81,7 +81,7 @@ class ExecutionLifecycleTerminalTransitionTest {
         this.keys = new IdempotencyStore(props, ticker);
         // The factory attaches the ExecutionLifecycle to the store, as in production.
         this.factory = new InvocationExecutionFactory(store, keys, metrics);
-        this.completionHandler = new ExecutionCompletionHandler(store, InvocationEnqueuer.noOp(), dispatcher, metrics);
+        this.completionHandler = new ExecutionCompletionHandler(store, RetryScheduler.unavailable(), dispatcher, metrics);
     }
 
     private static FunctionSpec spec() {
@@ -315,7 +315,7 @@ class ExecutionLifecycleTerminalTransitionTest {
         this.store = new ExecutionStore(props, new SimpleMeterRegistry());
         this.keys = new IdempotencyStore(props, Ticker.systemTicker());
         this.factory = new InvocationExecutionFactory(store, keys, metrics);
-        this.completionHandler = new ExecutionCompletionHandler(store, InvocationEnqueuer.noOp(), dispatcher, metrics);
+        this.completionHandler = new ExecutionCompletionHandler(store, RetryScheduler.unavailable(), dispatcher, metrics);
 
         InvocationExecutionFactory.ExecutionLookup first = admitAndDispatch("expire");
         String executionId = first.executionRecord().executionId();

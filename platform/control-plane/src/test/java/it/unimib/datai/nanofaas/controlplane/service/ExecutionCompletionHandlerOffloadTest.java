@@ -31,10 +31,10 @@ import static org.mockito.Mockito.when;
 class ExecutionCompletionHandlerOffloadTest {
 
     private final ExecutionStore executionStore = new ExecutionStore();
-    private final InvocationEnqueuer enqueuer = mock(InvocationEnqueuer.class);
+    private final RetryScheduler enqueuer = mock(RetryScheduler.class);
     private final DispatcherRouter dispatcherRouter = mock(DispatcherRouter.class);
     private final ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
-            executionStore, enqueuer, dispatcherRouter, new Metrics(new SimpleMeterRegistry()));
+            executionStore, enqueuer::enqueue, dispatcherRouter, new Metrics(new SimpleMeterRegistry()));
 
     private ExecutionRecord executionRecord(String executionId, String functionName) {
         FunctionSpec spec = new FunctionSpec(functionName, "img", List.of(), Map.of(), null,
@@ -51,14 +51,13 @@ class ExecutionCompletionHandlerOffloadTest {
     @Test
     void offloadedSuccessCompletesWithoutReleasingDispatchSlot() {
         ExecutionRecord executionRecord = executionRecord("exec-ok", "fn");
-        when(enqueuer.enabled()).thenReturn(true);
 
         InvocationResult result = InvocationResult.success("remote-out");
         handler.completeOffloadedExecution("exec-ok", result);
 
         // offloaded calls never acquired a slot: releasing one would corrupt
         // the local concurrency accounting
-        verify(enqueuer, never()).releaseDispatchSlot(anyString());
+        assertThat(executionRecord.takeDispatchLease()).isNull();
         verify(enqueuer, never()).enqueue(any());
         assertThat(executionRecord.completion()).isCompletedWithValue(result);
     }
@@ -66,7 +65,6 @@ class ExecutionCompletionHandlerOffloadTest {
     @Test
     void offloadedFunctionErrorCompletesWithoutRetry() {
         ExecutionRecord executionRecord = executionRecord("exec-err", "fn");
-        when(enqueuer.enabled()).thenReturn(true);
 
         InvocationResult remoteError = InvocationResult.error("BOOM", "remote function failed");
         handler.completeOffloadedExecution("exec-err", remoteError);
@@ -79,13 +77,12 @@ class ExecutionCompletionHandlerOffloadTest {
     @Test
     void offloadInfraFailureCompletesExceptionallyWithoutRetryOrSlotRelease() {
         ExecutionRecord executionRecord = executionRecord("exec-fail", "fn");
-        when(enqueuer.enabled()).thenReturn(true);
 
         OffloadFailedException failure = new OffloadFailedException("http://cloud:8080", false, "unreachable");
         handler.failOffloadedExecution("exec-fail", failure);
 
         verify(enqueuer, never()).enqueue(any());
-        verify(enqueuer, never()).releaseDispatchSlot(anyString());
+        assertThat(executionRecord.takeDispatchLease()).isNull();
         verify(dispatcherRouter, never()).dispatchLocal(any());
         assertThat(executionRecord.completion().isCompletedExceptionally()).isTrue();
         assertThat(executionRecord.snapshot().lastError().code()).isEqualTo(OffloadGateway.OFFLOAD_FAILED_CODE);
@@ -94,7 +91,6 @@ class ExecutionCompletionHandlerOffloadTest {
     @Test
     void ordinaryErrorStillRetries() {
         ExecutionRecord executionRecord = executionRecord("exec-plain", "fn2");
-        when(enqueuer.enabled()).thenReturn(true);
         when(enqueuer.enqueue(any())).thenReturn(true);
 
         handler.completeExecution("exec-plain", InvocationResult.error("BOOM", "transient"));

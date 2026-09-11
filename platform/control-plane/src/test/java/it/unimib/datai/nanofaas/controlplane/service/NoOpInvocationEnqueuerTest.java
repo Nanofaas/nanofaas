@@ -20,7 +20,7 @@ class NoOpInvocationEnqueuerTest {
     void enabledReturnsFalse() {
         InvocationEnqueuer enqueuer = InvocationEnqueuer.noOp();
 
-        assertThat(enqueuer.enabled()).isFalse();
+        assertThat(enqueuer.supportsAsync()).isFalse();
     }
 
     @Test
@@ -33,17 +33,8 @@ class NoOpInvocationEnqueuerTest {
     }
 
     @Test
-    void tryAcquireSlotAlwaysReturnsTrue() {
-        InvocationEnqueuer enqueuer = InvocationEnqueuer.noOp();
-
-        assertThat(enqueuer.tryAcquireSlot("functionName")).isTrue();
-    }
-
-    @Test
-    void releaseDispatchSlotIsNoOp() {
-        InvocationEnqueuer enqueuer = InvocationEnqueuer.noOp();
-
-        assertThatCode(() -> enqueuer.releaseDispatchSlot("functionName"))
-                .doesNotThrowAnyException();
+    void admissionDoesNotExposeDispatchOwnership() {
+        assertThat(InvocationEnqueuer.noOp().queueStrategy()).isEqualTo(InvocationEnqueuer.QueueStrategy.DIRECT);
+        assertThat(InvocationEnqueuer.class.getMethods()).noneMatch(method -> method.getName().contains("Slot"));
     }
 }

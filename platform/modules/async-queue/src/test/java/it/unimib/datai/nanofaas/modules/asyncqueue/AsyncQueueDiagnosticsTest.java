@@ -7,7 +7,7 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
 
@@ -55,9 +55,10 @@ class AsyncQueueDiagnosticsTest {
         );
         queueManager.getOrCreate(spec);
 
-        assertThat(queueManager.tryAcquireSlot("echo")).isTrue();
-        queueManager.releaseSlot("echo");
-        queueManager.releaseSlot("echo");
+        var lease = queueManager.tryAcquireLease("echo", queueManager.get("echo"));
+        assertThat(lease).isNotNull();
+        lease.release();
+        lease.release();
 
         assertThat(registry.get("function_dispatch_slot_hold_events").tag("function", "echo")
                 .counter().count()).isEqualTo(1);
@@ -69,7 +70,7 @@ class AsyncQueueDiagnosticsTest {
     void schedulerPublishesQueueAndWakeupDiagnosticsWithoutChangingDispatch() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         QueueManager queueManager = new QueueManager(registry);
-        InvocationService invocationService = mock(InvocationService.class);
+        InvocationDispatch invocationService = mock(InvocationDispatch.class);
         FunctionSpec spec = new FunctionSpec(
                 "echo", "image", null, Map.of(), null,
                 1000, 10, 10, 3, null, ExecutionMode.LOCAL, null, null, null
@@ -85,7 +86,7 @@ class AsyncQueueDiagnosticsTest {
         assertThat(registry.get("function_dispatchable_backlog")
                 .tag("function", "echo").gauge().value()).isEqualTo(3.0);
 
-        Scheduler scheduler = new Scheduler(queueManager, invocationService);
+        Scheduler scheduler = new Scheduler(queueManager, invocationService, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
         scheduler.init();
         scheduler.start();
         try {
@@ -124,7 +125,7 @@ class AsyncQueueDiagnosticsTest {
         );
         queueManager.getOrCreate(spec);
 
-        Scheduler scheduler = new Scheduler(queueManager, mock(InvocationService.class));
+        Scheduler scheduler = new Scheduler(queueManager, mock(InvocationDispatch.class), org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
         scheduler.init();
         scheduler.signalWork("echo");
         scheduler.signalWork("echo");
@@ -153,7 +154,7 @@ class AsyncQueueDiagnosticsTest {
         queueManager.getOrCreate(spec);
         assertThat(queueManager.enqueue(task("first", spec))).isTrue();
 
-        Scheduler scheduler = new Scheduler(queueManager, mock(InvocationService.class), clock::get);
+        Scheduler scheduler = new Scheduler(queueManager, mock(InvocationDispatch.class), org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class), clock::get);
         scheduler.init();
         scheduler.start();
         try {
@@ -174,7 +175,7 @@ class AsyncQueueDiagnosticsTest {
     void schedulerThreadTimeNeverExceedsTheElapsedWallClock() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         QueueManager queueManager = new QueueManager(registry);
-        InvocationService invocationService = mock(InvocationService.class);
+        InvocationDispatch invocationService = mock(InvocationDispatch.class);
         FunctionSpec spec = new FunctionSpec(
                 "echo", "image", null, Map.of(), null,
                 1000, 10, 10, 3, null, ExecutionMode.LOCAL, null, null, null
@@ -183,7 +184,7 @@ class AsyncQueueDiagnosticsTest {
         assertThat(queueManager.enqueue(task("first", spec))).isTrue();
         assertThat(queueManager.enqueue(task("second", spec))).isTrue();
 
-        Scheduler scheduler = new Scheduler(queueManager, invocationService);
+        Scheduler scheduler = new Scheduler(queueManager, invocationService, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
         scheduler.init();
         long startedAt = System.nanoTime();
         scheduler.start();

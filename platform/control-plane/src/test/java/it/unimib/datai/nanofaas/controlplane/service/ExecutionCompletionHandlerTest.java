@@ -40,8 +40,9 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ExecutionCompletionHandlerTest {
+    private final TestDispatchOwnership ownership = new TestDispatchOwnership();
 
-    @Mock private InvocationEnqueuer enqueuer;
+    @Mock private RetryScheduler enqueuer;
     @Mock private Metrics metrics;
     @Mock private DispatcherRouter dispatcherRouter;
     @Mock private DeploymentWakeUpGate wakeUpGate;
@@ -56,7 +57,7 @@ class ExecutionCompletionHandlerTest {
         executionStore = new ExecutionStore();
         // The owner is mandatory for settling a keyed record; attach a minimal one.
         new ExecutionLifecycle(executionStore, new IdempotencyStore());
-        completionHandler = new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics, wakeUpGate);
+        completionHandler = new ExecutionCompletionHandler(executionStore, enqueuer::enqueue, dispatcherRouter, metrics, wakeUpGate);
 
         testSpec = new FunctionSpec(
                 "testFunc", "test-image", null, null, null,
@@ -94,9 +95,9 @@ class ExecutionCompletionHandlerTest {
         InvocationKind.SYNC
     );
 
-        completionHandler.dispatch(missingTask);
+        completionHandler.dispatch(ownership.acquire(missingTask));
 
-        verify(enqueuer).releaseDispatchSlot("fn");
+        assertThat(ownership.releases("fn")).isEqualTo(1);
         verifyNoInteractions(dispatcherRouter);
     }
 
@@ -107,9 +108,9 @@ class ExecutionCompletionHandlerTest {
         executionStore.put(executionRecord);
         executionRecord.markTimeout();
 
-        completionHandler.dispatch(task);
+        completionHandler.dispatch(ownership.acquire(task));
 
-        verify(enqueuer).releaseDispatchSlot("local-fn");
+        assertThat(ownership.releases("local-fn")).isEqualTo(1);
         verifyNoInteractions(dispatcherRouter);
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.TIMEOUT);
     }
@@ -122,14 +123,14 @@ class ExecutionCompletionHandlerTest {
 
         when(dispatcherRouter.dispatchLocal(any())).thenThrow(new RuntimeException("router down"));
 
-        assertThatCode(() -> completionHandler.dispatch(task)).doesNotThrowAnyException();
+        assertThatCode(() -> completionHandler.dispatch(ownership.acquire(task))).doesNotThrowAnyException();
 
         InvocationResult result = executionRecord.completion().get(1, TimeUnit.SECONDS);
         assertThat(result.success()).isFalse();
         assertThat(result.error().code()).isEqualTo("LOCAL_ERROR");
         assertThat(result.error().message()).contains("router down");
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
-        verify(enqueuer).releaseDispatchSlot("local-fn");
+        assertThat(ownership.releases("local-fn")).isEqualTo(1);
     }
 
     @Test
@@ -141,13 +142,13 @@ class ExecutionCompletionHandlerTest {
         when(dispatcherRouter.dispatchExternal(any())).thenReturn(
                 CompletableFuture.completedFuture(DispatchResult.warm(InvocationResult.success("ok"))));
 
-        completionHandler.dispatch(task);
+        completionHandler.dispatch(ownership.acquire(task));
 
         InvocationResult result = executionRecord.completion().get(1, TimeUnit.SECONDS);
         assertThat(result.success()).isTrue();
         assertThat(result.output()).isEqualTo("ok");
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
-        verify(dispatcherRouter).dispatchExternal(task);
+        verify(dispatcherRouter).dispatchExternal(ownership.acquire(task));
         verifyNoInteractions(wakeUpGate);
     }
 
@@ -157,18 +158,18 @@ class ExecutionCompletionHandlerTest {
         ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
         executionStore.put(executionRecord);
         CompletableFuture<Void> wakeUp = new CompletableFuture<>();
-        when(wakeUpGate.ensureReady(task)).thenReturn(wakeUp);
-        when(dispatcherRouter.dispatchExternal(task)).thenReturn(
+        when(wakeUpGate.ensureReady(ownership.acquire(task))).thenReturn(wakeUp);
+        when(dispatcherRouter.dispatchExternal(ownership.acquire(task))).thenReturn(
                 CompletableFuture.completedFuture(DispatchResult.warm(InvocationResult.success("ok"))));
 
-        completionHandler.dispatch(task);
+        completionHandler.dispatch(ownership.acquire(task));
 
-        verify(wakeUpGate).ensureReady(task);
-        verify(dispatcherRouter, never()).dispatchExternal(task);
+        verify(wakeUpGate).ensureReady(ownership.acquire(task));
+        verify(dispatcherRouter, never()).dispatchExternal(ownership.acquire(task));
         wakeUp.complete(null);
 
         assertThat(executionRecord.completion().get(1, TimeUnit.SECONDS).success()).isTrue();
-        verify(dispatcherRouter).dispatchExternal(task);
+        verify(dispatcherRouter).dispatchExternal(ownership.acquire(task));
     }
 
     @Test
@@ -183,15 +184,15 @@ class ExecutionCompletionHandlerTest {
         executionStore.put(executionRecord);
         CompletableFuture<Void> failedWakeUp = new CompletableFuture<>();
         failedWakeUp.completeExceptionally(new IllegalStateException("DEPLOYMENT_WAKE_UP_TIMEOUT"));
-        when(wakeUpGate.ensureReady(task)).thenReturn(failedWakeUp);
+        when(wakeUpGate.ensureReady(ownership.acquire(task))).thenReturn(failedWakeUp);
 
-        completionHandler.dispatch(task);
+        completionHandler.dispatch(ownership.acquire(task));
 
         InvocationResult result = executionRecord.completion().get(1, TimeUnit.SECONDS);
         assertThat(result.success()).isFalse();
         assertThat(result.error().code()).isEqualTo("DEPLOYMENT_WAKE_UP_FAILED");
         assertThat(result.error().message()).contains("DEPLOYMENT_WAKE_UP_TIMEOUT");
-        verify(dispatcherRouter, never()).dispatchExternal(task);
+        verify(dispatcherRouter, never()).dispatchExternal(ownership.acquire(task));
     }
 
     // ─── completeExecution / retry tests ──────────────────────────────────────
@@ -207,7 +208,7 @@ class ExecutionCompletionHandlerTest {
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.QUEUED);
         assertThat(executionRecord.task().attempt()).isEqualTo(2);
         verify(enqueuer, times(1)).enqueue(any());
-        verify(enqueuer).releaseDispatchSlot("testFunc");
+        assertThat(ownership.releases("testFunc")).isEqualTo(1);
     }
 
     @Test
@@ -221,24 +222,27 @@ class ExecutionCompletionHandlerTest {
         assertThat(executionRecord.task().attempt()).isEqualTo(2);
 
         // Attempt 2
+        ownership.attach(executionRecord);
         executionRecord.markRunning();
         completionHandler.completeExecution("exec-max", InvocationResult.error("ERROR", "Attempt 2 failed"));
         assertThat(executionRecord.completion().isDone()).isFalse();
         assertThat(executionRecord.task().attempt()).isEqualTo(3);
 
         // Attempt 3
+        ownership.attach(executionRecord);
         executionRecord.markRunning();
         completionHandler.completeExecution("exec-max", InvocationResult.error("ERROR", "Attempt 3 failed"));
         assertThat(executionRecord.completion().isDone()).isFalse();
         assertThat(executionRecord.task().attempt()).isEqualTo(4);
 
         // Attempt 4 (initial attempt + maxRetries=3)
+        ownership.attach(executionRecord);
         executionRecord.markRunning();
         completionHandler.completeExecution("exec-max", InvocationResult.error("ERROR", "Attempt 4 failed"));
 
         assertThat(executionRecord.completion().isDone()).isTrue();
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
-        verify(enqueuer, times(4)).releaseDispatchSlot("testFunc");
+        assertThat(ownership.releases("testFunc")).isEqualTo(4);
     }
 
     @Test
@@ -250,7 +254,7 @@ class ExecutionCompletionHandlerTest {
         assertThat(executionRecord.completion().isDone()).isTrue();
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
         assertThat(executionRecord.output()).isEqualTo("result");
-        verify(enqueuer).releaseDispatchSlot("testFunc");
+        assertThat(ownership.releases("testFunc")).isEqualTo(1);
     }
 
     @Test
@@ -268,6 +272,7 @@ class ExecutionCompletionHandlerTest {
     @Test
     void completeExecution_afterTimeout_doesNotOverwriteTimeoutOrEmitSuccessMetrics() {
         ExecutionRecord executionRecord = recordInStore("exec-timeout", testSpec, null);
+        ownership.attach(executionRecord);
         executionRecord.markRunning();
         executionRecord.markTimeout();
 
@@ -324,7 +329,7 @@ class ExecutionCompletionHandlerTest {
         InvocationResult result = executionRecord.completion().join();
         assertThat(result.success()).isFalse();
         assertThat(result.error().code()).isEqualTo("ERROR");
-        verify(enqueuer).releaseDispatchSlot("testFunc");
+        assertThat(ownership.releases("testFunc")).isEqualTo(1);
     }
 
     @Test
@@ -340,12 +345,13 @@ class ExecutionCompletionHandlerTest {
         assertThat(executionRecord.task().attempt()).isEqualTo(2);
 
         // Second failure → retry attempt but queue full
+        ownership.attach(executionRecord);
         executionRecord.markRunning();
         completionHandler.completeExecution("exec-mixed", InvocationResult.error("ERROR", "Attempt 2"));
 
         assertThat(executionRecord.completion().isDone()).isTrue();
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
-        verify(enqueuer, times(2)).releaseDispatchSlot("testFunc");
+        assertThat(ownership.releases("testFunc")).isEqualTo(2);
     }
 
     // ─── helpers ──────────────────────────────────────────────────────────────
@@ -362,6 +368,7 @@ class ExecutionCompletionHandlerTest {
         executionStore.put(executionRecord);
         // A dispatch marks the attempt RUNNING and is what acquires its slot; the completion
         // path releases only what an attempt actually acquired (invariant I4).
+        ownership.attach(executionRecord);
         executionRecord.markRunning();
         return executionRecord;
     }

@@ -1,7 +1,7 @@
 package it.unimib.datai.nanofaas.modules.asyncqueue;
 
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
 
@@ -19,7 +19,7 @@ class AsyncSchedulerFairnessPerfTest {
     @Test
     void asyncScheduler_hotFunctionDoesNotStarveSecondFunction() {
         QueueManager queueManager = SchedulerLeaseTestSupport.queueManager();
-        InvocationService invocationService = mock(InvocationService.class);
+        InvocationDispatch invocationService = mock(InvocationDispatch.class);
         FunctionQueueState hotState = mock(FunctionQueueState.class);
         FunctionQueueState coldState = mock(FunctionQueueState.class);
 
@@ -30,8 +30,8 @@ class AsyncSchedulerFairnessPerfTest {
 
         when(queueManager.get("hot-fn")).thenReturn(hotState);
         when(queueManager.get("cold-fn")).thenReturn(coldState);
-        when(hotState.tryAcquireSlot()).thenReturn(true, true, true, false);
-        when(coldState.tryAcquireSlot()).thenReturn(true, false);
+        SchedulerLeaseTestSupport.allow(queueManager, hotState, true, true, true, false);
+        SchedulerLeaseTestSupport.allow(queueManager, coldState, true, false);
         when(hotState.pollForDispatch()).thenReturn(hotOne, hotTwo, hotThree, null);
         when(coldState.pollForDispatch()).thenReturn(coldOne, (InvocationTask) null);
         when(hotState.queued()).thenReturn(1, 0);
@@ -45,7 +45,7 @@ class AsyncSchedulerFairnessPerfTest {
             return null;
         }).when(invocationService).dispatch(org.mockito.ArgumentMatchers.any(InvocationTask.class));
 
-        Scheduler scheduler = new Scheduler(queueManager, invocationService);
+        Scheduler scheduler = new Scheduler(queueManager, invocationService, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
         scheduler.init();
         scheduler.start();
         try {

@@ -8,8 +8,8 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationService;
+import it.unimib.datai.nanofaas.controlplane.scheduler.QueuedDispatchCapacity;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueInvocationEnqueuer;
 import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
@@ -46,7 +46,7 @@ class SyncSchedulerWakeupTest {
     private FunctionCapacityRegistry capacity;
     private SyncQueueService queue;
     private SyncQueueInvocationEnqueuer enqueuer;
-    private InvocationService invocationService;
+    private InvocationDispatch invocationService;
     private AtomicLong dispatched;
     private CountDownLatch dispatchLatch;
     private SyncScheduler scheduler;
@@ -58,7 +58,7 @@ class SyncSchedulerWakeupTest {
         capacity = new FunctionCapacityRegistry();
         queue = newQueue(store, capacity);
         enqueuer = new SyncQueueInvocationEnqueuer(capacity, null, queue::onDispatchSlotReleased, queue);
-        invocationService = mock(InvocationService.class);
+        invocationService = mock(InvocationDispatch.class);
         dispatched = new AtomicLong();
         dispatchLatch = new CountDownLatch(0);
         doAnswer(invocation -> {
@@ -159,7 +159,7 @@ class SyncSchedulerWakeupTest {
         queue.enqueueOrThrow(task("queued", "fn"));
         // Take the only slot ourselves so the queued item can never dispatch: the worker scans,
         // finds fn at its limit, and must park rather than spin.
-        assertThat(enqueuer.tryAcquireSlot("fn")).isTrue();
+        assertThat(enqueuer.tryAcquireLease(task("held", "fn"))).isNotNull();
 
         CountingScheduler counting = new CountingScheduler(enqueuer, queue, invocationService);
         scheduler = counting;
@@ -193,7 +193,7 @@ class SyncSchedulerWakeupTest {
     }
 
     private void startScheduler() {
-        scheduler = new SyncScheduler(enqueuer, queue, invocationService);
+        scheduler = new SyncScheduler(enqueuer, queue, invocationService, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
         scheduler.start();
         assertThat(scheduler.isRunning()).isTrue();
     }
@@ -288,8 +288,8 @@ class SyncSchedulerWakeupTest {
     private static class CountingScheduler extends SyncScheduler {
         final AtomicLong tickCount = new AtomicLong();
 
-        CountingScheduler(InvocationEnqueuer enqueuer, SyncQueueService queue, InvocationService invocationService) {
-            super(enqueuer, queue, invocationService);
+        CountingScheduler(QueuedDispatchCapacity enqueuer, SyncQueueService queue, InvocationDispatch invocationService) {
+            super(enqueuer, queue, invocationService, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
         }
 
         @Override

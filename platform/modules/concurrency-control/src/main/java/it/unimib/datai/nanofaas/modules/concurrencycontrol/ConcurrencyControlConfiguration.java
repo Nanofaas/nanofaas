@@ -4,7 +4,7 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
-import it.unimib.datai.nanofaas.controlplane.service.Metrics;
+import it.unimib.datai.nanofaas.controlplane.service.InvocationObservations;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 import org.springframework.beans.factory.ObjectProvider;
@@ -19,7 +19,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
         "it.unimib.datai.nanofaas.modules.asyncqueue.AsyncQueueConfiguration",
         "it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueConfiguration"
 })
-@ConditionalOnBean({WorkloadMetricsSource.class, WorkloadCapacityController.class, FunctionRegistry.class, Metrics.class})
+@ConditionalOnBean({WorkloadMetricsSource.class, WorkloadCapacityController.class, FunctionRegistry.class, InvocationObservations.class})
 @EnableConfigurationProperties(ConcurrencyControlProperties.class)
 public class ConcurrencyControlConfiguration {
 
@@ -51,7 +51,7 @@ public class ConcurrencyControlConfiguration {
 
     @Bean
     ConcurrencyGovernor concurrencyGovernor(FunctionRegistry registry,
-                                            Metrics metrics,
+                                            InvocationObservations metrics,
                                             ConcurrencyControlCoordinator coordinator,
                                             ConcurrencyControlProperties properties,
                                             WorkloadMetricsSource metricsSource,

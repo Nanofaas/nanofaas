@@ -59,6 +59,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class InvocationServiceDispatchTest {
+    private final TestDispatchOwnership ownership = new TestDispatchOwnership();
 
     @Mock
     private FunctionService functionService;
@@ -85,7 +86,7 @@ class InvocationServiceDispatchTest {
         executionStore = new ExecutionStore();
         idempotencyStore = new IdempotencyStore();
 
-        completionHandler = new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics);
+        completionHandler = new ExecutionCompletionHandler(executionStore, enqueuer::enqueue, dispatcherRouter, metrics);
 
         invocationService = TestWaiterCapacity.service(
                 functionService,
@@ -243,9 +244,9 @@ class InvocationServiceDispatchTest {
         InvocationKind.SYNC
     );
 
-        invocationService.dispatch(missingTask);
+        completionHandler.dispatch(ownership.acquire(missingTask));
 
-        verify(enqueuer).releaseDispatchSlot("fn");
+        assertThat(ownership.releases("fn")).isEqualTo(1);
         verifyNoInteractions(dispatcherRouter);
     }
 
@@ -257,14 +258,14 @@ class InvocationServiceDispatchTest {
 
         when(dispatcherRouter.dispatchLocal(any())).thenThrow(new RuntimeException("router down"));
 
-        assertThatCode(() -> invocationService.dispatch(task)).doesNotThrowAnyException();
+        assertThatCode(() -> completionHandler.dispatch(ownership.acquire(task))).doesNotThrowAnyException();
 
         InvocationResult result = executionRecord.completion().get(1, TimeUnit.SECONDS);
         assertThat(result.success()).isFalse();
         assertThat(result.error().code()).isEqualTo("LOCAL_ERROR");
         assertThat(result.error().message()).contains("router down");
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
-        verify(enqueuer).releaseDispatchSlot("local-fn");
+        assertThat(ownership.releases("local-fn")).isEqualTo(1);
     }
 
     @Test
@@ -276,13 +277,13 @@ class InvocationServiceDispatchTest {
         when(dispatcherRouter.dispatchExternal(any())).thenReturn(
                 CompletableFuture.completedFuture(DispatchResult.warm(InvocationResult.success("ok"))));
 
-        invocationService.dispatch(task);
+        completionHandler.dispatch(ownership.acquire(task));
 
         InvocationResult result = executionRecord.completion().get(1, TimeUnit.SECONDS);
         assertThat(result.success()).isTrue();
         assertThat(result.output()).isEqualTo("ok");
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
-        verify(dispatcherRouter).dispatchExternal(task);
+        verify(dispatcherRouter).dispatchExternal(ownership.acquire(task));
     }
 
     @Test
@@ -290,7 +291,8 @@ class InvocationServiceDispatchTest {
         FunctionSpec spec = functionSpec("inline-fn", ExecutionMode.LOCAL);
         when(functionService.get("inline-fn")).thenReturn(Optional.of(spec));
         when(syncQueueGateway.enabled()).thenReturn(false);
-        when(enqueuer.enabled()).thenReturn(false);
+        when(enqueuer.supportsAsync()).thenReturn(false);
+        org.mockito.Mockito.lenient().when(enqueuer.queueStrategy()).thenReturn(InvocationEnqueuer.QueueStrategy.DIRECT);
         when(dispatcherRouter.dispatchLocal(any())).thenReturn(
                 CompletableFuture.completedFuture(DispatchResult.warm(InvocationResult.success("inline-ok"))));
 
@@ -308,12 +310,12 @@ class InvocationServiceDispatchTest {
         verify(syncQueueGateway, never()).enqueueOrThrow(any());
         verify(enqueuer, never()).enqueue(any());
         // Direct admission releases its own capacity lease, never a name-based queue slot.
-        verify(enqueuer, never()).releaseDispatchSlot(any());
+        assertThat(ownership.releases()).isZero();
     }
 
     @Test
     void invokeSync_whenSyncQueueGatewayMissingAndEnqueuerDisabled_dispatchesInline() {
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics);
+        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(executionStore, enqueuer::enqueue, dispatcherRouter, metrics);
         InvocationService invocationServiceWithoutSyncQueue = TestWaiterCapacity.service(
                 functionService,
                 enqueuer,
@@ -327,7 +329,8 @@ class InvocationServiceDispatchTest {
 
         FunctionSpec spec = functionSpec("inline-no-sync-queue-fn", ExecutionMode.LOCAL);
         when(functionService.get("inline-no-sync-queue-fn")).thenReturn(Optional.of(spec));
-        when(enqueuer.enabled()).thenReturn(false);
+        when(enqueuer.supportsAsync()).thenReturn(false);
+        org.mockito.Mockito.lenient().when(enqueuer.queueStrategy()).thenReturn(InvocationEnqueuer.QueueStrategy.DIRECT);
         when(dispatcherRouter.dispatchLocal(any())).thenReturn(
                 CompletableFuture.completedFuture(DispatchResult.warm(InvocationResult.success("inline-ok"))));
 
@@ -344,7 +347,7 @@ class InvocationServiceDispatchTest {
         verify(dispatcherRouter).dispatchLocal(any());
         verify(enqueuer, never()).enqueue(any());
         // Direct admission releases its own capacity lease, never a name-based queue slot.
-        verify(enqueuer, never()).releaseDispatchSlot(any());
+        assertThat(ownership.releases()).isZero();
     }
 
     @Test
@@ -352,14 +355,16 @@ class InvocationServiceDispatchTest {
         FunctionSpec spec = functionSpec("queued-sync-fn", ExecutionMode.LOCAL);
         when(functionService.get("queued-sync-fn")).thenReturn(Optional.of(spec));
         when(syncQueueGateway.enabled()).thenReturn(false);
-        when(enqueuer.enabled()).thenReturn(true);
+        when(enqueuer.supportsAsync()).thenReturn(true);
+        org.mockito.Mockito.lenient().when(enqueuer.queueStrategy()).thenReturn(InvocationEnqueuer.QueueStrategy.FUNCTION_QUEUE);
         doAnswer(invocation -> {
             InvocationTask task = invocation.getArgument(0);
             ExecutionRecord record = executionStore.getOrNull(task.executionId());
             if (record != null) {
-                record.markRunning();
+                ownership.attach(record);
+        record.markRunning();
             }
-            invocationService.completeExecution(
+            completionHandler.completeExecution(
                     task.executionId(),
                     DispatchResult.warm(InvocationResult.success("queued-ok"))
             );
@@ -379,7 +384,7 @@ class InvocationServiceDispatchTest {
         verify(enqueuer).enqueue(any());
         verify(syncQueueGateway, never()).enqueueOrThrow(any());
         verify(dispatcherRouter, never()).dispatchLocal(any());
-        verify(enqueuer).releaseDispatchSlot("queued-sync-fn");
+        assertThat(ownership.releases("queued-sync-fn")).isEqualTo(1);
     }
 
     @Test
@@ -412,9 +417,10 @@ class InvocationServiceDispatchTest {
             InvocationTask task = invocation.getArgument(0);
             ExecutionRecord record = executionStore.getOrNull(task.executionId());
             if (record != null) {
-                record.markRunning();
+                ownership.attach(record);
+        record.markRunning();
             }
-            invocationService.completeExecution(
+            completionHandler.completeExecution(
                     task.executionId(),
                     DispatchResult.warm(InvocationResult.success("ok"))
             );
@@ -433,7 +439,7 @@ class InvocationServiceDispatchTest {
         assertThat(response.output()).isEqualTo("ok");
         verify(syncQueueGateway).enqueueOrThrow(any());
         verify(enqueuer, never()).enqueue(any());
-        verify(enqueuer).releaseDispatchSlot("sync-queued-sync-fn");
+        assertThat(ownership.releases("sync-queued-sync-fn")).isEqualTo(1);
         verifyNoInteractions(dispatcherRouter);
     }
 
@@ -467,7 +473,7 @@ class InvocationServiceDispatchTest {
         when(syncQueueGateway.retryAfterSeconds()).thenReturn(9);
         doAnswer(invocation -> {
             InvocationTask task = invocation.getArgument(0);
-            invocationService.completeExecution(
+            completionHandler.completeExecution(
                     task.executionId(),
                     DispatchResult.warm(InvocationResult.error("QUEUE_TIMEOUT", "queue wait exceeded"))
             );
@@ -503,7 +509,8 @@ class InvocationServiceDispatchTest {
         FunctionSpec spec = functionSpec("timeout-fn", ExecutionMode.LOCAL);
         when(functionService.get("timeout-fn")).thenReturn(Optional.of(spec));
         when(syncQueueGateway.enabled()).thenReturn(false);
-        when(enqueuer.enabled()).thenReturn(false);
+        when(enqueuer.supportsAsync()).thenReturn(false);
+        org.mockito.Mockito.lenient().when(enqueuer.queueStrategy()).thenReturn(InvocationEnqueuer.QueueStrategy.DIRECT);
         when(dispatcherRouter.dispatchLocal(any())).thenReturn(dispatchFuture);
 
         // A waiter's own budget runs out first (per-waiter timeout, invariant I1): it
@@ -542,7 +549,8 @@ class InvocationServiceDispatchTest {
         FunctionSpec spec = functionSpec("timeout-reactive-fn", ExecutionMode.LOCAL);
         when(functionService.get("timeout-reactive-fn")).thenReturn(Optional.of(spec));
         when(syncQueueGateway.enabled()).thenReturn(false);
-        when(enqueuer.enabled()).thenReturn(false);
+        when(enqueuer.supportsAsync()).thenReturn(false);
+        org.mockito.Mockito.lenient().when(enqueuer.queueStrategy()).thenReturn(InvocationEnqueuer.QueueStrategy.DIRECT);
         when(dispatcherRouter.dispatchLocal(any())).thenReturn(dispatchFuture);
 
         InvocationResponse first = invocationService.invokeSyncReactive(
@@ -578,7 +586,8 @@ class InvocationServiceDispatchTest {
         FunctionSpec spec = functionSpec("stale-idem-fn", ExecutionMode.LOCAL);
         when(functionService.get("stale-idem-fn")).thenReturn(Optional.of(spec));
         when(syncQueueGateway.enabled()).thenReturn(false);
-        when(enqueuer.enabled()).thenReturn(true);
+        when(enqueuer.supportsAsync()).thenReturn(true);
+        org.mockito.Mockito.lenient().when(enqueuer.queueStrategy()).thenReturn(InvocationEnqueuer.QueueStrategy.FUNCTION_QUEUE);
         when(enqueuer.enqueue(any())).thenReturn(true);
 
         IdempotencyStore staleStore = new IdempotencyStore(Duration.ofMinutes(15));
@@ -632,7 +641,8 @@ class InvocationServiceDispatchTest {
         FunctionSpec spec = functionSpec("stale-publication-fn", ExecutionMode.LOCAL);
         when(functionService.get("stale-publication-fn")).thenReturn(Optional.of(spec));
         when(syncQueueGateway.enabled()).thenReturn(false);
-        when(enqueuer.enabled()).thenReturn(true);
+        when(enqueuer.supportsAsync()).thenReturn(true);
+        org.mockito.Mockito.lenient().when(enqueuer.queueStrategy()).thenReturn(InvocationEnqueuer.QueueStrategy.FUNCTION_QUEUE);
         when(enqueuer.enqueue(any())).thenReturn(true);
 
         BlockingExecutionStore blockedStore = new BlockingExecutionStore();
@@ -648,7 +658,7 @@ class InvocationServiceDispatchTest {
                 staleStore,
                 metrics,
                 syncQueueGateway,
-                new ExecutionCompletionHandler(blockedStore, enqueuer, dispatcherRouter, metrics),
+                new ExecutionCompletionHandler(blockedStore, enqueuer::enqueue, dispatcherRouter, metrics),
                 "stale-publication-fn"
         );
 
@@ -686,7 +696,8 @@ class InvocationServiceDispatchTest {
     void invokeAsync_whenEnqueueRejects_removesCreatedExecutionRecord() {
         FunctionSpec spec = functionSpec("queue-reject-fn", ExecutionMode.LOCAL);
         when(functionService.get("queue-reject-fn")).thenReturn(Optional.of(spec));
-        when(enqueuer.enabled()).thenReturn(true);
+        when(enqueuer.supportsAsync()).thenReturn(true);
+        org.mockito.Mockito.lenient().when(enqueuer.queueStrategy()).thenReturn(InvocationEnqueuer.QueueStrategy.FUNCTION_QUEUE);
         AtomicReference<String> rejectedExecutionId = new AtomicReference<>();
         doAnswer(invocation -> {
             InvocationTask task = invocation.getArgument(0);
@@ -711,7 +722,8 @@ class InvocationServiceDispatchTest {
         FunctionSpec spec = functionSpec("sync-reject-local-fn", ExecutionMode.LOCAL);
         when(functionService.get("sync-reject-local-fn")).thenReturn(Optional.of(spec));
         when(syncQueueGateway.enabled()).thenReturn(false);
-        when(enqueuer.enabled()).thenReturn(true);
+        when(enqueuer.supportsAsync()).thenReturn(true);
+        org.mockito.Mockito.lenient().when(enqueuer.queueStrategy()).thenReturn(InvocationEnqueuer.QueueStrategy.FUNCTION_QUEUE);
         AtomicReference<String> rejectedExecutionId = new AtomicReference<>();
         doAnswer(invocation -> {
             InvocationTask task = invocation.getArgument(0);
@@ -751,7 +763,8 @@ class InvocationServiceDispatchTest {
     void invokeAsync_sameIdempotencyKeyWaitsForRejectedAdmissionBeforeCreatingReplacement() throws Exception {
         FunctionSpec spec = functionSpec("idem-admission-race-fn", ExecutionMode.LOCAL);
         when(functionService.get("idem-admission-race-fn")).thenReturn(Optional.of(spec));
-        when(enqueuer.enabled()).thenReturn(true);
+        when(enqueuer.supportsAsync()).thenReturn(true);
+        org.mockito.Mockito.lenient().when(enqueuer.queueStrategy()).thenReturn(InvocationEnqueuer.QueueStrategy.FUNCTION_QUEUE);
         CountDownLatch firstEnqueueStarted = new CountDownLatch(1);
         CountDownLatch allowFirstRejection = new CountDownLatch(1);
         AtomicReference<String> rejectedExecutionId = new AtomicReference<>();
