@@ -456,7 +456,7 @@ def validate_document(document: Any) -> None:
             scenario["initialCounters"], vocabulary["counterNames"],
             f"{path}/initialCounters",
         )
-        validate_initial_bounds(initial, config, path)
+        validate_initial_bounds(initial, config, scenario["kind"], path)
         validate_expected(
             scenario, requests, request_ids, backend, config, actions,
             definitions, vocabulary, path,
@@ -587,7 +587,7 @@ def validate_backend(value: Any, requests: list[dict[str, Any]], request_ids: se
 
 
 def validate_initial_bounds(initial: dict[str, int], config: dict[str, int],
-                            scenario_path: str) -> None:
+                            scenario_kind: str, scenario_path: str) -> None:
     pairs = (
         ("activeHandlers", "maxConcurrentHandlers"),
         ("pendingCallbacks", "maxPendingCallbacks"),
@@ -596,6 +596,16 @@ def validate_initial_bounds(initial: dict[str, int], config: dict[str, int],
     for counter, limit in pairs:
         if initial[counter] > config[limit]:
             fail(f"{scenario_path}/initialCounters/{counter}", f"exceeds {limit}")
+    if scenario_kind == "handler-saturated":
+        expected = {
+            "pendingCallbacks": 1,
+            "pendingCallbackBytes": config["maxPendingCallbackBytes"],
+            "serializedCallbackBytes": 0,
+        }
+        for counter, value in expected.items():
+            if initial[counter] != value:
+                fail(f"{scenario_path}/initialCounters/{counter}",
+                     "must include the pre-handler callback reservation")
 
 
 def validate_expected(scenario: dict[str, Any], requests: list[dict[str, Any]],

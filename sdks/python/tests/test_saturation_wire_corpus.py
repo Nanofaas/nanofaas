@@ -1,8 +1,19 @@
+import asyncio
+import importlib
 import json
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+import pytest
+
+import nanofaas.runtime.app as runtime_app
+from sdks.python.tests.runtime_corpus_adapter import (
+    ScenarioHarness,
+    _runtime_environment,
+    execute_corpus_against_runtime,
+)
 
 
 CONTRACT_DIR = Path(__file__).resolve().parents[2] / "runtime-contract"
@@ -152,3 +163,109 @@ def test_consumes_the_shared_runtime_saturation_wire_contract():
     )
     assert all(not any(dict(projection.final_counters).values()) for projection in projections)
     assert corpus["mutationTests"]
+
+
+def test_executes_every_shared_scenario_against_the_python_runtime():
+    summary = execute_corpus_against_runtime(CORPUS)
+
+    assert summary.scenarios == 12
+    assert summary.barriers == 3
+    assert summary.callbacks == 8
+    assert summary.callback_attempts == 10
+    assert summary.stops == 2
+    assert summary.restarts == 1
+    assert summary.observations == 53
+    assert summary.nonzero_counters == (
+        "activeHandlers",
+        "inputBytes",
+        "outputBytes",
+        "pendingCallbackBytes",
+        "pendingCallbacks",
+        "serializedCallbackBytes",
+    )
+
+
+def _write_mutated_corpus(tmp_path, mutate):
+    corpus = json.loads(CORPUS.read_text(encoding="utf-8"))
+    mutate(corpus)
+    path = tmp_path / "mutated-saturation-wire-corpus.json"
+    path.write_text(json.dumps(corpus), encoding="utf-8")
+    return path
+
+
+def test_runtime_adapter_rejects_mutated_declared_initial_counter(tmp_path):
+    def mutate(corpus):
+        corpus["scenarios"][0]["initialCounters"]["activeHandlers"] = 999999
+
+    with pytest.raises(AssertionError):
+        execute_corpus_against_runtime(_write_mutated_corpus(tmp_path, mutate))
+
+
+def test_runtime_adapter_health_probe_uses_the_asgi_route(monkeypatch):
+    corpus = json.loads(CORPUS.read_text(encoding="utf-8"))
+    scenario = next(
+        item for item in corpus["scenarios"] if item["id"] == "health-under-saturation"
+    )
+    config = corpus["runtimeConfigurations"][scenario["runtimeConfigRef"]]
+    for key, value in _runtime_environment(config).items():
+        monkeypatch.setenv(key, value)
+    runtime = importlib.reload(runtime_app)
+    harness = ScenarioHarness(corpus, scenario, runtime, asyncio.sleep)
+    action = next(
+        item for item in scenario["harness"]["actions"] if item["action"] == "probe-health"
+    )
+
+    def direct_health_call_is_forbidden():
+        raise AssertionError("adapter called health() instead of GET /health")
+
+    monkeypatch.setattr(runtime, "health", direct_health_call_is_forbidden)
+    monkeypatch.setattr(runtime.requests, "post", harness.callback_post)
+
+    async def exercise():
+        for name in ("start-runtime", "fill-callback-capacity", "probe-health"):
+            await harness._run_action(
+                next(
+                    item
+                    for item in scenario["harness"]["actions"]
+                    if item["action"] == name
+                )
+            )
+        await harness._drain_fixture_state()
+
+    try:
+        asyncio.run(exercise())
+        response = harness.responses[action["requestId"]]
+        assert response.status_code == 200
+        assert response.json() == {"status": "ok"}
+    finally:
+        harness.callback_filler_release.set()
+        asyncio.run(runtime._runtime_work.shutdown(0.5))
+        monkeypatch.undo()
+        importlib.reload(runtime_app)
+
+
+def test_runtime_adapter_rejects_unverifiable_redispatch_action(tmp_path):
+    def mutate(corpus):
+        scenario = next(
+            item for item in corpus["scenarios"] if item["id"] == "dispatch-retry-identity"
+        )
+        action = next(
+            item
+            for item in scenario["harness"]["actions"]
+            if item["action"] == "control-plane-redispatch"
+        )
+        action["requestId"] = "attempt-1"
+
+    with pytest.raises(AssertionError):
+        execute_corpus_against_runtime(_write_mutated_corpus(tmp_path, mutate))
+
+
+@pytest.mark.parametrize("field,value", [("required", False), ("terminal", "exhausted")])
+def test_runtime_adapter_rejects_mutated_callback_lifecycle(
+    tmp_path, field, value
+):
+    def mutate(corpus):
+        corpus["scenarios"][0]["expected"]["callbacks"][0][field] = value
+
+    with pytest.raises(AssertionError):
+        execute_corpus_against_runtime(_write_mutated_corpus(tmp_path, mutate))

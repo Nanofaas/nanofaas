@@ -154,8 +154,8 @@ class InvokeControllerTest {
 
         assertEquals(500, response.getStatusCode().value());
         @SuppressWarnings("unchecked")
-        Map<String, String> body = (Map<String, String>) response.getBody();
-        assertEquals("boom", body.get("error"));
+        Map<String, Object> body = (Map<String, Object>) response.getBody();
+        assertEquals(Map.of("code", "HANDLER_ERROR", "message", "boom"), body.get("error"));
         verify(callbackDispatcher).submit(
                 eq("env-exec-id"),
                 argThat((CallbackPayload p) -> !p.success()),
@@ -174,8 +174,8 @@ class InvokeControllerTest {
 
         assertEquals(500, response.getStatusCode().value());
         @SuppressWarnings("unchecked")
-        Map<String, String> body = (Map<String, String>) response.getBody();
-        assertEquals("Handler execution failed", body.get("error"));
+        Map<String, Object> body = (Map<String, Object>) response.getBody();
+        assertEquals(Map.of("code", "HANDLER_ERROR", "message", "Handler execution failed"), body.get("error"));
         verify(callbackDispatcher).submit(
                 eq("env-exec-id"),
                 argThat((CallbackPayload p) -> !p.success() && p.error() != null
@@ -196,9 +196,10 @@ class InvokeControllerTest {
         InvocationRequest request = new InvocationRequest("input", null);
         ResponseEntity<Object> response = controller.invoke(request, null, null);
 
-        assertEquals(200, response.getStatusCode().value());
-        assertTrue(response.getBody() instanceof JsonNode);
-        assertEquals("data", ((JsonNode) response.getBody()).asText());
+        assertEquals(503, response.getStatusCode().value());
+        assertEquals("1", response.getHeaders().getFirst("Retry-After"));
+        assertEquals(Map.of("error", Map.of("code", "RUNTIME_STOPPING",
+                "message", "Runtime is stopping")), response.getBody());
     }
 
     @Test

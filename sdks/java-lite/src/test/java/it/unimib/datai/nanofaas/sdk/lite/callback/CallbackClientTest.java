@@ -1,8 +1,6 @@
 package it.unimib.datai.nanofaas.sdk.lite.callback;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonMappingException;
 import com.sun.net.httpserver.HttpServer;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import org.junit.jupiter.api.AfterEach;
@@ -130,14 +128,33 @@ class CallbackClientTest {
         AtomicInteger attempts = new AtomicInteger();
         ObjectMapper failingMapper = new ObjectMapper() {
             @Override
-            public byte[] writeValueAsBytes(Object value) throws JsonProcessingException {
+            public void writeValue(java.io.OutputStream output, Object value) throws IOException {
                 attempts.incrementAndGet();
-                throw JsonMappingException.fromUnexpectedIOE(new IOException("boom"));
+                throw new IOException("boom");
             }
         };
         CallbackClient client = new CallbackClient(failingMapper, "http://localhost:1");
 
         assertFalse(client.sendResult("exec-json", InvocationResult.success("ok"), null));
         assertEquals(1, attempts.get());
+    }
+
+    @Test
+    void sendsAlreadyBoundedSerializedPayloadWithoutReserializingAnObjectGraph() throws Exception {
+        AtomicReference<byte[]> received = new AtomicReference<>();
+        mockServer = HttpServer.create(new InetSocketAddress(0), 0);
+        mockServer.createContext("/", exchange -> {
+            received.set(exchange.getRequestBody().readAllBytes());
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+        mockServer.start();
+        CallbackClient client = new CallbackClient(
+                objectMapper, "http://localhost:" + mockServer.getAddress().getPort());
+        byte[] body = "{\"success\":true,\"output\":{\"ok\":true},\"error\":null}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+        assertTrue(client.sendSerializedResult("exec-bytes", body, "trace-bytes", "4"));
+
+        assertArrayEquals(body, received.get());
     }
 }

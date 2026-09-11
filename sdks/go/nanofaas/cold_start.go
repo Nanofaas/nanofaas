@@ -1,6 +1,7 @@
 package nanofaas
 
 import (
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -12,6 +13,7 @@ type ColdStartTracker struct {
 	containerStartMs    int64
 	firstInvocationDone atomic.Bool
 	firstRequestArrival atomic.Int64
+	firstRequestOnce    sync.Once
 }
 
 func NewColdStartTracker(now nowFunc) *ColdStartTracker {
@@ -19,13 +21,9 @@ func NewColdStartTracker(now nowFunc) *ColdStartTracker {
 		now = time.Now
 	}
 	start := now().UnixMilli()
-	firstRequestArrival := atomic.Int64{}
-	firstRequestArrival.Store(-1)
-	return &ColdStartTracker{
-		now:                 now,
-		containerStartMs:    start,
-		firstRequestArrival: firstRequestArrival,
-	}
+	tracker := &ColdStartTracker{now: now, containerStartMs: start}
+	tracker.firstRequestArrival.Store(-1)
+	return tracker
 }
 
 func (c *ColdStartTracker) FirstInvocation() bool {
@@ -33,7 +31,9 @@ func (c *ColdStartTracker) FirstInvocation() bool {
 }
 
 func (c *ColdStartTracker) MarkFirstRequestArrival() {
-	c.firstRequestArrival.CompareAndSwap(-1, c.now().UnixMilli())
+	c.firstRequestOnce.Do(func() {
+		c.firstRequestArrival.Store(c.now().UnixMilli())
+	})
 }
 
 func (c *ColdStartTracker) InitDurationMs() int64 {

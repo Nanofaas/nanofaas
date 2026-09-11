@@ -34,6 +34,16 @@ def scenario(document, scenario_id):
 
 
 class SaturationWireCorpusMutationTest(unittest.TestCase):
+    def test_rejects_handler_saturation_without_pre_handler_callback_reservation(self):
+        validator = load_validator_module()
+        document = json.loads(CORPUS.read_text(encoding="utf-8"))
+        mutated = scenario(document, "handler-saturated")
+        mutated["initialCounters"]["pendingCallbacks"] = 0
+        mutated["initialCounters"]["pendingCallbackBytes"] = 0
+
+        with self.assertRaises(validator.ContractError):
+            validator.validate_document(document)
+
     def test_rejects_shifted_dispatch_attempt_sequence(self):
         validator = load_validator_module()
         document = json.loads(CORPUS.read_text(encoding="utf-8"))

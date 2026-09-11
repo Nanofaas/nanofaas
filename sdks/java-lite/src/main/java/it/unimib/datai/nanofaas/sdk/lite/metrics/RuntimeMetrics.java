@@ -12,6 +12,7 @@ public final class RuntimeMetrics {
     private final Counter invocationsTotal;
     private final Counter errorsTotal;
     private final Counter coldStarts;
+    private final Counter callbackFailures;
     private final Histogram invocationDuration;
     private final Gauge inFlight;
 
@@ -36,6 +37,12 @@ public final class RuntimeMetrics {
                 .labelNames(FUNCTION_LABEL)
                 .register(registry);
 
+        this.callbackFailures = Counter.builder()
+                .name("runtime_callback_failures")
+                .help("Total callback delivery failures")
+                .labelNames(FUNCTION_LABEL)
+                .register(registry);
+
         this.invocationDuration = Histogram.builder()
                 .name("nanofaas_invocation_duration_seconds")
                 .help("Invocation duration in seconds")
@@ -53,6 +60,7 @@ public final class RuntimeMetrics {
         invocationsTotal.labelValues(functionName);
         errorsTotal.labelValues(functionName);
         coldStarts.labelValues(functionName);
+        callbackFailures.labelValues(functionName);
     }
 
     public PrometheusRegistry getRegistry() {
@@ -69,6 +77,10 @@ public final class RuntimeMetrics {
 
     public void recordColdStart(String function) {
         coldStarts.labelValues(function).inc();
+    }
+
+    public void recordCallbackFailure(String function) {
+        callbackFailures.labelValues(function).inc();
     }
 
     public void observeDuration(String function, double seconds) {

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"sync"
 )
 
 type Option func(*Runtime)
@@ -17,6 +18,9 @@ type Runtime struct {
 	callbackDispatcher *CallbackDispatcher
 	coldStart          *ColdStartTracker
 	metrics            *runtimeMetrics
+	limits             *runtimeLimits
+	lifecycle          *runtimeLifecycle
+	startMu            sync.Mutex
 }
 
 func NewRuntime(opts ...Option) *Runtime {
@@ -28,31 +32,44 @@ func NewRuntime(opts ...Option) *Runtime {
 	for _, opt := range opts {
 		opt(rt)
 	}
-	if rt.settings.Port == "" {
-		rt.settings.Port = "8080"
-	}
-	if rt.settings.HandlerTimeout == 0 {
-		rt.settings.HandlerTimeout = defaultHandlerTimeout
-	}
+	rt.settings = normalizedRuntimeSettings(rt.settings)
 	if rt.logger == nil {
 		rt.logger = slog.Default()
 	}
-	rt.callbackClient = NewCallbackClient(rt.settings.CallbackURL)
-	rt.callbackDispatcher = NewCallbackDispatcher(rt.callbackClient, 2, 128)
-	rt.coldStart = NewColdStartTracker(nil)
 	rt.metrics = newRuntimeMetrics()
+	rt.callbackClient = NewCallbackClient(rt.settings.CallbackURL)
+	rt.callbackClient.httpClient.Timeout = rt.settings.CallbackAttemptTimeout
+	rt.callbackClient.retryDelays = callbackRetryDelays(rt.settings.CallbackMaxAttempts)
+	rt.callbackDispatcher = rt.newOwnedCallbackDispatcher()
+	rt.coldStart = NewColdStartTracker(nil)
+	rt.limits = newRuntimeLimits(rt.settings)
+	rt.lifecycle = newRuntimeLifecycle()
 	return rt
+}
+
+func (r *Runtime) newOwnedCallbackDispatcher() *CallbackDispatcher {
+	dispatcher := newCallbackDispatcher(r.callbackClient, 2, r.settings.MaxPendingCallbacks,
+		r.settings.MaxPendingCallbacks, r.settings.MaxPendingCallbackBytes, r.settings.MaxCallbackPayloadBytes)
+	dispatcher.onFailure = r.markCallbackDrop
+	return dispatcher
+}
+
+func callbackRetryDelays(maxAttempts int) []int {
+	maxAttempts = boundedInt(maxAttempts, defaultCallbackMaxAttempts, maximumCallbackAttempts)
+	base := []int{100, 500, 2000}
+	if maxAttempts <= len(base) {
+		return append([]int(nil), base[:maxAttempts]...)
+	}
+	delays := append([]int(nil), base...)
+	for len(delays) < maxAttempts {
+		delays = append(delays, base[len(base)-1])
+	}
+	return delays
 }
 
 func WithSettings(settings RuntimeSettings) Option {
 	return func(r *Runtime) {
-		r.settings = settings
-		if r.settings.Port == "" {
-			r.settings.Port = "8080"
-		}
-		if r.settings.HandlerTimeout == 0 {
-			r.settings.HandlerTimeout = defaultHandlerTimeout
-		}
+		r.settings = normalizedRuntimeSettings(settings)
 	}
 }
 

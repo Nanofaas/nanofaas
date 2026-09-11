@@ -1,5 +1,5 @@
 import pytest
-from fastapi.testclient import TestClient
+from sdks.python.tests.asgi_test_client import ASGITestClient
 import os
 import sys
 import importlib.util
@@ -8,6 +8,7 @@ from nanofaas.sdk import decorator
 # Add necessary paths
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
+import nanofaas.runtime.app as runtime
 from nanofaas.runtime.app import app
 
 @pytest.fixture
@@ -22,7 +23,7 @@ def json_transform_client():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     
-    return TestClient(app)
+    return ASGITestClient(app, runtime)
 
 def test_json_transform_example(json_transform_client):
     payload = {

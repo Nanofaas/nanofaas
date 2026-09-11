@@ -37,7 +37,7 @@ func newRuntimeMetrics() *runtimeMetrics {
 		callbackDropsTotal: prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Name: "nanofaas_runtime_callback_drops_total",
-				Help: "Callbacks dropped because the dispatcher queue was full or canceled.",
+				Help: "Callbacks rejected or exhausted before successful delivery.",
 			},
 		),
 		coldStartsTotal: prometheus.NewCounter(

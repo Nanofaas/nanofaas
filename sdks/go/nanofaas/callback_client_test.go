@@ -2,6 +2,7 @@ package nanofaas
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -76,5 +77,31 @@ func TestCallbackClientNormalizesCompleteSuffix(t *testing.T) {
 	client := NewCallbackClient(server.URL + "/v1/internal/executions/placeholder:complete/")
 	if !client.SendResult(context.Background(), "exec-10", Success("ok"), "") {
 		t.Fatal("expected callback success")
+	}
+}
+
+func TestCallbackClientRetriesPreserveDispatchAttemptIdentity(t *testing.T) {
+	attempts := make(chan string, 3)
+	client := NewCallbackClient("http://callback/v1/internal/executions")
+	client.retryDelays = []int{0, 0, 0}
+	client.httpClient = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		_, _ = io.Copy(io.Discard, req.Body)
+		attempts <- req.Header.Get("X-Dispatch-Attempt")
+		return &http.Response{StatusCode: http.StatusServiceUnavailable, Body: http.NoBody}, nil
+	})}
+
+	if client.SendResultWithDispatchAttempt(context.Background(), "exec-1", Success("ok"), "trace-1", "2") {
+		t.Fatal("exhausted callback unexpectedly succeeded")
+	}
+	close(attempts)
+	count := 0
+	for attempt := range attempts {
+		count++
+		if attempt != "2" {
+			t.Fatalf("callback retry changed dispatch attempt to %q", attempt)
+		}
+	}
+	if count != 3 {
+		t.Fatalf("unexpected attempt count %d", count)
 	}
 }

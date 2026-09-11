@@ -11,7 +11,8 @@ Java-lite shutdown resources.
 Admission is fail-fast. A runtime must reserve input, handler and callback count/byte capacity
 before starting the handler or making an avoidable large serialized copy. A callback requested by
 the invocation is part of admission: the runtime must not accept work and silently discard its
-terminal callback. Saturation is `429 RUNTIME_CALLBACK_SATURATED`; oversized ingress is
+terminal callback. Callback saturation is `429 RUNTIME_CALLBACK_SATURATED`; handler admission
+saturation is `429 RUNTIME_HANDLER_SATURATED`. Oversized ingress is
 `413 RUNTIME_INPUT_TOO_LARGE`. Output discovered after handler execution is
 `500 RUNTIME_OUTPUT_TOO_LARGE`: the handler did start, its oversized output is not retained,
 and a bounded error callback is still required. A request accepted after stop begins is

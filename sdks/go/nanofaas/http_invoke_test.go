@@ -137,11 +137,13 @@ func TestInvokeErrorResponseIsValidJSON(t *testing.T) {
 		t.Fatalf("unexpected status %d", rec.Code)
 	}
 
-	var body map[string]string
+	var body struct {
+		Error ErrorInfo `json:"error"`
+	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("response body is not valid JSON: %v; body=%q", err, rec.Body.String())
 	}
-	if body["error"] != "bad \"quote\"\nnewline" {
+	if body.Error.Code != "HANDLER_ERROR" || body.Error.Message != "Handler failed" {
 		t.Fatalf("unexpected error body: %+v", body)
 	}
 }
@@ -201,7 +203,8 @@ func TestInvokeRecoversFromHandlerPanicAndReportsStructuredError(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("unexpected status %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "kaboom") {
+	if !strings.Contains(rec.Body.String(), `"code":"HANDLER_ERROR"`) ||
+		!strings.Contains(rec.Body.String(), `"message":"Handler failed"`) {
 		t.Fatalf("unexpected body %s", rec.Body.String())
 	}
 

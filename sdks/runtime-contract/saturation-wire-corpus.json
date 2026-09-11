@@ -8,6 +8,7 @@
           "input-too-large",
           "output-too-large",
           "callback-saturated",
+          "handler-saturated",
           "handler-timeout",
           "cancellation",
           "health-under-saturation",
@@ -59,13 +60,15 @@
           "release-barrier",
           "cancel-request",
           "fill-callback-capacity",
+          "fill-handler-capacity",
           "begin-stop",
           "await-stop",
           "start-runtime-again",
           "await-response",
           "await-callback",
           "control-plane-redispatch",
-          "drain-callbacks"
+          "drain-callbacks",
+          "drain-handlers"
         ],
         "handlerTerminals": [
           "not-started",
@@ -116,11 +119,13 @@
           "await-barrier",
           "release-barrier",
           "fill-callback-capacity",
+          "fill-handler-capacity",
           "begin-stop",
           "await-stop",
           "start-runtime-again",
           "await-callback",
-          "drain-callbacks"
+          "drain-callbacks",
+          "drain-handlers"
         ],
         "client": [
           "send-request",
@@ -307,6 +312,20 @@
             "retry-after": "1"
           }
         },
+        "handler-saturated": {
+          "connectionOutcome": "response",
+          "status": 429,
+          "body": {
+            "error": {
+              "code": "RUNTIME_HANDLER_SATURATED",
+              "message": "Runtime handler capacity exhausted"
+            }
+          },
+          "requiredHeaders": {
+            "content-type": "application/json",
+            "retry-after": "1"
+          }
+        },
         "handler-timeout": {
           "connectionOutcome": "response",
           "status": 504,
@@ -444,6 +463,7 @@
             "input-too-large": ["invoke-1"],
             "output-too-large": ["invoke-1"],
             "callback-saturated": ["invoke-1"],
+            "handler-saturated": ["invoke-1"],
             "handler-timeout": ["invoke-1"],
             "cancellation": ["invoke-1"],
             "health-under-saturation": ["health-1"],
@@ -464,6 +484,7 @@
             "input-too-large": [1],
             "output-too-large": [1],
             "callback-saturated": [1],
+            "handler-saturated": [1],
             "handler-timeout": [1],
             "cancellation": [1],
             "health-under-saturation": [null],
@@ -570,6 +591,7 @@
             "input-too-large": ["start-runtime", "send-request", "await-response"],
             "output-too-large": ["start-runtime", "send-request", "await-response", "await-callback"],
             "callback-saturated": ["start-runtime", "fill-callback-capacity", "send-request", "await-response", "drain-callbacks"],
+            "handler-saturated": ["start-runtime", "fill-handler-capacity", "send-request", "await-response", "drain-handlers"],
             "handler-timeout": ["start-runtime", "send-request", "await-barrier", "await-response", "await-callback"],
             "cancellation": ["start-runtime", "send-request", "await-barrier", "cancel-request", "await-callback"],
             "health-under-saturation": ["start-runtime", "fill-callback-capacity", "probe-health", "await-response", "drain-callbacks"],
@@ -590,6 +612,7 @@
             "input-too-large": ["harness", "client", "client"],
             "output-too-large": ["harness", "client", "client", "harness"],
             "callback-saturated": ["harness", "harness", "client", "client", "harness"],
+            "handler-saturated": ["harness", "harness", "client", "client", "harness"],
             "handler-timeout": ["harness", "client", "harness", "client", "harness"],
             "cancellation": ["harness", "client", "harness", "client", "harness"],
             "health-under-saturation": ["harness", "harness", "client", "client", "harness"],
@@ -610,6 +633,7 @@
             "input-too-large": [null, "invoke-1", "invoke-1"],
             "output-too-large": [null, "invoke-1", "invoke-1", "invoke-1"],
             "callback-saturated": [null, null, "invoke-1", "invoke-1", null],
+            "handler-saturated": [null, null, "invoke-1", "invoke-1", null],
             "handler-timeout": [null, "invoke-1", "invoke-1", "invoke-1", "invoke-1"],
             "cancellation": [null, "invoke-1", "invoke-1", "invoke-1", "invoke-1"],
             "health-under-saturation": [null, null, "health-1", "health-1", null],
@@ -630,6 +654,7 @@
             "input-too-large": [null, null, null],
             "output-too-large": [null, null, null, null],
             "callback-saturated": [null, null, null, null, null],
+            "handler-saturated": [null, null, null, null, null],
             "handler-timeout": [null, null, "handler-started", null, null],
             "cancellation": [null, null, "handler-started", null, null],
             "health-under-saturation": [null, null, null, null, null],
@@ -650,6 +675,7 @@
             "input-too-large": [],
             "output-too-large": [],
             "callback-saturated": [],
+            "handler-saturated": [],
             "handler-timeout": ["handler-started"],
             "cancellation": ["handler-started"],
             "health-under-saturation": [],
@@ -670,6 +696,7 @@
             "input-too-large": [],
             "output-too-large": [],
             "callback-saturated": [],
+            "handler-saturated": [],
             "handler-timeout": ["closed"],
             "cancellation": ["closed"],
             "health-under-saturation": [],
@@ -690,6 +717,7 @@
             "input-too-large": [null],
             "output-too-large": [null],
             "callback-saturated": [null],
+            "handler-saturated": [null],
             "handler-timeout": ["handler-started"],
             "cancellation": ["handler-started"],
             "health-under-saturation": [null],
@@ -710,6 +738,7 @@
             "input-too-large": [null],
             "output-too-large": [null],
             "callback-saturated": [null],
+            "handler-saturated": [null],
             "handler-timeout": [null],
             "cancellation": [null],
             "health-under-saturation": [null],
@@ -730,6 +759,7 @@
             "input-too-large": ["input-too-large"],
             "output-too-large": ["output-too-large"],
             "callback-saturated": ["callback-saturated"],
+            "handler-saturated": ["handler-saturated"],
             "handler-timeout": ["handler-timeout"],
             "cancellation": ["client-cancelled"],
             "health-under-saturation": ["health-ok"],
@@ -782,6 +812,7 @@
             "not-started": [
               "input-too-large",
               "callback-saturated",
+              "handler-saturated",
               "health-ok",
               "runtime-stopping"
             ]
@@ -798,6 +829,7 @@
             "input-too-large": ["input-too-large"],
             "output-too-large": ["output-too-large"],
             "callback-saturated": ["callback-saturated"],
+            "handler-saturated": ["handler-saturated"],
             "handler-timeout": ["handler-timeout"],
             "cancellation": ["client-cancelled"],
             "health-under-saturation": ["health-ok"],
@@ -849,6 +881,7 @@
             "input-too-large": ["none"],
             "output-too-large": ["output-too-large"],
             "callback-saturated": ["none"],
+            "handler-saturated": ["none"],
             "handler-timeout": ["handler-timeout"],
             "client-cancelled": ["cancelled"],
             "health-ok": ["none"],
@@ -908,6 +941,10 @@
           "counters-zero"
         ],
         "callback-saturated": [
+          "wire-response",
+          "counters-zero"
+        ],
+        "handler-saturated": [
           "wire-response",
           "counters-zero"
         ],
@@ -1018,6 +1055,7 @@
     {"id":"restart","kind":"restart","implementationOwners":["P16b","P17","P18"],"runtimeConfigRef":"bounded-test","requests":[{"id":"invoke-after-restart","role":"invoke","method":"POST","path":"/invoke","metadata":{"executionId":"execution-h","dispatchAttempt":1,"traceId":"trace-h","callbackUrl":"http://callback.invalid"},"payload":{"inputBytes":128,"relationToInputLimit":"below-limit"}}],"backend":{"handlers":[{"requestId":"invoke-after-restart","behavior":"succeed","outputBytes":128,"outputRelationToLimit":"below-limit","barrier":null}],"callbacks":[{"requestId":"invoke-after-restart","behavior":"succeed","barrier":null}]},"harness":{"barriers":[],"actions":[{"sequence":1,"actor":"harness","action":"start-runtime","requestId":null,"barrier":null},{"sequence":2,"actor":"harness","action":"begin-stop","requestId":null,"barrier":null},{"sequence":3,"actor":"harness","action":"await-stop","requestId":null,"barrier":null},{"sequence":4,"actor":"harness","action":"start-runtime-again","requestId":null,"barrier":null},{"sequence":5,"actor":"client","action":"send-request","requestId":"invoke-after-restart","barrier":null},{"sequence":6,"actor":"client","action":"await-response","requestId":"invoke-after-restart","barrier":null},{"sequence":7,"actor":"harness","action":"await-callback","requestId":"invoke-after-restart","barrier":null}]},"initialCounters":{"activeHandlers":0,"inputBytes":0,"outputBytes":0,"pendingCallbacks":0,"pendingCallbackBytes":0,"serializedCallbackBytes":0},"expected":{"responses":[{"requestId":"invoke-after-restart","connectionOutcome":"response","status":200,"body":{"result":"ok"},"requiredHeaders":{"content-type":"application/json"},"outcomeRef":"success"}],"handlers":[{"requestId":"invoke-after-restart","started":true,"cancelRequested":false,"terminal":"succeeded","lifecycleRef":"succeeded"}],"callbacks":[{"requestId":"invoke-after-restart","required":true,"attempted":true,"delivered":true,"attempts":1,"terminal":"delivered","dispatchAttempts":[1],"lifecycleRef":"delivered-once","envelopeRef":"success","requestProjection":{"method":"POST","url":"http://callback.invalid/execution-h:complete","headers":{"content-type":"application/json","x-trace-id":"trace-h","x-dispatch-attempt":"1"},"payload":{"success":true,"output":{"result":"ok"},"error":null}}}],"identity":{"executionId":"execution-h","requestDispatchAttempts":[1],"runtimeRedispatchCount":0},"observations":["wire-response","restart-complete","handler-start","callback-attempt","callback-delivery","counters-zero"],"finalCounters":{"activeHandlers":0,"inputBytes":0,"outputBytes":0,"pendingCallbacks":0,"pendingCallbackBytes":0,"serializedCallbackBytes":0},"observationSetRef":"restart"},"deadlineMs":300},
     {"id":"callback-delivery-exhausted","kind":"callback-delivery-exhausted","implementationOwners":["P16b","P17","P18"],"runtimeConfigRef":"bounded-test","requests":[{"id":"invoke-1","role":"invoke","method":"POST","path":"/invoke","metadata":{"executionId":"execution-i","dispatchAttempt":2,"traceId":"trace-i","callbackUrl":"http://callback.invalid"},"payload":{"inputBytes":128,"relationToInputLimit":"below-limit"}}],"backend":{"handlers":[{"requestId":"invoke-1","behavior":"succeed","outputBytes":128,"outputRelationToLimit":"below-limit","barrier":null}],"callbacks":[{"requestId":"invoke-1","behavior":"retryable-failure","barrier":null}]},"harness":{"barriers":[],"actions":[{"sequence":1,"actor":"harness","action":"start-runtime","requestId":null,"barrier":null},{"sequence":2,"actor":"client","action":"send-request","requestId":"invoke-1","barrier":null},{"sequence":3,"actor":"client","action":"await-response","requestId":"invoke-1","barrier":null},{"sequence":4,"actor":"harness","action":"await-callback","requestId":"invoke-1","barrier":null}]},"initialCounters":{"activeHandlers":0,"inputBytes":0,"outputBytes":0,"pendingCallbacks":0,"pendingCallbackBytes":0,"serializedCallbackBytes":0},"expected":{"responses":[{"requestId":"invoke-1","connectionOutcome":"response","status":200,"body":{"result":"ok"},"requiredHeaders":{"content-type":"application/json"},"outcomeRef":"success"}],"handlers":[{"requestId":"invoke-1","started":true,"cancelRequested":false,"terminal":"succeeded","lifecycleRef":"succeeded"}],"callbacks":[{"requestId":"invoke-1","required":true,"attempted":true,"delivered":false,"attempts":3,"terminal":"exhausted","dispatchAttempts":[2,2,2],"lifecycleRef":"delivery-exhausted","envelopeRef":"success","requestProjection":{"method":"POST","url":"http://callback.invalid/execution-i:complete","headers":{"content-type":"application/json","x-trace-id":"trace-i","x-dispatch-attempt":"2"},"payload":{"success":true,"output":{"result":"ok"},"error":null}}}],"identity":{"executionId":"execution-i","requestDispatchAttempts":[2],"runtimeRedispatchCount":0},"observations":["wire-response","handler-start","callback-attempt","callback-failure-metric","structured-log","counters-zero","runtime-redispatch-zero"],"finalCounters":{"activeHandlers":0,"inputBytes":0,"outputBytes":0,"pendingCallbacks":0,"pendingCallbackBytes":0,"serializedCallbackBytes":0},"observationSetRef":"callback-delivery-exhausted"},"deadlineMs":300},
     {"id":"dispatch-retry-identity","kind":"dispatch-retry-identity","implementationOwners":["P16b"],"runtimeConfigRef":"bounded-test","requests":[{"id":"attempt-1","role":"invoke","method":"POST","path":"/invoke","metadata":{"executionId":"execution-j","dispatchAttempt":1,"traceId":"trace-j","callbackUrl":"http://callback.invalid"},"payload":{"inputBytes":128,"relationToInputLimit":"below-limit"}},{"id":"attempt-2","role":"invoke","method":"POST","path":"/invoke","metadata":{"executionId":"execution-j","dispatchAttempt":2,"traceId":"trace-j","callbackUrl":"http://callback.invalid"},"payload":{"inputBytes":128,"relationToInputLimit":"below-limit"}}],"backend":{"handlers":[{"requestId":"attempt-1","behavior":"fail","outputBytes":0,"outputRelationToLimit":"not-applicable","barrier":null},{"requestId":"attempt-2","behavior":"succeed","outputBytes":128,"outputRelationToLimit":"below-limit","barrier":null}],"callbacks":[{"requestId":"attempt-1","behavior":"succeed","barrier":null},{"requestId":"attempt-2","behavior":"succeed","barrier":null}]},"harness":{"barriers":[],"actions":[{"sequence":1,"actor":"harness","action":"start-runtime","requestId":null,"barrier":null},{"sequence":2,"actor":"control-plane","action":"send-request","requestId":"attempt-1","barrier":null},{"sequence":3,"actor":"control-plane","action":"await-response","requestId":"attempt-1","barrier":null},{"sequence":4,"actor":"harness","action":"await-callback","requestId":"attempt-1","barrier":null},{"sequence":5,"actor":"control-plane","action":"control-plane-redispatch","requestId":"attempt-2","barrier":null},{"sequence":6,"actor":"control-plane","action":"send-request","requestId":"attempt-2","barrier":null},{"sequence":7,"actor":"control-plane","action":"await-response","requestId":"attempt-2","barrier":null},{"sequence":8,"actor":"harness","action":"await-callback","requestId":"attempt-2","barrier":null}]},"initialCounters":{"activeHandlers":0,"inputBytes":0,"outputBytes":0,"pendingCallbacks":0,"pendingCallbackBytes":0,"serializedCallbackBytes":0},"expected":{"responses":[{"requestId":"attempt-1","connectionOutcome":"response","status":500,"body":{"error":{"code":"HANDLER_ERROR","message":"Handler failed"}},"requiredHeaders":{"content-type":"application/json"},"outcomeRef":"handler-error"},{"requestId":"attempt-2","connectionOutcome":"response","status":200,"body":{"result":"ok"},"requiredHeaders":{"content-type":"application/json"},"outcomeRef":"success"}],"handlers":[{"requestId":"attempt-1","started":true,"cancelRequested":false,"terminal":"failed","lifecycleRef":"failed"},{"requestId":"attempt-2","started":true,"cancelRequested":false,"terminal":"succeeded","lifecycleRef":"succeeded"}],"callbacks":[{"requestId":"attempt-1","required":true,"attempted":true,"delivered":true,"attempts":1,"terminal":"delivered","dispatchAttempts":[1],"lifecycleRef":"delivered-once","envelopeRef":"handler-error","requestProjection":{"method":"POST","url":"http://callback.invalid/execution-j:complete","headers":{"content-type":"application/json","x-trace-id":"trace-j","x-dispatch-attempt":"1"},"payload":{"success":false,"output":null,"error":{"code":"HANDLER_ERROR","message":"Handler failed"}}}},{"requestId":"attempt-2","required":true,"attempted":true,"delivered":true,"attempts":1,"terminal":"delivered","dispatchAttempts":[2],"lifecycleRef":"delivered-once","envelopeRef":"success","requestProjection":{"method":"POST","url":"http://callback.invalid/execution-j:complete","headers":{"content-type":"application/json","x-trace-id":"trace-j","x-dispatch-attempt":"2"},"payload":{"success":true,"output":{"result":"ok"},"error":null}}}],"identity":{"executionId":"execution-j","requestDispatchAttempts":[1,2],"runtimeRedispatchCount":0},"observations":["wire-response","handler-start","callback-attempt","callback-delivery","counters-zero","runtime-redispatch-zero"],"finalCounters":{"activeHandlers":0,"inputBytes":0,"outputBytes":0,"pendingCallbacks":0,"pendingCallbackBytes":0,"serializedCallbackBytes":0},"observationSetRef":"dispatch-retry-identity"},"deadlineMs":400}
+    ,{"id":"handler-saturated","kind":"handler-saturated","implementationOwners":["P16b","P17","P18"],"runtimeConfigRef":"bounded-test","requests":[{"id":"invoke-1","role":"invoke","method":"POST","path":"/invoke","metadata":{"executionId":"execution-k","dispatchAttempt":1,"traceId":"trace-k","callbackUrl":"http://callback.invalid"},"payload":{"inputBytes":128,"relationToInputLimit":"below-limit"}}],"backend":{"handlers":[{"requestId":"invoke-1","behavior":"not-invoked","outputBytes":0,"outputRelationToLimit":"not-applicable","barrier":null}],"callbacks":[{"requestId":"invoke-1","behavior":"not-invoked","barrier":null}]},"harness":{"barriers":[],"actions":[{"sequence":1,"actor":"harness","action":"start-runtime","requestId":null,"barrier":null},{"sequence":2,"actor":"harness","action":"fill-handler-capacity","requestId":null,"barrier":null},{"sequence":3,"actor":"client","action":"send-request","requestId":"invoke-1","barrier":null},{"sequence":4,"actor":"client","action":"await-response","requestId":"invoke-1","barrier":null},{"sequence":5,"actor":"harness","action":"drain-handlers","requestId":null,"barrier":null}]},"initialCounters":{"activeHandlers":1,"inputBytes":128,"outputBytes":0,"pendingCallbacks":1,"pendingCallbackBytes":1024,"serializedCallbackBytes":0},"expected":{"responses":[{"requestId":"invoke-1","connectionOutcome":"response","status":429,"body":{"error":{"code":"RUNTIME_HANDLER_SATURATED","message":"Runtime handler capacity exhausted"}},"requiredHeaders":{"content-type":"application/json","retry-after":"1"},"outcomeRef":"handler-saturated"}],"handlers":[{"requestId":"invoke-1","started":false,"cancelRequested":false,"terminal":"not-started","lifecycleRef":"not-started"}],"callbacks":[{"requestId":"invoke-1","required":true,"attempted":false,"delivered":false,"attempts":0,"terminal":"rejected-before-handler","dispatchAttempts":[],"lifecycleRef":"rejected-before-handler","envelopeRef":"none","requestProjection":null}],"identity":{"executionId":"execution-k","requestDispatchAttempts":[1],"runtimeRedispatchCount":0},"observations":["wire-response","counters-zero"],"finalCounters":{"activeHandlers":0,"inputBytes":0,"outputBytes":0,"pendingCallbacks":0,"pendingCallbackBytes":0,"serializedCallbackBytes":0},"observationSetRef":"handler-saturated"},"deadlineMs":250}
   ],
   "mutationTests": [
     {"id":"missing-required-boolean","operation":"remove","path":"/scenarios/0/expected/callbacks/0/required","value":null},

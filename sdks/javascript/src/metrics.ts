@@ -11,6 +11,12 @@ export type RuntimeMetrics = {
     invocations: Counter<"success">;
     duration: Histogram<string>;
     inFlight: Gauge<string>;
+    activeHandlers: Gauge<string>;
+    inputBytes: Gauge<string>;
+    outputBytes: Gauge<string>;
+    pendingCallbacks: Gauge<string>;
+    pendingCallbackBytes: Gauge<string>;
+    serializedCallbackBytes: Gauge<string>;
     coldStarts: Counter<string>;
     callbackFailures: Counter<string>;
 };
@@ -39,6 +45,37 @@ export function createMetrics(): RuntimeMetrics {
         registers: [registry],
     });
 
+    const activeHandlers = new Gauge({
+        name: "runtime_active_handlers",
+        help: "Handler promises that still own runtime capacity.",
+        registers: [registry],
+    });
+    const inputBytes = new Gauge({
+        name: "runtime_input_bytes",
+        help: "Input bytes retained by active runtime work.",
+        registers: [registry],
+    });
+    const outputBytes = new Gauge({
+        name: "runtime_output_bytes",
+        help: "Serialized handler output bytes retained by the runtime.",
+        registers: [registry],
+    });
+    const pendingCallbacks = new Gauge({
+        name: "runtime_pending_callbacks",
+        help: "Callback count reserved by admitted invocations.",
+        registers: [registry],
+    });
+    const pendingCallbackBytes = new Gauge({
+        name: "runtime_pending_callback_bytes",
+        help: "Callback bytes reserved by admitted invocations.",
+        registers: [registry],
+    });
+    const serializedCallbackBytes = new Gauge({
+        name: "runtime_serialized_callback_bytes",
+        help: "Serialized callback body bytes retained for delivery.",
+        registers: [registry],
+    });
+
     const coldStarts = new Counter({
         name: "runtime_cold_start",
         help: "Total cold-start invocations.",
@@ -56,6 +93,12 @@ export function createMetrics(): RuntimeMetrics {
         invocations,
         duration,
         inFlight,
+        activeHandlers,
+        inputBytes,
+        outputBytes,
+        pendingCallbacks,
+        pendingCallbackBytes,
+        serializedCallbackBytes,
         coldStarts,
         callbackFailures,
     };

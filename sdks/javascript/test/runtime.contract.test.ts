@@ -171,7 +171,7 @@ test("NanofaasError maps to 500 and preserves error code", async () => {
     }
 });
 
-test("generic error maps to 500 with UNHANDLED_ERROR", async () => {
+test("generic handler error maps to the canonical 500 outcome", async () => {
     const runtime = await withRuntime((rt) => {
         rt.register("echo", async () => {
             throw new Error("boom");
@@ -190,9 +190,33 @@ test("generic error maps to 500 with UNHANDLED_ERROR", async () => {
         assert.equal(response.status, 500);
         assert.deepEqual(await response.json(), {
             error: {
-                code: "UNHANDLED_ERROR",
-                message: "boom",
+                code: "HANDLER_ERROR",
+                message: "Handler failed",
             },
+        });
+    } finally {
+        await runtime.stop();
+    }
+});
+
+test("synchronous handler throw maps to the same canonical 500 outcome", async () => {
+    const runtime = await withRuntime((rt) => {
+        rt.register("echo", () => {
+            throw new Error("sync boom");
+        });
+    });
+    try {
+        const response = await fetch(`${runtime.baseUrl}/invoke`, {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+                "x-execution-id": "exec-sync-500",
+            },
+            body: JSON.stringify({ input: null }),
+        });
+        assert.equal(response.status, 500);
+        assert.deepEqual(await response.json(), {
+            error: { code: "HANDLER_ERROR", message: "Handler failed" },
         });
     } finally {
         await runtime.stop();
@@ -229,7 +253,7 @@ test("timeout maps to 504 with HANDLER_TIMEOUT", async () => {
         assert.deepEqual(await response.json(), {
             error: {
                 code: "HANDLER_TIMEOUT",
-                message: "Handler execution timed out",
+                message: "Handler exceeded configured timeout",
             },
         });
     } finally {

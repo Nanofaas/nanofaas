@@ -39,6 +39,13 @@ func (c *CallbackClient) SendResultWithDispatchAttempt(ctx context.Context, exec
 		return false
 	}
 
+	return c.SendSerializedWithDispatchAttempt(ctx, executionID, body, traceID, dispatchAttempt)
+}
+
+func (c *CallbackClient) SendSerializedWithDispatchAttempt(ctx context.Context, executionID string, body []byte, traceID, dispatchAttempt string) bool {
+	if strings.TrimSpace(c.baseURL) == "" || strings.TrimSpace(executionID) == "" {
+		return false
+	}
 	url := c.callbackURL(executionID)
 	for attempt := 0; attempt < len(c.retryDelays); attempt++ {
 		if success, final := c.sendCallbackRequest(ctx, url, body, traceID, dispatchAttempt); final {

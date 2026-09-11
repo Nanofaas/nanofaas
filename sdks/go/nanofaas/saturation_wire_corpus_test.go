@@ -311,6 +311,10 @@ func TestConsumesSharedRuntimeSaturationWireContract(t *testing.T) {
 				t.Fatalf("undrained final counter in %q", scenario.ID)
 			}
 		}
+		scenario := scenario
+		t.Run("runtime/"+scenario.ID, func(t *testing.T) {
+			runRuntimeCorpusScenario(t, corpus, scenario)
+		})
 	}
 	if len(corpus.MutationTests) == 0 {
 		t.Fatal("mutation fixtures are required")

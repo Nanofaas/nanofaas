@@ -8,6 +8,7 @@ import it.unimib.datai.nanofaas.common.runtime.ResponseHeaderPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -34,20 +35,33 @@ public class InvokeController {
     private final ColdStartTracker coldStartTracker;
     private final HandlerExecutor handlerExecutor;
     private final JsonOutputNormalizer outputNormalizer;
+    private final RuntimePayloadLimits payloadLimits;
 
+    @Autowired
     public InvokeController(
             CallbackDispatcher callbackDispatcher,
             HandlerRegistry handlerRegistry,
             InvocationRuntimeContextResolver runtimeContextResolver,
             ColdStartTracker coldStartTracker,
             HandlerExecutor handlerExecutor,
-            JsonOutputNormalizer outputNormalizer) {
+            JsonOutputNormalizer outputNormalizer,
+            RuntimePayloadLimits payloadLimits) {
         this.callbackDispatcher = callbackDispatcher;
         this.handlerRegistry = handlerRegistry;
         this.runtimeContextResolver = runtimeContextResolver;
         this.coldStartTracker = coldStartTracker;
         this.handlerExecutor = handlerExecutor;
         this.outputNormalizer = outputNormalizer;
+        this.payloadLimits = payloadLimits;
+    }
+
+    public InvokeController(CallbackDispatcher callbackDispatcher, HandlerRegistry handlerRegistry,
+                            InvocationRuntimeContextResolver runtimeContextResolver,
+                            ColdStartTracker coldStartTracker, HandlerExecutor handlerExecutor,
+                            JsonOutputNormalizer outputNormalizer) {
+        this(callbackDispatcher, handlerRegistry, runtimeContextResolver, coldStartTracker,
+                handlerExecutor, outputNormalizer,
+                new RuntimePayloadLimits(tools.jackson.databind.json.JsonMapper.builder().build(), 1024 * 1024));
     }
 
     @PostMapping("/invoke")
@@ -66,42 +80,78 @@ public class InvokeController {
                     .body(Map.of(ERROR_KEY, "Execution ID not configured"));
         }
 
+        CallbackDispatcher.CallbackReservation callbackReservation;
+        try {
+            handlerExecutor.checkAvailability();
+            callbackReservation = callbackDispatcher.reserveInvocation();
+        } catch (RuntimeStoppingException _) {
+            return ResponseEntity.status(503).header("Retry-After", "1")
+                    .body(errorBody("RUNTIME_STOPPING", "Runtime is stopping"));
+        } catch (HandlerSaturatedException _) {
+            return ResponseEntity.status(429).header("Retry-After", "1")
+                    .body(errorBody("RUNTIME_HANDLER_SATURATED", "Runtime handler capacity exhausted"));
+        } catch (CallbackSaturatedException _) {
+            return ResponseEntity.status(429).header("Retry-After", "1").body(Map.of(
+                    ERROR_KEY, Map.of("code", "RUNTIME_CALLBACK_SATURATED",
+                            "message", "Runtime callback capacity exhausted")));
+        }
+
         boolean isColdStart = coldStartTracker.firstInvocation();
         coldStartTracker.markFirstRequestArrival(); // idempotente: solo la prima chiamata ha effetto
 
         try {
             FunctionHandler handler = handlerRegistry.resolve();
             Object rawOutput = handlerExecutor.execute(handler, request);
-            return buildSuccessResponse(rawOutput, effectiveExecutionId, runtimeContext, dispatchAttempt, isColdStart);
+            return buildSuccessResponse(rawOutput, effectiveExecutionId, runtimeContext,
+                    dispatchAttempt, isColdStart, callbackReservation);
         } catch (OutputSerializationException ex) {
             String errorMessage = ex.getMessage();
             log.error("Handler output serialization failed for execution {}: {}", effectiveExecutionId, errorMessage, ex);
-            callbackDispatcher.submit(
+            submitCallback(callbackReservation,
                     effectiveExecutionId,
                     CallbackPayload.error("OUTPUT_SERIALIZATION_ERROR", errorMessage),
                     runtimeContext.traceId(),
                     dispatchAttempt);
             return ResponseEntity.status(500)
-                    .body(Map.of(ERROR_KEY, errorMessage));
+                    .body(errorBody("OUTPUT_SERIALIZATION_ERROR", errorMessage));
+        } catch (HandlerSaturatedException _) {
+            if (callbackReservation != null) callbackReservation.close();
+            return ResponseEntity.status(429)
+                    .header("Retry-After", "1")
+                    .body(Map.of(ERROR_KEY, Map.of(
+                            "code", "RUNTIME_HANDLER_SATURATED",
+                            "message", "Runtime handler capacity exhausted")));
+        } catch (RuntimeStoppingException _) {
+            if (callbackReservation != null) callbackReservation.close();
+            return ResponseEntity.status(503)
+                    .header("Retry-After", "1")
+                    .body(Map.of(ERROR_KEY, Map.of(
+                            "code", "RUNTIME_STOPPING", "message", "Runtime is stopping")));
         } catch (TimeoutException _) {
             log.error("Handler timed out for execution {}", effectiveExecutionId);
-            callbackDispatcher.submit(
+            submitCallback(callbackReservation,
                     effectiveExecutionId,
                     CallbackPayload.error("HANDLER_TIMEOUT", "Handler exceeded configured timeout"),
                     runtimeContext.traceId(),
                     dispatchAttempt);
-            return ResponseEntity.status(504).body(Map.of(ERROR_KEY, "Handler timed out"));
+            return ResponseEntity.status(504).body(errorBody(
+                    "HANDLER_TIMEOUT", "Handler exceeded configured timeout"));
         } catch (InterruptedException ex) {
+            submitCallback(callbackReservation, effectiveExecutionId,
+                    CallbackPayload.error("INVOCATION_CANCELLED", "Invocation cancelled"),
+                    runtimeContext.traceId(), dispatchAttempt);
             Thread.currentThread().interrupt();
-            return handleHandlerFailure(ex, effectiveExecutionId, runtimeContext.traceId(), dispatchAttempt);
+            throw new InvocationCancelledException(ex);
         } catch (Exception ex) {
-            return handleHandlerFailure(ex, effectiveExecutionId, runtimeContext.traceId(), dispatchAttempt);
+            return handleHandlerFailure(ex, callbackReservation,
+                    effectiveExecutionId, runtimeContext.traceId(), dispatchAttempt);
         }
     }
 
     private ResponseEntity<Object> buildSuccessResponse(Object rawOutput, String executionId,
                                                           InvocationRuntimeContext runtimeContext,
-                                                          String dispatchAttempt, boolean isColdStart) {
+                                                          String dispatchAttempt, boolean isColdStart,
+                                                          CallbackDispatcher.CallbackReservation callbackReservation) {
         int statusCode = 200;
         Map<String, String> allowedHeaders = Map.of();
         String encoding = null;
@@ -120,24 +170,38 @@ public class InvokeController {
             } else {
                 log.warn("Handler returned invalid statusCode {} for execution {}, treating as platform error",
                         envelopeStatus, executionId);
-                callbackDispatcher.submit(executionId,
+                submitCallback(callbackReservation, executionId,
                         CallbackPayload.error("OUTPUT_SERIALIZATION_ERROR",
                                 "Handler returned invalid statusCode: " + envelopeStatus),
                         runtimeContext.traceId(), dispatchAttempt);
                 return ResponseEntity.status(500)
-                        .body(Map.of(ERROR_KEY, "Handler returned invalid statusCode: " + envelopeStatus));
+                        .body(errorBody("OUTPUT_SERIALIZATION_ERROR",
+                                "Handler returned invalid statusCode: " + envelopeStatus));
             }
         }
 
-        JsonNode output = outputNormalizer.toJsonNode(outputForSerialization);
+        final JsonNode output;
+        try {
+            output = payloadLimits.normalize(outputForSerialization);
+        } catch (BoundedJson.PayloadTooLargeException _) {
+            String message = "Runtime output exceeds configured byte limit";
+            submitCallback(callbackReservation, executionId,
+                    CallbackPayload.error("RUNTIME_OUTPUT_TOO_LARGE", message),
+                    runtimeContext.traceId(), dispatchAttempt);
+            return ResponseEntity.status(500).body(Map.of(
+                    ERROR_KEY, Map.of("code", "RUNTIME_OUTPUT_TOO_LARGE", "message", message)));
+        }
 
-        callbackDispatcher.submit(
+        CallbackDispatcher.SubmitResult handoff = submitCallback(callbackReservation,
                 executionId,
                 isEnvelope
                         ? CallbackPayload.successWithEnvelope(output, statusCode, allowedHeaders, encoding)
                         : CallbackPayload.success(output),
                 runtimeContext.traceId(),
                 dispatchAttempt);
+        if (handoff != CallbackDispatcher.SubmitResult.ACCEPTED) {
+            return callbackHandoffFailure(handoff);
+        }
 
         ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.status(statusCode);
         allowedHeaders.forEach(responseBuilder::header);
@@ -171,19 +235,51 @@ public class InvokeController {
         }
     }
 
-    private ResponseEntity<Object> handleHandlerFailure(Exception ex, String effectiveExecutionId,
+    private ResponseEntity<Object> handleHandlerFailure(Exception ex,
+                                                        CallbackDispatcher.CallbackReservation callbackReservation,
+                                                        String effectiveExecutionId,
                                                         String traceId, String dispatchAttempt) {
         String errorMessage = handlerErrorMessage(ex);
         log.error("Handler error for execution {}: {}", effectiveExecutionId, errorMessage, ex);
 
-        callbackDispatcher.submit(
+        submitCallback(callbackReservation,
                 effectiveExecutionId,
                 CallbackPayload.error("HANDLER_ERROR", errorMessage),
                 traceId,
                 dispatchAttempt);
 
         return ResponseEntity.status(500)
-                .body(Map.of(ERROR_KEY, errorMessage));
+                .body(errorBody("HANDLER_ERROR", errorMessage));
+    }
+
+    private static Map<String, Object> errorBody(String code, String message) {
+        return Map.of(ERROR_KEY, Map.of("code", code, "message", message));
+    }
+
+    private CallbackDispatcher.SubmitResult submitCallback(CallbackDispatcher.CallbackReservation reservation,
+                                                           String executionId, CallbackPayload payload,
+                                                           String traceId, String dispatchAttempt) {
+        if (reservation == null) {
+            return callbackDispatcher.submit(executionId, payload, traceId, dispatchAttempt)
+                    ? CallbackDispatcher.SubmitResult.ACCEPTED
+                    : CallbackDispatcher.SubmitResult.SATURATED;
+        }
+        CallbackDispatcher.SubmitResult result = callbackDispatcher.submit(
+                reservation, executionId, payload, traceId, dispatchAttempt);
+        return result == null ? CallbackDispatcher.SubmitResult.SATURATED : result;
+    }
+
+    private static ResponseEntity<Object> callbackHandoffFailure(CallbackDispatcher.SubmitResult result) {
+        if (result == CallbackDispatcher.SubmitResult.PAYLOAD_TOO_LARGE) {
+            return ResponseEntity.status(500).body(errorBody(
+                    "RUNTIME_OUTPUT_TOO_LARGE", "Runtime output exceeds configured byte limit"));
+        }
+        if (result == CallbackDispatcher.SubmitResult.SERIALIZATION_FAILED) {
+            return ResponseEntity.status(500).body(errorBody(
+                    "OUTPUT_SERIALIZATION_ERROR", "Function output is not JSON-serializable"));
+        }
+        return ResponseEntity.status(503).header("Retry-After", "1").body(errorBody(
+                "RUNTIME_STOPPING", "Runtime is stopping"));
     }
 
     public ResponseEntity<Object> invoke(

@@ -1,0 +1,53 @@
+package it.unimib.datai.nanofaas.sdk.runtime;
+
+import it.unimib.datai.nanofaas.common.model.InvocationRequest;
+import org.junit.jupiter.api.Test;
+
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class HandlerExecutorCancellationTest {
+    @Test
+    void interruptRequestsHandlerCancellationButRetainsPermitUntilPhysicalExit() throws Exception {
+        HandlerExecutor executor = new HandlerExecutor(2_000, 1);
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch interrupted = new CountDownLatch(1);
+        CountDownLatch requestCaughtCancellation = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicBoolean requestInterrupted = new AtomicBoolean();
+        Thread request = Thread.ofPlatform().start(() -> {
+            try {
+                executor.execute(_ -> {
+                    entered.countDown();
+                    try { release.await(); }
+                    catch (InterruptedException _) {
+                        interrupted.countDown();
+                        while (release.getCount() != 0) Thread.onSpinWait();
+                    }
+                    return "late";
+                }, new InvocationRequest(null, null));
+            } catch (InterruptedException _) {
+                requestInterrupted.set(true);
+                requestCaughtCancellation.countDown();
+            } catch (Exception _) { }
+        });
+        try {
+            assertTrue(entered.await(1, TimeUnit.SECONDS));
+            request.interrupt();
+            assertTrue(interrupted.await(1, TimeUnit.SECONDS), "handler must receive cancellation");
+            assertThrows(HandlerSaturatedException.class, () ->
+                    executor.execute(_ -> "second", new InvocationRequest(null, null)));
+            assertTrue(requestCaughtCancellation.await(1, TimeUnit.SECONDS),
+                    "request thread must reach its terminal cancellation transition");
+            assertTrue(requestInterrupted.get());
+        } finally {
+            release.countDown();
+            request.join(1_000);
+            executor.shutdown();
+        }
+    }
+}

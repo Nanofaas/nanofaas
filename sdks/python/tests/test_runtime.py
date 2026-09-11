@@ -8,7 +8,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 import requests
-from fastapi.testclient import TestClient
+from sdks.python.tests.asgi_test_client import ASGITestClient
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src'))
@@ -20,7 +20,7 @@ from nanofaas.sdk.response import HandlerResponse
 
 @pytest.fixture
 def client():
-    return TestClient(app)
+    return ASGITestClient(app, _app)
 
 
 def test_handler_timeout_environment_uses_milliseconds():
@@ -45,6 +45,12 @@ def test_handler_timeout_environment_uses_milliseconds():
         ("NANOFAAS_SHUTDOWN_TIMEOUT", "0"),
         ("NANOFAAS_SHUTDOWN_TIMEOUT", "nan"),
         ("NANOFAAS_SHUTDOWN_TIMEOUT", "inf"),
+        ("NANOFAAS_BODY_READ_TIMEOUT", "0"),
+        ("NANOFAAS_BODY_READ_TIMEOUT", "nan"),
+        ("NANOFAAS_BODY_READ_TIMEOUT", "inf"),
+        ("NANOFAAS_CALLBACK_ATTEMPT_TIMEOUT", "0"),
+        ("NANOFAAS_CALLBACK_ATTEMPT_TIMEOUT", "nan"),
+        ("NANOFAAS_CALLBACK_ATTEMPT_TIMEOUT", "inf"),
     ],
 )
 def test_wait_limits_require_finite_positive_milliseconds(monkeypatch, setting, value):
@@ -108,12 +114,10 @@ def test_invoke_missing_execution_id(client):
 
 @patch("requests.post")
 def test_callback_triggered(mock_post, client):
+    mock_post.return_value.status_code = 204
     @decorator.nanofaas_function
     def mock_handler(input_data):
         return "done"
-    
-    # We use TestClient which runs background tasks synchronously by default if not specified otherwise
-    # or we might need to wait if it was async. FastAPI TestClient runs them.
     
     response = client.post("/invoke", 
                          json={"input": "test"},
@@ -128,17 +132,20 @@ def test_callback_triggered(mock_post, client):
     mock_post.assert_called()
     call_args = mock_post.call_args
     assert "http://control-plane/callbacks/exec-cb:complete" in call_args[0][0]
-    assert call_args[1]["json"]["success"] is True
-    assert call_args[1]["json"]["output"] == "done"
+    callback_body = json.loads(call_args[1]["data"])
+    assert callback_body["success"] is True
+    assert callback_body["output"] == "done"
 
 @patch("nanofaas.runtime.app.asyncio.to_thread")
 @patch("requests.post")
-def test_callback_uses_asyncio_to_thread(mock_post, mock_to_thread, client):
+def test_callback_uses_asyncio_to_thread(mock_post, mock_to_thread):
     """Legacy regression: callbacks now bypass asyncio's shared default executor."""
     callback_threads = []
+    callback_finished = threading.Event()
 
     def capture_callback_thread(*_args, **_kwargs):
         callback_threads.append(threading.current_thread().name)
+        callback_finished.set()
         return MagicMock(status_code=200)
 
     mock_post.side_effect = capture_callback_thread
@@ -147,15 +154,21 @@ def test_callback_uses_asyncio_to_thread(mock_post, mock_to_thread, client):
     def mock_handler(input_data):
         return "done"
 
-    response = client.post(
-        "/invoke",
-        json={"input": "test"},
-        headers={
-            "X-Execution-Id": "exec-async-cb",
-            "X-Callback-Url": "http://cp/callbacks",
-        },
-    )
+    async def exercise():
+        response = await _app.invoke(
+            _RequestBody("test"),
+            _app.BackgroundTasks(),
+            x_execution_id="exec-async-cb",
+            x_callback_url="http://cp/callbacks",
+        )
+        await asyncio.wait_for(
+            asyncio.gather(*tuple(_app._runtime_work._callback_tasks)), timeout=0.2
+        )
+        return response
+
+    response = asyncio.run(exercise())
     assert response.status_code == 200
+    assert callback_finished.wait(0), "callback worker did not complete"
     mock_to_thread.assert_not_called()
     assert callback_threads
     assert callback_threads[0].startswith("nanofaas-callback")
@@ -227,7 +240,13 @@ def test_handler_timeout_returns_504(client, monkeypatch):
     )
 
     assert response.status_code == 504
-    assert response.json()["error"]["code"] == "HANDLER_TIMEOUT"
+    assert response.json() == {
+        "error": {
+            "code": "HANDLER_TIMEOUT",
+            "message": "Handler exceeded configured timeout",
+        }
+    }
+    assert "retry-after" not in response.headers
 
 
 @patch("requests.post")
@@ -272,26 +291,36 @@ def test_callback_retries_retryable_status_but_not_permanent_4xx():
 
 @patch("requests.post")
 def test_callback_submission_is_bounded(mock_post, client, monkeypatch):
-    slots = threading.BoundedSemaphore(1)
-    slots.acquire()
-    monkeypatch.setattr(_app, "_callback_slots", slots, raising=False)
+    reservations = [
+        _app._runtime_work.reserve_callback(_app.MAX_CALLBACK_BYTES)
+        for _index in range(
+            min(
+                _app.MAX_PENDING_CALLBACKS,
+                _app.MAX_PENDING_CALLBACK_BYTES // _app.MAX_CALLBACK_BYTES,
+            )
+        )
+    ]
 
     @decorator.nanofaas_function
     def mock_handler(input_data):
         return input_data
 
-    response = client.post(
-        "/invoke",
-        json={"input": "ok"},
-        headers={
-            "X-Execution-Id": "exec-full",
-            "X-Callback-Url": "http://control-plane/callbacks",
-        },
-    )
+    try:
+        response = client.post(
+            "/invoke",
+            json={"input": "ok"},
+            headers={
+                "X-Execution-Id": "exec-full",
+                "X-Callback-Url": "http://control-plane/callbacks",
+            },
+        )
 
-    assert response.status_code == 200
-    mock_post.assert_not_called()
-    slots.release()
+        assert response.status_code == 429
+        assert response.json()["error"]["code"] == "RUNTIME_CALLBACK_SATURATED"
+        mock_post.assert_not_called()
+    finally:
+        for reservation in reservations:
+            reservation.release()
 
 
 def test_invoke_handler_returns_handler_response_uses_its_status_and_headers(client):
@@ -473,7 +502,13 @@ def test_invoke_handler_cannot_spoof_encoding_header_through_its_own_headers_map
 
 @patch("requests.post")
 def test_invoke_envelope_callback_uses_camelcase_wire_keys(mock_post, client):
-    mock_post.return_value.status_code = 204
+    callback_finished = threading.Event()
+
+    def successful_post(*_args, **_kwargs):
+        callback_finished.set()
+        return MagicMock(status_code=204)
+
+    mock_post.side_effect = successful_post
 
     @decorator.nanofaas_function
     def mock_handler(input_data):
@@ -485,7 +520,8 @@ def test_invoke_envelope_callback_uses_camelcase_wire_keys(mock_post, client):
         headers={"X-Execution-Id": "ex-8", "X-Callback-Url": "http://control-plane/callbacks"},
     )
     assert response.status_code == 201
-    callback_body = mock_post.call_args.kwargs["json"]
+    assert callback_finished.wait(0.2), "callback worker did not complete"
+    callback_body = json.loads(mock_post.call_args.kwargs["data"])
     assert callback_body["statusCode"] == 201
     assert callback_body["headers"] == {"Content-Type": "application/json"}
     assert callback_body["encoding"] == "base64"
@@ -556,6 +592,7 @@ def test_shutdown_cannot_miss_handler_between_submit_and_registration(monkeypatc
 
     original_submit = runtime._runtime_work._handler_executor.submit
 
+    @decorator.nanofaas_function
     def blocked_handler(_input_data):
         handler_started.set()
         assert release_handler.wait(1.0), "test handler release was not signalled"
@@ -900,20 +937,22 @@ def test_callback_admission_uses_configured_limit_before_background_submission(m
     background_tasks = runtime.BackgroundTasks()
     callback_args = ("http://callback.invalid", "callback-limit", None, {}, None)
 
-    try:
+    async def exercise():
         admitted = [
             runtime._schedule_callback(background_tasks, *callback_args)
             for _index in range(3)
         ]
         assert admitted == [True, True, False]
+        assert background_tasks.tasks == []
+        await asyncio.wait_for(
+            asyncio.gather(*tuple(runtime._runtime_work._callback_tasks)), timeout=0.2
+        )
+
+    try:
         with patch("requests.post", return_value=MagicMock(status_code=204)):
-            asyncio.run(background_tasks())
+            asyncio.run(exercise())
         assert runtime._runtime_work.snapshot().pending_callbacks == 0
     finally:
-        if runtime._runtime_work.snapshot().pending_callbacks:
-            for _index in range(sum(admitted)):
-                runtime._runtime_work.release_callback()
-                runtime._callback_slots.release()
         asyncio.run(runtime._runtime_work.shutdown(0.5))
         importlib.reload(_app)
 
@@ -968,6 +1007,8 @@ def test_simultaneous_callbacks_use_owned_workers_and_health_keeps_progressing(m
             assert runtime.health() == {"status": "ok"}
             snapshot = runtime._runtime_work.snapshot()
             assert snapshot.active_callback_workers == 2
+            assert snapshot.pending_callbacks == 2
+            assert snapshot.pending_callback_bytes > 0
             assert all(name.startswith("nanofaas-callback") for name in callback_threads)
 
             bounded_report = asyncio.run(runtime._runtime_work.shutdown(0.02))
@@ -979,10 +1020,975 @@ def test_simultaneous_callbacks_use_owned_workers_and_health_keeps_progressing(m
             assert not callback_runner.is_alive()
             assert callback_runner_errors == []
         assert runtime._runtime_work.snapshot().active_callback_workers == 0
+        assert runtime._runtime_work.snapshot().pending_callbacks == 0
+        assert runtime._runtime_work.snapshot().pending_callback_bytes == 0
         assert asyncio.run(runtime._runtime_work.shutdown(0.5)).drained is True
     finally:
         release_callbacks.set()
         if "callback_runner" in locals():
             callback_runner.join(1.0)
+        asyncio.run(runtime._runtime_work.shutdown(0.5))
+        importlib.reload(_app)
+
+
+@pytest.mark.parametrize(
+    "setting",
+    [
+        "NANOFAAS_MAX_INPUT_BYTES",
+        "NANOFAAS_MAX_OUTPUT_BYTES",
+        "NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES",
+        "NANOFAAS_MAX_PENDING_CALLBACK_BYTES",
+    ],
+)
+def test_payload_byte_limits_require_positive_integers(monkeypatch, setting):
+    with monkeypatch.context() as environment:
+        environment.setenv(setting, "0")
+        with pytest.raises(ValueError, match=f"{setting} must be positive"):
+            importlib.reload(_app)
+    importlib.reload(_app)
+
+
+def test_callback_max_attempts_requires_positive_integer(monkeypatch):
+    with monkeypatch.context() as environment:
+        environment.setenv("NANOFAAS_CALLBACK_MAX_ATTEMPTS", "0")
+        with pytest.raises(
+            ValueError, match="NANOFAAS_CALLBACK_MAX_ATTEMPTS must be positive"
+        ):
+            importlib.reload(_app)
+    importlib.reload(_app)
+
+
+@patch("requests.post")
+def test_callback_attempt_timeout_and_retry_count_use_finite_configuration(
+    mock_post, monkeypatch
+):
+    mock_post.return_value.status_code = 503
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_CALLBACK_ATTEMPT_TIMEOUT=41,
+        NANOFAAS_CALLBACK_MAX_ATTEMPTS=2,
+    )
+    try:
+        asyncio.run(runtime.send_callback("http://callback.invalid", "configured", None, {}))
+        assert mock_post.call_count == 2
+        assert all(call.kwargs["timeout"] == 0.041 for call in mock_post.call_args_list)
+    finally:
+        asyncio.run(runtime._runtime_work.shutdown(0.5))
+        importlib.reload(_app)
+
+
+def test_single_callback_limit_must_fit_pending_callback_bytes(monkeypatch):
+    with monkeypatch.context() as environment:
+        environment.setenv("NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES", "65")
+        environment.setenv("NANOFAAS_MAX_PENDING_CALLBACK_BYTES", "64")
+        with pytest.raises(
+            ValueError,
+            match=(
+                "NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES must not exceed "
+                "NANOFAAS_MAX_PENDING_CALLBACK_BYTES"
+            ),
+        ):
+            importlib.reload(_app)
+    importlib.reload(_app)
+
+
+def test_payload_limit_defaults_and_callback_setting_match_other_runtimes(monkeypatch):
+    with monkeypatch.context() as environment:
+        for setting in (
+            "NANOFAAS_MAX_INPUT_BYTES",
+            "NANOFAAS_MAX_OUTPUT_BYTES",
+            "NANOFAAS_MAX_CALLBACK_BYTES",
+            "NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES",
+            "NANOFAAS_MAX_PENDING_CALLBACK_BYTES",
+        ):
+            environment.delenv(setting, raising=False)
+        runtime = importlib.reload(_app)
+        assert runtime.MAX_INPUT_BYTES == 1024 * 1024
+        assert runtime.MAX_OUTPUT_BYTES == 1024 * 1024
+        assert runtime.MAX_CALLBACK_BYTES == 2 * 1024 * 1024
+        assert runtime.MAX_PENDING_CALLBACK_BYTES == 16 * 1024 * 1024
+
+        environment.setenv("NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES", "77")
+        environment.setenv("NANOFAAS_MAX_PENDING_CALLBACK_BYTES", "77")
+        runtime = importlib.reload(_app)
+        assert runtime.MAX_CALLBACK_BYTES == 77
+    importlib.reload(_app)
+
+
+def test_callback_count_and_bytes_are_reserved_before_handler_admission(monkeypatch):
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_MAX_INPUT_BYTES=1024,
+        NANOFAAS_MAX_OUTPUT_BYTES=1024,
+        NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES=64,
+        NANOFAAS_MAX_PENDING_CALLBACK_BYTES=64,
+        NANOFAAS_MAX_PENDING_CALLBACKS=1,
+    )
+    handler_calls = 0
+    reservation = runtime._runtime_work.reserve_callback(64)
+
+    @decorator.nanofaas_function
+    def must_not_run(_input_data):
+        nonlocal handler_calls
+        handler_calls += 1
+
+    try:
+        response = asyncio.run(
+            runtime.invoke(
+                _RequestBody("ok"),
+                runtime.BackgroundTasks(),
+                x_execution_id="callback-saturated",
+                x_callback_url="http://callback.invalid",
+            )
+        )
+
+        assert response.status_code == 429
+        assert json.loads(response.body) == {
+            "error": {
+                "code": "RUNTIME_CALLBACK_SATURATED",
+                "message": "Runtime callback capacity exhausted",
+            }
+        }
+        assert response.headers["retry-after"] == "1"
+        assert handler_calls == 0
+        snapshot = runtime._runtime_work.snapshot()
+        assert snapshot.pending_callbacks == 1
+        assert snapshot.pending_callback_bytes == 64
+    finally:
+        reservation.release()
+        assert runtime._runtime_work.snapshot().pending_callbacks == 0
+        assert runtime._runtime_work.snapshot().pending_callback_bytes == 0
+        asyncio.run(runtime._runtime_work.shutdown(0.5))
+        importlib.reload(_app)
+
+
+@patch("requests.post")
+def test_direct_runtime_rejects_oversized_input_before_handler_or_callback(mock_post, monkeypatch):
+    runtime = _reload_runtime_with_limits(monkeypatch, NANOFAAS_MAX_INPUT_BYTES=32)
+    handler_calls = 0
+
+    @decorator.nanofaas_function
+    def must_not_run(_input_data):
+        nonlocal handler_calls
+        handler_calls += 1
+
+    try:
+        with ASGITestClient(runtime.app, runtime) as runtime_client:
+            response = runtime_client.post(
+                "/invoke",
+                json={"input": "x" * 64},
+                headers={
+                    "X-Execution-Id": "input-too-large",
+                    "X-Callback-Url": "http://callback.invalid",
+                },
+            )
+
+        assert response.status_code == 413
+        assert response.json() == {
+            "error": {
+                "code": "RUNTIME_INPUT_TOO_LARGE",
+                "message": "Runtime input exceeds configured byte limit",
+            }
+        }
+        assert "retry-after" not in response.headers
+        assert handler_calls == 0
+        mock_post.assert_not_called()
+    finally:
+        importlib.reload(_app)
+
+
+@patch("requests.post")
+def test_direct_runtime_rejects_oversized_output_and_delivers_canonical_callback(
+    mock_post, monkeypatch
+):
+    mock_post.return_value.status_code = 204
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_MAX_OUTPUT_BYTES=8,
+        NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES=512,
+        NANOFAAS_MAX_PENDING_CALLBACK_BYTES=512,
+    )
+
+    @decorator.nanofaas_function
+    def oversized_output(_input_data):
+        return "0123456789"
+
+    try:
+        with ASGITestClient(runtime.app, runtime) as runtime_client:
+            response = runtime_client.post(
+                "/invoke",
+                json={"input": "ok"},
+                headers={
+                    "X-Execution-Id": "output-too-large",
+                    "X-Callback-Url": "http://callback.invalid",
+                },
+            )
+
+        expected_error = {
+            "code": "RUNTIME_OUTPUT_TOO_LARGE",
+            "message": "Runtime output exceeds configured byte limit",
+        }
+        assert response.status_code == 500
+        assert response.json() == {"error": expected_error}
+        assert "retry-after" not in response.headers
+        callback = json.loads(mock_post.call_args.kwargs["data"])
+        assert callback == {"success": False, "output": None, "error": expected_error}
+        assert runtime._runtime_work.snapshot().pending_callbacks == 0
+        assert runtime._runtime_work.snapshot().pending_callback_bytes == 0
+    finally:
+        importlib.reload(_app)
+
+
+def test_handler_error_uses_canonical_wire_body_without_retry_after(monkeypatch):
+    runtime = _reload_runtime_with_limits(monkeypatch)
+
+    @decorator.nanofaas_function
+    def failed_handler(_input_data):
+        raise RuntimeError("Handler failed")
+
+    try:
+        with ASGITestClient(runtime.app, runtime) as runtime_client:
+            response = runtime_client.post(
+                "/invoke",
+                json={"input": "ok"},
+                headers={"X-Execution-Id": "handler-error"},
+            )
+
+        assert response.status_code == 500
+        assert response.json() == {
+            "error": {"code": "HANDLER_ERROR", "message": "Handler failed"}
+        }
+        assert "retry-after" not in response.headers
+    finally:
+        importlib.reload(_app)
+
+
+def test_handler_payload_exception_is_not_misclassified_as_input_rejection(monkeypatch):
+    runtime = _reload_runtime_with_limits(monkeypatch)
+
+    @decorator.nanofaas_function
+    def failed_handler(_input_data):
+        raise runtime.PayloadTooLargeError("handler-owned failure")
+
+    try:
+        with ASGITestClient(runtime.app, runtime) as runtime_client:
+            response = runtime_client.post(
+                "/invoke",
+                json={"input": "ok"},
+                headers={"X-Execution-Id": "handler-payload-error"},
+            )
+        assert response.status_code == 500
+        assert response.json() == {
+            "error": {"code": "HANDLER_ERROR", "message": "Handler failed"}
+        }
+    finally:
+        importlib.reload(_app)
+
+
+def test_pending_callback_byte_cap_saturates_before_count_cap(monkeypatch):
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_MAX_PENDING_CALLBACKS=2,
+        NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES=64,
+        NANOFAAS_MAX_PENDING_CALLBACK_BYTES=64,
+    )
+    reservation = runtime._runtime_work.reserve_callback(64)
+    try:
+        with pytest.raises(runtime.HandlerAdmissionError, match="callback saturated"):
+            runtime._runtime_work.reserve_callback(1)
+        snapshot = runtime._runtime_work.snapshot()
+        assert snapshot.pending_callbacks == 1
+        assert snapshot.pending_callback_bytes == 64
+    finally:
+        reservation.release()
+        asyncio.run(runtime._runtime_work.shutdown(0.5))
+        importlib.reload(_app)
+
+
+def test_pending_callback_byte_metric_tracks_reservation(monkeypatch):
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES=64,
+        NANOFAAS_MAX_PENDING_CALLBACK_BYTES=64,
+    )
+    reservation = runtime._runtime_work.reserve_callback(64)
+    try:
+        metrics_text = runtime.metrics().body.decode()
+        assert 'runtime_pending_callback_bytes{function="unknown"} 64.0' in metrics_text
+    finally:
+        reservation.release()
+        asyncio.run(runtime._runtime_work.shutdown(0.5))
+        importlib.reload(_app)
+
+
+def test_callback_serialization_rejection_releases_self_owned_reservation(monkeypatch):
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES=64,
+        NANOFAAS_MAX_PENDING_CALLBACK_BYTES=64,
+    )
+    try:
+        accepted = runtime._schedule_callback(
+            runtime.BackgroundTasks(),
+            "http://callback.invalid",
+            "serialization-rejected",
+            None,
+            {"success": True, "output": "x" * 128, "error": None},
+        )
+        assert accepted is False
+        snapshot = runtime._runtime_work.snapshot()
+        assert snapshot.pending_callbacks == 0
+        assert snapshot.pending_callback_bytes == 0
+    finally:
+        asyncio.run(runtime._runtime_work.shutdown(0.5))
+        importlib.reload(_app)
+
+
+def test_oversized_string_is_rejected_before_json_encoder_creates_a_copy(monkeypatch):
+    def must_not_encode(_encoder, _value):
+        raise AssertionError("oversized scalar reached JSON encoding")
+
+    monkeypatch.setattr(json.JSONEncoder, "iterencode", must_not_encode)
+    with pytest.raises(_app.PayloadTooLargeError):
+        _app._encode_json_bounded("x" * 65, 64)
+
+
+@patch("requests.post")
+def test_single_callback_cap_converts_success_to_output_too_large(mock_post, monkeypatch):
+    mock_post.return_value.status_code = 204
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_MAX_OUTPUT_BYTES=128,
+        NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES=140,
+        NANOFAAS_MAX_PENDING_CALLBACK_BYTES=140,
+    )
+
+    @decorator.nanofaas_function
+    def callback_oversized_output(_input_data):
+        return "x" * 110
+
+    try:
+        success_counter = runtime.RUNTIME_INVOCATIONS_TOTAL.labels(
+            function=runtime.FUNCTION_NAME, success="true"
+        )
+        failure_counter = runtime.RUNTIME_INVOCATIONS_TOTAL.labels(
+            function=runtime.FUNCTION_NAME, success="false"
+        )
+        success_before = success_counter._value.get()
+        failure_before = failure_counter._value.get()
+        with ASGITestClient(runtime.app, runtime) as runtime_client:
+            response = runtime_client.post(
+                "/invoke",
+                json={"input": "ok"},
+                headers={
+                    "X-Execution-Id": "callback-too-large",
+                    "X-Callback-Url": "http://callback.invalid",
+                },
+            )
+
+        assert response.status_code == 500
+        assert response.json()["error"]["code"] == "RUNTIME_OUTPUT_TOO_LARGE"
+        callback = json.loads(mock_post.call_args.kwargs["data"])
+        assert callback["error"]["code"] == "RUNTIME_OUTPUT_TOO_LARGE"
+        assert success_counter._value.get() == success_before
+        assert failure_counter._value.get() == failure_before + 1
+        assert runtime._runtime_work.snapshot().pending_callback_bytes == 0
+    finally:
+        importlib.reload(_app)
+
+
+@patch("requests.post", side_effect=requests.ConnectionError("unreachable"))
+def test_callback_delivery_error_releases_count_and_bytes(mock_post, monkeypatch):
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES=512,
+        NANOFAAS_MAX_PENDING_CALLBACK_BYTES=512,
+    )
+
+    @decorator.nanofaas_function
+    def successful_handler(_input_data):
+        return "ok"
+
+    try:
+        with ASGITestClient(runtime.app, runtime) as runtime_client:
+            response = runtime_client.post(
+                "/invoke",
+                json={"input": "ok"},
+                headers={
+                    "X-Execution-Id": "callback-unreachable",
+                    "X-Callback-Url": "http://callback.invalid",
+                },
+            )
+
+        assert response.status_code == 200
+        assert mock_post.call_count == 3
+        snapshot = runtime._runtime_work.snapshot()
+        assert snapshot.pending_callbacks == 0
+        assert snapshot.pending_callback_bytes == 0
+    finally:
+        importlib.reload(_app)
+
+
+def test_shutdown_releases_reserved_callback_that_never_started(monkeypatch):
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES=64,
+        NANOFAAS_MAX_PENDING_CALLBACK_BYTES=64,
+    )
+    runtime._runtime_work.reserve_callback(64)
+
+    try:
+        report = asyncio.run(runtime._runtime_work.shutdown(0.2))
+        assert report.drained is True
+        assert report.pending_callbacks == 0
+        assert report.pending_callback_bytes == 0
+
+        restarted = importlib.reload(_app)
+
+        @decorator.nanofaas_function
+        def restarted_handler(input_data):
+            return input_data
+
+        response = asyncio.run(
+            restarted.invoke(
+                _RequestBody("ok"),
+                restarted.BackgroundTasks(),
+                x_execution_id="after-restart",
+            )
+        )
+        assert response.status_code == 200
+        assert json.loads(response.body) == {"result": "ok"}
+        asyncio.run(restarted._runtime_work.shutdown(0.2))
+    finally:
+        importlib.reload(_app)
+
+
+def test_handler_saturation_releases_pre_handler_callback_reservation(monkeypatch):
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_MAX_CONCURRENT_HANDLERS=1,
+        NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES=256,
+        NANOFAAS_MAX_PENDING_CALLBACK_BYTES=256,
+    )
+    handler_started = threading.Event()
+    release_handler = threading.Event()
+
+    @decorator.nanofaas_function
+    def blocked_handler(_input_data):
+        handler_started.set()
+        assert release_handler.wait(1.0), "test handler release was not signalled"
+
+    execution = runtime._runtime_work.start_handler(blocked_handler, None)
+    try:
+        assert handler_started.wait(1.0)
+        response = asyncio.run(
+            runtime.invoke(
+                _RequestBody("ok"),
+                runtime.BackgroundTasks(),
+                x_execution_id="handler-saturated",
+                x_callback_url="http://callback.invalid",
+            )
+        )
+        assert response.status_code == 429
+        assert json.loads(response.body) == {
+            "error": {
+                "code": "RUNTIME_HANDLER_SATURATED",
+                "message": "Runtime handler capacity exhausted",
+            }
+        }
+        assert response.headers["retry-after"] == "1"
+        snapshot = runtime._runtime_work.snapshot()
+        assert snapshot.active_handlers == 1
+        assert snapshot.pending_callbacks == 0
+        assert snapshot.pending_callback_bytes == 0
+    finally:
+        release_handler.set()
+        async def await_handler_exit():
+            await asyncio.wait_for(asyncio.wrap_future(execution.work), timeout=0.2)
+
+        asyncio.run(await_handler_exit())
+        asyncio.run(runtime._runtime_work.shutdown(0.5))
+        importlib.reload(_app)
+
+
+def test_content_length_rejection_does_not_read_request_stream(monkeypatch):
+    runtime = _reload_runtime_with_limits(monkeypatch, NANOFAAS_MAX_INPUT_BYTES=32)
+    handler_calls = 0
+
+    class OversizedRequest:
+        headers = {"content-length": "33"}
+
+        async def stream(self):
+            raise AssertionError("oversized body stream must not be consumed")
+            yield b""
+
+    @decorator.nanofaas_function
+    def must_not_run(_input_data):
+        nonlocal handler_calls
+        handler_calls += 1
+
+    try:
+        response = asyncio.run(
+            runtime.invoke(
+                OversizedRequest(),
+                runtime.BackgroundTasks(),
+                x_execution_id="content-length-too-large",
+            )
+        )
+        assert response.status_code == 413
+        assert json.loads(response.body)["error"]["code"] == "RUNTIME_INPUT_TOO_LARGE"
+        assert handler_calls == 0
+    finally:
+        asyncio.run(runtime._runtime_work.shutdown(0.5))
+        importlib.reload(_app)
+
+
+def test_request_body_read_timeout_is_finite_and_does_not_start_handler(monkeypatch):
+    runtime = _reload_runtime_with_limits(monkeypatch, NANOFAAS_BODY_READ_TIMEOUT=20)
+    handler_calls = 0
+
+    class StalledRequest:
+        headers = {}
+
+        async def stream(self):
+            yield b'{"input":'
+            await asyncio.Event().wait()
+
+    @decorator.nanofaas_function
+    def must_not_run(_input_data):
+        nonlocal handler_calls
+        handler_calls += 1
+
+    try:
+        response = asyncio.run(
+            runtime.invoke(
+                StalledRequest(),
+                runtime.BackgroundTasks(),
+                x_execution_id="body-timeout",
+            )
+        )
+        assert response.status_code == 408
+        assert json.loads(response.body) == {
+            "error": {
+                "code": "RUNTIME_BODY_READ_TIMEOUT",
+                "message": "Runtime request body read timed out",
+            }
+        }
+        assert "retry-after" not in response.headers
+        assert handler_calls == 0
+    finally:
+        asyncio.run(runtime._runtime_work.shutdown(0.5))
+        importlib.reload(_app)
+
+
+def test_direct_invoke_after_stop_returns_canonical_retryable_503(monkeypatch):
+    runtime = _reload_runtime_with_limits(monkeypatch)
+
+    @decorator.nanofaas_function
+    def must_not_run(_input_data):
+        raise AssertionError("stopped runtime must reject before handler")
+
+    try:
+        asyncio.run(runtime._runtime_work.shutdown(0.2))
+        response = asyncio.run(
+            runtime.invoke(
+                _RequestBody("ok"),
+                runtime.BackgroundTasks(),
+                x_execution_id="stopped",
+                x_callback_url="http://callback.invalid",
+            )
+        )
+        assert response.status_code == 503
+        assert json.loads(response.body) == {
+            "error": {"code": "RUNTIME_STOPPING", "message": "Runtime is stopping"}
+        }
+        assert response.headers["retry-after"] == "1"
+    finally:
+        importlib.reload(_app)
+
+
+@patch("requests.post")
+def test_cancelled_direct_invocation_delivers_callback_and_releases_reservation(
+    mock_post, monkeypatch
+):
+    mock_post.return_value.status_code = 204
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES=512,
+        NANOFAAS_MAX_PENDING_CALLBACK_BYTES=512,
+    )
+
+    async def exercise():
+        started = asyncio.Event()
+        cancelled = asyncio.Event()
+
+        @decorator.nanofaas_function
+        async def cancellable_handler(_input_data):
+            started.set()
+            try:
+                await asyncio.Future()
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        invocation = asyncio.create_task(
+            runtime.invoke(
+                _RequestBody("ok"),
+                runtime.BackgroundTasks(),
+                x_execution_id="cancelled",
+                x_trace_id="trace-cancelled",
+                x_callback_url="http://callback.invalid",
+                x_dispatch_attempt="3",
+            )
+        )
+        await asyncio.wait_for(started.wait(), timeout=0.2)
+        invocation.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await invocation
+        await asyncio.wait_for(cancelled.wait(), timeout=0.2)
+        owned_callbacks = tuple(runtime._runtime_work._callback_tasks)
+        assert len(owned_callbacks) == 1
+        await asyncio.wait_for(asyncio.gather(*owned_callbacks), timeout=0.2)
+
+        callback = json.loads(mock_post.call_args.kwargs["data"])
+        assert callback == {
+            "success": False,
+            "output": None,
+            "error": {"code": "INVOCATION_CANCELLED", "message": "Invocation cancelled"},
+        }
+        assert mock_post.call_args.kwargs["headers"]["X-Dispatch-Attempt"] == "3"
+        snapshot = runtime._runtime_work.snapshot()
+        assert snapshot.pending_callbacks == 0
+        assert snapshot.pending_callback_bytes == 0
+
+    try:
+        asyncio.run(exercise())
+    finally:
+        asyncio.run(runtime._runtime_work.shutdown(0.5))
+        importlib.reload(_app)
+
+
+def test_cancelled_callback_wait_keeps_bytes_owned_until_http_worker_exits(monkeypatch):
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES=512,
+        NANOFAAS_MAX_PENDING_CALLBACK_BYTES=512,
+    )
+    worker_started = threading.Event()
+    worker_exited = threading.Event()
+    release_worker = threading.Event()
+
+    def blocked_post(*_args, **_kwargs):
+        worker_started.set()
+        try:
+            assert release_worker.wait(1.0), "callback worker release was not signalled"
+            return MagicMock(status_code=204)
+        finally:
+            worker_exited.set()
+
+    async def exercise():
+        reservation = runtime._runtime_work.reserve_callback(256)
+        callback_task = asyncio.create_task(
+            runtime.send_callback(
+                "http://callback.invalid",
+                "cancel-worker",
+                None,
+                {"success": True, "output": "ok", "error": None},
+                callback_reservation=reservation,
+            )
+        )
+        async with asyncio.timeout(0.2):
+            while not worker_started.is_set():
+                await asyncio.sleep(0)
+
+        callback_task.cancel()
+        await asyncio.sleep(0)
+
+        snapshot = runtime._runtime_work.snapshot()
+        assert snapshot.active_callback_workers == 1
+        assert snapshot.pending_callbacks == 1
+        assert snapshot.pending_callback_bytes > 0
+
+        release_worker.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(callback_task, timeout=0.2)
+        async with asyncio.timeout(0.2):
+            while not worker_exited.is_set() or runtime._runtime_work.snapshot().pending_callbacks:
+                await asyncio.sleep(0)
+        snapshot = runtime._runtime_work.snapshot()
+        assert snapshot.active_callback_workers == 0
+        assert snapshot.pending_callbacks == 0
+        assert snapshot.pending_callback_bytes == 0
+
+    monkeypatch.setattr(runtime.requests, "post", blocked_post)
+    try:
+        asyncio.run(exercise())
+    finally:
+        release_worker.set()
+        asyncio.run(runtime._runtime_work.shutdown(0.5))
+        importlib.reload(_app)
+
+
+def test_shutdown_drains_terminal_callback_reserved_before_handler_start(monkeypatch):
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_MAX_CONCURRENT_HANDLERS=1,
+        NANOFAAS_SHUTDOWN_TIMEOUT=500,
+    )
+    handler_started = threading.Event()
+    release_handler = threading.Event()
+    callback_delivered = threading.Event()
+
+    @decorator.nanofaas_function
+    def blocked_handler(_input_data):
+        handler_started.set()
+        assert release_handler.wait(1.0), "handler release was not signalled"
+        return {"ok": True}
+
+    def successful_post(*_args, **_kwargs):
+        callback_delivered.set()
+        return MagicMock(status_code=204)
+
+    async def exercise():
+        background_tasks = runtime.BackgroundTasks()
+        invocation = asyncio.create_task(
+            runtime.invoke(
+                _RequestBody("ok"),
+                background_tasks,
+                x_execution_id="shutdown-callback-race",
+                x_callback_url="http://callback.invalid",
+            )
+        )
+        async with asyncio.timeout(0.2):
+            while not handler_started.is_set():
+                await asyncio.sleep(0)
+
+        shutdown = asyncio.create_task(runtime._runtime_work.shutdown(0.5))
+        await asyncio.sleep(0)
+        release_handler.set()
+
+        response = await asyncio.wait_for(invocation, timeout=0.2)
+        report = await asyncio.wait_for(shutdown, timeout=0.5)
+        assert response.status_code == 200
+        assert callback_delivered.wait(0), "accepted terminal callback was lost"
+        assert background_tasks.tasks == []
+        assert report.drained is True
+        assert report.pending_callbacks == 0
+        assert report.pending_callback_bytes == 0
+
+    monkeypatch.setattr(runtime.requests, "post", successful_post)
+    try:
+        asyncio.run(exercise())
+    finally:
+        release_handler.set()
+        asyncio.run(runtime._runtime_work.shutdown(0.5))
+        importlib.reload(_app)
+
+
+def test_callback_final_exhaustion_increments_bounded_metric_once(monkeypatch):
+    runtime = _reload_runtime_with_limits(monkeypatch, NANOFAAS_CALLBACK_MAX_ATTEMPTS=3)
+    attempts = 0
+
+    def retryable_post(*_args, **_kwargs):
+        nonlocal attempts
+        attempts += 1
+        return MagicMock(status_code=503)
+
+    async def no_delay(_seconds):
+        return None
+
+    monkeypatch.setattr(runtime.requests, "post", retryable_post)
+    monkeypatch.setattr(runtime.asyncio, "sleep", no_delay)
+    try:
+        before = runtime.RUNTIME_CALLBACK_DELIVERY_FAILURES_TOTAL.labels(
+            function=runtime.FUNCTION_NAME
+        )._value.get()
+        asyncio.run(
+            runtime.send_callback(
+                "http://callback.invalid",
+                "exhausted",
+                None,
+                {"success": True, "output": "ok", "error": None},
+            )
+        )
+        after = runtime.RUNTIME_CALLBACK_DELIVERY_FAILURES_TOTAL.labels(
+            function=runtime.FUNCTION_NAME
+        )._value.get()
+        assert attempts == 3
+        assert after == before + 1
+    finally:
+        asyncio.run(runtime._runtime_work.shutdown(0.5))
+        importlib.reload(_app)
+
+
+@patch("requests.post")
+def test_handler_failure_response_and_callback_never_expose_exception_text(
+    mock_post, client
+):
+    mock_post.return_value.status_code = 204
+
+    class UnrenderableError(RuntimeError):
+        def __str__(self):
+            raise AssertionError("exception text must not be rendered")
+
+    @decorator.nanofaas_function
+    def failed_handler(_input_data):
+        raise UnrenderableError()
+
+    response = client.post(
+        "/invoke",
+        json={"input": "ok"},
+        headers={
+            "X-Execution-Id": "bounded-handler-error",
+            "X-Callback-Url": "http://callback.invalid",
+        },
+    )
+
+    expected_error = {"code": "HANDLER_ERROR", "message": "Handler failed"}
+    assert response.status_code == 500
+    assert response.json() == {"error": expected_error}
+    callback = json.loads(mock_post.call_args.kwargs["data"])
+    assert callback == {"success": False, "output": None, "error": expected_error}
+
+
+def test_immediately_cancelled_owned_callback_releases_unstarted_reservation(monkeypatch):
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES=128,
+        NANOFAAS_MAX_PENDING_CALLBACK_BYTES=128,
+    )
+    callback_entered = False
+
+    async def callback_body(reservation):
+        nonlocal callback_entered
+        callback_entered = True
+        reservation.release()
+
+    async def exercise():
+        reservation = runtime._runtime_work.reserve_callback(64)
+        task = runtime._runtime_work.start_reserved_callback_task(
+            reservation, callback_body, reservation
+        )
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        await asyncio.sleep(0)
+
+        assert callback_entered is False
+        assert runtime._runtime_work.snapshot().pending_callbacks == 0
+        assert runtime._runtime_work.snapshot().pending_callback_bytes == 0
+        reservation.release()
+        assert runtime._runtime_work.snapshot().pending_callbacks == 0
+
+    try:
+        asyncio.run(exercise())
+    finally:
+        asyncio.run(runtime._runtime_work.shutdown(0.5))
+        importlib.reload(_app)
+
+
+def test_concurrent_future_bridge_does_not_cancel_source_work(monkeypatch):
+    runtime = _reload_runtime_with_limits(monkeypatch)
+    source = runtime.Future()
+
+    async def exercise():
+        waiter = asyncio.create_task(runtime._await_concurrent_future(source))
+        await asyncio.sleep(0)
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        assert source.cancelled() is False
+
+    try:
+        asyncio.run(exercise())
+    finally:
+        if not source.done():
+            source.set_result("finished")
+        asyncio.run(runtime._runtime_work.shutdown(0.5))
+        importlib.reload(_app)
+
+
+def test_immediate_handler_and_callback_futures_never_stall(monkeypatch):
+    runtime = _reload_runtime_with_limits(monkeypatch)
+
+    async def exercise():
+        async with asyncio.timeout(1.0):
+            for index in range(100):
+                handler = runtime._runtime_work.start_handler(lambda value: value, index)
+                assert await handler.wait(0.2) == index
+                assert await runtime._runtime_work.run_callback_call(
+                    lambda value: value, index
+                ) == index
+
+    try:
+        asyncio.run(exercise())
+    finally:
+        asyncio.run(runtime._runtime_work.shutdown(0.5))
+        importlib.reload(_app)
+
+
+def test_raw_callback_bytes_over_single_payload_cap_are_rejected(monkeypatch):
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES=64,
+        NANOFAAS_MAX_PENDING_CALLBACK_BYTES=128,
+    )
+    post = MagicMock(return_value=MagicMock(status_code=204))
+    monkeypatch.setattr(runtime.requests, "post", post)
+
+    async def exercise():
+        with pytest.raises(runtime.PayloadTooLargeError):
+            await runtime.send_callback(
+                "http://callback.invalid", "raw-too-large", None, b"x" * 65
+            )
+
+    try:
+        asyncio.run(exercise())
+        post.assert_not_called()
+        assert runtime._runtime_work.snapshot().pending_callbacks == 0
+        assert runtime._runtime_work.snapshot().pending_callback_bytes == 0
+    finally:
+        asyncio.run(runtime._runtime_work.shutdown(0.5))
+        importlib.reload(_app)
+
+
+def test_raw_callback_reservation_tracks_exact_serialized_bytes(monkeypatch):
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES=64,
+        NANOFAAS_MAX_PENDING_CALLBACK_BYTES=128,
+    )
+    worker_started = threading.Event()
+    release_worker = threading.Event()
+
+    def blocked_post(*_args, **_kwargs):
+        worker_started.set()
+        assert release_worker.wait(1.0), "raw callback worker release was not signalled"
+        return MagicMock(status_code=204)
+
+    async def exercise():
+        reservation = runtime._runtime_work.reserve_callback(64)
+        task = asyncio.create_task(
+            runtime.send_callback(
+                "http://callback.invalid",
+                "raw-exact",
+                None,
+                b"x" * 17,
+                callback_reservation=reservation,
+            )
+        )
+        async with asyncio.timeout(0.2):
+            while not worker_started.is_set():
+                await asyncio.sleep(0)
+        assert runtime._runtime_work.snapshot().pending_callback_bytes == 17
+        release_worker.set()
+        await asyncio.wait_for(task, timeout=0.2)
+        assert runtime._runtime_work.snapshot().pending_callback_bytes == 0
+
+    monkeypatch.setattr(runtime.requests, "post", blocked_post)
+    try:
+        asyncio.run(exercise())
+    finally:
+        release_worker.set()
         asyncio.run(runtime._runtime_work.shutdown(0.5))
         importlib.reload(_app)

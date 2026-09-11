@@ -9,8 +9,11 @@ public record CallbackPayload(
         boolean success,
         JsonNode output,
         ErrorInfo error,
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
         Integer statusCode,
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
         Map<String, String> headers,
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
         String encoding
 ) {
     public static CallbackPayload success(JsonNode output) {

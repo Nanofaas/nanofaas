@@ -276,7 +276,13 @@ class InvokeHandlerTest {
                         .header("X-Execution-Id", "exec-queue-" + i)
                         .POST(HttpRequest.BodyPublishers.ofString(body))
                         .build();
-                assertEquals(200, client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode());
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                if (i < 2) {
+                    assertEquals(200, response.statusCode());
+                } else {
+                    assertEquals(503, response.statusCode());
+                    assertEquals("1", response.headers().firstValue("Retry-After").orElseThrow());
+                }
             }
             // single callback worker + bounded queue: only one callback may be in flight
             await().atMost(2, TimeUnit.SECONDS).untilAsserted(() ->

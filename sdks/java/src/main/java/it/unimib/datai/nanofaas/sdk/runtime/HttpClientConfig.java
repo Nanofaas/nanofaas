@@ -5,6 +5,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;
@@ -24,8 +26,15 @@ import java.time.Duration;
 public class HttpClientConfig {
 
     private static final int CONNECT_TIMEOUT_MS = 5000;
-    private static final int READ_TIMEOUT_MS = 10000;
     static final String CALLBACK_HTTP_CLIENT_BEAN = "nanofaasCallbackHttpClient";
+    private final long readTimeoutMs;
+
+    @Autowired
+    public HttpClientConfig(
+            @Value("${nanofaas.callback.attempt.timeout-ms:${NANOFAAS_CALLBACK_ATTEMPT_TIMEOUT_MS:10000}}") long readTimeoutMs) {
+        if (readTimeoutMs <= 0) throw new IllegalArgumentException("callback attempt timeout must be positive");
+        this.readTimeoutMs = readTimeoutMs;
+    }
 
     @Bean
     @ConditionalOnMissingBean
@@ -44,7 +53,7 @@ public class HttpClientConfig {
     @Bean
     public RestClient restClient(@Qualifier(CALLBACK_HTTP_CLIENT_BEAN) HttpClient httpClient) {
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
-        factory.setReadTimeout(Duration.ofMillis(READ_TIMEOUT_MS));
+        factory.setReadTimeout(Duration.ofMillis(readTimeoutMs));
         return RestClient.builder()
                 .requestFactory(factory)
                 .build();

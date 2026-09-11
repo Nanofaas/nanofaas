@@ -2994,3 +2994,28 @@ P18 is closed at `fadc20f5`: the final fresh independent re-review is CLEAN (0 C
 0 Important, 0 Minor). It independently confirmed the private stop-admission signal, the four
 earlier lifecycle/Spring fixes, Java-lite 40/40, Spring Java 96/96 and a focused 13/13 run.
 P16b is now unblocked.
+
+## P16b — bounded callback/payload ownership in all SDK runtimes
+
+Starting from `7f8f4c2e`, P16b applies one finite cross-language policy to Java, Java-lite, Python,
+Go and JavaScript: 32 active handlers, 1 MiB input/output, 2 MiB per callback, 128 pending callbacks,
+16 MiB pending callback bytes, three attempts, a 30 s handler timeout and 5 s body/callback-attempt/
+shutdown deadlines. Count and worst-case callback bytes are reserved before handler start; all
+owners release on success, failure, cancellation, drain or bounded stop.
+
+All five SDKs execute the 12-scenario shared corpus directly against runtime owners, bypassing the
+control plane. Adapters verify actual HTTP/ASGI responses, callback projection/metadata, handler/
+callback lifecycle, dispatch identity, observations and initial/final counters. Mutation tests
+reject structurally valid expectation and byte-counter changes, closing review findings where an
+adapter was green while only checking scenario names or echoing fixture values.
+
+Coordinated verification is green: aggregate Gradle build 240 tasks; fresh Java/Java-lite/warm-echo
+test tasks 21/21; Java 143 tests, Java-lite 81, Python 139, JavaScript 80; Go normal/race/vet; shared
+validator 26 tests plus all embedded mutations. Runtime-backed RSS evidence is recorded separately
+from control-plane memory in the P16b report. Every runtime slice has a final CLEAN review. The
+last warm-echo review repeated its six real callback-delivery tests 20 times and found no uncaught
+callback-thread exception. The all-scope GitNexus gate completed with 49 files/673 symbols/67 flows;
+the selectively staged gate completed with 116 files/1,771 symbols/67 flows. Both retain CRITICAL
+aggregate risk, are analytically complete, and reported neither `partial` nor `truncated`; the
+staged CLI output capped only the displayed symbol list while retaining complete counts and risk.
+P16b, and therefore the requested P13–P18 block, is complete pending commit.

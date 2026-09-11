@@ -4,8 +4,8 @@
 package it.unimib.datai.nanofaas.sdk.lite.callback;
 
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import it.unimib.datai.nanofaas.sdk.lite.handler.BoundedJson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,30 +19,64 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class CallbackClient implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(CallbackClient.class);
-    private static final int MAX_RETRIES = 3;
-    private static final int[] RETRY_DELAYS_MS = {100, 500, 2000};
+    private static final int DEFAULT_MAX_ATTEMPTS = 3;
+    private static final int DEFAULT_MAX_PAYLOAD_BYTES = 2 * 1024 * 1024;
+    private static final int[] DEFAULT_RETRY_DELAYS_MS = {100, 500};
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final String baseUrl;
     private final boolean ownsHttpClient;
+    private final Duration attemptTimeout;
+    private final int maxAttempts;
+    private final int[] retryDelaysMs;
+    private final BoundedJson boundedJson;
+    private final int maxPayloadBytes;
     private final AtomicBoolean closed = new AtomicBoolean();
 
     public CallbackClient(ObjectMapper objectMapper, String baseUrl) {
-        this.objectMapper = objectMapper;
-        this.baseUrl = baseUrl;
-        this.httpClient = (baseUrl != null && !baseUrl.isBlank())
+        this((baseUrl != null && !baseUrl.isBlank())
                 ? HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
-                : null;
-        this.ownsHttpClient = this.httpClient != null;
+                : null, objectMapper, baseUrl,
+                Duration.ofMillis(setting("nanofaas.callback.attempt.timeout.ms",
+                        "NANOFAAS_CALLBACK_ATTEMPT_TIMEOUT_MS", 10_000)),
+                setting("nanofaas.callback.max.attempts", "NANOFAAS_CALLBACK_MAX_ATTEMPTS",
+                        DEFAULT_MAX_ATTEMPTS), DEFAULT_RETRY_DELAYS_MS,
+                setting("nanofaas.callback.max.payload.bytes", "NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES",
+                        DEFAULT_MAX_PAYLOAD_BYTES), true);
+    }
+
+    CallbackClient(ObjectMapper objectMapper, String baseUrl, int maxPayloadBytes) {
+        this((baseUrl != null && !baseUrl.isBlank()) ? HttpClient.newHttpClient() : null,
+                objectMapper, baseUrl, Duration.ofSeconds(10), DEFAULT_MAX_ATTEMPTS,
+                DEFAULT_RETRY_DELAYS_MS, maxPayloadBytes, true);
     }
 
     // Visible for testing
     CallbackClient(HttpClient httpClient, ObjectMapper objectMapper, String baseUrl) {
+        this(httpClient, objectMapper, baseUrl, Duration.ofSeconds(10), DEFAULT_MAX_ATTEMPTS,
+                DEFAULT_RETRY_DELAYS_MS, DEFAULT_MAX_PAYLOAD_BYTES, false);
+    }
+
+    CallbackClient(HttpClient httpClient, ObjectMapper objectMapper, String baseUrl,
+                   Duration attemptTimeout, int maxAttempts, int[] retryDelaysMs) {
+        this(httpClient, objectMapper, baseUrl, attemptTimeout, maxAttempts, retryDelaysMs,
+                DEFAULT_MAX_PAYLOAD_BYTES, false);
+    }
+
+    private CallbackClient(HttpClient httpClient, ObjectMapper objectMapper, String baseUrl,
+                           Duration attemptTimeout, int maxAttempts, int[] retryDelaysMs,
+                           int maxPayloadBytes, boolean ownsHttpClient) {
+        if (maxPayloadBytes <= 0) throw new IllegalArgumentException("max payload bytes must be positive");
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
         this.baseUrl = baseUrl;
-        this.ownsHttpClient = false;
+        this.ownsHttpClient = ownsHttpClient && httpClient != null;
+        this.attemptTimeout = attemptTimeout;
+        this.maxAttempts = maxAttempts;
+        this.retryDelaysMs = retryDelaysMs.clone();
+        this.boundedJson = new BoundedJson(objectMapper);
+        this.maxPayloadBytes = maxPayloadBytes;
     }
 
     @Override
@@ -75,7 +109,7 @@ public final class CallbackClient implements AutoCloseable {
 
     private boolean pauseBeforeRetry(int attempt, String executionId) {
         try {
-            Thread.sleep(RETRY_DELAYS_MS[attempt]);
+            if (attempt < retryDelaysMs.length) Thread.sleep(retryDelaysMs[attempt]);
             return true;
         } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
@@ -89,6 +123,17 @@ public final class CallbackClient implements AutoCloseable {
     }
 
     public boolean sendResult(String executionId, InvocationResult result, String traceId, String dispatchAttempt) {
+        final byte[] body;
+        try {
+            body = boundedJson.serialize(CallbackPayload.from(result), maxPayloadBytes);
+        } catch (BoundedJson.PayloadTooLargeException | BoundedJson.SerializationException ex) {
+            log.error("Failed to serialize callback payload for execution {}", executionId, ex);
+            return false;
+        }
+        return sendSerializedResult(executionId, body, traceId, dispatchAttempt);
+    }
+
+    public boolean sendSerializedResult(String executionId, byte[] body, String traceId, String dispatchAttempt) {
         if (baseUrl == null || baseUrl.isBlank()) {
             log.warn("CALLBACK_URL not configured, skipping callback for execution {}", executionId);
             return false;
@@ -98,15 +143,7 @@ public final class CallbackClient implements AutoCloseable {
             return false;
         }
 
-        final byte[] body;
-        try {
-            body = objectMapper.writeValueAsBytes(result);
-        } catch (JsonProcessingException ex) {
-            log.error("Failed to serialize callback payload for execution {}", executionId, ex);
-            return false;
-        }
-
-        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        for (int attempt = 0; attempt < maxAttempts; attempt++) {
             SendStatus outcome = attemptSend(executionId, body, traceId, dispatchAttempt, attempt);
             if (outcome == SendStatus.SUCCESS) {
                 return true;
@@ -114,8 +151,9 @@ public final class CallbackClient implements AutoCloseable {
             if (outcome != SendStatus.RETRYABLE) {
                 return false;
             }
+            if (attempt < maxAttempts - 1 && !pauseBeforeRetry(attempt, executionId)) return false;
         }
-        log.error("All {} callback attempts failed for execution {}", MAX_RETRIES, executionId);
+        log.error("All {} callback attempts failed for execution {}", maxAttempts, executionId);
         return false;
     }
 
@@ -133,12 +171,13 @@ public final class CallbackClient implements AutoCloseable {
             log.warn("Callback failed for execution {} (attempt {}) with status {}",
                     executionId, attempt + 1, status);
             return SendStatus.RETRYABLE;
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            log.warn("Callback interrupted for execution {} (attempt {})", executionId, attempt + 1);
+            return SendStatus.INTERRUPTED;
         } catch (Exception ex) {
             log.warn("Callback failed for execution {} (attempt {}): {}",
                     executionId, attempt + 1, ex.getMessage());
-            if (attempt < MAX_RETRIES - 1 && !pauseBeforeRetry(attempt, executionId)) {
-                return SendStatus.INTERRUPTED;
-            }
             return SendStatus.RETRYABLE;
         }
     }
@@ -153,6 +192,7 @@ public final class CallbackClient implements AutoCloseable {
 
         HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
+                .timeout(attemptTimeout)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofByteArray(body));
 
@@ -177,6 +217,17 @@ public final class CallbackClient implements AutoCloseable {
             if (slash >= 0) base = base.substring(0, slash);
         }
         return base + "/" + executionId + ":complete";
+    }
+
+    private static int setting(String property, String environment, int fallback) {
+        String raw = System.getProperty(property, System.getenv(environment));
+        if (raw == null || raw.isBlank()) return fallback;
+        try {
+            int value = Integer.parseInt(raw);
+            return value > 0 ? value : fallback;
+        } catch (NumberFormatException _) {
+            return fallback;
+        }
     }
 
     private enum SendStatus { SUCCESS, PERMANENT, INTERRUPTED, RETRYABLE }

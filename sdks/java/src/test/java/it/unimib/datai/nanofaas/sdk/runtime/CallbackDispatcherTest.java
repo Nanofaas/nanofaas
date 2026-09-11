@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -38,8 +39,9 @@ class CallbackDispatcherTest {
     @Test
     void submit_delegatesToCallbackClient() throws Exception {
         CallbackClient callbackClient = mock(CallbackClient.class);
+        when(callbackClient.serializeBounded(any(), anyInt())).thenReturn(new byte[] {'{', '}'});
         CountDownLatch delivered = new CountDownLatch(1);
-        when(callbackClient.sendResult(anyString(), any(CallbackPayload.class), any(), any())).thenAnswer(invocation -> {
+        when(callbackClient.sendSerializedResult(anyString(), any(byte[].class), any(), any())).thenAnswer(invocation -> {
             delivered.countDown();
             return true;
         });
@@ -56,15 +58,16 @@ class CallbackDispatcherTest {
 
         assertTrue(accepted);
         assertTrue(delivered.await(2, TimeUnit.SECONDS));
-        verify(callbackClient).sendResult(eq("exec-1"), any(CallbackPayload.class), eq("trace-1"), isNull());
+        verify(callbackClient).sendSerializedResult(eq("exec-1"), any(byte[].class), eq("trace-1"), isNull());
     }
 
     @Test
     void submit_returnsFalseWhenQueueIsFull() throws Exception {
         CallbackClient callbackClient = mock(CallbackClient.class);
+        when(callbackClient.serializeBounded(any(), anyInt())).thenReturn(new byte[] {'{', '}'});
         CountDownLatch running = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
-        when(callbackClient.sendResult(anyString(), any(CallbackPayload.class), any(), any())).thenAnswer(invocation -> {
+        when(callbackClient.sendSerializedResult(anyString(), any(byte[].class), any(), any())).thenAnswer(invocation -> {
             running.countDown();
             assertTrue(release.await(2, TimeUnit.SECONDS));
             return true;
@@ -91,12 +94,13 @@ class CallbackDispatcherTest {
     @Test
     void submit_dispatchesMultipleCallbacksConcurrently() throws Exception {
         CallbackClient callbackClient = mock(CallbackClient.class);
+        when(callbackClient.serializeBounded(any(), anyInt())).thenReturn(new byte[] {'{', '}'});
         CountDownLatch started = new CountDownLatch(2);
         CountDownLatch release = new CountDownLatch(1);
         AtomicInteger active = new AtomicInteger();
         AtomicInteger maxActive = new AtomicInteger();
         AtomicInteger daemonWorkers = new AtomicInteger();
-        when(callbackClient.sendResult(anyString(), any(CallbackPayload.class), any(), any())).thenAnswer(invocation -> {
+        when(callbackClient.sendSerializedResult(anyString(), any(byte[].class), any(), any())).thenAnswer(invocation -> {
             int current = active.incrementAndGet();
             maxActive.accumulateAndGet(current, Math::max);
             if (Thread.currentThread().isDaemon()) {
@@ -117,7 +121,7 @@ class CallbackDispatcherTest {
 
         assertTrue(started.await(1, TimeUnit.SECONDS));
         release.countDown();
-        verify(callbackClient, timeout(2000).times(2)).sendResult(anyString(), any(CallbackPayload.class), any(), isNull());
+        verify(callbackClient, timeout(2000).times(2)).sendSerializedResult(anyString(), any(byte[].class), any(), isNull());
         assertEquals(maxActive.get(), daemonWorkers.get(),
                 "Callback worker threads should be daemon threads");
         assertTrue(maxActive.get() >= 2);
@@ -126,9 +130,10 @@ class CallbackDispatcherTest {
     @Test
     void shutdown_waitsForRunningCallbacksToFinish() throws Exception {
         CallbackClient callbackClient = mock(CallbackClient.class);
+        when(callbackClient.serializeBounded(any(), anyInt())).thenReturn(new byte[] {'{', '}'});
         CountDownLatch running = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
-        when(callbackClient.sendResult(anyString(), any(CallbackPayload.class), any(), any())).thenAnswer(invocation -> {
+        when(callbackClient.sendSerializedResult(anyString(), any(byte[].class), any(), any())).thenAnswer(invocation -> {
             running.countDown();
             assertTrue(release.await(2, TimeUnit.SECONDS));
             return true;
@@ -150,6 +155,6 @@ class CallbackDispatcherTest {
 
         release.countDown();
         shutdownTask.get(2, TimeUnit.SECONDS);
-        verify(callbackClient).sendResult(eq("exec-1"), any(CallbackPayload.class), eq("trace-1"), isNull());
+        verify(callbackClient).sendSerializedResult(eq("exec-1"), any(byte[].class), eq("trace-1"), isNull());
     }
 }

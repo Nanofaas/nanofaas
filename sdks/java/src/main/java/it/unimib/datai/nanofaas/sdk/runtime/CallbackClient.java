@@ -1,12 +1,13 @@
 package it.unimib.datai.nanofaas.sdk.runtime;
 
-import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
@@ -26,15 +27,37 @@ public class CallbackClient {
     private static final Logger log = LoggerFactory.getLogger(CallbackClient.class);
     private static final int MAX_RETRIES = 3;
     private static final int[] RETRY_DELAYS_MS = {100, 500, 2000};
+    private static final int DEFAULT_MAX_PAYLOAD_BYTES = 2 * 1024 * 1024;
 
     private final RestClient restClient;
     private final RuntimeSettings runtimeSettings;
     private final ObjectMapper objectMapper;
+    private final BoundedJson boundedJson;
+    private final int maxPayloadBytes;
+    private final int maxAttempts;
 
     public CallbackClient(RestClient restClient, RuntimeSettings runtimeSettings, ObjectMapper objectMapper) {
+        this(restClient, runtimeSettings, objectMapper, DEFAULT_MAX_PAYLOAD_BYTES, MAX_RETRIES);
+    }
+
+    CallbackClient(RestClient restClient, RuntimeSettings runtimeSettings, ObjectMapper objectMapper,
+                   int maxPayloadBytes) {
+        this(restClient, runtimeSettings, objectMapper, maxPayloadBytes, MAX_RETRIES);
+    }
+
+    @Autowired
+    public CallbackClient(RestClient restClient, RuntimeSettings runtimeSettings, ObjectMapper objectMapper,
+                          @Value("${nanofaas.callback.max-payload-bytes:${NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES:2097152}}") int maxPayloadBytes,
+                          @Value("${nanofaas.callback.max-attempts:${NANOFAAS_CALLBACK_MAX_ATTEMPTS:3}}") int maxAttempts) {
+        if (maxPayloadBytes <= 0 || maxAttempts <= 0) {
+            throw new IllegalArgumentException("callback payload and attempt limits must be positive");
+        }
         this.restClient = restClient;
         this.runtimeSettings = runtimeSettings;
         this.objectMapper = objectMapper;
+        this.boundedJson = new BoundedJson(objectMapper);
+        this.maxPayloadBytes = maxPayloadBytes;
+        this.maxAttempts = maxAttempts;
     }
 
     /**
@@ -81,9 +104,20 @@ public class CallbackClient {
             return false;
         }
 
-        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        final byte[] body;
+        try {
+            body = serializeBounded(payload, maxPayloadBytes);
+        } catch (BoundedJson.PayloadTooLargeException | BoundedJson.SerializationException ex) {
+            log.error("Failed to serialize callback payload for execution {}", executionId, ex);
+            return false;
+        }
+        return sendSerializedResult(executionId, body, traceId, dispatchAttempt);
+    }
+
+    public boolean sendSerializedResult(String executionId, byte[] body, String traceId, String dispatchAttempt) {
+        for (int attempt = 0; attempt < maxAttempts; attempt++) {
             try {
-                doSendPayload(executionId, payload, traceId, dispatchAttempt);
+                doSendPayload(executionId, body, traceId, dispatchAttempt);
                 log.debug("Callback sent successfully for execution {} (attempt {})", executionId, attempt + 1);
                 return true;
             } catch (RestClientException ex) {
@@ -94,17 +128,17 @@ public class CallbackClient {
                             executionId, ((RestClientResponseException) ex).getStatusCode());
                     return false;
                 }
-                if (attempt < MAX_RETRIES - 1 && !pauseBeforeRetry(attempt, executionId)) {
+                if (attempt < maxAttempts - 1 && !pauseBeforeRetry(attempt, executionId)) {
                     return false;
                 }
             }
         }
 
-        log.error("All {} callback attempts failed for execution {}", MAX_RETRIES, executionId);
+        log.error("All {} callback attempts failed for execution {}", maxAttempts, executionId);
         return false;
     }
 
-    private void doSendPayload(String executionId, CallbackPayload payload, String traceId, String dispatchAttempt) {
+    private void doSendPayload(String executionId, byte[] payload, String traceId, String dispatchAttempt) {
         String effectiveTraceId = (traceId != null && !traceId.isBlank())
                 ? traceId
                 : runtimeSettings.traceId();
@@ -121,17 +155,13 @@ public class CallbackClient {
             request.header("X-Dispatch-Attempt", dispatchAttempt);
         }
 
-        request.body(serializePayload(payload))
+        request.body(payload)
                 .retrieve()
                 .toBodilessEntity();
     }
 
-    private byte[] serializePayload(CallbackPayload payload) {
-        try {
-            return objectMapper.writeValueAsBytes(payload);
-        } catch (JacksonException ex) {
-            throw new RestClientException("Failed to serialize callback payload", ex);
-        }
+    byte[] serializeBounded(CallbackPayload payload, int maxBytes) {
+        return boundedJson.serialize(payload, maxBytes);
     }
 
     private String callbackUrl(String executionId) {

@@ -60,6 +60,15 @@ export type RuntimeOptions = {
     handlerTimeoutMs?: number;
     callbackUrl?: string;
     callbackQueueSize?: number;
+    maxConcurrentHandlers?: number;
+    maxInputBytes?: number;
+    maxOutputBytes?: number;
+    maxCallbackPayloadBytes?: number;
+    maxPendingCallbackBytes?: number;
+    bodyReadTimeoutMs?: number;
+    callbackAttemptTimeoutMs?: number;
+    callbackMaxAttempts?: number;
+    shutdownTimeoutMs?: number;
     functionHandler?: string;
 };
 

@@ -33,6 +33,24 @@ def handle(input_data):
 | `HANDLER_MODULE` | Python module containing the decorated function |
 | `CALLBACK_URL` | nanoFaaS control-plane callback endpoint |
 | `EXECUTION_ID` | Default execution ID for one-shot mode |
+| `NANOFAAS_HANDLER_TIMEOUT` | Handler wait timeout in milliseconds (default `30000`) |
+| `NANOFAAS_MAX_CONCURRENT_HANDLERS` | Maximum physically active handlers (default `32`) |
+| `NANOFAAS_CALLBACK_WORKERS` | Runtime-owned callback HTTP workers (default `2`) |
+| `NANOFAAS_MAX_PENDING_CALLBACKS` | Pending callback count cap (default `128`) |
+| `NANOFAAS_MAX_INPUT_BYTES` | Invocation request-body cap (default `1048576`) |
+| `NANOFAAS_MAX_OUTPUT_BYTES` | Handler output cap (default `1048576`) |
+| `NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES` | Single serialized callback cap (default `2097152`) |
+| `NANOFAAS_MAX_PENDING_CALLBACK_BYTES` | Aggregate pending callback-byte cap (default `16777216`) |
+| `NANOFAAS_BODY_READ_TIMEOUT` | Request-body read timeout in milliseconds (default `5000`) |
+| `NANOFAAS_CALLBACK_ATTEMPT_TIMEOUT` | Callback HTTP attempt timeout in milliseconds (default `5000`) |
+| `NANOFAAS_CALLBACK_MAX_ATTEMPTS` | Callback delivery attempt count (default `3`) |
+| `NANOFAAS_SHUTDOWN_TIMEOUT` | Physical drain deadline in milliseconds (default `5000`) |
+
+All count and byte limits must be positive integers. Timeouts must be finite and positive.
+The single-callback limit cannot exceed the aggregate pending-callback-byte limit.
+Final callback-delivery exhaustion increments
+`runtime_callback_delivery_failures_total{function=...}`; its only label is the
+process-local function name, keeping callback failure cardinality bounded.
 
 ### 3. Local Development
 
