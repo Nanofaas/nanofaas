@@ -2975,3 +2975,11 @@ hook owner. Hook publication and the lifecycle transition are serialized, and re
 failure enters the same bounded cleanup path while preserving the original exception. Focused
 GREEN verification also proves matching hook removal plus exact listener, callback-client and
 server-executor closure. Final suite verification and clean re-review remain pending.
+
+The next re-review confirmed those two lifecycle bugs closed but found two additional Important
+gaps. Spring callback client selection was type-wide and ambiguous with multiple host
+`HttpClient` beans; it now uses a dedicated conditional bean name and qualifier, with deterministic
+coverage for unrelated clients and an externally owned named override. The hook-race test now
+waits until the stop thread is actually `BLOCKED` on the lifecycle monitor before releasing hook
+registration, so it forces the rejected interleaving. The combined focused suite is GREEN 16/16;
+full verification and another independent re-review remain pending.

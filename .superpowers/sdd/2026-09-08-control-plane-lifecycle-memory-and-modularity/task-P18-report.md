@@ -158,6 +158,23 @@ LOW risk; this includes protected overload-path dirt and is neither partial nor 
 follow-up staged gate reports exactly 4 P18 files/28 symbols, zero affected processes and LOW
 risk, also complete and non-truncated.
 
+The next independent re-review confirmed both original findings closed, then reported two new
+Important findings and no Critical/Minor findings. First, the Spring type-wide missing-bean
+condition made `RestClient` injection ambiguous when a host application exposed multiple
+unrelated `HttpClient` beans. The callback client now has a dedicated conditional bean identity
+and matching qualifier; a host can override that exact named bean while unrelated clients neither
+suppress nor compete with it. Two-client and named-override tests were RED before this change and
+are GREEN afterward. Second, the initial hook-race test ordered only entry into the stop lambda.
+It now requires the stop thread to be observably `BLOCKED` on the lifecycle monitor before the
+hook registrar is released, so the rejected implementation fails the forced interleaving. The
+combined focused verification is GREEN with 16/16 tests (12 Java-lite lifecycle and 4 Spring
+client-ownership tests). Fresh complete suites pass Java-lite 39/39 and Spring Java 96/96; both
+P16a adapters remain GREEN, and the final artifact build executes 18/18 tasks with `BUILD
+SUCCESSFUL` in 13 seconds. A further clean re-review remains required.
+The second-fix all-scope GitNexus gate reports 7 files/13 symbols including protected user dirt;
+the staged gate reports exactly 5 P18 files/12 symbols. Both report zero affected processes, LOW
+risk, and neither is partial nor truncated.
+
 ## Changed files
 
 - `sdks/java-lite/src/main/java/it/unimib/datai/nanofaas/sdk/lite/NanofaasRuntime.java`

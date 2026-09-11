@@ -74,6 +74,10 @@ class NanofaasRuntimeOwnershipTest {
 
         try {
             assertTrue(stopEntered.await(2, TimeUnit.SECONDS));
+            await().atMost(2, TimeUnit.SECONDS).until(() ->
+                    stop.isDone() || stopThread.getState() == Thread.State.BLOCKED);
+            assertFalse(stop.isDone(), "stop must not pass hook publication");
+            assertEquals(Thread.State.BLOCKED, stopThread.getState());
             releaseAdd.countDown();
             stop.get(2, TimeUnit.SECONDS);
             assertTrue(startThread.join(Duration.ofSeconds(2)));

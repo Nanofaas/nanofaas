@@ -4,6 +4,7 @@ import tools.jackson.databind.ObjectMapper;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;
@@ -24,6 +25,7 @@ public class HttpClientConfig {
 
     private static final int CONNECT_TIMEOUT_MS = 5000;
     private static final int READ_TIMEOUT_MS = 10000;
+    static final String CALLBACK_HTTP_CLIENT_BEAN = "nanofaasCallbackHttpClient";
 
     @Bean
     @ConditionalOnMissingBean
@@ -31,8 +33,8 @@ public class HttpClientConfig {
         return new ObjectMapper();
     }
 
-    @Bean(destroyMethod = "close")
-    @ConditionalOnMissingBean(HttpClient.class)
+    @Bean(name = CALLBACK_HTTP_CLIENT_BEAN, destroyMethod = "close")
+    @ConditionalOnMissingBean(name = CALLBACK_HTTP_CLIENT_BEAN)
     public HttpClient callbackHttpClient() {
         return HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(CONNECT_TIMEOUT_MS))
@@ -40,7 +42,7 @@ public class HttpClientConfig {
     }
 
     @Bean
-    public RestClient restClient(HttpClient httpClient) {
+    public RestClient restClient(@Qualifier(CALLBACK_HTTP_CLIENT_BEAN) HttpClient httpClient) {
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
         factory.setReadTimeout(Duration.ofMillis(READ_TIMEOUT_MS));
         return RestClient.builder()
