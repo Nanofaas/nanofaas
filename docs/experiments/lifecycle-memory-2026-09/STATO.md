@@ -2884,3 +2884,34 @@ Final revision `86fb6b17` passed fresh independent review with 0 Critical, 0 Imp
 0 Minor findings. The final validator suite is 25/25, all embedded mutations and five focused SDK
 adapters are GREEN, and fresh full-repository verification reran 240/240 Gradle tasks with
 `BUILD SUCCESSFUL` in 4 min 2 s. P16a is closed; next is P17, then P18, then P16b.
+
+## P17 — Python physical handler and callback ownership
+
+Starting from `b3cc08ad`, P17 replaces `asyncio.to_thread` ownership ambiguity with
+runtime-owned, separately bounded handler and callback executors. Handler admission is
+bounded before submit (default 32); callback submit admission is bounded (default 128)
+and uses two independent callback workers. Physical handler handles remain counted after
+HTTP timeout until the real thread/task completes. Separate metrics expose active handlers,
+timed-out waits, pending callbacks, active callback workers and handler saturation.
+
+Shutdown stops admission, requests async cancellation, closes owned executors to new work
+and awaits event-driven drain for a finite configurable bound (default 5 s). Cooperative
+async cancellation drains without blocking the ASGI loop; non-cooperative Python threads
+remain counted and are reported rather than falsely claimed killed. Acceptance, submit and
+manager registration are atomic against stop, closing the independently reviewed race that
+could report `drained=true` while a handler thread was already active.
+
+Deterministic RED/GREEN tests cover sync timeout retention and admission, delayed async
+cancellation, cooperative and non-cooperative shutdown, callback isolation/progress,
+finite-positive configuration and the submit/register race. `uv run pytest -q` passed
+76 tests; the P16a Python adapter passed 1/1 and `uv build` produced wheel and sdist.
+The final independent re-review is CLEAN (0 Critical, 0 Important, 0 Minor).
+
+GitNexus exact Python-symbol impacts returned no graph result and were treated as UNKNOWN;
+exact text search resolved local runtime/test callers. The pre-stage complete all-scope
+gate reports four files/22 symbols, zero affected processes and LOW risk. Final all/staged
+gates and commit revision are recorded in the P17 report closure.
+
+P16b retains two explicit contract tasks: reserve callback count/bytes before handler
+start, and canonically adopt or replace the currently Python-specific retryable
+`429 RUNTIME_HANDLER_SATURATED` outcome. Next: P18, then P16b.

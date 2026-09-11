@@ -16,6 +16,19 @@ CALLBACK_URL
     Base URL of the control-plane callback endpoint for async invocations.
 EXECUTION_ID
     Fallback execution ID used when the ``X-Execution-Id`` header is absent.
+NANOFAAS_HANDLER_TIMEOUT
+    Finite positive handler wait timeout in milliseconds. A synchronous
+    handler thread may remain physically active after this wait expires.
+NANOFAAS_MAX_CONCURRENT_HANDLERS
+    Positive bound on admitted physical handler executions. Defaults to 32.
+NANOFAAS_CALLBACK_WORKERS
+    Positive number of runtime-owned blocking callback workers. Defaults to 2.
+NANOFAAS_MAX_PENDING_CALLBACKS
+    Positive bound on callback work admitted before executor submission.
+    Defaults to 128.
+NANOFAAS_SHUTDOWN_TIMEOUT
+    Finite positive physical-drain deadline in milliseconds. Defaults to 5000;
+    non-cooperative Python threads are reported because they cannot be killed safely.
 
 Endpoints
 ---------
@@ -33,11 +46,16 @@ GET  /metrics
 import os
 import importlib
 import asyncio
+import contextvars
+import inspect
 import json
 import logging
+import math
 import threading
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from fastapi import FastAPI, Request, HTTPException, Header, BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi.responses import Response
@@ -85,7 +103,17 @@ async def lifespan(app: FastAPI):
                 logger.info("Successfully registered handler")
         except Exception as e:
             logger.exception(f"Failed to load handler module {HANDLER_MODULE}: {e}")
-    yield
+    try:
+        yield
+    finally:
+        report = await _runtime_work.shutdown(SHUTDOWN_TIMEOUT_SECONDS)
+        app.state.runtime_shutdown_report = report
+        if not report.drained:
+            logger.warning(
+                "Runtime shutdown reached its bound with non-cooperative work still active: "
+                f"handlers={report.active_handlers}, callbacks={report.pending_callbacks}, "
+                f"callback_workers={report.active_callback_workers}"
+            )
 
 app = FastAPI(title="nanoFaaS Python Runtime", lifespan=lifespan)
 
@@ -93,8 +121,26 @@ CALLBACK_URL = os.environ.get('CALLBACK_URL', '')
 DEFAULT_EXECUTION_ID = os.environ.get('EXECUTION_ID', '')
 DEFAULT_TRACE_ID = os.environ.get('TRACE_ID', '')
 HANDLER_TIMEOUT_SECONDS = float(os.environ.get('NANOFAAS_HANDLER_TIMEOUT', '30000')) / 1000.0
+MAX_CONCURRENT_HANDLERS = int(os.environ.get('NANOFAAS_MAX_CONCURRENT_HANDLERS', '32'))
+CALLBACK_WORKERS = int(os.environ.get('NANOFAAS_CALLBACK_WORKERS', '2'))
+MAX_PENDING_CALLBACKS = int(os.environ.get('NANOFAAS_MAX_PENDING_CALLBACKS', '128'))
+SHUTDOWN_TIMEOUT_SECONDS = float(os.environ.get('NANOFAAS_SHUTDOWN_TIMEOUT', '5000')) / 1000.0
 HANDLER_MODULE = os.environ.get('HANDLER_MODULE')
 FUNCTION_NAME = os.environ.get('FUNCTION_NAME') or HANDLER_MODULE or "unknown"
+
+for _setting_name, _setting_value in (
+    ("NANOFAAS_MAX_CONCURRENT_HANDLERS", MAX_CONCURRENT_HANDLERS),
+    ("NANOFAAS_CALLBACK_WORKERS", CALLBACK_WORKERS),
+    ("NANOFAAS_MAX_PENDING_CALLBACKS", MAX_PENDING_CALLBACKS),
+):
+    if _setting_value <= 0:
+        raise ValueError(f"{_setting_name} must be positive")
+for _setting_name, _setting_value in (
+    ("NANOFAAS_HANDLER_TIMEOUT", HANDLER_TIMEOUT_SECONDS),
+    ("NANOFAAS_SHUTDOWN_TIMEOUT", SHUTDOWN_TIMEOUT_SECONDS),
+):
+    if not math.isfinite(_setting_value) or _setting_value <= 0:
+        raise ValueError(f"{_setting_name} must be finite and positive")
 
 
 def _collector(factory, name: str, documentation: str, labelnames: list[str]):
@@ -141,6 +187,274 @@ RUNTIME_COLD_START_TOTAL = _collector(
     "Total cold start invocations (Python runtime)",
     ["function"],
 )
+RUNTIME_ACTIVE_HANDLERS = _collector(
+    Gauge,
+    "runtime_active_handlers",
+    "Handlers whose synchronous thread or asynchronous task has not physically completed",
+    ["function"],
+)
+RUNTIME_HANDLER_WAIT_TIMEOUTS_TOTAL = _collector(
+    Counter,
+    "runtime_handler_wait_timeouts_total",
+    "HTTP handler waits that reached their configured timeout",
+    ["function"],
+)
+RUNTIME_HANDLER_SATURATION_TOTAL = _collector(
+    Counter,
+    "runtime_handler_saturation_total",
+    "Invocations refused before handler executor submission",
+    ["function"],
+)
+RUNTIME_PENDING_CALLBACKS = _collector(
+    Gauge,
+    "runtime_pending_callbacks",
+    "Callbacks admitted to runtime-owned background capacity",
+    ["function"],
+)
+RUNTIME_ACTIVE_CALLBACK_WORKERS = _collector(
+    Gauge,
+    "runtime_active_callback_workers",
+    "Runtime-owned callback workers currently executing blocking HTTP calls",
+    ["function"],
+)
+
+
+class HandlerAdmissionError(RuntimeError):
+    """Raised when handler capacity is full or the runtime is stopping."""
+
+
+async def _await_concurrent_future(work: Future):
+    """Bridge runtime-owned executor work into the current event loop."""
+    return await asyncio.wrap_future(work)
+
+
+@dataclass(frozen=True)
+class RuntimeWorkSnapshot:
+    active_handlers: int
+    timed_out_waits: int
+    pending_callbacks: int
+    active_callback_workers: int
+
+
+@dataclass(frozen=True)
+class RuntimeShutdownReport:
+    drained: bool
+    active_handlers: int
+    pending_callbacks: int
+    active_callback_workers: int
+
+
+class HandlerExecution:
+    """A retained physical handler handle whose wait may end before its work."""
+
+    def __init__(self, work, *, async_task: bool):
+        self.work = work
+        self.async_task = async_task
+
+    async def wait(self, timeout: float):
+        awaitable = (
+            asyncio.shield(self.work)
+            if self.async_task
+            else asyncio.shield(_await_concurrent_future(self.work))
+        )
+        try:
+            return await asyncio.wait_for(awaitable, timeout=timeout)
+        except asyncio.TimeoutError:
+            self.request_cancel()
+            if self.async_task:
+                await asyncio.sleep(0)
+            raise
+
+    def request_cancel(self) -> None:
+        if self.async_task:
+            self.work.cancel()
+
+
+class RuntimeWorkManager:
+    """Own bounded handler and callback work and report physical drain truthfully."""
+
+    def __init__(self, max_handlers: int, callback_workers: int, max_pending_callbacks: int):
+        self._handler_slots = threading.BoundedSemaphore(max_handlers)
+        self._handler_executor = ThreadPoolExecutor(
+            max_workers=max_handlers,
+            thread_name_prefix="nanofaas-handler",
+        )
+        self._callback_submit_slots = threading.BoundedSemaphore(max_pending_callbacks)
+        self._callback_executor = ThreadPoolExecutor(
+            max_workers=callback_workers,
+            thread_name_prefix="nanofaas-callback",
+        )
+        self._lock = threading.Condition()
+        self._accepting = True
+        self._handler_work: set[Future | asyncio.Task] = set()
+        self._callback_work: set[Future] = set()
+        self._pending_callbacks = 0
+        self._active_callback_workers = 0
+        self._timed_out_waits = 0
+        self._drain_waiters: set[tuple[asyncio.AbstractEventLoop, asyncio.Event]] = set()
+
+    def start_handler(self, handler, input_data) -> HandlerExecution:
+        if not self._handler_slots.acquire(blocking=False):
+            raise HandlerAdmissionError("saturated")
+        try:
+            with self._lock:
+                if not self._accepting:
+                    raise HandlerAdmissionError("stopping")
+                if inspect.iscoroutinefunction(handler):
+                    work = asyncio.create_task(handler(input_data))
+                    async_task = True
+                else:
+                    invocation_context = contextvars.copy_context()
+                    work = self._handler_executor.submit(
+                        invocation_context.run, handler, input_data
+                    )
+                    async_task = False
+                self._handler_work.add(work)
+        except BaseException:
+            self._handler_slots.release()
+            raise
+
+        RUNTIME_ACTIVE_HANDLERS.labels(function=FUNCTION_NAME).inc()
+        work.add_done_callback(self._handler_completed)
+        return HandlerExecution(work, async_task=async_task)
+
+    def record_wait_timeout(self) -> None:
+        with self._lock:
+            self._timed_out_waits += 1
+        RUNTIME_HANDLER_WAIT_TIMEOUTS_TOTAL.labels(function=FUNCTION_NAME).inc()
+
+    def reserve_callback(self) -> bool:
+        with self._lock:
+            if not self._accepting:
+                return False
+            self._pending_callbacks += 1
+        RUNTIME_PENDING_CALLBACKS.labels(function=FUNCTION_NAME).inc()
+        return True
+
+    def release_callback(self) -> None:
+        with self._lock:
+            self._pending_callbacks -= 1
+            self._notify_drain_waiters_locked()
+        RUNTIME_PENDING_CALLBACKS.labels(function=FUNCTION_NAME).dec()
+
+    async def run_callback_call(self, callback, *args, **kwargs):
+        if not self._callback_submit_slots.acquire(blocking=False):
+            raise HandlerAdmissionError("callback saturated")
+        try:
+            with self._lock:
+                if not self._accepting:
+                    raise HandlerAdmissionError("stopping")
+                work = self._callback_executor.submit(self._run_callback, callback, args, kwargs)
+                self._callback_work.add(work)
+        except BaseException:
+            self._callback_submit_slots.release()
+            raise
+        work.add_done_callback(self._callback_completed)
+        return await _await_concurrent_future(work)
+
+    def snapshot(self) -> RuntimeWorkSnapshot:
+        with self._lock:
+            return RuntimeWorkSnapshot(
+                active_handlers=len(self._handler_work),
+                timed_out_waits=self._timed_out_waits,
+                pending_callbacks=self._pending_callbacks,
+                active_callback_workers=self._active_callback_workers,
+            )
+
+    async def shutdown(self, timeout: float) -> RuntimeShutdownReport:
+        """Stop admission and await physical drain up to ``timeout`` seconds.
+
+        Cooperative async tasks can finish cancellation while this coroutine is
+        suspended. Python cannot safely terminate a non-cooperative handler
+        thread; such work remains visible in the returned report.
+        """
+        deadline = time.monotonic() + timeout
+        loop = asyncio.get_running_loop()
+        drain_event = asyncio.Event()
+        with self._lock:
+            self._accepting = False
+            async_tasks = [work for work in self._handler_work if isinstance(work, asyncio.Task)]
+            self._drain_waiters.add((loop, drain_event))
+        for task in async_tasks:
+            task_loop = task.get_loop()
+            if task_loop.is_running():
+                task_loop.call_soon_threadsafe(task.cancel)
+            else:
+                task.cancel()
+        self._handler_executor.shutdown(wait=False, cancel_futures=True)
+        self._callback_executor.shutdown(wait=False, cancel_futures=True)
+
+        try:
+            while True:
+                with self._lock:
+                    if not (self._handler_work or self._callback_work or self._pending_callbacks):
+                        break
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                try:
+                    await asyncio.wait_for(drain_event.wait(), timeout=remaining)
+                except asyncio.TimeoutError:
+                    break
+                drain_event.clear()
+        finally:
+            with self._lock:
+                self._drain_waiters.discard((loop, drain_event))
+        snapshot = self.snapshot()
+        return RuntimeShutdownReport(
+            drained=(
+                snapshot.active_handlers == 0
+                and snapshot.pending_callbacks == 0
+                and snapshot.active_callback_workers == 0
+            ),
+            active_handlers=snapshot.active_handlers,
+            pending_callbacks=snapshot.pending_callbacks,
+            active_callback_workers=snapshot.active_callback_workers,
+        )
+
+    def _handler_completed(self, work) -> None:
+        with self._lock:
+            if work not in self._handler_work:
+                return
+            self._handler_work.remove(work)
+            self._handler_slots.release()
+            self._notify_drain_waiters_locked()
+        RUNTIME_ACTIVE_HANDLERS.labels(function=FUNCTION_NAME).dec()
+
+    def _run_callback(self, callback, args, kwargs):
+        with self._lock:
+            self._active_callback_workers += 1
+        RUNTIME_ACTIVE_CALLBACK_WORKERS.labels(function=FUNCTION_NAME).inc()
+        try:
+            return callback(*args, **kwargs)
+        finally:
+            with self._lock:
+                self._active_callback_workers -= 1
+                self._notify_drain_waiters_locked()
+            RUNTIME_ACTIVE_CALLBACK_WORKERS.labels(function=FUNCTION_NAME).dec()
+
+    def _callback_completed(self, work) -> None:
+        with self._lock:
+            if work not in self._callback_work:
+                return
+            self._callback_work.remove(work)
+            self._callback_submit_slots.release()
+            self._notify_drain_waiters_locked()
+
+    def _notify_drain_waiters_locked(self) -> None:
+        self._lock.notify_all()
+        for loop, drain_event in tuple(self._drain_waiters):
+            try:
+                loop.call_soon_threadsafe(drain_event.set)
+            except RuntimeError:
+                self._drain_waiters.discard((loop, drain_event))
+
+
+_runtime_work = RuntimeWorkManager(
+    MAX_CONCURRENT_HANDLERS,
+    CALLBACK_WORKERS,
+    MAX_PENDING_CALLBACKS,
+)
 
 # Mirror of ResponseHeaderPolicy.ALLOWED_RESPONSE_HEADERS (platform/common). Keep in sync.
 _ALLOWED_RESPONSE_HEADERS = {
@@ -178,7 +492,7 @@ _first_invocation = True
 # threading.Lock is intentional: the critical section is a non-yielding boolean swap
 # (no awaits), so it is safe and avoids the overhead of an asyncio.Lock acquire.
 _cold_start_lock = threading.Lock()
-_callback_slots = threading.BoundedSemaphore(128)
+_callback_slots = threading.BoundedSemaphore(MAX_PENDING_CALLBACKS)
 
 async def send_callback(
     callback_url: str,
@@ -191,8 +505,8 @@ async def send_callback(
 
     Performs up to three HTTP POST attempts with exponential-ish back-off
     (0.1 s then 0.5 s, then a final immediate attempt). The HTTP call is
-    offloaded to a thread-pool via :func:`asyncio.to_thread` to avoid
-    blocking the event loop.
+    offloaded to the runtime-owned callback executor to avoid blocking the
+    event loop or consuming handler capacity.
 
     :param callback_url: Base URL of the control-plane; trailing slash is
         stripped automatically.
@@ -223,7 +537,7 @@ async def send_callback(
     delays = [0.1, 0.5]
     for attempt in range(3):
         try:
-            resp = await asyncio.to_thread(
+            resp = await _runtime_work.run_callback_call(
                 requests.post, url, json=result, headers=headers, timeout=5
             )
             if resp.status_code < 400:
@@ -245,6 +559,7 @@ async def _send_callback_with_slot(*args):
     try:
         await send_callback(*args)
     finally:
+        _runtime_work.release_callback()
         _callback_slots.release()
 
 
@@ -296,6 +611,10 @@ def _fail_response(
 def _schedule_callback(background_tasks: BackgroundTasks, *args) -> bool:
     if not _callback_slots.acquire(blocking=False):
         logger.warning("Dropping callback because the callback queue is full")
+        return False
+    if not _runtime_work.reserve_callback():
+        _callback_slots.release()
+        logger.warning("Dropping callback because the runtime is stopping")
         return False
     background_tasks.add_task(_send_callback_with_slot, *args)
     return True
@@ -366,6 +685,7 @@ async def invoke(
 
     start = time.perf_counter()
     RUNTIME_IN_FLIGHT.labels(function=FUNCTION_NAME).inc()
+    handler_execution = None
     try:
         payload = await request.json()
         # Keep the Python runtime aligned with the Java InvocationRequest contract.
@@ -376,10 +696,28 @@ async def invoke(
         context.set_headers(payload.get("headers") if isinstance(payload, dict) else None)
 
         logger.info(f"Invoking handler for execution {execution_id}")
-        
-        invocation = handler(input_data) if asyncio.iscoroutinefunction(handler) \
-            else asyncio.to_thread(handler, input_data)
-        output = await asyncio.wait_for(invocation, timeout=HANDLER_TIMEOUT_SECONDS)
+
+        try:
+            handler_execution = _runtime_work.start_handler(handler, input_data)
+        except HandlerAdmissionError as error:
+            if str(error) == "stopping":
+                return JSONResponse(
+                    status_code=503,
+                    content={"error": {"code": "RUNTIME_STOPPING", "message": "Runtime is stopping"}},
+                    headers={"Retry-After": "1"},
+                )
+            RUNTIME_HANDLER_SATURATION_TOTAL.labels(function=FUNCTION_NAME).inc()
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "error": {
+                        "code": "RUNTIME_HANDLER_SATURATED",
+                        "message": "Runtime handler capacity exhausted",
+                    }
+                },
+                headers={"Retry-After": "1"},
+            )
+        output = await handler_execution.wait(HANDLER_TIMEOUT_SECONDS)
 
         return _build_success_response(
             output, execution_id, is_cold_start, background_tasks, callback_url, trace_id, x_dispatch_attempt
@@ -391,11 +729,16 @@ async def invoke(
             error={"code": "INVALID_JSON", "message": "Request body must be valid JSON"},
         )
     except asyncio.TimeoutError:
+        _runtime_work.record_wait_timeout()
         return _fail_response(
             background_tasks, callback_url, execution_id, trace_id, x_dispatch_attempt,
             status_code=504, count_failure=True,
             error={"code": "HANDLER_TIMEOUT", "message": "Handler exceeded configured timeout"},
         )
+    except asyncio.CancelledError:
+        if handler_execution is not None:
+            handler_execution.request_cancel()
+        raise
     except Exception as e:
         logger.exception(f"Handler error in execution {execution_id}: {e}")
         RUNTIME_INVOCATIONS_TOTAL.labels(function=FUNCTION_NAME, success="false").inc()

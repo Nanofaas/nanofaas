@@ -2,6 +2,7 @@ import os
 import sys
 import asyncio
 import importlib
+import json
 import threading
 from unittest.mock import patch, MagicMock
 
@@ -33,6 +34,25 @@ def test_handler_timeout_environment_uses_milliseconds():
         else:
             os.environ["NANOFAAS_HANDLER_TIMEOUT"] = original
         importlib.reload(_app)
+
+
+@pytest.mark.parametrize(
+    ("setting", "value"),
+    [
+        ("NANOFAAS_HANDLER_TIMEOUT", "0"),
+        ("NANOFAAS_HANDLER_TIMEOUT", "nan"),
+        ("NANOFAAS_HANDLER_TIMEOUT", "inf"),
+        ("NANOFAAS_SHUTDOWN_TIMEOUT", "0"),
+        ("NANOFAAS_SHUTDOWN_TIMEOUT", "nan"),
+        ("NANOFAAS_SHUTDOWN_TIMEOUT", "inf"),
+    ],
+)
+def test_wait_limits_require_finite_positive_milliseconds(monkeypatch, setting, value):
+    with monkeypatch.context() as environment:
+        environment.setenv(setting, value)
+        with pytest.raises(ValueError, match=f"{setting} must be finite and positive"):
+            importlib.reload(_app)
+    importlib.reload(_app)
 
 def test_health(client):
     response = client.get("/health")
@@ -112,17 +132,16 @@ def test_callback_triggered(mock_post, client):
     assert call_args[1]["json"]["output"] == "done"
 
 @patch("nanofaas.runtime.app.asyncio.to_thread")
-def test_callback_uses_asyncio_to_thread(mock_to_thread, client):
-    """send_callback must offload requests.post to a thread, not call it directly."""
-    mock_response = MagicMock()
-    mock_response.status_code = 200
+@patch("requests.post")
+def test_callback_uses_asyncio_to_thread(mock_post, mock_to_thread, client):
+    """Legacy regression: callbacks now bypass asyncio's shared default executor."""
+    callback_threads = []
 
-    async def _to_thread(*args, **kwargs):
-        if args[0] is requests.post:
-            return mock_response
-        return args[0](*args[1:], **kwargs)
+    def capture_callback_thread(*_args, **_kwargs):
+        callback_threads.append(threading.current_thread().name)
+        return MagicMock(status_code=200)
 
-    mock_to_thread.side_effect = _to_thread
+    mock_post.side_effect = capture_callback_thread
 
     @decorator.nanofaas_function
     def mock_handler(input_data):
@@ -137,8 +156,9 @@ def test_callback_uses_asyncio_to_thread(mock_to_thread, client):
         },
     )
     assert response.status_code == 200
-    mock_to_thread.assert_called()
-    assert mock_to_thread.call_args[0][0] is requests.post
+    mock_to_thread.assert_not_called()
+    assert callback_threads
+    assert callback_threads[0].startswith("nanofaas-callback")
 
 def test_cold_start_counted_exactly_once_under_concurrency(client, monkeypatch):
     """Only the very first request must be flagged as a cold start."""
@@ -470,3 +490,499 @@ def test_invoke_envelope_callback_uses_camelcase_wire_keys(mock_post, client):
     assert callback_body["headers"] == {"Content-Type": "application/json"}
     assert callback_body["encoding"] == "base64"
     assert "status_code" not in callback_body
+
+
+def _reload_runtime_with_limits(monkeypatch, **limits):
+    for name, value in limits.items():
+        monkeypatch.setenv(name, str(value))
+    return importlib.reload(_app)
+
+
+class _RequestBody:
+    def __init__(self, input_data):
+        self.input_data = input_data
+
+    async def json(self):
+        return {"input": self.input_data}
+
+
+class _LoopHarness:
+    def __init__(self):
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+
+    def invoke(self, runtime, execution_id, input_data=None):
+        return self.loop.run_until_complete(
+            runtime.invoke(
+                _RequestBody(input_data),
+                runtime.BackgroundTasks(),
+                x_execution_id=execution_id,
+            )
+        )
+
+    def close(self):
+        self.loop.run_until_complete(self.loop.shutdown_default_executor(timeout=1.0))
+        self.loop.close()
+
+
+class _ShutdownAttemptCondition:
+    def __init__(self, condition, shutdown_attempted):
+        self._condition = condition
+        self._shutdown_attempted = shutdown_attempted
+
+    def __enter__(self):
+        if threading.current_thread().name == "runtime-shutdown-test":
+            self._shutdown_attempted.set()
+        return self._condition.__enter__()
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return self._condition.__exit__(exc_type, exc_value, traceback)
+
+    def notify_all(self):
+        self._condition.notify_all()
+
+
+def test_shutdown_cannot_miss_handler_between_submit_and_registration(monkeypatch):
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_MAX_CONCURRENT_HANDLERS=1,
+    )
+    handler_started = threading.Event()
+    release_handler = threading.Event()
+    shutdown_attempted = threading.Event()
+    execution_holder = []
+    start_errors = []
+    shutdown_reports = []
+
+    original_submit = runtime._runtime_work._handler_executor.submit
+
+    def blocked_handler(_input_data):
+        handler_started.set()
+        assert release_handler.wait(1.0), "test handler release was not signalled"
+
+    def submit_before_registration(*args, **kwargs):
+        work = original_submit(*args, **kwargs)
+        assert shutdown_attempted.wait(1.0), "shutdown did not attempt manager lock"
+        return work
+
+    def start_handler():
+        try:
+            execution_holder.append(runtime._runtime_work.start_handler(blocked_handler, None))
+        except BaseException as error:
+            start_errors.append(error)
+
+    def stop_runtime():
+        shutdown_reports.append(asyncio.run(runtime._runtime_work.shutdown(0.02)))
+
+    runtime._runtime_work._lock = _ShutdownAttemptCondition(
+        runtime._runtime_work._lock,
+        shutdown_attempted,
+    )
+    monkeypatch.setattr(runtime._runtime_work._handler_executor, "submit", submit_before_registration)
+
+    starter = threading.Thread(target=start_handler, daemon=True)
+    stopper = threading.Thread(target=stop_runtime, name="runtime-shutdown-test", daemon=True)
+    try:
+        starter.start()
+        assert handler_started.wait(1.0)
+        stopper.start()
+        stopper.join(1.0)
+        starter.join(1.0)
+
+        assert not stopper.is_alive()
+        assert not starter.is_alive()
+        assert start_errors == []
+        assert len(execution_holder) == 1
+        assert shutdown_reports[0].drained is False
+        assert shutdown_reports[0].active_handlers == 1
+    finally:
+        release_handler.set()
+        starter.join(1.0)
+        stopper.join(1.0)
+        asyncio.run(runtime._runtime_work.shutdown(0.5))
+        importlib.reload(_app)
+
+
+def test_sync_timeout_keeps_physical_handler_admitted_until_event_release(monkeypatch):
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_HANDLER_TIMEOUT=20,
+        NANOFAAS_MAX_CONCURRENT_HANDLERS=4,
+    )
+    release = threading.Event()
+    first_started = threading.Event()
+    all_finished = threading.Event()
+    lock = threading.Lock()
+    calls = active = maximum_active = 0
+
+    @decorator.nanofaas_function
+    def blocked_handler(_input_data):
+        nonlocal calls, active, maximum_active
+        with lock:
+            calls += 1
+            active += 1
+            maximum_active = max(maximum_active, active)
+            first_started.set()
+        assert release.wait(1.0), "test release was not signalled"
+        with lock:
+            active -= 1
+            if active == 0:
+                all_finished.set()
+        return {"ok": True}
+
+    try:
+        loop_harness = _LoopHarness()
+        first = loop_harness.invoke(runtime, "sync-timeout-0", 0)
+        assert first_started.wait(1.0)
+        assert first.status_code == 504
+        timed_out = [first] + [
+            loop_harness.invoke(runtime, f"sync-timeout-{index}", index)
+            for index in range(1, 4)
+        ]
+        assert [response.status_code for response in timed_out] == [504] * 4
+
+        refused = [
+            loop_harness.invoke(runtime, f"sync-timeout-{index}", index)
+            for index in range(4, 12)
+        ]
+
+        assert [response.status_code for response in refused] == [429] * 8
+        assert all(
+            json.loads(response.body)["error"]["code"] == "RUNTIME_HANDLER_SATURATED"
+            for response in refused
+        )
+        assert all(response.headers["retry-after"] == "1" for response in refused)
+        assert calls == 4
+        assert maximum_active == 4
+        assert runtime.health() == {"status": "ok"}
+
+        metrics_response = runtime.metrics()
+        metrics_text = metrics_response.body.decode()
+        assert 'runtime_active_handlers{function="unknown"} 4.0' in metrics_text
+        assert "runtime_handler_wait_timeouts_total" in metrics_text
+
+        release.set()
+        assert all_finished.wait(0.5)
+        assert calls == 4
+        loop_harness.close()
+    finally:
+        release.set()
+        if "loop_harness" in locals() and not loop_harness.loop.is_closed():
+            loop_harness.close()
+        asyncio.run(runtime._runtime_work.shutdown(0.5))
+        importlib.reload(_app)
+
+
+def test_async_timeout_returns_while_delayed_cancellation_stays_physically_active(monkeypatch):
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_HANDLER_TIMEOUT=20,
+        NANOFAAS_MAX_CONCURRENT_HANDLERS=1,
+    )
+    started = threading.Event()
+    cancellation_seen = threading.Event()
+    release_ready = threading.Event()
+    finished = threading.Event()
+    release_handle = {}
+
+    @decorator.nanofaas_function
+    async def delayed_cancel_handler(_input_data):
+        started.set()
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            cancellation_seen.set()
+            loop = asyncio.get_running_loop()
+            release_handle["loop"] = loop
+            release_handle["future"] = loop.create_future()
+            release_ready.set()
+            await release_handle["future"]
+            finished.set()
+            return {"late": True}
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    invocation = loop.create_task(
+        runtime.invoke(
+            _RequestBody(None),
+            runtime.BackgroundTasks(),
+            x_execution_id="async-timeout",
+        )
+    )
+    try:
+        response = loop.run_until_complete(
+            asyncio.wait_for(asyncio.shield(invocation), timeout=0.2)
+        )
+        assert started.wait(0)
+        assert cancellation_seen.wait(0)
+        assert release_ready.wait(0)
+        assert response.status_code == 504
+
+        snapshot = runtime._runtime_work.snapshot()
+        assert snapshot.active_handlers == 1
+        assert snapshot.timed_out_waits >= 1
+        release_handle["future"].set_result(None)
+        loop.run_until_complete(asyncio.sleep(0))
+        assert finished.wait(0)
+    finally:
+        if release_ready.is_set() and not release_handle["future"].done():
+            release_handle["future"].set_result(None)
+        if not invocation.done():
+            loop.run_until_complete(asyncio.wait_for(invocation, timeout=0.5))
+        loop.run_until_complete(loop.shutdown_default_executor(timeout=1.0))
+        loop.close()
+        asyncio.run(runtime._runtime_work.shutdown(0.5))
+        importlib.reload(_app)
+
+
+def test_lifespan_shutdown_is_bounded_and_reports_non_cooperative_handler(monkeypatch, caplog):
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_HANDLER_TIMEOUT=20,
+        NANOFAAS_SHUTDOWN_TIMEOUT=50,
+        NANOFAAS_MAX_CONCURRENT_HANDLERS=1,
+    )
+    started = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+
+    @decorator.nanofaas_function
+    def non_cooperative_handler(_input_data):
+        started.set()
+        assert release.wait(1.0), "test release was not signalled"
+        finished.set()
+        return {"ok": True}
+
+    try:
+        loop_harness = _LoopHarness()
+        response = loop_harness.invoke(runtime, "shutdown-timeout")
+        assert started.wait(1.0)
+        assert response.status_code == 504
+
+        async def stop_runtime():
+            with caplog.at_level("WARNING", logger="nanofaas.runtime.app"):
+                async with runtime.lifespan(runtime.app):
+                    pass
+
+        asyncio.run(stop_runtime())
+
+        report = getattr(runtime.app.state, "runtime_shutdown_report", None)
+        assert report is not None
+        assert report.drained is False
+        assert report.active_handlers == 1
+    finally:
+        release.set()
+        assert finished.wait(0.5)
+        if "loop_harness" in locals() and not loop_harness.loop.is_closed():
+            loop_harness.close()
+        importlib.reload(_app)
+
+
+def test_lifespan_shutdown_drains_cooperative_async_handler(monkeypatch):
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_SHUTDOWN_TIMEOUT=200,
+        NANOFAAS_MAX_CONCURRENT_HANDLERS=1,
+    )
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def cooperative_handler(_input_data):
+        started.set()
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    async def run_and_stop():
+        async with runtime.lifespan(runtime.app):
+            runtime._runtime_work.start_handler(cooperative_handler, None)
+            await asyncio.wait_for(started.wait(), timeout=0.2)
+
+    try:
+        asyncio.run(run_and_stop())
+        report = runtime.app.state.runtime_shutdown_report
+        assert cancelled.is_set()
+        assert report.drained is True
+        assert report.active_handlers == 0
+    finally:
+        importlib.reload(_app)
+
+
+def test_delayed_async_cancellation_keeps_handler_capacity_owned(monkeypatch):
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_MAX_CONCURRENT_HANDLERS=1,
+    )
+
+    async def exercise():
+        started = asyncio.Event()
+        cancellation_seen = asyncio.Event()
+        release = asyncio.Event()
+
+        async def delayed_handler(_input_data):
+            started.set()
+            try:
+                await asyncio.Future()
+            except asyncio.CancelledError:
+                cancellation_seen.set()
+                await release.wait()
+
+        execution = runtime._runtime_work.start_handler(delayed_handler, None)
+        await asyncio.wait_for(started.wait(), timeout=0.2)
+        with pytest.raises(asyncio.TimeoutError):
+            await execution.wait(0.01)
+        await asyncio.wait_for(cancellation_seen.wait(), timeout=0.2)
+
+        with pytest.raises(runtime.HandlerAdmissionError, match="saturated"):
+            runtime._runtime_work.start_handler(delayed_handler, None)
+        assert runtime._runtime_work.snapshot().active_handlers == 1
+
+        release.set()
+        await asyncio.wait_for(execution.work, timeout=0.2)
+        assert runtime._runtime_work.snapshot().active_handlers == 0
+        assert (await runtime._runtime_work.shutdown(0.2)).drained is True
+
+    try:
+        asyncio.run(exercise())
+    finally:
+        importlib.reload(_app)
+
+
+def test_callback_worker_progresses_while_handler_capacity_is_saturated(monkeypatch):
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_MAX_CONCURRENT_HANDLERS=1,
+        NANOFAAS_CALLBACK_WORKERS=1,
+        NANOFAAS_MAX_PENDING_CALLBACKS=1,
+    )
+    handler_started = threading.Event()
+    release_handler = threading.Event()
+    callback_threads = []
+
+    def blocked_handler(_input_data):
+        handler_started.set()
+        assert release_handler.wait(1.0), "test handler release was not signalled"
+
+    def callback_call():
+        callback_threads.append(threading.current_thread().name)
+        return MagicMock(status_code=204)
+
+    async def exercise():
+        execution = runtime._runtime_work.start_handler(blocked_handler, None)
+        assert handler_started.wait(1.0)
+        response = await asyncio.wait_for(
+            runtime._runtime_work.run_callback_call(callback_call),
+            timeout=0.2,
+        )
+        assert response.status_code == 204
+        assert callback_threads[0].startswith("nanofaas-callback")
+        assert runtime._runtime_work.snapshot().active_handlers == 1
+
+        release_handler.set()
+        await asyncio.wait_for(asyncio.wrap_future(execution.work), timeout=0.2)
+        assert (await runtime._runtime_work.shutdown(0.2)).drained is True
+
+    try:
+        asyncio.run(exercise())
+    finally:
+        release_handler.set()
+        importlib.reload(_app)
+
+
+def test_callback_admission_uses_configured_limit_before_background_submission(monkeypatch):
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_MAX_PENDING_CALLBACKS=2,
+        NANOFAAS_CALLBACK_WORKERS=2,
+    )
+    background_tasks = runtime.BackgroundTasks()
+    callback_args = ("http://callback.invalid", "callback-limit", None, {}, None)
+
+    try:
+        admitted = [
+            runtime._schedule_callback(background_tasks, *callback_args)
+            for _index in range(3)
+        ]
+        assert admitted == [True, True, False]
+        with patch("requests.post", return_value=MagicMock(status_code=204)):
+            asyncio.run(background_tasks())
+        assert runtime._runtime_work.snapshot().pending_callbacks == 0
+    finally:
+        if runtime._runtime_work.snapshot().pending_callbacks:
+            for _index in range(sum(admitted)):
+                runtime._runtime_work.release_callback()
+                runtime._callback_slots.release()
+        asyncio.run(runtime._runtime_work.shutdown(0.5))
+        importlib.reload(_app)
+
+
+def test_simultaneous_callbacks_use_owned_workers_and_health_keeps_progressing(monkeypatch):
+    runtime = _reload_runtime_with_limits(
+        monkeypatch,
+        NANOFAAS_MAX_CONCURRENT_HANDLERS=1,
+        NANOFAAS_MAX_PENDING_CALLBACKS=2,
+        NANOFAAS_CALLBACK_WORKERS=2,
+    )
+    callbacks_started = threading.Event()
+    release_callbacks = threading.Event()
+    callback_threads = []
+    lock = threading.Lock()
+
+    def blocking_post(*_args, **_kwargs):
+        with lock:
+            callback_threads.append(threading.current_thread().name)
+            if len(callback_threads) == 2:
+                callbacks_started.set()
+        assert release_callbacks.wait(1.0), "test callback release was not signalled"
+        return MagicMock(status_code=204)
+
+    async def exercise_callbacks():
+        await asyncio.wait_for(
+            asyncio.gather(
+                *(
+                    runtime.send_callback(
+                        "http://callback.invalid", f"callback-worker-{index}", None, {}
+                    )
+                    for index in range(2)
+                )
+            ),
+            timeout=1.5,
+        )
+
+    callback_runner_errors = []
+
+    def run_callbacks():
+        try:
+            asyncio.run(exercise_callbacks())
+        except BaseException as error:
+            callback_runner_errors.append(error)
+
+    try:
+        with patch("requests.post", side_effect=blocking_post):
+            callback_runner = threading.Thread(target=run_callbacks, daemon=True)
+            callback_runner.start()
+            assert callbacks_started.wait(1.0)
+
+            assert runtime.health() == {"status": "ok"}
+            snapshot = runtime._runtime_work.snapshot()
+            assert snapshot.active_callback_workers == 2
+            assert all(name.startswith("nanofaas-callback") for name in callback_threads)
+
+            bounded_report = asyncio.run(runtime._runtime_work.shutdown(0.02))
+            assert bounded_report.drained is False
+            assert bounded_report.active_callback_workers == 2
+
+            release_callbacks.set()
+            callback_runner.join(1.0)
+            assert not callback_runner.is_alive()
+            assert callback_runner_errors == []
+        assert runtime._runtime_work.snapshot().active_callback_workers == 0
+        assert asyncio.run(runtime._runtime_work.shutdown(0.5)).drained is True
+    finally:
+        release_callbacks.set()
+        if "callback_runner" in locals():
+            callback_runner.join(1.0)
+        asyncio.run(runtime._runtime_work.shutdown(0.5))
+        importlib.reload(_app)
