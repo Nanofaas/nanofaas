@@ -301,6 +301,56 @@ class DispatchConnectionPoolTest {
     }
 
     @Test
+    void numericEndpointRemovalDeregistersTheAlreadyDisposedNettyPool() throws Exception {
+        HttpClientProperties properties = properties(1, 2, 5_000, 0, 50, 50, 200);
+        SimpleMeterRegistry meters = new SimpleMeterRegistry();
+        try (MockWebServer server = new MockWebServer();
+             DispatchConnectionPool pool = new DispatchConnectionPool(properties, meters)) {
+            server.enqueue(new MockResponse().setBody("{}"));
+            server.start(java.net.InetAddress.getByAddress(new byte[]{127, 0, 0, 1}), 0);
+            String endpoint = "http://127.0.0.1:" + server.getPort() + "/invoke";
+            pool.onRegister(externalSpec("numeric", endpoint));
+            WebClient client = new HttpClientConfig().webClient(
+                    WebClient.builder(), properties, pool.provider());
+            assertThat(client.get().uri(endpoint).retrieve().bodyToMono(String.class)
+                    .block(Duration.ofSeconds(3))).isEqualTo("{}");
+            assertThat(pool.destinationCount()).isOne();
+
+            // Test-only observation distinguishes actual Netty pools from our registrar.
+            var delegateField = DispatchConnectionPool.class.getDeclaredField("delegate");
+            delegateField.setAccessible(true);
+            Object delegate = delegateField.get(pool);
+            var channelPoolsField = reactor.netty.resources.PooledConnectionProvider.class
+                    .getDeclaredField("channelPools");
+            channelPoolsField.setAccessible(true);
+            Map<?, ?> nettyPools = (Map<?, ?>) channelPoolsField.get(delegate);
+            assertThat(nettyPools).hasSize(1);
+
+            pool.onRemove("numeric");
+            await().atMost(Duration.ofSeconds(3)).untilAsserted(() -> {
+                assertThat(nettyPools).as("Netty actually removes the disposed pool").isEmpty();
+                assertThat(pool.connectionCount()).isZero();
+                assertThat(pool.pendingAcquireCount()).isZero();
+            });
+            assertThat(pool.destinationCount())
+                    .as("resolved registration and unresolved disposal must identify the same owner")
+                    .isZero();
+            assertThat(meters.get("nanofaas_http_pool_destinations").gauge().value()).isZero();
+            server.enqueue(new MockResponse().setBody("replacement"));
+            pool.onRegister(externalSpec("numeric", endpoint));
+            assertThat(client.get().uri(endpoint).retrieve().bodyToMono(String.class)
+                    .block(Duration.ofSeconds(3))).isEqualTo("replacement");
+            assertThat(nettyPools).hasSize(1);
+            assertThat(pool.destinationCount()).as("a new pool for the same endpoint is tracked").isOne();
+            pool.onRemove("numeric");
+            await().atMost(Duration.ofSeconds(3)).untilAsserted(() -> {
+                assertThat(nettyPools).isEmpty();
+                assertThat(pool.destinationCount()).isZero();
+            });
+        }
+    }
+
+    @Test
     void acquisitionTimeoutRemovesThePhysicalPendingAcquire() throws Exception {
         BlockingDispatcher backend = new BlockingDispatcher();
         HttpClientProperties properties = new HttpClientProperties(

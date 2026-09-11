@@ -3267,3 +3267,20 @@ Round-2 commits: product/native fix `b4770d6675adc99f53444260dcf0200f10b517cf`;
 profiles and frozen candidate `3345396ed51e8c070629c0d2d4fc1677526f04dc`.
 Post-commit status preserves only the protected pre-existing dirty/untracked
 targets. This documentation receipt does not change source B or artifact hashes.
+
+### P19 fix round 3 — P12 identity root cause and TDD
+
+The remaining drain failure is a stale owner/metrics registry, not live Netty
+sockets: 1.3.6 disposeWhen deregisters with the supplied unresolved numeric address,
+while registration used a resolved address. Netty removes the actual pool, but
+InetSocketAddress equality prevents removal of the P12 key. The new real HTTP
+regression proves Netty channelPools empty/physical counts zero before RED owner
+count expected0/actual1 (Gradle exit1). Existing localhost tests miss this boundary.
+
+Minimal fix normalizes only PoolKey socket-address identity without DNS, retaining
+pool name/ID/host/port. No lifecycle bypass, counter clearing, tolerance increase
+or profile weakening. GREEN P12/property/architecture: 25/0/0, exit0, with same-
+endpoint recreation also checked. Exact upstream impact LOW (two registrar
+callers); UNKNOWN test entrypoints resolved with rg. Protected dirt unchanged.
+Final B identity, fresh managed/R1-R8/A-B campaign and accepted dossier are pending;
+no P20b and no subagents. Full RED/GREEN/source evidence in task-P19-report.md.

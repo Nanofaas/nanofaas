@@ -767,3 +767,51 @@ the two protected dirty files, six protected untracked skill directories and the
 protected untracked snapshot test. This receipt is documentation-only; it does
 not advance B or alter the immutable dossier. Final status remains BLOCKED for
 the explicit managed pool-drain gate, not for unavailable tooling/infrastructure.
+
+## Fix round 3 — P12 registry identity repair (execution in progress)
+
+Reviewer approved native finding 2 and the measurement surface; the sole blocker
+was three empty registry entries surviving 4s + 10.109s (P12 tolerance <=1).
+Scope remains P12/P19, no P20b/subagents. Work directory
+`/tmp/nanofaas-p19-r3.QxIGIR`; protected SHA-256 audit unchanged.
+
+Systematic debugging: reread exact P12/P19 acceptance, round-2 raw failure and
+current owner/tests. Resolved dependency is Reactor Netty **1.3.6**. Its
+[official PooledConnectionProvider source](https://raw.githubusercontent.com/reactor/reactor-netty/v1.3.6/reactor-netty-core/src/main/java/reactor/netty/resources/PooledConnectionProvider.java)
+and locally inspected bytecode show registration uses the original remote
+address, whereas disposeWhen deregisters using its argument. Netty matches
+resolved/unresolved endpoints by host/port; Java InetSocketAddress equality does
+not. Function removal supplies an unresolved numeric endpoint; registration used
+a resolved numeric IP. Netty removes/disposes the actual pool, but P12's exact
+record key fails to remove the registrar entry, retaining its metrics/pool graph.
+Existing working churn/removal tests use MockWebServer's localhost hostname,
+which does not expose this numeric-address representation mismatch.
+
+Single hypothesis and deterministic RED: new
+`DispatchConnectionPoolTest.numericEndpointRemovalDeregistersTheAlreadyDisposedNettyPool`
+uses real loopback HTTP and test-only reflection of Netty's channelPools map.
+`./gradlew :control-plane:test -PcontrolPlaneModules=none -I
+docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle --tests
+'*DispatchConnectionPoolTest.numericEndpointRemovalDeregistersTheAlreadyDisposedNettyPool'
+--console=plain`: exit **1**, one focused test/one expected assertion failure,
+Netty map empty and physical counts zero BEFORE owner assertion fails expected0
+actual1. Raw XML retained in red-pool; no production edit preceded RED.
+
+Minimum fix: eight lines in private PoolKey compact constructor normalize
+InetSocketAddress to unresolved host-string/port without DNS. Pool name, ID,
+host and port remain part of identity; no counters cleared speculatively, no
+pool lifecycle bypass, timeout/tolerance/profile assertion unchanged. The test
+also verifies recreation of the same endpoint is tracked and drains again.
+
+GREEN: same Gradle invocation with `--tests '*DispatchConnectionPoolTest'
+--tests '*HttpClientPropertiesTest'`: exit **0**, BUILD SUCCESSFUL in 15s;
+**25 passed/0 failed/0 skipped** (16 P12, 4 properties, 5 architecture).
+Complete XML preserved in green-pool. One production fix, no bundled refactor.
+
+Exact upstream GitNexus PoolKey check before edit: LOW, two direct callers
+registerMetrics/deRegisterMetrics, zero indexed flows; explicit repository/worktree
+binding. Test entrypoint/class UNKNOWN confirmed by rg/JUnit selection. Graph
+refresh succeeded for symbols but warned FTS/BM25 unavailable; no inference is
+made from full-text search absence. Raw graph/bytecode evidence retained. B will
+advance to this product commit; fresh managed/R1-R8 and alternating comparison
+must identify it before acceptance is declared.

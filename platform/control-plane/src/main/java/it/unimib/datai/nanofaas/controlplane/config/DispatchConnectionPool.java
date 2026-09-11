@@ -286,6 +286,14 @@ public final class DispatchConnectionPool implements AutoCloseable, ConnectionPr
     }
 
     private record PoolKey(String poolName, String id, SocketAddress remoteAddress) {
+        private PoolKey {
+            // Netty 1.3.6 deregisters with disposeWhen's argument, which can be
+            // unresolved even when the pool was registered with a resolved IP.
+            // Normalize without DNS; retain the pool id and concrete host/port.
+            if (remoteAddress instanceof InetSocketAddress address) {
+                remoteAddress = InetSocketAddress.createUnresolved(address.getHostString(), address.getPort());
+            }
+        }
     }
 
     private record TrackedPool(ConnectionPoolMetrics metrics, AtomicLong emptySinceNanos) {
