@@ -101,7 +101,8 @@ each other through interference.
 
 ## The configured limit is a ceiling
 
-`FunctionQueueState.setEffectiveConcurrency` clamps to the spec's `concurrency`,
+`DispatchCapacity.setEffectiveConcurrency` (the shared core `FunctionCapacityRegistry`,
+reached through `QueueManager`) clamps to the spec's `concurrency`,
 so the governor can only ever throttle *below* it — it cannot grant a function
 more parallelism than it was registered with. Raise the ceiling at runtime,
 without re-registering and without touching the deployment:

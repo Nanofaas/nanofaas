@@ -3390,3 +3390,146 @@ sets confirmed unchanged; no missing/truncated graph result or runtime change.
 This post-commit inspection timing is disclosed, not called a clean equality check.
 Whitespace check exit2 only for immutable raw RED XML/verbatim requirements;
 excluding dossiers exit0. Final artifact verification/preservation remains green.
+
+## 2026-09-11 — P20b consumer ports (implementation and focused/integration gates)
+
+Scope: P20b only, on `control-plane-lifecycle-memory`, starting from
+`21b361cd9480c6198675935a8644b5db75d96c24`. Approved immutable P19 product baseline
+remains `d93b68cdf1cca6e7af17e1c641c8e236c80d0fca`; no P19 dossier/performance source
+was rewritten. No P21 SPI Gradle extraction, module-ID or retry-default change.
+No subagent/reviewer was spawned; controller owns progress and subsequent review.
+
+Implementation: existing immutable task transports `DispatchOwnership`, implemented
+by the existing lease, without recreating owners. Distinct initial admission
+(`InvocationEnqueuer`: explicit strategy and async capability), `RetryScheduler`,
+`InvocationDispatch`, `QueuedDispatchCapacity` and `DispatchCapacity`/`CapacityView`
+contracts replace the overloaded enabled/name-slot boundary. Both queue schedulers
+use dispatch and lifecycle-event ports; no queue depends on HTTP orchestration or
+mutates execution records/futures. `QueueLifecycle` is adapted by the existing
+ExecutionStore to its attached ExecutionLifecycle, not a second terminal owner.
+
+Removed P20a residues: registry name slot/release methods, `hasGeneration`, concrete
+state acquisition adapter and leased bookkeeping; unbounded state increment and
+standalone state constructors; queue name-slot/increment bridges; record release
+attempt-set/direct-admission bridges; test-only production retry constructor and
+redundant task/lease dispatch forwarding. Actual API callback forwarding remains.
+Sync activation tests active identity; drain/fence cleanup additionally checks the
+exact retained generation. SYNC and ASYNC keep async-queue's same function strategy;
+sync queue activation, retry and removal remain independently selectable.
+
+Governor/autoscaler now consume immutable `InvocationObservations` from existing
+meter owners. No read registers or resurrects invocation meters. Final observed
+attempt service time remains distinct from one original-admission-to-terminal
+duration, retries/waits included; waiter timeout is independent. Shared generation
+identity fences control-loop deltas. Policies and periods are unchanged. A sampled
+governor cycle is serialized with removal cleanup to prevent stale state revival.
+
+RED/GREEN: both queue architecture suites initially failed all three boundaries;
+all are now green. Both observation architecture rules failed before migration.
+Behavior RED reproduced queue expiry's null archived error despite a QUEUE_TIMEOUT
+future; the canonical outcome now preserves QUEUE_TIMEOUT and TIMEOUT state. Both
+schedulers' accepted dispatch-rejection tests reproduced live orphaned executions;
+events now settle DISPATCH_REJECTED. Input backpressure still requeues. A governor
+removal/cycle race also reached RED before the serialization fix and GREEN after it.
+
+The initial SojournRetryTimeoutMixTest failure was a fixture-registration defect:
+it wrote to unregistered fallback timers. Added `registerFunction("mix")` instead
+of restoring registration-on-read or changing the controller. Verified green with
+the unchanged mixed retry/timeout policy assertions.
+
+Focused ownership/admission selections, queue retry/expiry/removal/shutdown and
+runtime-toggle selections, R5 and queue generation gates, and observations/policy
+selections passed. Explicit profile integrations passed: core-only API plus
+R1/R2/R3/R4/R7/R8 (13s); sync-only context/R5/generation (8s); sync+runtime-config
+context/runtime service/HTTP backpressure (27s); governor-only including E2e and
+the removal race (16s); autoscaler-only (6s). Combined governor/autoscaler wiring
+and E2e passed in the default selected profile (30s focused invocation/loop run).
+All commands use `--offline --no-parallel --console=plain` with authorized cache/
+process access. The one final `./gradlew test --offline --no-parallel --console=plain`
+is running at this checkpoint; its result and commit receipt follow below.
+
+ADR §11 contains the actual consumer/method inventory and the §10 residue verdicts.
+Full commands, failed intermediate compilations and their diagnoses, per-slice
+RED/GREEN, graph contexts/impacts, final self-review and commit receipts:
+`.superpowers/sdd/2026-09-08-control-plane-lifecycle-memory-and-modularity/task-P20b-report.md`.
+Ephemeral logs/graph evidence use only `task-P20b-*` in that SDD directory.
+Protected pre-existing overload notes/output, GitNexus skill directories and the
+controller's ReplicaStatusSnapshotConfigurationTest are not task changes.
+
+P20b final suite: `./gradlew test --offline --no-parallel --console=plain` completed
+successfully in **3m20s**, 190 actionable tasks (30 executed, 160 up-to-date).
+No production/test edits followed that pass. `task-P20b-full-suite.log` retains
+the complete output; no duplicate full build or P19 performance rerun was made.
+GitNexus final index refresh succeeded (23,470 nodes, 63,185 edges, 755 flows),
+with the known File FTS failure. Exact graph contexts/impacts remain available;
+UNKNOWN results were confirmed with text. Initial complete all-change backend
+audit: **507 symbols / 65 flows / 90 tracked changed files, CRITICAL**, no partial
+or truncated flags. New files are included in the final staged audit recorded
+with the delivery receipt below. CRITICAL scope is acknowledged, not waived.
+
+### P20b controller receipt (independent verification, review and commits)
+
+Implementation commit `5d3d7d29e20ac0d15e44e37ce0f3bf50bef7087c` (101 files);
+review-fix commit `c9a78cc585da8a66fef2fa67b64e66c9e5b6b27d`; documentation
+receipt is this commit. Previous product head remains `21b361cd`.
+
+Controller verification, not a rerun of the implementer's recorded output:
+
+- Staged inventory re-derived independently: 101 files, exactly the task's
+  product and tests. The four protected pre-existing paths were never staged.
+- Full suite forced past Gradle's up-to-date cache
+  (`cleanTest test --offline --no-parallel --console=plain`): **350 suites,
+  1924 tests, 0 failures, 0 errors, 8 profile-conditional skips**, 26/26 test
+  tasks genuinely executed. Repeated after the review fixes: same totals.
+  Logs `task-P20b-controller-forced-suite.log` and
+  `task-P20b-controller-final-suite.log`, aggregates in
+  `task-P20b-controller-forced-suite-results.json`.
+- The no-queue capability gates were checked as EXECUTED, not skipped, under
+  `-PcontrolPlaneModules=none`: `CoreOnlyApiTest` reports tests=2, skipped=0.
+- The architecture RED evidence is a genuine assertion failure: all three
+  `LifecyclePortsTest` rules failed in BOTH queue modules with zero compile
+  errors (`task-P20b-architecture-red.log`).
+- Module combinations that had never been built were run and are green:
+  async-only, async+offload, container-deployment-provider,
+  async+k8s-deployment-provider, async+build-metadata - 17 tests each, 0
+  failures. `async-queue`+`sync-queue` is structurally impossible: the module
+  descriptors declare the conflict and the build plugin rejects it
+  ("Invalid module constraints"). Matrix in `task-P20b-profile-matrix.txt`.
+- Graph: index refreshed to 23,469 nodes / 63,189 edges / 755 flows (FTS still
+  degraded). Complete audit of the final tree, no partial/truncated/error
+  flags: **all-scope 107 files / 586 symbols / 67 flows** and **staged-scope
+  101 files / 572 symbols / 67 flows**, both CRITICAL. The 6-file difference is
+  exactly the four pre-existing doc paths plus the two corrected READMEs.
+
+Independent review of the staged refactor (two rounds, seven dimensions plus a
+completeness critic, each finding adversarially verified by three lenses):
+
+- Round one produced five raw findings; four survived, all minor and all
+  test-fidelity (two queue helpers that dropped their lease-acquisition guard,
+  and tautological capacity-release assertions). One architecture-rule finding
+  was unanimously refuted: the rule targets the mutable state and lease handle,
+  while `FunctionCapacityRegistry` is the authority behind the port the ADR
+  names as the consumed contract.
+- Round two verified six critic gaps and refuted five: the metrics/registration
+  listener ordering (scan order is sorted in the exploded classpath, the fat jar
+  and the AOT bytecode, all measured), the governor lock order (no reverse
+  acquisition exists; the serialization is the sanctioned fix), the async
+  backpressure requeue label (reachable only when the queue is closed, which
+  only a removal does), and the unexercised module combinations.
+- Confirmed and fixed in `c9a78cc5`: the nullable `failure.getMessage()` on the
+  new `DISPATCH_REJECTED` path, the two dropped lease guards, three assertions
+  that could not fail, and the offload guard made falsifiable again. A mutation
+  that releases capacity in the offload path now fails it.
+
+Documentation corrected because it described deleted API: the async-queue and
+concurrency-control READMEs, and the ADR state matrix row for the queued
+dispatch transition. Section 10 is left in its recorded P20a future tense - it
+is explicitly a historical inventory, and section 11.2 records the removal.
+
+Two pre-existing defects were reproduced but deliberately NOT changed, because
+each is outside this task's change surface and altering it would perturb the
+P19 measured path; they are recorded in the task report for a follow-up:
+the async removal drain concludes a still-running reservation as
+`FUNCTION_REMOVED` (the sync module deliberately does the opposite), and
+`ExecutorBackedInvocationEnqueuer` dispatches outside the failure-cleanup
+wrapper (bounded by the administrative expiry).

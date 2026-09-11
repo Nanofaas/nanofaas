@@ -217,7 +217,7 @@ columns name who acquires and who releases/closes.
 |---|---|---|---|---|---|---|---|---|---|
 | 1 | *(none)* | submit rejected | *(none)* | HTTP rejection (404 / 429 / 410 / 501); no execution exists | keyed: `abandonClaim` (pending claim removed); a **replay** of an existing key is served, never rejected | record removed if admission already created it (`abandonAdmission`) | none acquired | key quota returned; no outcome bytes; no slot | none |
 | 2 | *(none)* | queued (admission accepted) | `QUEUED` | pending (no terminal) | `pending` → `published` (`publishClaim`) | live record present | none yet (acquired at dispatch, §8) | key quota held | none |
-| 3 | `QUEUED` | dispatch | `RUNNING` | pending (no terminal) | `published` unchanged | live record (`markRunning`, `markDispatchedAt`) | slot acquired by the queue scheduler (`tryAcquireSlot`) | slot held | dispatch future handle registered |
+| 3 | `QUEUED` | dispatch | `RUNNING` | pending (no terminal) | `published` unchanged | live record (`markRunning`, `markDispatchedAt`) | slot acquired by the queue scheduler (`tryAcquireLease`, §11.1) | slot held | dispatch future handle registered |
 | 4 | `RUNNING` | success | `SUCCESS` | the success envelope (output/status/headers/encoding) | `published` → `terminal` (`markTerminal`) | `settle`: outcome archived, record invalidated | slot released once (by the owner attempt) | outcome bytes retained if readable; key quota released at `ttl` | dispatch handle done |
 | 5 | `RUNNING` | retryable error | `QUEUED` (attempt + 1) | pending (no terminal) | `published` unchanged (record keeps its original key across retries) | live record reset (`resetForRetry`) | failed attempt's slot released; the retry re-acquires at its own dispatch | slot returned, then re-acquired by the retry | failed attempt's handle done |
 | 6 | `RUNNING` | retry refused (retry enqueue fails) | `ERROR` | the attempt's error | `published` → `terminal` | `settle` | slot released once | slot returned | handle done |
@@ -473,3 +473,78 @@ have a port to move to.
 | `ExecutorBackedInvocationEnqueuer`'s test-only `Consumer` constructor (releases the lease right after dispatch) | the A3 retry round-trip tests | **Complete** in P07, which gives the no-queue retry path its own bound and regression |
 | `ReplicaStatusSnapshot.Entry.generation` (private counter) | replica snapshot refresh/invalidate | **Complete** in P10: same idea, own counter; align it on `FunctionGeneration` and the phase protocol |
 | removed-name sets in `Metrics` and `SyncQueueMetrics`, lazily created and offload meters | metric registration/removal | **Complete** in P09: replace the ever-growing sets with generation owners (R8 stays red until then) |
+
+## 11. P20b: consumer ports and completed residual migration
+
+The inventory in §10 is historical. P20b is a delta from `21b361cd9480c6198675935a8644b5db75d96c24`,
+after the independently approved P19 baseline `d93b68cdf1cca6e7af17e1c641c8e236c80d0fca`.
+It keeps the existing immutable task, execution lifecycle, capacity registry and lease owners.
+There is no new SPI Gradle project, execution/deployment JAR, scheduler per HTTP response mode,
+module-ID change or retry-default change. Packaging extraction remains P21.
+
+### 11.1 Actual consumer contracts
+
+| Consumer | Port and consumed operations | Ownership boundary |
+|---|---|---|
+| `InvocationService` | `InvocationEnqueuer.supportsAsync`, `enqueue`, `isQueueFull` | Initial API admission only; response mode grants no capacity |
+| `ReactiveInvocationCoordinator` | `InvocationEnqueuer.queueStrategy`, `enqueue`; existing `SyncQueueGateway.enabled` / `enqueueOrThrow` | `FUNCTION_QUEUE` routes both SYNC and ASYNC through async-queue's one function strategy; sync gateway activation remains an independent runtime choice |
+| `ExecutionCompletionHandler` | `RetryScheduler.enqueue` | Schedules the next already-admitted attempt, without implying public async or queued initial admission |
+| async `Scheduler`, `SyncScheduler`, core retry executor | `InvocationDispatch.dispatch(InvocationTask)` | Task transports its existing `DispatchOwnership`; schedulers no longer depend on HTTP orchestration |
+| `InvocationTask`, `DispatchAttempt`, completion/physical work | `DispatchOwnership.generation`, `release`, `isReleased` | Existing `DispatchLease` implements the minimal handle; no concrete lease class is exported through task/consumer signatures and no owner is recreated |
+| `QueueManager`, `SyncQueueService`, sync enqueuer/workload source | `DispatchCapacity.register`, `remove`, `state`, `activeGeneration`, `retainsGeneration`, generation-bound `tryAcquireLease`, concurrency readings/control, `addCapacityListener` | Registry remains the authority; `CapacityView` is read-only. Only an owned handle releases a slot |
+| async lifecycle listener, sync queue, both schedulers | `QueueLifecycle.removed`, `expired`, `rejected`; sync also `inFlightExecutionIds`, `onExecutionGone` | Existing `ExecutionStore` resolves IDs and delegates canonical settlement to its attached `ExecutionLifecycle`. Modules cannot mutate records, complete futures, archive outcomes or release capacity by name |
+| governor, autoscaler `ScalingMetricsReader` | `InvocationObservations.snapshot` | Immutable totals and the shared `FunctionGeneration`, read from existing metric owners only; no registration or mutable Timer/Counter API |
+| governor policies and autoscaler backlog readings | existing `WorkloadMetricsSource` / `WorkloadCapacityController` | Queue readings and the governor's explicit capacity-control authority remain separate from read-only invocation observations |
+
+`InvocationEnqueuer` now has only initial-admission capabilities: `QueueStrategy.DIRECT` or
+`FUNCTION_QUEUE`, independent `supportsAsync`, enqueue and an advisory full-queue hint. The old
+overloaded `enabled()` and name-slot methods are gone. async-queue implements both admission
+and retry contracts. sync-queue implements retry and `QueuedDispatchCapacity`; its existing
+gateway controls initial sync admission and runtime toggles. The core provides direct/no-async
+admission separately from a bounded retry-only executor. Conditional bean creation is by
+contract, not by inferring capabilities from module names; queue providers suppress the unused
+fallback retry pool.
+
+### 11.2 Removed bridges and active-generation semantics
+
+Removed: registry name-only `tryAcquireSlot` / `releaseSlotAndGetHoldNanos`, `releaseAnySlot`,
+the `leased` identity map, concrete-state acquisition adapter, and `hasGeneration`; enqueuer
+and queue increment/decrement/name-slot bridges; unbounded `FunctionCapacityState.incrementInFlight`
+and standalone state constructors; record name-release attempt sets/direct-admission flags;
+the production test-only core retry constructor; redundant `dispatchWithLease`, API-service
+scheduler dispatch and unused `DispatchResult` forwarding overloads. State mutation is now
+package-private to the core. Tests drive real owned leases instead of reviving these adapters.
+The two `InvocationService.completeExecution(InvocationResult, ...)` methods remain because
+`InvocationController` actually uses them for the runtime callback API.
+
+The P20b source inventory refined §10's `hasGeneration` description: surviving sync call sites
+also clean up removal fences/locks, so replacing all of them with a bare active check would
+prematurely forget physical drain. Activation uses `activeGeneration != null`; cleanup may
+additionally ask whether the fence's **exact** generation is still tracked via
+`retainsGeneration(fence.generation)`. No historical-presence lookup can admit new work. Late
+release diagnostics compare the captured identity with the active one before writing meters.
+
+### 11.3 Observation and event semantics
+
+Snapshots never register meters, resurrect removed function labels or retain execution owners.
+Service totals preserve the final observed attempt's dispatch-to-completion duration, excluding
+earlier retried attempts and censored/undispatched outcomes. End-to-end totals preserve original
+admission-to-terminal duration, including retries and queue waits, once per logical invocation.
+An independent waiter timeout is not an execution conclusion. Dispatch counts include attempts
+and retries. Durations derive from monotonic execution timestamps and are reported in milliseconds;
+concurrent counts/totals are approximate samples within one registration. An absent registration
+has null identity and zero totals. Control-loop deltas never compare different generations.
+Governor policies/periods and autoscaler policies/periods remain independent. Governor cycles
+serialize with removal cleanup so a sampled cycle cannot repopulate retired controller state.
+
+Queue events conclude through the existing owner, ignoring stale attempts and preserving an
+already selected terminal result. Two defects were reproduced during migration: sync queue
+expiry returned `QUEUE_TIMEOUT` to waiters but archived a null error; scheduler dispatch rejection
+released a slot but left the accepted execution live. Expiry now archives the same selected
+`QUEUE_TIMEOUT` while retaining `TIMEOUT` state; rejection now settles `DISPATCH_REJECTED`.
+Input-quota backpressure still requeues. Logical settlement does not release physical work's
+lease/input before actual drain. I1–I10 and protected-key/replay semantics remain binding.
+
+Architecture RED/GREEN, per-consumer lifecycle tests, profile integrations, suite results,
+graph audit and commit receipts are recorded in lifecycle `STATO.md` and
+`.superpowers/sdd/2026-09-08-control-plane-lifecycle-memory-and-modularity/task-P20b-report.md`.

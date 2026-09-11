@@ -12,7 +12,9 @@ without this module `POST /v1/functions/{name}:enqueue` returns
   path's queued dispatch.
 - `Scheduler` — background loop that pulls tasks from `QueueManager` and
   dispatches them while respecting per-function concurrency
-  (`FunctionQueueState.tryAcquireSlot`, CAS-based).
+  (`QueueManager.tryAcquireLease` → a generation-bound `DispatchCapacity`
+  lease from the shared core `FunctionCapacityRegistry`, plus the bounded
+  dispatch reservation, CAS-based).
 - `WorkloadMetricsSource` (`AsyncQueueWorkloadMetricsSource`) — exposes queue
   depth, in-flight, effective concurrency, and dispatchable backlog. The
   autoscaler currently consumes queue depth and in-flight; RPS is derived by
