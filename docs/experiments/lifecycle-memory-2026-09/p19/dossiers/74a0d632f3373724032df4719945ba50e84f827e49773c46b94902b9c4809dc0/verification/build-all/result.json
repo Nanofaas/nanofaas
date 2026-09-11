@@ -1,0 +1,20 @@
+{
+  "cases": [],
+  "command": [
+    "./gradlew",
+    ":control-plane:bootJar",
+    "-PcontrolPlaneModules=all",
+    "-PnanofaasBuildRevision=d93b68cdf1cca6e7af17e1c641c8e236c80d0fca",
+    "-PnanofaasBuildDirty=false",
+    "--console=plain"
+  ],
+  "counts": null,
+  "counts_status": "not_applicable: command has no test cases",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 2.021362781524658,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "build-all",
+  "output_sha256": "7c49ad3ee7ebb7cc9cb02a0d26fe57eb282c3501a3390a9f9b33ce20dbd6eda7",
+  "started_unix_s": 1789139086.4195495
+}

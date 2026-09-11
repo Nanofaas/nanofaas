@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="it.unimib.datai.nanofaas.controlplane.architecture.CoreArchitectureTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-09-11T15:00:08.418Z" hostname="gx10-1b52" time="2.043">
+  <properties/>
+  <testcase name="core_packages_are_free_of_cycles" classname="it.unimib.datai.nanofaas.controlplane.architecture.CoreArchitectureTest" time="1.98"/>
+  <testcase name="api_is_the_only_entry_point" classname="it.unimib.datai.nanofaas.controlplane.architecture.CoreArchitectureTest" time="0.033"/>
+  <testcase name="core_does_not_depend_on_modules" classname="it.unimib.datai.nanofaas.controlplane.architecture.CoreArchitectureTest" time="0.023"/>
+  <testcase name="lower_layers_do_not_depend_on_service" classname="it.unimib.datai.nanofaas.controlplane.architecture.CoreArchitectureTest" time="0.005"/>
+  <testcase name="controlplane_namespace_is_owned_by_core" classname="it.unimib.datai.nanofaas.controlplane.architecture.CoreArchitectureTest" time="0.001"/>
+  <system-out><![CDATA[17:00:08.427 [Test worker] INFO com.tngtech.archunit.core.PluginLoader -- Detected Java version 25.0.4
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

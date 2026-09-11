@@ -1,0 +1,19 @@
+{
+  "cases": [],
+  "command": [
+    "./gradlew",
+    "help",
+    "-PcontrolPlaneModules=none,offload",
+    "--offline",
+    "--console=plain"
+  ],
+  "counts": null,
+  "counts_status": "not_applicable: command has no test cases",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 0.7175917625427246,
+  "exit_code": 1,
+  "expected_exit_code": 1,
+  "label": "negative-none,offload",
+  "output_sha256": "aa640fe580796b4373e39b9f2212f759d5ffc35447903eecb7c35059d0331d6e",
+  "started_unix_s": 1789128162.3436441
+}

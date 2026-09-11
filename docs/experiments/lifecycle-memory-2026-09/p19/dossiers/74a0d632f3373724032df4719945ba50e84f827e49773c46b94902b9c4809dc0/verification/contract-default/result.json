@@ -1,0 +1,131 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.architecture.CoreArchitectureTest",
+      "name": "core_packages_are_free_of_cycles",
+      "seconds": "2.152",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.architecture.CoreArchitectureTest",
+      "name": "api_is_the_only_entry_point",
+      "seconds": "0.039",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.architecture.CoreArchitectureTest",
+      "name": "core_does_not_depend_on_modules",
+      "seconds": "0.024",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.architecture.CoreArchitectureTest",
+      "name": "lower_layers_do_not_depend_on_service",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.architecture.CoreArchitectureTest",
+      "name": "controlplane_namespace_is_owned_by_core",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.IssueCoverageTest",
+      "name": "issue002_buildConfigExists()",
+      "seconds": "0.007",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.IssueCoverageTest",
+      "name": "openapi/core.yaml",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.IssueCoverageTest",
+      "name": "docs/slo.md",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.IssueCoverageTest",
+      "name": "docs/quickstart.md",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.IssueCoverageTest",
+      "name": "docs/example-function.md",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.IssueCoverageTest",
+      "name": "issue001_structureExists()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.IssueCoverageTest",
+      "name": "issue004_k8sManifestsExist()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.IssueCoverageTest",
+      "name": "issue003_dockerfilesExist()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.ControlPlaneAutoConfigurationImportsTest",
+      "name": "selectedModulesPublishSpringBootAutoConfigurations()",
+      "seconds": "0.065",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.api.OpenApiRouteCoverageTest",
+      "name": "everyPublicRouteIsInTheComposedSpec()",
+      "seconds": "0.439",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.api.OpenApiRouteCoverageTest",
+      "name": "enabledModuleRoutesAreDocumented()",
+      "seconds": "0.077",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    ":control-plane:test",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.api.OpenApiRouteCoverageTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.IssueCoverageTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.ControlPlaneAutoConfigurationImportsTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.architecture.CoreArchitectureTest",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 16,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 17.973777294158936,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "contract-default",
+  "output_sha256": "e2513206da696d49389d27b66056f4f12e9db7faee2d1be3039e507d5c1805d1",
+  "started_unix_s": 1789127955.4150887
+}

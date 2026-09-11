@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="it.unimib.datai.nanofaas.gradle.RepositoryModuleDescriptorsTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-11T12:02:40.467Z" hostname="gx10-1b52" time="0.009">
+  <properties/>
+  <testcase name="everyImmediateGradleModuleHasExactlyOneValidDescriptor()" classname="it.unimib.datai.nanofaas.gradle.RepositoryModuleDescriptorsTest" time="0.008"/>
+  <testcase name="deploymentProvidersHaveComplementaryDefaultsAndMutualConflicts()" classname="it.unimib.datai.nanofaas.gradle.RepositoryModuleDescriptorsTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

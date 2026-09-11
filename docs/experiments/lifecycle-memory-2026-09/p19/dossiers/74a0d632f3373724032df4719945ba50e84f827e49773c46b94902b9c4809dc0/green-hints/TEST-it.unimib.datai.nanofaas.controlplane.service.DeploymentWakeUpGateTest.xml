@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" tests="36" skipped="0" failures="0" errors="0" timestamp="2026-09-11T13:52:25.019Z" hostname="gx10-1b52" time="1.688">
+  <properties/>
+  <testcase name="ensureReady_timesOutWithinTheWakeUpBudgetWhenPollIntervalIsLonger()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.105"/>
+  <testcase name="ensureReady_doesNotLowerAnExistingDesiredTargetWhileWaitingForReadiness()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.019"/>
+  <testcase name="ensureReady_timesOutDistinctlyWhenNoReplicaBecomesReady()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.106"/>
+  <testcase name="ensureReady_removesCompletedWakeUpSoALaterScaleToZeroCanWakeAgain()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.013"/>
+  <testcase name="[1] backend = null" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.018"/>
+  <testcase name="[2] backend = &quot;&quot;" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.004"/>
+  <testcase name="[3] backend = &quot; &quot;" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.002"/>
+  <testcase name="[1] function = RegisteredFunction[spec=FunctionSpec[name=local, image=image, command=null, env={}, resources=null, timeoutMs=1000, concurrency=1, queueSize=10, maxRetries=0, endpointUrl=null, executionMode=LOCAL, runtimeMode=null, runtimeCommand=null, scalingConfig=ScalingConfig[strategy=INTERNAL, minReplicas=0, maxReplicas=3, metrics=[], concurrencyControl=null], imagePullSecrets=null, offload=null], deploymentMetadata=DeploymentMetadata[requestedExecutionMode=LOCAL, effectiveExecutionMode=LOCAL, deploymentBackend=null,…" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.004"/>
+  <testcase name="[2] function = RegisteredFunction[spec=FunctionSpec[name=external, image=image, command=null, env={}, resources=null, timeoutMs=1000, concurrency=1, queueSize=10, maxRetries=0, endpointUrl=null, executionMode=EXTERNAL, runtimeMode=null, runtimeCommand=null, scalingConfig=ScalingConfig[strategy=INTERNAL, minReplicas=0, maxReplicas=3, metrics=[], concurrencyControl=null], imagePullSecrets=null, offload=null], deploymentMetadata=DeploymentMetadata[requestedExecutionMode=EXTERNAL, effectiveExecutionMode=EXTERNAL, deploymentB…" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.002"/>
+  <testcase name="[3] function = RegisteredFunction[spec=FunctionSpec[name=hpa, image=image, command=null, env={}, resources=null, timeoutMs=1000, concurrency=1, queueSize=10, maxRetries=0, endpointUrl=null, executionMode=DEPLOYMENT, runtimeMode=null, runtimeCommand=null, scalingConfig=ScalingConfig[strategy=HPA, minReplicas=0, maxReplicas=3, metrics=[], concurrencyControl=null], imagePullSecrets=null, offload=null], deploymentMetadata=DeploymentMetadata[requestedExecutionMode=DEPLOYMENT, effectiveExecutionMode=DEPLOYMENT, deploymentBacke…" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.001"/>
+  <testcase name="[4] function = RegisteredFunction[spec=FunctionSpec[name=minimum-one, image=image, command=null, env={}, resources=null, timeoutMs=1000, concurrency=1, queueSize=10, maxRetries=0, endpointUrl=null, executionMode=DEPLOYMENT, runtimeMode=null, runtimeCommand=null, scalingConfig=ScalingConfig[strategy=INTERNAL, minReplicas=1, maxReplicas=3, metrics=[], concurrencyControl=null], imagePullSecrets=null, offload=null], deploymentMetadata=DeploymentMetadata[requestedExecutionMode=DEPLOYMENT, effectiveExecutionMode=DEPLOYMENT, de…" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.003"/>
+  <testcase name="ensureReady_propagatesReplicaScaleFailure()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.015"/>
+  <testcase name="ensureReady_pollsIndependentlyOfTheSharedCompletableFutureDelayScheduler()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.01"/>
+  <testcase name="configuredSchedulerRemovesCancelledTasksAndDropsDelayedWorkOnShutdown()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.001"/>
+  <testcase name="ensureReady_timesOutWhileTheFirstProviderStatusCallIsBlocked()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.053"/>
+  <testcase name="ensureReady_timeoutDoesNotDependOnTheSharedCompletableFutureDelayScheduler()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.052"/>
+  <testcase name="absoluteTimeoutDrainsTheOwnerBeforeLateWorkCanPublish()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.002"/>
+  <testcase name="ensureReady_releasesScaleDownProtectionAfterReadinessCompletes()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.006"/>
+  <testcase name="synchronousSubmissionFailureAndContextCloseDrainOwnersBeforeLateWork()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.002"/>
+  <testcase name="ensureReady_failsWhenTheDeploymentTargetIsMissing()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.0"/>
+  <testcase name="[1] close = false" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.041"/>
+  <testcase name="[2] close = true" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.004"/>
+  <testcase name="ensureReady_doesNotScaleAnAlreadyReadyEligibleDeployment()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.003"/>
+  <testcase name="registryObjectAndGenerationAreCapturedAtomicallyBeforeWakeUpPublication()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.065"/>
+  <testcase name="pollThatExecutesBeforeScheduleReturnsCannotCancelItsSuccessorPublication()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.14"/>
+  <testcase name="removeAndReregisterFenceTheOldGenerationAndAllowOnlyTheReplacementToComplete()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.012"/>
+  <testcase name="removalAndShutdownCancelPendingWakeUpsAndTheirTimers()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.008"/>
+  <testcase name="ensureReady_thousandsOfFreshReadyObservationsDoNotFetchOrRetainTimers()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.144"/>
+  <testcase name="ensureReady_asyncReadFailureRemovesItsTimeoutTask()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.003"/>
+  <testcase name="freshReadyObservationCannotBypassAConcurrentFunctionDetach()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.003"/>
+  <testcase name="properties_defaultAndRejectNonPositiveDurations()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.001"/>
+  <testcase name="ensureReady_scalesEligibleZeroReplicaDeploymentToOneAndWaitsForReadiness()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.003"/>
+  <testcase name="ensureReady_propagatesReplicaStatusFailure()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.004"/>
+  <testcase name="ensureReady_coalescesConcurrentWakeUpsForTheSameFunction()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.007"/>
+  <testcase name="ensureReady_oneHundredCallersShareWakeUpWithoutAShortCallerCompletingTheOwner()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.007"/>
+  <testcase name="ensureReady_routesObservationStateAndAgeThroughTheDeclaredPolicy()" classname="it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[Mockito is currently self-attaching to enable the inline-mock-maker. This will no longer work in future releases of the JDK. Please add Mockito as an agent to your build as described in Mockito's documentation: https://javadoc.io/doc/org.mockito/mockito-core/latest/org.mockito/org/mockito/Mockito.html#0.3
+WARNING: A Java agent has been loaded dynamically (/home/michele/.gradle/caches/modules-2/files-2.1/net.bytebuddy/byte-buddy-agent/1.18.10/9426d28828bdcdf42666bb7a68c468279ea78f59/byte-buddy-agent-1.18.10.jar)
+WARNING: If a serviceability tool is in use, please run with -XX:+EnableDynamicAgentLoading to hide this warning
+WARNING: If a serviceability tool is not in use, please run with -Djdk.instrument.traceUsage for more information
+WARNING: Dynamic loading of agents will be disallowed by default in a future release
+]]></system-err>
+</testsuite>

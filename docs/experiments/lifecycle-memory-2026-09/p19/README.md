@@ -1,13 +1,14 @@
-# P19 candidate evidence — BLOCKED after fix round 2
+# P19 corrected control — fix round 3
 
-The immutable dossier named in `baseline.json` is NOT an accepted P23 control.
-Native minimal and managed invocation/replay/shutdown now pass. All missing bounded
-owner profiles were executed, but multi-destination churn leaves empty pool registry
-entries beyond the configured drain window. That concrete failure enters re-review;
-earlier partial managed-profile passes are not acceptance. Integrity verification is
-not correctness acceptance. Earlier dossiers are preserved unchanged.
-The corrected product source is `b4770d6675adc99f53444260dcf0200f10b517cf`,
-advancing B with only the two native reflection metadata repairs. P00
+The immutable dossier named in `baseline.json` records the P23 control and its
+acceptance verdict. Round 3 fixes the remaining managed pool-registry retention:
+Netty disposed the physical pool, but resolved/unresolved address inequality left
+its metrics registry entry retained. Registry key normalization repairs that owner;
+the original managed profile now drains to zero without a tolerance change.
+Native minimal and managed invocation/replay/shutdown and all bounded owner profiles
+are repeated on final B. Earlier failed dossiers are preserved unchanged.
+The corrected product source is `d93b68cdf1cca6e7af17e1c641c8e236c80d0fca`,
+including the preceding two native reflection metadata repairs. P00
 (`61d72e73528db62cf8ca465c6a037981d7ec13b0`) remains a
 known-defective diagnostic comparator, never a correctness acceptance control.
 
@@ -73,13 +74,17 @@ counts in fix round 1 are explicitly inherited from the preceding dossier, not r
 Failed exploratory runs remain in its pilot/aborted
 evidence, and cannot satisfy acceptance.
 
-Once the open findings are resolved and a control is accepted, P23 must verify the
+P23 must verify the acceptance verdict, manifest and
 manifest and every file hash first, extract the frozen measured
 jars and recompile the archived probe. Use `executed-common-harness.tar.gz` for
 the exact common SYNC runner; `harness.tar.gz` contains the final ASYNC refinement
 and dossier tools. Fix round 1 remeasured all six common runs and three ASYNC runs
 with fresh-process validation and owned process-group supervision. Round 2 reran
 the same six plus three processes on the new B, without native/profile overlap.
+Round 3 repeats them again against final `d93b68cd`; it never relabels older runs.
+To run the frozen Python tools, extract `harness.tar.gz` under
+`docs/experiments/lifecycle-memory-2026-09/p19` within a repository-layout directory:
+the tools resolve the repository root four levels above that directory.
 `profiles.init.gradle` compiles measurement-only launchers; `sdk_profiles.py` and
 `owner_profiles.py` exercise actual SDKs and the existing provider/proxy seams.
 Commands, classpath identities, selected numeric owner fields and unavailable

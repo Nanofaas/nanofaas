@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogRuntimeHintsTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-09-11T13:52:25.006Z" hostname="gx10-1b52" time="0.012">
+  <properties/>
+  <testcase name="registersEveryComponentOfEveryPersistedRecordSoANewFieldCannotBreakTheImage()" classname="it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogRuntimeHintsTest" time="0.009"/>
+  <testcase name="registersTheSnapshotJacksonIntrospectsFirst()" classname="it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogRuntimeHintsTest" time="0.001"/>
+  <testcase name="reachesTheRecordsNestedInsideTheSnapshot()" classname="it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogRuntimeHintsTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,45 @@
+docs/experiments/lifecycle-memory-2026-09/p19/campaign.py:9:from contract import REVISIONS
+docs/experiments/lifecycle-memory-2026-09/p19/campaign.py:24:    for side, revision in REVISIONS.items():
+docs/experiments/lifecycle-memory-2026-09/p19/campaign.py:37:               '--revision', REVISIONS['B'], '--profile', 'async-queue', '--scenario', 'async',
+docs/experiments/lifecycle-memory-2026-09/p19/native_smoke.py:7:from contract import REVISIONS
+docs/experiments/lifecycle-memory-2026-09/p19/native_smoke.py:28:    image = 'nanofaas/control-plane:p19-' + REVISIONS['B'][:8] + '-' + selection
+docs/experiments/lifecycle-memory-2026-09/p19/contract.py:6:REVISIONS = {'A': '61d72e73528db62cf8ca465c6a037981d7ec13b0',
+docs/experiments/lifecycle-memory-2026-09/p19/contract.py:42:def validate_pairs(runs, bindings=None):
+docs/experiments/lifecycle-memory-2026-09/p19/contract.py:57:        if run.get('revision') != REVISIONS[side]:
+docs/experiments/lifecycle-memory-2026-09/p19/test_dossier.py:14:        identities = {run['label']: run for run in pairs()}
+docs/experiments/lifecycle-memory-2026-09/p19/test_contract.py:48:        runs = pairs()
+docs/experiments/lifecycle-memory-2026-09/p19/test_contract.py:49:        module.validate_pairs(runs)
+docs/experiments/lifecycle-memory-2026-09/p19/test_contract.py:51:            module.validate_pairs(runs[:-1])
+docs/experiments/lifecycle-memory-2026-09/p19/test_contract.py:55:            module.validate_pairs(bad)
+docs/experiments/lifecycle-memory-2026-09/p19/dossier.py:13:from contract import summarize, validate_pairs, percentiles, REVISIONS
+docs/experiments/lifecycle-memory-2026-09/p19/dossier.py:34:        if not record.get('valid') or record.get('revision')!=REVISIONS['B']:
+docs/experiments/lifecycle-memory-2026-09/p19/dossier.py:81:    validate_pairs(runs, {side: builds[side+'-none.jar'] for side in 'AB'})
+docs/experiments/lifecycle-memory-2026-09/p19/dossier.py:130:def freeze(work):
+docs/experiments/lifecycle-memory-2026-09/p19/dossier.py:220:    for side, revision in REVISIONS.items():
+docs/experiments/lifecycle-memory-2026-09/p19/dossier.py:227:    validate_pairs(runs, {side: identities[side+'-none.jar'] for side in 'AB'})
+docs/experiments/lifecycle-memory-2026-09/p19/dossier.py:234:        if run['revision'] == REVISIONS['B']:
+docs/experiments/lifecycle-memory-2026-09/p19/dossier.py:268:                    review=review, production_source=REVISIONS['B'],
+docs/experiments/lifecycle-memory-2026-09/p19/dossier.py:269:                    production_tree=subprocess.check_output(['git', 'rev-parse', REVISIONS['B']+'^{tree}'], cwd=ROOT, text=True).strip(),
+docs/experiments/lifecycle-memory-2026-09/p19/dossier.py:270:                    diagnostic_source=REVISIONS['A'],
+docs/experiments/lifecycle-memory-2026-09/p19/test_revision_identity.py:9:def pairs():
+docs/experiments/lifecycle-memory-2026-09/p19/test_revision_identity.py:31:        validate_pairs(pairs())
+docs/experiments/lifecycle-memory-2026-09/p19/test_revision_identity.py:34:        runs = pairs()
+docs/experiments/lifecycle-memory-2026-09/p19/test_revision_identity.py:37:            validate_pairs(runs)
+docs/experiments/lifecycle-memory-2026-09/p19/test_revision_identity.py:40:        runs = pairs()
+docs/experiments/lifecycle-memory-2026-09/p19/test_revision_identity.py:44:            validate_pairs(runs)
+docs/experiments/lifecycle-memory-2026-09/p19/test_revision_identity.py:47:        runs = pairs()
+docs/experiments/lifecycle-memory-2026-09/p19/test_revision_identity.py:50:            validate_pairs(runs)
+docs/experiments/lifecycle-memory-2026-09/p19/test_revision_identity.py:53:        runs = pairs()
+docs/experiments/lifecycle-memory-2026-09/p19/test_revision_identity.py:56:            validate_pairs(runs)
+docs/experiments/lifecycle-memory-2026-09/p19/test_revision_identity.py:59:        runs = pairs()
+docs/experiments/lifecycle-memory-2026-09/p19/test_revision_identity.py:62:            validate_pairs(runs)
+docs/experiments/lifecycle-memory-2026-09/p19/test_revision_identity.py:65:        runs = pairs()
+docs/experiments/lifecycle-memory-2026-09/p19/test_revision_identity.py:68:            validate_pairs(runs)
+docs/experiments/lifecycle-memory-2026-09/p19/test_revision_identity.py:71:        runs = pairs()
+docs/experiments/lifecycle-memory-2026-09/p19/test_revision_identity.py:74:            validate_pairs(runs)
+docs/experiments/lifecycle-memory-2026-09/p19/owner_profiles.py:14:from contract import REVISIONS
+docs/experiments/lifecycle-memory-2026-09/p19/owner_profiles.py:40:    result=dict(schema='p19-owner-http-v1',kind=kind,revision=REVISIONS['B'],command=command,valid=False,
+docs/experiments/lifecycle-memory-2026-09/p19/sdk_profiles.py:15:from contract import REVISIONS
+docs/experiments/lifecycle-memory-2026-09/p19/sdk_profiles.py:85:    result=dict(schema='p19-sdk-profile-v1',revision=REVISIONS['B'],language=language,valid=False,
+docs/experiments/lifecycle-memory-2026-09/p19/short_profiles.py:12:from contract import REVISIONS
+docs/experiments/lifecycle-memory-2026-09/p19/short_profiles.py:78:                  revision=REVISIONS['B'], jar_sha256=hashlib.sha256(jar.read_bytes()).hexdigest())

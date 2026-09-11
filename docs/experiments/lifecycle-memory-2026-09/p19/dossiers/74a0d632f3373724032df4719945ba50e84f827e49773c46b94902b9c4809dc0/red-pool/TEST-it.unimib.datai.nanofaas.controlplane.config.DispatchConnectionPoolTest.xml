@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest" tests="1" skipped="0" failures="1" errors="0" timestamp="2026-09-11T14:58:01.523Z" hostname="gx10-1b52" time="1.037">
+  <properties/>
+  <testcase name="numericEndpointRemovalDeregistersTheAlreadyDisposedNettyPool()" classname="it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest" time="1.029">
+    <failure message="org.opentest4j.AssertionFailedError: [resolved registration and unresolved disposal must identify the same owner] &#10;expected: 0&#10; but was: 1" type="org.opentest4j.AssertionFailedError">org.opentest4j.AssertionFailedError: [resolved registration and unresolved disposal must identify the same owner] 
+expected: 0
+ but was: 1
+	at it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest.numericEndpointRemovalDeregistersTheAlreadyDisposedNettyPool(DispatchConnectionPoolTest.java:337)
+</failure>
+  </testcase>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

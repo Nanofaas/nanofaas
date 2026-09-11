@@ -1,0 +1,528 @@
+[
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 7,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "G1"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 41,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "G10"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 85,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "G11"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 25,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "G12"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 12,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "G13"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 68,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "G14"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 54,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "G15"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 28,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "G16"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 38,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "G17"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 46,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "G18"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 68,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "G2"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 96,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "G3"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 44,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "G4"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 33,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "G5"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 73,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "G6"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 13,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "G7"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 1,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "G8"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 21,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "G9"
+  },
+  {
+    "counts": null,
+    "counts_status": "not_applicable: command has no test cases",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "build-all"
+  },
+  {
+    "counts": null,
+    "counts_status": "not_applicable: command has no test cases",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "build-async-queue"
+  },
+  {
+    "counts": null,
+    "counts_status": "not_applicable: command has no test cases",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "build-container-deployment-provider"
+  },
+  {
+    "counts": null,
+    "counts_status": "not_applicable: command has no test cases",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "build-none"
+  },
+  {
+    "counts": null,
+    "counts_status": "not_applicable: command has no test cases",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "build-sync-queue,runtime-config"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 1,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "catalog-cost"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 1,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "configured-T1"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 5,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "configured-T2"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 16,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "contract-all"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 16,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "contract-default"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 116,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "go-race"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 116,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "go-sdk"
+  },
+  {
+    "counts": null,
+    "counts_status": "not_applicable: command has no test cases",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "go-vet"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 12,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "governor-combined"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 80,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "javascript-sdk"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 237,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "jvm-sdk-full"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 22,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "metadata"
+  },
+  {
+    "counts": null,
+    "counts_status": "not_applicable: command has no test cases",
+    "exit_code": 1,
+    "expected_exit_code": 1,
+    "label": "negative-async-queue,sync-queue"
+  },
+  {
+    "counts": null,
+    "counts_status": "not_applicable: command has no test cases",
+    "exit_code": 1,
+    "expected_exit_code": 1,
+    "label": "negative-k8s-deployment-provider,container-deployment-provider"
+  },
+  {
+    "counts": null,
+    "counts_status": "not_applicable: command has no test cases",
+    "exit_code": 1,
+    "expected_exit_code": 1,
+    "label": "negative-none,offload"
+  },
+  {
+    "counts": null,
+    "counts_status": "not_applicable: command has no test cases",
+    "exit_code": 1,
+    "expected_exit_code": 1,
+    "label": "negative-unknown"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 21,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "offload-async"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 6,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "offload-http"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 21,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "offload-sync"
+  },
+  {
+    "counts": null,
+    "counts_status": "not_applicable: command has no test cases",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "package-all"
+  },
+  {
+    "counts": null,
+    "counts_status": "not_applicable: command has no test cases",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "package-async-queue"
+  },
+  {
+    "counts": null,
+    "counts_status": "not_applicable: command has no test cases",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "package-container-deployment-provider"
+  },
+  {
+    "counts": null,
+    "counts_status": "not_applicable: command has no test cases",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "package-default"
+  },
+  {
+    "counts": null,
+    "counts_status": "not_applicable: command has no test cases",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "package-none"
+  },
+  {
+    "counts": null,
+    "counts_status": "not_applicable: command has no test cases",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "package-sync-queue"
+  },
+  {
+    "counts": null,
+    "counts_status": "not_applicable: command has no test cases",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "package-sync-queue,runtime-config"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 139,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "python-sdk"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 25,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "scaler-combined"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 30,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "selector-tests"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 73,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "sync-alone"
+  },
+  {
+    "counts": {
+      "failed": 0,
+      "passed": 26,
+      "skipped": 0
+    },
+    "counts_status": "observed",
+    "exit_code": 0,
+    "expected_exit_code": 0,
+    "label": "wire-validator"
+  }
+]

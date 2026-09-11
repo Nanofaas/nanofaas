@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest" tests="16" skipped="0" failures="0" errors="0" timestamp="2026-09-11T15:00:01.075Z" hostname="gx10-1b52" time="7.34">
+  <properties/>
+  <testcase name="callerCancellationRemovesThePhysicalPendingAcquire()" classname="it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest" time="1.01"/>
+  <testcase name="oneOwnerAggregatesPoolPopulationConnectionsAndPendingAcquisitions()" classname="it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest" time="0.113"/>
+  <testcase name="closeCancelsTheSingleOwnedInactivePoolTaskAndTerminatesItsScheduler()" classname="it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest" time="0.107"/>
+  <testcase name="functionTimeoutCancelsThePhysicalRequestAndDrainsTheConnection()" classname="it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest" time="1.122"/>
+  <testcase name="repeatedCloseIsIdempotentAndDrainsOwnedPools()" classname="it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest" time="0.015"/>
+  <testcase name="errorCancellationAndAcquireTimeoutReleaseIsolatedClientBuffers()" classname="it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest" time="0.894"/>
+  <testcase name="zeroMaximumLifetimeLeavesTheConnectionReusable()" classname="it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest" time="0.417"/>
+  <testcase name="acquisitionTimeoutRemovesThePhysicalPendingAcquire()" classname="it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest" time="0.261"/>
+  <testcase name="configuredMaximumLifetimePhysicallyReplacesTheConnection()" classname="it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest" time="0.222"/>
+  <testcase name="idleTimeoutPhysicallyClosesTheConnectionBeforeTheNextRequest()" classname="it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest" time="0.214"/>
+  <testcase name="functionServiceRemovalDisposesTheOldEndpointBeforeReregistration()" classname="it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest" time="0.869"/>
+  <testcase name="numericEndpointRemovalDeregistersTheAlreadyDisposedNettyPool()" classname="it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest" time="0.236"/>
+  <testcase name="responseErrorDrainsItsBodyAndReturnsTheConnectionToThePool()" classname="it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest" time="0.116"/>
+  <testcase name="closeRemovesAggregateMetersAndTheSameRegistryCanBeReused()" classname="it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest" time="0.009"/>
+  <testcase name="historicalDestinationPoolsDisappearAfterDrainAndTheEvictionWindow()" classname="it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest" time="1.377"/>
+  <testcase name="applicationContextOwnsOneAggregatePoolAndExportsItsProvider()" classname="it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPoolTest" time="0.344"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[Mockito is currently self-attaching to enable the inline-mock-maker. This will no longer work in future releases of the JDK. Please add Mockito as an agent to your build as described in Mockito's documentation: https://javadoc.io/doc/org.mockito/mockito-core/latest/org.mockito/org/mockito/Mockito.html#0.3
+WARNING: A Java agent has been loaded dynamically (/home/michele/.gradle/caches/modules-2/files-2.1/net.bytebuddy/byte-buddy-agent/1.18.10/9426d28828bdcdf42666bb7a68c468279ea78f59/byte-buddy-agent-1.18.10.jar)
+WARNING: If a serviceability tool is in use, please run with -XX:+EnableDynamicAgentLoading to hide this warning
+WARNING: If a serviceability tool is not in use, please run with -Djdk.instrument.traceUsage for more information
+WARNING: Dynamic loading of agents will be disallowed by default in a future release
+]]></system-err>
+</testsuite>

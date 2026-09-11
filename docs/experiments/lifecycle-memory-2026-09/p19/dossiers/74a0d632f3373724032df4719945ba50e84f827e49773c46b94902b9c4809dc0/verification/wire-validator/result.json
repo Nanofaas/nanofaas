@@ -1,0 +1,26 @@
+{
+  "cases": [],
+  "command": [
+    "sdks/python/.venv/bin/python",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "sdks/runtime-contract",
+    "-p",
+    "test_*.py"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 26,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 0.36554431915283203,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "wire-validator",
+  "output_sha256": "6193919b87fdb23e51305130cdc8a629bc8dc45cf041c1e8a3c28c13c586b1e2",
+  "started_unix_s": 1789127964.4426122
+}

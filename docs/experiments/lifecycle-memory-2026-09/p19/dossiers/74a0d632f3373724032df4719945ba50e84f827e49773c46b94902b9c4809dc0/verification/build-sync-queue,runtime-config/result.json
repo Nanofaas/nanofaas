@@ -1,0 +1,20 @@
+{
+  "cases": [],
+  "command": [
+    "./gradlew",
+    ":control-plane:bootJar",
+    "-PcontrolPlaneModules=sync-queue,runtime-config",
+    "-PnanofaasBuildRevision=d93b68cdf1cca6e7af17e1c641c8e236c80d0fca",
+    "-PnanofaasBuildDirty=false",
+    "--console=plain"
+  ],
+  "counts": null,
+  "counts_status": "not_applicable: command has no test cases",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 1.6236698627471924,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "build-sync-queue,runtime-config",
+  "output_sha256": "8b0d169e6a433981e56a059945a71ce5747d2479c9bd98e23318057426a514b2",
+  "started_unix_s": 1789139088.4795458
+}

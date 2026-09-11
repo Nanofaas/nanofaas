@@ -3124,6 +3124,13 @@ files remain unstaged; their original patch is retained only outside the reposit
 dossier. Production diff against B is empty. Full implementation report:
 `.superpowers/sdd/2026-09-08-control-plane-lifecycle-memory-and-modularity/task-P19-report.md`.
 
+Round-3 final delivery audit: 663 staged files, all 654 dossier files accounted,
+protected paths absent. Complete GitNexus all 200 text/indexed files/9 symbols/0
+flows LOW; staged 198/8/0 LOW; no partial/truncated/UNKNOWN. Binary/unindexed gaps
+covered by manifest/staging enumeration. Production diff against d93b68cd empty.
+Whitespace check exit2 only for immutable raw RED XML/verbatim requirements;
+excluding dossiers exit0. This is an evidence-format warning, not a test failure.
+
 ## P19 fix round 1 — 2026-09-11 — BLOCKED
 
 This section supersedes the earlier P19 acceptance claim. The latest user timebox
@@ -3284,3 +3291,97 @@ endpoint recreation also checked. Exact upstream impact LOW (two registrar
 callers); UNKNOWN test entrypoints resolved with rg. Protected dirt unchanged.
 Final B identity, fresh managed/R1-R8/A-B campaign and accepted dossier are pending;
 no P20b and no subagents. Full RED/GREEN/source evidence in task-P19-report.md.
+## P19 fix round 3 — accept the corrected P12 owner control (2026-09-11)
+
+Status: **DONE_WITH_CONCERNS**. This entry supersedes the round-2 managed-pool
+blocker; earlier immutable evidence is preserved. No P20b or subagents.
+Product commit/final B: **d93b68cdf1cca6e7af17e1c641c8e236c80d0fca**,
+`Normalize dispatch pool registry addresses`. Diagnostic A remains
+`61d72e73528db62cf8ca465c6a037981d7ec13b0`.
+
+Root cause: Reactor Netty 1.3.6 actually disposes/removes its pool by host/port,
+but deregisters metrics using disposeWhen's unresolved address argument. Numeric
+registration was resolved; P12's exact InetSocketAddress key equality missed
+removal and retained the already-closed pool metrics graph. The eight-line private
+PoolKey constructor normalizes to unresolved host-string/port without DNS,
+preserving pool name/id/host/port. No counter masking, transport policy change,
+tolerance increase, production reflection or unrelated refactor.
+
+TDD: real numeric-loopback regression first fails **expected0/actual1** only after
+asserting Netty's channelPools map is empty and physical counts are zero (exit1,
+one expected focused failure). After the minimum fix, pool/property/architecture
+selection passes **25/0/0** (exit0), including same-endpoint recreate/drain.
+Exact upstream PoolKey impact before edit: LOW, registerMetrics/deRegisterMetrics
+callers; UNKNOWN test entrypoints resolved with rg/JUnit selection. Raw impact,
+Netty bytecode, RED/GREEN XML and command logs are in the new dossier.
+
+Fresh final-B gates: `python3 H/verification.py W/verification G1 G10 G14`, then
+G6 after comparison: exits0, respectively **7/41/68/73 passed**, **0 failures,
+0 skips**, total **189**. R1-R4/R7/R8 in G1, R5's exact unowned-slot test in G6,
+R6 in G14. Final audit corrected an intermediate erroneous claim that G1 covers
+R5; inherited G6 is preserved separately and does not count as fresh evidence.
+Portable contracts **27 passed**, observer future contract passed; allocation
+collector validation observed 67,155,880/67,430,808 bytes for 64MiB escaped
+platform/virtual allocations after thread exit. Five B JVM selections rebuilt
+with explicit final revision metadata. SDK/profile launchers rebuilt; actual
+managed/proxy/five-SDK/none/all/sync+runtime-config profiles all valid on final B.
+
+Managed strict assertion unchanged: **22 offered/admitted, 16 useful successes,
+6 expected blocked-provider terminal errors, 0 refused**. Twelve churn names,
+three destinations, twelve same-key replays not counted as new work. Registry
+**peak2 -> in-process drain0**; wake-up gate/timer **2 -> 0**; physical pools,
+pending acquisitions, destination mappings and backend work zero at drain.
+Proxy: 11 ordinary offers/9 admissions/2 refusals/8 successes/1 expected error;
+active exchanges **2 -> 0**, buffered bytes **12,591,169 -> 0**. Slow clients
+separately accounted; missing headers mean unavailable admission/refusal, not zero.
+All five actual SDKs have two fresh generations, numerical owners and callbacks.
+Selected owner census, per-case work and explicit unavailable/not_applicable
+owners remain in raw profile records; never sum reflective aliases.
+
+Native images rebuilt from exact final-B source export, both build exits0:
+minimal `sha256:0b4e4a3367d4dfb402a69cf0ec5ed8e3bf4e682763dc5f595cf28b47ebb161b6`,
+managed `sha256:3a1dfa82e3ff33739604fa1ce4740f324d0779666a736ddf26dbfa139bb43dbc`.
+`python3 H/native_smoke.py W none container`: exit0, actual invocation/replay same
+execution ID, function removal, graceful stop/container removal, no native errors.
+Existing Docker docker-java route used; Kubernetes/native is not claimed green.
+
+Fresh `taskset -c 5-8 python3 H/campaign.py W`: exit0, **837.009s**, six alternating
+common HTTP fresh processes plus three ASYNC. No builds/tests/native/SDK profiles
+overlap. Fixed offered/admitted/completed 12,000 per common run, 120 per ASYNC;
+zero refusals/errors/unresolved. Units: ms for p50/p95/p99, KiB allocated per
+unique success, MiB used heap after verified GC at removal (other three GC phases
+and full raw per-run records also archived).
+
+| Run | Useful successes/s | p50/p95/p99 ms | KiB/success | Removed heap MiB |
+|---|---:|---|---:|---:|
+| A1 | 199.997 | 2.141/3.237/3.805 | 135.07 | 38.70 |
+| B1 | 199.954 | 1.501/3.067/3.745 | 140.46 | 39.70 |
+| A2 | 199.994 | 1.442/3.133/3.659 | 134.97 | 38.45 |
+| B2 | 199.946 | 1.484/3.122/3.742 | 140.11 | 39.60 |
+| A3 | 199.998 | 1.431/3.165/3.657 | 134.60 | 38.67 |
+| B3 | 199.996 | 1.208/1.799/2.143 | 140.36 | 39.53 |
+| B-async-1 | 50.169 | 10.504/13.719/14.176 | 1108.94 | 24.38 |
+| B-async-2 | 50.186 | 10.570/14.015/14.585 | 1109.89 | 24.57 |
+| B-async-3 | 50.194 | 10.522/13.416/13.968 | 1115.68 | 24.39 |
+
+B/A allocation changes +4.00/+3.81/+4.28%; p95 -5.25/-0.35/-43.18%; p99
+-1.56/+2.27/-41.40%. B3 variability is retained, no equivalence or peak-throughput
+claim. P00 is diagnostic only; P23 uses this corrected B and reruns contemporaneous
+B/C. Observer overhead unattributed, nonexclusive host affinity, unobservable
+aliases and short-profile/not-soak scope remain concerns, not invented zeros.
+Unchanged gates carry explicit transitive inherited provenance.
+
+Accepted immutable **nanofaas-p19-dossier-v2**, final B above; manifest/directory
+SHA-256 **74a0d632f3373724032df4719945ba50e84f827e49773c46b94902b9c4809dc0** at
+`docs/experiments/lifecycle-memory-2026-09/p19/dossiers/74a0d632f3373724032df4719945ba50e84f827e49773c46b94902b9c4809dc0`.
+652 payloads / 58,174,842 bytes plus manifest/checksum list. Freeze and independent
+verify exit0; all 653 checksum entries OK; extracted frozen harness **27 contracts
+pass**, measured jar SHA and source PAX revision bindings independently match.
+All 19 owned process groups empty, supervisor exits0, no kill fallback; native smoke
+containers absent. Protected SHA-256 audit unchanged. GitNexus complete all-change
+pre-freeze check LOW, 9 files/6 symbols/0 flows; FTS warning/stale prose supplemented
+by text/diff/hash inventory. Final staged audit/commit receipt follows in the report.
+
+H=`docs/experiments/lifecycle-memory-2026-09/p19`, W=`/tmp/nanofaas-p19-r3.QxIGIR`.
+Full commands/results/limits and commit receipts:
+`.superpowers/sdd/2026-09-08-control-plane-lifecycle-memory-and-modularity/task-P19-report.md`.

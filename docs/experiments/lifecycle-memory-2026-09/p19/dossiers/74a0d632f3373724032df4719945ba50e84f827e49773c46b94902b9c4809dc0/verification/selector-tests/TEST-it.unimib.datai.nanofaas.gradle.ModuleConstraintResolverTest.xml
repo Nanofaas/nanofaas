@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="it.unimib.datai.nanofaas.gradle.ModuleConstraintResolverTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-09-11T12:02:40.446Z" hostname="gx10-1b52" time="0.02">
+  <properties/>
+  <testcase name="rejectsDuplicatesUnknownReferencesMissingStrongAndConflicts()" classname="it.unimib.datai.nanofaas.gradle.ModuleConstraintResolverTest" time="0.006"/>
+  <testcase name="doesNotMutateSelectedModules()" classname="it.unimib.datai.nanofaas.gradle.ModuleConstraintResolverTest" time="0.007"/>
+  <testcase name="enforcesTransitiveStrongRequirementsAndRejectsCycles()" classname="it.unimib.datai.nanofaas.gradle.ModuleConstraintResolverTest" time="0.001"/>
+  <testcase name="requiresAtLeastOneSelectedOneOfProvider()" classname="it.unimib.datai.nanofaas.gradle.ModuleConstraintResolverTest" time="0.001"/>
+  <testcase name="oneOfDoesNotAutoSelectOrCreateStrongCycles()" classname="it.unimib.datai.nanofaas.gradle.ModuleConstraintResolverTest" time="0.0"/>
+  <testcase name="validatesOneOfReferencesEvenForUnselectedDeclaringModules()" classname="it.unimib.datai.nanofaas.gradle.ModuleConstraintResolverTest" time="0.0"/>
+  <testcase name="acceptsStrongAndWeakRequirementsWhenSatisfied()" classname="it.unimib.datai.nanofaas.gradle.ModuleConstraintResolverTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

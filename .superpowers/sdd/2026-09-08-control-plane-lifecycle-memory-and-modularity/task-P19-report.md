@@ -1,10 +1,12 @@
 # P19 implementation report
 
-Status: **BLOCKED after fix round 1**. Date: 2026-09-11. Sole implementer; no subagents.
+Status: **DONE_WITH_CONCERNS after fix round 3**. Date: 2026-09-11. Sole implementer; no subagents.
 Branch: `control-plane-lifecycle-memory`. P20b was not started.
 
-The original report below is historical. The appended fix-round section supersedes
-its acceptance, native and short-profile claims. No accepted P23 control is declared.
+The original report and rounds 1/2 below are historical. The final round-3 section
+supersedes their acceptance, native and short-profile claims. Accepted P23 control
+B is `d93b68cdf1cca6e7af17e1c641c8e236c80d0fca`, dossier
+`74a0d632f3373724032df4719945ba50e84f827e49773c46b94902b9c4809dc0`.
 
 ## Commits and scope
 
@@ -815,3 +817,166 @@ refresh succeeded for symbols but warned FTS/BM25 unavailable; no inference is
 made from full-text search absence. Raw graph/bytecode evidence retained. B will
 advance to this product commit; fresh managed/R1-R8 and alternating comparison
 must identify it before acceptance is declared.
+
+### Round-3 fresh verification on final product B
+
+Product commit **d93b68cdf1cca6e7af17e1c641c8e236c80d0fca**,
+`Normalize dispatch pool registry addresses`, is the immutable corrected B.
+Subsequent P19 measurement/documentation commits do not move this product identity.
+Only the eight-line PoolKey constructor changes production relative to round-2 B;
+the other product-commit files are the deterministic test and report/ledger.
+
+Fresh commands (H=`docs/experiments/lifecycle-memory-2026-09/p19`,
+W=`/tmp/nanofaas-p19-r3.QxIGIR`):
+
+| Command | Exit / exact result |
+|---|---|
+| `python3 H/verification.py W/verification G1 G10 G14` | 0; G1 **7/0/0**, G10 **41/0/0**, G14 **68/0/0** passed/failed/skipped; fresh R1-R4/R7/R8 in G1 and R6 in G14. R5 is in G6, not G1; final audit schedules fresh G6 after the isolated A/B sequence |
+| `python3 -m unittest discover -s H -p 'test_*.py' -v` | 0; **27 passed**, 0.819s; includes negative revision/jar/config/workload/fresh-process/chronology and supervision contracts |
+| `java -cp W/probe P19ProbeContract` | 0; `PASS: 2 retained futures, 1 open, then 0 open` |
+| `java -cp W/probe P19Probe validate-allocation` | 0; escaped 67,108,864 payload bytes observed after platform exit **67,155,880**, virtual exit **67,430,808**; both valid |
+| `./gradlew :control-plane:bootJar -PcontrolPlaneModules=SELECTION -PnanofaasBuildRevision=d93b68cdf1cca6e7af17e1c641c8e236c80d0fca -PnanofaasBuildDirty=false --console=plain` | all five exit 0: none, async-queue, all, sync-queue/runtime-config, container-deployment-provider; exact entries/hashes archived |
+| `./gradlew :sdks:java:p19Classpath :sdks:java-lite:p19Classpath :control-plane:p19Classpath :control-plane-modules:container-deployment-provider:p19Classpath -PcontrolPlaneModules=all -I H/profiles.init.gradle -Dp19.sources=ABS_H --console=plain` | 0; measurement-only launchers rebuilt against final B; four exact classpaths retained |
+| `GOTOOLCHAIN=go1.24.0 go test -c -o W/sdk-go ./nanofaas` in isolated exported `sdks/go` | 0; existing measurement fixture copied into export; default host Go 1.22.2 not substituted |
+| `npm run build` in `sdks/javascript` | 0; final unchanged SDK sources compiled |
+| `CONTROL_PLANE_MODULES=SELECTION NATIVE_BUILD_MEMORY=8g NATIVE_PARALLELISM=4 timeout 600 W/native-source/scripts/native-java-image.sh control-plane TAG` | both exit 0; none/container-deployment-provider from exact `git archive d93b68cd` production/build roots, not dirty checkout |
+| `python3 H/native_smoke.py W none container` | 0; `native-none True`, `native-container True`; real invocation/replay same execution ID, removal, graceful stop and container removal; no native application errors |
+| Existing `supervise` around owner managed/proxy, all five SDKs and three short selections, each timeout 150s / grace 25s | all **10 exit 0**, valid records on final B, no kill fallback and no remaining live owned PIDs |
+
+Native image digests: minimal
+`sha256:0b4e4a3367d4dfb402a69cf0ec5ed8e3bf4e682763dc5f595cf28b47ebb161b6`;
+managed `sha256:3a1dfa82e3ff33739604fa1ce4740f324d0779666a736ddf26dbfa139bb43dbc`.
+Managed native uses the existing Docker docker-java adapter, not Kubernetes.
+The previous native metadata RED/GREEN is preserved with explicit historical
+provenance; the actual native checks above are freshly rebuilt final-B evidence.
+
+Managed T6/T5/P12 numerical result: **22 offered, 22 admitted, 0 refused,
+16 terminal successes, 6 expected blocked-provider terminal errors**. Six blocked
+requests share wake-up ownership while healthy traffic continues; then 12 fresh
+function names across three destinations and 12 same-key replays (never counted
+as new useful successes). Pool registry **peak 2 -> in-process drain 0**;
+shared gate and timeout queue **2 -> 0**; all physical connection/pending/backend
+work and current destination mappings drain to zero. Original strict assertion
+unchanged, no tolerance increase, no longer wait to mask retention, no process
+exit substitute. Numerical raw census includes other selected owners and explicit
+unavailable observations. This closes the sole round-3 Important blocker.
+
+Proxy profile: **11 ordinary offered / 9 admitted / 2 refused / 8 successes /
+1 expected terminal error**; slow clients separately accounted. Active exchanges
+**2 -> 0**, buffered bytes **12,591,169 -> 0** (16MiB cap); deadline queue and
+backend work drain. Actual close observed before process absence. All five SDKs
+repeat two distinct runtime PIDs, actual callbacks and post-timeout physical work;
+raw per-generation accounting, sampled owner peaks/drain and slow-client unknown
+admission states retained. Short none/all/sync+runtime-config profiles repeat the
+approved T3/T4/T5/T7/T9 cases with final jars and verified shutdown.
+
+Unchanged regression groups are copied with their original commands/results and
+transitive `inherited-evidence.json`, NOT claimed fresh on d93b68cd. External
+Kubernetes/native prerequisites remain explicit limitations, not green. No
+unnecessary G1-G18 campaign or new harness feature was added in this round.
+Manual identity plumbing only updates REVISIONS/test binding, extends the existing
+round>=2 acceptance guard to this round, and includes raw pool RED/GREEN in freeze.
+
+### Round-3 completed campaign and acceptance
+
+Final method-level audit corrected an intermediate reporting mistake: **R5 is
+not in G1**. After the isolated performance sequence, ran
+`python3 H/verification.py W/verification G6`: exit **0**, **73 passed / 0 failed /
+0 skipped**, including `R5DirectCompletionUnownedSlotRegressionTest.
+directCompletionDoesNotReleaseASlotItNeverAcquired()`. Preserved the superseded
+inherited G6 record under auxiliary/inherited-G6 and updated provenance. Fresh
+G1/G6/G10/G14 total **189 passed / 0 failed / 0 skipped**. R1-R4/R7/R8 are in G1,
+R5 in G6, R6 in G14; no known-red exception. The separate focused P12 GREEN run
+has 25 passes and the portable contract suite 27 passes.
+
+`taskset -c 5-8 python3 H/campaign.py W > W/campaign.log 2>&1`: exit **0**,
+**837.009 seconds** (13m57s), A1/B1/A2/B2/A3/B3 followed by three B ASYNC runs.
+The >10-minute aggregate duration was planned protocol execution, not an external
+blocker; each owned runner stayed within its 300s/120s deadline. No native build,
+native smoke, SDK/profile or Gradle gate overlapped this sequence. A remains
+`61d72e73528db62cf8ca465c6a037981d7ec13b0`, diagnostic only. Every B run identifies
+`d93b68cdf1cca6e7af17e1c641c8e236c80d0fca` and its actual measured jar digest.
+
+All rows have offered=admitted=unique successful completions; zero refusals,
+terminal errors, transport failures and unresolved admissions. Replay is not
+new useful work. Latencies are ms, allocation KiB per unique success, heap MiB
+at warmed-idle / drained / post-policy / removed verified-GC checkpoints.
+Full integer nanosecond timings, all four checkpoints, raw requests and population
+series remain authoritative; the table rounds for readability.
+
+| Run | Offers/successes | Useful/s | p50 / p95 / p99 ms | KiB/success | Post-GC MiB (four phases) |
+|---|---:|---:|---|---:|---|
+| A1 | 12000 | 199.997 | 2.141 / 3.237 / 3.805 | 135.07 | 29.42 / 40.00 / 38.66 / 38.70 |
+| B1 | 12000 | 199.954 | 1.501 / 3.067 / 3.745 | 140.46 | 30.64 / 41.24 / 39.64 / 39.70 |
+| A2 | 12000 | 199.994 | 1.442 / 3.133 / 3.659 | 134.97 | 29.20 / 39.73 / 38.41 / 38.45 |
+| B2 | 12000 | 199.946 | 1.484 / 3.122 / 3.742 | 140.11 | 30.49 / 41.09 / 39.61 / 39.60 |
+| A3 | 12000 | 199.998 | 1.431 / 3.165 / 3.657 | 134.60 | 29.35 / 39.92 / 38.63 / 38.67 |
+| B3 | 12000 | 199.996 | 1.208 / 1.799 / 2.143 | 140.36 | 30.44 / 41.04 / 39.49 / 39.53 |
+| B-async-1 | 120 | 50.169 | 10.504 / 13.719 / 14.176 | 1108.94 | 24.48 / 24.74 / 24.35 / 24.38 |
+| B-async-2 | 120 | 50.186 | 10.570 / 14.015 / 14.585 | 1109.89 | 24.64 / 24.91 / 24.55 / 24.57 |
+| B-async-3 | 120 | 50.194 | 10.522 / 13.416 / 13.968 | 1115.68 | 24.50 / 24.77 / 24.37 / 24.39 |
+
+Paired B/A diagnostic p95 changes: **-5.25%, -0.35%, -43.18%**; p99
+**-1.56%, +2.27%, -41.40%**; allocation/success **+4.00%, +3.81%, +4.28%**.
+Useful fixed-cohort rate remains approximately 200/s. B3 is visibly faster than
+B1/B2: retain this variability, do not average percentiles or claim statistical
+equivalence. These are correctness-era costs against defective A, not proof of
+structural neutrality or peak sustainable throughput. P23 must compare frozen B
+and future C contemporaneously. Observer overhead remains included/unattributed;
+sampled peaks, unobservable independent aliases, host nonexclusive affinity and
+P24 soak exclusions remain explicit limitations.
+
+All **19** supervised groups (nine campaign processes plus ten profiles) exited
+0, used no kill fallback, and have no remaining live owned PIDs; a final /proc
+audit reconfirms this. All native smoke containers absent (`docker ps -a --filter
+name=nanofaas-p19-smoke`, exit0/empty). Protected SHA-256 audit exit0.
+Pure graph change analysis before freeze: all **9 files / 6 symbols / 0 flows,
+LOW**, complete, no partial/truncated/UNKNOWN verdict; includes but never stages
+the protected overload-path state. FTS/BM25 warning remains disclosed; exact
+graph calls work. Literal identities, actual diff, complete artifact hash inventory
+and staging audit supplement stale-index/prose/binary gaps.
+
+### Round-3 immutable handoff
+
+Status **DONE_WITH_CONCERNS**, all reviewer Important findings closed. Accepted
+control **B** in `nanofaas-p19-dossier-v2`, production tree
+`e3b54edcfe887efc8a5a6e95084aee36d942d8a1`. Repository path:
+`docs/experiments/lifecycle-memory-2026-09/p19/dossiers/74a0d632f3373724032df4719945ba50e84f827e49773c46b94902b9c4809dc0`.
+Manifest SHA-256 **74a0d632f3373724032df4719945ba50e84f827e49773c46b94902b9c4809dc0**;
+**652 payloads, 58,174,842 payload bytes**, plus manifest and SHA256SUMS. Earlier
+immutable dossiers are untouched; baseline.json points to this new accepted B.
+
+`python3 H/dossier.py freeze W`: exit0, `VERIFIED <digest> 652 payload files`.
+Separate `python3 H/dossier.py verify DOSSIER`: exit0, same result.
+Independent `(cd DOSSIER && sha256sum -c SHA256SUMS)`: exit0, all **653** hashes OK.
+Extracted harness under a fresh repository-layout temporary directory and ran
+`python3 -m unittest discover -s EXTRACTED_H -p 'test_*.py' -v`: exit0,
+**27 passed**, 0.837s. The contract fixture's own printed digest is not the P19
+manifest digest. Independent archive check: measured A-none SHA
+`fae23e1025dc97ddd7ee3852037720439360a8a0b4290535561dbaaf39eabf4e`, B-none
+`a362b94ae8328a9e9231398fa0b90529896034bfd950f25d4b5cf50b501f8d17`, B-async
+`6d90c10a49876c944954982a29cbf42bfd599010b135126f76780d8a1730fe0a`, all match
+build-identities.json. Git archive PAX revision bindings match exact A/B (1834/2002
+members), no protected snapshot test or .claude inputs. No payload modified after
+freeze. Verification output files remain in W; pre-freeze graph/commands/TDD/raw
+profiles and runs are content-addressed in the dossier.
+
+Self-review: normalization is confined to registry identity, keeps pool ID and
+host/port, performs no DNS or production reflection, does not change transport
+disposal or grace/eviction policy. Real Netty-map observation and recreate/drain
+test distinguish masking a gauge from actually releasing its retaining registry.
+Fresh managed strict-zero result closes the concrete reviewer failure. No harness
+assertion or tolerance was weakened. New manual edits used apply_patch. No
+subagents, P20b, external message or protected-file staging.
+
+Final delivery staging audit: **663 scoped files**, including all **654** dossier
+files; no protected paths. GitNexus complete all **200 text/indexed files / 9
+symbols / 0 flows, LOW**; staged **198 / 8 / 0, LOW**. Full raw results at
+`/tmp/nanofaas-p19-r3-final-gates.json`; no partial/truncated/UNKNOWN fields.
+Every symbol and empty flow set was read; exact manifest/staging enumeration
+covers binary/unindexed artifact gaps. Remaining stale section names are prose,
+not evidence of unseen runtime callers. Current production diff against final B
+is empty. `git diff --cached --check`: exit2 only for unchanged raw RED XML
+assertion trailing spaces and verbatim requirements' final blank lines inside
+the immutable dossier. Excluding immutable dossiers: exit0. Raw evidence was
+not cosmetically rewritten. Protected audit remains exit0; P20b untouched.

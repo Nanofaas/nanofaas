@@ -1,0 +1,23 @@
+{
+  "round": 3,
+  "status": "DONE_WITH_CONCERNS",
+  "production_source": "d93b68cdf1cca6e7af17e1c641c8e236c80d0fca",
+  "previous_production_source": "b4770d6675adc99f53444260dcf0200f10b517cf",
+  "previous_dossier": "cc5e971f0e354b36ca7238aef1b5831c2b994e9a95eceb31b3770f267ac14a4d",
+  "acceptance_condition": "Publish only after freeze verifies all current profiles/native smokes, fresh alternating pairs, accounting, owner drain, process cleanup and hashes. R1-R8 freshly green on final B.",
+  "finding_1": "Closed: unchanged managed numerical profile on final B observes pool registry peak 2/drain 0 in-process, all physical pool work/function mappings/backend work drained. All ten approved bounded profiles repeated on final B. No tolerance waiver or assertion weakening.",
+  "root_cause": "Reactor Netty 1.3.6 registerMetrics uses original resolved numeric address, disposeWhen matches host/port and removes actual pool but deregisters metrics with unresolved removal argument. Exact InetSocketAddress equality leaves P12 registrar retaining the already disposed pool metrics graph. PoolKey normalization without DNS reconciles representations while preserving name/id/host/port.",
+  "tdd": "Deterministic real numeric-loopback test RED: actual Netty channelPools empty, physical connections/pending zero, owner expected0 actual1. Minimum eight-line compact-constructor fix GREEN, including same-endpoint recreation/drain. No production reflection added.",
+  "finding_2": "Remains closed: both actual native minimal/managed images rebuilt from final B; invocation/replay/removal/shutdown green with no application errors. Historical focused native metadata RED/GREEN retained with provenance.",
+  "findings_3_4": "Remain closed: 27 portable contracts pass, source/artifact/workload/chronology/fresh process bindings and bounded owned process-group supervision enforced.",
+  "concerns": [
+    "Observer overhead attribution unavailable; no observer-off paired campaign. Sampled peaks are lower bounds and reflective aliases must not be summed.",
+    "Host affinity is not exclusive CPU reservation; three repeats and fixed moderate offered load do not establish statistical equivalence or peak sustainable capacity.",
+    "Short profiles do not replace P24 soak; independent timer/future/subscriber aliases and external/unselected observations remain explicitly unavailable/not_applicable.",
+    "Slow-body admission/refusal is unavailable when no HTTP headers arrive; no invented zero. Physical owner drain is separately observed.",
+    "Managed numerical provider profile uses the existing provider seam. Real Docker managed native lifecycle is separately green; no Kubernetes native cluster claim.",
+    "Unchanged prior gate groups are inherited with transitive provenance, not claimed fresh on final B. G1/G6/G10/G14, P12 regression, all profiles/runs and both native checks are fresh. G6 was run after the isolated comparison when the final method-level audit identified R5's correct module mapping.",
+    "GitNexus graph refresh completed but FTS/BM25 keyword indexing warned unavailable. Exact graph impact/change checks plus explicit text/staging/hash inventory are used; no clean inference from UNKNOWN or unseen files.",
+    "Retrospective impact debt from pre-round-2 work remains disclosed. All round-3 production/test edits had exact upstream impact first, UNKNOWN test entrypoints confirmed by text/JUnit selection."
+  ]
+}

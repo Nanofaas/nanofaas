@@ -15,7 +15,7 @@ def pairs():
         workload = {'offered': 10, 'warmup': 5, 'rate_per_s': 10}
         sha = lambda data: hashlib.sha256(json.dumps(data, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
         runs.append(dict(label=label, revision={'A': '61d72e73528db62cf8ca465c6a037981d7ec13b0',
-                                              'B': 'b4770d6675adc99f53444260dcf0200f10b517cf'}[side],
+                                              'B': 'd93b68cdf1cca6e7af17e1c641c8e236c80d0fca'}[side],
                          jar_sha256=side.lower()*64, config=sha(config), config_document=config,
                          workload=sha(workload), workload_document=workload, offered=10, admitted=10,
                          unique_successes=10, process_start_ns=i*100+1, start_ns=i*100+20,

@@ -1,0 +1,552 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.config.ManagementLoopResourcesTest",
+      "name": "theLivenessProbeAnswersOnLoopsOfItsOwn()",
+      "seconds": "0.895",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpRemovalRollbackTest",
+      "name": "failedRemovalBeforeCapacityListenerKeepsOriginalGenerationServiceableAndBounded()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinatorTest",
+      "name": "observeReplicaStatus_reportsUnavailableWhenTheProviderFails_neverZeroReplicas()",
+      "seconds": "0.041",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinatorTest",
+      "name": "observeReplicaStatus_carriesDesiredAndReadyFromTheSameProviderRead()",
+      "seconds": "0.014",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinatorTest",
+      "name": "providerFailureKeepsTheNewDurableTargetForReconciliation()",
+      "seconds": "0.017",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinatorTest",
+      "name": "deprovision_invalidatesTheSnapshotSoTheNextReadRefetches()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinatorTest",
+      "name": "setReplicasSerializesWithRemovalSoItNeverScalesARemovedFunction()",
+      "seconds": "0.151",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinatorTest",
+      "name": "setReplicas_invalidatesTheSnapshotSoTheNextReadRefetches()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinatorTest",
+      "name": "delegatesOperationsUsingTheTargetBackend()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinatorTest",
+      "name": "setReplicasPersistsTargetBeforeApplyingProviderChange()",
+      "seconds": "0.011",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinatorTest",
+      "name": "rejectsMissingTargetValues()",
+      "seconds": "0.007",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinatorTest",
+      "name": "getFreshReplicaStatus_alwaysReachesTheProvider()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinatorTest",
+      "name": "generationAwareSetReplicasCannotMutateAReplacementRegistration()",
+      "seconds": "0.01",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinatorTest",
+      "name": "invalidate_forcesTheNextReadToRefetch()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinatorTest",
+      "name": "observeReplicaStatus_servesOneProviderReadAcrossRepeatedReadsWithinTheTtl()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.UnavailableFunctionWakeUpVisibilityTest",
+      "name": "wakeUpCannotUseUnavailableRecordAfterDeleteRetryRollback()",
+      "seconds": "0.151",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinatorTest",
+      "name": "replacementLeaseRemovalAndCloseCannotCrossGenerationsOrLeaveTimers()",
+      "seconds": "0.007",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinatorTest",
+      "name": "leaseCloseAndExpiryRemoveQueuedTasksAndReleaseOwnershipExactlyOnce()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinatorTest",
+      "name": "scaleDown_waitsForWakeUpCriticalSectionAndCannotRunAfterScaleUp()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinatorTest",
+      "name": "removalFenceRejectsPausedOldPublicationAndAllowsReplacementGeneration()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinatorTest",
+      "name": "exactOldAndReplacementExpiryCallbacksCannotCrossLeaseOwnership()",
+      "seconds": "0.298",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinatorTest",
+      "name": "[1] close = false",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinatorTest",
+      "name": "[2] close = true",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinatorTest",
+      "name": "staleGenerationDownscaleNeverRunsItsCallback()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinatorTest",
+      "name": "removalRetiresImmediatelyButKeepsStateUntilBlockedScaleUpDrains()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "ensureReady_timesOutWithinTheWakeUpBudgetWhenPollIntervalIsLonger()",
+      "seconds": "0.063",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "ensureReady_doesNotLowerAnExistingDesiredTargetWhileWaitingForReadiness()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "ensureReady_timesOutDistinctlyWhenNoReplicaBecomesReady()",
+      "seconds": "0.102",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "ensureReady_removesCompletedWakeUpSoALaterScaleToZeroCanWakeAgain()",
+      "seconds": "0.008",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "[1] backend = null",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "[2] backend = \"\"",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "[3] backend = \" \"",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "[1] function = RegisteredFunction[spec=FunctionSpec[name=local, image=image, command=null, env={}, resources=null, timeoutMs=1000, concurrency=1, queueSize=10, maxRetries=0, endpointUrl=null, executionMode=LOCAL, runtimeMode=null, runtimeCommand=null, scalingConfig=ScalingConfig[strategy=INTERNAL, minReplicas=0, maxReplicas=3, metrics=[], concurrencyControl=null], imagePullSecrets=null, offload=null], deploymentMetadata=DeploymentMetadata[requestedExecutionMode=LOCAL, effectiveExecutionMode=LOCAL, deploymentBackend=null,\u2026",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "[2] function = RegisteredFunction[spec=FunctionSpec[name=external, image=image, command=null, env={}, resources=null, timeoutMs=1000, concurrency=1, queueSize=10, maxRetries=0, endpointUrl=null, executionMode=EXTERNAL, runtimeMode=null, runtimeCommand=null, scalingConfig=ScalingConfig[strategy=INTERNAL, minReplicas=0, maxReplicas=3, metrics=[], concurrencyControl=null], imagePullSecrets=null, offload=null], deploymentMetadata=DeploymentMetadata[requestedExecutionMode=EXTERNAL, effectiveExecutionMode=EXTERNAL, deploymentB\u2026",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "[3] function = RegisteredFunction[spec=FunctionSpec[name=hpa, image=image, command=null, env={}, resources=null, timeoutMs=1000, concurrency=1, queueSize=10, maxRetries=0, endpointUrl=null, executionMode=DEPLOYMENT, runtimeMode=null, runtimeCommand=null, scalingConfig=ScalingConfig[strategy=HPA, minReplicas=0, maxReplicas=3, metrics=[], concurrencyControl=null], imagePullSecrets=null, offload=null], deploymentMetadata=DeploymentMetadata[requestedExecutionMode=DEPLOYMENT, effectiveExecutionMode=DEPLOYMENT, deploymentBacke\u2026",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "[4] function = RegisteredFunction[spec=FunctionSpec[name=minimum-one, image=image, command=null, env={}, resources=null, timeoutMs=1000, concurrency=1, queueSize=10, maxRetries=0, endpointUrl=null, executionMode=DEPLOYMENT, runtimeMode=null, runtimeCommand=null, scalingConfig=ScalingConfig[strategy=INTERNAL, minReplicas=1, maxReplicas=3, metrics=[], concurrencyControl=null], imagePullSecrets=null, offload=null], deploymentMetadata=DeploymentMetadata[requestedExecutionMode=DEPLOYMENT, effectiveExecutionMode=DEPLOYMENT, de\u2026",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "ensureReady_propagatesReplicaScaleFailure()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "ensureReady_pollsIndependentlyOfTheSharedCompletableFutureDelayScheduler()",
+      "seconds": "0.013",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "configuredSchedulerRemovesCancelledTasksAndDropsDelayedWorkOnShutdown()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "ensureReady_timesOutWhileTheFirstProviderStatusCallIsBlocked()",
+      "seconds": "0.057",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "ensureReady_timeoutDoesNotDependOnTheSharedCompletableFutureDelayScheduler()",
+      "seconds": "0.058",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "absoluteTimeoutDrainsTheOwnerBeforeLateWorkCanPublish()",
+      "seconds": "0.008",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "ensureReady_releasesScaleDownProtectionAfterReadinessCompletes()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "synchronousSubmissionFailureAndContextCloseDrainOwnersBeforeLateWork()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "ensureReady_failsWhenTheDeploymentTargetIsMissing()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "[1] close = false",
+      "seconds": "0.085",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "[2] close = true",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "ensureReady_doesNotScaleAnAlreadyReadyEligibleDeployment()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "registryObjectAndGenerationAreCapturedAtomicallyBeforeWakeUpPublication()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "pollThatExecutesBeforeScheduleReturnsCannotCancelItsSuccessorPublication()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "removeAndReregisterFenceTheOldGenerationAndAllowOnlyTheReplacementToComplete()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "removalAndShutdownCancelPendingWakeUpsAndTheirTimers()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "ensureReady_thousandsOfFreshReadyObservationsDoNotFetchOrRetainTimers()",
+      "seconds": "0.084",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "ensureReady_asyncReadFailureRemovesItsTimeoutTask()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "freshReadyObservationCannotBypassAConcurrentFunctionDetach()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "properties_defaultAndRejectNonPositiveDurations()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "ensureReady_scalesEligibleZeroReplicaDeploymentToOneAndWaitsForReadiness()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "ensureReady_propagatesReplicaStatusFailure()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "ensureReady_coalescesConcurrentWakeUpsForTheSameFunction()",
+      "seconds": "0.008",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "ensureReady_oneHundredCallersShareWakeUpWithoutAShortCallerCompletingTheOwner()",
+      "seconds": "0.007",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+      "name": "ensureReady_routesObservationStateAndAgeThroughTheDeclaredPolicy()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "aRemovalDuringAGetDiscardsTheAnswerAndDoesNotReinsertTheEntry()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "close_leavesAnInjectedExecutorToItsOwner()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "repeatedInvalidateWhileAFetchIsBlockedCannotQueueUnboundedNewRefreshes()",
+      "seconds": "0.013",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "observe_neverBlocksTheLoopOnAProviderThatDoesNotRespondWhileOthersDo()",
+      "seconds": "1.01",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "observe_reportsUnavailableOnAColdStartInsteadOfBlockingOnAFirstFetch()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "observe_servesFreshValueFromCacheWithoutRefetching()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "aCompletionThatLandsAfterTheFreshnessDeadlineStillPopulatesTheCache()",
+      "seconds": "0.103",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "invalidatedEntriesAreRemovedSoRepeatedChurnLeavesNothingBehind()",
+      "seconds": "0.008",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "refresh_doesNotHandBackAValueTheGenerationGuardRejected()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "refresh_doesNotQueueBehindTheSlowPeriodicRefreshPool()",
+      "seconds": "10.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "observe_sharesOneRefreshPerFunctionGeneration()",
+      "seconds": "1.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "invalidate_forcesARefetchOnTheNextObservation()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "close_stopsTheOwnedPoolsAndRetiresEveryEntry()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "refresh_failsWhenTheFreshnessExecutorIsSaturatedRatherThanRunningOnTheCaller()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "aReRegistrationUnderAnotherBackendDuringAGetDiscardsTheOldBackendsAnswer()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "observe_rejectsRefreshesPastTheQueueBoundInsteadOfQueueingThemOrRunningThemOnTheCaller()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "observe_walksFreshThenStaleThenUnavailableOnAControlledClock()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "refresh_releasesTheCallerAtItsDeadlineWhenTheProviderNeverAnswers()",
+      "seconds": "0.153",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "observe_refetchesOnlyAfterTheTtlBoundary()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "observe_recoversAsSoonAsTheProviderAnswersAgain()",
+      "seconds": "0.007",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "rejectsInvalidLimitsAndTtl()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "observe_keepsLastKnownGoodWhenTheRefreshFails_neverZero()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "refresh_alwaysFetchesFreshIgnoringTheCacheAndItsTtl()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+      "name": "bindTo_publishesQueueActiveRejectionAgeAndDurationWithoutPerFunctionCardinality()",
+      "seconds": "0.009",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    ":control-plane:test",
+    "-PcontrolPlaneModules=k8s-deployment-provider",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshotTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.config.ManagementLoopResourcesTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinatorTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpGateTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.service.DeploymentWakeUpRemovalRollbackTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinatorTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.service.UnavailableFunctionWakeUpVisibilityTest",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 85,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 37.862135887145996,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "G11",
+  "output_sha256": "40b1e72d33a41d219dc772fe098508d5fe02cc1170176bfde911693cf46f319b",
+  "started_unix_s": 1789135453.0433023
+}

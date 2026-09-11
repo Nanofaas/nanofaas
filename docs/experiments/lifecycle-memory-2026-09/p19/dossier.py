@@ -74,7 +74,7 @@ def verify(folder):
     expected = set(manifest['files']) | {'manifest.json', 'SHA256SUMS'}
     if {str(p.relative_to(folder)) for p in folder.rglob('*') if p.is_file()} != expected:
         raise ValueError('unmanifested or missing payload')
-    if manifest.get('review',{}).get('round')==2 and manifest.get('accepted_control'):
+    if manifest.get('review',{}).get('round',0)>=2 and manifest.get('accepted_control'):
         validate_round2(folder)
     runs = [json.loads((folder / 'runs' / (side + str(i)) / 'run.json').read_text()) for i in range(1, 4) for side in 'AB']
     builds = json.loads((folder/'build-identities.json').read_text())
@@ -129,10 +129,10 @@ def verify(folder):
 
 def freeze(work):
     review = json.loads((work/'fix-round.json').read_text()) if (work/'fix-round.json').exists() else {}
-    if review.get('round')==2 and review.get('status')!='BLOCKED': validate_round2(work)
+    if review.get('round',0)>=2 and review.get('status')!='BLOCKED': validate_round2(work)
     staging = work / 'dossier'
     staging.mkdir(exist_ok=False)
-    for name in ['runs', 'verification', 'external', 'smoke', 'graph', 'aborted', 'auxiliary', 'profiles', 'supervision', 'probe', 'red-native', 'native-container-cli-unavailable', 'red-hints', 'green-hints', 'response-green-scheduler-red']:
+    for name in ['runs', 'verification', 'external', 'smoke', 'graph', 'aborted', 'auxiliary', 'profiles', 'supervision', 'probe', 'red-native', 'native-container-cli-unavailable', 'red-hints', 'green-hints', 'response-green-scheduler-red', 'red-pool', 'green-pool']:
         source = work / name
         if source.exists():
             shutil.copytree(source, staging / name)

@@ -1,0 +1,62 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.InvocationQuotaHttpTest",
+      "name": "asyncExecutionSaturationReturnsTheStableQuotaError()",
+      "seconds": "0.787",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.InvocationQuotaHttpTest",
+      "name": "asyncCanonicalInputSaturationReturnsTheStableQuotaError()",
+      "seconds": "0.155",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.InvocationQuotaHttpTest",
+      "name": "syncExecutionSaturationReturnsTheStableQuotaError()",
+      "seconds": "0.269",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.InvocationQuotaHttpTest",
+      "name": "pendingReplayWaiterSaturationReturnsTheStableQuotaErrorWithoutNewExecution()",
+      "seconds": "0.246",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.P07ConfiguredHttpCalibrationTest",
+      "name": "t2AsyncKeyedShapesThroughConfiguredQueueHttpRuntime()",
+      "seconds": "4.571",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    ":control-plane:test",
+    "-PcontrolPlaneModules=async-queue",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.P07ConfiguredHttpCalibrationTest.t2AsyncKeyedShapesThroughConfiguredQueueHttpRuntime",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.InvocationQuotaHttpTest",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 5,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 31.233392477035522,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "configured-T2",
+  "output_sha256": "beedb7a7be4893aaa016b69bf4e51b82b66239af7d466261ef40f75f8605a5cf",
+  "started_unix_s": 1789127924.179772
+}

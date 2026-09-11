@@ -1,0 +1,104 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.concurrencycontrol.ConcurrencyGovernorE2eTest",
+      "name": "raisingTheConfiguredCeilingAtRuntimeUnblocksTheGovernor()",
+      "seconds": "1.054",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.concurrencycontrol.ConcurrencyGovernorE2eTest",
+      "name": "budgetedFunctionsShareOneBudgetInsteadOfCompetingForTheSameCores()",
+      "seconds": "0.43",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.concurrencycontrol.ConcurrencyGovernorE2eTest",
+      "name": "governorThrottlesTheQueueConcurrencyLimitOfARegisteredFunction()",
+      "seconds": "0.634",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.concurrencycontrol.ConcurrencyGovernorTest",
+      "name": "governsFunctionsThatHaveNoManagedDeployment()",
+      "seconds": "0.033",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.concurrencycontrol.ConcurrencyGovernorTest",
+      "name": "feedsTheEndToEndTimerToTheSojournController()",
+      "seconds": "0.007",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.concurrencycontrol.ConcurrencyGovernorTest",
+      "name": "budgetedFunctionsAreDecidedTogetherRatherThanOneAtATime()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.concurrencycontrol.ConcurrencyGovernorTest",
+      "name": "feedsTheObservedServiceTimeToTheAdaptiveController()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.concurrencycontrol.ConcurrencyGovernorTest",
+      "name": "keepsGoingWhenOneFunctionFails()",
+      "seconds": "0.011",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.concurrencycontrol.ConcurrencyGovernorTest",
+      "name": "dividesTheLimitAcrossTheReadyReplicasOfAManagedFunction()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.concurrencycontrol.ConcurrencyGovernorTest",
+      "name": "skipsAFunctionWithoutAReplicaReadingRatherThanGoverningItAsZeroReplicas()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.concurrencycontrol.ConcurrencyGovernorTest",
+      "name": "theOtherModesAreUntouchedByTheBudget()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.concurrencycontrol.ConcurrencyGovernorTest",
+      "name": "runsWithoutAnyDeploymentBackend()",
+      "seconds": "0.001",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    ":control-plane-modules:concurrency-control:test",
+    "-PcontrolPlaneModules=async-queue,concurrency-control",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.concurrencycontrol.ConcurrencyGovernorTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.concurrencycontrol.ConcurrencyGovernorE2eTest",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 12,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 10.591068267822266,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "G13",
+  "output_sha256": "cb84c981b69773a9204fc1a9f8429a0ea9e3d5abdb4cedbf4cfe7db238a78219",
+  "started_unix_s": 1789127535.6562736
+}

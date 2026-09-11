@@ -1,0 +1,240 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.QueueManagerTest",
+      "name": "concurrentRemoveAndRegisterLeavesNewGenerationUsableAndOldSlotSafe()",
+      "seconds": "0.114",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.QueueManagerTest",
+      "name": "cleanupBoundToAcquiredStateMustNotReleaseRecreatedQueueState()",
+      "seconds": "0.395",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.QueueManagerTest",
+      "name": "setEffectiveConcurrency_updatesTheSharedCapacityRegistry()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.QueueManagerTest",
+      "name": "lifecycleLocksAreRemovedAfterRepeatedFunctionRemoval()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.QueueManagerTest",
+      "name": "issue008_queueIsBounded()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.QueueManagerTest",
+      "name": "remove_closesDetachedQueueStateSoLateOffersAreRejected()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.QueueManagerTest",
+      "name": "getOrCreate_registersProviderGauges()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.QueueManagerTest",
+      "name": "remove_drainsQueuedTasks()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.QueueManagerTest",
+      "name": "enqueue_doesNotSignalWhenAllDispatchSlotsAreBusy()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.AsyncQueueInvokeEnqueueContractRegressionTest",
+      "name": "concurrentSyncInvokeAndAsyncEnqueueShareOneSlotAndDrainCleanly()",
+      "seconds": "0.032",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.AsyncQueueInvokeEnqueueContractRegressionTest",
+      "name": "asyncEnqueueAnswersEarlyAndCompletesWhenTheQueueIsDrained()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.AsyncQueueInvokeEnqueueContractRegressionTest",
+      "name": "syncInvokeWaitsForTheQueuedDispatchToComplete()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.AsyncQueueInvokeEnqueueContractRegressionTest",
+      "name": "syncInvokeWaitsAcrossARetryThatReEnqueuesThroughTheSameQueue()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.AsyncQueueInvokeEnqueueContractRegressionTest",
+      "name": "queueSaturationRefusesNewAsyncWorkWhileTheQueuedSyncDispatchStillCompletes()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.QueueManagerGaugeCleanupTest",
+      "name": "remove_nonExistentFunction_doesNotThrow()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.QueueManagerGaugeCleanupTest",
+      "name": "remove_deregistersGaugesFromMeterRegistry()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.QueueManagerGaugeCleanupTest",
+      "name": "remove_oneFunction_doesNotAffectOther()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.AsyncQueueContextTest",
+      "name": "publishesTheWorkloadContractTheConsumingModulesConditionOn()",
+      "seconds": "0.418",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.AsyncQueueContextTest",
+      "name": "theModuleEnqueuerIsTheOnlyOne()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.SchedulerResilienceTest",
+      "name": "inputCapacityBackpressureRequeuesTaskAndReleasesDispatchLease()",
+      "seconds": "0.63",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.SchedulerResilienceTest",
+      "name": "blockedBacklog_doesNotSpinUntilSlotIsReleased()",
+      "seconds": "1.015",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.SchedulerResilienceTest",
+      "name": "scheduler_requeuesFunctionAfterBoundedBatchInsteadOfDrainingWholeBurst()",
+      "seconds": "0.512",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.SchedulerResilienceTest",
+      "name": "dispatchException_doesNotKillSchedulerLoop()",
+      "seconds": "0.609",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.SchedulerResilienceTest",
+      "name": "startStopStart_restartsSchedulerWithoutRejectedExecution()",
+      "seconds": "0.004",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.SchedulerResilienceTest",
+      "name": "dispatchExceptionRecordsSlotHoldAndReleasesTheAcquiredState()",
+      "seconds": "0.505",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.QueueBackedEnqueuerRetryIntegrationTest",
+      "name": "oneRetry_errorThenSuccess()",
+      "seconds": "0.141",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.QueueBackedEnqueuerRetryIntegrationTest",
+      "name": "threeRetries_errorThenSuccess_atMostFourAttempts()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.QueueBackedEnqueuerRetryIntegrationTest",
+      "name": "zeroRetries_immediateSuccess_singleAttempt()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.QueueBackedEnqueuerRetryIntegrationTest",
+      "name": "retryQueueFull_terminatesTheRequestWithoutOrphanedQueuedState()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.QueueBackedEnqueuerRetryIntegrationTest",
+      "name": "zeroRetries_definitiveFailure_singleAttempt()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.QueueBackedEnqueuerRetryIntegrationTest",
+      "name": "threeRetries_definitiveFailure_neverExceedsFourAttempts()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.QueueLeaseGenerationTest",
+      "name": "[1] true",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.modules.asyncqueue.QueueLeaseGenerationTest",
+      "name": "[2] false",
+      "seconds": "0.001",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    ":control-plane-modules:async-queue:test",
+    "-PcontrolPlaneModules=async-queue",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.asyncqueue.AsyncQueueInvokeEnqueueContractRegressionTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.asyncqueue.QueueLeaseGenerationTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.asyncqueue.QueueBackedEnqueuerRetryIntegrationTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.asyncqueue.QueueManagerGaugeCleanupTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.asyncqueue.QueueManagerTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.asyncqueue.SchedulerResilienceTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.modules.asyncqueue.AsyncQueueContextTest",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 33,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 9.943002939224243,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "G5",
+  "output_sha256": "56280370151359984d42ca5e65f1aac0906aa44c841c9e36d09e79080444f971",
+  "started_unix_s": 1789127432.1191697
+}

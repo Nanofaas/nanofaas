@@ -1,0 +1,312 @@
+{
+  "cases": [
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.InvocationPathAccountingTest",
+      "name": "aReplayIsOnlyCountedWhenAKeyFindsAnExecution()",
+      "seconds": "0.233",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.InvocationPathAccountingTest",
+      "name": "aRefusalIsBookedAgainstTheDoorThatPaidForIt()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.InvocationPathAccountingTest",
+      "name": "theTwoDoorsAreAccountedApart()",
+      "seconds": "0.013",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacityPropertiesTest",
+      "name": "invalidAndInconsistentValuesFailValidation()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacityPropertiesTest",
+      "name": "calibratedDefaultsAreFiniteAndInternallyConsistent()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.api.IngressCodecAlignmentTest",
+      "name": "rejectsAnUnsupportedFirstApplicableCustomReaderInsteadOfSelectingALaterReader()",
+      "seconds": "0.126",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.api.IngressCodecAlignmentTest",
+      "name": "rejectsAConfiguredLimitThatDoesNotMatchTheActiveReader()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.api.IngressBodyLimitHttpTest",
+      "name": "repeatedOversizedBodiesLeaveNoIngressStateThatRejectsTheNextBoundedBody()",
+      "seconds": "0.151",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.api.IngressBodyLimitHttpTest",
+      "name": "declaredContentLengthAboveTheLimitReturns413BeforeControllerParsing()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.api.IngressBodyLimitHttpTest",
+      "name": "chunkedBodyCrossingTheLimitReturns413AndTheConnectionRemainsUsable()",
+      "seconds": "0.031",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.api.IngressBodyLimitHttpTest",
+      "name": "boundedIngressPrecedesRateAndReplayShortcuts()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.api.IngressBodyLimitHttpTest",
+      "name": "bodyExactlyAtTheLimitReachesNormalRouting()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacityConfigurationTest",
+      "name": "configuredExecutionCanonicalPhysicalAndWaiterOwnersAllDrainToZero()",
+      "seconds": "0.016",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacityConfigurationTest",
+      "name": "invalidBoundPropertiesAbortContextStartup()",
+      "seconds": "0.006",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.input.CanonicalInvocationInputTest",
+      "name": "rejectsDeepWideAndLargeCollectionsBeforePublication()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.input.CanonicalInvocationInputTest",
+      "name": "rejectsCustomNumberObjectsEvenWhenNestedInAnOtherwiseAcceptedArray()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.input.CanonicalInvocationInputTest",
+      "name": "canonicalizesJsonCollectionsToMeasuredArraysWithoutRetainingSources()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.input.CanonicalInvocationInputTest",
+      "name": "keepsAnAlreadyBoundedAcceptedArrayAsTheRetainedRepresentation()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.input.CanonicalInvocationInputTest",
+      "name": "rejectsCustomCollectionsWithoutInvokingTheirTraversalMethods()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.input.CanonicalInvocationInputTest",
+      "name": "repeatedRejectionDoesNotPoisonAFollowingAcceptedInput()",
+      "seconds": "0.005",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.InvocationServiceCoreRetryTest",
+      "name": "oneRetry_definitiveFailureAfterExhaustion()",
+      "seconds": "0.12",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.InvocationServiceCoreRetryTest",
+      "name": "oneRetry_errorThenSuccess()",
+      "seconds": "0.104",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.InvocationServiceCoreRetryTest",
+      "name": "manyImmediateRetries_doNotOverflowTheStack()",
+      "seconds": "0.31",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.InvocationServiceCoreRetryTest",
+      "name": "threeRetries_errorThenSuccess_atMostFourAttempts()",
+      "seconds": "0.114",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.InvocationServiceCoreRetryTest",
+      "name": "zeroRetries_immediateSuccess_singleAttempt()",
+      "seconds": "0.102",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.InvocationServiceCoreRetryTest",
+      "name": "poolSaturation_terminatesTheRequestWithoutOrphanedQueuedState()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.InvocationServiceCoreRetryTest",
+      "name": "zeroRetries_definitiveFailure_singleAttempt()",
+      "seconds": "0.103",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.InvocationServiceCoreRetryTest",
+      "name": "executorShutdown_terminatesTheRequestWithoutOrphanedQueuedState()",
+      "seconds": "0.104",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.service.InvocationServiceCoreRetryTest",
+      "name": "threeRetries_definitiveFailure_neverExceedsFourAttempts()",
+      "seconds": "0.306",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.api.IngressBodyLimitWebFilterTest",
+      "name": "configuredJsonCodecLimitDrivesThePreParsingDeclaredLengthBoundary()",
+      "seconds": "0.014",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.api.IngressBodyLimitWebFilterTest",
+      "name": "crossingBufferCancelsTheServerBodySubscriptionAndReleasesReceivedBuffers()",
+      "seconds": "0.002",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.api.IngressBodyLimitWebFilterTest",
+      "name": "declaredOversizeIsRejectedWithoutSubscribingToTheBody()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.input.RetainedInputEstimatorTest",
+      "name": "shapeBeyondTheDepthBoundIsRejectedInsteadOfAssignedAFrontierToken()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.input.RetainedInputEstimatorTest",
+      "name": "nodeLimitBoundsTraversalEvenWhenDepthAndWidthStillAllowTheShape()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.input.RetainedInputEstimatorTest",
+      "name": "flatExplicitArrayRepresentationGetsAConservativePositiveMeasurement()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.input.RetainedInputEstimatorTest",
+      "name": "largeSupportedValueCrossingTheByteBudgetIsRejectedWithoutArithmeticWraparound()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.input.RetainedInputEstimatorTest",
+      "name": "wideExplicitArrayIsRejectedAtTheConfiguredWidth()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.input.RetainedInputEstimatorTest",
+      "name": "opaqueLocalObjectIsRejectedRatherThanGivenASymbolicEstimate()",
+      "seconds": "0.0",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.input.RetainedInputEstimatorTest",
+      "name": "repeatedOpaqueRejectionsDoNotAccumulateEstimatorState()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.input.RetainedInputEstimatorTest",
+      "name": "sparseOverCapacityJdkListIsRejectedInsteadOfPricedByLogicalSize()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.input.RetainedInputEstimatorTest",
+      "name": "sparseOverCapacityJdkMapIsRejectedInsteadOfPricingItsEmptyLogicalSize()",
+      "seconds": "0.001",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.input.RetainedInputEstimatorTest",
+      "name": "customCollectionIsRejectedWithoutInvokingPotentiallyUnboundedUserCode()",
+      "seconds": "0.003",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.CoreOnlyApiTest",
+      "name": "disabledInvocationEnqueuerReportsUnavailable()",
+      "seconds": "0.431",
+      "state": "passed"
+    },
+    {
+      "classname": "it.unimib.datai.nanofaas.controlplane.CoreOnlyApiTest",
+      "name": "asyncEnqueueReturns501WhenAsyncQueueModuleIsNotLoaded()",
+      "seconds": "0.228",
+      "state": "passed"
+    }
+  ],
+  "command": [
+    "./gradlew",
+    ":control-plane:test",
+    "-PcontrolPlaneModules=none",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.CoreOnlyApiTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.api.IngressBodyLimitWebFilterTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.api.IngressBodyLimitHttpTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.api.IngressCodecAlignmentTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.input.RetainedInputEstimatorTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.input.CanonicalInvocationInputTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacityPropertiesTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacityConfigurationTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.service.InvocationPathAccountingTest",
+    "--tests",
+    "it.unimib.datai.nanofaas.controlplane.service.InvocationServiceCoreRetryTest",
+    "--offline",
+    "--no-parallel",
+    "--console=plain",
+    "--rerun-tasks",
+    "-I",
+    "/home/michele/Documenti/nanofaas/docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle"
+  ],
+  "counts": {
+    "failed": 0,
+    "passed": 44,
+    "skipped": 0
+  },
+  "counts_status": "observed",
+  "cwd": "/home/michele/Documenti/nanofaas",
+  "elapsed_s": 19.843852996826172,
+  "exit_code": 0,
+  "expected_exit_code": 0,
+  "label": "G4",
+  "output_sha256": "268a4e324c2a967a0dfdfb9c94c81d5afbec0eaca57932ce5780e98c27c3ee7b",
+  "started_unix_s": 1789127412.272206
+}

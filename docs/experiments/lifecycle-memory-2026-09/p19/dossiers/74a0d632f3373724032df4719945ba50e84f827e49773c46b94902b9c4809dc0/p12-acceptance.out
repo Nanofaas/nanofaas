@@ -1,0 +1,63 @@
+# P12 — Finite-lifetime HTTP pools and aggregate ownership
+
+Begin only after P06/P07 are complete and reviewed. Scope is `HttpClientConfig`,
+the HTTP dispatcher, directly related properties and controlled local-server
+tests. P13 depends on this task; do not implement proxy buffering here.
+
+## Binding delivery
+
+First identify the exact Reactor Netty version resolved by this build and verify
+the connection-pool APIs against that version's official documentation/source.
+Record the exact version and evidence. Configure documented, measured idle
+timeout, optional maximum lifetime, background eviction and inactive-pool
+disposal. Preserve previously evaluated acquisition-timeout defaults unless new
+measurements justify a change: earlier /5/1-second trials did not provide the
+hypothesized benefit.
+
+Own and dispose the `ConnectionProvider` on application-context shutdown, with
+idempotent close behavior. Expose/verify connection count, pending acquisitions
+and destination/pool population. A per-host limit is not a substitute for P07's
+aggregate admission, and a `maxConnectionPools` option that merely warns is not
+to be represented as an effective aggregate cap.
+
+Cancellation, timeout, response error and endpoint change/removal during pool
+acquisition must release the request, connection and buffers. Reuse providers;
+do not create a pool per invocation or let historical destinations remain
+forever after drain plus the documented eviction window.
+
+## Required tests
+
+- Churn through many controlled local destinations, then stop traffic and prove
+  pool/socket population returns near the current destination count after the
+  configured eviction window, with explicit threshold and tolerance.
+- Idle connections and maximum-lifetime behavior where configured.
+- Slow server, saturated pool, acquisition timeout and caller cancellation;
+  pending acquisitions and owned resources drain.
+- Response errors and endpoint replacement/removal during acquisition.
+- Repeated application-context close/disposal is safe and leaves no owned
+  provider threads/resources.
+- Admission remains bounded across different hosts by P07; per-host pool limits
+  do not bypass global/per-function execution/input/waiter limits.
+
+Use controlled local servers, latches and explicit deadlines. Do not infer
+physical cancellation solely from a composed future's terminal state.
+
+## Process and evidence
+
+Follow TDD for behavior changes. Before editing each existing production symbol,
+run disambiguated GitNexus upstream impact, report HIGH/CRITICAL and resolve
+UNKNOWN with text search. Before commit run exact complete non-partial,
+non-truncated `detect-changes`. Update
+`docs/experiments/lifecycle-memory-2026-09/STATO.md` in English, including
+resolved dependency/API evidence, measured configuration, focused/full tests
+and residual limitations. Preserve unrelated dirty files.
+
+## Acceptance
+
+- After drain plus eviction, pool/socket count is within the documented
+  tolerance of current destinations.
+- Cancellation/error/timeout paths release pending requests, connections and
+  buffers, and shutdown disposes the provider exactly once.
+- No pool is created per invocation and historical destination state is finite.
+- Aggregate P07 admission still applies across distinct hosts.
+- Documentation distinguishes latency tuning from ownership correctness.
