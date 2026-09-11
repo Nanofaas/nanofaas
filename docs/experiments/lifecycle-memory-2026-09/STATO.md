@@ -3201,3 +3201,19 @@ edges/763 flows. Complete all/staged precommit gates, self-review, exact commit
 identity and full run table are in the fix-round report. Protected SHA audit passes
 for both overload files, all six skill directories and the snapshot test; production
 diff against B remains empty. Commit scope is only P19 measurement/evidence/docs.
+
+## P19 fix round 2 — native metadata fix, validation in progress
+
+User authorizes a new B product revision. Strict systematic debugging traced
+completed invocation→erased response→Jackson record serialization, and native
+shutdown→DisposableBeanAdapter→concrete executor shutdown reflection. Existing
+catalog binding and explicit JDK hint patterns were reused. New focused regressions
+were RED before production changes (7 tests/2 failures, exit1); response-only hint
+made one GREEN while scheduler remained RED; exact native parent shutdown target
+was separately RED. Minimal record binding and two exact shutdown-method hints
+then passed the new tests plus catalog/scheduler regressions (Gradle exit0).
+No scheduler algorithm/ownership change. New B is the product-fix commit containing
+InvocationLifecycleRuntimeHints, its application import and InvocationNativeHintsTest.
+Native rebuild/smoke, missing bounded numerical profiles, fresh R1–R8 and alternating
+A/B remeasurement remain pending; no accepted control is declared at this stage.
+Full commands, expected failures and graph evidence are in the round-2 report.

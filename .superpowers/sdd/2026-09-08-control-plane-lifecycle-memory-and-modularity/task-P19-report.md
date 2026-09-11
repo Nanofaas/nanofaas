@@ -515,3 +515,60 @@ copied brief/inventory; `git -c core.whitespace=-blank-at-eof diff --cached --ch
 exit 0. Protected staged-path query and old-dossier staged query both empty.
 Final fresh portable recheck: 20 tests, 0 failures/skips, exit 0 (0.847s); full new
 dossier verifier: exit 0, VERIFIED 608 payload files. BLOCKED status is unchanged.
+
+## Fix round 2 — native diagnosis and product fix (in progress)
+
+The user explicitly authorizes advancing B from 6d083033 to the final product-fix
+commit. A remains 61d72e73528db62cf8ca465c6a037981d7ec13b0, diagnostic only.
+Work directory `/tmp/nanofaas-p19-r2.wEbAOQ`; no subagents or P20b.
+
+Systematic debugging phase 1: reread both complete minimal/managed native traces
+from round 1 and the actual InvocationController, response model, wake-up bean and
+hint import boundaries. Both reproductions fail after actual terminal completion,
+inside AbstractJacksonEncoder→ObjectWriter→RecordUtil→Class.getRecordComponents:
+this is response SERIALIZATION, not failed request deserialization. Shutdown is
+DisposableBeanAdapter.invokeCustomDestroyMethod→Method.invoke, targeting native
+ThreadPoolExecutor.shutdown. The factory declares ScheduledExecutorService but
+creates ScheduledThreadPoolExecutor. Recent history: adc272b4 wake-up ownership,
+4483034a catalog record hints, bcbbf22a timeout bound. No scheduler ownership policy
+change is needed to repair missing metadata.
+
+Phase 2: compared complete FunctionCatalogRuntimeHints and its three tests (same
+erased-object Jackson record pattern), ProcessorMetricsRuntimeHints (explicit
+reflective JDK target) and ReplicaStatusSnapshotConfiguration (owned close).
+Phase 3 hypotheses tested independently: (a) erased ResponseEntity<Object> hides
+InvocationResponse binding metadata; (b) scheduler interface return type does not
+register the concrete shutdown targets used reflectively at native destruction.
+
+Phase 4 TDD, before production changes: new InvocationNativeHintsTest discovers
+the application's actual imported registrars and checks every record accessor and
+the real scheduler's shutdown Method with RuntimeHintsPredicates.
+Command for each run below (console=plain, protected snapshot test excluded):
+`./gradlew :control-plane:test -PcontrolPlaneModules=none -I
+docs/experiments/lifecycle-memory-2026-09/p19/verification.init.gradle --tests
+'*InvocationNativeHintsTest' --console=plain`.
+
+- Initial `--rerun-tasks`: exit1, 7 tests/2 failures (the two new regressions);
+  missing executionId accessor and concrete ScheduledThreadPoolExecutor.shutdown.
+- Add only InvocationResponse binding registrar/import: exit1, 7 tests/1 failure;
+  response regression GREEN, scheduler still RED.
+- Extend scheduler regression to the exact ThreadPoolExecutor.shutdown method in
+  the native trace: exit1, expected missing parent-method metadata. Native and JVM
+  reflection expose different concrete targets when override metadata is absent;
+  both observed methods, not all executor methods, are registered explicitly.
+- Add only no-argument shutdown hints for ScheduledThreadPoolExecutor and its
+  ThreadPoolExecutor parent. Same command plus `--tests '*FunctionCatalogRuntimeHintsTest'
+  --tests '*DeploymentWakeUpGateTest'`: exit0, BUILD SUCCESSFUL in 9s. Exact XML and
+  RED/GREEN logs saved before subsequent build reuse.
+
+Production changes are only new InvocationLifecycleRuntimeHints plus its import in
+ControlPlaneApplication; runtime algorithms, scheduler instance/policies and JVM
+execution behavior are unchanged. Native images still must be rebuilt and exercised;
+JVM hint predicates alone are not declared native GREEN. B will identify this
+product commit; later measurement/report-only commits do not alter its runtime.
+
+GitNexus exact upstream checks preceded the application class annotation edit and
+new registrar method refinement. UNKNOWN class/dynamic-entrypoint results were
+resolved with rg: application bootstrap, two injected scheduler consumers and
+focused tests identified; no HIGH/CRITICAL result. New test consumed graph-checked
+application/model/scheduler symbols. Protected SHA-256 audit remains green.
