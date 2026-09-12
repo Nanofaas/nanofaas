@@ -3798,3 +3798,64 @@ deliberately left (async removal drain concluding a running reservation as `FUNC
 P09/P10 deferred minors, and the single non-reproducing
 `P07dWaiterAdmissionTest.divergentDeadlinesDetachOnlyTheShortWaiter` observation from P21.
 No known leak remains in the profiles P24 must measure.
+
+## 2026-09-12 — P24 soak capability built and validated; the measurement is NOT run
+
+Scope: P24, from `a2556ba3` (P23 closure). Evidence in
+`docs/experiments/lifecycle-memory-2026-09/p24/`. NanoLab changes are in that
+checkout, commits `4f77779` and `3f1e7c3`; nanoFaaS was read, never written to by
+NanoLab, as its CLAUDE.md requires.
+
+**Status: incomplete.** The two measured arms have not been run. No attribution of
+the historical RAM growth is claimed.
+
+**Why a capability had to be built.** The soak crossing the retention windows was
+deferred to NanoLab and issue #207 and never executed, so there was nothing to
+reuse. Every existing load scenario ramps, because they ask what the tail does as
+demand moves; a retention question needs demand that never changes, so a population
+that grows can only be the system and not the load. Nothing collected what the
+control plane still held after the traffic stopped — the only condition under which
+retention is visible, since under load every population is legitimately non-empty.
+
+Added: `soakMinutes` (the mixed generator held flat, unset by default so no existing
+arm changes shape), `drainMinutes`, an `ObserveDrainTask` that samples the control
+plane's own metrics at 30 seconds, 5 minutes and 30 minutes after the stop, and
+`controlPlaneImage`, which names a build no variant key can describe — one of a
+different revision.
+
+**A design constraint that changed the experiment.** The function SDKs changed
+substantially between `e35405ee` and the candidate (Java +663/−63 production lines,
+JavaScript +951/−326) and are compiled into the function images. An arm building its
+own functions would vary the function runtime as well as the control plane, which the
+plan says makes a memory comparison non-equivalent. Both arms therefore build
+functions from the candidate checkout and differ only in the control-plane image.
+Both images are built; identities frozen in `p24/image-identity.txt`.
+
+**Validation run, and the three defects it exposed.** A two-minute soak with a
+two-minute drain ran the full container plan — registry, compose, function build and
+push, registration, k6, snapshot, report — and produced a real drain observation:
+samples at 0, 30 and 120 seconds, live threads falling 81 → 82 → 66. It also proved
+three things wrong in what had just been written, each fixed in `3f1e7c3`:
+
+- the population series were **guessed** and matched nothing the control plane
+  exports; read from a running control plane they are `execution_store_size`,
+  `execution_in_flight_records`, `idempotency_keys_held` and the HTTP-pool and
+  executor gauges, 15 of 16 resolving, with the absent one recorded as absent rather
+  than as zero;
+- prebuilt control plane and prebuilt functions were one flag, which on the container
+  backend left the run's own registry empty and failed every registration with a 503
+  (`IMAGE_REGISTRY_UNAVAILABLE ... connection refused`);
+- a named JVM control-plane image was ignored by compose, which rebuilt from a jar
+  that prebuilt mode had deliberately never built, so the container died and
+  readiness timed out.
+
+**What blocks the arms.** The run still fails threshold evaluation: 73 required
+Prometheus queries return no data because they are queue/scheduler series needing a
+module this scenario does not select, and cAdvisor series the compose stack does not
+run. The comparison profile's required set was written for the Kubernetes matrix. The
+choice — add a queue module and cAdvisor, or declare a soak-specific required set that
+states what it no longer checks — must be the same for both arms and is not made here.
+
+After that, roughly four and a half hours of machine time remain for two arms of
+ninety minutes plus thirty-five minutes of drain each, followed by the retainer
+analysis the plan requires if any population fails to fall.

@@ -1,0 +1,66 @@
+{
+  "checkpoints_s": [
+    0,
+    30,
+    120
+  ],
+  "management_url": "http://127.0.0.1:8081",
+  "note": "Populations only. Counters and durations are excluded because a rising total says nothing about what is still held. Heap, RSS and cgroup usage are separate observations, never summed.",
+  "samples": [
+    {
+      "checkpoint_s": 0,
+      "elapsed_s": 0.0,
+      "meter_names": 114,
+      "populations": {
+        "jvm_buffer_memory_used_bytes": 10248.0,
+        "jvm_memory_used_bytes": 283382928.0,
+        "jvm_threads_live_threads": 81.0
+      },
+      "status": "observed"
+    },
+    {
+      "checkpoint_s": 30,
+      "elapsed_s": 30.012,
+      "meter_names": 114,
+      "populations": {
+        "jvm_buffer_memory_used_bytes": 10248.0,
+        "jvm_memory_used_bytes": 287047696.0,
+        "jvm_threads_live_threads": 82.0
+      },
+      "status": "observed"
+    },
+    {
+      "checkpoint_s": 120,
+      "elapsed_s": 120.022,
+      "meter_names": 114,
+      "populations": {
+        "jvm_buffer_memory_used_bytes": 10248.0,
+        "jvm_memory_used_bytes": 298176088.0,
+        "jvm_threads_live_threads": 66.0
+      },
+      "status": "observed"
+    }
+  ],
+  "schema": "nanolab-soak-drain-v1",
+  "series": [
+    "nanofaas_execution_store_live",
+    "nanofaas_execution_store_outcomes",
+    "nanofaas_execution_store_keys",
+    "nanofaas_execution_store_outcome_bytes",
+    "nanofaas_invocation_capacity_executions_reserved",
+    "nanofaas_invocation_capacity_input_bytes_reserved",
+    "nanofaas_waiter_capacity_reserved",
+    "nanofaas_capacity_generations_retiring",
+    "nanofaas_replica_snapshot_entries",
+    "nanofaas_replica_snapshot_queue_depth",
+    "nanofaas_replica_snapshot_active_tasks",
+    "nanofaas_deployment_wakeup_pending",
+    "nanofaas_http_pending_acquisitions",
+    "nanofaas_http_active_connections",
+    "nanofaas_http_destination_pools",
+    "jvm_memory_used_bytes",
+    "jvm_buffer_memory_used_bytes",
+    "jvm_threads_live_threads",
+    "process_open_fds"
+  ]
+}
