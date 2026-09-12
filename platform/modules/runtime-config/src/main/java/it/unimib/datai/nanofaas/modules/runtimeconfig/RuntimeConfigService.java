@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.modules.runtimeconfig;
 
+import it.unimib.datai.nanofaas.controlplane.config.RuntimeConfigExtension;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;

@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.modules.syncqueue.sync;
 
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -31,7 +32,8 @@ class QueueExpiryOutcomeTest {
         SyncQueueService queue = new SyncQueueService(props, store,
                 new WaitEstimator(Duration.ofSeconds(30), 3),
                 new SyncQueueMetrics(new SimpleMeterRegistry()), Clock.fixed(now, ZoneOffset.UTC),
-                SyncQueueConfigSource.fixed(props.runtimeDefaults()));
+                SyncQueueConfigSource.fixed(props.runtimeDefaults()),
+                new FunctionCapacityRegistry(), null);
         FunctionSpec spec = new FunctionSpec("expiry", "image", null, Map.of(), null,
                 1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
         InvocationTask task = new InvocationTask("expiry-1", "expiry", spec,

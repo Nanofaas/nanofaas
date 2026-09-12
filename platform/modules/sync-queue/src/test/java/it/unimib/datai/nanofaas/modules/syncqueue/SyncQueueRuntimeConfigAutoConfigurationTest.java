@@ -2,7 +2,7 @@ package it.unimib.datai.nanofaas.modules.syncqueue;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.modules.runtimeconfig.RevisionMismatchException;
-import it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigExtension;
+import it.unimib.datai.nanofaas.controlplane.config.RuntimeConfigExtension;
 import it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigRegistry;
 import it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigService;
 import it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigSnapshot;

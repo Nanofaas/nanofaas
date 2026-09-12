@@ -11,7 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
-public class FunctionRegistry {
+public class FunctionRegistry implements FunctionCatalogView {
     private final FunctionCatalog catalog;
     private volatile RegistrySnapshot functions; // NOSONAR: replaced wholesale with an immutable snapshot, never mutated in place
     private final FunctionApplicationState applicationState;

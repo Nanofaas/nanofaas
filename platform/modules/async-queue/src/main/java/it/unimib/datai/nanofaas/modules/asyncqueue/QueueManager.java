@@ -8,7 +8,6 @@ import io.micrometer.core.instrument.Timer;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchCapacity;
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
-import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics;
@@ -30,14 +29,6 @@ public class QueueManager {
     private final WorkloadDiagnostics workloadDiagnostics;
     private final WorkloadMetricsBinder workloadMetricsBinder;
     private WorkSignaler workSignaler;
-
-    public QueueManager(MeterRegistry meterRegistry) {
-        this(meterRegistry, new WorkloadDiagnostics(meterRegistry));
-    }
-
-    QueueManager(MeterRegistry meterRegistry, WorkloadDiagnostics workloadDiagnostics) {
-        this(meterRegistry, workloadDiagnostics, new FunctionCapacityRegistry());
-    }
 
     QueueManager(MeterRegistry meterRegistry, WorkloadDiagnostics workloadDiagnostics,
                  DispatchCapacity capacityRegistry) {

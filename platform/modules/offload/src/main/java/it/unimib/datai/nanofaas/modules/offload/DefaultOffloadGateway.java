@@ -12,7 +12,7 @@ import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadGateway;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadTrigger;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import it.unimib.datai.nanofaas.controlplane.service.Metrics;
+import it.unimib.datai.nanofaas.controlplane.offload.OffloadMeters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -83,10 +83,10 @@ public class DefaultOffloadGateway implements OffloadGateway {
 
     private final OffloadProperties properties;
     private final Supplier<WebClient> webClient;
-    private final Metrics metrics;
+    private final OffloadMeters metrics;
     private final LegacyMeterLifecycle legacyMeters;
 
-    public DefaultOffloadGateway(OffloadProperties properties, WebClient webClient, Metrics metrics) {
+    public DefaultOffloadGateway(OffloadProperties properties, WebClient webClient, OffloadMeters metrics) {
         this(properties, () -> webClient, metrics);
     }
 
@@ -102,7 +102,7 @@ public class DefaultOffloadGateway implements OffloadGateway {
 
     public DefaultOffloadGateway(OffloadProperties properties,
                                  Supplier<WebClient> webClient,
-                                 Metrics metrics) {
+                                 OffloadMeters metrics) {
         this.properties = properties;
         this.webClient = webClient;
         this.metrics = metrics;
@@ -164,7 +164,7 @@ public class DefaultOffloadGateway implements OffloadGateway {
         String target = targetUrl(task.functionSpec());
         String uri = target + "/v1/functions/" + task.functionName() + ":invoke";
         long timeoutMs = Math.max(1, timeoutBudgetMs - TIMEOUT_MARGIN_MS);
-        Metrics.OffloadMeterLease meterLease = metrics == null
+        OffloadMeters.OffloadMeterLease meterLease = metrics == null
                 ? null : metrics.offloadMeters(task.functionName(), trigger);
         LegacyMeterLease legacyLease = legacyMeters == null
                 ? null : legacyMeters.lease(task.functionName(), trigger);

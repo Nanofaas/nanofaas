@@ -1,0 +1,33 @@
+plugins {
+    id 'java-library'
+    id 'io.spring.dependency-management'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.boot:spring-boot-dependencies:${springBootVersion}"
+    }
+}
+
+// The mandatory contract library the optional control-plane modules compile against.
+//
+// Its dependency list is the enforcement mechanism for P21: there is deliberately no
+// dependency on ':control-plane', so nothing here can reference a core implementation —
+// the compiler rejects it rather than an architecture rule catching it later. Only three
+// external libraries are admitted, each because a contract's own signature needs it:
+// ':common' for the shared wire models, slf4j for the two scheduler support classes that
+// log, and reactor-core for the gateway signatures that return a Mono. No Caffeine, no
+// Spring Web, no autoconfiguration, no mutable registry.
+dependencies {
+    api project(':common')
+    api 'io.projectreactor:reactor-core'
+    api 'org.slf4j:slf4j-api'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:6.0.3'
+    testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

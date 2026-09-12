@@ -10,13 +10,15 @@ dependencyManagement {
 }
 
 dependencies {
+    // P21: contract library only; the core implementation stays on the test classpath.
     implementation project(':common')
-    implementation project(':control-plane')
+    implementation project(':control-plane-spi')
     implementation project(':workload-metrics')
 
     implementation 'org.springframework.boot:spring-boot-starter'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
+    testImplementation project(':control-plane')
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-webflux'
     // The queue provider supplies WorkloadMetricsSource, which is what

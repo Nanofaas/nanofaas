@@ -10,13 +10,15 @@ dependencyManagement {
 }
 
 dependencies {
+    // P21: contract library only; the core implementation stays on the test classpath.
     implementation project(':common')
-    implementation project(':control-plane')
+    implementation project(':control-plane-spi')
 
     implementation 'org.springframework.boot:spring-boot-starter'
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
     implementation 'io.micrometer:micrometer-core'
 
+    testImplementation project(':control-plane')
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.0'
     testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'

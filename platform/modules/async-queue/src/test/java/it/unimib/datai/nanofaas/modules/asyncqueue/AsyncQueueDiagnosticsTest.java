@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.modules.asyncqueue;
 
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
@@ -28,7 +29,7 @@ class AsyncQueueDiagnosticsTest {
     @Test
     void slotHoldMetricPublishesAggregatesWithoutARequestDistribution() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        QueueManager queueManager = new QueueManager(registry);
+        QueueManager queueManager = new QueueManager(registry, new FunctionCapacityRegistry());
         FunctionSpec spec = new FunctionSpec(
                 "echo", "image", null, Map.of(), null,
                 1000, 10, 2, 3, null, ExecutionMode.LOCAL, null, null, null
@@ -48,7 +49,7 @@ class AsyncQueueDiagnosticsTest {
     @Test
     void releasePublishesDispatchSlotHoldDuration() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        QueueManager queueManager = new QueueManager(registry);
+        QueueManager queueManager = new QueueManager(registry, new FunctionCapacityRegistry());
         FunctionSpec spec = new FunctionSpec(
                 "echo", "image", null, Map.of(), null,
                 1000, 10, 2, 3, null, ExecutionMode.LOCAL, null, null, null
@@ -69,7 +70,7 @@ class AsyncQueueDiagnosticsTest {
     @Test
     void schedulerPublishesQueueAndWakeupDiagnosticsWithoutChangingDispatch() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        QueueManager queueManager = new QueueManager(registry);
+        QueueManager queueManager = new QueueManager(registry, new FunctionCapacityRegistry());
         InvocationDispatch invocationService = mock(InvocationDispatch.class);
         FunctionSpec spec = new FunctionSpec(
                 "echo", "image", null, Map.of(), null,
@@ -118,7 +119,7 @@ class AsyncQueueDiagnosticsTest {
     @Test
     void schedulerCountsCoalescedSignals() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        QueueManager queueManager = new QueueManager(registry);
+        QueueManager queueManager = new QueueManager(registry, new FunctionCapacityRegistry());
         FunctionSpec spec = new FunctionSpec(
                 "echo", "image", null, Map.of(), null,
                 1000, 1, 10, 3, null, ExecutionMode.LOCAL, null, null, null
@@ -140,7 +141,7 @@ class AsyncQueueDiagnosticsTest {
     void schedulerVisitIncludesActivationBookkeeping() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         AtomicLong clock = new AtomicLong();
-        QueueManager queueManager = new QueueManager(registry) {
+        QueueManager queueManager = new QueueManager(registry, new FunctionCapacityRegistry()) {
             @Override
             void recordSchedulerActivationBookkeepingDuration(String functionName, long durationNanos) {
                 clock.addAndGet(1_000_000);
@@ -174,7 +175,7 @@ class AsyncQueueDiagnosticsTest {
     @Test
     void schedulerThreadTimeNeverExceedsTheElapsedWallClock() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        QueueManager queueManager = new QueueManager(registry);
+        QueueManager queueManager = new QueueManager(registry, new FunctionCapacityRegistry());
         InvocationDispatch invocationService = mock(InvocationDispatch.class);
         FunctionSpec spec = new FunctionSpec(
                 "echo", "image", null, Map.of(), null,

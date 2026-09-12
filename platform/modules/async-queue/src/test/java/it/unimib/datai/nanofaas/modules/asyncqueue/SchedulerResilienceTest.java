@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.modules.asyncqueue;
 
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -57,7 +58,7 @@ class SchedulerResilienceTest {
     @Test
     void dispatchExceptionRecordsSlotHoldAndReleasesTheAcquiredState() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        QueueManager queueManager = new QueueManager(registry);
+        QueueManager queueManager = new QueueManager(registry, new FunctionCapacityRegistry());
         FunctionSpec spec = functionSpec("failed", 1, 10);
         FunctionQueueState state = queueManager.getOrCreate(spec);
         InvocationTask task = task("failed-1", spec);
@@ -279,7 +280,7 @@ class SchedulerResilienceTest {
         private final AtomicInteger getCalls = new AtomicInteger();
 
         CountingQueueManager(String countedFunction) {
-            super(new SimpleMeterRegistry());
+            super(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
             this.countedFunction = countedFunction;
         }
 

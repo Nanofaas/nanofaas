@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.modules.runtimeconfig;
 
+import it.unimib.datai.nanofaas.controlplane.config.RuntimeConfigExtension;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.config.MeterFilter;
 import io.micrometer.core.instrument.config.MeterFilterReply;

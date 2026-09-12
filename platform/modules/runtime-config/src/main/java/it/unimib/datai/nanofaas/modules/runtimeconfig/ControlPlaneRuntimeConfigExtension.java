@@ -1,9 +1,7 @@
 package it.unimib.datai.nanofaas.modules.runtimeconfig;
 
-import it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacity;
-import it.unimib.datai.nanofaas.controlplane.capacity.ResourceQuota;
-import it.unimib.datai.nanofaas.controlplane.capacity.WaiterCapacity;
-import it.unimib.datai.nanofaas.controlplane.service.RateLimiter;
+import it.unimib.datai.nanofaas.controlplane.config.RuntimeConfigExtension;
+import it.unimib.datai.nanofaas.controlplane.capacity.AdmissionLimitsControl;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -29,16 +27,10 @@ final class ControlPlaneRuntimeConfigExtension implements RuntimeConfigExtension
             PHYSICAL_INPUT_GLOBAL, PHYSICAL_INPUT_PER_FUNCTION,
             WAITERS_GLOBAL, WAITERS_PER_FUNCTION);
 
-    private final RateLimiter rateLimiter;
-    private final InvocationCapacity invocationCapacity;
-    private final WaiterCapacity waiterCapacity;
+    private final AdmissionLimitsControl limits;
 
-    ControlPlaneRuntimeConfigExtension(RateLimiter rateLimiter,
-                                       InvocationCapacity invocationCapacity,
-                                       WaiterCapacity waiterCapacity) {
-        this.rateLimiter = rateLimiter;
-        this.invocationCapacity = invocationCapacity;
-        this.waiterCapacity = waiterCapacity;
+    ControlPlaneRuntimeConfigExtension(AdmissionLimitsControl limits) {
+        this.limits = limits;
     }
 
     @Override
@@ -48,18 +40,17 @@ final class ControlPlaneRuntimeConfigExtension implements RuntimeConfigExtension
 
     @Override
     public Map<String, Object> snapshot() {
-        InvocationCapacity.Limits invocationLimits = invocationCapacity.limits();
-        ResourceQuota.Limits waiterLimits = waiterCapacity.limits();
+        AdmissionLimitsControl.Snapshot current = limits.limits();
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put(RATE_MAX_PER_SECOND, rateLimiter.getMaxPerSecond());
-        result.put(EXECUTIONS_GLOBAL, invocationLimits.executions().global());
-        result.put(EXECUTIONS_PER_FUNCTION, invocationLimits.executions().perFunction());
-        result.put(CANONICAL_INPUT_GLOBAL, invocationLimits.canonicalInputBytes().global());
-        result.put(CANONICAL_INPUT_PER_FUNCTION, invocationLimits.canonicalInputBytes().perFunction());
-        result.put(PHYSICAL_INPUT_GLOBAL, invocationLimits.physicalInputCopyBytes().global());
-        result.put(PHYSICAL_INPUT_PER_FUNCTION, invocationLimits.physicalInputCopyBytes().perFunction());
-        result.put(WAITERS_GLOBAL, waiterLimits.global());
-        result.put(WAITERS_PER_FUNCTION, waiterLimits.perFunction());
+        result.put(RATE_MAX_PER_SECOND, current.rateMaxPerSecond());
+        result.put(EXECUTIONS_GLOBAL, current.executions().global());
+        result.put(EXECUTIONS_PER_FUNCTION, current.executions().perFunction());
+        result.put(CANONICAL_INPUT_GLOBAL, current.canonicalInputBytes().global());
+        result.put(CANONICAL_INPUT_PER_FUNCTION, current.canonicalInputBytes().perFunction());
+        result.put(PHYSICAL_INPUT_GLOBAL, current.physicalInputCopyBytes().global());
+        result.put(PHYSICAL_INPUT_PER_FUNCTION, current.physicalInputCopyBytes().perFunction());
+        result.put(WAITERS_GLOBAL, current.waiters().global());
+        result.put(WAITERS_PER_FUNCTION, current.waiters().perFunction());
         return Map.copyOf(result);
     }
 
@@ -117,17 +108,16 @@ final class ControlPlaneRuntimeConfigExtension implements RuntimeConfigExtension
     }
 
     private void applyComplete(Map<String, Object> values) {
-        rateLimiter.setMaxPerSecond(Math.toIntExact(requiredLong(values, RATE_MAX_PER_SECOND)));
-        invocationCapacity.updateLimits(new InvocationCapacity.Limits(
-                limits(values, EXECUTIONS_GLOBAL, EXECUTIONS_PER_FUNCTION),
-                limits(values, CANONICAL_INPUT_GLOBAL, CANONICAL_INPUT_PER_FUNCTION),
-                limits(values, PHYSICAL_INPUT_GLOBAL, PHYSICAL_INPUT_PER_FUNCTION)));
-        waiterCapacity.updateLimits(
-                requiredLong(values, WAITERS_GLOBAL), requiredLong(values, WAITERS_PER_FUNCTION));
+        limits.updateLimits(new AdmissionLimitsControl.Snapshot(
+                Math.toIntExact(requiredLong(values, RATE_MAX_PER_SECOND)),
+                pair(values, EXECUTIONS_GLOBAL, EXECUTIONS_PER_FUNCTION),
+                pair(values, CANONICAL_INPUT_GLOBAL, CANONICAL_INPUT_PER_FUNCTION),
+                pair(values, PHYSICAL_INPUT_GLOBAL, PHYSICAL_INPUT_PER_FUNCTION),
+                pair(values, WAITERS_GLOBAL, WAITERS_PER_FUNCTION)));
     }
 
-    private static ResourceQuota.Limits limits(Map<String, Object> values, String global, String perFunction) {
-        return new ResourceQuota.Limits(requiredLong(values, global), requiredLong(values, perFunction));
+    private static AdmissionLimitsControl.Pair pair(Map<String, Object> values, String global, String perFunction) {
+        return new AdmissionLimitsControl.Pair(requiredLong(values, global), requiredLong(values, perFunction));
     }
 
     private static void validatePair(Map<String, Object> values, String global, String perFunction,

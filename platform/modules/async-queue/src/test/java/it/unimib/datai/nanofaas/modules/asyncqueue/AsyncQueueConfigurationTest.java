@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.modules.asyncqueue;
 
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -25,7 +26,7 @@ class AsyncQueueConfigurationTest {
 
     @Test
     void queueLifecycleListener_marksDrainedQueuedExecutionAsFunctionRemoved() {
-        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry());
+        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
         AsyncQueueConfiguration configuration = new AsyncQueueConfiguration();
         FunctionRegistrationListener listener = configuration.queueLifecycleListener(queueManager, executionStore);
         FunctionSpec spec = spec("echo");
@@ -50,7 +51,7 @@ class AsyncQueueConfigurationTest {
     @Test
     void asyncQueueWorkloadMetricsBinder_reusesQueueManagerBinder() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        QueueManager queueManager = new QueueManager(registry);
+        QueueManager queueManager = new QueueManager(registry, new FunctionCapacityRegistry());
         AsyncQueueConfiguration configuration = new AsyncQueueConfiguration();
 
         WorkloadMetricsBinder first = configuration.asyncQueueWorkloadMetricsBinder(queueManager);

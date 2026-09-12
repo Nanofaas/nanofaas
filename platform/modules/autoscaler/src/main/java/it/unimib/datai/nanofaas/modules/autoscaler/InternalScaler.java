@@ -4,12 +4,12 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
-import it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator;
+import it.unimib.datai.nanofaas.controlplane.registry.ManagedReplicaControl;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
-import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinator;
+import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpControl;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaObservation;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
-import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
+import it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogView;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,46 +24,46 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class InternalScaler implements SmartLifecycle {
     private static final Logger log = LoggerFactory.getLogger(InternalScaler.class);
 
-    private final FunctionRegistry registry;
-    private final ManagedDeploymentCoordinator deploymentCoordinator;
+    private final FunctionCatalogView registry;
+    private final ManagedReplicaControl deploymentCoordinator;
     private final ScalingProperties properties;
     private final ColdStartTracker coldStartTracker;
     private final ScalingDecisionCalculator decisionCalculator;
     private final ScalingCooldownTracker cooldownTracker;
     private final ScalingProgressTracker progressTracker;
-    private final DeploymentWakeUpCoordinator wakeUpCoordinator;
+    private final DeploymentWakeUpControl wakeUpCoordinator;
     private final ScalingDecisionMetrics decisionMetrics;
     private final InstantSource instantSource;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private ScheduledExecutorService executor;
 
-    public InternalScaler(FunctionRegistry registry,
+    public InternalScaler(FunctionCatalogView registry,
                           ScalingMetricsReader metricsReader,
-                          @Autowired(required = false) ManagedDeploymentCoordinator deploymentCoordinator,
+                          @Autowired(required = false) ManagedReplicaControl deploymentCoordinator,
                           ScalingProperties properties,
                           ColdStartTracker coldStartTracker,
-                          DeploymentWakeUpCoordinator wakeUpCoordinator) {
+                          DeploymentWakeUpControl wakeUpCoordinator) {
         this(registry, metricsReader, deploymentCoordinator, properties, coldStartTracker,
                 wakeUpCoordinator, null);
     }
 
-    public InternalScaler(FunctionRegistry registry,
+    public InternalScaler(FunctionCatalogView registry,
                           ScalingMetricsReader metricsReader,
-                          @Autowired(required = false) ManagedDeploymentCoordinator deploymentCoordinator,
+                          @Autowired(required = false) ManagedReplicaControl deploymentCoordinator,
                           ScalingProperties properties,
                           ColdStartTracker coldStartTracker,
-                          DeploymentWakeUpCoordinator wakeUpCoordinator,
+                          DeploymentWakeUpControl wakeUpCoordinator,
                           ScalingDecisionMetrics decisionMetrics) {
         this(registry, metricsReader, deploymentCoordinator, properties, coldStartTracker,
                 wakeUpCoordinator, decisionMetrics, InstantSource.system());
     }
 
-    public InternalScaler(FunctionRegistry registry,
+    public InternalScaler(FunctionCatalogView registry,
                           ScalingMetricsReader metricsReader,
-                          @Autowired(required = false) ManagedDeploymentCoordinator deploymentCoordinator,
+                          @Autowired(required = false) ManagedReplicaControl deploymentCoordinator,
                           ScalingProperties properties,
                           ColdStartTracker coldStartTracker,
-                          DeploymentWakeUpCoordinator wakeUpCoordinator,
+                          DeploymentWakeUpControl wakeUpCoordinator,
                           ScalingDecisionMetrics decisionMetrics,
                           InstantSource instantSource) {
         this.decisionMetrics = decisionMetrics;
@@ -81,7 +81,7 @@ public class InternalScaler implements SmartLifecycle {
     @Override
     public void start() {
         if (deploymentCoordinator == null) {
-            log.info("InternalScaler disabled: no ManagedDeploymentCoordinator available");
+            log.info("InternalScaler disabled: no ManagedReplicaControl available");
             return;
         }
         if (running.compareAndSet(false, true)) {

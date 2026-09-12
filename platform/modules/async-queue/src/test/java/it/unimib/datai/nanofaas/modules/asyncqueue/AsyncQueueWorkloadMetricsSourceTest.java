@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.modules.asyncqueue;
 
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -14,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AsyncQueueWorkloadMetricsSourceTest {
     @Test
     void readsQueueAndCapacityAndReturnsZeroForUnknownFunctions() {
-        QueueManager manager = new QueueManager(new SimpleMeterRegistry());
+        QueueManager manager = new QueueManager(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
         FunctionSpec spec = new FunctionSpec(
                 "echo", "image", null, Map.of(), null,
                 10, 2, 10, 3, null, ExecutionMode.LOCAL, null, null, null

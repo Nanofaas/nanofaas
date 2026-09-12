@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.modules.syncqueue.sync;
 
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -46,7 +47,9 @@ class SyncQueueThroughputPerfTest {
                 props,
                 executionStore,
                 new SyncQueueMetrics(new SimpleMeterRegistry()),
-                SyncQueueConfigSource.fixed(props.runtimeDefaults())
+                SyncQueueConfigSource.fixed(props.runtimeDefaults()),
+                new FunctionCapacityRegistry(),
+                null
         );
 
         InvocationTask blocked = task("blocked-exec", "blocked-fn");

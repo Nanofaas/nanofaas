@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.modules.runtimeconfig;
 
+import it.unimib.datai.nanofaas.controlplane.config.RuntimeConfigExtension;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;

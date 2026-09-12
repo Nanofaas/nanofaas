@@ -1,12 +1,17 @@
 package it.unimib.datai.nanofaas.controlplane.registry;
 
-import org.springframework.http.HttpStatus;
-
+/**
+ * Image validation refused a registration, carrying the HTTP status the API must answer with.
+ *
+ * <p>The status is the raw status code rather than a Spring {@code HttpStatus}: this contract
+ * lives in the SPI, which admits no Web dependency, and the only reader is the core exception
+ * handler, which passes an {@code int} to {@code ResponseEntity.status} unchanged.</p>
+ */
 public final class ImageValidationException extends RuntimeException {
     private final String errorCode;
-    private final HttpStatus status;
+    private final int status;
 
-    private ImageValidationException(String errorCode, HttpStatus status, String message) {
+    private ImageValidationException(String errorCode, int status, String message) {
         super(message);
         this.errorCode = errorCode;
         this.status = status;
@@ -15,7 +20,7 @@ public final class ImageValidationException extends RuntimeException {
     public static ImageValidationException notFound(String image) {
         return new ImageValidationException(
                 "IMAGE_NOT_FOUND",
-                HttpStatus.UNPROCESSABLE_ENTITY,
+                422,
                 "Image not found in registry: " + image
         );
     }
@@ -23,7 +28,7 @@ public final class ImageValidationException extends RuntimeException {
     public static ImageValidationException authRequired(String image) {
         return new ImageValidationException(
                 "IMAGE_PULL_AUTH_REQUIRED",
-                HttpStatus.FAILED_DEPENDENCY,
+                424,
                 "Image pull authentication failed for: " + image
         );
     }
@@ -32,7 +37,7 @@ public final class ImageValidationException extends RuntimeException {
         String suffix = (details == null || details.isBlank()) ? "" : " (" + details + ")";
         return new ImageValidationException(
                 "IMAGE_REGISTRY_UNAVAILABLE",
-                HttpStatus.SERVICE_UNAVAILABLE,
+                503,
                 "Unable to validate image in registry: " + image + suffix
         );
     }
@@ -41,7 +46,8 @@ public final class ImageValidationException extends RuntimeException {
         return errorCode;
     }
 
-    public HttpStatus status() {
+    /** The HTTP status code the API answers with; 422, 424 or 503. */
+    public int status() {
         return status;
     }
 }

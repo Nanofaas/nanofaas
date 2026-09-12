@@ -42,9 +42,10 @@ final class ExecutionInputResources {
     }
 
     QueuedInputLease retainForQueue(InvocationTask source) {
-        return new QueuedInputLease(admission.canonicalInput().retain(
+        RetainedInputLease.Reference reference = admission.canonicalInput().retain(
                 new ResourceOwner(ResourceOwner.Scope.QUEUE_ENTRY,
-                        source.executionId() + "/attempt-" + source.attempt() + "/queue")));
+                        source.executionId() + "/attempt-" + source.attempt() + "/queue"));
+        return new QueuedInputLease(reference::close);
     }
 
     ExecutionRecord.PhysicalInput open(InvocationTask source) {

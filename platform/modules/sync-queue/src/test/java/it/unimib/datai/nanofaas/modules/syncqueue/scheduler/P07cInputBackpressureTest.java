@@ -161,7 +161,8 @@ class P07cInputBackpressureTest {
                 Duration.ofSeconds(30), 3);
         return new SyncQueueService(properties, store,
                 new SyncQueueMetrics(new SimpleMeterRegistry()),
-                SyncQueueConfigSource.fixed(properties.runtimeDefaults()));
+                SyncQueueConfigSource.fixed(properties.runtimeDefaults()),
+                new FunctionCapacityRegistry(), null);
     }
 
     private static InvocationTask task() {

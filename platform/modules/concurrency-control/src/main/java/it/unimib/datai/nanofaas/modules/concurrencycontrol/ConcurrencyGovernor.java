@@ -5,8 +5,8 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaObservation;
-import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
-import it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator;
+import it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogView;
+import it.unimib.datai.nanofaas.controlplane.registry.ManagedReplicaControl;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerLifecycleSupport;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationObservations;
@@ -35,12 +35,12 @@ import org.springframework.context.SmartLifecycle;
 public class ConcurrencyGovernor implements SmartLifecycle {
     private static final Logger log = LoggerFactory.getLogger(ConcurrencyGovernor.class);
 
-    private final FunctionRegistry registry;
+    private final FunctionCatalogView registry;
     private final InvocationObservations metrics;
     private final java.util.Map<String, FunctionGeneration> observedGenerations = new java.util.concurrent.ConcurrentHashMap<>();
     private final ConcurrencyControlCoordinator coordinator;
     private final ConcurrencyControlProperties properties;
-    private final ManagedDeploymentCoordinator deploymentCoordinator;
+    private final ManagedReplicaControl deploymentCoordinator;
     private final WorkloadMetricsSource metricsSource;
     private final WorkloadCapacityController capacityController;
     private final ConcurrencyControlMetrics concurrencyMetrics;
@@ -54,11 +54,11 @@ public class ConcurrencyGovernor implements SmartLifecycle {
     // two that did belong together are already bundled into one controllers record, and
     // grouping the rest by nothing but arity would make the wiring harder to read.
     @SuppressWarnings("java:S107")
-    public ConcurrencyGovernor(FunctionRegistry registry,
+    public ConcurrencyGovernor(FunctionCatalogView registry,
                                InvocationObservations metrics,
                                ConcurrencyControlCoordinator coordinator,
                                ConcurrencyControlProperties properties,
-                               ManagedDeploymentCoordinator deploymentCoordinator,
+                               ManagedReplicaControl deploymentCoordinator,
                                WorkloadMetricsSource metricsSource,
                                WorkloadCapacityController capacityController,
                                ConcurrencyControlMetrics concurrencyMetrics) {
@@ -85,11 +85,11 @@ public class ConcurrencyGovernor implements SmartLifecycle {
     }
 
     @SuppressWarnings("java:S107")   // see the delegating constructor above
-    public ConcurrencyGovernor(FunctionRegistry registry,
+    public ConcurrencyGovernor(FunctionCatalogView registry,
                                InvocationObservations metrics,
                                ConcurrencyControllers controllers,
                                ConcurrencyControlProperties properties,
-                               ManagedDeploymentCoordinator deploymentCoordinator,
+                               ManagedReplicaControl deploymentCoordinator,
                                WorkloadMetricsSource metricsSource,
                                WorkloadCapacityController capacityController,
                                ConcurrencyControlMetrics concurrencyMetrics,

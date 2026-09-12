@@ -91,7 +91,7 @@ class AsyncQueueInvokeEnqueueContractRegressionTest {
 
     @Test
     void syncInvokeWaitsForTheQueuedDispatchToComplete() throws Exception {
-        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry());
+        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
         FunctionSpec spec = spec(10, 0);
         queueManager.getOrCreate(spec);
         QueueBackedEnqueuer enqueuer = new QueueBackedEnqueuer(queueManager);
@@ -130,7 +130,7 @@ class AsyncQueueInvokeEnqueueContractRegressionTest {
 
     @Test
     void asyncEnqueueAnswersEarlyAndCompletesWhenTheQueueIsDrained() {
-        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry());
+        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
         FunctionSpec spec = spec(10, 0);
         queueManager.getOrCreate(spec);
         QueueBackedEnqueuer enqueuer = new QueueBackedEnqueuer(queueManager);
@@ -163,7 +163,7 @@ class AsyncQueueInvokeEnqueueContractRegressionTest {
 
     @Test
     void concurrentSyncInvokeAndAsyncEnqueueShareOneSlotAndDrainCleanly() throws Exception {
-        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry());
+        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
         FunctionSpec spec = spec(10, 0);
         queueManager.getOrCreate(spec);
         QueueBackedEnqueuer enqueuer = new QueueBackedEnqueuer(queueManager);
@@ -218,7 +218,7 @@ class AsyncQueueInvokeEnqueueContractRegressionTest {
 
     @Test
     void syncInvokeWaitsAcrossARetryThatReEnqueuesThroughTheSameQueue() throws Exception {
-        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry());
+        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
         FunctionSpec spec = spec(10, 1); // One retry is allowed.
         queueManager.getOrCreate(spec);
         QueueBackedEnqueuer enqueuer = new QueueBackedEnqueuer(queueManager);
@@ -259,7 +259,7 @@ class AsyncQueueInvokeEnqueueContractRegressionTest {
 
     @Test
     void queueSaturationRefusesNewAsyncWorkWhileTheQueuedSyncDispatchStillCompletes() {
-        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry());
+        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
         FunctionSpec spec = spec(1, 0); // A queue of a single slot.
         queueManager.getOrCreate(spec);
         QueueBackedEnqueuer enqueuer = new QueueBackedEnqueuer(queueManager);

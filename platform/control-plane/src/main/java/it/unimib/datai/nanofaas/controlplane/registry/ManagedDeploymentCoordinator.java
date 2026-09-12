@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.registry;
 
+import it.unimib.datai.nanofaas.controlplane.registry.ManagedReplicaControl;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
@@ -26,7 +27,7 @@ import java.time.InstantSource;
  * a fresh read through {@link #getFreshReplicaStatus}.</p>
  */
 @Service
-public class ManagedDeploymentCoordinator implements AutoCloseable {
+public class ManagedDeploymentCoordinator implements ManagedReplicaControl, AutoCloseable {
 
     private final DeploymentProviderResolver deploymentProviderResolver;
     private final FunctionRegistry registry;

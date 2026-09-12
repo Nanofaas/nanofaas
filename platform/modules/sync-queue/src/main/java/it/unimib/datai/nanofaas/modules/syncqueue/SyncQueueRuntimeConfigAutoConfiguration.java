@@ -1,6 +1,6 @@
 package it.unimib.datai.nanofaas.modules.syncqueue;
 
-import it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigExtension;
+import it.unimib.datai.nanofaas.controlplane.config.RuntimeConfigExtension;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -13,7 +13,7 @@ import java.util.Map;
 
 @AutoConfiguration
 @AutoConfigureAfter(name = "it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueConfiguration")
-@ConditionalOnClass(name = "it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigExtension")
+@ConditionalOnClass(name = "it.unimib.datai.nanofaas.controlplane.config.RuntimeConfigExtension")
 public class SyncQueueRuntimeConfigAutoConfiguration {
     @Bean
     RuntimeConfigExtension syncQueueRuntimeConfigExtension(MutableSyncQueueConfigSource source) {

@@ -23,7 +23,7 @@ import java.util.function.LongSupplier;
 
 /** Serializes generation-scoped deployment wake-ups with scale-downs for each function. */
 @Service
-public class DeploymentWakeUpCoordinator implements AutoCloseable {
+public class DeploymentWakeUpCoordinator implements DeploymentWakeUpControl, AutoCloseable {
     private final FunctionCapacityRegistry generations;
     private final ScheduledExecutorService scheduler;
     private final LongSupplier nanoTime;

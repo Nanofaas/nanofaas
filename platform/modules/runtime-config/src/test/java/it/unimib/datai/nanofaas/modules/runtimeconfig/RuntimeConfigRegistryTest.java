@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.modules.runtimeconfig;
 
+import it.unimib.datai.nanofaas.controlplane.config.RuntimeConfigExtension;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

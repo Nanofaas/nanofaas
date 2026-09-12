@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.modules.syncqueue.scheduler;
 
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
@@ -246,6 +247,6 @@ class SyncSchedulerTest {
         );
         SyncQueueMetrics metrics = new SyncQueueMetrics(new SimpleMeterRegistry());
         SyncQueueConfigSource configSource = SyncQueueConfigSource.fixed(props.runtimeDefaults());
-        return new SyncQueueService(props, store, metrics, configSource);
+        return new SyncQueueService(props, store, metrics, configSource, new FunctionCapacityRegistry(), null);
     }
 }

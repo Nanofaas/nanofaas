@@ -7,7 +7,6 @@ import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
-import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchCapacity;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics;
@@ -76,20 +75,6 @@ public class SyncQueueService implements SyncQueueGateway {
     public SyncQueueService(SyncQueueProperties props,
                             QueueLifecycle executionStore,
                             SyncQueueMetrics metrics,
-                            SyncQueueConfigSource configSource) {
-        this(props,
-                executionStore,
-                new WaitEstimator(props.throughputWindow(), props.perFunctionMinSamples()),
-                metrics,
-                Clock.systemUTC(),
-                configSource,
-                new FunctionCapacityRegistry(),
-                null);
-    }
-
-    public SyncQueueService(SyncQueueProperties props,
-                            QueueLifecycle executionStore,
-                            SyncQueueMetrics metrics,
                             SyncQueueConfigSource configSource,
                             DispatchCapacity capacityRegistry,
                             WorkloadDiagnostics diagnostics) {
@@ -98,18 +83,8 @@ public class SyncQueueService implements SyncQueueGateway {
                 metrics, Clock.systemUTC(), configSource, capacityRegistry, diagnostics);
     }
 
-    SyncQueueService(SyncQueueProperties props,
-                     QueueLifecycle executionStore,
-                     WaitEstimator estimator,
-                     SyncQueueMetrics metrics,
-                     Clock clock,
-                     SyncQueueConfigSource configSource) {
-        this(props, executionStore, estimator, metrics, clock, configSource,
-                new FunctionCapacityRegistry(), null);
-    }
-
-    // Spring wiring: eight distinct collaborators, each read on its own. The shorter
-    // constructors above are the ones tests use; this one is the full graph.
+    // Spring wiring: eight distinct collaborators, each read on its own. Every constructor
+    // takes its capacity explicitly - the module owns no capacity of its own (P21).
     @SuppressWarnings("java:S107")
     public SyncQueueService(SyncQueueProperties props,
                             QueueLifecycle executionStore,

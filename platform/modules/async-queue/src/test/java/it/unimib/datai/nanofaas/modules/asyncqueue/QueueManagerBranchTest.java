@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.modules.asyncqueue;
 
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -18,7 +19,7 @@ class QueueManagerBranchTest {
 
     @Test
     void enqueue_unknownFunction_returnsFalse() {
-        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry());
+        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
 
         boolean enqueued = queueManager.enqueue(task("missing"));
 
@@ -27,14 +28,14 @@ class QueueManagerBranchTest {
 
     @Test
     void tryAcquireSlot_unknownFunction_returnsFalse() {
-        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry());
+        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
 
         assertThat(queueManager.tryAcquireLease("missing", queueManager.get("missing"))).isNull();
     }
 
     @Test
     void getOrCreate_existingFunction_updatesConcurrency() {
-        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry());
+        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
         FunctionSpec initial = spec("fn", 1, 10);
         FunctionSpec updated = spec("fn", 2, 10);
 

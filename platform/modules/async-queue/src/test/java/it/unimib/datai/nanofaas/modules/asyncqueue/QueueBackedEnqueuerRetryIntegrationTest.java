@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.modules.asyncqueue;
 
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
@@ -81,7 +82,7 @@ class QueueBackedEnqueuerRetryIntegrationTest {
 
     @Test
     void zeroRetries_immediateSuccess_singleAttempt() {
-        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry());
+        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
         FunctionSpec spec = spec(0, 10);
         queueManager.getOrCreate(spec);
         QueueBackedEnqueuer enqueuer = new QueueBackedEnqueuer(queueManager);
@@ -105,7 +106,7 @@ class QueueBackedEnqueuerRetryIntegrationTest {
 
     @Test
     void zeroRetries_definitiveFailure_singleAttempt() {
-        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry());
+        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
         FunctionSpec spec = spec(0, 10);
         queueManager.getOrCreate(spec);
         QueueBackedEnqueuer enqueuer = new QueueBackedEnqueuer(queueManager);
@@ -129,7 +130,7 @@ class QueueBackedEnqueuerRetryIntegrationTest {
 
     @Test
     void oneRetry_errorThenSuccess() {
-        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry());
+        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
         FunctionSpec spec = spec(1, 10);
         queueManager.getOrCreate(spec);
         QueueBackedEnqueuer enqueuer = new QueueBackedEnqueuer(queueManager);
@@ -157,7 +158,7 @@ class QueueBackedEnqueuerRetryIntegrationTest {
 
     @Test
     void threeRetries_definitiveFailure_neverExceedsFourAttempts() {
-        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry());
+        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
         FunctionSpec spec = spec(3, 10);
         queueManager.getOrCreate(spec);
         QueueBackedEnqueuer enqueuer = new QueueBackedEnqueuer(queueManager);
@@ -185,7 +186,7 @@ class QueueBackedEnqueuerRetryIntegrationTest {
 
     @Test
     void threeRetries_errorThenSuccess_atMostFourAttempts() {
-        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry());
+        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
         FunctionSpec spec = spec(3, 10);
         queueManager.getOrCreate(spec);
         QueueBackedEnqueuer enqueuer = new QueueBackedEnqueuer(queueManager);
@@ -213,7 +214,7 @@ class QueueBackedEnqueuerRetryIntegrationTest {
 
     @Test
     void retryQueueFull_terminatesTheRequestWithoutOrphanedQueuedState() {
-        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry());
+        QueueManager queueManager = new QueueManager(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
         FunctionSpec spec = spec(3, 1); // queueSize=1: only one slot in the real bounded queue
         queueManager.getOrCreate(spec);
         QueueBackedEnqueuer enqueuer = new QueueBackedEnqueuer(queueManager);

@@ -10,13 +10,16 @@ dependencyManagement {
 }
 
 dependencies {
+    // P21: the module compiles against the contract library only. The core implementation is
+    // available to tests, where module integration tests legitimately run against the consumer.
     implementation project(':common')
-    implementation project(':control-plane')
+    implementation project(':control-plane-spi')
 
     implementation 'org.springframework.boot:spring-boot-starter'
     implementation 'io.fabric8:kubernetes-client:7.8.0'
     implementation 'io.fabric8:kubernetes-httpclient-vertx:7.8.0'
 
+    testImplementation project(':control-plane')
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-webflux'
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.0'

@@ -50,25 +50,31 @@ class CoreArchitectureTest {
                     .should().dependOnClassesThat().resideInAPackage("..controlplane.service..")
                     .as("dispatch, execution and deployment must not depend on service");
 
-    // R6: the controlplane namespace belongs to the core — classes residing in it must
-    // have their class file under platform/control-plane/.
+    // R6: the controlplane namespace belongs to the core and to the mandatory contract library,
+    // and to nothing else. P21 split it deliberately: the contracts the optional modules compile
+    // against moved to :control-plane-spi under their existing names, so that AOT hints,
+    // reflect-config, package rules and module descriptors keep addressing them as before. An
+    // optional module, an SDK or a service claiming a package in this namespace is still a
+    // violation, which is what this rule exists to catch.
     @ArchTest
     static final ArchRule controlplane_namespace_is_owned_by_core =
             classes()
                     .that().resideInAPackage("it.unimib.datai.nanofaas.controlplane..")
-                    .should(haveSourceInCoreModule())
-                    .as("classes in the controlplane namespace must live in the control-plane module");
+                    .should(haveSourceInCoreOrContractModule())
+                    .as("classes in the controlplane namespace must live in the control-plane "
+                            + "module or in its mandatory contract library");
 
-    private static ArchCondition<JavaClass> haveSourceInCoreModule() {
-        return new ArchCondition<>("have their class file under the control-plane module") {
+    private static ArchCondition<JavaClass> haveSourceInCoreOrContractModule() {
+        return new ArchCondition<>("have their class file under the control-plane module or its contract library") {
             @Override
             public void check(JavaClass item, ConditionEvents events) {
                 // ArchUnit 1.4.1 dropped SourceCodeLocation's source-path accessor, so read the
                 // source URI instead; it can point to either a classes directory or a JAR.
                 URI source = item.getSource().map(Source::getUri).orElse(null);
-                if (source == null || !isCoreSource(source)) {
+                if (source == null || !(isCoreSource(source) || isContractSource(source))) {
                     events.add(SimpleConditionEvent.violated(item,
-                            item.getDescription() + " does not live in the control-plane module (" + source + ")"));
+                            item.getDescription() + " lives in neither the control-plane module nor its"
+                                    + " contract library (" + source + ")"));
                 }
             }
         };
@@ -76,5 +82,9 @@ class CoreArchitectureTest {
 
     static boolean isCoreSource(URI uri) {
         return uri.toString().contains("/platform/control-plane/");
+    }
+
+    static boolean isContractSource(URI uri) {
+        return uri.toString().contains("/platform/control-plane-spi/");
     }
 }

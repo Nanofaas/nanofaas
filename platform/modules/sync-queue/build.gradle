@@ -16,16 +16,19 @@ dependencyManagement {
 def syncQueueSelected = gradle.ext.nanofaasSelectedControlPlaneModules.contains('sync-queue')
 
 dependencies {
+    // P21: contract library only; the core implementation stays on the test classpath.
     implementation project(':common')
-    implementation project(':control-plane')
+    implementation project(':control-plane-spi')
     implementation project(':workload-metrics')
-    compileOnly project(':control-plane-modules:runtime-config')
 
     implementation 'org.springframework.boot:spring-boot-starter'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-webflux'
+    // The runtime-config implementation supplies the concrete registry these tests drive;
+    // the core implementation backs the module's integration tests.
+    testImplementation project(':control-plane')
     testImplementation project(':control-plane-modules:runtime-config')
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.0'
     testImplementation 'org.awaitility:awaitility:4.3.0'

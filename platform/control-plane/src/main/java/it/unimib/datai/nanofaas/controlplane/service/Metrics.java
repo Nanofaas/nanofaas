@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import it.unimib.datai.nanofaas.controlplane.offload.OffloadMeters;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -23,7 +24,7 @@ import java.util.HashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Component
-public class Metrics implements InvocationObservations {
+public class Metrics implements InvocationObservations, OffloadMeters {
     private static final String FUNCTION_TAG = "function";
     private final MeterRegistry registry;
     private final Map<String, FunctionMeters> meters = new ConcurrentHashMap<>();
@@ -402,7 +403,7 @@ public class Metrics implements InvocationObservations {
     }
 
     /** Lifecycle handle for lazy offload counters; it deliberately exposes no generation tag. */
-    public final class OffloadMeterLease implements AutoCloseable {
+    public final class OffloadMeterLease implements OffloadMeters.OffloadMeterLease {
         private final OffloadMeterOwner owner;
         private final OffloadTrigger trigger;
         private boolean subscribed;

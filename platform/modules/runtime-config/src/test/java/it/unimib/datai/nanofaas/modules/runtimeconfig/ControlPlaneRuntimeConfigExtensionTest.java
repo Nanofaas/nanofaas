@@ -1,6 +1,8 @@
 package it.unimib.datai.nanofaas.modules.runtimeconfig;
 
+import it.unimib.datai.nanofaas.controlplane.config.RuntimeConfigExtension;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.service.HotAdmissionLimits;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacity;
 import it.unimib.datai.nanofaas.controlplane.capacity.ResourceOwner;
@@ -108,8 +110,11 @@ class ControlPlaneRuntimeConfigExtensionTest {
         InvocationCapacity invocations = new InvocationCapacity(
                 generations, 100, 20, 1_000, 100, 1_000, 100, 16);
         WaiterCapacity waiters = new WaiterCapacity(generations, 100, 20);
+        // Driven through the real core port, so the test still exercises the live quotas
+        // rather than a stub of the limits contract.
         return new Fixture(generations, invocations, waiters,
-                new ControlPlaneRuntimeConfigExtension(limiter, invocations, waiters));
+                new ControlPlaneRuntimeConfigExtension(
+                        new HotAdmissionLimits(limiter, invocations, waiters)));
     }
 
     private record Fixture(FunctionCapacityRegistry generations, InvocationCapacity invocations,

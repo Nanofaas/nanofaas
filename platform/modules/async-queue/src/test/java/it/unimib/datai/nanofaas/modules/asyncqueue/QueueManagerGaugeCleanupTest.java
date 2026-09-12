@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.modules.asyncqueue;
 
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import io.micrometer.core.instrument.Meter;
@@ -28,7 +29,7 @@ class QueueManagerGaugeCleanupTest {
     @Test
     void remove_deregistersGaugesFromMeterRegistry() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        QueueManager queueManager = new QueueManager(registry);
+        QueueManager queueManager = new QueueManager(registry, new FunctionCapacityRegistry());
 
         FunctionSpec spec = new FunctionSpec(
                 "fn1", "image", null, Map.of(), null,
@@ -47,7 +48,7 @@ class QueueManagerGaugeCleanupTest {
     @Test
     void remove_nonExistentFunction_doesNotThrow() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        QueueManager queueManager = new QueueManager(registry);
+        QueueManager queueManager = new QueueManager(registry, new FunctionCapacityRegistry());
 
         assertThatCode(() -> queueManager.remove("nonexistent")).doesNotThrowAnyException();
     }
@@ -55,7 +56,7 @@ class QueueManagerGaugeCleanupTest {
     @Test
     void remove_oneFunction_doesNotAffectOther() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        QueueManager queueManager = new QueueManager(registry);
+        QueueManager queueManager = new QueueManager(registry, new FunctionCapacityRegistry());
 
         FunctionSpec spec1 = new FunctionSpec(
                 "fn1", "image", null, Map.of(), null,

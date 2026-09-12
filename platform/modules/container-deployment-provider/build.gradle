@@ -10,13 +10,16 @@ dependencyManagement {
 }
 
 dependencies {
+    // P21: the module compiles against the contract library only. The core implementation is
+    // available to tests, where module integration tests legitimately run against the consumer.
     implementation project(':common')
-    implementation project(':control-plane')
+    implementation project(':control-plane-spi')
 
     implementation 'org.springframework.boot:spring-boot-starter'
     implementation 'com.github.docker-java:docker-java-core:3.7.1'
     implementation 'com.github.docker-java:docker-java-transport-zerodep:3.7.1'
 
+    testImplementation project(':control-plane')
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'

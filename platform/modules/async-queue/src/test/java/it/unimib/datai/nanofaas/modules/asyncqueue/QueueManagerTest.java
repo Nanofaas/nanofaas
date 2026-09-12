@@ -29,7 +29,7 @@ class QueueManagerTest {
 
     @Test
     void lifecycleLocksAreRemovedAfterRepeatedFunctionRemoval() {
-        QueueManager manager = new QueueManager(new SimpleMeterRegistry());
+        QueueManager manager = new QueueManager(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
         FunctionSpec spec = spec("cleanup", 1);
         for (int i = 0; i < 20; i++) {
             manager.getOrCreate(spec);
@@ -40,7 +40,7 @@ class QueueManagerTest {
 
     @Test
     void concurrentRemoveAndRegisterLeavesNewGenerationUsableAndOldSlotSafe() throws Exception {
-        QueueManager manager = new QueueManager(new SimpleMeterRegistry());
+        QueueManager manager = new QueueManager(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
         FunctionSpec spec = spec("race", 1);
         FunctionQueueState oldState = manager.getOrCreate(spec);
         var oldLease = manager.tryAcquireLease(spec.name(), oldState);
@@ -96,7 +96,7 @@ class QueueManagerTest {
     @Test
     void cleanupBoundToAcquiredStateMustNotReleaseRecreatedQueueState() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        QueueManager manager = new QueueManager(registry);
+        QueueManager manager = new QueueManager(registry, new FunctionCapacityRegistry());
         FunctionSpec spec = new FunctionSpec(
                 "recreated",
                 "image",
@@ -147,7 +147,7 @@ class QueueManagerTest {
 
     @Test
     void enqueue_doesNotSignalWhenAllDispatchSlotsAreBusy() {
-        QueueManager manager = new QueueManager(new SimpleMeterRegistry());
+        QueueManager manager = new QueueManager(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
         FunctionSpec spec = new FunctionSpec(
                 "busy",
                 "image",
@@ -187,7 +187,7 @@ class QueueManagerTest {
 
     @Test
     void issue008_queueIsBounded() {
-        QueueManager manager = new QueueManager(new SimpleMeterRegistry());
+        QueueManager manager = new QueueManager(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
         FunctionSpec spec = new FunctionSpec(
                 "bounded",
                 "image",
@@ -238,7 +238,7 @@ class QueueManagerTest {
     @Test
     void getOrCreate_registersProviderGauges() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        QueueManager manager = new QueueManager(registry);
+        QueueManager manager = new QueueManager(registry, new FunctionCapacityRegistry());
         FunctionSpec spec = new FunctionSpec(
                 "echo",
                 "image",
@@ -267,7 +267,7 @@ class QueueManagerTest {
 
     @Test
     void remove_drainsQueuedTasks() {
-        QueueManager manager = new QueueManager(new SimpleMeterRegistry());
+        QueueManager manager = new QueueManager(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
         FunctionSpec spec = new FunctionSpec(
                 "echo",
                 "image",
@@ -322,7 +322,7 @@ class QueueManagerTest {
 
     @Test
     void remove_closesDetachedQueueStateSoLateOffersAreRejected() {
-        QueueManager manager = new QueueManager(new SimpleMeterRegistry());
+        QueueManager manager = new QueueManager(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
         FunctionSpec spec = new FunctionSpec(
                 "echo",
                 "image",

@@ -2,10 +2,10 @@ package it.unimib.datai.nanofaas.modules.autoscaler;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
-import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinator;
+import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpControl;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
-import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
-import it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator;
+import it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogView;
+import it.unimib.datai.nanofaas.controlplane.registry.ManagedReplicaControl;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationObservations;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 import org.springframework.beans.factory.ObjectProvider;
@@ -27,7 +27,7 @@ import org.springframework.context.annotation.Bean;
 // no InternalScaler, no line in the log, and a campaign that ran 340 requests a second
 // against a threshold of 100 while sitting on one replica. The registry is injected into
 // the beans below, so if it really were missing the context would say so out loud.
-@ConditionalOnBean({WorkloadMetricsSource.class, FunctionRegistry.class})
+@ConditionalOnBean({WorkloadMetricsSource.class, FunctionCatalogView.class})
 @EnableConfigurationProperties(ScalingProperties.class)
 public class AutoscalerConfiguration {
 
@@ -52,12 +52,12 @@ public class AutoscalerConfiguration {
     }
 
     @Bean
-    InternalScaler internalScaler(FunctionRegistry registry,
+    InternalScaler internalScaler(FunctionCatalogView registry,
                                   ScalingMetricsReader metricsReader,
-                                  ObjectProvider<ManagedDeploymentCoordinator> deploymentCoordinatorProvider,
+                                  ObjectProvider<ManagedReplicaControl> deploymentCoordinatorProvider,
                                   ScalingProperties properties,
                                   ColdStartTracker coldStartTracker,
-                                  DeploymentWakeUpCoordinator wakeUpCoordinator,
+                                  DeploymentWakeUpControl wakeUpCoordinator,
                                   ScalingDecisionMetrics scalingDecisionMetrics) {
         return new InternalScaler(
                 registry,

@@ -44,7 +44,7 @@ class SyncSchedulerDispatchExceptionTest {
         ExecutionStore store = new ExecutionStore();
         SyncQueueMetrics metrics = new SyncQueueMetrics(registry);
         SyncQueueConfigSource configSource = SyncQueueConfigSource.fixed(props.runtimeDefaults());
-        SyncQueueService queue = new SyncQueueService(props, store, metrics, configSource);
+        SyncQueueService queue = new SyncQueueService(props, store, metrics, configSource, new FunctionCapacityRegistry(), null);
 
         InvocationTask task = new InvocationTask(
                 "e1", "fn", spec,
@@ -85,7 +85,7 @@ class SyncSchedulerDispatchExceptionTest {
         ExecutionStore store = new ExecutionStore();
         SyncQueueMetrics metrics = new SyncQueueMetrics(registry);
         SyncQueueConfigSource configSource = SyncQueueConfigSource.fixed(props.runtimeDefaults());
-        SyncQueueService queue = new SyncQueueService(props, store, metrics, configSource);
+        SyncQueueService queue = new SyncQueueService(props, store, metrics, configSource, new FunctionCapacityRegistry(), null);
 
         InvocationTask task = new InvocationTask(
                 "e1", "fn", spec,

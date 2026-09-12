@@ -195,7 +195,7 @@ class SyncQueueServiceTest {
     private static SyncQueueService createService(SyncQueueProperties props, ExecutionStore store,
                                                    WaitEstimator estimator, SyncQueueMetrics metrics, Clock clock) {
         SyncQueueConfigSource configSource = SyncQueueConfigSource.fixed(props.runtimeDefaults());
-        return new SyncQueueService(props, store, estimator, metrics, clock, configSource);
+        return new SyncQueueService(props, store, estimator, metrics, clock, configSource, new FunctionCapacityRegistry(), null);
     }
 
     @Test
