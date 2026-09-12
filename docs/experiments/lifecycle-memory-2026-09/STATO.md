@@ -3533,3 +3533,102 @@ the async removal drain concludes a still-running reservation as
 `FUNCTION_REMOVED` (the sync module deliberately does the opposite), and
 `ExecutorBackedInvocationEnqueuer` dispatches outside the failure-cleanup
 wrapper (bounded by the administrative expiry).
+
+## 2026-09-12 — P21 contract library extraction (implementation and gates)
+
+Scope: P21 only, on `control-plane-lifecycle-memory`, from `2ddd839d` (P20b closure).
+The approved immutable P19 product baseline `d93b68cdf1cca6e7af17e1c641c8e236c80d0fca`
+and its dossier were not touched, and no P19 performance run was repeated. No module ID,
+optional-module set or retry default changed, and no `execution` or
+`deployment-management` JAR was created. Controller owned implementation and review;
+no subagent was spawned.
+
+**Adopted pre-existing slice.** The working tree already carried an unrecorded first
+slice, created 2026-09-12 between 07:46 and 08:00 and absent from both `progress.md` and
+`STATO.md`: the `:control-plane-spi` Gradle project, `RuntimeConfigExtension` moved into
+it, runtime-config and sync-queue rewired, and `requires.weak=runtime-config` dropped from
+`sync-queue/module.properties`. It compiled. Ruling: adopt it as slice 1 rather than
+revert and redo identical work; its verification is the runtime-config-absent profile this
+task runs anyway. It was extended, not merely kept — see the contract relocation below.
+
+**Index.** GitNexus was stale at `21b361c` against HEAD `2ddd839d`; refreshed first to
+23,473 nodes / 63,192 edges / 755 flows. FTS build still fails on this machine, so every
+absent text hit was confirmed by explicit grep rather than read as "unused".
+
+**Impact before editing.** `Metrics` **HIGH** (26 impacted, 9 direct, exact) — reported,
+not waived: the change is `implements OffloadMeters`, leaving all 26 dependants
+source-compatible. `FunctionRegistry` 19/7 MEDIUM, `ManagedDeploymentCoordinator` 19/9
+MEDIUM, `DeploymentWakeUpCoordinator` 15/7 MEDIUM, `SyncQueueService` 15/8 MEDIUM
+(lower-bound), `QueueManager` 10/5 MEDIUM, all exact unless noted.
+
+**Result.** 46 contracts live in `:control-plane-spi`, which depends only on `:common`,
+`reactor-core` and `slf4j-api`. No optional module declares
+`implementation project(':control-plane')` any longer: async-queue, sync-queue, autoscaler
+and concurrency-control compile against `common` + SPI + workload-metrics; offload and both
+providers against `common` + SPI; runtime-config against the SPI alone; build-metadata never
+needed the core. Module *test* sources keep the core, which the plan's point 5 permits.
+Enforcement is the build graph, not a convention: the SPI cannot name a core implementation
+because `:control-plane` is not on its compile classpath, and a module cannot either.
+
+Five module dependencies on concrete core classes became ports, each carrying exactly the
+operations the inventory proved are consumed: `FunctionCatalogView` (`listRegistered`),
+`ManagedReplicaControl` (`observeReplicaStatus`, generation-fenced `setReplicas`,
+`generationOf`), `DeploymentWakeUpControl` (`scaleDownIfUnprotected`, `removeFunctionState`),
+`OffloadMeters` with its lease (`subscribed`, `failed`, `close`), and `AdmissionLimitsControl`
+(`limits`, `updateLimits` over plain values, implemented by the new `HotAdmissionLimits`).
+
+**Three placements were decided by failing tests, not by design.** `ManagedReplicaControl`
+first went to `deployment` and closed a `deployment -> registry -> deployment` package cycle,
+because it names `RegisteredFunction` while `registry` already depends on `deployment`; it
+now lives in `registry`. `AdmissionLimitsControl` went to `config` and closed
+`capacity -> config -> deployment -> capacity`; it now lives in `capacity`, and its
+implementor in `service` beside the `RateLimiter` it needs, because declaring the bean in the
+capacity configuration made a minimal capacity slice require the service layer and
+`InvocationCapacityConfigurationTest` refused it. `CoreArchitectureTest`'s namespace rule was
+updated deliberately: the `controlplane` namespace is now owned by the core *and* its contract
+library, and by nothing else — an SDK, service or optional module claiming it still fails.
+
+**Two contracts changed** to be nameable from a library with no Web dependency:
+`ImageValidationException` carries an `int` status instead of Spring's `HttpStatus` (the same
+422/424/503, and the core exception handler is the only reader), and `QueuedInputLease` wraps
+a release action instead of the core retained-input reference. No module names either detail.
+
+**Contract relocated beyond the adopted slice.** `RuntimeConfigExtension` moved from
+`it.unimib.datai.nanofaas.modules.runtimeconfig` to `...controlplane.config`. The slice had
+preserved the original FQN; keeping it would have left sync-queue's architecture rule carrying
+a by-name exemption for its runtime-config bridge that was no longer true — the bridge now
+depends on a contract, not on a module. That exemption is deleted. The rule is scoped to
+production classes, which exposed a second, legitimate case the exemption had been hiding:
+sync-queue's integration test drives the real `RuntimeConfigService` through its declared
+test dependency.
+
+**Queue modules no longer fabricate capacity.** `QueueManager` and `SyncQueueService` each
+had constructors creating their own `FunctionCapacityRegistry`; production used neither — the
+comment in `SyncQueueService` said so. Removed, with the module tests now constructing the
+capacity explicitly, exactly as the Spring wiring already did.
+
+All other moved contracts keep their fully-qualified names, so AOT and native hints,
+reflect-config, OpenAPI composition, autoconfiguration imports and `module.properties`
+required no change. `:control-plane-spi` and `:control-plane` therefore share package names
+across two jars; no `module-info.java` exists in the repository, so these are unnamed modules
+and the split is legal. A future JPMS migration would have to unsplit them first.
+
+**Gates.** Full suite forced past Gradle's cache (`cleanTest test --continue`):
+**351 suites, 1927 tests, 0 failures, 0 errors, 8 profile-conditional skips**, 4m07s.
+Profile matrix, each a separate invocation: `none`, `async-queue`, `sync-queue` *without*
+runtime-config, `sync-queue,runtime-config`, `container-deployment-provider` and `all` all
+build; `CoreOnlyApiTest` under `modules=none` and the full sync-queue suite under
+`modules=sync-queue` both pass, which is the verification plan point 3 asks for. Both
+negative selectors still reject: conflicting queues ("Invalid module constraints: modules
+'async-queue' and 'sync-queue' conflict") and an unknown module ID.
+
+`SpiPurityTest` was verified falsifiable before being accepted: a controlled Spring reference
+injected into a contract failed both whitelist rules, and was then reverted.
+
+**One unexplained failure, not dismissed.** The first suite run, before the architecture and
+bean-placement fixes, also reported
+`P07dWaiterAdmissionTest.divergentDeadlinesDetachOnlyTheShortWaiter` (expected 1 waiter
+reserved, observed 2). It passed 5/5 in isolation and did not recur in the green full run,
+and no earlier campaign record lists it as flaky. It is recorded here as a single
+non-reproducing observation on the waiter-release path, not as a closed finding: a recurrence
+should be treated as a real race, not as noise.

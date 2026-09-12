@@ -548,3 +548,80 @@ lease/input before actual drain. I1–I10 and protected-key/replay semantics rem
 Architecture RED/GREEN, per-consumer lifecycle tests, profile integrations, suite results,
 graph audit and commit receipts are recorded in lifecycle `STATO.md` and
 `.superpowers/sdd/2026-09-08-control-plane-lifecycle-memory-and-modularity/task-P20b-report.md`.
+
+## 12. P21: the mandatory contract library and the ports it forced
+
+P21 is a delta from `2ddd839d` (P20b closure). It extracts the mandatory Gradle project
+`:control-plane-spi` at `platform/control-plane-spi`, and it is the task that made every optional
+module stop compiling against the core implementation. No module ID changed, no optional module
+was added or removed, and no execution or deployment-management JAR was created — the decision in
+the plan's section 2 against those JARs still stands.
+
+### 12.1 What the contract library contains, and why that list is closed
+
+The library holds the P20 ports, the lifecycle and capacity views, the provider and replica DTOs,
+and the `RuntimeConfigExtension` contract. It holds no store, no record, no mutable capacity, no
+registry, no controller, no executor and no autoconfiguration; those stay in the core.
+
+The list is closed by the build graph rather than by a convention. `:control-plane-spi` declares
+exactly three dependencies — `:common` for the shared wire models, `reactor-core` because a gateway
+signature returns a `Mono`, and `slf4j-api` because two scheduler support classes log — and it
+does not depend on `:control-plane`. A reference from a contract to a core implementation therefore
+does not compile. Symmetrically, each optional module's compile classpath lost `:control-plane`
+entirely, so a module that reached back into an implementation would fail to build. `SpiPurityTest`
+is the secondary guard for the case the build file itself changes; both of its whitelist rules were
+verified to fail against a controlled Spring reference before being accepted.
+
+Moved contracts keep their existing fully-qualified names, so `:control-plane-spi` and
+`:control-plane` share several package names across two jars. No `module-info.java` exists in this
+repository, so these are unnamed modules and the split is legal on the classpath. The benefit is
+that AOT and native hints, reflect-config, ArchUnit package rules, OpenAPI composition and
+`module.properties` continue to address these types by the names they already use, and the diff
+stays a set of moves plus new ports instead of an import rewrite across the whole tree. A future
+JPMS migration would have to unsplit those packages first; that is a recorded consequence.
+
+### 12.2 The ports the extraction forced
+
+Five module dependencies on concrete core classes could not be satisfied by moving a contract,
+because the class itself is an implementation the core must keep owning. Each became a port
+carrying exactly the operations the consumer inventory proved are used, and each core class gained
+the interface additively, with no existing signature changed.
+
+| Port | Core implementor | Operations, and why the port stops there |
+|---|---|---|
+| `registry.FunctionCatalogView` | `FunctionRegistry` | `listRegistered` only. The autoscaler and the governor iterate the catalog; they must not be able to mutate the catalog they are reading |
+| `registry.ManagedReplicaControl` | `ManagedDeploymentCoordinator` | `observeReplicaStatus`, generation-fenced `setReplicas`, `generationOf`. Reading never blocks on the provider and never reports absence as zero replicas (I9); mutation cannot land on the registration that replaced the one a decision was computed for |
+| `deployment.DeploymentWakeUpControl` | `DeploymentWakeUpCoordinator` | `scaleDownIfUnprotected`, `removeFunctionState`. The downscale is offered as a guarded operation rather than a question a scaler could ask and then act on stale, so a scaler cannot undo an in-flight invocation's own wake-up |
+| `offload.OffloadMeters` (+ `OffloadMeterLease`) | `Metrics`, `Metrics.OffloadMeterLease` | `offloadMeters`, and the lease's `subscribed`/`failed`/`close`. The gateway counts attempts; it gains no ability to register or remove meters, and a retired generation's lease drops its updates instead of resurrecting a series (I7) |
+| `capacity.AdmissionLimitsControl` | new `service.HotAdmissionLimits` over `RateLimiter`, `InvocationCapacity`, `WaiterCapacity` | `limits`, `updateLimits`, exchanged as plain values. A runtime-configuration extension proposes numbers; the quotas keep their own validation, so the rule that a per-function share cannot exceed its global budget is not copied into a second place |
+
+Where a port lives is part of its design here, because the core's package-cycle rule is binding.
+`ManagedReplicaControl` names a `RegisteredFunction`, and `registry` already depends on
+`deployment`, so the port sits in `registry`; placing it beside the deployment DTOs closed a
+`deployment -> registry -> deployment` cycle, which is how that placement was caught.
+`AdmissionLimitsControl` sits with the quotas it describes rather than in `config`, for the same
+reason, and its implementor sits in `service` beside the `RateLimiter` it needs — declaring it in
+the capacity configuration had made a minimal capacity slice require the service layer, which the
+existing slice test refused.
+
+Two contracts had to change to be nameable from a library with no Web dependency.
+`ImageValidationException` now carries the raw status code instead of a Spring `HttpStatus`; the
+only reader is the core exception handler, and the 422/424/503 responses are unchanged.
+`QueuedInputLease` now wraps a release action instead of the core retained-input reference, with
+core constructing it from that reference's `close`; no module ever named this type.
+
+### 12.3 Capacity defaults the modules no longer fabricate
+
+`QueueManager` and `SyncQueueService` each had constructors that created a
+`FunctionCapacityRegistry` of their own. Production never used them — the comment in
+`SyncQueueService` said as much — and they were the last reason either queue module named a
+concrete capacity owner. They are removed, and the module tests that relied on them now construct
+the capacity explicitly, exactly as the Spring wiring already did. No module creates a capacity
+owner any more; the core remains the single authority.
+
+### 12.4 What P21 deliberately did not do
+
+Module *test* sources keep `testImplementation project(':control-plane')`: the plan allows module
+integration tests to run against the core consumer, and migrating them is not this task's subject.
+Strengthening the architecture rules beyond the moved symbols, consolidating the deployment beans
+and finishing the capacity drain out of `workload-metrics` remain P22.

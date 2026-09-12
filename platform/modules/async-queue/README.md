@@ -13,8 +13,9 @@ without this module `POST /v1/functions/{name}:enqueue` returns
 - `Scheduler` — background loop that pulls tasks from `QueueManager` and
   dispatches them while respecting per-function concurrency
   (`QueueManager.tryAcquireLease` → a generation-bound `DispatchCapacity`
-  lease from the shared core `FunctionCapacityRegistry`, plus the bounded
-  dispatch reservation, CAS-based).
+  lease, plus the bounded dispatch reservation, CAS-based). The capacity is the
+  core's single `FunctionCapacityRegistry`, injected through the `DispatchCapacity`
+  port; this module never names it and creates no capacity of its own.
 - `WorkloadMetricsSource` (`AsyncQueueWorkloadMetricsSource`) — exposes queue
   depth, in-flight, effective concurrency, and dispatchable backlog. The
   autoscaler currently consumes queue depth and in-flight; RPS is derived by

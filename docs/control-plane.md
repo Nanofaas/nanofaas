@@ -48,6 +48,28 @@ Select modules at build time with Gradle:
 The settings plugin `it.unimib.datai.nanofaas.control-plane-modules` discovers
 the immediate Gradle projects under `platform/modules`, reads the required
 `module.properties` descriptor, and validates selection before any task runs.
+
+### What a module compiles against
+
+Optional modules compile against `:control-plane-spi` — a mandatory contract library at
+`platform/control-plane-spi`, not an optional module, and therefore never selected or
+deselected. It holds the dispatch, admission, capacity, lifecycle-event, observation,
+provider and replica contracts, and nothing else: no store, no record, no mutable capacity,
+no registry, no controller, no executor and no autoconfiguration, all of which stay in the
+core.
+
+No module depends on `:control-plane` at compile time. That is enforced by the build graph
+rather than by review: the contract library itself compiles only against `:common`,
+`reactor-core` and `slf4j-api`, so a contract cannot name a core implementation, and a module
+that reached into one would not compile either. A module's *test* sources may use the core,
+because module integration tests legitimately run against the consumer.
+
+Where a module needs something a contract cannot express — the function catalog, replica
+control, wake-up state, offload counters, hot admission limits — it consumes a narrow port
+(`FunctionCatalogView`, `ManagedReplicaControl`, `DeploymentWakeUpControl`, `OffloadMeters`,
+`AdmissionLimitsControl`) that the core implements. Each carries only the operations its
+consumers use, so a control loop that reads the catalog cannot mutate it, and an offload
+gateway that counts attempts cannot register meters.
 The equivalent environment selector is `NANOFAAS_CONTROL_PLANE_MODULES`;
 the project property `-PcontrolPlaneModules=...` has precedence. `none` cannot
 be combined with other values. `all` selects every compatible module, preferring

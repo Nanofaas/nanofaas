@@ -5,8 +5,10 @@ admin HTTP API — change selected control-plane settings without a restart.
 
 ## Provides
 
-- `RuntimeConfigExtension` / `RuntimeConfigRegistry` — modules contribute
-  immutable, namespaced snapshots and own validation/application/rollback.
+- `RuntimeConfigRegistry` — collects the `RuntimeConfigExtension` implementations;
+  modules contribute immutable, namespaced snapshots and own
+  validation/application/rollback. The `RuntimeConfigExtension` contract itself lives in
+  `:control-plane-spi`, so a module can implement it without depending on this one.
 - `RuntimeConfigService` — versioned snapshots with optimistic concurrency;
   stale revisions raise `RevisionMismatchException`.
 - `AdminRuntimeConfigController` — namespaced GET, validate and PATCH endpoints,
