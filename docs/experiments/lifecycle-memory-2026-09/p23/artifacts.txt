@@ -1,0 +1,32 @@
+P23 artifacts and runtime verification (plan point 5)
+
+OpenAPI composition, per selection (paths in the composed document):
+  modules=none                    6 paths
+  modules=sync-queue,runtime-config  9 paths
+  modules=all                    10 paths
+  The document is generated at platform/control-plane/build/generated/openapi/META-INF/resources/
+  openapi.yaml; module fragments are merged per selection, so an unselected module contributes none.
+
+Helm:
+  helm lint deploy/helm/nanofaas  -> 0 charts failed (one INFO: icon is recommended)
+  helm template nanofaas ...      -> 14 manifests
+  control-plane image tag         -> ghcr.io/miciav/nanofaas/control-plane:v0.21.0, aligned with the
+                                     Gradle version 0.21.0 (verifyHelmVersionSync also runs in build)
+
+Compose:
+  docker compose -f deploy/compose/compose.yaml config -q            -> OK
+  docker compose -f deploy/compose/offload-loadtest.yaml config -q   -> OK
+  deploy/compose/prometheus.yml is a Prometheus scrape config, not a compose file.
+
+Native images, built with the repository toolchain (GraalVM inside Docker, as P19 did):
+  nanofaas/control-plane:p23-none        CONTROL_PLANE_MODULES=none                 build OK
+  nanofaas/control-plane:p23-container   CONTROL_PLANE_MODULES=container-...        build OK
+
+Native HTTP behaviour, both profiles — start, health, register, invoke against a real
+deterministic backend, replay of the same idempotency key, shutdown:
+  native-none       health=200 ready_ms=277 register=201 invoke=success
+                    replay=success same_execution_id=True  stop=OK
+  native-container  health=200 ready_ms=279 register=201 invoke=success
+                    replay=success same_execution_id=True  stop=OK
+  An earlier run against an intentionally unreachable endpoint returned EXTERNAL_ERROR
+  "Connection refused", so the error mapping is exercised in the native image too.

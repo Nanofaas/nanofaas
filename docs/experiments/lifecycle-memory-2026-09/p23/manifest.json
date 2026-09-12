@@ -1,0 +1,38 @@
+{
+  "arms": {
+    "B": {
+      "jar_sha256": "a362b94ae8328a9e9231",
+      "origin": "P19 measured binary, extracted from its dossier",
+      "source": "d93b68cdf1cca6e7af17e1c641c8e236c80d0fca"
+    },
+    "C": {
+      "jar_sha256": "23d4dfc4310fbe96e0c8",
+      "note": "campaign.json's revision field says 7083ca87 because the campaign launched before the fix was committed; the jar is byte-identical to a rebuild from b2aed0a3, which is the authoritative identity",
+      "source": "b2aed0a3"
+    }
+  },
+  "defect_found_and_fixed": "P22's managed-orchestration condition was bypassed by the component scan; found by a packaged run, not by the isolated context test",
+  "gate": {
+    "breaches": [],
+    "discriminator": "allocated bytes per success (intra-arm spread < 0.35%)",
+    "threshold_percent": 5.0,
+    "useful_per_s_note": "bounded by the offered 200/s; proves no lost work, not capacity"
+  },
+  "limits": [
+    "Three repeats do not establish statistical equivalence.",
+    "Latency percentiles carry real run-to-run spread and are compared only within the fresh alternating pair.",
+    "This does not replace the P24 soak."
+  ],
+  "not_run": [
+    "Go SDK suite: toolchain go1.24 unavailable offline"
+  ],
+  "p19_integrity": {
+    "all_ok": true,
+    "manifest_digest_matches_pointer_and_directory": true,
+    "probe_recompiled_byte_identical": "95ca016f49ec0a390444ae4e592537a2f6f28c9c3dc7b4cbae466ef274a24054",
+    "sha256sums_entries_verified": 653
+  },
+  "references_p19_dossier": "74a0d632f3373724032df4719945ba50e84f827e49773c46b94902b9c4809dc0",
+  "schema": "nanofaas-p23-dossier-v1",
+  "status": "DONE_WITH_LIMITS"
+}

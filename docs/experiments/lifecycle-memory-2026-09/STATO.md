@@ -3708,3 +3708,93 @@ and provider merge evaluations plus the JARs the plan decided not to create.
 this task had retargeted `ReplicaStatusSnapshotConfigurationTest` at a renamed class; keeping the
 snapshot configuration at its original name and package, imported rather than scanned, removed the
 need and the file was restored exactly.
+
+## 2026-09-12 — P23 final verification, and the P22 defect it found
+
+Scope: P23, from `7083ca87` (P22 closure). New dossier at
+`docs/experiments/lifecycle-memory-2026-09/p23/`, manifest digest
+`536fb6c864b8950a8deac75ea9e2bb8647a1fd800476d234a93f95e1c3ca812b`, 57/57 file hashes
+verified. P19's directory was never written to, as its README requires of P23.
+
+**P19 control verified before measuring.** All 653 `SHA256SUMS` entries verify; the sha256
+of `manifest.json` equals both the directory name and `baseline.json`'s pointer; the jars
+extracted from `measured-jars.tar.xz` carry the exact digests P19's own run records name,
+so arm B is P19's measured binary rather than a rebuild; and `P19Probe.java` recompiled
+from the archived source is byte-identical to the class P19 measured with. The instrument
+and B's binary are provably identical, so only the product jar differs between arms.
+
+**A real defect in P22, found by a packaged run and not by any test.** The first C jar
+(`3d40c929…`, source `7083ca87`) built the entire managed orchestration under
+`modules=none` — replica snapshot, wake-up gate, wake-up coordinator — and built no
+immediate readiness, which contradicts what P22 recorded. Cause:
+`ManagedDeploymentOrchestration` carried `@Configuration` inside a component-scanned
+package, so the scan registered it unconditionally and the `@ConditionalOnBean` on the
+importing auto-configuration was never consulted. The singleton name gave it away —
+`managedDeploymentOrchestration` in camelCase is what a scan produces, where an `@Import`
+assigns the fully qualified name, as the sibling `UnmanagedDeploymentDefaultsAutoConfiguration`
+entry shows. The identical reasoning had been applied correctly to
+`ReplicaStatusSnapshotConfiguration`, deliberately left without a stereotype, and not here.
+
+P22's `MinimalProfileBeanOwnershipTest` passed throughout because `ApplicationContextRunner`
+registers the auto-configurations and performs no scan: it proved the condition evaluates
+correctly, not that the beans are reachable only through it. Fixed in `b2aed0a3` by removing
+the stereotype, with `ScannedContextDeploymentWiringTest` asserting the invariant in a real
+`@SpringBootTest` context, written relationally so it holds under any module selection.
+Verified falsifiable: restoring `@Configuration` fails two of its assertions while the
+isolated test still passes. Packaged runs after the fix confirm it end to end —
+`profiles/none` has no snapshot, gate or wake-up coordinator and does have the pool-free
+coordinator and immediate readiness; `profiles/all` has the full orchestration with the
+unmanaged defaults standing down.
+
+**Paired measurement, final candidate.** P19's protocol v2 unchanged, its own frozen
+`http_runner.py`, 6000 warm-up + 12000 measured offers at 200/s, outstanding bound 32,
+`taskset -c 5-8`, three repeats in fresh alternating processes, same host and JDK.
+
+| | useful/s | p50 | p95 | p99 | alloc/success |
+|---|---|---|---|---|---|
+| B `d93b68cd` | 200.00 | 1269.6 µs | 1817.4 µs | 2200.2 µs | 144 201 B (spread 0.19%) |
+| C `b2aed0a3` | 200.00 | 1216.8 µs | 1820.8 µs | 2106.8 µs | 143 084 B (spread 0.31%) |
+| C vs B | +0.00% | −4.16% | +0.19% | −4.24% | −0.77% |
+
+Every run `valid`, offered = admitted = unique terminal successes = 12000, zero refusals,
+zero transport errors, zero unresolved, in both arms. **No metric breaches the 5% gate**, and
+the two movements beyond noise are improvements. Fresh B measures 144 201 B/success against
+P19's recorded 143 728 B (+0.33%), which is what makes the comparison credible: this
+environment reproduces P19's measurement of the same binary.
+
+Throughput is bounded by the offered 200/s by design and only proves no work was lost.
+Latency percentiles carry genuine spread — P19's own recorded B ranges 1799–3122 µs at p95 —
+so they are compared only within the fresh alternating pair, never against recorded values.
+Allocated bytes per success, whose intra-arm spread is under 0.35%, is the discriminator.
+
+The defect had a measurable cost: before the fix C was +0.22% on allocation, after it is
+−0.77%. The ~1% difference is the machinery the minimal profile no longer builds.
+
+**Diagnostic comparison with P00.** A (`61d72e73`, known defective) allocated 138 212
+B/success in P19's own paired campaign, so the campaign's correctness work costs roughly
++3.5% allocation against it — quantified, not hidden, and measured paired by P19 rather than
+inferred across sessions.
+
+**Behaviour and artefacts.** Section-8 matrix: 18 positive rows pass — core `none`,
+async-queue, sync-queue without runtime-config, runtime-config, offload, autoscaler,
+concurrency-control, both together, both providers, the errors/late-callbacks/removals
+regression group, config binding and validation, the Java and Java-lite SDKs, and five
+`bootJar` selections. All four negative selectors reject with their exact messages recorded.
+OpenAPI composition varies per selection (6/9/10 paths); `helm lint` clean, 14 manifests,
+image tag `v0.21.0` aligned with the Gradle version; both compose files validate. Native
+images built with the repository toolchain (GraalVM in Docker) for `none` and
+`container-deployment-provider`: both start in ~280 ms, answer health, register, invoke
+against a real backend, return the same execution id on replay of one idempotency key, and
+stop cleanly. Final suite after the fix: 353 suites, 1948 tests, 0 failures, 0 errors, 8
+profile-conditional skips.
+
+**Not run, therefore not passed:** the Go SDK suite — toolchain `go1.24` is not installed and
+cannot be downloaded offline. Recorded as an environment limitation.
+
+**Open before P24.** Three repeats do not establish statistical equivalence and none of this
+replaces the soak. Still carried forward: the two pre-existing defects P20b reproduced and
+deliberately left (async removal drain concluding a running reservation as `FUNCTION_REMOVED`;
+`ExecutorBackedInvocationEnqueuer` dispatching outside the failure-cleanup wrapper), the
+P09/P10 deferred minors, and the single non-reproducing
+`P07dWaiterAdmissionTest.divergentDeadlinesDetachOnlyTheShortWaiter` observation from P21.
+No known leak remains in the profiles P24 must measure.

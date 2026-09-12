@@ -1,0 +1,37 @@
+P23 section-8 behaviour matrix. The four NEGATIVE rows must be rejected by the module
+selector; their non-zero exit is the expected outcome, with the exact message recorded.
+
+PASS  (75s)  core none: api + lifecycle + capacity  
+PASS  (13s)  async-queue module suite  
+PASS  (10s)  sync-queue without runtime-config  
+PASS  (8s)  runtime-config module suite  
+PASS  (24s)  offload module suite  
+PASS  (9s)  autoscaler module suite  
+PASS  (12s)  concurrency-control module suite  
+PASS  (12s)  autoscaler + governor together  
+PASS  (12s)  container provider suite  
+PASS  (16s)  k8s provider suite  
+PASS  (26s)  errors/late callbacks/removals  
+PASS  (9s)  config binding/validation  
+PASS  (29s)  java + java-lite SDKs  
+PASS  (1s)  bootJar none  
+PASS  (2s)  bootJar async-queue  
+PASS  (1s)  bootJar sync,runtime-config  
+PASS  (1s)  bootJar container provider  
+PASS  (1s)  bootJar all  
+REJECTED AS EXPECTED  NEGATIVE two queues
+   > Invalid module constraints: modules 'async-queue' and 'sync-queue' conflict
+REJECTED AS EXPECTED  NEGATIVE two providers
+   > Invalid module constraints: modules 'container-deployment-provider' and 'k8s-deployment-provider' conflict
+REJECTED AS EXPECTED  NEGATIVE none plus module
+   > Module selector 'none' cannot be combined with other values
+REJECTED AS EXPECTED  NEGATIVE unknown id
+   > Unknown control-plane module(s): [nope]
+DONE
+
+SDKs in the other languages (Gradle covers only Java and Java-lite):
+PASS  python: 139 passed (sdks/python/.venv/bin/python -m pytest tests)
+PASS  javascript: 80 tests, 80 pass, 0 fail (npm test)
+ENVIRONMENT LIMIT  go: toolchain go1.24 not installed and not downloadable offline
+                   ("go: download go1.24 for linux/arm64: toolchain not available").
+                   Not run, therefore not passed.

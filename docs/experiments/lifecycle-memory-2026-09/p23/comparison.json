@@ -1,0 +1,175 @@
+{
+  "C_vs_B_percent": {
+    "alloc_per_success": -0.7748342380144126,
+    "p50_ns": -4.156233681025133,
+    "p95_ns": 0.18751887981679494,
+    "p99_ns": -4.241163447417927,
+    "useful_per_s": 0.0001424394371535088
+  },
+  "fresh_pair": {
+    "B": {
+      "accounting_exact": true,
+      "all_valid": true,
+      "alloc_per_success": [
+        144201.33733333333,
+        144160.302,
+        144440.67
+      ],
+      "offered": 12000,
+      "p50_ns": [
+        1269611,
+        1258283,
+        1299547
+      ],
+      "p95_ns": [
+        1817417,
+        1812056,
+        1862377
+      ],
+      "p99_ns": [
+        2200151,
+        2146295,
+        2242247
+      ],
+      "refused": 0,
+      "revision": "d93b68cdf1cca6e7af17e1c641c8e236c80d0fca",
+      "runs": [
+        "B1",
+        "B2",
+        "B3"
+      ],
+      "transport_errors": 0,
+      "unresolved": 0,
+      "useful_per_s": [
+        199.9965846949892,
+        199.99577058610828,
+        199.99723315494435
+      ]
+    },
+    "C": {
+      "accounting_exact": true,
+      "all_valid": true,
+      "alloc_per_success": [
+        143084.016,
+        143041.72066666666,
+        143482.35333333333
+      ],
+      "offered": 12000,
+      "p50_ns": [
+        1216843,
+        1185787,
+        1245611
+      ],
+      "p95_ns": [
+        1820825,
+        1762617,
+        1858264
+      ],
+      "p99_ns": [
+        2106839,
+        2084615,
+        2171752
+      ],
+      "refused": 0,
+      "revision": "7083ca872b6878f8135ef17a7f9f4804f814c9da",
+      "runs": [
+        "C1",
+        "C2",
+        "C3"
+      ],
+      "transport_errors": 0,
+      "unresolved": 0,
+      "useful_per_s": [
+        199.99686956899876,
+        199.99686608577454,
+        199.99687993200823
+      ]
+    }
+  },
+  "gate": {
+    "breaches": [],
+    "note": "Throughput is bounded by the offered 200/s, so useful_per_s only proves no work was lost. Latency percentiles carry the run-to-run spread printed above; allocation per success is the tight discriminator.",
+    "threshold_percent": 5.0
+  },
+  "p19_recorded_pair": {
+    "A": {
+      "accounting_exact": true,
+      "all_valid": true,
+      "alloc_per_success": [
+        138212.00733333334,
+        137830.86933333334,
+        138306.84933333335
+      ],
+      "offered": 12000,
+      "p50_ns": [
+        1442185,
+        1430762,
+        2141317
+      ],
+      "p95_ns": [
+        3165201,
+        3133009,
+        3236719
+      ],
+      "p99_ns": [
+        3659086,
+        3656527,
+        3804827
+      ],
+      "refused": 0,
+      "revision": "61d72e73528db62cf8ca465c6a037981d7ec13b0",
+      "runs": [
+        "A1",
+        "A2",
+        "A3"
+      ],
+      "transport_errors": 0,
+      "unresolved": 0,
+      "useful_per_s": [
+        199.9969762923814,
+        199.99431056185313,
+        199.9982099593547
+      ]
+    },
+    "B": {
+      "accounting_exact": true,
+      "all_valid": true,
+      "alloc_per_success": [
+        143727.82666666666,
+        143472.10133333332,
+        143834.02
+      ],
+      "offered": 12000,
+      "p50_ns": [
+        1484041,
+        1207626,
+        1501224
+      ],
+      "p95_ns": [
+        3066689,
+        1798551,
+        3121937
+      ],
+      "p99_ns": [
+        3742206,
+        2142742,
+        3745437
+      ],
+      "refused": 0,
+      "revision": "d93b68cdf1cca6e7af17e1c641c8e236c80d0fca",
+      "runs": [
+        "B1",
+        "B2",
+        "B3"
+      ],
+      "transport_errors": 0,
+      "unresolved": 0,
+      "useful_per_s": [
+        199.95405411088234,
+        199.9462820086559,
+        199.99551382396447
+      ]
+    }
+  },
+  "schema": "p23-comparison-v1"
+}
