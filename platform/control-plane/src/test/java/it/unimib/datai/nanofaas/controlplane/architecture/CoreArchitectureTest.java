@@ -50,6 +50,32 @@ class CoreArchitectureTest {
                     .should().dependOnClassesThat().resideInAPackage("..controlplane.service..")
                     .as("dispatch, execution and deployment must not depend on service");
 
+    /**
+     * P22: only the execution package may publish a terminal state.
+     *
+     * <p>{@code ExecutionRecord.beginSettlement} and {@code publishTerminal} are the two calls that
+     * actually make an outcome final. Everything else — the completion handler, the queue modules
+     * through {@code QueueLifecycle}, the offload gateway, the administrative-expiry path — asks
+     * the owner through {@code ExecutionStore.settle}, which delegates to the single
+     * {@code ExecutionLifecycle}. A second caller of these two methods would be a second terminal
+     * owner, which is exactly what invariants I1 and I3 forbid: two owners can disagree about the
+     * one result an execution is allowed to have.</p>
+     */
+    @ArchTest
+    static final ArchRule only_the_execution_owner_publishes_a_terminal_state =
+            noClasses()
+                    .that().resideOutsideOfPackage("..controlplane.execution..")
+                    .should().callMethodWhere(
+                            com.tngtech.archunit.core.domain.JavaCall.Predicates.target(
+                                    com.tngtech.archunit.core.domain.properties.HasName.Predicates
+                                            .nameMatching("beginSettlement|publishTerminal"))
+                                    .and(com.tngtech.archunit.core.domain.JavaCall.Predicates.target(
+                                            com.tngtech.archunit.core.domain.properties.HasOwner.Predicates
+                                                    .With.owner(com.tngtech.archunit.core.domain.JavaClass.Predicates
+                                                            .assignableTo("it.unimib.datai.nanofaas.controlplane"
+                                                                    + ".execution.ExecutionRecord")))))
+                    .as("only the execution package may publish a terminal state");
+
     // R6: the controlplane namespace belongs to the core and to the mandatory contract library,
     // and to nothing else. P21 split it deliberately: the contracts the optional modules compile
     // against moved to :control-plane-spi under their existing names, so that AOT hints,

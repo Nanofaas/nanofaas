@@ -10,7 +10,6 @@ import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaObservation;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshot;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
 
 import java.time.InstantSource;
 
@@ -26,7 +25,6 @@ import java.time.InstantSource;
  * distinguishes a fresh reading from a stale one from none at all; wake-up and lifecycle paths force
  * a fresh read through {@link #getFreshReplicaStatus}.</p>
  */
-@Service
 public class ManagedDeploymentCoordinator implements ManagedReplicaControl, AutoCloseable {
 
     private final DeploymentProviderResolver deploymentProviderResolver;

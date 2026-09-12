@@ -625,3 +625,116 @@ Module *test* sources keep `testImplementation project(':control-plane')`: the p
 integration tests to run against the core consumer, and migrating them is not this task's subject.
 Strengthening the architecture rules beyond the moved symbols, consolidating the deployment beans
 and finishing the capacity drain out of `workload-metrics` remain P22.
+
+## 13. P22: bean ownership, architectural boundaries, and the separations kept
+
+P22 is a delta from `ecd21415` (P21 closure). It closes the campaign's structural work: every
+asynchronous resource has exactly one owner, a control plane without a managed deployment
+provider builds none of the machinery only a managed deployment would use, and the boundaries
+the previous tasks established are now asserted by rules that were each proven able to fail.
+
+### 13.1 The project graph
+
+```
+          common  ────────────────┐         (wire and runtime models)
+            ▲                     │
+            │                     ▼
+            │            control-plane-spi   (contracts: ports, lifecycle views,
+            │                     ▲           provider/replica DTOs, runtime-config)
+            │                     │
+            │        ┌────────────┴────────────┐
+            │        │                         │
+       control-plane │                    platform/modules/*   (optional, selected at build)
+      (implementation,│                    async-queue · sync-queue · autoscaler ·
+       single owner of│                    concurrency-control · offload · runtime-config ·
+       store, record, │                    build-metadata · k8s/container providers
+       capacity,      │                         │
+       registry,      └──── runtimeOnly ────────┘   (packaging only: the selected modules
+       lifecycle)                                    are on the core's runtime classpath)
+
+       workload-metrics  ◄──── queue modules, autoscaler, concurrency-control
+       (observability contracts only; the core does not depend on it at all)
+```
+
+Compile edges point one way only. `control-plane-spi` sees `common` and nothing else of ours,
+so a contract cannot reference an implementation. No module sees `control-plane`, so a module
+cannot either. The core depends on the selected modules at runtime only, for packaging, which is
+why adding a module never inverts a compile dependency. Module *test* sources do see the core:
+module integration tests legitimately run against the consumer, and that is the only direction
+in which the two meet.
+
+### 13.2 Bean ownership
+
+| Resource | Owner | Exists when |
+|---|---|---|
+| replica snapshot and its two refresh pools | `ReplicaStatusSnapshotConfiguration`, imported by the managed orchestration | a `ManagedDeploymentProvider` bean exists |
+| wake-up executor, wake-up timeout scheduler, wake-up coordinator, wake-up gate | `ManagedDeploymentOrchestration` | a `ManagedDeploymentProvider` bean exists |
+| `ManagedDeploymentCoordinator` | the managed orchestration, or `UnmanagedDeploymentDefaultsAutoConfiguration` built on a snapshot owning no pool | always |
+| `DeploymentReadiness` | the wake-up gate when managed, `DeploymentReadiness.immediate()` otherwise | always |
+| core retry executor | `InvocationEnqueuerAutoConfiguration` | no queue module supplies a `RetryScheduler` |
+| queue executors and schedulers | the selected queue module | that module is selected |
+| hot admission limits | `ServiceDefaultsConfiguration` | always |
+
+Two fallbacks that used to be built inside consumers are gone. The dispatch path treated a
+missing wake-up gate as a `null` to branch on; it now receives a readiness value, and asks
+`isImmediate()` to keep the LOCAL/EXTERNAL route as short as the one P19 measured. More
+importantly `FunctionService` used to construct its own `ManagedDeploymentCoordinator` when no
+bean existed, and that constructor creates a replica snapshot owning two refresh pools — an
+object outside the context, so nothing ever closed it. Both fallbacks are now beans.
+
+Conditions are evaluated in the right order because both new configurations are
+auto-configurations rather than component-scanned classes. `@ConditionalOnBean` only sees what is
+registered when it runs, and component-scanned classes are processed before any
+auto-configuration; a scanned configuration would have asked for a provider before any provider
+module had published one, and disabled managed deployment everywhere. The same reasoning was
+already recorded on `InvocationEnqueuerAutoConfiguration`.
+
+### 13.3 Where the wiring lives, and why not in `deployment`
+
+The managed orchestration is wired from the `service` package, not from `deployment`. The wake-up
+gate is a service-layer class, and `deployment` may not depend on `service`; the gate cannot move
+down either, because it reads the function catalog and `registry` already depends on
+`deployment`. Wiring it from `service` is what keeps the package graph acyclic, and the cycle rule
+is what established that — the first placement, in `config`, closed
+`config -> service -> config` through existing test edges. The snapshot's own configuration stays
+in `config` under its original name, without a stereotype annotation so that it is imported
+rather than scanned: that keeps its bean conditional while leaving its ownership assertable on
+its own.
+
+### 13.4 Rules that can fail
+
+| Rule | Where | Controlled violation that failed it |
+|---|---|---|
+| the SPI depends only on `common`, reactor and slf4j | `SpiPurityTest` | a Spring `HttpStatus` named from a contract (P21) |
+| a module consumes contracts, never core implementations | each module's `ArchitectureTest` | `Metrics` named from the autoscaler, with the core added to its classpath |
+| only the execution package publishes a terminal state | `CoreArchitectureTest` | a second `publishTerminal()` call from the completion handler |
+| the `controlplane` namespace belongs to the core and the contract library | `CoreArchitectureTest` | covered by `CoreArchitectureSourceTest`, which also asserts the two predicates reject each other's paths |
+
+Every one was injected, observed red, and reverted; none of the deliberately incorrect sources
+was committed. The module rule is expressed by type name rather than by package because the core
+and the contract library share package names on purpose: `controlplane.service` holds both the
+`InvocationEnqueuer` contract and the `Metrics` implementation.
+
+### 13.5 Separations kept, and the evaluations now closed
+
+- **The two queue modules stay separate.** `async-queue` provides per-function queues and the
+  scheduler shared by SYNC and ASYNC; `sync-queue` provides synchronous admission with a global
+  depth and a wait estimate. They are alternative strategies, they conflict in their descriptors,
+  and merging them would fuse two admission policies into one module whose behaviour would depend
+  on configuration rather than on selection. Not merged.
+- **Autoscaler and concurrency-control stay separate.** They consume the same observations and the
+  same generation identity, but one changes replica count and the other changes per-replica
+  concurrency, on their own control periods. Merging them would couple two independent control
+  loops. Not merged.
+- **The two deployment providers stay mutually exclusive adapters.** Each owns its image
+  validator and its client. Not merged.
+- **No `execution` or `deployment-management` JAR was created.** The decision recorded in the
+  plan's section 2 stands: those boundaries are packages and configurations verified inside the
+  core, and a separate JAR would add neither a deployment requirement nor an independent
+  consumer. This closes that evaluation rather than leaving it as forgotten work.
+- **`workload-metrics` keeps only observability contracts.** The mutable capacity it once owned
+  moved into the core in P06 and P20b; the core no longer depends on this project at all, and the
+  one remaining unused bridge alias (`recordDispatchSlotBlocked`) is deleted. What stays —
+  `WorkloadMetricsSource`, `WorkloadCapacityController`, `WorkloadDiagnostics`,
+  `WorkloadMetricsBinder`, `WorkloadMetricNames` — has real consumers in the queue modules, the
+  autoscaler and the governor.

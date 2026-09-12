@@ -6,6 +6,7 @@ import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
+import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentReadiness;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinator;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpProperties;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
@@ -17,9 +18,7 @@ import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -37,8 +36,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.LongSupplier;
 
-@Service
-public class DeploymentWakeUpGate implements FunctionRegistrationListener, AutoCloseable {
+public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegistrationListener, AutoCloseable {
 
     private final FunctionRegistry registry;
     private final ManagedDeploymentCoordinator coordinator;
@@ -55,7 +53,6 @@ public class DeploymentWakeUpGate implements FunctionRegistrationListener, AutoC
     private final AtomicBoolean closed = new AtomicBoolean();
     private final Object ownerLifecycle = new Object();
 
-    @Autowired
     public DeploymentWakeUpGate(FunctionRegistry registry,
                                 ManagedDeploymentCoordinator coordinator,
                                 FunctionCapacityRegistry generations,
@@ -89,6 +86,7 @@ public class DeploymentWakeUpGate implements FunctionRegistrationListener, AutoC
         this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime");
     }
 
+    @Override
     public CompletableFuture<Void> ensureReady(InvocationTask task) {
         if (closed.get()) {
             return failed("DEPLOYMENT_WAKE_UP_CLOSED");

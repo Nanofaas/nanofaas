@@ -64,6 +64,20 @@ rather than by review: the contract library itself compiles only against `:commo
 that reached into one would not compile either. A module's *test* sources may use the core,
 because module integration tests legitimately run against the consumer.
 
+### What a profile without a managed provider does not build
+
+Managed deployment orchestration exists exactly when a managed deployment provider bean does,
+which happens only when a provider module is selected. A LOCAL/EXTERNAL control plane therefore
+builds no replica-refresh pools, no wake-up executor, no wake-up timeout scheduler and no wake-up
+gate: none of them could ever have a provider to call, so each would be threads idling for the
+process's lifetime. The function catalog is unaffected, and the deployment coordinator is still
+available — built on a replica snapshot that owns no pool, so a replica reading in that profile is
+reported as unavailable rather than as zero replicas.
+
+The dispatch path asks a `DeploymentReadiness` port before a DEPLOYMENT attempt. With a provider
+that port is the wake-up gate; without one it is an immediate implementation, and the path
+dispatches directly rather than through the wake-up wrapper.
+
 Where a module needs something a contract cannot express — the function catalog, replica
 control, wake-up state, offload counters, hot admission limits — it consumes a narrow port
 (`FunctionCatalogView`, `ManagedReplicaControl`, `DeploymentWakeUpControl`, `OffloadMeters`,

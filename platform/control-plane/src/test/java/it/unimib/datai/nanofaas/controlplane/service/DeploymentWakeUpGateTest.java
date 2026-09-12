@@ -408,7 +408,7 @@ class DeploymentWakeUpGateTest {
     @Test
     void configuredSchedulerRemovesCancelledTasksAndDropsDelayedWorkOnShutdown() {
         ScheduledThreadPoolExecutor scheduler = (ScheduledThreadPoolExecutor)
-                new DeploymentWakeUpConfiguration().deploymentWakeUpTimeoutScheduler();
+                new ManagedDeploymentOrchestration().deploymentWakeUpTimeoutScheduler();
         try {
             assertThat(scheduler.getRemoveOnCancelPolicy()).isTrue();
             assertThat(scheduler.getExecuteExistingDelayedTasksAfterShutdownPolicy()).isFalse();

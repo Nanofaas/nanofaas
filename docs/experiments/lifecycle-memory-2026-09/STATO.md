@@ -3632,3 +3632,79 @@ reserved, observed 2). It passed 5/5 in isolation and did not recur in the green
 and no earlier campaign record lists it as flaky. It is recorded here as a single
 non-reproducing observation on the waiter-release path, not as a closed finding: a recurrence
 should be treated as a real race, not as noise.
+
+## 2026-09-12 — P22 bean ownership and architectural boundaries
+
+Scope: P22 only, from `ecd21415` (P21 closure). The approved immutable P19 baseline
+`d93b68cdf1cca6e7af17e1c641c8e236c80d0fca` and its dossier were not touched and no
+performance run was repeated. No module ID, optional-module set, retry default or
+queue/governor/provider merge. Controller owned implementation and review.
+
+**The defect this task actually found.** `FunctionService` carried a fallback that
+constructed its own `ManagedDeploymentCoordinator` whenever no coordinator bean existed,
+and that constructor creates a `ReplicaStatusSnapshot` owning two refresh pools. The
+object is not a bean, so nothing ever called `close()` on it: the pools would have lived
+for the process's lifetime with no owner, which invariant I8 forbids. It was latent while
+the coordinator was an unconditional `@Service` — and it would have become real the moment
+P22 made managed orchestration conditional, which is how it surfaced. The fallback is now
+a bean built on `ReplicaStatusSnapshot.withoutRefreshCapacity`, which owns no executor at
+all; the ledger had recorded this shape as a P10 concern left untouched, and it is closed
+here.
+
+**Point 1 — readiness port.** `DeploymentReadiness` (core `deployment` package) replaces the
+nullable wake-up gate in `ExecutionCompletionHandler`. The wake-up gate implements it when a
+managed provider exists; otherwise `DeploymentReadiness.immediate()` does. The handler asks
+`isImmediate()` and still dispatches LOCAL/EXTERNAL directly, so the route P19 measured is
+unchanged rather than routed through the wake-up wrapper.
+
+**Point 1/2 — conditional managed orchestration.** `ManagedDeploymentOrchestration`, carried by
+`ManagedDeploymentOrchestrationAutoConfiguration` with `@ConditionalOnBean(ManagedDeploymentProvider)`,
+owns the snapshot import, the four-thread wake-up executor, the timeout scheduler, the wake-up
+coordinator, the deployment coordinator and the gate. `DeploymentWakeUpConfiguration` and the
+unconditional `@Service` annotations on the two coordinators and the gate are gone. Without a
+provider none of it is created; `FunctionRegistry` remains available, and the coordinator remains
+available on a pool-free snapshot.
+
+The condition works only because both configurations are auto-configurations. A component-scanned
+`@ConditionalOnBean` is evaluated before any module auto-configuration has registered a provider,
+so a scanned class would have disabled managed deployment in every profile. That reasoning was
+already recorded on `InvocationEnqueuerAutoConfiguration`; this follows it.
+
+**Three placements decided by failing tests, not by design.** Wiring the orchestration from
+`config` closed `config -> service -> config` through existing test edges, so it is wired from
+`service`; the ADR records why it cannot live in `deployment`. A single `DeploymentReadiness` bean
+delegating to the gate produced `NoUniqueBeanDefinitionException` because the gate already is one,
+so the delegating bean was removed. The first version of the ownership test depended on the Gradle
+module selection and failed under the default profile, which includes the k8s provider — it now
+drives the condition directly with an `ApplicationContextRunner`, asserting both arms, so it holds
+in any profile.
+
+**Point 3 — workload-metrics.** Already emptied of mutable capacity by P06/P20b: the core does not
+depend on the project at all. A scan for public methods with zero callers found exactly one unused
+bridge alias, `WorkloadDiagnostics.recordDispatchSlotBlocked`, now deleted.
+`recordSchedulerDispatchSubmitDuration` is also a pure alias but has real callers and stays. The
+remaining five types all have consumers in the queue modules, the autoscaler and the governor.
+
+**Point 4 — rules that can fail.** Added: a per-module "consumes contracts, never core
+implementations" rule in all eight modules' `ArchitectureTest` (production classes only, since
+module integration tests legitimately drive the core), and "only the execution package publishes a
+terminal state" in `CoreArchitectureTest`. `CoreArchitectureSourceTest` now also covers the
+contract-library predicate P21 introduced and asserts the two predicates reject each other's paths.
+Each new negative rule was verified by injecting a controlled violation — `Metrics` referenced from
+the autoscaler with the core temporarily on its compile classpath, and a second `publishTerminal()`
+call from the completion handler — observing RED, then reverting. No deliberately incorrect source
+was committed. `RED/GREEN` for the conditional wiring: the ownership test failed on the baseline
+for the two expected assertions before the change and passes after.
+
+**Point 5 — ADR.** Section 13 carries the project graph, the bean-ownership table, why the wiring
+is not in `deployment`, the falsifiability table, and the explicit closure of the queue, governor
+and provider merge evaluations plus the JARs the plan decided not to create.
+
+**Impact before editing** (index refreshed to this checkout first): `ExecutionCompletionHandler`
+18 impacted / 9 direct MEDIUM, `ReplicaStatusSnapshot` 18/MEDIUM, `DeploymentWakeUpGate` 8/LOW
+(lower-bound), `FunctionService` 4/LOW. No HIGH or CRITICAL.
+
+**The controller's protected test is byte-identical to its original.** An intermediate version of
+this task had retargeted `ReplicaStatusSnapshotConfigurationTest` at a renamed class; keeping the
+snapshot configuration at its original name and package, imported rather than scanned, removed the
+need and the file was restored exactly.

@@ -31,7 +31,7 @@ class InvocationNativeHintsTest {
 
     @Test
     void concreteWakeUpSchedulerDestroyMethodIsInvocableInNativeImage() throws Exception {
-        ScheduledExecutorService scheduler = new DeploymentWakeUpConfiguration().deploymentWakeUpTimeoutScheduler();
+        ScheduledExecutorService scheduler = new ManagedDeploymentOrchestration().deploymentWakeUpTimeoutScheduler();
         try {
             // The native stack resolves this parent method when concrete override metadata is absent.
             var nativeDestroyMethod = java.util.concurrent.ThreadPoolExecutor.class.getMethod("shutdown");

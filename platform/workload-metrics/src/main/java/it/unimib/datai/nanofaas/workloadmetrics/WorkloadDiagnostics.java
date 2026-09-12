@@ -64,7 +64,6 @@ public final class WorkloadDiagnostics {
         }
     }
     public void recordSchedulerSlotBlocked(String functionName) { FunctionMeters functionMeters = function(functionName); if (functionMeters != null) functionMeters.blocked.increment(); }
-    public void recordDispatchSlotBlocked(String functionName) { recordSchedulerSlotBlocked(functionName); }
 
     private FunctionMeters function(String name) {
         return functions.get(name);

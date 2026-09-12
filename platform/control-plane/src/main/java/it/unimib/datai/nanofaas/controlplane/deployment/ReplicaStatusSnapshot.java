@@ -20,6 +20,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -228,6 +229,19 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
      */
     public static ReplicaStatusSnapshot withDefaults(InstantSource clock) {
         return new ReplicaStatusSnapshot(clock, DEFAULT_TTL, RefreshLimits.DEFAULTS);
+    }
+
+    /**
+     * Wiring for a control plane with no managed deployment provider: no refresh pool is created,
+     * because no refresh could ever have a provider to call. Every refresh attempt is rejected, so
+     * every observation is UNAVAILABLE — the honest answer to "there is no backend to read", and
+     * the one invariant I9 already requires every consumer to handle. Owning no executor, this
+     * snapshot has nothing to shut down, and {@link #close()} is a no-op beyond invalidation.
+     */
+    public static ReplicaStatusSnapshot withoutRefreshCapacity(InstantSource clock) {
+        return new ReplicaStatusSnapshot(clock, DEFAULT_TTL, task -> {
+            throw new RejectedExecutionException("no managed deployment provider is configured");
+        });
     }
 
     private static ThreadPoolExecutor pool(int concurrency, int queueCapacity, String threadName) {

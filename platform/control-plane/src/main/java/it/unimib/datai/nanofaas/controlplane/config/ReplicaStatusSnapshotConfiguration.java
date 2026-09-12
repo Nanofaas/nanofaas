@@ -2,7 +2,6 @@ package it.unimib.datai.nanofaas.controlplane.config;
 
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshot;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 
 import java.time.InstantSource;
 
@@ -11,8 +10,13 @@ import java.time.InstantSource;
  * bean on shutdown, so the executors are stopped exactly once by whoever created them (invariant
  * I8), and Boot binds its refresh queue/rejection/duration meters automatically because the snapshot
  * is a {@link io.micrometer.core.instrument.binder.MeterBinder}.
+ *
+ * <p>Deliberately not annotated {@code @Configuration}: a stereotype here would be component-scanned
+ * and the snapshot would exist in every profile, including one with no managed deployment provider,
+ * where its two refresh pools could never have a provider to call. It is imported instead, by the
+ * managed orchestration that is itself conditional on a provider — and being importable on its own
+ * is what lets the ownership be asserted without standing up every managed collaborator.</p>
  */
-@Configuration
 public class ReplicaStatusSnapshotConfiguration {
 
     @Bean(destroyMethod = "close")

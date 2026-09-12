@@ -4,7 +4,6 @@ import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -22,7 +21,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.LongSupplier;
 
 /** Serializes generation-scoped deployment wake-ups with scale-downs for each function. */
-@Service
 public class DeploymentWakeUpCoordinator implements DeploymentWakeUpControl, AutoCloseable {
     private final FunctionCapacityRegistry generations;
     private final ScheduledExecutorService scheduler;

@@ -9,6 +9,7 @@ import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.capacity.InvocationQuotaExceededException;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
+import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentReadiness;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
@@ -47,7 +48,7 @@ public class ExecutionCompletionHandler implements InvocationDispatch {
     private final RetryScheduler enqueuer;
     private final DispatcherRouter dispatcherRouter;
     private final Metrics metrics;
-    @Nullable private final DeploymentWakeUpGate wakeUpGate;
+    private final DeploymentReadiness readiness;
     private final FunctionCapacityRegistry capacityRegistry;
 
     /**
@@ -59,13 +60,14 @@ public class ExecutionCompletionHandler implements InvocationDispatch {
                                       @Nullable RetryScheduler enqueuer,
                                       DispatcherRouter dispatcherRouter,
                                       Metrics metrics,
-                                      DeploymentWakeUpGate wakeUpGate,
+                                      @Nullable DeploymentReadiness readiness,
                                       FunctionCapacityRegistry capacityRegistry) {
         this.executionStore = executionStore;
         this.enqueuer = enqueuer == null ? RetryScheduler.unavailable() : enqueuer;
         this.dispatcherRouter = dispatcherRouter;
         this.metrics = metrics;
-        this.wakeUpGate = wakeUpGate;
+        // A handler built without one (a bare unit test) has no managed deployment to wake.
+        this.readiness = readiness == null ? DeploymentReadiness.immediate() : readiness;
         // A handler built without a shared registry (a bare unit test) still bounds direct
         // admission: it owns a private registry rather than admitting unbounded work.
         this.capacityRegistry = capacityRegistry == null ? new FunctionCapacityRegistry() : capacityRegistry;
@@ -94,13 +96,13 @@ public class ExecutionCompletionHandler implements InvocationDispatch {
                 null, null);
     }
 
-    /** Compatibility constructor that also passes a wake-up gate, without a shared registry. */
+    /** Compatibility constructor that also passes a readiness port, without a shared registry. */
     public ExecutionCompletionHandler(ExecutionStore executionStore,
                                       @Nullable RetryScheduler enqueuer,
                                       DispatcherRouter dispatcherRouter,
                                       Metrics metrics,
-                                      DeploymentWakeUpGate wakeUpGate) {
-        this(executionStore, enqueuer, dispatcherRouter, metrics, wakeUpGate, null);
+                                      @Nullable DeploymentReadiness readiness) {
+        this(executionStore, enqueuer, dispatcherRouter, metrics, readiness, null);
     }
 
     /**
@@ -340,12 +342,14 @@ public class ExecutionCompletionHandler implements InvocationDispatch {
 
     private PhysicalDispatch dispatchDeployment(InvocationTask task) {
         try {
-            if (wakeUpGate == null) {
+            if (readiness.isImmediate()) {
+                // Nothing to wake: dispatch directly rather than through the wake-up wrapper, which
+                // exists only to make a wait cancellable.
                 return PhysicalDispatch.raw(dispatcherRouter.dispatchExternal(task));
             }
             var result = new CancellableDispatchFuture();
             var drained = new CompletableFuture<Void>();
-            wakeUpGate.ensureReady(task).whenComplete((ignored, error) -> {
+            readiness.ensureReady(task).whenComplete((ignored, error) -> {
                 if (result.isCancelled()) {
                     drained.complete(null);
                     return;

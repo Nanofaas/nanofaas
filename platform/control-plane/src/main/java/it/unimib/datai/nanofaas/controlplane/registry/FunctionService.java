@@ -7,12 +7,14 @@ import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
 import it.unimib.datai.nanofaas.controlplane.deployment.PartialDeprovisionException;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
+import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.time.InstantSource;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -66,8 +68,13 @@ public class FunctionService {
         this.resolver = new FunctionSpecResolver(defaults);
         this.deploymentProviderResolver = deploymentProviderResolver;
         this.locks = locks;
+        // The fallback exists for direct construction in tests. It deliberately uses a snapshot
+        // that owns no refresh pool: the constructor that creates its own pools would produce an
+        // object outside any context, with nothing to close it (invariant I8). In the application
+        // the coordinator always arrives as a bean.
         this.managedDeploymentCoordinator = managedDeploymentCoordinator == null
-                ? new ManagedDeploymentCoordinator(deploymentProviderResolver, registry, locks)
+                ? new ManagedDeploymentCoordinator(deploymentProviderResolver, registry, locks,
+                        ReplicaStatusSnapshot.withoutRefreshCapacity(InstantSource.system()))
                 : managedDeploymentCoordinator;
         this.imageValidator = imageValidator;
         this.listeners = listeners == null ? List.of() : listeners;
