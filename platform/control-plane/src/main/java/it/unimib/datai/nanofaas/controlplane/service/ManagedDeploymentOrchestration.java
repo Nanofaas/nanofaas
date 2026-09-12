@@ -14,7 +14,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 
 /**
@@ -28,12 +27,18 @@ import org.springframework.context.annotation.Import;
  * definitions separate from the condition lets a test register them directly and assert their
  * ownership without having to satisfy the condition first.</p>
  *
+ * <p>Deliberately carries no {@code @Configuration} stereotype. This package is inside the
+ * application's component scan, so a stereotype here would register the class — and therefore every
+ * bean below — before the condition on the importing auto-configuration is ever consulted, which is
+ * precisely how an earlier version of this task shipped a minimal profile that still built the
+ * replica snapshot, the wake-up gate and their threads. Being importable only, it exists exactly
+ * when the condition says it does.</p>
+ *
  * <p>These live in this package rather than in {@code deployment} because the wake-up gate is a
  * service-layer class and {@code deployment} may not depend on {@code service} — nor could the gate
  * move down, since it reads the function catalog and {@code registry} already depends on
  * {@code deployment}. This placement is what keeps the package graph acyclic.</p>
  */
-@Configuration(proxyBeanMethods = false)
 @Import(ReplicaStatusSnapshotConfiguration.class)
 public class ManagedDeploymentOrchestration {
 
