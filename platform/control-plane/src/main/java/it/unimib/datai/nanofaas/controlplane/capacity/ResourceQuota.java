@@ -71,7 +71,7 @@ public final class ResourceQuota {
             globallyReserved += units;
             reservedByFunction.put(generation.functionName(), functionReserved + units);
             reservedByGeneration.merge(generation, units, Long::sum);
-            Claim claim = new Claim(generation, owner, units);
+            Claim claim = new Claim(generation, units);
             return new Reservation(claim, generation, owner, claim.version);
         }
     }
@@ -156,7 +156,6 @@ public final class ResourceQuota {
                 throw new IllegalArgumentException(
                         "reservation cannot move between generations without lifecycle authority");
             }
-            claim.owner = targetOwner;
             claim.version++;
             return new Reservation(claim, targetGeneration, targetOwner, claim.version);
         }
@@ -173,14 +172,12 @@ public final class ResourceQuota {
 
     private static final class Claim {
         private final FunctionGeneration generation;
-        private ResourceOwner owner;
         private final long units;
         private long version;
         private boolean active = true;
 
-        private Claim(FunctionGeneration generation, ResourceOwner owner, long units) {
+        private Claim(FunctionGeneration generation, long units) {
             this.generation = generation;
-            this.owner = owner;
             this.units = units;
         }
     }

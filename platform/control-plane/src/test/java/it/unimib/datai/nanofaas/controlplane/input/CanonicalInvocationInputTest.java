@@ -76,6 +76,7 @@ class CanonicalInvocationInputTest {
     @Test
     void rejectsCustomNumberObjectsEvenWhenNestedInAnOtherwiseAcceptedArray() {
         Number opaque = new Number() {
+            @SuppressWarnings("UnusedVariable") // Verifies that opaque Number implementations may hide an object graph.
             private final Object hiddenGraph = new Object();
 
             @Override public int intValue() { return 0; }
@@ -121,6 +122,7 @@ class CanonicalInvocationInputTest {
         return ((CanonicalInvocationInput.Rejected) result).reason();
     }
 
+    @SuppressWarnings("ReferenceEquality") // This helper verifies graph identity, not value equality.
     private static boolean containsIdentity(Object value, Object expected) {
         if (value == expected) {
             return true;

@@ -28,9 +28,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** A focused RED reproducer: compare the unchanged corpus with real wire results. */
+    /** A focused RED reproducer: compare the unchanged corpus with real wire results. */
 class SaturationCorpusRuntimeMismatchTest {
     @Test
+    @SuppressWarnings("codeql[java/relative-path-command]") // Test toolchain intentionally resolves python3 via PATH.
     void dispatchRetryIdentityMatchesRealResponsesAndCallbacks() throws Exception {
         Path root = Path.of("").toAbsolutePath();
         while (root != null && !Files.isRegularFile(root.resolve(

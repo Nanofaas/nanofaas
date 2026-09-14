@@ -35,7 +35,7 @@ class ExecutionCompletionHandlerOffloadTest {
     private final DispatcherRouter dispatcherRouter = mock(DispatcherRouter.class);
     private final TestDispatchOwnership ownership = new TestDispatchOwnership();
     private final ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
-            executionStore, enqueuer::enqueue, dispatcherRouter, new Metrics(new SimpleMeterRegistry()));
+            executionStore, enqueuer, dispatcherRouter, new Metrics(new SimpleMeterRegistry()));
 
     private ExecutionRecord executionRecord(String executionId, String functionName) {
         FunctionSpec spec = new FunctionSpec(functionName, "img", List.of(), Map.of(), null,

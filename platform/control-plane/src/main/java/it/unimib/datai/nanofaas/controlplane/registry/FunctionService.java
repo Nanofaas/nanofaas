@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.controlplane.registry;
 
+import static it.unimib.datai.nanofaas.common.logging.LogSanitizer.singleLine;
+
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
@@ -197,7 +199,7 @@ public class FunctionService {
             }
             applicationState.completeUpdate(updated);
             log.info("Updated function {} (concurrency={}, timeoutMs={}, maxRetries={})",
-                    name, updatedSpec.concurrency(), updatedSpec.timeoutMs(), updatedSpec.maxRetries());
+                    singleLine(name), updatedSpec.concurrency(), updatedSpec.timeoutMs(), updatedSpec.maxRetries());
             return Optional.of(updated);
         });
     }
@@ -222,7 +224,7 @@ public class FunctionService {
             if (!managedDeploymentCoordinator.setReplicas(requireManagedDeploymentTarget(function), replicas)) {
                 return Optional.empty();
             }
-            log.info("Set replicas for function {} to {}", name, replicas);
+            log.info("Set replicas for function {} to {}", singleLine(name), replicas);
             return Optional.of(replicas);
         });
     }

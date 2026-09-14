@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.sdk.runtime;
 
+import static it.unimib.datai.nanofaas.common.logging.LogSanitizer.singleLine;
+
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,13 +54,14 @@ public class CallbackDispatcher {
             @Value("${nanofaas.callback.max-pending-bytes:16777216}") long maxPendingCallbackBytes,
             @Value("${nanofaas.callback.max-payload-bytes:2097152}") int maxCallbackBytes) {
         this(callbackClient, newExecutor(workerCount), runtimeMetrics,
-                maxPendingCallbacks, maxPendingCallbackBytes, maxCallbackBytes, Duration.ofSeconds(5));
+                maxPendingCallbacks, maxPendingCallbackBytes, maxCallbackBytes,
+                Duration.ofSeconds(SHUTDOWN_TIMEOUT_SECONDS));
     }
 
     public CallbackDispatcher(CallbackClient callbackClient, int workerCount) {
         this(callbackClient, newExecutor(workerCount), null,
                 QUEUE_CAPACITY + workerCount, DEFAULT_MAX_PENDING_BYTES, DEFAULT_MAX_CALLBACK_BYTES,
-                Duration.ofSeconds(5));
+                Duration.ofSeconds(SHUTDOWN_TIMEOUT_SECONDS));
     }
 
     private static ThreadPoolExecutor newExecutor(int workerCount) {
@@ -79,13 +82,15 @@ public class CallbackDispatcher {
 
     CallbackDispatcher(CallbackClient callbackClient, ThreadPoolExecutor executor) {
         this(callbackClient, executor, null, executor.getMaximumPoolSize() + executor.getQueue().remainingCapacity(),
-                DEFAULT_MAX_PENDING_BYTES, DEFAULT_MAX_CALLBACK_BYTES, Duration.ofSeconds(5));
+                DEFAULT_MAX_PENDING_BYTES, DEFAULT_MAX_CALLBACK_BYTES,
+                Duration.ofSeconds(SHUTDOWN_TIMEOUT_SECONDS));
     }
 
     CallbackDispatcher(CallbackClient callbackClient, ThreadPoolExecutor executor, RuntimeMetricsFilter runtimeMetrics) {
         this(callbackClient, executor, runtimeMetrics,
                 executor.getMaximumPoolSize() + executor.getQueue().remainingCapacity(),
-                DEFAULT_MAX_PENDING_BYTES, DEFAULT_MAX_CALLBACK_BYTES, Duration.ofSeconds(5));
+                DEFAULT_MAX_PENDING_BYTES, DEFAULT_MAX_CALLBACK_BYTES,
+                Duration.ofSeconds(SHUTDOWN_TIMEOUT_SECONDS));
     }
 
     CallbackDispatcher(CallbackClient callbackClient, ThreadPoolExecutor executor,
@@ -93,14 +98,15 @@ public class CallbackDispatcher {
                        long maxPendingCallbackBytes) {
         this(callbackClient, executor, runtimeMetrics, maxPendingCallbacks,
                 maxPendingCallbackBytes, Math.toIntExact(Math.min(Integer.MAX_VALUE, maxPendingCallbackBytes)),
-                Duration.ofSeconds(5));
+                Duration.ofSeconds(SHUTDOWN_TIMEOUT_SECONDS));
     }
 
     CallbackDispatcher(CallbackClient callbackClient, ThreadPoolExecutor executor,
                        RuntimeMetricsFilter runtimeMetrics, int maxPendingCallbacks,
                        long maxPendingCallbackBytes, int maxCallbackBytes) {
         this(callbackClient, executor, runtimeMetrics, maxPendingCallbacks,
-                maxPendingCallbackBytes, maxCallbackBytes, Duration.ofSeconds(5));
+                maxPendingCallbackBytes, maxCallbackBytes,
+                Duration.ofSeconds(SHUTDOWN_TIMEOUT_SECONDS));
     }
 
     CallbackDispatcher(CallbackClient callbackClient, ThreadPoolExecutor executor,
@@ -209,13 +215,14 @@ public class CallbackDispatcher {
         } catch (BoundedJson.SerializationException ex) {
             reservation.close();
             recordRejection(executionId);
-            log.warn("Rejecting unserializable callback for execution {}", executionId, ex);
+            log.warn("Rejecting unserializable callback for execution {}", singleLine(executionId), ex);
             return SubmitResult.SERIALIZATION_FAILED;
         }
     }
 
     private void recordRejection(String executionId) {
-        log.warn("Rejecting callback for execution {} because dispatcher capacity is full", executionId);
+        log.warn("Rejecting callback for execution {} because dispatcher capacity is full",
+                singleLine(executionId));
         if (runtimeMetrics != null) {
             runtimeMetrics.recordCallbackFailure();
         }

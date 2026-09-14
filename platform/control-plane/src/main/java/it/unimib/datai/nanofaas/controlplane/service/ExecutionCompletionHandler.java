@@ -35,6 +35,7 @@ import org.springframework.stereotype.Service;
  * lifecycle.</p>
  */
 @Service
+@SuppressWarnings("FutureReturnValueIgnored") // Callback stages complete lifecycle-owned futures.
 public class ExecutionCompletionHandler implements InvocationDispatch {
     private static final Logger log = LoggerFactory.getLogger(ExecutionCompletionHandler.class);
 
@@ -177,6 +178,7 @@ public class ExecutionCompletionHandler implements InvocationDispatch {
         }
     }
 
+    @Override
     public void dispatch(InvocationTask task) {
         dispatchInternal(task, task.dispatchLease());
     }
@@ -454,7 +456,6 @@ public class ExecutionCompletionHandler implements InvocationDispatch {
                                               Integer completedAttempt) {
         InvocationResult result = dispatchResult.result();
         InvocationTask currentTask = executionRecord.task();
-        int attempt = completedAttempt != null ? completedAttempt : currentTask.attempt();
         if (completedAttempt != null && currentTask.attempt() != completedAttempt) {
             return null;
         }

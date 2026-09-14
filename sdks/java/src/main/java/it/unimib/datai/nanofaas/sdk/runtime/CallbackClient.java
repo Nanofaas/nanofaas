@@ -31,7 +31,6 @@ public class CallbackClient {
 
     private final RestClient restClient;
     private final RuntimeSettings runtimeSettings;
-    private final ObjectMapper objectMapper;
     private final BoundedJson boundedJson;
     private final int maxPayloadBytes;
     private final int maxAttempts;
@@ -54,7 +53,6 @@ public class CallbackClient {
         }
         this.restClient = restClient;
         this.runtimeSettings = runtimeSettings;
-        this.objectMapper = objectMapper;
         this.boundedJson = new BoundedJson(objectMapper);
         this.maxPayloadBytes = maxPayloadBytes;
         this.maxAttempts = maxAttempts;

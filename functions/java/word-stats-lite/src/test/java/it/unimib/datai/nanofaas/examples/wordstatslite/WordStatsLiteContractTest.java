@@ -3,15 +3,36 @@ package it.unimib.datai.nanofaas.examples.wordstatslite;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.ResourceLock;
+import org.junit.jupiter.api.parallel.Resources;
 
 import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class WordStatsLiteContractTest {
+    @Test
+    @ResourceLock(Resources.LOCALE)
+    @SuppressWarnings("unchecked")
+    void wordNormalizationIsIndependentFromDefaultLocale() {
+        Locale previous = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            Map<String, Object> actual = (Map<String, Object>) WordStatsLite.handle(
+                    Map.of("text", "INDIGO INDIGO"));
+            List<Map<String, Object>> topWords = (List<Map<String, Object>>) actual.get("topWords");
+
+            assertEquals("indigo", topWords.getFirst().get("word"));
+            assertEquals(2L, topWords.getFirst().get("count"));
+        } finally {
+            Locale.setDefault(previous);
+        }
+    }
+
     @Test
     @SuppressWarnings("unchecked")
     void satisfiesSharedContract() throws Exception {

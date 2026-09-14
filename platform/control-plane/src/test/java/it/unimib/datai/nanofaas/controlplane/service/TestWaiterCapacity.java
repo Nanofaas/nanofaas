@@ -45,5 +45,6 @@ final class TestWaiterCapacity {
                 functions, enqueuer, store, metrics, completion, runtime.factory(), responses, coordinator);
     }
 
+    @SuppressWarnings("AvoidCommonTypeNames") // Test-local fixture intentionally mirrors the assembled runtime.
     record Runtime(InvocationExecutionFactory factory, WaiterCapacity waiters) { }
 }

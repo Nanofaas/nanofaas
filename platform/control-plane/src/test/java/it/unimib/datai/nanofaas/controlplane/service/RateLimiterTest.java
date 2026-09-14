@@ -2,8 +2,6 @@ package it.unimib.datai.nanofaas.controlplane.service;
 
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.LongSupplier;
@@ -92,7 +90,6 @@ class RateLimiterTest {
         assertThat(allowedCount.get()).isLessThanOrEqualTo(maxPerSecond);
     }
 
-    @SuppressWarnings("java:S2925") // deliberate delay to spread concurrent calls across the 1s window: rate-limit semantics depend on real time
     /**
      * Regression coverage for the concurrent defect called out at the end of
      * docs/control-plane-review-2026-09-05.md ("A further concurrency defect is in
@@ -164,7 +161,6 @@ class RateLimiterTest {
         CountDownLatch startLatch = new CountDownLatch(1);
         CountDownLatch endLatch = new CountDownLatch(workers);
         AtomicInteger admitted = new AtomicInteger(0);
-        List<Thread> threads = new ArrayList<>();
         for (int i = 0; i < workers; i++) {
             Thread t = new Thread(() -> {
                 try {
@@ -178,7 +174,6 @@ class RateLimiterTest {
                     endLatch.countDown();
                 }
             });
-            threads.add(t);
             t.start();
         }
 

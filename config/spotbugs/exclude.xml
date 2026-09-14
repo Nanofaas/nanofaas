@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+    <!-- Mutations share the instance monitor; volatile supports lock-free readers. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.controlplane.capacity.GenerationLifecycle"/>
+        <Bug pattern="VO_VOLATILE_INCREMENT"/>
+    </Match>
+
+    <!-- These maps are deliberately used as external monitors for compound lifecycle operations. -->
+    <Match>
+        <Or>
+            <Class name="it.unimib.datai.nanofaas.modules.asyncqueue.QueueManager"/>
+            <Class name="it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService"/>
+            <Class name="it.unimib.datai.nanofaas.controlplane.config.DispatchConnectionPool"/>
+        </Or>
+        <Bug pattern="JLM_JSR166_UTILCONCURRENT_MONITORENTER"/>
+    </Match>
+
+    <!-- Nullable Boolean is the documented third state: build metadata unavailable. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.modules.buildmetadata.BuildMetadataProvider"/>
+        <Method name="parseDirty"/>
+        <Bug pattern="NP_BOOLEAN_RETURN_NULL"/>
+    </Match>
+</FindBugsFilter>

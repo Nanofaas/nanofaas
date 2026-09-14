@@ -84,6 +84,7 @@ public class ManagedDeploymentCoordinator implements ManagedReplicaControl, Auto
      * and the sealed {@link ReplicaObservation} is what stops "no reading" from silently becoming
      * zero replicas.</p>
      */
+    @Override
     public ReplicaObservation observeReplicaStatus(ManagedDeploymentTarget target) {
         return snapshot.observe(target, this::fetchReplicaStatus);
     }
@@ -119,6 +120,7 @@ public class ManagedDeploymentCoordinator implements ManagedReplicaControl, Auto
     }
 
     /** Applies a replica mutation only to the exact still-active P07 generation. */
+    @Override
     public boolean setReplicas(FunctionGeneration expectedGeneration,
                                ManagedDeploymentTarget target,
                                int replicas) {
@@ -137,6 +139,8 @@ public class ManagedDeploymentCoordinator implements ManagedReplicaControl, Auto
     }
 
     /** Captures a generation only while the registry entry is still the observed object. */
+    @Override
+    @SuppressWarnings("ReferenceEquality") // A replacement with equal values is still a stale observation.
     public FunctionGeneration generationOf(RegisteredFunction observed) {
         return locks.withLock(observed.name(), () -> {
             if (registry.getRegistered(observed.name()).orElse(null) != observed) {

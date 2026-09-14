@@ -74,7 +74,7 @@ public class JsonTransformHandler implements FunctionHandler {
             String key = String.valueOf(entry.getKey());
             List<Map<String, Object>> items = entry.getValue();
 
-            Object value = switch (operation.toLowerCase()) {
+            Object value = switch (operation.toLowerCase(Locale.ROOT)) {
                 case OPERATION_COUNT -> items.size();
                 case "sum" -> sumField(items, valueField);
                 case "avg" -> avgField(items, valueField);

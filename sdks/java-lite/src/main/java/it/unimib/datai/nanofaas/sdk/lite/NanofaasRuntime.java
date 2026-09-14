@@ -159,6 +159,7 @@ public final class NanofaasRuntime {
         }
     }
 
+    @SuppressWarnings("ReferenceEquality") // The JVM hook must identify its own thread instance.
     private void removeShutdownHook() {
         synchronized (lifecycleMonitor) {
             if (!shutdownHookRegistered) {

@@ -568,10 +568,6 @@ class DispatchConnectionPoolTest {
         return client.get().uri(server.url(path).uri()).retrieve().bodyToMono(String.class).toFuture();
     }
 
-    private static InvocationTask task(String executionId, String endpoint) {
-        return task(executionId, endpoint, 10_000);
-    }
-
     private static InvocationTask task(String executionId, String endpoint, int timeoutMs) {
         FunctionSpec spec = externalSpec("external", endpoint, timeoutMs);
         return task(executionId, spec);

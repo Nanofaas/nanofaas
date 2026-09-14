@@ -19,6 +19,7 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
@@ -93,7 +94,7 @@ class ValidationTest {
                 .expectStatus().isBadRequest()
                 .expectBody()
                 .jsonPath("$.error").isEqualTo("VALIDATION_ERROR")
-                .jsonPath("$.details[0]").value(s -> ((String) s).contains("concurrency"));
+                .jsonPath("$.details[0]").value(s -> assertThat((String) s).contains("concurrency"));
     }
 
     @Test
@@ -107,7 +108,7 @@ class ValidationTest {
                 .exchange()
                 .expectStatus().isBadRequest()
                 .expectBody()
-                .jsonPath("$.details[0]").value(s -> ((String) s).contains("resources.limits.cpu"));
+                .jsonPath("$.details[0]").value(s -> assertThat((String) s).contains("resources.limits.cpu"));
     }
 
     @Test
@@ -140,7 +141,7 @@ class ValidationTest {
                 .exchange()
                 .expectStatus().isBadRequest()
                 .expectBody()
-                .jsonPath("$.details[0]").value(s -> ((String) s).contains("request must not exceed limit"));
+                .jsonPath("$.details[0]").value(s -> assertThat((String) s).contains("request must not exceed limit"));
     }
 
     @Test
@@ -197,7 +198,7 @@ class ValidationTest {
                 .expectStatus().isBadRequest()
                 .expectBody()
                 .jsonPath("$.error").isEqualTo("VALIDATION_ERROR")
-                .jsonPath("$.details[0]").value(s -> ((String) s).contains("input"));
+                .jsonPath("$.details[0]").value(s -> assertThat((String) s).contains("input"));
     }
 
     @Test

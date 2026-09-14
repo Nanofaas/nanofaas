@@ -43,7 +43,7 @@ class ExecutionCompletionHandlerRetryMetricsRegressionTest {
     private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     private final Metrics metrics = new Metrics(meterRegistry);
     private final ExecutionCompletionHandler completionHandler =
-            new ExecutionCompletionHandler(executionStore, enqueuer::enqueue, dispatcherRouter, metrics);
+            new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics);
 
     @Test
     void e2eLatencyAfterARetry_shouldReflectTheOriginalAdmissionTime_notJustTheLastAttempt() {

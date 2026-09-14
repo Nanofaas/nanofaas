@@ -195,7 +195,7 @@ class InvocationServiceAsyncReplayTest {
 
     @Test
     void invokeAsync_replayOfArchivedOutcome_doesNotIncreaseAdmissionCounter() {
-        ExecutionRecord settled = queueAndSettleSuccess("idem-admission", "ok");
+        queueAndSettleSuccess("idem-admission", "ok");
 
         invocationService.invokeAsync(
                 "testFunc", new InvocationRequest("payload", null), "idem-admission", null);

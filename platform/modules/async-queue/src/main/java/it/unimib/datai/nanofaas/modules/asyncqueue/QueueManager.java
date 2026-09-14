@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
+@SuppressWarnings("ReferenceEquality") // Queue state identity fences remove/re-register races.
 public class QueueManager {
     private static final String FUNCTION_TAG = "function";
     private final Map<String, FunctionQueueState> queues = new ConcurrentHashMap<>();

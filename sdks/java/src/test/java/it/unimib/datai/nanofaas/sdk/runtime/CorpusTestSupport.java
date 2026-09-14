@@ -19,6 +19,7 @@ final class CorpusTestSupport {
     static JsonNode load() throws Exception {
         return MAPPER.readTree(Files.readAllBytes(find("sdks/runtime-contract/saturation-wire-corpus.json")));
     }
+    @SuppressWarnings("codeql[java/relative-path-command]") // Test toolchain intentionally resolves python3 via PATH.
     static void validate(JsonNode corpus) throws Exception {
         Path temporary = Files.createTempFile("java-corpus-", ".json");
         try {

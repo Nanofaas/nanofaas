@@ -22,6 +22,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
+@SuppressWarnings("ReferenceEquality") // Proxy identity determines which replaced owner is closed.
 public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvider, AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(ContainerLocalDeploymentProvider.class);
@@ -553,7 +554,7 @@ public class ContainerLocalDeploymentProvider implements ManagedDeploymentProvid
     }
 
     private static String normalizeName(String functionName) {
-        String normalized = functionName == null ? "fn" : functionName.toLowerCase()
+        String normalized = functionName == null ? "fn" : functionName.toLowerCase(java.util.Locale.ROOT)
                 .replaceAll("[^a-z0-9-]+", "-")
                 .replaceAll("-{2,}", "-")
                 .replaceAll("^(?>-+)", "");

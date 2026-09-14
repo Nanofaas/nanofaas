@@ -18,7 +18,6 @@ import java.lang.reflect.Method;
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -34,7 +33,7 @@ class ExecutionCompletionHandlerSlotReleaseTest {
         CountingEnqueuer enqueuer = new CountingEnqueuer();
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
                 store,
-                enqueuer::enqueue,
+                enqueuer,
                 mock(DispatcherRouter.class),
                 new Metrics(new SimpleMeterRegistry())
         );
@@ -56,7 +55,7 @@ class ExecutionCompletionHandlerSlotReleaseTest {
         CountingEnqueuer enqueuer = new CountingEnqueuer();
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
                 store,
-                enqueuer::enqueue,
+                enqueuer,
                 mock(DispatcherRouter.class),
                 new Metrics(new SimpleMeterRegistry())
         );
@@ -81,7 +80,7 @@ class ExecutionCompletionHandlerSlotReleaseTest {
         DispatcherRouter dispatcherRouter = mock(DispatcherRouter.class);
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
                 store,
-                enqueuer::enqueue,
+                enqueuer,
                 dispatcherRouter,
                 new Metrics(new SimpleMeterRegistry())
         );
@@ -121,7 +120,7 @@ class ExecutionCompletionHandlerSlotReleaseTest {
         CountingEnqueuer enqueuer = new CountingEnqueuer();
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
                 store,
-                enqueuer::enqueue,
+                enqueuer,
                 mock(DispatcherRouter.class),
                 new Metrics(new SimpleMeterRegistry())
         );
@@ -156,7 +155,7 @@ class ExecutionCompletionHandlerSlotReleaseTest {
         CountingEnqueuer enqueuer = new CountingEnqueuer();
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
                 store,
-                enqueuer::enqueue,
+                enqueuer,
                 mock(DispatcherRouter.class),
                 new Metrics(new SimpleMeterRegistry())
         );
@@ -223,7 +222,7 @@ class ExecutionCompletionHandlerSlotReleaseTest {
         ExecutionStore store = new ExecutionStore();
         CountingEnqueuer enqueuer = new CountingEnqueuer();
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
-                store, enqueuer::enqueue, mock(DispatcherRouter.class), new Metrics(new SimpleMeterRegistry()));
+                store, enqueuer, mock(DispatcherRouter.class), new Metrics(new SimpleMeterRegistry()));
         InvocationTask task = task("exec-timeout", "fn");
         ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
         store.put(executionRecord);
@@ -291,8 +290,6 @@ class ExecutionCompletionHandlerSlotReleaseTest {
     }
 
     private static final class CountingEnqueuer implements RetryScheduler {
-        private final AtomicInteger releases = new AtomicInteger();
-
         @Override
         public boolean enqueue(InvocationTask task) {
             return true;

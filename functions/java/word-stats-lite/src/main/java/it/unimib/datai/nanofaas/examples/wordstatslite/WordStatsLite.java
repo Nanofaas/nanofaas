@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -49,7 +50,7 @@ public class WordStatsLite {
     }
 
     private static Map<String, Object> analyze(String text, int topN) {
-        String[] words = text.toLowerCase()
+        String[] words = text.toLowerCase(Locale.ROOT)
                 .replaceAll("[^\\p{L}\\p{N}\\s]", "")
                 .split("\\s+");
 

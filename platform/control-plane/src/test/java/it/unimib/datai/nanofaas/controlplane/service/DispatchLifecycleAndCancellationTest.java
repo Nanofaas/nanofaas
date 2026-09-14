@@ -143,7 +143,7 @@ class DispatchLifecycleAndCancellationTest {
         ExecutionCompletionHandler[] holder = new ExecutionCompletionHandler[1];
         ExecutorBackedInvocationEnqueuer enqueuer = new ExecutorBackedInvocationEnqueuer(
                 task -> holder[0].dispatch(task), capacity, retryExecutor);
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, enqueuer::enqueue,
+        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, enqueuer,
                 new DispatcherRouter(local, null), metrics, null, capacity);
         holder[0] = handler;
 

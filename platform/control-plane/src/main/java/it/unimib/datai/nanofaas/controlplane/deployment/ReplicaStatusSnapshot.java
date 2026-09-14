@@ -607,6 +607,7 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
     }
 
     /** Detaches this refresh from the entry, but only while the entry still owns it. */
+    @SuppressWarnings("ReferenceEquality") // Identity is the ownership token for an in-flight refresh.
     private void forget(Entry entry, Refresh refresh) {
         synchronized (entry) {
             if (entry.inFlight == refresh.result()) {

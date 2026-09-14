@@ -4,6 +4,8 @@ plugins {
     id 'org.springframework.boot' version "${springBootVersion}" apply false
     id 'io.spring.dependency-management' version "${springDependencyManagementVersion}" apply false
     id 'org.graalvm.buildtools.native' version "${graalvmBuildToolsVersion}" apply false
+    id 'com.github.spotbugs' version "${spotbugsGradlePluginVersion}" apply false
+    id 'net.ltgt.errorprone' version "${errorProneGradlePluginVersion}" apply false
     id 'org.sonarqube' version "${sonarQubePluginVersion}"
 }
 
@@ -19,6 +21,36 @@ allprojects {
 subprojects {
     apply plugin: 'java'
     apply plugin: 'jacoco'
+    apply plugin: 'com.github.spotbugs'
+    apply plugin: 'net.ltgt.errorprone'
+
+    dependencies {
+        errorprone "com.google.errorprone:error_prone_core:${errorProneVersion}"
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.errorprone {
+            allErrorsAsWarnings = true
+            disableWarningsInGeneratedCode = true
+        }
+    }
+
+    spotbugs {
+        toolVersion = spotbugsVersion
+        ignoreFailures = true
+        excludeFilter = rootProject.file('config/spotbugs/exclude.xml')
+    }
+
+    tasks.matching { it.name == 'spotbugsTest' }.configureEach {
+        enabled = false
+    }
+
+    tasks.matching { it.name == 'spotbugsMain' }.configureEach {
+        reports {
+            html.required = true
+            xml.required = true
+        }
+    }
 
     java {
         toolchain {

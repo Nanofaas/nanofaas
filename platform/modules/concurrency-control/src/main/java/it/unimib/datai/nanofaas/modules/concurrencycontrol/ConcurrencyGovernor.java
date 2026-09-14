@@ -32,6 +32,7 @@ import org.springframework.context.SmartLifecycle;
  * replicas exist, so a function with a fixed replica count ({@code ScalingStrategy.NONE} or an
  * external HPA) still gets a governed concurrency limit.</p>
  */
+@SuppressWarnings("FutureReturnValueIgnored") // Lifecycle shutdown owns the periodic task.
 public class ConcurrencyGovernor implements SmartLifecycle {
     private static final Logger log = LoggerFactory.getLogger(ConcurrencyGovernor.class);
 

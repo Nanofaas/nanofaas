@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.SmartLifecycle;
 
+@SuppressWarnings("FutureReturnValueIgnored") // The executor owns the loop until lifecycle shutdown.
 public class Scheduler implements SmartLifecycle, WorkSignaler {
     private static final Logger log = LoggerFactory.getLogger(Scheduler.class);
     private static final String COMPONENT_NAME = "Scheduler";

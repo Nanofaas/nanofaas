@@ -60,7 +60,8 @@ class ExecutionExpiryOwnershipTest {
                 scheduler.schedule(Runnable::run, () -> { }, 1, TimeUnit.DAYS).cancel(false);
             }
             assertThat(executor.getQueue()).isEmpty();
-            scheduler.schedule(Runnable::run, () -> { }, 1, TimeUnit.DAYS);
+            var pending = scheduler.schedule(Runnable::run, () -> { }, 1, TimeUnit.DAYS);
+            assertThat(pending.isDone()).isFalse();
         } finally {
             context.close();
         }

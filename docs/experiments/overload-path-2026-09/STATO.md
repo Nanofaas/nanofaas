@@ -40,3 +40,7 @@ Warning: Permanently added '104.214.227.72' (ED25519) to the list of known hosts
 archiviate 12 celle in raw/B-loop-cpu1  (6.2M)
 2026-09-05 09:57  B-loop-cpu1: tabelle calcolate e scritte nel documento
 2026-09-05 09:57  B-loop-cpu1: archiviato e verificabile
+2026-09-05 09:57  B-loop-cpu1: committato e41ab50c
+2026-09-05 09:57  teardown in corso
+2026-09-05 10:00  teardown completo, nessuna risorsa residua
+2026-09-05 10:00  coda esaurita

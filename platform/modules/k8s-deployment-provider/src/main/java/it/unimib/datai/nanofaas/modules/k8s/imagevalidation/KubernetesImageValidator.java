@@ -11,6 +11,8 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.modules.k8s.config.KubernetesProperties;
 import it.unimib.datai.nanofaas.controlplane.registry.ImageValidationException;
 import it.unimib.datai.nanofaas.controlplane.registry.ImageValidator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 
 import java.time.Duration;
@@ -20,6 +22,7 @@ import java.util.Locale;
 import java.util.Objects;
 
 public class KubernetesImageValidator implements ImageValidator {
+    private static final Logger log = LoggerFactory.getLogger(KubernetesImageValidator.class);
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(20);
     private static final Duration DEFAULT_POLL_INTERVAL = Duration.ofMillis(500);
 
@@ -64,8 +67,8 @@ public class KubernetesImageValidator implements ImageValidator {
         } finally {
             try {
                 client.pods().inNamespace(namespace).withName(podName).delete();
-            } catch (Exception _) {
-                // Best-effort cleanup.
+            } catch (Exception cleanupFailure) {
+                log.warn("Failed to delete image validation pod {}/{}", namespace, podName, cleanupFailure);
             }
         }
     }

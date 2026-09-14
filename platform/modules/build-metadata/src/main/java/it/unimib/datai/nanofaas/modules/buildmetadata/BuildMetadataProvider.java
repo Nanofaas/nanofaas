@@ -121,7 +121,7 @@ final class BuildMetadataProvider {
             return null;
         }
         List<String> modules = new ArrayList<>();
-        for (String module : raw.split(",")) {
+        for (String module : raw.split(",", -1)) {
             String trimmed = module.trim();
             if (!trimmed.isEmpty()) {
                 modules.add(trimmed);

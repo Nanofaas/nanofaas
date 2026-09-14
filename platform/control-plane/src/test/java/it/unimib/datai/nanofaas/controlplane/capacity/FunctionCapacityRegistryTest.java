@@ -2,10 +2,13 @@ package it.unimib.datai.nanofaas.controlplane.capacity;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -233,10 +236,11 @@ class FunctionCapacityRegistryTest {
         CountDownLatch acquired = new CountDownLatch(8);
         CountDownLatch release = new CountDownLatch(1);
         AtomicInteger maxInFlight = new AtomicInteger();
+        List<Future<?>> tasks = new ArrayList<>();
 
         try {
             for (int i = 0; i < 32; i++) {
-                workers.submit(() -> {
+                tasks.add(workers.submit(() -> {
                     ready.countDown();
                     await(start);
                     if (state.tryAcquireSlot()) {
@@ -245,7 +249,7 @@ class FunctionCapacityRegistryTest {
                         await(release);
                         state.releaseSlot();
                     }
-                });
+                }));
             }
             assertThat(ready.await(1, TimeUnit.SECONDS)).isTrue();
             start.countDown();
@@ -253,6 +257,9 @@ class FunctionCapacityRegistryTest {
             release.countDown();
             workers.shutdown();
             assertThat(workers.awaitTermination(1, TimeUnit.SECONDS)).isTrue();
+            for (Future<?> task : tasks) {
+                task.get(1, TimeUnit.SECONDS);
+            }
         } finally {
             workers.shutdownNow();
         }
@@ -273,10 +280,11 @@ class FunctionCapacityRegistryTest {
         CountDownLatch acquired = new CountDownLatch(2);
         CountDownLatch release = new CountDownLatch(1);
         AtomicInteger maxInFlight = new AtomicInteger();
+        List<Future<?>> tasks = new ArrayList<>();
 
         try {
             for (int i = 0; i < 32; i++) {
-                workers.submit(() -> {
+                tasks.add(workers.submit(() -> {
                     ready.countDown();
                     await(start);
                     var lease = registry.tryAcquireLease(registry.activeGeneration("echo"), ignored -> { });
@@ -286,7 +294,7 @@ class FunctionCapacityRegistryTest {
                         await(release);
                         lease.release();
                     }
-                });
+                }));
             }
             assertThat(ready.await(1, TimeUnit.SECONDS)).isTrue();
             start.countDown();
@@ -294,6 +302,9 @@ class FunctionCapacityRegistryTest {
             release.countDown();
             workers.shutdown();
             assertThat(workers.awaitTermination(1, TimeUnit.SECONDS)).isTrue();
+            for (Future<?> task : tasks) {
+                task.get(1, TimeUnit.SECONDS);
+            }
         } finally {
             workers.shutdownNow();
         }

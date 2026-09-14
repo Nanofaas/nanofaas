@@ -24,6 +24,7 @@ import java.util.concurrent.TimeoutException;
 
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
+@SuppressWarnings("EmptyCatch") // Closing a timed-out request body is best-effort.
 final class RuntimePayloadLimitFilter extends OncePerRequestFilter {
     private static final byte[] TOO_LARGE = ("{\"error\":{\"code\":\"RUNTIME_INPUT_TOO_LARGE\","
             + "\"message\":\"Runtime input exceeds configured byte limit\"}}")
