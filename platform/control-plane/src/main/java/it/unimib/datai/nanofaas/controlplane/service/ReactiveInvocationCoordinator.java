@@ -24,6 +24,7 @@ import java.time.Duration;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Service
+@SuppressWarnings("FutureReturnValueIgnored") // Completion is observed through the shared execution record.
 public final class ReactiveInvocationCoordinator {
     private static final Logger log = LoggerFactory.getLogger(ReactiveInvocationCoordinator.class);
 
@@ -122,7 +123,7 @@ public final class ReactiveInvocationCoordinator {
         AtomicReference<String> offloadedTarget = new AtomicReference<>();
         try {
             InvocationEnqueueSupport.admitIfNew(lookup,
-                    () -> admit(executionRecord, spec, offloadContext, timeoutMs, offloadedTarget));
+                    () -> admit(executionRecord, spec, offloadContext, offloadedTarget));
         } catch (RuntimeException ex) {
             return Mono.error(ex);
         }
@@ -173,11 +174,10 @@ public final class ReactiveInvocationCoordinator {
     private void admit(ExecutionRecord executionRecord,
                        FunctionSpec spec,
                        OffloadContext context,
-                       int timeoutMs,
                        AtomicReference<String> offloadedTarget) {
         boolean offloadable = !context.offloadedHop() && offloadGateway.enabled();
         if (offloadable && offloadGateway.shouldOffloadEagerly(spec)) {
-            startOffload(executionRecord, spec, OffloadTrigger.EAGER, context, timeoutMs, offloadedTarget);
+            startOffload(executionRecord, spec, OffloadTrigger.EAGER, context, offloadedTarget);
             return;
         }
         try {
@@ -185,7 +185,7 @@ public final class ReactiveInvocationCoordinator {
         } catch (SyncQueueRejectedException ex) {
             OffloadTrigger trigger = pressureTrigger(ex.reason());
             if (offloadable && trigger != null && offloadGateway.shouldOffloadOnPressure(spec)) {
-                startOffload(executionRecord, spec, trigger, context, timeoutMs, offloadedTarget);
+                startOffload(executionRecord, spec, trigger, context, offloadedTarget);
                 return;
             }
             throw ex;
@@ -230,7 +230,6 @@ public final class ReactiveInvocationCoordinator {
                               FunctionSpec spec,
                               OffloadTrigger trigger,
                               OffloadContext context,
-                              int timeoutMs,
                               AtomicReference<String> offloadedTarget) {
         String target = offloadGateway.targetUrl(spec);
         offloadedTarget.set(target);

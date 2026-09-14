@@ -24,7 +24,6 @@ public final class CallbackClient implements AutoCloseable {
     private static final int[] DEFAULT_RETRY_DELAYS_MS = {100, 500};
 
     private final HttpClient httpClient;
-    private final ObjectMapper objectMapper;
     private final String baseUrl;
     private final boolean ownsHttpClient;
     private final Duration attemptTimeout;
@@ -69,7 +68,6 @@ public final class CallbackClient implements AutoCloseable {
                            int maxPayloadBytes, boolean ownsHttpClient) {
         if (maxPayloadBytes <= 0) throw new IllegalArgumentException("max payload bytes must be positive");
         this.httpClient = httpClient;
-        this.objectMapper = objectMapper;
         this.baseUrl = baseUrl;
         this.ownsHttpClient = ownsHttpClient && httpClient != null;
         this.attemptTimeout = attemptTimeout;

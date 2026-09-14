@@ -351,7 +351,7 @@ public final class InvocationExecutionFactory {
         }
 
         public void publishAdmission() {
-            if (idempotencyStore == null || claimPublished) {
+            if (idempotencyStore == null) {
                 return;
             }
             // Serialized against the lifecycle's key protection on the record monitor: a

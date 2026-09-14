@@ -235,6 +235,7 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
         return CompletableFuture.failedFuture(new IllegalStateException(message));
     }
 
+    @SuppressWarnings("FutureReturnValueIgnored") // result owns both lifecycle callbacks.
     private final class WakeUp {
         private final FunctionGeneration generation;
         private final ManagedDeploymentTarget target;

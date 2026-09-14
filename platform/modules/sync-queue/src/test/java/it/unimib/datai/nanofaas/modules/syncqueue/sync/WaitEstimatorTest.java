@@ -87,6 +87,7 @@ class WaitEstimatorTest {
         assertEquals(20.0, estimator.estimateWaitSeconds("fn", 8, now), 0.01);
     }
 
+    @SuppressWarnings("codeql[java/missing-clone-method]") // ArrayDeque supplies the inherited clone contract.
     private static final class TrackingDeque extends ArrayDeque<Instant> {
         private int peekFirstCount;
         private int pollFirstCount;

@@ -11,6 +11,7 @@ import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.dispatch.LocalDispatcher;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
+import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.junit.jupiter.api.Test;
@@ -84,6 +85,10 @@ class DirectAdmissionWithoutQueueBoundedRegressionTest {
         } finally {
             // Release the 100 controlled dispatch futures so nothing is left pending.
             backend.complete(DispatchResult.warm(InvocationResult.success("done")));
+            attempts.forEach(attempt -> attempt.exceptionally(failure -> {
+                assertThat(failure).isInstanceOf(QueueFullException.class);
+                return null;
+            }).join());
         }
     }
 }

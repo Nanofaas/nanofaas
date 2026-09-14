@@ -36,8 +36,6 @@ public class Metrics implements InvocationObservations, OffloadMeters {
     private final AtomicLong standaloneGeneration = new AtomicLong(1);
     /** Active owners are name-addressable; draining owners are identity-addressable only. */
     private final Map<String, OffloadMeterOwner> activeOffloadOwners = new HashMap<>();
-    /** Not history: an entry remains only while a subscribed remote call still owns it. */
-    private final Map<FunctionGeneration, OffloadMeterOwner> retiringOffloadOwners = new HashMap<>();
 
     public Metrics(MeterRegistry registry) {
         this(registry, null);
@@ -265,17 +263,12 @@ public class Metrics implements InvocationObservations, OffloadMeters {
         // Meter identity cannot include the internal generation. Remove the series immediately:
         // a new registration may use the same public function tag while an old remote call drains.
         owner.removeMeters();
-        if (owner.lifecycle().retire()) {
-            retiringOffloadOwners.remove(owner.generation(), owner);
-        } else {
-            retiringOffloadOwners.put(owner.generation(), owner);
-        }
+        owner.lifecycle().retire();
     }
 
     private void closeOffloadOwner(OffloadMeterOwner owner) {
         if (owner.lifecycle().release()) {
             owner.removeMeters();
-            retiringOffloadOwners.remove(owner.generation(), owner);
         }
     }
 

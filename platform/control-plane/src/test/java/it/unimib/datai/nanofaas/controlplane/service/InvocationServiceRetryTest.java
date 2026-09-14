@@ -96,16 +96,16 @@ class InvocationServiceRetryTest {
         org.mockito.Mockito.lenient().when(enqueuer.queueStrategy()).thenReturn(InvocationEnqueuer.QueueStrategy.FUNCTION_QUEUE);
         when(syncQueueGateway.enabled()).thenReturn(false);
         io.micrometer.core.instrument.simple.SimpleMeterRegistry simpleMeterRegistry = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
-        when(metrics.latency(anyString())).thenReturn(io.micrometer.core.instrument.Timer.builder("test-latency").register(simpleMeterRegistry));
-        when(metrics.queueWait(anyString())).thenReturn(io.micrometer.core.instrument.Timer.builder("test-queue-wait").register(simpleMeterRegistry));
-        when(metrics.e2eLatency(anyString())).thenReturn(io.micrometer.core.instrument.Timer.builder("test-e2e").register(simpleMeterRegistry));
-        when(metrics.initDuration(anyString())).thenReturn(io.micrometer.core.instrument.Timer.builder("test-init").register(simpleMeterRegistry));
-        when(metrics.timers(anyString())).thenAnswer(invocation -> new Metrics.FunctionTimers(
-                metrics.latency(invocation.getArgument(0)),
-                metrics.initDuration(invocation.getArgument(0)),
-                metrics.queueWait(invocation.getArgument(0)),
-                metrics.e2eLatency(invocation.getArgument(0))
-        ));
+        var latency = io.micrometer.core.instrument.Timer.builder("test-latency").register(simpleMeterRegistry);
+        var queueWait = io.micrometer.core.instrument.Timer.builder("test-queue-wait").register(simpleMeterRegistry);
+        var e2eLatency = io.micrometer.core.instrument.Timer.builder("test-e2e").register(simpleMeterRegistry);
+        var initDuration = io.micrometer.core.instrument.Timer.builder("test-init").register(simpleMeterRegistry);
+        when(metrics.latency(anyString())).thenReturn(latency);
+        when(metrics.queueWait(anyString())).thenReturn(queueWait);
+        when(metrics.e2eLatency(anyString())).thenReturn(e2eLatency);
+        when(metrics.initDuration(anyString())).thenReturn(initDuration);
+        when(metrics.timers(anyString())).thenReturn(
+                new Metrics.FunctionTimers(latency, initDuration, queueWait, e2eLatency));
     }
 
     @Test

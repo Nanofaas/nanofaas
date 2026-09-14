@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.sdk.runtime;
 
+import static it.unimib.datai.nanofaas.common.logging.LogSanitizer.singleLine;
+
 import tools.jackson.databind.JsonNode;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.runtime.FunctionHandler;
@@ -34,10 +36,10 @@ public class InvokeController {
     private final InvocationRuntimeContextResolver runtimeContextResolver;
     private final ColdStartTracker coldStartTracker;
     private final HandlerExecutor handlerExecutor;
-    private final JsonOutputNormalizer outputNormalizer;
     private final RuntimePayloadLimits payloadLimits;
 
     @Autowired
+    @SuppressWarnings("UnusedVariable") // Kept in the public constructor for source compatibility.
     public InvokeController(
             CallbackDispatcher callbackDispatcher,
             HandlerRegistry handlerRegistry,
@@ -51,10 +53,10 @@ public class InvokeController {
         this.runtimeContextResolver = runtimeContextResolver;
         this.coldStartTracker = coldStartTracker;
         this.handlerExecutor = handlerExecutor;
-        this.outputNormalizer = outputNormalizer;
         this.payloadLimits = payloadLimits;
     }
 
+    @SuppressWarnings("UnusedVariable") // Kept in the public constructor for source compatibility.
     public InvokeController(CallbackDispatcher callbackDispatcher, HandlerRegistry handlerRegistry,
                             InvocationRuntimeContextResolver runtimeContextResolver,
                             ColdStartTracker coldStartTracker, HandlerExecutor handlerExecutor,
@@ -106,7 +108,8 @@ public class InvokeController {
                     dispatchAttempt, isColdStart, callbackReservation);
         } catch (OutputSerializationException ex) {
             String errorMessage = ex.getMessage();
-            log.error("Handler output serialization failed for execution {}: {}", effectiveExecutionId, errorMessage, ex);
+            log.error("Handler output serialization failed for execution {}: {}",
+                    singleLine(effectiveExecutionId), singleLine(errorMessage), ex);
             submitCallback(callbackReservation,
                     effectiveExecutionId,
                     CallbackPayload.error("OUTPUT_SERIALIZATION_ERROR", errorMessage),
@@ -128,7 +131,7 @@ public class InvokeController {
                     .body(Map.of(ERROR_KEY, Map.of(
                             "code", "RUNTIME_STOPPING", "message", "Runtime is stopping")));
         } catch (TimeoutException _) {
-            log.error("Handler timed out for execution {}", effectiveExecutionId);
+            log.error("Handler timed out for execution {}", singleLine(effectiveExecutionId));
             submitCallback(callbackReservation,
                     effectiveExecutionId,
                     CallbackPayload.error("HANDLER_TIMEOUT", "Handler exceeded configured timeout"),
@@ -169,7 +172,7 @@ public class InvokeController {
                 isEnvelope = true;
             } else {
                 log.warn("Handler returned invalid statusCode {} for execution {}, treating as platform error",
-                        envelopeStatus, executionId);
+                        envelopeStatus, singleLine(executionId));
                 submitCallback(callbackReservation, executionId,
                         CallbackPayload.error("OUTPUT_SERIALIZATION_ERROR",
                                 "Handler returned invalid statusCode: " + envelopeStatus),
@@ -231,7 +234,8 @@ public class InvokeController {
                 .filter(key -> !allowedHeaders.containsKey(key))
                 .toList();
         if (!dropped.isEmpty()) {
-            log.warn("Dropped response header(s) {} for execution {}", dropped, executionId);
+            log.warn("Dropped response header(s) {} for execution {}",
+                    singleLine(dropped), singleLine(executionId));
         }
     }
 
@@ -240,7 +244,8 @@ public class InvokeController {
                                                         String effectiveExecutionId,
                                                         String traceId, String dispatchAttempt) {
         String errorMessage = handlerErrorMessage(ex);
-        log.error("Handler error for execution {}: {}", effectiveExecutionId, errorMessage, ex);
+        log.error("Handler error for execution {}: {}",
+                singleLine(effectiveExecutionId), singleLine(errorMessage), ex);
 
         submitCallback(callbackReservation,
                 effectiveExecutionId,

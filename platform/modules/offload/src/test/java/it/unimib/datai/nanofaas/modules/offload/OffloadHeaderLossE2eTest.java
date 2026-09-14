@@ -260,35 +260,36 @@ class OffloadHeaderLossE2eTest {
             out.write(payload);
             out.flush();
 
-            BufferedInputStream in = new BufferedInputStream(socket.getInputStream());
-            String statusLine = readAsciiLine(in);
-            String[] statusParts = statusLine.split(" ");
-            int status = statusParts.length > 1 ? Integer.parseInt(statusParts[1]) : -1;
-            int contentLength = -1;
-            boolean chunked = false;
-            String line;
-            while ((line = readAsciiLine(in)) != null && !line.isEmpty()) {
-                int colon = line.indexOf(':');
-                if (colon <= 0) {
-                    continue;
+            try (BufferedInputStream in = new BufferedInputStream(socket.getInputStream())) {
+                String statusLine = readAsciiLine(in);
+                String[] statusParts = statusLine.split(" ");
+                int status = statusParts.length > 1 ? Integer.parseInt(statusParts[1]) : -1;
+                int contentLength = -1;
+                boolean chunked = false;
+                String line;
+                while ((line = readAsciiLine(in)) != null && !line.isEmpty()) {
+                    int colon = line.indexOf(':');
+                    if (colon <= 0) {
+                        continue;
+                    }
+                    String name = line.substring(0, colon).trim();
+                    String value = line.substring(colon + 1).trim();
+                    if ("Content-Length".equalsIgnoreCase(name)) {
+                        contentLength = Integer.parseInt(value);
+                    } else if ("Transfer-Encoding".equalsIgnoreCase(name) && value.contains("chunked")) {
+                        chunked = true;
+                    }
                 }
-                String name = line.substring(0, colon).trim();
-                String value = line.substring(colon + 1).trim();
-                if ("Content-Length".equalsIgnoreCase(name)) {
-                    contentLength = Integer.parseInt(value);
-                } else if ("Transfer-Encoding".equalsIgnoreCase(name) && value.contains("chunked")) {
-                    chunked = true;
+                String responseBody;
+                if (chunked) {
+                    responseBody = readChunked(in);
+                } else if (contentLength >= 0) {
+                    responseBody = new String(in.readNBytes(contentLength), StandardCharsets.UTF_8);
+                } else {
+                    responseBody = readToEndOfStream(in);
                 }
+                return new RawResponse(status, responseBody);
             }
-            String responseBody;
-            if (chunked) {
-                responseBody = readChunked(in);
-            } else if (contentLength >= 0) {
-                responseBody = new String(in.readNBytes(contentLength), StandardCharsets.UTF_8);
-            } else {
-                responseBody = readToEndOfStream(in);
-            }
-            return new RawResponse(status, responseBody);
         }
     }
 

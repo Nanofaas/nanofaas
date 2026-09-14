@@ -5,11 +5,14 @@ import tools.jackson.databind.ObjectMapper;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.runtime.HandlerResponse;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.ResourceLock;
+import org.junit.jupiter.api.parallel.Resources;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -116,6 +119,28 @@ class JsonTransformHandlerTest {
         Map<String, Object> groups = (Map<String, Object>) result.get("groups");
 
         assertEquals(expected, groups.get("eng"));
+    }
+
+    @Test
+    @ResourceLock(Resources.LOCALE)
+    @SuppressWarnings("unchecked")
+    void operationNamesAreIndependentOfTheDefaultLocale() {
+        Locale previous = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            InvocationRequest request = new InvocationRequest(Map.of(
+                    "data", List.of(Map.of("dept", "eng", "salary", 80_000)),
+                    "groupBy", "dept",
+                    "operation", "MIN",
+                    "valueField", "salary"), null);
+
+            Map<String, Object> result = (Map<String, Object>) handler.handle(request);
+            Map<String, Object> groups = (Map<String, Object>) result.get("groups");
+
+            assertEquals(80_000.0, groups.get("eng"));
+        } finally {
+            Locale.setDefault(previous);
+        }
     }
 
     @Test

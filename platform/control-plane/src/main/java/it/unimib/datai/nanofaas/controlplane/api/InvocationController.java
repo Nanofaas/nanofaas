@@ -104,7 +104,7 @@ public class InvocationController {
                 if (value == null) {
                     continue;
                 }
-                for (String token : value.split(",")) {
+                for (String token : value.split(",", -1)) {
                     String trimmed = token.strip().toLowerCase(Locale.ROOT);
                     if (!trimmed.isEmpty()) {
                         nominated.add(trimmed);

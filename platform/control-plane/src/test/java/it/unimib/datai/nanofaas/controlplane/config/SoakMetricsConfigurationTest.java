@@ -50,7 +50,7 @@ class SoakMetricsConfigurationTest {
             var waiter = waiters.reserve("fn", "execution");
             var lease = functions.tryAcquireLease("fn", 2);
             functions.remove("fn");
-            expiry.schedule(() -> { }, 1, TimeUnit.DAYS);
+            var expiryTask = expiry.schedule(() -> { }, 1, TimeUnit.DAYS);
 
             assertThat(gauge(meters, "invocation_execution_reservations")).isEqualTo(1);
             assertThat(gauge(meters, "invocation_canonical_input_bytes")).isEqualTo(11);
@@ -63,7 +63,8 @@ class SoakMetricsConfigurationTest {
             inputCopy.close();
             admission.rollback();
             lease.release();
-            expiry.getQueue().clear();
+            expiryTask.cancel(false);
+            expiry.purge();
 
             SOAK_METRICS.forEach(name -> assertThat(gauge(meters, name)).isZero());
         });

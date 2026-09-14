@@ -1,0 +1,10 @@
+name: NanoFaaS CodeQL configuration
+
+# build-mode none scans every matching source under the checkout. Keep historical
+# experiments, local worktrees, and generated build output out of the database so
+# duplicate fully-qualified classes cannot replace the active implementation.
+paths-ignore:
+  - .claude/**
+  - experiments/**
+  - docs/experiments/**
+  - "**/build/**"

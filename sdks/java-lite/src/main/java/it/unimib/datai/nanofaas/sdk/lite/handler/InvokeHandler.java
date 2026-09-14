@@ -33,6 +33,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+@SuppressWarnings("EmptyCatch") // Closing a timed-out request body is best-effort.
 public final class InvokeHandler implements HttpHandler {
     private static final Logger log = LoggerFactory.getLogger(InvokeHandler.class);
     private static final String ERROR_KEY = "error";

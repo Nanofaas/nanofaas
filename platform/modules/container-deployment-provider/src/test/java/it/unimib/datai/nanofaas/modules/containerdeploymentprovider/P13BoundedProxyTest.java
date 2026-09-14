@@ -89,6 +89,7 @@ class P13BoundedProxyTest {
             assertThat(readStatus(socket)).isEqualTo(413);
         }
         assertThat(backendCalls).hasValue(0);
+        awaitIdle();
         assertIdle();
     }
 

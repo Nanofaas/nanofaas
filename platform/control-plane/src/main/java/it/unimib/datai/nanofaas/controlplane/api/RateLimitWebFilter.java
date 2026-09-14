@@ -59,7 +59,7 @@ public class RateLimitWebFilter implements WebFilter {
     }
 
     private static boolean isInvocationPath(ServerWebExchange exchange) {
-        if (exchange.getRequest().getMethod() != HttpMethod.POST) {
+        if (!HttpMethod.POST.equals(exchange.getRequest().getMethod())) {
             return false;
         }
         PathContainer path = exchange.getRequest().getPath().pathWithinApplication();

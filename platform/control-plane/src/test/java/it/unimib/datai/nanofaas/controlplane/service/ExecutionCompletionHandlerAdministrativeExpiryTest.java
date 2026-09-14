@@ -19,7 +19,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -44,7 +43,7 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
     void aRecordThatNeverDispatchesExpiresWithoutReleasingAnySlot() {
         ExecutionStore store = shortLivedStore();
         CountingEnqueuer enqueuer = new CountingEnqueuer();
-        new ExecutionCompletionHandler(store, enqueuer::enqueue, mock(DispatcherRouter.class), new Metrics(new SimpleMeterRegistry()));
+        new ExecutionCompletionHandler(store, enqueuer, mock(DispatcherRouter.class), new Metrics(new SimpleMeterRegistry()));
         // Never dispatched: task expired while still sitting in a queue, or served
         // by offload - both never call dispatch(), so no slot was ever acquired.
         ExecutionRecord executionRecord = new ExecutionRecord("exec-queued", task("exec-queued", "fn"));
@@ -72,7 +71,7 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
         CountingEnqueuer enqueuer = new CountingEnqueuer();
         DispatcherRouter dispatcherRouter = mock(DispatcherRouter.class);
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
-                store, enqueuer::enqueue, dispatcherRouter, new Metrics(new SimpleMeterRegistry()));
+                store, enqueuer, dispatcherRouter, new Metrics(new SimpleMeterRegistry()));
         InvocationTask task = task("exec-stuck", "fn");
         // A dispatch that never calls back - the crashed-runtime / dropped-response case.
         CompletableFuture<DispatchResult> neverCompletes = new CompletableFuture<>();
@@ -105,7 +104,7 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
         CountingEnqueuer enqueuer = new CountingEnqueuer();
         DispatcherRouter dispatcherRouter = mock(DispatcherRouter.class);
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
-                store, enqueuer::enqueue, dispatcherRouter, new Metrics(new SimpleMeterRegistry()));
+                store, enqueuer, dispatcherRouter, new Metrics(new SimpleMeterRegistry()));
         InvocationTask task = task("exec-timeout-then-expired", "fn");
         CompletableFuture<DispatchResult> neverCompletes = new CompletableFuture<>();
         when(dispatcherRouter.dispatchExternal(any(InvocationTask.class))).thenReturn(neverCompletes);
@@ -150,8 +149,6 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
     }
 
     private static final class CountingEnqueuer implements RetryScheduler {
-        private final AtomicInteger releases = new AtomicInteger();
-
         @Override
         public boolean enqueue(InvocationTask task) {
             return true;

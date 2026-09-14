@@ -69,8 +69,8 @@ public class DeploymentWakeUpCoordinator implements DeploymentWakeUpControl, Aut
             }
             state = functions.computeIfAbsent(generation, ignored -> new FunctionState());
         }
-        state.mutationLock.lock();
         long leaseId = 0;
+        state.mutationLock.lock();
         try {
             synchronized (state) {
                 if (closed.get() || state.retired || functions.get(generation) != state || !isCurrent(generation)) {
@@ -100,6 +100,7 @@ public class DeploymentWakeUpCoordinator implements DeploymentWakeUpControl, Aut
     }
 
     /** Runs a downscale only when the active generation has no wake-up lease. */
+    @Override
     public boolean scaleDownIfUnprotected(FunctionGeneration generation,
                                            ManagedDeploymentTarget target,
                                            BooleanSupplier scaleDown) {
@@ -158,6 +159,7 @@ public class DeploymentWakeUpCoordinator implements DeploymentWakeUpControl, Aut
         }
     }
 
+    @Override
     public void removeFunctionState(String functionName) {
         synchronized (stateLifecycle) {
             pruneRemovalFences();

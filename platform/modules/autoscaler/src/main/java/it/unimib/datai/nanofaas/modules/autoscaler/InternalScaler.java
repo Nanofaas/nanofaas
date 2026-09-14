@@ -21,6 +21,7 @@ import java.time.InstantSource;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+@SuppressWarnings("FutureReturnValueIgnored") // Lifecycle shutdown owns the periodic task.
 public class InternalScaler implements SmartLifecycle {
     private static final Logger log = LoggerFactory.getLogger(InternalScaler.class);
 

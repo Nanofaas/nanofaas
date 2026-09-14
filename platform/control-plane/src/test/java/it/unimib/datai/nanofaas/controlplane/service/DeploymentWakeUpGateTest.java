@@ -84,6 +84,7 @@ class DeploymentWakeUpGateTest {
     }
 
     @Test
+    @SuppressWarnings({"ReferenceEquality", "FutureReturnValueIgnored"})
     void registryObjectAndGenerationAreCapturedAtomicallyBeforeWakeUpPublication() throws Exception {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
@@ -147,6 +148,7 @@ class DeploymentWakeUpGateTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
+    @SuppressWarnings("FutureReturnValueIgnored")
     void ownerPublicationIsAtomicWithRemovalAndClose(boolean close) throws Exception {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
@@ -712,6 +714,7 @@ class DeploymentWakeUpGateTest {
     }
 
     @Test
+    @SuppressWarnings("FutureReturnValueIgnored")
     void ensureReady_coalescesConcurrentWakeUpsForTheSameFunction() throws Exception {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "container-local");

@@ -178,7 +178,7 @@ public class InvocationService {
      */
     private void refuseEarlyIfQueueFull(String functionName, FunctionSpec spec, String idempotencyKey,
                                         InvocationKind kind) {
-        if (idempotencyKey != null && !idempotencyKey.isBlank()
+        if ((idempotencyKey != null && !idempotencyKey.isBlank())
                 || !reactiveCoordinator.queueFullMeansRefusal(spec)
                 || !enqueuer.isQueueFull(functionName)) {
             return;

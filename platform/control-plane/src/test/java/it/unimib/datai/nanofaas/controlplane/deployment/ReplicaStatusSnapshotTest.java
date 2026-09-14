@@ -13,6 +13,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -22,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 class ReplicaStatusSnapshotTest {
 
-    private static final Duration TTL = Duration.ofMillis(1000);
+    private static final Duration TTL = Duration.ofSeconds(1);
     private static final ManagedDeploymentTarget TARGET = new ManagedDeploymentTarget("fn", "k8s");
 
     // ------------------------------------------------------------------ item 3: observation states
@@ -501,9 +502,11 @@ class ReplicaStatusSnapshotTest {
             };
             ExecutorService callers = Executors.newFixedThreadPool(2);
             try {
-                callers.submit(() -> snapshot.refresh(new ManagedDeploymentTarget("a", "k8s"), blocking));
+                Future<?> first = callers.submit(
+                        () -> snapshot.refresh(new ManagedDeploymentTarget("a", "k8s"), blocking));
                 await(entered);
-                callers.submit(() -> snapshot.refresh(new ManagedDeploymentTarget("b", "k8s"), blocking));
+                Future<?> second = callers.submit(
+                        () -> snapshot.refresh(new ManagedDeploymentTarget("b", "k8s"), blocking));
                 awaitQueueDepth(snapshot, RefreshPath.FRESHNESS, 1);
 
                 Thread caller = Thread.currentThread();
@@ -512,6 +515,9 @@ class ReplicaStatusSnapshotTest {
                         .hasMessageContaining("rejected");
                 assertThat(snapshot.rejectedRefreshes(RefreshPath.FRESHNESS)).isEqualTo(1);
                 assertThat(fetchThreads.values()).doesNotContain(caller);
+                release.countDown();
+                first.get(1, TimeUnit.SECONDS);
+                second.get(1, TimeUnit.SECONDS);
             } finally {
                 release.countDown();
                 callers.shutdownNow();

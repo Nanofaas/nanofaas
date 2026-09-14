@@ -6,6 +6,7 @@ import it.unimib.datai.nanofaas.controlplane.capacity.*;
 import it.unimib.datai.nanofaas.controlplane.config.ExecutionStoreProperties;
 import it.unimib.datai.nanofaas.controlplane.dispatch.*;
 import it.unimib.datai.nanofaas.controlplane.execution.*;
+import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
 import it.unimib.datai.nanofaas.controlplane.scheduler.*;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
@@ -15,6 +16,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -52,8 +54,7 @@ class ReviewLifecycleGateTest {
         var handler = new ExecutionCompletionHandler(store, null, mock(DispatcherRouter.class), metrics);
         var rec = record("metrics", spec(ExecutionMode.LOCAL, 1));
         store.put(rec);
-        try { handler.completeExecution(rec.executionId(), InvocationResult.success("done")); }
-        catch (RuntimeException ignored) { }
+        handler.completeExecution(rec.executionId(), InvocationResult.success("done"));
         System.out.println("METRIC_FAILURE state=" + rec.state() + " sharedDone="
                 + rec.completion().isDone() + " live=" + store.inFlightCount());
         assertThat(rec.completion()).isDone();
@@ -117,7 +118,8 @@ class ReviewLifecycleGateTest {
         var a = record("new-a", spec(ExecutionMode.LOCAL, 1)); store.put(a);
         var b = record("new-b", spec(ExecutionMode.LOCAL, 1)); store.put(b);
         handler.dispatchDirect(a.task());
-        try { handler.dispatchDirect(b.task()); } catch (RuntimeException ignored) { }
+        assertThatThrownBy(() -> handler.dispatchDirect(b.task()))
+                .isInstanceOf(QueueFullException.class);
         System.out.println("DIRECT_RECONFIG requested=1 inFlight=" + capacity.inFlight("fn"));
         try { assertThat(capacity.inFlight("fn")).isEqualTo(1); }
         finally { blocked.complete(DispatchResult.warm(InvocationResult.success("done"))); }
@@ -210,6 +212,7 @@ class ReviewLifecycleGateTest {
     }
 
     @Test
+    @SuppressWarnings("EmptyCatch") // Intentionally model local work that ignores cancellation interrupts.
     void administrativeExpiryMustKeepCapacityUntilNonCooperativeLocalWorkEnds() throws Exception {
         AtomicLong clock = new AtomicLong(); var store = timedStore(clock);
         var capacity = new FunctionCapacityRegistry();

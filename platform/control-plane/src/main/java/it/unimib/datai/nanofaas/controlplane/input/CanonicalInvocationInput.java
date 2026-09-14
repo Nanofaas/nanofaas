@@ -16,7 +16,9 @@ import java.util.Objects;
  * implementations are rejected before invoking any of their methods.
  */
 public final class CanonicalInvocationInput {
+    @SuppressWarnings("codeql[java/inefficient-string-constructor]") // Private identity sentinel, not a value string.
     private static final String LIST = new String("nanofaas:list");
+    @SuppressWarnings("codeql[java/inefficient-string-constructor]") // Private identity sentinel, not a value string.
     private static final String MAP = new String("nanofaas:map");
 
     private CanonicalInvocationInput() {
@@ -78,6 +80,8 @@ public final class CanonicalInvocationInput {
         }
     }
 
+    @SuppressWarnings({"ReferenceEquality", "codeql[java/index-out-of-bounds]"})
+    // LIST and MAP are private identity sentinels; Builder always emits complete key/value pairs.
     private static Object materialize(Object value) {
         if (!(value instanceof Object[] array)) {
             return value;

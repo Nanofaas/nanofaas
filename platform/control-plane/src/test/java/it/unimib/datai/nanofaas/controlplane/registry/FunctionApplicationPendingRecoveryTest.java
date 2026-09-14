@@ -300,7 +300,7 @@ class FunctionApplicationPendingRecoveryTest {
         CountDownLatch readerPassedAvailabilityCheck = new CountDownLatch(1);
         CountDownLatch releaseReader = new CountDownLatch(1);
         doAnswer(invocation -> {
-            if (holdReader.get() && Thread.currentThread() == readerThread.get()) {
+            if (holdReader.get() && Thread.currentThread().equals(readerThread.get())) {
                 readerPassedAvailabilityCheck.countDown();
                 assertThat(releaseReader.await(5, TimeUnit.SECONDS)).isTrue();
             }

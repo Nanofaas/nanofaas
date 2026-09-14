@@ -98,6 +98,7 @@ class OutcomeWeigherTest {
     }
 
     @Test
+    @SuppressWarnings("UnnecessaryStringBuilder") // StringBuilder is the opaque mutable type under test.
     void anOpaqueObjectIsNotCacheable() {
         assertThat(OutcomeWeigher.freeze(ID, outcome(new StringBuilder("x")))).isNull();
     }

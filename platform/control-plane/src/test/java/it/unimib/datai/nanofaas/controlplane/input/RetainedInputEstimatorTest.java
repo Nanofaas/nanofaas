@@ -133,6 +133,7 @@ class RetainedInputEstimatorTest {
     }
 
     private static final class OpaqueLocalInput {
+        @SuppressWarnings("UnusedVariable") // Makes the rejected opaque object retain a measurable payload.
         private final byte[] retained = new byte[1_024];
     }
 }

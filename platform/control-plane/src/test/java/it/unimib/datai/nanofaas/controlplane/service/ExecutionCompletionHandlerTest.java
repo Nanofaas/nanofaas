@@ -57,7 +57,7 @@ class ExecutionCompletionHandlerTest {
         executionStore = new ExecutionStore();
         // The owner is mandatory for settling a keyed record; attach a minimal one.
         new ExecutionLifecycle(executionStore, new IdempotencyStore());
-        completionHandler = new ExecutionCompletionHandler(executionStore, enqueuer::enqueue, dispatcherRouter, metrics, wakeUpGate);
+        completionHandler = new ExecutionCompletionHandler(executionStore, enqueuer, dispatcherRouter, metrics, wakeUpGate);
 
         testSpec = new FunctionSpec(
                 "testFunc", "test-image", null, null, null,
@@ -66,20 +66,16 @@ class ExecutionCompletionHandlerTest {
 
         io.micrometer.core.instrument.simple.SimpleMeterRegistry meterRegistry =
                 new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
-        when(metrics.latency(anyString())).thenReturn(
-                io.micrometer.core.instrument.Timer.builder("test-latency").register(meterRegistry));
-        when(metrics.queueWait(anyString())).thenReturn(
-                io.micrometer.core.instrument.Timer.builder("test-queue-wait").register(meterRegistry));
-        when(metrics.e2eLatency(anyString())).thenReturn(
-                io.micrometer.core.instrument.Timer.builder("test-e2e").register(meterRegistry));
-        when(metrics.initDuration(anyString())).thenReturn(
-                io.micrometer.core.instrument.Timer.builder("test-init").register(meterRegistry));
-        when(metrics.timers(anyString())).thenAnswer(invocation -> new Metrics.FunctionTimers(
-                metrics.latency(invocation.getArgument(0)),
-                metrics.initDuration(invocation.getArgument(0)),
-                metrics.queueWait(invocation.getArgument(0)),
-                metrics.e2eLatency(invocation.getArgument(0))
-        ));
+        var latency = io.micrometer.core.instrument.Timer.builder("test-latency").register(meterRegistry);
+        var queueWait = io.micrometer.core.instrument.Timer.builder("test-queue-wait").register(meterRegistry);
+        var e2eLatency = io.micrometer.core.instrument.Timer.builder("test-e2e").register(meterRegistry);
+        var initDuration = io.micrometer.core.instrument.Timer.builder("test-init").register(meterRegistry);
+        when(metrics.latency(anyString())).thenReturn(latency);
+        when(metrics.queueWait(anyString())).thenReturn(queueWait);
+        when(metrics.e2eLatency(anyString())).thenReturn(e2eLatency);
+        when(metrics.initDuration(anyString())).thenReturn(initDuration);
+        when(metrics.timers(anyString())).thenReturn(
+                new Metrics.FunctionTimers(latency, initDuration, queueWait, e2eLatency));
     }
 
     // ─── dispatch tests ────────────────────────────────────────────────────────

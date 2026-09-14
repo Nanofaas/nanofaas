@@ -262,7 +262,7 @@ public class WaitEstimator {
     }
 
     private ThroughputSnapshot throughputSnapshot(int samples) {
-        double seconds = Math.max(1.0, window.toSeconds());
+        double seconds = Math.max(1.0, (double) window.toSeconds());
         return new ThroughputSnapshot(samples, samples / seconds);
     }
 

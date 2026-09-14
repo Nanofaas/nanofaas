@@ -135,7 +135,7 @@ public final class IngressBodyLimitWebFilter implements WebFilter {
                         int readableBytes = buffer.readableByteCount();
                         if (readableBytes > maxBodyBytes - received[0]) {
                             DataBufferUtils.release(buffer);
-                            sink.error(PayloadTooLargeException.INSTANCE);
+                            sink.error(new PayloadTooLargeException());
                             return;
                         }
                         received[0] += readableBytes;
@@ -155,7 +155,7 @@ public final class IngressBodyLimitWebFilter implements WebFilter {
     }
 
     private static boolean isInvocationPath(ServerWebExchange exchange) {
-        if (exchange.getRequest().getMethod() != HttpMethod.POST) {
+        if (!HttpMethod.POST.equals(exchange.getRequest().getMethod())) {
             return false;
         }
         PathContainer path = exchange.getRequest().getPath().pathWithinApplication();
@@ -163,8 +163,6 @@ public final class IngressBodyLimitWebFilter implements WebFilter {
     }
 
     private static final class PayloadTooLargeException extends ResponseStatusException {
-        private static final PayloadTooLargeException INSTANCE = new PayloadTooLargeException();
-
         private PayloadTooLargeException() {
             super(HttpStatus.CONTENT_TOO_LARGE,
                     "Invocation request body exceeds its byte limit");

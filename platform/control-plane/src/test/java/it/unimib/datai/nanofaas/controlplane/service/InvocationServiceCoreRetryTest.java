@@ -30,7 +30,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * A3: retry round trip for the profile with no queue module loaded at all - the
- * profile {@link ServiceDefaultsConfiguration#invocationEnqueuer} serves by default.
+ * profile configured by {@link ServiceDefaultsConfiguration} serves by default.
  * Uses the real {@link ExecutorBackedInvocationEnqueuer} (not a mock/no-op) wired to a
  * real {@link ExecutionCompletionHandler}, with {@link DispatcherRouter} mocked to
  * control attempt outcomes. Retry now happens off the calling thread, so assertions

@@ -4,9 +4,12 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.ResourceLock;
+import org.junit.jupiter.api.parallel.Resources;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -88,6 +91,24 @@ class WordStatsHandlerTest {
         assertEquals(3L, topWords.get(0).get("count"));
         assertEquals("world", topWords.get(1).get("word"));
         assertEquals(2L, topWords.get(1).get("count"));
+    }
+
+    @Test
+    @ResourceLock(Resources.LOCALE)
+    @SuppressWarnings("unchecked")
+    void caseFoldingIsIndependentOfTheDefaultLocale() {
+        Locale previous = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            Map<String, Object> result = (Map<String, Object>) handler.handle(
+                    new InvocationRequest(Map.of("text", "I I", "topN", 1), null));
+            List<Map<String, Object>> topWords = (List<Map<String, Object>>) result.get("topWords");
+
+            assertEquals("i", topWords.getFirst().get("word"));
+            assertEquals(2L, topWords.getFirst().get("count"));
+        } finally {
+            Locale.setDefault(previous);
+        }
     }
 
     @Test

@@ -49,7 +49,7 @@ public class WordStatsHandler implements FunctionHandler {
     }
 
     private Map<String, Object> analyze(String text, int topN) {
-        String[] words = text.toLowerCase()
+        String[] words = text.toLowerCase(Locale.ROOT)
                 .replaceAll("[^\\p{L}\\p{N}\\s]", "")
                 .split("\\s+");
 

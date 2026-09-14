@@ -50,7 +50,7 @@ class ExecutionCompletionHandlerTimingTest {
         metrics = new Metrics(meterRegistry);
         metrics.registerFunction("fn");
         completionHandler = new ExecutionCompletionHandler(
-                executionStore, enqueuer::enqueue, mock(DispatcherRouter.class), metrics);
+                executionStore, enqueuer, mock(DispatcherRouter.class), metrics);
     }
 
     @Test
