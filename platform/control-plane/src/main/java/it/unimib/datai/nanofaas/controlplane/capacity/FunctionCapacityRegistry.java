@@ -261,6 +261,28 @@ public final class FunctionCapacityRegistry implements DispatchCapacity {
         return state == null ? 0 : state.inFlight();
     }
 
+    /** Number of inactive generations still retained while their slots drain. */
+    public int retiredGenerationCount() {
+        int retired = 0;
+        for (Map.Entry<String, Entry> mapped : entries.entrySet()) {
+            String functionName = mapped.getKey();
+            Entry entry = mapped.getValue();
+            entry.lock.lock();
+            try {
+                if (entries.get(functionName) != entry) {
+                    continue;
+                }
+                if (entry.state != null && !entry.state.isActive()) {
+                    retired++;
+                }
+                retired += entry.draining.size();
+            } finally {
+                entry.lock.unlock();
+            }
+        }
+        return retired;
+    }
+
     public void setEffectiveConcurrency(String functionName, int concurrency) {
         Entry entry = entries.get(functionName);
         if (entry == null) {

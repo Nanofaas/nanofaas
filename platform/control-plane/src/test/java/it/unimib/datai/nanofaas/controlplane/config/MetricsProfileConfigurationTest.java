@@ -153,6 +153,25 @@ class MetricsProfileConfigurationTest {
     }
 
     @Test
+    void soakParsesCaseInsensitivelyAndUsesAdvancedHistogramConfiguration() {
+        assertThat(configuration.metricsProfile("soak"))
+                .isEqualTo(MetricsProfileConfiguration.MetricsProfile.SOAK);
+        assertThat(configuration.metricsProfile("SoAk"))
+                .isEqualTo(MetricsProfileConfiguration.MetricsProfile.SOAK);
+
+        Meter.Id timerId = new Meter.Id(
+                "function_latency_ms", Tags.of("function", "echo"), null, null, Meter.Type.TIMER);
+        DistributionStatisticConfig advanced = configuration
+                .metricsProfileFilter(MetricsProfileConfiguration.MetricsProfile.ADVANCED)
+                .configure(timerId, DistributionStatisticConfig.DEFAULT);
+        DistributionStatisticConfig soak = configuration
+                .metricsProfileFilter(MetricsProfileConfiguration.MetricsProfile.SOAK)
+                .configure(timerId, DistributionStatisticConfig.DEFAULT);
+
+        assertThat(soak.isPercentileHistogram()).isEqualTo(advanced.isPercentileHistogram());
+    }
+
+    @Test
     void publishesActiveProfileAndRejectsUnknownValues() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         MetricsProfileConfiguration.MetricsProfile profile = configuration.metricsProfile("AdVaNcEd");
@@ -162,6 +181,14 @@ class MetricsProfileConfigurationTest {
         assertThat(registry.find("nanofaas_metrics_profile_info").tag("profile", "advanced").gauge())
                 .extracting(Gauge::value)
                 .isEqualTo(1.0);
+
+        SimpleMeterRegistry soakRegistry = new SimpleMeterRegistry();
+        configuration.metricsProfileInfo(
+                soakRegistry, configuration.metricsProfile("soak"));
+        assertThat(soakRegistry.find("nanofaas_metrics_profile_info").tag("profile", "soak").gauge())
+                .extracting(Gauge::value)
+                .isEqualTo(1.0);
+
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> configuration.metricsProfile("verbose"))
                 .withMessageContaining("basic")

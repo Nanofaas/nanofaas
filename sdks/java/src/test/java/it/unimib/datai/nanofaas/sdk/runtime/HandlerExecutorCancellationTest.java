@@ -7,6 +7,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -39,6 +40,8 @@ class HandlerExecutorCancellationTest {
             assertTrue(entered.await(1, TimeUnit.SECONDS));
             request.interrupt();
             assertTrue(interrupted.await(1, TimeUnit.SECONDS), "handler must receive cancellation");
+            assertEquals(1, executor.activeHandlerCount(),
+                    "timed-out physical work must retain handler ownership");
             assertThrows(HandlerSaturatedException.class, () ->
                     executor.execute(_ -> "second", new InvocationRequest(null, null)));
             assertTrue(requestCaughtCancellation.await(1, TimeUnit.SECONDS),
@@ -47,6 +50,9 @@ class HandlerExecutorCancellationTest {
         } finally {
             release.countDown();
             request.join(1_000);
+            org.awaitility.Awaitility.await().atMost(1, TimeUnit.SECONDS)
+                    .untilAsserted(() -> assertEquals(0, executor.activeHandlerCount(),
+                            "handler ownership must settle after physical exit"));
             executor.shutdown();
         }
     }

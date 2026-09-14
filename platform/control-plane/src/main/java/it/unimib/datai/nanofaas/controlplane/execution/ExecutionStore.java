@@ -22,6 +22,7 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 
@@ -108,16 +109,21 @@ public class ExecutionStore implements QueueLifecycle {
         this(ExecutionStoreProperties.of(null, null, null));
     }
 
-    // @Autowired is required: with two constructors Spring would pick the no-argument
-    // one and silently ignore the configured properties.
+    // Production timers have one Spring owner and cancellation removes their queued work.
     @Autowired
-    public ExecutionStore(ExecutionStoreProperties properties, MeterRegistry registry) {
-        this(properties);
+    public ExecutionStore(ExecutionStoreProperties properties, MeterRegistry registry,
+                          @Qualifier("executionExpiryScheduler") Scheduler scheduler) {
+        this(properties, Ticker.systemTicker(), scheduler);
         // How much the platform is remembering, and how much it is actually executing.
         // It was the distance between these two numbers that exposed the problem:
         // without the second, the first could still be mistaken for work in progress.
         Gauge.builder("execution_store_size", outcomes::estimatedSize).register(registry);
         Gauge.builder("execution_in_flight_records", inFlight::estimatedSize).register(registry);
+    }
+
+    /** Direct-construction compatibility; production injects the owned scheduler above. */
+    public ExecutionStore(ExecutionStoreProperties properties, MeterRegistry registry) {
+        this(properties, registry, Scheduler.systemScheduler());
     }
 
     ExecutionStore(ExecutionStoreProperties properties) {
@@ -126,6 +132,10 @@ public class ExecutionStore implements QueueLifecycle {
 
     /** Eviction tests move the clock instead of sleeping; public for the tests in the service package. */
     public ExecutionStore(ExecutionStoreProperties properties, Ticker ticker) {
+        this(properties, ticker, Scheduler.systemScheduler());
+    }
+
+    private ExecutionStore(ExecutionStoreProperties properties, Ticker ticker, Scheduler scheduler) {
         this.maximumOutcomeBytes = properties.maxOutcomeBytes();
         this.inFlight = Caffeine.newBuilder()
                 .expireAfterWrite(properties.maxLifetime())
@@ -137,7 +147,7 @@ public class ExecutionStore implements QueueLifecycle {
                 // the concurrency slot it held never returned to the budget. The scheduler
                 // plans the eviction on wall-clock time, independent of any later traffic
                 // on the cache.
-                .scheduler(Scheduler.systemScheduler())
+                .scheduler(scheduler)
                 .removalListener((String executionId, ExecutionRecord executionRecord, RemovalCause cause) -> {
                     // EXPLICIT is settle()/remove() - already handled by their callers.
                     // REPLACED does not apply: no path calls put() twice on the same id.
@@ -160,6 +170,8 @@ public class ExecutionStore implements QueueLifecycle {
                 .expireAfter(Expiry.creating((String id, OutcomeWeigher.FreezeResult frozen) ->
                         frozen.outcome().readable() ? properties.ttl() : properties.syncTtl()))
                 .ticker(ticker)
+                // Physically release expired outcomes during idle periods as well.
+                .scheduler(scheduler)
                 .build();
     }
 

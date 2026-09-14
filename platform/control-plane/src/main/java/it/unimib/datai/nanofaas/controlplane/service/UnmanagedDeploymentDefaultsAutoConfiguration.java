@@ -8,8 +8,10 @@ import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistry;
 import it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
+import org.springframework.boot.autoconfigure.AutoConfigureOrder;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.Ordered;
 
 import java.time.InstantSource;
 
@@ -26,10 +28,13 @@ import java.time.InstantSource;
  * snapshot that owns no pool at all, which is the honest shape for a control plane that has no
  * backend to read replicas from: every observation is UNAVAILABLE rather than a fabricated zero.</p>
  *
- * <p>Ordered after the managed orchestration so that its {@code @ConditionalOnMissingBean} sees
- * the managed beans when a provider is present.</p>
+ * <p>Ordered last, and after the managed orchestration, so that its missing-bean conditions see
+ * the managed beans when a provider is present. Both configurations must have lowest precedence:
+ * a default-order fallback can pull its managed predecessor forward during dependency sorting,
+ * before an optional provider's auto-configuration has registered its bean.</p>
  */
 @AutoConfiguration
+@AutoConfigureOrder(Ordered.LOWEST_PRECEDENCE)
 @AutoConfigureAfter(ManagedDeploymentOrchestrationAutoConfiguration.class)
 public class UnmanagedDeploymentDefaultsAutoConfiguration {
 

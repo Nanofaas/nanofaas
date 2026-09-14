@@ -378,4 +378,32 @@ class FunctionCapacityRegistryTest {
         assertThat(registry.inFlight("fn")).isZero();
     }
 
+    @Test
+    void observesRemovedGenerationUntilItsLeaseDrains() {
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        assertThat(registry.retiredGenerationCount()).isZero();
+        registry.register("fn", 1);
+        DispatchLease lease = registry.tryAcquireLease("fn", 1);
+
+        registry.remove("fn");
+
+        assertThat(registry.retiredGenerationCount()).isEqualTo(1);
+        lease.release();
+        assertThat(registry.retiredGenerationCount()).isZero();
+    }
+
+    @Test
+    void observesOldGenerationWhileReplacementIsActive() {
+        FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
+        registry.register("fn", 1);
+        DispatchLease oldLease = registry.tryAcquireLease("fn", 1);
+        registry.remove("fn");
+
+        registry.register("fn", 1);
+
+        assertThat(registry.retiredGenerationCount()).isEqualTo(1);
+        oldLease.release();
+        assertThat(registry.retiredGenerationCount()).isZero();
+    }
+
 }

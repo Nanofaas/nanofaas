@@ -99,7 +99,7 @@ class MetricsProfileConfiguration {
             return MetricsProfile.valueOf(configuredProfile.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException(
-                    "nanofaas.metrics.profile must be 'basic' or 'advanced'", exception);
+                    "nanofaas.metrics.profile must be 'basic', 'advanced', or 'soak'", exception);
         }
     }
 
@@ -116,7 +116,7 @@ class MetricsProfileConfiguration {
             @Override
             public DistributionStatisticConfig configure(
                     Meter.Id id, DistributionStatisticConfig config) {
-                if (profile == MetricsProfile.ADVANCED && FUNCTION_TIMERS.contains(id.getName())) {
+                if (profile != MetricsProfile.BASIC && FUNCTION_TIMERS.contains(id.getName())) {
                     return DistributionStatisticConfig.builder()
                             .percentilesHistogram(true)
                             .build()
@@ -153,6 +153,7 @@ class MetricsProfileConfiguration {
 
     enum MetricsProfile {
         BASIC,
-        ADVANCED
+        ADVANCED,
+        SOAK
     }
 }

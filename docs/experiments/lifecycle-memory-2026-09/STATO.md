@@ -3859,3 +3859,63 @@ states what it no longer checks — must be the same for both arms and is not ma
 After that, roughly four and a half hours of machine time remain for two arms of
 ninety minutes plus thirty-five minutes of drain each, followed by the retainer
 analysis the plan requires if any population fails to fall.
+
+## 2026-09-13 — P24: baseline arm measured, a function leak found, three arms adopted
+
+**The baseline arm ran.** `e35405ee`, 90 minutes of constant unkeyed SYNC at the
+container backend, 881,849 requests, then a 35-minute drain across the 30-second,
+5-minute and 30-minute checkpoints. Gate green.
+
+**The control plane does not grow.** Its resident set rises 508 MB to 739 MB inside the
+first tenth of the run and then holds between 739 and 750 MB for the remaining nine;
+its heap falls from 665 MB to 318 MB once the traffic stops. The retained-execution
+count sits at 8,356 and does not move during the drain, and that figure is what the
+configuration prescribes rather than a leak: `sync-ttl` is 30 seconds, the offered rate
+was about 163 requests a second, so a steady state is roughly 4,900 entries, and
+Caffeine's `estimatedSize` — which is what the gauge reads — also counts entries that
+have expired but not yet been evicted.
+
+An earlier reading of this session treated that flat count as a possible leak and went
+looking into how Caffeine updates `estimatedSize`. That was the wrong order: the memory
+data and the configured TTL had already answered the question, and the count is a
+bookkeeping signal that cannot fall in a drain with no cache activity. The three
+instrumentation options raised at that point are withdrawn; they would refine a
+supporting metric, and none of them blocks the campaign's question.
+
+**What does grow is a function, and it is a real defect.** Sampled per container from
+the Docker Engine API with page cache excluded:
+
+| | first tenth | rest of the run |
+|---|---|---|
+| control plane | 508 -> 739 MB | flat, 739–750 MB |
+| word-stats-java | 334 -> 980 MB | flat, 980–993 MB |
+| word-stats-javascript | 29 -> 96 MB | climbs to 1,194 MB without plateau |
+
+The JavaScript function grows about 13.5 MB a minute for ninety minutes while its CPU
+stays flat at 4–6%, so it is not doing more work. Three benign explanations were tested
+rather than argued away: page cache is already excluded by the probe; CPU rules out
+extra work; and a 256 MiB container cap — which gives V8 every incentive to collect —
+did not bend the curve at all. Under that cap it rose monotonically at the same ~12 MB
+a minute to exactly 256 MB and then stopped being sampled, while the Java function
+settled at 209 MB and ran the full 25 minutes. The memory is therefore not reclaimable
+under pressure. That the final event was specifically an OOM kill is inferred from the
+trajectory and the container's disappearance, not proven: this run's k6 summary carries
+no failure rate and the resource watcher recorded no error.
+
+The function images are built from the **candidate** checkout, so this is the current
+JavaScript SDK — the one P16b added payload and callback caps to — and not the
+baseline's. It is a product defect independent of which control plane is in front of it,
+and it surfaced only because the plan requires the SDK processes to be measured
+separately.
+
+**Three arms.** A native arm was added: native control plane and native Java function,
+JavaScript unchanged on Node. The JVM arms spend their first tenth expanding the heap,
+and that expansion sits underneath every memory number they produce; a native arm is
+what separates the control plane's own footprint from the runtime hosting it. The drain
+observer was verified to work on a native image — all six series it reads are present,
+because Micrometer exports them under GraalVM too.
+
+**Environment difference, declared.** The baseline arm ran while four unrelated Multipass
+VMs held about 814 MiB; they were deleted before the candidate arm. On a 121 GiB host the
+effect is small, but the arms did not run under identical conditions, and re-running the
+baseline was considered and deliberately not done.

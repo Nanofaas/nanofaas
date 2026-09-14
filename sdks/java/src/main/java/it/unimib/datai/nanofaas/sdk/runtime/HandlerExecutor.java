@@ -22,6 +22,7 @@ import java.util.concurrent.*;
 public class HandlerExecutor {
 
     private final long timeoutMs;
+    private final int maxConcurrent;
     private final ExecutorService executor;
     private final Semaphore admission;
     private final java.util.concurrent.atomic.AtomicBoolean accepting =
@@ -35,6 +36,7 @@ public class HandlerExecutor {
             throw new IllegalArgumentException("handler timeout and capacity must be positive");
         }
         this.timeoutMs = timeoutMs;
+        this.maxConcurrent = maxConcurrent;
         this.executor = Executors.newVirtualThreadPerTaskExecutor();
         this.admission = new Semaphore(maxConcurrent);
     }
@@ -47,6 +49,10 @@ public class HandlerExecutor {
     void checkAvailability() {
         if (!accepting.get()) throw new RuntimeStoppingException();
         if (admission.availablePermits() == 0) throw new HandlerSaturatedException();
+    }
+
+    int activeHandlerCount() {
+        return maxConcurrent - admission.availablePermits();
     }
 
     public Object execute(FunctionHandler handler, InvocationRequest request)

@@ -693,10 +693,12 @@ function startHandler(
     }
     const effectiveContext: HandlerContext = { ...ctx, signal: mergedSignal };
     let timer: NodeJS.Timeout;
+    let onInterrupted: () => void;
     const interrupted = new Promise<WaitOutcome>((resolve) => {
-        mergedSignal.addEventListener("abort", () => {
+        onInterrupted = () => {
             resolve(timeoutController.signal.aborted ? { kind: "timeout" } : { kind: "cancelled" });
-        }, { once: true });
+        };
+        mergedSignal.addEventListener("abort", onInterrupted, { once: true });
         timer = setTimeout(() => timeoutController.abort(), state.options.handlerTimeoutMs);
     });
     const task = runWithContext(
@@ -713,6 +715,9 @@ function startHandler(
     state.handlerTasks.add(task);
     void task.then(() => {
         clearTimeout(timer);
+        // Composite signals with abort listeners are rooted by Node until abort or listener
+        // removal. Successful handlers never abort, so once:true alone retains each request.
+        mergedSignal.removeEventListener("abort", onInterrupted);
         state.handlerTasks.delete(task);
         state.metrics.activeHandlers.dec();
         state.inputBytes -= inputBytes;

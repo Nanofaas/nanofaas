@@ -1,73 +1,81 @@
-# P24 — controlled soak: capability built and validated, measurement not yet run
+# P24 - legacy evidence and profile-aware requalification
 
-P24 asks for roughly ninety minutes of steady load per revision, comparing the
-historical baseline `e35405ee` with the final candidate, and then observing the drain
-past the retention windows. NanoLab could not express that experiment, so this task
-built the capability first. **The two measured arms have not been run.** What is
-recorded here is the capability, its validation on a real packaged run, and the
-decisions that shape the measurement.
+P24 now has two clearly different bodies of work: a completed legacy loadtest
+campaign and a future profile-aware requalification workflow. The legacy runs
+remain useful evidence, but they did not execute the new qualification contract.
 
-## Why a new capability was needed
+## Completed legacy loadtest evidence
 
-The soak crossing the retention windows was deferred to NanoLab and issue #207 and
-never executed, so there was nothing to reuse. Every existing load scenario ramps —
-they ask what the tail does as demand moves — and a retention question needs the
-opposite, demand that never changes, so that a population which grows can only be the
-system and not the load. Nothing collected what the control plane still held after the
-traffic stopped, which is the only condition under which retention is visible at all:
-under load every population is legitimately non-empty and a leak looks like a busy
-system.
+The completed historical campaign used NanoLab's older `loadtest` workflow. Its
+two arms selected prebuilt control-plane images from `e35405ee` and the candidate,
+while both arms used Java and JavaScript function images built from the
+**candidate** checkout. That controlled the SDK workload across control-plane
+revisions, but it was not a single-version NanoFaaS run in the sense of the new
+reusable workflow.
 
-Added in nanolab (`4f77779`, `3f1e7c3`): `soakMinutes` holds the mixed generator flat,
-`drainMinutes` keeps observing afterwards, `ObserveDrainTask` samples the control
-plane's own metrics at 30 seconds, 5 minutes and 30 minutes after the stop, and
-`controlPlaneImage` names a build a variant key cannot describe — one of a *different*
-revision.
+The baseline arm ran 90 minutes of constant unkeyed SYNC traffic, served 881,849
+requests, and observed a 35-minute drain. The control plane grew from about
+508 MB to 739 MB early and then remained around 739-750 MB; the Java function
+grew from about 334 MB to 980 MB and then flattened. The JavaScript function
+grew from about 29 MB to 1,194 MB without a plateau, exposing a separate SDK
+retention defect. These measurements and the completed candidate arm remain
+legacy comparison evidence.
 
-## The design constraint that shaped the experiment
+The old artifacts did **not** execute the criteria-only policy now checked into
+NanoLab. In particular, they did not enforce post-drain RSS returning to the
+same run's baseline with zero tolerance, did not select `advanced`/`soak`
+profiles through the new workflow, and did not evaluate the new owner-settlement
+matrix. They must not be cited as proof that the profile-aware P24 contract has
+passed.
 
-The function SDKs changed substantially between `e35405ee` and the candidate: the Java
-SDK by +663/−63 production lines, the JavaScript SDK by +951/−326. Those SDKs are
-compiled into the function images. An arm that built its own functions would therefore
-vary the function runtime as well as the control plane, and the plan is explicit that a
-difference in useful work makes a memory comparison non-equivalent.
+The legacy baseline also ran while four unrelated Multipass VMs held about
+814 MiB; they were removed before the candidate arm. The host has 121 GiB, but
+the historical comparison must retain this environment caveat.
 
-Both arms therefore build their functions from the **candidate** checkout and differ
-only in the control-plane image. The two images are already built and their identity is
-frozen in `image-identity.txt`.
+## Future single-version requalification workflow
 
-## What the validation run proves, and what it exposed
+Each reusable NanoLab soak invocation measures exactly one NanoFaaS revision or
+image set. Comparison happens only after independent run artifacts exist.
 
-A two-minute soak with a two-minute drain, on the container backend, ran the full plan:
-registry, compose stack, function build and push, registration, k6, snapshot, report.
-`validation-drain-populations.json` is its drain observation — samples at 0, 30 and 120
-seconds with live threads falling 81 → 82 → 66 as the system drained.
+| Purpose | NanoFaaS revision | NanoLab preset | Metrics profile |
+|---|---|---|---|
+| Historical requalification baseline | `e35405ee` | `memory-soak-sync-container.yaml` | `advanced` |
+| Historical requalification candidate | candidate revision | `memory-soak-sync-container.yaml` | `advanced` |
+| Ownership diagnosis | candidate revision only | `memory-soak-sync-candidate-diagnostic-container.yaml` | `soak` |
 
-It also exposed three defects in what had just been written, each fixed in `3f1e7c3`:
-the population series were guessed and matched nothing the control plane exports; the
-prebuilt control-plane flag was coupled to prebuilt functions, which on this backend
-left the run's registry empty and failed every registration with a 503; and a named JVM
-control-plane image was ignored by compose, which rebuilt from a jar that prebuilt mode
-had deliberately not built.
+Both presets resolve the checked-in criteria-only
+`memory-soak-policy.yaml`. For every process role it freezes a steady-state
+cgroup ceiling and this drain requirement:
 
-## What remains before the arms can run
+```text
+post-drain RSS <= baseline RSS
+```
 
-The run still fails at threshold evaluation: 73 required Prometheus queries return no
-data. They are queue and scheduler series, which need a queue module this scenario does
-not select, and cAdvisor container series, which the compose stack does not run. The
-comparison profile's required-query set was written for the Kubernetes matrix, where
-both exist.
+Both absolute and relative positive tolerance are zero. The historical image is
+not modified or backported, so the `advanced` runs require no candidate-only
+owner gauges. The candidate `soak` run additionally activates only the
+role- and coverage-applicable owner-settlement gates. `metric_series` is
+optional diagnostic information and never a qualification criterion. The
+JavaScript SDK adds no new SOAK metric.
 
-That is a decision, not a bug to paper over. Either the soak selects a queue module and
-a cAdvisor sidecar so the existing gate applies unchanged, or the soak declares its own
-required set — which is honest only if it states what it no longer checks. Whichever is
-chosen, it must be the same for both arms.
+The exact profile hierarchy and all nine owner-gauge semantics are documented
+in [`docs/observability.md`](../../../observability.md).
 
-After that: roughly four and a half hours of machine time for two arms of ninety minutes
-plus thirty-five minutes of drain each, then the retainer analysis the plan asks for if
-any population fails to fall.
+The native scenario has been removed and remains out of scope.
 
-## Status
+## Current status
 
-**Incomplete.** The capability is built, tested and validated; the measurement that
-answers the historical RAM question has not been made, and no attribution is claimed.
+The profile hierarchy, owner gauges, prerequisite normalization, checked-in P24
+policy, and shipped preset resolution have focused implementation/test evidence.
+This is not final integration validation.
+
+The NanoFaaS module gate remains inconclusive after one SDK shutdown scenario
+failed in the combined run but passed in isolation. The complete NanoLab soak
+test directory remains inconclusive because its run was terminated after
+hanging, and the GitNexus change-risk gate remains `UNKNOWN` after two bounded
+timeouts. None of those gates was rerun for this review fix.
+
+No long profile-aware soak has been run or passed as part of this implementation.
+The next operational step is to build the selected revision's images and execute
+the appropriate single-version preset, starting with the candidate-only
+`soak` diagnostic if owner attribution is required.
