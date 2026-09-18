@@ -2,6 +2,8 @@ package it.unimib.datai.nanofaas.controlplane.deployment;
 
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.prometheusmetrics.PrometheusConfig;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshot.RefreshLimits;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshot.RefreshPath;
 import org.junit.jupiter.api.Test;
@@ -620,6 +622,23 @@ class ReplicaStatusSnapshotTest {
     }
 
     // ------------------------------------------------------------------ helpers
+
+    @Test
+    void theObservationAgeGaugeIsExposedUnderTheNameTheReleaseQueries() {
+        // The MeterRegistry name is not the exported name: Prometheus appends the
+        // base unit to any name that does not already end with it. A baseUnit here
+        // turned the series into `..._age_seconds_max_seconds`, invisible to the
+        // release, which asks for the name below and fails the run when it is absent.
+        PrometheusMeterRegistry registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+        ReplicaStatusSnapshot snapshot = snapshot(new MutableInstantSource(0), Runnable::run);
+        snapshot.bindTo(registry);
+        snapshot.observe(TARGET, t -> new ReplicaStatus(1, 1));
+
+        String scrape = registry.scrape();
+        assertThat(scrape)
+                .contains("# TYPE replica_snapshot_observation_age_seconds_max gauge")
+                .doesNotContain("replica_snapshot_observation_age_seconds_max_seconds");
+    }
 
     private static ReplicaStatusSnapshot snapshot(MutableInstantSource clock, Executor executor) {
         return new ReplicaStatusSnapshot(clock.instantSource(), TTL, executor);
