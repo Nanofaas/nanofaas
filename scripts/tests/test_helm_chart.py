@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -82,3 +83,25 @@ def test_control_plane_runs_as_distroless_nonroot_with_fsgroup():
 def test_control_plane_replica_count_defaults_to_one():
     out = render("templates/control-plane-deployment.yaml")
     assert "replicas: 1" in out
+
+
+def test_invocation_capacity_env_values_render_as_integers():
+    """A capacity the control plane binds to `long` must not render as a float.
+
+    Helm decodes values.yaml through JSON, so a plain integer arrives as a
+    float64 and `quote` prints large ones in scientific notation: 1048576
+    becomes "1.048576e+06". The control plane refuses to start on that, the
+    deployment crash-loops, and a Helm install dies on its timeout. The render
+    is valid YAML either way, so nothing but the value itself gives it away.
+    """
+    out = render("templates/control-plane-deployment.yaml")
+    rendered = re.findall(
+        r"name: (NANOFAAS_INVOCATION_CAPACITY_\w+)\n\s+value: \"([^\"]+)\"", out
+    )
+    assert rendered, "no invocation-capacity env vars found in the deployment"
+    assert [value for _, value in rendered if not value.isdigit()] == []
+
+
+def test_no_rendered_number_uses_scientific_notation():
+    """The guard for whatever capacity the chart grows next."""
+    assert re.search(r"[0-9]e[+-][0-9]", render_all()) is None
