@@ -13,7 +13,7 @@ controlPlane:
     existingClaim: ""
   image:
     repository: ghcr.io/miciav/nanofaas/control-plane
-    tag: v0.21.0
+    tag: v0.22.0
     pullPolicy: IfNotPresent
   service:
     name: control-plane
@@ -252,7 +252,7 @@ demos:
   # For DEPLOYMENT mode, the control-plane will provision Deployment/Service per function.
   functions:
     - name: word-stats-java
-      image: ghcr.io/miciav/nanofaas/java-word-stats:v0.21.0
+      image: ghcr.io/miciav/nanofaas/java-word-stats:v0.22.0
       timeoutMs: 10000
       concurrency: 2
       queueSize: 50
@@ -266,7 +266,7 @@ demos:
           - type: in_flight
             target: "2"
     - name: json-transform-java
-      image: ghcr.io/miciav/nanofaas/java-json-transform:v0.21.0
+      image: ghcr.io/miciav/nanofaas/java-json-transform:v0.22.0
       timeoutMs: 10000
       concurrency: 2
       queueSize: 50
@@ -280,7 +280,7 @@ demos:
           - type: in_flight
             target: "2"
     - name: word-stats-go
-      image: ghcr.io/miciav/nanofaas/go-word-stats:v0.21.0
+      image: ghcr.io/miciav/nanofaas/go-word-stats:v0.22.0
       timeoutMs: 10000
       concurrency: 2
       queueSize: 50
@@ -294,7 +294,7 @@ demos:
           - type: in_flight
             target: "2"
     - name: json-transform-go
-      image: ghcr.io/miciav/nanofaas/go-json-transform:v0.21.0
+      image: ghcr.io/miciav/nanofaas/go-json-transform:v0.22.0
       timeoutMs: 10000
       concurrency: 2
       queueSize: 50
@@ -308,7 +308,7 @@ demos:
           - type: in_flight
             target: "2"
     - name: word-stats-python
-      image: ghcr.io/miciav/nanofaas/python-word-stats:v0.21.0
+      image: ghcr.io/miciav/nanofaas/python-word-stats:v0.22.0
       timeoutMs: 10000
       concurrency: 2
       queueSize: 50
@@ -322,7 +322,7 @@ demos:
           - type: in_flight
             target: "2"
     - name: json-transform-python
-      image: ghcr.io/miciav/nanofaas/python-json-transform:v0.21.0
+      image: ghcr.io/miciav/nanofaas/python-json-transform:v0.22.0
       timeoutMs: 10000
       concurrency: 2
       queueSize: 50
@@ -336,7 +336,7 @@ demos:
           - type: in_flight
             target: "2"
     - name: word-stats-exec
-      image: ghcr.io/miciav/nanofaas/bash-word-stats:v0.21.0
+      image: ghcr.io/miciav/nanofaas/bash-word-stats:v0.22.0
       timeoutMs: 10000
       concurrency: 2
       queueSize: 50
@@ -350,7 +350,7 @@ demos:
           - type: in_flight
             target: "2"
     - name: json-transform-exec
-      image: ghcr.io/miciav/nanofaas/bash-json-transform:v0.21.0
+      image: ghcr.io/miciav/nanofaas/bash-json-transform:v0.22.0
       timeoutMs: 10000
       concurrency: 2
       queueSize: 50
@@ -364,7 +364,7 @@ demos:
           - type: in_flight
             target: "2"
     - name: word-stats-java-lite
-      image: ghcr.io/miciav/nanofaas/java-lite-word-stats:v0.21.0
+      image: ghcr.io/miciav/nanofaas/java-lite-word-stats:v0.22.0
       timeoutMs: 10000
       concurrency: 2
       queueSize: 50
@@ -378,7 +378,7 @@ demos:
           - type: in_flight
             target: "2"
     - name: json-transform-java-lite
-      image: ghcr.io/miciav/nanofaas/java-lite-json-transform:v0.21.0
+      image: ghcr.io/miciav/nanofaas/java-lite-json-transform:v0.22.0
       timeoutMs: 10000
       concurrency: 2
       queueSize: 50

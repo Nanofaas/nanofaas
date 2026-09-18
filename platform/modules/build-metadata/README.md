@@ -17,7 +17,7 @@ only when this module is selected.
 
 ```json
 {
-  "version": "0.21.0",
+  "version": "0.22.0",
   "revision": "b0df4d5cf3a2e9d1c8a7f6e5d4c3b2a1908f7e6d",
   "dirty": false,
   "modules": ["async-queue", "build-metadata", "k8s-deployment-provider"],
