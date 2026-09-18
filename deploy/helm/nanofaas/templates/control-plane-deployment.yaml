@@ -35,33 +35,33 @@ spec:
             - name: NANOFAAS_REGISTRY_PATH
               value: /var/lib/nanofaas/functions.json
             - name: NANOFAAS_INVOCATION_CAPACITY_INGRESS_BODY_BYTES
-              value: {{ .Values.controlPlane.invocationCapacity.ingressBodyBytes | quote }}
+              value: {{ .Values.controlPlane.invocationCapacity.ingressBodyBytes | int64 | quote }}
             - name: NANOFAAS_INVOCATION_CAPACITY_EXECUTIONS_GLOBAL
-              value: {{ .Values.controlPlane.invocationCapacity.executionsGlobal | quote }}
+              value: {{ .Values.controlPlane.invocationCapacity.executionsGlobal | int64 | quote }}
             - name: NANOFAAS_INVOCATION_CAPACITY_EXECUTIONS_PER_FUNCTION
-              value: {{ .Values.controlPlane.invocationCapacity.executionsPerFunction | quote }}
+              value: {{ .Values.controlPlane.invocationCapacity.executionsPerFunction | int64 | quote }}
             - name: NANOFAAS_INVOCATION_CAPACITY_CANONICAL_INPUT_BYTES_GLOBAL
-              value: {{ .Values.controlPlane.invocationCapacity.canonicalInputBytesGlobal | quote }}
+              value: {{ .Values.controlPlane.invocationCapacity.canonicalInputBytesGlobal | int64 | quote }}
             - name: NANOFAAS_INVOCATION_CAPACITY_CANONICAL_INPUT_BYTES_PER_FUNCTION
-              value: {{ .Values.controlPlane.invocationCapacity.canonicalInputBytesPerFunction | quote }}
+              value: {{ .Values.controlPlane.invocationCapacity.canonicalInputBytesPerFunction | int64 | quote }}
             - name: NANOFAAS_INVOCATION_CAPACITY_PHYSICAL_INPUT_COPY_BYTES_GLOBAL
-              value: {{ .Values.controlPlane.invocationCapacity.physicalInputCopyBytesGlobal | quote }}
+              value: {{ .Values.controlPlane.invocationCapacity.physicalInputCopyBytesGlobal | int64 | quote }}
             - name: NANOFAAS_INVOCATION_CAPACITY_PHYSICAL_INPUT_COPY_BYTES_PER_FUNCTION
-              value: {{ .Values.controlPlane.invocationCapacity.physicalInputCopyBytesPerFunction | quote }}
+              value: {{ .Values.controlPlane.invocationCapacity.physicalInputCopyBytesPerFunction | int64 | quote }}
             - name: NANOFAAS_INVOCATION_CAPACITY_WAITERS_GLOBAL
-              value: {{ .Values.controlPlane.invocationCapacity.waitersGlobal | quote }}
+              value: {{ .Values.controlPlane.invocationCapacity.waitersGlobal | int64 | quote }}
             - name: NANOFAAS_INVOCATION_CAPACITY_WAITERS_PER_FUNCTION
-              value: {{ .Values.controlPlane.invocationCapacity.waitersPerFunction | quote }}
+              value: {{ .Values.controlPlane.invocationCapacity.waitersPerFunction | int64 | quote }}
             - name: NANOFAAS_INVOCATION_CAPACITY_MAX_INPUT_REFERENCES
-              value: {{ .Values.controlPlane.invocationCapacity.maxInputReferences | quote }}
+              value: {{ .Values.controlPlane.invocationCapacity.maxInputReferences | int64 | quote }}
             - name: NANOFAAS_INVOCATION_CAPACITY_RETAINED_INPUT_MAX_DEPTH
-              value: {{ .Values.controlPlane.invocationCapacity.retainedInputMaxDepth | quote }}
+              value: {{ .Values.controlPlane.invocationCapacity.retainedInputMaxDepth | int64 | quote }}
             - name: NANOFAAS_INVOCATION_CAPACITY_RETAINED_INPUT_MAX_CONTAINER_ENTRIES
-              value: {{ .Values.controlPlane.invocationCapacity.retainedInputMaxContainerEntries | quote }}
+              value: {{ .Values.controlPlane.invocationCapacity.retainedInputMaxContainerEntries | int64 | quote }}
             - name: NANOFAAS_INVOCATION_CAPACITY_RETAINED_INPUT_MAX_VISITED_NODES
-              value: {{ .Values.controlPlane.invocationCapacity.retainedInputMaxVisitedNodes | quote }}
+              value: {{ .Values.controlPlane.invocationCapacity.retainedInputMaxVisitedNodes | int64 | quote }}
             - name: NANOFAAS_INVOCATION_CAPACITY_RETAINED_INPUT_MAX_BYTES_PER_EXECUTION
-              value: {{ .Values.controlPlane.invocationCapacity.retainedInputMaxBytesPerExecution | quote }}
+              value: {{ .Values.controlPlane.invocationCapacity.retainedInputMaxBytesPerExecution | int64 | quote }}
             # JAVA_TOOL_OPTIONS, not the Dockerfile's @jvm.options argfile: the event
             # loop count depends on this chart's own CPU limit above, not on the
             # image, and the JVM reads this env var itself at launch - no shell
