@@ -466,10 +466,13 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
         Gauge.builder("replica_snapshot_entries", this, ReplicaStatusSnapshot::entryCount)
                 .description("Functions currently tracked by the replica status snapshot")
                 .register(registry);
+        // No baseUnit: Prometheus appends one to every name that does not already
+        // end with it, and a name ending in `_max` never does, so declaring the
+        // unit here exports this as `..._age_seconds_max_seconds`. The release
+        // queries `replica_snapshot_observation_age_seconds_max` and finds nothing.
         Gauge.builder("replica_snapshot_observation_age_seconds_max", this,
                         snapshot -> snapshot.maxObservationAge().toNanos() / 1_000_000_000.0)
                 .description("Age of the oldest cached replica observation")
-                .baseUnit("seconds")
                 .register(registry);
         for (RefreshPath path : RefreshPath.values()) {
             PathStats stats = stats(path);
