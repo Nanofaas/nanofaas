@@ -22,6 +22,10 @@ public final class ContainerdDeploymentProvider extends LocalManagedDeploymentPr
 
     @Override
     protected String containerNamePrefix(String functionName) {
+        return namePrefix(functionName);
+    }
+
+    static String namePrefix(String functionName) {
         if (functionName == null || functionName.isBlank()) {
             throw new IllegalArgumentException("function name is required for containerd deployment");
         }

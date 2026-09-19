@@ -40,19 +40,19 @@ class ContainerdRuntimeAdapterTest {
 
     @Test
     void runUsesCniAddressAndExactResources() {
-        when(containers.networkAttachment("nanofaas-echo-r1")).thenReturn(
+        when(containers.networkAttachment("nanofaas-echo-092c79e8f8-r1")).thenReturn(
                 new NetworkAttachment(List.of("10.90.0.2/24"), List.of(), List.of(), List.of(), null));
         ResourceSpec resources = new ResourceSpec(
                 new ResourceQuantity(new BigDecimal("0.5"), 64),
                 new ResourceQuantity(new BigDecimal("1.25"), 128));
-        ContainerInstanceSpec instance = new ContainerInstanceSpec("nanofaas-echo-r1", "example/echo:1",
+        ContainerInstanceSpec instance = new ContainerInstanceSpec("nanofaas-echo-092c79e8f8-r1", "example/echo:1",
                 List.of("/app/echo", "--warm"), Map.of("FUNCTION_NAME", "echo"), resources,
                 Map.of("io.nanofaas.managed", "true", "io.nanofaas.function", "echo", "io.nanofaas.replica", "1"));
 
         ManagedContainer running = adapter.runContainer(instance);
 
         assertThat(running.baseUrl()).isEqualTo("http://10.90.0.2:8080");
-        verify(containers).start("nanofaas-echo-r1");
+        verify(containers).start("nanofaas-echo-092c79e8f8-r1");
         var spec = org.mockito.ArgumentCaptor.forClass(ContainerSpec.class);
         verify(containers).create(spec.capture());
         assertThat(spec.getValue().command()).containsExactly("/app/echo", "--warm");
@@ -70,17 +70,17 @@ class ContainerdRuntimeAdapterTest {
 
     @Test
     void runBracketsIpv6Address() {
-        when(containers.networkAttachment("nanofaas-echo-r1")).thenReturn(
+        when(containers.networkAttachment("nanofaas-echo-092c79e8f8-r1")).thenReturn(
                 new NetworkAttachment(List.of("fd00::2/64"), List.of(), List.of(), List.of(), null));
         assertThat(adapter.runContainer(instance(List.of())).baseUrl()).isEqualTo("http://[fd00::2]:8080");
     }
 
     @Test
     void missingAddressFailsAndRemovesOwnedContainer() {
-        when(containers.networkAttachment("nanofaas-echo-r1")).thenReturn(NetworkAttachment.EMPTY);
+        when(containers.networkAttachment("nanofaas-echo-092c79e8f8-r1")).thenReturn(NetworkAttachment.EMPTY);
         assertThatThrownBy(() -> adapter.runContainer(instance(List.of())))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("IP address");
-        verify(containers).remove(eq("nanofaas-echo-r1"), any());
+        verify(containers).remove(eq("nanofaas-echo-092c79e8f8-r1"), any());
     }
 
     @Test
@@ -89,9 +89,9 @@ class ContainerdRuntimeAdapterTest {
                 "javascript-word-stats", "watchdog")) {
             reset(containers);
             when(containers.create(any())).thenReturn(mock(io.nanofaas.containerd.Container.class));
-            when(containers.networkAttachment("nanofaas-echo-r1")).thenReturn(
+            when(containers.networkAttachment("nanofaas-echo-092c79e8f8-r1")).thenReturn(
                     new NetworkAttachment(List.of("10.90.0.2/24"), List.of(), List.of(), List.of(), null));
-            adapter.runContainer(new ContainerInstanceSpec("nanofaas-echo-r1", image,
+            adapter.runContainer(new ContainerInstanceSpec("nanofaas-echo-092c79e8f8-r1", image,
                     List.of(), Map.of(), null, Map.of()));
             var spec = org.mockito.ArgumentCaptor.forClass(ContainerSpec.class);
             verify(containers).create(spec.capture());
@@ -107,9 +107,9 @@ class ContainerdRuntimeAdapterTest {
 
     @Test
     void discoveryExcludesForeignAndPendingContainers() {
-        Container owned = container("nanofaas-echo-r1", "echo", true);
-        Container pending = container("nanofaas-echo-r2", "echo", true);
-        Container foreign = container("nanofaas-echo-r3", "echo", false);
+        Container owned = container("nanofaas-echo-092c79e8f8-r1", "echo", true);
+        Container pending = container("nanofaas-echo-092c79e8f8-r2", "echo", true);
+        Container foreign = container("nanofaas-echo-092c79e8f8-r3", "echo", false);
         when(containers.list()).thenReturn(List.of(owned, pending, foreign));
         when(containers.pendingRemovals()).thenReturn(List.of(pending));
         when(containers.inspect(owned.id())).thenReturn(
@@ -125,17 +125,17 @@ class ContainerdRuntimeAdapterTest {
 
     @Test
     void removeRejectsForeignContainerWithSameName() {
-        when(containers.list()).thenReturn(List.of(container("nanofaas-echo-r1", "echo", false)));
-        assertThatThrownBy(() -> adapter.removeContainer("nanofaas-echo-r1"))
+        when(containers.list()).thenReturn(List.of(container("nanofaas-echo-092c79e8f8-r1", "echo", false)));
+        assertThatThrownBy(() -> adapter.removeContainer("nanofaas-echo-092c79e8f8-r1"))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("foreign container");
         verify(containers, never()).remove(any(), any());
     }
 
     @Test
     void removeRetriesPendingOwnedContainerEvenAfterDaemonMetadataIsGone() {
-        when(containers.pendingRemovals()).thenReturn(List.of(container("nanofaas-echo-r1", "echo", true)));
-        adapter.removeContainer("nanofaas-echo-r1");
-        verify(containers).remove(eq("nanofaas-echo-r1"), any());
+        when(containers.pendingRemovals()).thenReturn(List.of(container("nanofaas-echo-092c79e8f8-r1", "echo", true)));
+        adapter.removeContainer("nanofaas-echo-092c79e8f8-r1");
+        verify(containers).remove(eq("nanofaas-echo-092c79e8f8-r1"), any());
     }
 
     @Test
@@ -154,6 +154,6 @@ class ContainerdRuntimeAdapterTest {
     }
 
     private static ContainerInstanceSpec instance(List<String> command) {
-        return new ContainerInstanceSpec("nanofaas-echo-r1", "echo:1", command, Map.of(), null, Map.of());
+        return new ContainerInstanceSpec("nanofaas-echo-092c79e8f8-r1", "echo:1", command, Map.of(), null, Map.of());
     }
 }

@@ -20,13 +20,16 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Predicate;
 
 public final class ContainerdRuntimeAdapter implements ContainerRuntimeAdapter {
     public static final String BACKEND_LABEL = "io.nanofaas.backend";
@@ -123,46 +126,70 @@ public final class ContainerdRuntimeAdapter implements ContainerRuntimeAdapter {
 
     @Override
     public List<ManagedContainer> listManagedContainers(String functionName) {
-        Set<String> pending = new HashSet<>();
-        for (Container container : containers.pendingRemovals()) pending.add(container.id());
+        List<Container> pending = containers.pendingRemovals();
+        Map<String, Container> inventory = inventory(pending, container -> ours(container)
+                && functionName.equals(container.labels().get(LocalManagedDeploymentProvider.FUNCTION_LABEL)));
+        Set<String> pendingIds = new HashSet<>();
+        for (Container container : pending) pendingIds.add(container.id());
         List<ManagedContainer> managed = new ArrayList<>();
-        for (Container container : containers.list()) {
-            if (!ours(container) || !functionName.equals(container.labels().get(LocalManagedDeploymentProvider.FUNCTION_LABEL))) {
-                continue;
-            }
+        Set<Integer> indexes = new HashSet<>();
+        for (Container container : inventory.values()) {
+            int index = requireReplicaIndex(container);
+            if (!indexes.add(index)) throw new IllegalArgumentException("Duplicate replica index " + index);
             boolean running = false;
             String baseUrl = null;
-            if (!pending.contains(container.id())) {
-                try {
-                    running = containers.inspect(container.id()).state() == ContainerState.RUNNING;
-                    if (running) {
-                        baseUrl = baseUrl(containers.networkAttachment(container.id()));
-                        running = baseUrl != null;
-                    }
-                } catch (RuntimeException unavailable) {
-                    // Discovery must never advertise an instance whose task or CNI state cannot be proved.
-                    running = false;
+            if (!pendingIds.contains(container.id())) {
+                // A daemon failure is not evidence of a stopped task: reconciliation must abort,
+                // otherwise a transient timeout could cause removal of a healthy deployment.
+                running = containers.inspect(container.id()).state() == ContainerState.RUNNING;
+                if (running) {
+                    baseUrl = baseUrl(containers.networkAttachment(container.id()));
+                    running = baseUrl != null;
                 }
             }
-            managed.add(new ManagedContainer(container.id(),
-                    LocalManagedDeploymentProvider.replicaIndex(container.id()), baseUrl, running));
+            managed.add(new ManagedContainer(container.id(), index, baseUrl, running));
         }
         return managed;
     }
 
     private Container ownedById(String id) {
-        for (Container container : containers.pendingRemovals()) {
-            if (container.id().equals(id)) return requireOwned(container);
+        Container container = inventory(containers.pendingRemovals(), candidate -> candidate.id().equals(id)).get(id);
+        if (container == null) return null;
+        if (!ours(container)) throw new IllegalStateException("Refusing to remove foreign container '" + id + "'");
+        int index = requireReplicaIndex(container);
+        String function = container.labels().get(LocalManagedDeploymentProvider.FUNCTION_LABEL);
+        if (!id.equals(ContainerdDeploymentProvider.namePrefix(function) + "-r" + index)) {
+            throw new IllegalStateException("Conflicting function ownership for container '" + id + "'");
         }
-        for (Container container : containers.list()) {
-            if (container.id().equals(id)) return requireOwned(container);
-        }
-        return null;
+        return container;
     }
 
-    private static Container requireOwned(Container container) {
-        if (!ours(container)) throw new IllegalStateException("Refusing to remove foreign container '" + container.id() + "'");
-        return container;
+    private Map<String, Container> inventory(List<Container> pending, Predicate<Container> selected) {
+        Map<String, Container> inventory = new LinkedHashMap<>();
+        for (Container container : containers.list()) inventory.put(container.id(), container);
+        for (Container container : pending) {
+            Container existing = inventory.putIfAbsent(container.id(), container);
+            if (existing != null && (selected.test(existing) || selected.test(container))) {
+                for (String label : List.of(BACKEND_LABEL, LocalManagedDeploymentProvider.MANAGED_LABEL,
+                        LocalManagedDeploymentProvider.FUNCTION_LABEL, LocalManagedDeploymentProvider.REPLICA_LABEL)) {
+                    if (!Objects.equals(existing.labels().get(label), container.labels().get(label))) {
+                        throw new IllegalStateException("Conflicting ownership for container '" + container.id() + "'");
+                    }
+                }
+            }
+        }
+        inventory.values().removeIf(container -> !selected.test(container));
+        return inventory;
+    }
+
+    private static int requireReplicaIndex(Container container) {
+        int index = LocalManagedDeploymentProvider.replicaIndex(container.id());
+        String function = container.labels().get(LocalManagedDeploymentProvider.FUNCTION_LABEL);
+        if (index < 1 || !Integer.toString(index).equals(container.labels().get(LocalManagedDeploymentProvider.REPLICA_LABEL))
+                || function == null || function.isBlank()) {
+            throw new IllegalArgumentException("Invalid ownership/replica labels for container '" + container.id() + "'");
+        }
+        return index;
     }
 
     private static boolean ours(Container container) {
