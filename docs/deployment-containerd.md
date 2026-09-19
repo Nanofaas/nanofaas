@@ -1,54 +1,161 @@
 # Rootless containerd deployment
 
-The `containerd-deployment-provider` runs managed functions through the user's
-containerd daemon with `crun` and CNI. The control plane and daemon run as the
-same unprivileged user. RootlessKit supplies their shared user, network and mount
-namespaces; each function gets its own CNI network namespace. The bridge gateway
-`10.90.0.1` receives function callbacks on control-plane port 8080.
+The `containerd-deployment-provider` runs managed `DEPLOYMENT` functions through
+the current user's containerd daemon and `crun`. The control plane joins that
+daemon's RootlessKit user, mount and network namespaces. Each function has a CNI
+network namespace; the control plane reaches its CNI IP directly, and the
+function calls back through the CNI bridge gateway. This deployment mode needs
+Linux, Java 25 for JVM builds, and a rootless containerd installation with a
+working Unix socket. Docker is used by NanoLab only to build and push function
+images; it does not own the running functions.
 
-Build the JVM control plane with the provider selected:
+## Build from reviewed source revisions
+
+`io.nanofaas:containerd-java`, `io.nanofaas:containerd-java-cni`, and
+`io.libcni:libcni-java` are source snapshots. Their exact revisions and Maven
+coordinates are in [`dependencies.env`](../deploy/containerd-rootless/dependencies.env).
+The feature commits may not yet be present on public remotes. Supply local
+checkouts containing those commits; the script exports the recorded trees to a
+temporary directory and never builds or edits the supplied checkout in place:
 
 ```bash
-./gradlew :control-plane:bootJar -PcontrolPlaneModules=containerd-deployment-provider
+scripts/bootstrap-containerd-dependencies.sh \
+  /path/to/libcni-java /path/to/containerd-java
+MAVEN_REPOSITORY="$PWD/.gradle/containerd-m2"
+cat "$MAVEN_REPOSITORY/containerd-source-revisions.txt"
+./gradlew :control-plane:bootJar \
+  -PcontrolPlaneModules=containerd-deployment-provider \
+  -PcontainerdMavenLocal=true -Dmaven.repo.local="$MAVEN_REPOSITORY"
 ```
 
-The JAR is `platform/control-plane/build/libs/app.jar`. For a native build,
-select the same module and set `NANOFAAS_CONTROL_PLANE_MODE=native` and
-`NANOFAAS_CONTROL_PLANE_ARTIFACT` to the absolute path of the executable.
-The launcher defaults to JVM mode and the JAR above. Use `JAVA_TOOL_OPTIONS`
-for JVM tuning. Native-only extra options may be supplied as whitespace-separated
-tokens in `NANOFAAS_CONTROL_PLANE_NATIVE_ARGS`; shell quotes and substitutions
-are not interpreted.
+The receipt records the source commits and SHA-256 of all three produced JARs.
+Pass a third script argument to stage into another Maven directory. The Gradle
+repository flag admits only `io.nanofaas` and `io.libcni` from that directory.
+For native compilation, use the same module selection and repository:
 
-NanoLab provisions the rootless daemon, user systemd service, subordinate UID/GID
-mapping, delegated `cpu`, `cpuset`, `memory`, and `pids` controllers, CNI binaries,
-per-run environment, registry, and RootlessKit port publications. It renders
-`nanofaas.service` by replacing `@NANOFAAS_ROOT@` and `@NANOLAB_ENV_FILE@` with
-absolute per-run paths. The systemd service runs the launcher in the foreground.
-For load and soak runs, NanoLab adds a per-run service drop-in with `CPUQuota`
-and `MemoryMax` so limits apply to the control-plane process.
+```bash
+./gradlew :control-plane:nativeCompile \
+  -PcontrolPlaneModules=containerd-deployment-provider \
+  -PcontainerdMavenLocal=true -Dmaven.repo.local="$MAVEN_REPOSITORY"
+```
 
-`10-nanofaas.conflist` documents the network installed by NanoLab. If installing
-it manually, replace `@ROOTLESS_HOME@` with the unprivileged user's absolute home
-path before writing it to `~/.config/cni/net.d/10-nanofaas.conflist`. CNI bridge
-gateway `10.90.0.1` is the callback target; it is not a DNS server. The resolver
-list uses `10.0.2.3` and `1.1.1.1`.
+For async callbacks or scaling scenarios, add the scenario's queue, autoscaler
+and other optional modules to `-PcontrolPlaneModules`; `none` and `all` retain
+their existing meanings. The three managed providers are mutually exclusive:
+`k8s-deployment-provider`, `container-deployment-provider` (Docker), and
+`containerd-deployment-provider`. The default and `all` choose Kubernetes;
+explicitly selecting a pair fails during settings configuration. The shared
+`container-deployment-runtime` project is a mandatory library outside the
+optional module selector, and `META-INF/services` from the Java dependencies
+must remain in the selected artifact. The Gradle `bootJar` and `nativeCompile`
+tasks include them through the selected provider's dependency graph.
 
-The per-run environment sets `SERVER_ADDRESS=0.0.0.0`, `SERVER_PORT=8080`,
-`MANAGEMENT_SERVER_PORT=8081`, and
-`NANOFAAS_DEPLOYMENT_DEFAULTBACKEND=containerd`. It supplies absolute
-`NANOFAAS_CONTAINERD_SOCKETPATH`, `CNIPLUGINDIRECTORY`, `CNICONFIGDIRECTORY`,
-`CNICACHEDIRECTORY`, and `STATEDIRECTORY` values, plus `NETWORKNAME`,
-`CALLBACKURL=http://10.90.0.1:8080`, and `BINDHOST=127.0.0.1`. These are
-Spring's canonical environment names; the launcher passes them through.
-RootlessKit publishes the API and management ports to the host. NanoLab owns
-the port IDs, function image builds and registry, and cleanup after each run.
-Function images must be pushed to a registry reachable inside RootlessKit;
-Docker's image store is separate from containerd's. The rootless containerd
-Transfer plugin needs an HTTP `hosts.toml`/`config_path` for the test registry.
+The JVM image Dockerfile packages that `app.jar`; build the selected JAR first
+and use `platform/control-plane` as its Docker context. For a native OCI image,
+the script passes the staged repository as a Docker named context:
 
-The launcher reads the daemon's child PID from
-`$XDG_RUNTIME_DIR/containerd-rootless/child_pid`, checks the artifact and absolute
-paths, changes to the repository root, and then enters RootlessKit's user,
-network, and mount namespaces. It passes the real absolute `HOME` and
-`XDG_RUNTIME_DIR` to Java or the native executable after entering.
+```bash
+CONTROL_PLANE_MODULES=containerd-deployment-provider \
+CONTAINERD_MAVEN_REPO="$MAVEN_REPOSITORY" \
+  scripts/native-java-image.sh control-plane
+```
+
+This proves image packaging only. A working rootless host launch still needs
+the namespace and socket setup below; the image itself is not a substitute for
+that launch path.
+
+## Runtime setup
+
+Run containerd as the same unprivileged user as the control plane. Provide
+subordinate UID/GID mappings, RootlessKit, `crun`, CNI bridge/host-local/portmap
+plugins, a writable CNI cache and state directory, and delegated cgroup v2
+`cpu`, `cpuset`, `memory`, and `pids` controllers. The user systemd service must
+see the containerd socket and the RootlessKit child PID at
+`$XDG_RUNTIME_DIR/containerd-rootless/child_pid`. NanoLab owns installation,
+per-run service and environment rendering, host port publication and cleanup.
+No VM provisioning runs from this repository.
+
+For a NanoLab Multipass containerd environment, set
+`containerdMavenRepository: /absolute/host/path` to the bootstrap output. The
+runner copies only the three reviewed `io.nanofaas`/`io.libcni` versions and
+their JAR, POM, Gradle module and Maven metadata files into a run-owned remote
+repository. It records a `nanolab-receipt.json` of artifact hashes there and
+builds with `-PcontainerdMavenLocal=true` and
+`-Dmaven.repo.local=<remote repository>`. Point it at an isolated bootstrap
+output; do not stage an entire personal Maven cache. The NanoLab scenario
+revision in `dependencies.env` remains pending until its final tests are run.
+
+The checked-in [`10-nanofaas.conflist`](../deploy/containerd-rootless/10-nanofaas.conflist)
+is the CNI network template. Replace `@ROOTLESS_HOME@` with the user's absolute
+home before installing it under `~/.config/cni/net.d`. Its bridge gateway
+`10.90.0.1` is the callback target on port 8080, while DNS uses `10.0.2.3` and
+`1.1.1.1`; the gateway is not a DNS server. The control plane must be able to
+reach each function CNI IP, and each function must reach the callback URL.
+RootlessKit publishes the API and management ports to the host.
+
+Use Spring's canonical environment names (no extra underscores inside property
+names):
+
+| Environment variable | Meaning / default |
+| --- | --- |
+| `NANOFAAS_DEPLOYMENT_DEFAULTBACKEND` | `containerd` for new managed functions |
+| `SERVER_ADDRESS`, `SERVER_PORT`, `MANAGEMENT_SERVER_PORT` | `0.0.0.0`, `8080`, `8081` in the rootless service |
+| `NANOFAAS_CONTAINERD_SOCKETPATH` | Absolute UDS; default `$XDG_RUNTIME_DIR/containerd/containerd.sock` |
+| `NANOFAAS_CONTAINERD_NAMESPACE` | Containerd namespace; default `nanofaas` |
+| `NANOFAAS_CONTAINERD_RUNTIMEBINARY`, `NANOFAAS_CONTAINERD_SNAPSHOTTER` | `crun`, `native` |
+| `NANOFAAS_CONTAINERD_NETWORKNAME` | CNI network name; default `nanofaas` |
+| `NANOFAAS_CONTAINERD_CNIPLUGINDIRECTORY` | Absolute plugin directory; default `/opt/cni/bin` |
+| `NANOFAAS_CONTAINERD_CNICONFIGDIRECTORY` | Absolute config directory; default `$HOME/.config/cni/net.d` |
+| `NANOFAAS_CONTAINERD_CNICACHEDIRECTORY` | Absolute writable cache; default `$HOME/.local/share/nanofaas/cni` |
+| `NANOFAAS_CONTAINERD_STATEDIRECTORY` | Absolute writable client state; default `$HOME/.local/share/nanofaas/containerd` |
+| `NANOFAAS_CONTAINERD_CALLBACKURL` | Reachable function-to-control-plane URL, e.g. `http://10.90.0.1:8080` |
+| `NANOFAAS_CONTAINERD_BINDHOST` | Local bind host; default `127.0.0.1` |
+| `NANOFAAS_CONTAINERD_SYSTEMDCGROUP`, `NANOFAAS_CONTAINERD_CGROUPSPATH` | `true`, `user.slice` |
+| `NANOFAAS_CONTAINERD_CPUSET` | Optional cpuset string, subject to delegated CPUs |
+| `NANOFAAS_CONTAINERD_CNIPLUGINTIMEOUT` | CNI plugin timeout; default `30s` |
+| `NANOFAAS_CONTAINERD_STOPTIMEOUT` | Container stop timeout; default `10s` |
+| `NANOFAAS_CONTAINERD_AVAILABILITYTIMEOUT` | Daemon availability probe timeout; default `3s` |
+| `NANOFAAS_CONTAINERD_READINESSTIMEOUT`, `NANOFAAS_CONTAINERD_READINESSPOLLINTERVAL` | Function readiness window and polling; defaults `20s`, `250ms` |
+
+All configured paths must be absolute; plugin and config directories must
+exist. The launcher [`start-control-plane.sh`](../deploy/containerd-rootless/start-control-plane.sh)
+checks these paths, enters the RootlessKit namespaces with `nsenter`, and runs
+the JVM JAR by default. Set `NANOFAAS_CONTROL_PLANE_MODE=native` and
+`NANOFAAS_CONTROL_PLANE_ARTIFACT` to the absolute executable path to launch a
+native build. `JAVA_TOOL_OPTIONS` tunes JVM mode;
+`NANOFAAS_CONTROL_PLANE_NATIVE_ARGS` supplies whitespace-separated native
+arguments (shell quoting is not interpreted). NanoLab renders the
+[`nanofaas.service`](../deploy/containerd-rootless/nanofaas.service) placeholders
+`@NANOFAAS_ROOT@` and `@NANOLAB_ENV_FILE@` to per-run absolute paths and adds
+`CPUQuota`/`MemoryMax` for load runs where needed.
+
+Function images must be pushed to a registry reachable *inside* RootlessKit;
+Docker's local image store is separate. For a test HTTP registry, configure the
+rootless containerd **Transfer** plugin's `config_path` to a `hosts.toml`
+directory permitting HTTP only for that registry. CRI registry configuration
+does not configure the Transfer pull path. The current image validator asks
+containerd to pull the image at registration; authenticated and alternative
+registry transfer paths still need explicit runtime proof.
+
+Function resource requests map to CPU shares and memory reservation; limits
+map to cgroup CPU quota/period and memory bytes. CPU quota uses a 100 ms period.
+A positive CPU limit below `0.01` can yield a quota below 1000 microseconds and
+may be rejected by the kernel; the provider does not silently clamp it. Optional
+`cpuset` and `cgroups-path` must fit the delegated rootless cgroup subtree.
+These function limits are separate from the control-plane systemd unit limits.
+
+The persistent function catalog restores the recorded `containerd` backend
+after a control-plane restart. Reconciliation adopts only containers with the
+expected managed, backend, function and replica labels. Failed CNI DEL or
+snapshot removal remains pending in the library's state for a later retry; a
+failed deprovision is not a successful cleanup. Keep the catalog, CNI cache and
+containerd client state on durable, owner-writable storage and preserve the
+same namespace across restarts. Existing unrelated containers are not swept.
+Invocation failure retries are controlled by each function's `maxRetries`
+(default `3` in the control-plane configuration). Clients must make their
+functions idempotent; the cleanup retry state is a separate lifecycle concern.
+
+Native compilation succeeded on Linux aarch64 at NanoFaaS revision
+`7a509f02c76a50db4bd60ac188d36203dae71321`. That result does not establish
+native runtime CNI, callback, restart or cleanup behavior. Linux amd64 and the
+full NanoLab matrix remain unverified until their runtime receipts are recorded.

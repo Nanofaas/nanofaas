@@ -8,8 +8,10 @@ via Docker Java or a Docker-compatible CLI, no Kubernetes required.
 
 - `ContainerLocalDeploymentProvider` — provisions/deprovisions container
   instances for DEPLOYMENT functions and applies replica changes.
-- `CliContainerRuntimeAdapter` + `ProcessCliCommandExecutor` — drive the
-  container runtime CLI (docker/podman-compatible).
+- `DockerJavaContainerRuntimeAdapter` — uses the Docker Engine API through
+  docker-java (the default adapter).
+- `CliContainerRuntimeAdapter` + `ProcessCliCommandExecutor` — optional
+  Docker-compatible CLI adapter, selected with `nanofaas.container-local.runtime-adapter`.
 - `EphemeralPortAllocator` — Docker host-port assignment. The adapters return
   the reachable endpoint, including container DNS when a Docker network is used.
 - Shared `HttpEndpointProbe` — readiness polling for each instance.

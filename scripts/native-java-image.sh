@@ -30,6 +30,17 @@ case "$target" in
     binary="platform/control-plane/build/native/nativeCompile/control-plane"
     default_image="nanofaas/control-plane:native"
     gradle_args="$gradle_args -PcontrolPlaneModules=${CONTROL_PLANE_MODULES:-all}"
+    if [[ ,${CONTROL_PLANE_MODULES:-all}, == *,containerd-deployment-provider,* ]]; then
+      [[ -n ${CONTAINERD_MAVEN_REPO:-} ]] || {
+        echo 'Set CONTAINERD_MAVEN_REPO to the output of scripts/bootstrap-containerd-dependencies.sh' >&2
+        exit 2
+      }
+      [[ -d $CONTAINERD_MAVEN_REPO ]] || {
+        echo "Missing CONTAINERD_MAVEN_REPO: $CONTAINERD_MAVEN_REPO" >&2
+        exit 2
+      }
+      gradle_args="$gradle_args -PcontainerdMavenLocal=true -Dmaven.repo.local=/tmp/containerd-m2"
+    fi
     ;;
   warm-echo)
     task=":services:java:warm-echo:nativeCompile"
@@ -119,6 +130,7 @@ if [ -n "${NATIVE_PARALLELISM:-}" ]; then
 fi
 
 build=(docker build --file deploy/native-java/Dockerfile --tag "$image")
+build+=(--build-context "containerd_maven_repo=${CONTAINERD_MAVEN_REPO:-deploy/native-java/empty-maven-repo}")
 if [ -n "${IMAGE_PLATFORM:-}" ]; then
   build+=(--platform "$IMAGE_PLATFORM")
 fi

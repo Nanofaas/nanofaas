@@ -32,6 +32,10 @@ ENV PATH="$JAVA_HOME/bin:$PATH"
 
 WORKDIR /workspace
 COPY . .
+# The named context is an empty directory for ordinary builds. For the optional
+# containerd provider, the image script supplies the pinned local Maven staging
+# directory instead; .dockerignore deliberately excludes the host's .gradle tree.
+COPY --from=containerd_maven_repo . /tmp/containerd-m2/
 
 ARG NATIVE_TASK
 ARG NATIVE_BINARY
