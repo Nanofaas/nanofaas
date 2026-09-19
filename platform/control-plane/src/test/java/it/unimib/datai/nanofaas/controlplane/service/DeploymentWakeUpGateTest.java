@@ -258,6 +258,8 @@ class DeploymentWakeUpGateTest {
                 longCaller.get(1, TimeUnit.SECONDS);
             }
             assertThatThrownBy(shortCaller::join).hasRootCauseInstanceOf(TimeoutException.class);
+            // Caller futures can complete before the owner callback releases its resources.
+            executor.submit(() -> {}).get(1, TimeUnit.SECONDS);
             verify(coordinator, times(1)).getFreshReplicaStatus(target);
             assertThat(gate.ownedWakeUpCount()).isZero();
             assertThat(scheduler.getQueue()).isEmpty();
