@@ -89,6 +89,40 @@ class ControlPlaneModulesPluginTest {
     }
 
     @Test
+    void deploymentProviderSelectorKeepsKubernetesForAllAndDefault() throws IOException {
+        writeDeploymentProviders();
+
+        assertThat(run("printSelection").getOutput()).contains("[k8s-deployment-provider]");
+        assertThat(run("printSelection", "-PcontrolPlaneModules=all").getOutput())
+                .contains("[k8s-deployment-provider]");
+        assertThat(run("printSelection", "-PcontrolPlaneModules=none").getOutput()).contains("[]");
+    }
+
+    @Test
+    void deploymentProviderSelectorAcceptsEachSingleProvider() throws IOException {
+        writeDeploymentProviders();
+
+        for (String provider : List.of("container-deployment-provider", "containerd-deployment-provider",
+                "k8s-deployment-provider")) {
+            assertThat(run("printSelection", "-PcontrolPlaneModules=" + provider).getOutput())
+                    .contains("[" + provider + "]");
+        }
+    }
+
+    @Test
+    void deploymentProviderSelectorRejectsEachConflictingPairAndTriple() throws IOException {
+        writeDeploymentProviders();
+
+        for (String selection : List.of(
+                "container-deployment-provider,containerd-deployment-provider",
+                "container-deployment-provider,k8s-deployment-provider",
+                "containerd-deployment-provider,k8s-deployment-provider",
+                "container-deployment-provider,containerd-deployment-provider,k8s-deployment-provider")) {
+            failsWith("-PcontrolPlaneModules=" + selection, "conflict");
+        }
+    }
+
+    @Test
     void publishesSelectionAsImmutableExtraProperty() throws IOException {
         writeModule("alpha", false, "", "", "", "");
 
@@ -295,6 +329,15 @@ class ControlPlaneModulesPluginTest {
         Files.writeString(module.resolve("build.gradle"), "");
         Files.writeString(module.resolve("module.properties"),
                 descriptor(id, defaultEnabled, strong, weak, oneOf, conflicts));
+    }
+
+    private void writeDeploymentProviders() throws IOException {
+        writeModule("container-deployment-provider", false, "", "", "",
+                "containerd-deployment-provider,k8s-deployment-provider");
+        writeModule("containerd-deployment-provider", false, "", "", "",
+                "container-deployment-provider,k8s-deployment-provider");
+        writeModule("k8s-deployment-provider", true, "", "", "",
+                "container-deployment-provider,containerd-deployment-provider");
     }
 
     private String descriptor(String id, boolean defaultEnabled, String strong,

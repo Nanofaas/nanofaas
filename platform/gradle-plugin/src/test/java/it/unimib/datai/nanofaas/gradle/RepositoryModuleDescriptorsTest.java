@@ -40,7 +40,7 @@ class RepositoryModuleDescriptorsTest {
 
         assertThat(moduleIds).containsExactlyInAnyOrder(
                 "async-queue", "autoscaler", "build-metadata", "concurrency-control",
-                "container-deployment-provider", "k8s-deployment-provider", "offload",
+                "container-deployment-provider", "containerd-deployment-provider", "k8s-deployment-provider", "offload",
                 "runtime-config", "sync-queue");
 
         for (ModuleDescriptor descriptor : descriptors) {
@@ -53,17 +53,21 @@ class RepositoryModuleDescriptorsTest {
     }
 
     @Test
-    void deploymentProvidersHaveComplementaryDefaultsAndMutualConflicts() throws IOException {
+    void deploymentProvidersHaveOneDefaultAndSymmetricConflicts() throws IOException {
         Path modulesRoot = repositoryRoot().resolve("platform/modules");
         ModuleDescriptor k8s = new ModuleDescriptorReader()
                 .read(modulesRoot.resolve("k8s-deployment-provider/module.properties"));
         ModuleDescriptor container = new ModuleDescriptorReader()
                 .read(modulesRoot.resolve("container-deployment-provider/module.properties"));
+        ModuleDescriptor containerd = new ModuleDescriptorReader()
+                .read(modulesRoot.resolve("containerd-deployment-provider/module.properties"));
 
         assertThat(k8s.defaultEnabled()).isTrue();
         assertThat(container.defaultEnabled()).isFalse();
-        assertThat(k8s.conflicts()).containsExactly("container-deployment-provider");
-        assertThat(container.conflicts()).containsExactly("k8s-deployment-provider");
+        assertThat(containerd.defaultEnabled()).isFalse();
+        assertThat(k8s.conflicts()).containsExactly("container-deployment-provider", "containerd-deployment-provider");
+        assertThat(container.conflicts()).containsExactly("containerd-deployment-provider", "k8s-deployment-provider");
+        assertThat(containerd.conflicts()).containsExactly("container-deployment-provider", "k8s-deployment-provider");
     }
 
     private boolean isGradleProject(Path path) {

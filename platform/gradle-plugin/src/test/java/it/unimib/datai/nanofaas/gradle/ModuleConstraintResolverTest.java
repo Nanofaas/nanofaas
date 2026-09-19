@@ -101,6 +101,29 @@ class ModuleConstraintResolverTest {
                 .hasMessageContaining("cycle-b");
     }
 
+    @Test
+    void enforcesMutualExclusionForThreeDeploymentProviders() {
+        List<ModuleDescriptor> providers = List.of(
+                descriptor("container-deployment-provider", false, List.of(), List.of(), List.of(),
+                        List.of("containerd-deployment-provider", "k8s-deployment-provider")),
+                descriptor("containerd-deployment-provider", false, List.of(), List.of(), List.of(),
+                        List.of("container-deployment-provider", "k8s-deployment-provider")),
+                descriptor("k8s-deployment-provider", true, List.of(), List.of(), List.of(),
+                        List.of("container-deployment-provider", "containerd-deployment-provider")));
+
+        for (String provider : List.of("container-deployment-provider", "containerd-deployment-provider",
+                "k8s-deployment-provider")) {
+            assertThatCode(() -> resolver.validate(providers, List.of(provider))).doesNotThrowAnyException();
+        }
+        for (List<String> selection : List.of(
+                List.of("container-deployment-provider", "containerd-deployment-provider"),
+                List.of("container-deployment-provider", "k8s-deployment-provider"),
+                List.of("containerd-deployment-provider", "k8s-deployment-provider"),
+                List.of("container-deployment-provider", "containerd-deployment-provider", "k8s-deployment-provider"))) {
+            assertThatThrownBy(() -> resolver.validate(providers, selection)).hasMessageContaining("conflict");
+        }
+    }
+
     private ModuleDescriptor descriptor(String id, boolean enabled, List<String> strong,
                                        List<String> weak, List<String> oneOf, List<String> conflicts) {
         return new ModuleDescriptor(1, id, enabled, strong, weak, oneOf, conflicts);
