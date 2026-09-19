@@ -1,0 +1,21 @@
+{
+  "cniVersion": "1.0.0",
+  "name": "nanofaas",
+  "plugins": [
+    {
+      "type": "bridge",
+      "bridge": "nanofaas0",
+      "isGateway": true,
+      "ipMasq": true,
+      "ipam": {
+        "type": "host-local",
+        "dataDir": "@ROOTLESS_HOME@/.local/share/cni/ipam",
+        "ranges": [[{"subnet": "10.90.0.0/24"}]],
+        "routes": [{"dst": "0.0.0.0/0"}]
+      },
+      "dns": {"nameservers": ["10.0.2.3", "1.1.1.1"]}
+    },
+    {"type": "firewall"},
+    {"type": "loopback"}
+  ]
+}
