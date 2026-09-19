@@ -10,11 +10,15 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Mono;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 
 @RestController
 @RequestMapping("/v1/admin/runtime-config")
@@ -23,9 +27,11 @@ public class AdminRuntimeConfigController {
     private static final String ERROR = "error";
 
     private final RuntimeConfigService service;
+    private final ExecutorService adminExecutor;
 
-    public AdminRuntimeConfigController(RuntimeConfigService service) {
+    public AdminRuntimeConfigController(RuntimeConfigService service, ExecutorService adminExecutor) {
         this.service = service;
+        this.adminExecutor = adminExecutor;
     }
 
     @GetMapping
@@ -57,11 +63,30 @@ public class AdminRuntimeConfigController {
         }
     }
 
+    /**
+     * Runs the actual update off the Netty event loop, on a single-worker/single-queue-slot
+     * admin executor: {@link RuntimeConfigService#update} may block until a namespace's
+     * two-phase change commits (e.g. the scheduler switch's linearization point), and a 200
+     * must never be returned before that commit happens. Admission to the executor is checked
+     * BEFORE the service is invoked at all, so a busy admin path fails fast with 503 rather
+     * than queuing indefinitely or blocking a reactor thread.
+     */
     @PatchMapping("/{namespace}")
-    public ResponseEntity<Object> patch(@PathVariable("namespace") String namespace, @RequestBody PatchRequest request) {
+    public Mono<ResponseEntity<Object>> patch(@PathVariable("namespace") String namespace, @RequestBody PatchRequest request) {
         if (request.expectedRevision() == null || request.values() == null) {
-            return ResponseEntity.badRequest().body(Map.of(ERROR, "expectedRevision and values are required"));
+            return Mono.just(ResponseEntity.badRequest().body(Map.of(ERROR, "expectedRevision and values are required")));
         }
+        CompletableFuture<ResponseEntity<Object>> future;
+        try {
+            future = CompletableFuture.supplyAsync(() -> applyPatch(namespace, request), adminExecutor);
+        } catch (RejectedExecutionException e) {
+            return Mono.just(ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of(ERROR, "Admin runtime-config is busy processing another change; retry shortly")));
+        }
+        return Mono.fromFuture(future);
+    }
+
+    private ResponseEntity<Object> applyPatch(String namespace, PatchRequest request) {
         try {
             RuntimeConfigSnapshot updated = service.update(request.expectedRevision(), namespace, request.values());
             return ResponseEntity.ok(new PatchResponse(updated.revision(), updated, Instant.now().toString(),

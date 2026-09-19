@@ -189,6 +189,40 @@ toggles of one running instance.
 registered route is present in the composed document for the module
 selection under test, so contract and routes cannot drift.
 
+## Manual scheduler switching
+
+When a build composes an engine that exposes `SchedulerControl` (task 8's job — plain
+`runtime-config` alone does not add one), the `runtime-config` module's admin API gains a
+`scheduler` namespace at `/v1/admin/runtime-config/scheduler`, gated the same as every other
+admin route by `nanofaas.admin.runtime-config.enabled=true`. It reuses the existing
+`{expectedRevision, values}` PATCH envelope; there is no separate execution endpoint.
+
+```bash
+curl -fsS http://localhost:8080/v1/admin/runtime-config
+curl -fsS -X PATCH http://localhost:8080/v1/admin/runtime-config/scheduler \
+  -H 'Content-Type: application/json' \
+  -d '{"expectedRevision":0,"values":{"strategy":"shared-queue"}}'
+curl -fsS http://localhost:8080/v1/admin/runtime-config/scheduler
+```
+
+The `0` above must be replaced with the revision the first `curl` just read — a stale
+revision answers `409`. `strategy` must be one of the namespace's own `available` ids
+(`per-function` or `shared-queue`, whichever the artifact was built with); anything else
+answers `422`. The namespace itself is absent (`404`, on both GET and PATCH) when the
+build has no engine exposing `SchedulerControl`.
+
+The PATCH does not return `200` until the switch has actually committed: the admin path
+runs off the Netty event loop on a small bounded worker (one in flight, one queued, anything
+past that answers `503` immediately rather than opening an unbounded queue), and a refusal
+before commit — the target strategy failed to prepare, or the admin queue is momentarily full
+— also answers `503` with nothing activated; the previous strategy stays in effect and the
+revision does not advance. A client that disconnects mid-request does not trigger a rollback
+either way; a follow-up GET always reflects what actually happened.
+
+The switch is manual, effective immediately in both directions without draining pending work
+or restarting, and does **not** persist across a restart (`persistence: "restart"` in the GET
+response) — the strategy configured at startup wins again on the next boot.
+
 ## Retries without a queue module
 
 Retries do not depend on a queue module. With none loaded, the core hands the

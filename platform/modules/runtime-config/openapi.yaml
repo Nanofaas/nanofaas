@@ -26,6 +26,13 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              examples:
+                scheduler:
+                  summary: The scheduler namespace (present only when an engine exposing it is built in)
+                  value:
+                    strategy: per-function
+                    available: [per-function, shared-queue]
+                    persistence: restart
         '404':
           description: Namespace or admin runtime-config API not found
     patch:
@@ -36,25 +43,40 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/RuntimeConfigPatchRequest'
+            examples:
+              schedulerSwitch:
+                summary: Switch the active scheduling strategy
+                value:
+                  expectedRevision: 0
+                  values:
+                    strategy: shared-queue
       responses:
         '200':
-          description: Runtime configuration updated and applied
+          description: >-
+            Runtime configuration updated and applied. Only returned after the change has
+            committed — for the `scheduler` namespace, only after
+            `SchedulerControl#switchTo` has actually activated the new strategy.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/RuntimeConfigPatchResponse'
+        '400':
+          description: Request body is missing `expectedRevision` or `values`
         '404':
           description: Namespace or admin runtime-config API not found
         '409':
-          description: Revision mismatch
+          description: Revision mismatch; retry with the current revision from GET
         '422':
-          description: Validation failed
+          description: Validation failed (for `scheduler`, an id not in `available`)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ValidationErrors'
         '503':
-          description: Configuration update was rolled back because applying it failed
+          description: >-
+            The change was refused before it committed (apply/prepare failure, or the
+            admin request queue was full) and was rolled back or never applied; no
+            partial state was activated. Retry is safe.
   /v1/admin/runtime-config/{namespace}/validate:
     parameters:
       - $ref: '#/components/parameters/RuntimeConfigNamespace'
@@ -103,7 +125,37 @@ components:
             canonical-input, physical-input-copy and waiter limits. Reducing a
             limit below occupancy never evicts live work; new reservations pause
             until usage drains below the replacement limit.
+
+            The `scheduler` namespace (present only when the built artifact composes an
+            engine exposing `SchedulerControl`) accepts exactly one field, `strategy`,
+            which must be one of the namespace's own `available` ids. The switch takes
+            effect immediately, in both directions, without draining pending work or
+            restarting; it does not persist across a restart (`persistence: restart`
+            in the GET response means exactly that — the configured startup strategy
+            wins again on the next boot).
           additionalProperties: true
+    SchedulerNamespace:
+      type: object
+      description: >-
+        The `scheduler` namespace as returned by GET
+        `/v1/admin/runtime-config/scheduler`, and the effective shape reflected under
+        `namespaces.scheduler` after a successful PATCH.
+      required: [strategy, available, persistence]
+      properties:
+        strategy:
+          type: string
+          enum: [per-function, shared-queue]
+          description: The currently active scheduling strategy.
+        available:
+          type: array
+          items:
+            type: string
+            enum: [per-function, shared-queue]
+          description: Every strategy id this build was composed with, including `strategy`.
+        persistence:
+          type: string
+          enum: [restart]
+          description: A manual switch does not survive a restart; startup config wins again.
     RuntimeConfigSnapshot:
       type: object
       required: [revision, namespaces]
