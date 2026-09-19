@@ -1,0 +1,13 @@
+{
+  "repetitions": 5,
+  "maxSteadyP99RegressionPercent": 5,
+  "maxUsefulThroughputRegressionPercent": 5,
+  "maxCpuPerCompletionRegressionPercent": 10,
+  "maxPostGcHeapRegressionPercent": 10,
+  "switchBacklogSizes": [0, 100, 1000, 10000],
+  "maxSwitchPauseP99Ms": 100,
+  "maxSwitchPauseMs": 250,
+  "maxSwitchPreparationMs": 2000,
+  "maxLiveStrategyIndexes": 2,
+  "switchesInSoak": 1000
+}
