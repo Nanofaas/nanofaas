@@ -255,9 +255,29 @@ claiming completion.
    to be run once at `e35405ee` and once at the candidate revision, each in a
    separate invocation, then evaluated with the fixed harness.
 2. **A warm post-collection reference for the JVM roles**, without which the
-   `return_to_reference` criterion cannot be satisfied. `baseline-diagnostics`
-   must force a collection, and the reference must be comparable in work to the
-   drain — today the reference phase is hard-coded in `evaluate.py`.
+   `return_to_reference` criterion cannot be satisfied. This was scoped during
+   this closure and is **a harness change, not a policy edit**. What was
+   established, in the order the constraints bite:
+
+   - `evaluate.py` hard-codes `baseline` as the reference phase, so no
+     declaration alone can compare two post-collection readings.
+   - `CriterionPhase` already admits `diagnostic`, but `return_to_reference`
+     is restricted to `phase: drain` (`config/soak.py:157`), so on the final
+     checkpoint the only usable operations are `maximum` and `growth_review`.
+   - The window for that checkpoint is recorded under `final_diagnostics`
+     (phase names are hyphenated, then underscore-normalised), so a criterion
+     naming `diagnostic` finds no window at all — the export filter in
+     `runtime.py` lists `baseline`, `steady`, `drain` and would have to map it.
+   - Decisively: `required_sample_count` floors at **2** samples
+     (`acceptance.py:705`), and the diagnostic checkpoint yields **one**. A
+     diagnostic-phase criterion is therefore structurally INCONCLUSIVE under
+     the current sampling policy, whatever it is written to say.
+
+   Fixing this means changing how the final checkpoint is sampled or how its
+   window is derived — a change to the measurement harness that must be
+   measured to be trusted. It cannot be validated in a session with no soak
+   run authorised, so it is recorded here rather than half-applied. The
+   untested plumbing that was tried for it during this closure was reverted.
 3. **The Go SDK suite**, on a host with `go1.24` available.
 4. **The P09 scoped re-review** of its fix round, which was requested and never
    recorded as returned.
