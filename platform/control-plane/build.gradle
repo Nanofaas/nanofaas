@@ -11,6 +11,7 @@ def selectedOptionalControlPlaneModuleProjects = rootProject.subprojects
 dependencies {
     implementation project(':common')
     implementation project(':control-plane-spi')
+    implementation project(':execution-runtime')
     implementation 'com.github.ben-manes.caffeine:caffeine'
     selectedOptionalControlPlaneModuleProjects.each { moduleProject ->
         runtimeOnly project(moduleProject.path)
