@@ -3919,3 +3919,89 @@ because Micrometer exports them under GraalVM too.
 VMs held about 814 MiB; they were deleted before the candidate arm. On a 121 GiB host the
 effect is small, but the arms did not run under identical conditions, and re-running the
 baseline was considered and deliberately not done.
+
+## 2026-09-19 — P24 candidate diagnostic measured; the JavaScript defect is closed, two JVM criteria are not
+
+**Provenance.** NanoFaaS `758d135b8c1b2e7483ae07c96173c51db2510a74`, clean tree; NanoLab
+`9c7691b21f9c53465c99a058645773b4f6709d7e` plus the uncommitted harness fix recorded below.
+Host aarch64, 121 GiB, 20 CPUs, Docker 29.2.1. Preset
+`memory-soak-sync-candidate-diagnostic-container.yaml` against the checked-in
+`memory-soak-policy.yaml`, container backend, metrics profile `soak`. Run directory
+`packages/nanolab/runs/soak-50fc87df833f49cc917801aec2b72ebe` in the NanoLab checkout.
+This measures the candidate revision only; it is not a paired requalification.
+
+**The measurement completed; the evaluation did not.** All phases ran — preflight,
+prerequisites, warmup, baseline drain, baseline window, steady, drain, final diagnostics,
+observer stop — 10,105 s wall clock. The `evaluate` step then failed: `individual evidence
+record exceeds its size limit`.
+
+**Root cause, in the harness, not the product.** `artifacts.py` sets `MAX_RECORD_BYTES` to
+1 MiB and `ArtifactWriter._check_write` refuses any single record above it. The acceptance
+inventory written to `artifacts.json` listed every retained file by hash: 18,035 entries,
+3.25 MiB, over the limit. 17,892 of those entries were the helper's own docker command logs
+in three `helper-*` trees of 5,964 files each. `evaluation-input.json` had already been
+written; `artifacts.json` was the failing write, so `acceptance-manifest.json` and the
+journaled acceptance never followed.
+
+**Harness fix.** `describe_tree` binds a whole tree into one reference that still hashes
+every file and carries its exact byte total; `_inventory_entries` walks the evidence root,
+prunes build workspaces and dot-directories, defers `source/tree` to the sealed
+`source-manifest.jsonl` it already has, and rolls each helper tree up instead of listing it.
+Measured on this run's evidence: 18,035 entries and 3.25 MiB before, 146 entries and
+0.02 MiB after, with the byte total identical to the byte at 990.4 MiB and the walk 2.2 s to
+1.2 s. A regression test covers the roll-up and its byte fidelity; the full NanoLab suite
+passes 2,645 tests.
+
+**The verdict, from the harness.** Re-running `soak-evaluate` against the saved evidence
+produced the real criteria; an independent replication of NanoLab's own `_window` /
+`_criterion` semantics on the raw samples agreed with it to the byte.
+
+| Criterion | Result | Numbers |
+|---|---|---|
+| control-plane cgroup budget | PASS | ceiling 1 GiB |
+| control-plane rss-return | FAIL | baseline median 224.526 MB; drain maximum 496.435 MB; tolerance 0 |
+| word-stats-java cgroup budget | PASS | ceiling 1 GiB |
+| word-stats-java rss-return | FAIL | 249.258 MB; drain maximum 251.851 MB; tolerance 0 |
+| word-stats-javascript cgroup budget | PASS | ceiling 512 MiB |
+| word-stats-javascript rss-return | **PASS** | 67.273 MB; drain maximum 61.325 MB; tolerance 0 |
+| sample integrity | PASS | identities and timelines valid |
+
+Overall FAIL, `p24_qualified: false`, with `run-coverage` left INCONCLUSIVE because the
+crashed run never wrote `acceptance-manifest.json`.
+
+**The JavaScript defect P24 found is closed.** The function that grew 29 MB to 1,194 MB
+without a plateau now finishes the drain below its own baseline — 61.325 MB against
+67.273 MB, under a zero-tolerance criterion, and its cgroup reading falls 23.7 MB to
+16.0 MB across the drain. The abort-listener retention corrected in `b59dc152` is confirmed
+by measurement, not only by its unit test.
+
+**The two JVM failures are committed heap, not retained state.** `jvm_gc_live_data_size_bytes`
+is 28.75 MB in 984 samples spanning baseline, steady and drain, and 42.17 MB in the single
+reading the final forced full GC produced; `jvm_gc_max_data_size_bytes` is a constant
+501.9 MB and resident memory ends at 496.4 MB, essentially the ceiling. The metric only
+advances on a full collection, so the baseline reading is a stale warmup value and the final
+one is the only fresh measurement in the run. That fresh measurement is what disposes of the
+leak reading: had the linear resident growth been retention, roughly 1.26 KB per request
+over some 216,000 requests would put the live set near 270 MB, and a forced full collection
+reports 42 MB. The historical baseline arm shows the same shape, holding 739–750 MB after
+rising from 508 MB.
+
+**Why the criterion cannot be satisfied here without a new measurement.** The policy's
+`return_to_reference` compares the drain maximum against the median of the `baseline` phase,
+and `evaluate.py` hard-codes that phase as the reference. For a JVM whose resident set is
+dominated by committed heap, a zero-tolerance return to a cold baseline is not reachable by
+design. Judging retention properly needs a post-collection live-data reading taken while the
+JVM is warm, and this run has none: `baseline-diagnostics` completed in 0.0 s, so no
+collection was forced at that checkpoint. Producing that reading requires a new run. The
+frozen policy is left untouched and the two criteria remain recorded as failures; the
+residual is declared rather than absorbed by moving a threshold.
+
+**State.** Campaign **incomplete**. The P24 defect is fixed and measured; the candidate
+revision is not fully qualified, and neither is the pair, since no paired requalification has
+been run. The missing command for full qualification, once the JVM reference is decided, is a
+paired `memory-soak-sync-container.yaml` invocation at `e35405ee` and at the candidate
+revision, evaluated with the fixed harness.
+
+**What this entry does not cover.** It records one measurement and one harness fix. It is not
+a closure of P00–P23, whose rows the P25 coverage table still requires, and it does not
+verify the remaining NanoLab gates that P24's own dossier lists as inconclusive.
