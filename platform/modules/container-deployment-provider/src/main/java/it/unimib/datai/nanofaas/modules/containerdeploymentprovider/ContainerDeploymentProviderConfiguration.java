@@ -39,6 +39,9 @@ public class ContainerDeploymentProviderConfiguration {
                     createDockerClient(), properties.networkName(), properties.cpuset(),
                     properties.bindHost(), portAllocator);
         }
+        if (properties.networkName() != null) {
+            throw new IllegalArgumentException("nanofaas.container-local.network-name requires the docker-java runtime adapter");
+        }
         return new CliContainerRuntimeAdapter(
                 properties.runtimeAdapter(), executor, properties.cpuset(), properties.bindHost(), portAllocator);
     }

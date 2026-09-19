@@ -5,9 +5,14 @@ import it.unimib.datai.nanofaas.containerdeployment.ContainerRuntimeAdapter;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
 import it.unimib.datai.nanofaas.controlplane.registry.ImageValidator;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 class ContainerDeploymentProviderConfigurationTest {
 
@@ -47,6 +52,22 @@ class ContainerDeploymentProviderConfigurationTest {
                     assertThat(context.getBean(ContainerLocalProperties.class).networkName())
                             .isEqualTo("nanofaas");
                 });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"docker", "podman", "nerdctl"})
+    void configuration_rejectsCliNetworkBeforeAllocatingPortsOrRunningCommands(String runtime) {
+        ContainerLocalProperties properties = new ContainerLocalProperties(
+                runtime, "127.0.0.1", null, null, null, "nanofaas");
+        CliCommandExecutor executor = mock(CliCommandExecutor.class);
+        PortAllocator allocator = mock(PortAllocator.class);
+        ContainerDeploymentProviderConfiguration configuration = new ContainerDeploymentProviderConfiguration();
+
+        assertThatThrownBy(() -> configuration.containerRuntimeAdapter(properties, executor, allocator))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("network-name")
+                .hasMessageContaining("docker-java");
+        verifyNoInteractions(executor, allocator);
     }
 
     @Test
