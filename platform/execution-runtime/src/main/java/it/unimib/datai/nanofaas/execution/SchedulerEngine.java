@@ -3,8 +3,11 @@ package it.unimib.datai.nanofaas.execution;
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerControl;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerDispatchSupport;
+import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerSelection;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingIndex;
+import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingStrategy;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingTicket;
 import it.unimib.datai.nanofaas.controlplane.scheduler.TicketId;
 import org.slf4j.Logger;
@@ -45,7 +48,7 @@ import java.util.function.Predicate;
  * replaces the old schedulers' "drop the function from activeFunctions and wait to be
  * re-signalled", which the passive index contract deliberately leaves to the engine.
  */
-public final class SchedulerEngine implements AutoCloseable {
+public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
 
     private static final Logger log = LoggerFactory.getLogger(SchedulerEngine.class);
 
@@ -55,8 +58,19 @@ public final class SchedulerEngine implements AutoCloseable {
     static final long CAPACITY_BLOCKED_AWAIT_MS = 50L;
     /** Deadlines reaped per pass, so a burst of expiries cannot starve dispatch. */
     private static final int MAX_EXPIRED_PER_PASS = 64;
+    /**
+     * Tickets one switch may rebuild into the candidate index. The rebuild runs under the gate,
+     * which is what makes a switch atomic against every concurrent insertion and removal, so it
+     * is also what the gate hold time is paid out of. A deeper queue is refused as
+     * {@link SchedulerSwitchException.Reason#TEMPORARY_CAP} and becomes switchable again as it
+     * drains. This is the clock-free half of the budget; {@link #SWITCH_BUDGET_MS} is the other.
+     */
+    static final int MAX_SWITCH_REBUILD_TICKETS = 10_000;
+    /** Monotonic budget for one rebuild, re-checked before every insertion into the candidate. */
+    static final long SWITCH_BUDGET_MS = 50L;
 
     private final PendingWorkStore store;
+    private final StrategyRegistry strategies;
     private final EngineDispatch dispatch;
     private final EngineReadiness readiness;
     private final Clock clock;
@@ -77,8 +91,13 @@ public final class SchedulerEngine implements AutoCloseable {
      */
     private final Set<TicketId> cancelRequests = new HashSet<>();
 
-    private SchedulingIndex activeIndex;
-    private String activeStrategy;
+    /**
+     * The active policy and its index, published as one immutable pair. Written only under
+     * {@link #gate}; volatile so {@link #snapshot()} can read a consistent pair without taking
+     * it. The epoch is what a provisional claim carries, so a selection that spans a switch is
+     * detected by value rather than by index identity.
+     */
+    private volatile ActiveScheduler active;
     private long wakeSequence;
     private boolean running;
     private Thread worker;
@@ -87,19 +106,129 @@ public final class SchedulerEngine implements AutoCloseable {
                            EngineDispatch dispatch, EngineReadiness readiness,
                            Clock clock, LongSupplier nanoTime) {
         this.store = Objects.requireNonNull(store, "store must not be null");
-        Objects.requireNonNull(strategies, "strategies must not be null");
+        this.strategies = Objects.requireNonNull(strategies, "strategies must not be null");
         this.dispatch = Objects.requireNonNull(dispatch, "dispatch must not be null");
         this.readiness = Objects.requireNonNull(readiness, "readiness must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
         this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime must not be null");
-        this.activeStrategy = Objects.requireNonNull(initialStrategy, "initialStrategy must not be null");
-        this.activeIndex = strategies.require(initialStrategy).newIndex();
+        Objects.requireNonNull(initialStrategy, "initialStrategy must not be null");
+        SchedulingStrategy initial = strategies.require(initialStrategy);
+        this.active = new ActiveScheduler(initial.id(), initial.newIndex(), 0L);
     }
 
-    /** The id of the strategy whose index is currently active. */
-    public String activeStrategy() {
+    @Override
+    public SchedulerSelection snapshot() {
+        // The selection is an API override that does not outlive the process: on restart the
+        // configured initial strategy wins again.
+        return new SchedulerSelection(active.id(), strategies.ids(), "restart");
+    }
+
+    /**
+     * Replaces the active index with a fresh one built by {@code strategy}, without draining
+     * anything. Pending work is rebuilt into the candidate in sequence order; a selection the
+     * loop is still carrying is provisional and returns itself to whichever index is active when
+     * it lands; an attempt already committed to dispatch keeps its attempt, deadline and
+     * sequence and simply requeues into the new index if it comes back.
+     *
+     * <p>The whole switch is one gate section. That is what makes "before or after" the only two
+     * possible positions for a concurrent {@link #enqueue} or {@link #remove}: neither can
+     * interleave with the rebuild, so no transition event buffer is needed and no admitted work
+     * can fall between the two indexes. It also means new provisional claims cannot be taken
+     * while the candidate is being built — {@link #selectAndClaim} runs under the same gate.
+     *
+     * @throws IllegalArgumentException  when no such strategy was built into this artifact
+     * @throws SchedulerSwitchException  when the switch was refused before its commit point; the
+     *                                   previous strategy is still active and untouched
+     */
+    @Override
+    public void switchTo(String strategy) {
+        Objects.requireNonNull(strategy, "strategy must not be null");
+        // Validated before the gate is even taken, let alone the old index touched.
+        SchedulingStrategy target = strategies.require(strategy);
         synchronized (gate) {
-            return activeStrategy;
+            ActiveScheduler current = active;
+            if (current.id().equals(target.id())) {
+                // Same strategy: a no-op for indexes and for the worker, by contract.
+                return;
+            }
+            SchedulingIndex superseded;
+            try {
+                SchedulingIndex candidate = prepare(target);
+                // Linearization point. Every validation is behind us and nothing below can fail
+                // in a way that would have to undo this: discarding the old index is isolated
+                // cleanup, not part of the transaction.
+                active = new ActiveScheduler(target.id(), candidate, current.epoch() + 1);
+                superseded = current.index();
+            } finally {
+                // Whether committed or refused, the selector re-examines everything: a generation
+                // blocked against the old index must not stay blocked against an index that has
+                // never been consulted for it.
+                wake();
+            }
+            discard(superseded);
+        }
+        log.info("Scheduler strategy switched to {}", target.id());
+    }
+
+    /**
+     * Under the gate. Builds the candidate index from the pending work, in sequence order, and
+     * returns it without ever consulting it for dispatch. Claimed and submitting tickets are
+     * deliberately absent: {@link PendingWorkStore#snapshotPending()} excludes them because
+     * their attempt is already in flight and will put itself back into whichever index is
+     * active when it lands. Any failure leaves the candidate cleared and the active index
+     * untouched.
+     */
+    private SchedulingIndex prepare(SchedulingStrategy target) {
+        List<PendingEntry> pending = store.snapshotPending();
+        SchedulingIndex candidate;
+        try {
+            candidate = target.newIndex();
+        } catch (RuntimeException failure) {
+            throw new SchedulerSwitchException(SchedulerSwitchException.Reason.PREPARATION,
+                    "Scheduler preparation failed", failure);
+        }
+        long deadlineNanos = nanoTime.getAsLong() + TimeUnit.MILLISECONDS.toNanos(SWITCH_BUDGET_MS);
+        int rebuilt = 0;
+        try {
+            for (PendingEntry entry : pending) {
+                if (rebuilt == MAX_SWITCH_REBUILD_TICKETS) {
+                    throw new SchedulerSwitchException(SchedulerSwitchException.Reason.TEMPORARY_CAP,
+                            "Too much pending work to switch scheduler: " + pending.size()
+                                    + " tickets, cap " + MAX_SWITCH_REBUILD_TICKETS);
+                }
+                if (nanoTime.getAsLong() - deadlineNanos >= 0) {
+                    throw new SchedulerSwitchException(SchedulerSwitchException.Reason.TIMEOUT,
+                            "Scheduler preparation outran its " + SWITCH_BUDGET_MS + " ms budget after "
+                                    + rebuilt + " of " + pending.size() + " tickets");
+                }
+                candidate.add(entry.ticket());
+                rebuilt++;
+            }
+        } catch (RuntimeException failure) {
+            try {
+                candidate.clear();
+            } catch (RuntimeException cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
+            if (failure instanceof SchedulerSwitchException refused) {
+                throw refused;
+            }
+            throw new SchedulerSwitchException(SchedulerSwitchException.Reason.PREPARATION,
+                    "Scheduler preparation failed", failure);
+        }
+        return candidate;
+    }
+
+    /**
+     * Under the gate, after the commit. The superseded index is unreachable by then — every
+     * path reads {@code active.index()} — so this is bookkeeping for the index's own sake and
+     * a throw from it must not be reported as a failed switch.
+     */
+    private void discard(SchedulingIndex superseded) {
+        try {
+            superseded.clear();
+        } catch (RuntimeException failure) {
+            log.warn("Superseded scheduling index failed to clear", failure);
         }
     }
 
@@ -114,7 +243,7 @@ public final class SchedulerEngine implements AutoCloseable {
             if (!store.offer(entry)) {
                 return false;
             }
-            activeIndex.add(entry.ticket());
+            active.index().add(entry.ticket());
             track(entry.ticket());
             wake();
         }
@@ -337,7 +466,8 @@ public final class SchedulerEngine implements AutoCloseable {
     private Claim selectAndClaim(Instant now) {
         Predicate<FunctionGeneration> runnable =
                 generation -> !blocked.contains(generation) && readiness.runnable(generation);
-        SchedulingTicket ticket = activeIndex.select(now, runnable);
+        ActiveScheduler scheduler = active;
+        SchedulingTicket ticket = scheduler.index().select(now, runnable);
         if (ticket == null) {
             return null;
         }
@@ -345,15 +475,14 @@ public final class SchedulerEngine implements AutoCloseable {
         if (entry == null) {
             // The index outlived its entry: drop the orphan rather than re-selecting it forever.
             log.warn("Dropping indexed ticket with no pending entry: {}", ticket.id());
-            activeIndex.remove(ticket.id());
+            scheduler.index().remove(ticket.id());
             deadlines.remove(ticket);
             return null;
         }
-        return new Claim(ticket, activeIndex);
+        return new Claim(ticket, scheduler.epoch());
     }
 
     /** Outside the gate, except where noted: record check, lease acquisition, commit, submit. */
-    @SuppressWarnings("ReferenceEquality") // Index identity, not content, decides whether the selection still stands.
     private long carry(Claim claim) {
         SchedulingTicket ticket = claim.ticket();
         // A claim is provisional and lives only inside this method. isCurrent, tryAcquire and
@@ -380,7 +509,7 @@ public final class SchedulerEngine implements AutoCloseable {
             if (lease == null) {
                 synchronized (gate) {
                     store.abort(ticket.id());
-                    activeIndex.defer(ticket.id());
+                    active.index().defer(ticket.id());
                     blocked.add(ticket.generation());
                 }
                 claimSettled = true;
@@ -393,16 +522,17 @@ public final class SchedulerEngine implements AutoCloseable {
                 if (current == null) {
                     // The claim was removed while the lease was being acquired: nothing to dispatch.
                     task = null;
-                } else if (claim.index() != activeIndex) {
+                } else if (claim.epoch() != active.epoch()) {
                     // The index was swapped under this selection. A provisional claim is not a
                     // committed dispatch, so this attempt goes back to the index that is active now
-                    // and gets re-selected by the new policy.
+                    // and gets re-selected by the new policy. The rebuild excluded it — it was
+                    // claimed — so this add cannot collide with a copy of itself.
                     store.abort(ticket.id());
-                    activeIndex.add(ticket);
+                    active.index().add(ticket);
                     task = null;
                 } else {
                     store.commit(ticket.id());
-                    activeIndex.remove(ticket.id());
+                    active.index().remove(ticket.id());
                     task = current.task();
                 }
             }
@@ -419,7 +549,9 @@ public final class SchedulerEngine implements AutoCloseable {
             if (!claimSettled) {
                 synchronized (gate) {
                     store.abort(ticket.id());
-                    activeIndex.defer(ticket.id());
+                    // defer of an id the (possibly newly built) index does not hold is a no-op
+                    // in both policies; the ticket returns through the index-swap branch above.
+                    active.index().defer(ticket.id());
                 }
             }
         }
@@ -464,7 +596,7 @@ public final class SchedulerEngine implements AutoCloseable {
                 cancelled = store.remove(ticket.id());
                 deadlines.remove(ticket);
             } else {
-                activeIndex.add(ticket);
+                active.index().add(ticket);
                 // Re-track in case a reap polled this deadline off while the submit was in
                 // flight and then found the ticket committed; TreeSet.add is idempotent here.
                 track(ticket);
@@ -497,7 +629,7 @@ public final class SchedulerEngine implements AutoCloseable {
             if (entry != null) {
                 // Out-of-band removal: the per-function index treats this exactly as it treats a
                 // dispatch of that function's turn (see remove()).
-                activeIndex.remove(head.id());
+                active.index().remove(head.id());
                 expired.add(entry);
             }
             // A null entry is a ticket already gone or already submitting: its dispatch is
@@ -554,7 +686,7 @@ public final class SchedulerEngine implements AutoCloseable {
      * </ul>
      */
     private void retire(SchedulingTicket ticket) {
-        activeIndex.remove(ticket.id());
+        active.index().remove(ticket.id());
         if (ticket.queueDeadline() != null) {
             deadlines.remove(ticket);
         }
@@ -567,7 +699,14 @@ public final class SchedulerEngine implements AutoCloseable {
         gate.notifyAll();
     }
 
-    /** One selection in flight, with the index identity it was selected from. */
-    private record Claim(SchedulingTicket ticket, SchedulingIndex index) {
+    /** One selection in flight, with the epoch of the index it was selected from. */
+    private record Claim(SchedulingTicket ticket, long epoch) {
+    }
+
+    /**
+     * The active policy, its index and the epoch that dates it. Replaced wholesale by a switch;
+     * never mutated.
+     */
+    private record ActiveScheduler(String id, SchedulingIndex index, long epoch) {
     }
 }
