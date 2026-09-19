@@ -56,10 +56,14 @@ public final class PendingWorkStore {
         return entries.get(id);
     }
 
-    /** Adds {@code id} to the claimed set; the entry and its reservation are untouched. */
+    /**
+     * Adds {@code id} to the claimed set; the entry and its reservation are untouched. A ticket
+     * already in {@code submitting} cannot be claimed again — its reservation is already
+     * committed to a dispatch in flight.
+     */
     public PendingEntry claim(TicketId id) {
         PendingEntry entry = entries.get(id);
-        return entry != null && claimed.add(id) ? entry : null;
+        return entry != null && !submitting.contains(id) && claimed.add(id) ? entry : null;
     }
 
     /** Reverses a claim, leaving the entry pending with its reservation intact. */

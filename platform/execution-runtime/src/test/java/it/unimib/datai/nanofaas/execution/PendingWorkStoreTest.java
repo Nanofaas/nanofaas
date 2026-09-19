@@ -159,6 +159,33 @@ class PendingWorkStoreTest {
         assertThat(store.offer(new PendingEntry(ticket("e2", 1), mock(InvocationTask.class)))).isTrue();
     }
 
+    @Test void claimOnSubmittingTicketReturnsNullAndLeavesClaimedCountUnchanged() {
+        var store = new PendingWorkStore(1);
+        var t = ticket("e1", 0);
+        store.offer(new PendingEntry(t, mock(InvocationTask.class)));
+        store.claim(t.id());
+        store.commit(t.id());
+
+        var reclaimed = store.claim(t.id());
+
+        assertThat(reclaimed).isNull();
+        assertThat(store.claimedCount()).isZero();
+        assertThat(store.submittingCount()).isEqualTo(1);
+    }
+
+    @Test void snapshotPendingOrdersByAscendingSequenceRegardlessOfOfferOrder() {
+        var store = new PendingWorkStore(3);
+        var five = ticket("e5", 5);
+        var one = ticket("e1", 1);
+        var three = ticket("e3", 3);
+        store.offer(new PendingEntry(five, mock(InvocationTask.class)));
+        store.offer(new PendingEntry(one, mock(InvocationTask.class)));
+        store.offer(new PendingEntry(three, mock(InvocationTask.class)));
+
+        assertThat(store.snapshotPending()).extracting(PendingEntry::ticket)
+                .containsExactly(one, three, five);
+    }
+
     @Test void requeueSubmitClearsSubmittingButKeepsEntryPending() {
         var store = new PendingWorkStore(1);
         var t = ticket("e1", 0);
