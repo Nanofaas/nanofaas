@@ -83,7 +83,10 @@ repository. It records a `nanolab-receipt.json` of artifact hashes there and
 builds with `-PcontainerdMavenLocal=true` and
 `-Dmaven.repo.local=<remote repository>`. Point it at an isolated bootstrap
 output; do not stage an entire personal Maven cache. The NanoLab scenario
-revision in `dependencies.env` remains pending until its final tests are run.
+revision in `dependencies.env` is pinned to the exact scenario checkout used by
+the recorded checks. The lifecycle run used NanoFaaS `18d7b98f`; recovery and
+the focused JVM async run used `00ab7ac9`. Keep these revisions in the receipt
+when reproducing a run.
 
 The checked-in [`10-nanofaas.conflist`](../deploy/containerd-rootless/10-nanofaas.conflist)
 is the CNI network template. Replace `@ROOTLESS_HOME@` with the user's absolute
@@ -164,7 +167,19 @@ Invocation failure retries are controlled by each function's `maxRetries`
 (default `3` in the control-plane configuration). Clients must make their
 functions idempotent; the cleanup retry state is a separate lifecycle concern.
 
+Recorded runtime evidence is deliberately split by artifact and scenario:
+the lifecycle scenario passed on NanoFaaS `18d7b98f`, recovery passed on
+`00ab7ac91796069832fd8b85f313e766ea4e7889`, and the focused JVM async run
+exited successfully on that recovery revision. The 18-function async run
+failed after the Go and Java paths passed with Java-lite callback output
+serialization (`OUTPUT_SERIALIZATION_ERROR`); this is a Java-lite reflection
+metadata issue, not evidence of a containerd or network failure. Its diagnosis
+is outside this build/documentation slice.
+
 Native compilation succeeded on Linux aarch64 at NanoFaaS revision
-`7a509f02c76a50db4bd60ac188d36203dae71321`. That result does not establish
-native runtime CNI, callback, restart or cleanup behavior. Linux amd64 and the
-full NanoLab matrix remain unverified until their runtime receipts are recorded.
+`00ab7ac91796069832fd8b85f313e766ea4e7889` for the containerd provider,
+async-queue and build-metadata modules. The native receipt records
+`runtime_verified: false`; no native binary was launched. Linux amd64, native
+runtime CNI/callback/restart/cleanup, the full matrix, soak and failure
+injection remain unverified. These results must not be described as complete
+deployment parity.
