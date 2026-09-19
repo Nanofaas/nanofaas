@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 
+import it.unimib.datai.nanofaas.containerdeployment.ContainerRuntimeAdapter;
+
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
 import it.unimib.datai.nanofaas.controlplane.registry.ImageValidator;
 import org.junit.jupiter.api.Test;

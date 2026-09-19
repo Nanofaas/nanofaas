@@ -1,4 +1,6 @@
-package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
+package it.unimib.datai.nanofaas.containerdeployment;
+
+
 
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
@@ -100,7 +102,7 @@ class P13BoundedProxyTest {
             backendCalls.incrementAndGet();
             respond(exchange, 200, new byte[0]);
         });
-        proxy = proxy(new ContainerProxyProperties(64, 64, 128, PHASE_TIMEOUT, Duration.ofSeconds(2)));
+        proxy = proxy(new ProxySettings(64, 64, 128, PHASE_TIMEOUT, Duration.ofSeconds(2)));
         proxy.updateBackends(List.of(baseUrl(backend)));
 
         try (Socket socket = connect()) {
@@ -193,7 +195,7 @@ class P13BoundedProxyTest {
         };
         proxy = new RoundRobinFunctionProxy(
                 "127.0.0.1", 4, Duration.ofSeconds(30), HttpClient.newHttpClient(),
-                new ContainerProxyProperties(
+                new ProxySettings(
                         16, 1, 33, Duration.ofSeconds(2), Duration.ofSeconds(30)),
                 null, blockedWriter);
         proxy.updateBackends(List.of(baseUrl(backend)));
@@ -214,7 +216,7 @@ class P13BoundedProxyTest {
     @Test
     void aggregateBudgetSmallerThanGrowthChunkStillAcceptsARepresentableBody() throws Exception {
         HttpServer backend = backend(exchange -> respond(exchange, 204, new byte[0]));
-        proxy = proxy(new ContainerProxyProperties(
+        proxy = proxy(new ProxySettings(
                 3, 64, 7, Duration.ofSeconds(2), Duration.ofSeconds(2)));
         proxy.updateBackends(List.of(baseUrl(backend)));
 
@@ -268,7 +270,7 @@ class P13BoundedProxyTest {
         Duration responseWriteDeadline = Duration.ofSeconds(2);
         proxy = new RoundRobinFunctionProxy(
                 "127.0.0.1", 4, backendDeadline, HttpClient.newHttpClient(),
-                new ContainerProxyProperties(
+                new ProxySettings(
                         64, 64, 128, Duration.ofSeconds(2), responseWriteDeadline),
                 deadlines, blockedWriter);
         proxy.updateBackends(List.of(baseUrl(backend)));
@@ -386,7 +388,7 @@ class P13BoundedProxyTest {
         byte[] payload = new byte[1024];
         Arrays.fill(payload, (byte) 'x');
         HttpServer backend = backend(exchange -> respond(exchange, 200, payload));
-        proxy = proxy(new ContainerProxyProperties(
+        proxy = proxy(new ProxySettings(
                 1024 * 1024, 4 * 1024 * 1024, 32L * 1024 * 1024,
                 Duration.ofSeconds(5), Duration.ofSeconds(5)));
         proxy.updateBackends(List.of(baseUrl(backend)));
@@ -411,13 +413,13 @@ class P13BoundedProxyTest {
         assertIdle();
     }
 
-    private RoundRobinFunctionProxy proxy(ContainerProxyProperties properties) {
+    private RoundRobinFunctionProxy proxy(ProxySettings properties) {
         return new RoundRobinFunctionProxy(
                 "127.0.0.1", 4, Duration.ofSeconds(5), HttpClient.newHttpClient(), properties);
     }
 
-    private static ContainerProxyProperties limits(int request, int response, long aggregate) {
-        return new ContainerProxyProperties(
+    private static ProxySettings limits(int request, int response, long aggregate) {
+        return new ProxySettings(
                 request, response, aggregate, Duration.ofSeconds(2), Duration.ofSeconds(2));
     }
 

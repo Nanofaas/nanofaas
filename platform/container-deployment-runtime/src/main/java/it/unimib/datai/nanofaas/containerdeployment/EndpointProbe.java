@@ -1,4 +1,4 @@
-package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
+package it.unimib.datai.nanofaas.containerdeployment;
 
 import java.time.Duration;
 

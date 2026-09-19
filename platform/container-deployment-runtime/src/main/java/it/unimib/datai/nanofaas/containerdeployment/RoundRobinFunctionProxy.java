@@ -1,4 +1,4 @@
-package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
+package it.unimib.datai.nanofaas.containerdeployment;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -75,7 +75,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
     private final ExecutorService executor;
     private final ScheduledThreadPoolExecutor deadlineExecutor;
     private final HttpClient httpClient;
-    private final ContainerProxyProperties proxyProperties;
+    private final ProxySettings proxyProperties;
     private final BufferBudget bufferBudget;
     private final DeadlineFactory deadlineFactory;
     private final ResponseBodyWriter responseBodyWriter;
@@ -94,7 +94,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
         this(bindHost, DEFAULT_MAX_IN_FLIGHT, DEFAULT_SINGLE_HOP_TIMEOUT);
     }
 
-    RoundRobinFunctionProxy(String bindHost, ContainerProxyProperties proxyProperties) {
+    RoundRobinFunctionProxy(String bindHost, ProxySettings proxyProperties) {
         this(bindHost, DEFAULT_MAX_IN_FLIGHT, DEFAULT_SINGLE_HOP_TIMEOUT, null, proxyProperties);
     }
 
@@ -103,14 +103,14 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
     }
 
     RoundRobinFunctionProxy(String bindHost, int maxInFlight, Duration singleHopTimeout, HttpClient httpClient) {
-        this(bindHost, maxInFlight, singleHopTimeout, httpClient, ContainerProxyProperties.defaults());
+        this(bindHost, maxInFlight, singleHopTimeout, httpClient, ProxySettings.defaults());
     }
 
     RoundRobinFunctionProxy(String bindHost,
                             int maxInFlight,
                             Duration singleHopTimeout,
                             HttpClient httpClient,
-                            ContainerProxyProperties proxyProperties) {
+                            ProxySettings proxyProperties) {
         this(bindHost, maxInFlight, singleHopTimeout, httpClient, proxyProperties, null,
                 RoundRobinFunctionProxy::writeResponseBody);
     }
@@ -119,7 +119,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
                             int maxInFlight,
                             Duration singleHopTimeout,
                             HttpClient httpClient,
-                            ContainerProxyProperties proxyProperties,
+                            ProxySettings proxyProperties,
                             DeadlineFactory deadlineFactory,
                             ResponseBodyWriter responseBodyWriter) {
         if (maxInFlight < 1) {

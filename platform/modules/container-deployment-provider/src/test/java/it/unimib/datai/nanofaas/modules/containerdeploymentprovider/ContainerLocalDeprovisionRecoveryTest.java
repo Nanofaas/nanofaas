@@ -1,5 +1,11 @@
 package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 
+import it.unimib.datai.nanofaas.containerdeployment.ContainerRuntimeAdapter;
+import it.unimib.datai.nanofaas.containerdeployment.ContainerInstanceSpec;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedContainer;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxy;
+import it.unimib.datai.nanofaas.containerdeployment.EndpointProbe;
+
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.RuntimeMode;
@@ -251,7 +257,6 @@ class ContainerLocalDeprovisionRecoveryTest {
                 new ContainerLocalProperties("docker", "127.0.0.1",
                         Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new AlwaysReadyProbe(),
-                new SequentialPortAllocator(),
                 functionName -> proxies[Math.min(created.getAndIncrement(), proxies.length - 1)]);
     }
 
@@ -262,7 +267,7 @@ class ContainerLocalDeprovisionRecoveryTest {
     }
 
     private static ContainerInstanceSpec instanceSpec(String containerName) {
-        return new ContainerInstanceSpec(containerName, "img:latest", 31999, List.of(), Map.of(), null,
+        return new ContainerInstanceSpec(containerName, "img:latest", List.of(), Map.of(), null,
                 Map.of(ContainerLocalDeploymentProvider.MANAGED_LABEL, "true",
                         ContainerLocalDeploymentProvider.FUNCTION_LABEL, "echo",
                         ContainerLocalDeploymentProvider.REPLICA_LABEL, "2"));
@@ -271,7 +276,7 @@ class ContainerLocalDeprovisionRecoveryTest {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> states(ContainerLocalDeploymentProvider provider) {
         try {
-            Field states = ContainerLocalDeploymentProvider.class.getDeclaredField("states");
+            Field states = it.unimib.datai.nanofaas.containerdeployment.LocalManagedDeploymentProvider.class.getDeclaredField("states");
             states.setAccessible(true);
             return (Map<String, Object>) states.get(provider);
         } catch (ReflectiveOperationException e) {
@@ -285,7 +290,7 @@ class ContainerLocalDeprovisionRecoveryTest {
 
     private static Set<String> trackedLocks(ContainerLocalDeploymentProvider provider) {
         try {
-            Field locks = ContainerLocalDeploymentProvider.class.getDeclaredField("locks");
+            Field locks = it.unimib.datai.nanofaas.containerdeployment.LocalManagedDeploymentProvider.class.getDeclaredField("locks");
             locks.setAccessible(true);
             return ((Map<String, ?>) locks.get(provider)).keySet();
         } catch (ReflectiveOperationException e) {
@@ -356,8 +361,11 @@ class ContainerLocalDeprovisionRecoveryTest {
         }
 
         @Override
-        public void runContainer(ContainerInstanceSpec spec) {
+        public ManagedContainer runContainer(ContainerInstanceSpec spec) {
             live.add(spec.containerName());
+            return new ManagedContainer(spec.containerName(),
+                    ContainerLocalDeploymentProvider.replicaIndex(spec.containerName()),
+                    "http://127.0.0.1:31000", true);
         }
 
         @Override
@@ -378,7 +386,7 @@ class ContainerLocalDeprovisionRecoveryTest {
             return live.stream()
                     .filter(name -> name.startsWith(prefix + "-r"))
                     .map(name -> new ManagedContainer(name,
-                            ContainerLocalDeploymentProvider.replicaIndex(name), 31000, true))
+                            ContainerLocalDeploymentProvider.replicaIndex(name), "http://127.0.0.1:31000", true))
                     .toList();
         }
     }
@@ -434,12 +442,4 @@ class ContainerLocalDeprovisionRecoveryTest {
         }
     }
 
-    private static final class SequentialPortAllocator implements PortAllocator {
-        private int next = 31001;
-
-        @Override
-        public int nextPort() {
-            return next++;
-        }
-    }
 }

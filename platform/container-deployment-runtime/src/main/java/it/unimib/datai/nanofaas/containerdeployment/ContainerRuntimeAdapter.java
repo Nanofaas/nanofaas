@@ -1,4 +1,4 @@
-package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
+package it.unimib.datai.nanofaas.containerdeployment;
 
 import java.util.List;
 
@@ -7,7 +7,7 @@ public interface ContainerRuntimeAdapter {
 
     void pullImage(String image);
 
-    void runContainer(ContainerInstanceSpec spec);
+    ManagedContainer runContainer(ContainerInstanceSpec spec);
 
     void removeContainer(String containerName);
 

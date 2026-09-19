@@ -2,7 +2,7 @@
 
 Optional control-plane module: the local backend (`container-local`) for the
 managed `DEPLOYMENT` execution mode — runs function instances as containers
-via a Docker-compatible CLI, no Kubernetes required.
+via Docker Java or a Docker-compatible CLI, no Kubernetes required.
 
 ## Provides
 
@@ -10,11 +10,18 @@ via a Docker-compatible CLI, no Kubernetes required.
   instances for DEPLOYMENT functions and applies replica changes.
 - `CliContainerRuntimeAdapter` + `ProcessCliCommandExecutor` — drive the
   container runtime CLI (docker/podman-compatible).
-- `EphemeralPortAllocator` and `HttpEndpointProbe` — port assignment and
-  readiness polling for each instance.
-- `RoundRobinFunctionProxy` (`ManagedFunctionProxyFactory`) — load-balances
+- `EphemeralPortAllocator` — Docker host-port assignment. The adapters return
+  the reachable endpoint, including container DNS when a Docker network is used.
+- Shared `HttpEndpointProbe` — readiness polling for each instance.
+- Shared `RoundRobinFunctionProxy` (`ManagedFunctionProxyFactory`) — load-balances
   invocations across the instances of a function, concurrently and under a
   bound (see below).
+
+The lifecycle, runtime contract, readiness probe and proxy live in the ordinary
+[`container-deployment-runtime`](../../container-deployment-runtime/) library.
+It has no Spring auto-configuration or Docker dependency. This module owns Docker
+configuration, port allocation and adapters; `ContainerLocalDeploymentProvider`
+selects the `container-local` backend and retains its persisted container names.
 
 ## Proxy behaviour and its outcomes
 

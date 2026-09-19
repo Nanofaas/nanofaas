@@ -1,4 +1,4 @@
-package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
+package it.unimib.datai.nanofaas.containerdeployment;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -6,11 +6,11 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 
-final class HttpEndpointProbe implements EndpointProbe {
+public final class HttpEndpointProbe implements EndpointProbe {
 
     private final HttpClient httpClient;
 
-    HttpEndpointProbe() {
+    public HttpEndpointProbe() {
         this(HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(2))
                 .build());

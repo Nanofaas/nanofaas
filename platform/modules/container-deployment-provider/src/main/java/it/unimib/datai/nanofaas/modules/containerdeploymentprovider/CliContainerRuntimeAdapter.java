@@ -1,5 +1,9 @@
 package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 
+import it.unimib.datai.nanofaas.containerdeployment.ContainerRuntimeAdapter;
+import it.unimib.datai.nanofaas.containerdeployment.ContainerInstanceSpec;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedContainer;
+
 import it.unimib.datai.nanofaas.common.model.ResourceQuantity;
 import it.unimib.datai.nanofaas.common.model.ResourceSpec;
 
@@ -15,12 +19,21 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
     private final String runtimeAdapter;
     private final CliCommandExecutor executor;
     private final String cpuset;
+    private final String bindHost;
+    private final PortAllocator portAllocator;
 
     CliContainerRuntimeAdapter(String runtimeAdapter, CliCommandExecutor executor) {
         this(runtimeAdapter, executor, null);
     }
 
     CliContainerRuntimeAdapter(String runtimeAdapter, CliCommandExecutor executor, String cpuset) {
+        this(runtimeAdapter, executor, cpuset, "127.0.0.1", new EphemeralPortAllocator("127.0.0.1"));
+    }
+
+    CliContainerRuntimeAdapter(String runtimeAdapter, CliCommandExecutor executor, String cpuset,
+                               String bindHost, PortAllocator portAllocator) {
+        this.bindHost = bindHost;
+        this.portAllocator = portAllocator;
         this.runtimeAdapter = runtimeAdapter == null || runtimeAdapter.isBlank() ? "docker" : runtimeAdapter.trim();
         this.executor = executor;
         this.cpuset = cpuset == null || cpuset.isBlank() ? null : cpuset.trim();
@@ -40,10 +53,8 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
     }
 
     @Override
-    public void runContainer(ContainerInstanceSpec spec) {
-        if (spec.hostPort() == null) {
-            throw new IllegalArgumentException("hostPort is required by the CLI container runtime adapter");
-        }
+    public ManagedContainer runContainer(ContainerInstanceSpec spec) {
+        int hostPort = portAllocator.nextPort();
         executor.run(List.of(runtimeAdapter, "rm", "-f", spec.containerName()));
 
         List<String> command = new ArrayList<>();
@@ -53,7 +64,7 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
         command.add("--name");
         command.add(spec.containerName());
         command.add("-p");
-        command.add(spec.hostPort() + ":8080");
+        command.add(hostPort + ":8080");
         addResourceFlags(command, spec.resources());
         if (cpuset != null) {
             // Every function on the same cores, so the platform's capacity is something they
@@ -82,6 +93,8 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
         if (!result.isSuccess()) {
             throw new IllegalStateException("Failed to start container '" + spec.containerName() + "': " + result.output());
         }
+        return new ManagedContainer(spec.containerName(),
+                ContainerLocalDeploymentProvider.replicaIndex(spec.containerName()), baseUrl(hostPort), true);
     }
 
     private static void addResourceFlags(List<String> command, ResourceSpec resources) {
@@ -138,10 +151,14 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
             containers.add(new ManagedContainer(
                     name,
                     ContainerLocalDeploymentProvider.replicaIndex(name),
-                    running ? publishedPort(name) : null,
+                    running ? baseUrl(publishedPort(name)) : null,
                     running));
         }
         return containers;
+    }
+
+    private String baseUrl(Integer hostPort) {
+        return hostPort == null ? null : "http://" + bindHost + ":" + hostPort;
     }
 
     private Integer publishedPort(String containerName) {
