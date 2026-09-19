@@ -1,7 +1,27 @@
 plugins {
     id 'java-library'
+    id 'io.spring.dependency-management'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.boot:spring-boot-dependencies:${springBootVersion}"
+    }
+}
+
+repositories {
+    if (providers.gradleProperty('containerdMavenLocal').map { it.toBoolean() }.getOrElse(false)) {
+        mavenLocal()
+    }
 }
 
 dependencies {
     api project(':container-deployment-runtime')
+    implementation project(':common')
+    implementation project(':control-plane-spi')
+    implementation 'org.springframework.boot:spring-boot-starter'
+    implementation 'io.nanofaas:containerd-java-cni:0.4.0-SNAPSHOT'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
