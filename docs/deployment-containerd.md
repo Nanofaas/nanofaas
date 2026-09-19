@@ -171,9 +171,9 @@ Recorded runtime evidence is deliberately split by artifact and scenario:
 the lifecycle scenario passed on NanoFaaS `18d7b98f`, recovery passed on
 `00ab7ac91796069832fd8b85f313e766ea4e7889`, and the focused JVM async run
 exited successfully on that recovery revision. The 18-function async run
-failed after the Go and Java paths passed with Java-lite callback output
-serialization (`OUTPUT_SERIALIZATION_ERROR`); this is a Java-lite reflection
-metadata issue, not evidence of a containerd or network failure. Its diagnosis
+failed after the Go and Java paths passed during Java-lite callback output
+serialization (`OUTPUT_SERIALIZATION_ERROR`); missing native reflection
+metadata is the leading diagnosis and remains to be confirmed. Its diagnosis
 is outside this build/documentation slice.
 
 Native compilation succeeded on Linux aarch64 at NanoFaaS revision
