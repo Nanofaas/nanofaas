@@ -10,7 +10,7 @@ import it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxyFacto
 import it.unimib.datai.nanofaas.controlplane.registry.ImageValidator;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 
@@ -48,11 +48,8 @@ public class ContainerdDeploymentProviderConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(
-            name = "nanofaas.deployment.default-backend",
-            havingValue = "containerd",
-            matchIfMissing = true
-    )
+    @ConditionalOnExpression("'${nanofaas.deployment.default-backend:}'.trim().isEmpty()"
+            + " || '${nanofaas.deployment.default-backend:}'.equalsIgnoreCase('containerd')")
     ImageValidator containerdImageValidator(ContainerRuntimeAdapter adapter) {
         return new ContainerdImageValidator(adapter);
     }

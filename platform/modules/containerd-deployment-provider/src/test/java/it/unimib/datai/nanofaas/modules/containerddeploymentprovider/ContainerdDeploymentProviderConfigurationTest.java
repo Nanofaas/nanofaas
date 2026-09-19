@@ -38,4 +38,32 @@ class ContainerdDeploymentProviderConfigurationTest {
         contextRunner.withPropertyValues("nanofaas.deployment.default-backend=k8s")
                 .run(context -> assertThat(context).doesNotHaveBean(ImageValidator.class));
     }
+
+    @Test
+    void blankDefaultPrefersContainerdValidatorOverCoreFallback() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(ContainerdDeploymentProviderConfiguration.class,
+                        registryDefaultsConfiguration())
+                .withBean(ContainerdClient.class, () -> mock(ContainerdClient.class))
+                .withPropertyValues(
+                        "nanofaas.deployment.default-backend=",
+                        "nanofaas.containerd.socket-path=/run/user/1000/containerd/containerd.sock",
+                        "nanofaas.containerd.cni-plugin-directory=/tmp",
+                        "nanofaas.containerd.cni-config-directory=/tmp",
+                        "nanofaas.containerd.cni-cache-directory=/tmp",
+                        "nanofaas.containerd.state-directory=/tmp"
+                )
+                .run(context -> {
+                    assertThat(context).hasSingleBean(ImageValidator.class);
+                    assertThat(context.getBean(ImageValidator.class)).isInstanceOf(ContainerdImageValidator.class);
+                });
+    }
+
+    private static Class<?> registryDefaultsConfiguration() {
+        try {
+            return Class.forName("it.unimib.datai.nanofaas.controlplane.registry.RegistryDefaultsConfiguration");
+        } catch (ClassNotFoundException missingCore) {
+            throw new AssertionError(missingCore);
+        }
+    }
 }
