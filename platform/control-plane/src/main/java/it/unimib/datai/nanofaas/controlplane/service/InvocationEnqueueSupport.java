@@ -10,7 +10,22 @@ final class InvocationEnqueueSupport {
     }
 
     static void enqueueOrThrow(java.util.function.Predicate<InvocationTask> enqueue, Metrics metrics, ExecutionRecord executionRecord) {
-        InvocationTask task = executionRecord.prepareForQueue();
+        publishOrThrow(enqueue, metrics, executionRecord.prepareForQueue(), true);
+    }
+
+    /**
+     * Publishes an already prepared task (see {@link ExecutionRecord#prepareForQueue()}) to a
+     * queue. Separate from {@link #enqueueOrThrow} so a caller can prepare the task under the
+     * execution record's monitor and publish after releasing it.
+     *
+     * @param countAdmission whether this publication is a user-facing admission. The retry path
+     *                       passes {@code false}: the execution was admitted once, when the
+     *                       caller invoked it, and republishing its next attempt must not count
+     *                       a second admission or a second refusal. The queue-level counters
+     *                       ({@code enqueue}, {@code queueRejected}) are recorded either way.
+     */
+    static void publishOrThrow(java.util.function.Predicate<InvocationTask> enqueue, Metrics metrics,
+                               InvocationTask task, boolean countAdmission) {
         boolean enqueued;
         try {
             enqueued = enqueue.test(task);
@@ -21,11 +36,15 @@ final class InvocationEnqueueSupport {
         if (!enqueued) {
             task.releaseQueuedInput();
             metrics.queueRejected(task.functionName());
-            metrics.refused(task.functionName(), task.kind());
+            if (countAdmission) {
+                metrics.refused(task.functionName(), task.kind());
+            }
             throw new QueueFullException();
         }
         metrics.enqueue(task.functionName());
-        metrics.admitted(task.functionName(), task.kind());
+        if (countAdmission) {
+            metrics.admitted(task.functionName(), task.kind());
+        }
     }
 
     /**

@@ -435,10 +435,17 @@ public class ExecutionCompletionHandler implements InvocationDispatch {
     // S2445: the record IS the per-execution lock object; a dedicated monitor would serialize all executions.
     @SuppressWarnings("java:S2445")
     private void completeExecution(ExecutionRecord executionRecord, DispatchResult dispatchResult, Integer completedAttempt) {
-        FinalCompletion completion;
+        Conclusion conclusion;
         synchronized (executionRecord) {
-            completion = completeUnderLock(executionRecord, dispatchResult, completedAttempt);
+            conclusion = completeUnderLock(executionRecord, dispatchResult, completedAttempt);
         }
+        // The next attempt is PREPARED under the monitor above and PUBLISHED here, after it was
+        // released: publishing walks into the scheduler's own gate, and a queue that had to take
+        // the record monitor to accept work would close a lock cycle (ADR 0002). Nothing else
+        // can dispatch this attempt meanwhile — it is not in any queue until this line runs.
+        FinalCompletion completion = conclusion.retry() == null
+                ? conclusion.completion()
+                : publishRetry(executionRecord, conclusion.retry());
         publishFinalCompletion(executionRecord, completion);
         // Retries remain live. A late callback on a terminal record still drives its
         // canonical settlement, but never replaces the selected answer.
@@ -451,13 +458,13 @@ public class ExecutionCompletionHandler implements InvocationDispatch {
      * whenComplete callbacks never run while the lock is held. (Retry-path counters
      * still increment under the lock.)
      */
-    private FinalCompletion completeUnderLock(ExecutionRecord executionRecord,
-                                              DispatchResult dispatchResult,
-                                              Integer completedAttempt) {
+    private Conclusion completeUnderLock(ExecutionRecord executionRecord,
+                                         DispatchResult dispatchResult,
+                                         Integer completedAttempt) {
         InvocationResult result = dispatchResult.result();
         InvocationTask currentTask = executionRecord.task();
         if (completedAttempt != null && currentTask.attempt() != completedAttempt) {
-            return null;
+            return Conclusion.NONE;
         }
 
         String functionName = currentTask.functionName();
@@ -467,16 +474,15 @@ public class ExecutionCompletionHandler implements InvocationDispatch {
         FunctionGeneration generation = executionRecord.currentGeneration();
         releaseAttemptCapacity(executionRecord);
         if (isTerminal(executionRecord.state())) {
-            return null;
+            return Conclusion.NONE;
         }
 
         boolean shouldRetry = !result.success()
                 && currentTask.attempt() <= currentTask.functionSpec().maxRetries();
         if (shouldRetry) {
-            // handleRetry always terminates the retry path: null when the retry was
-            // enqueued (never fall through to final completion), a FinalCompletion
-            // when retry is exhausted (queue full).
-            return handleRetry(executionRecord, currentTask, result, generation);
+            // prepareRetry always terminates the retry path: the execution is back in QUEUED
+            // with its next attempt ready to publish, and never falls through to final completion.
+            return Conclusion.of(prepareRetry(executionRecord, currentTask, result, generation));
         }
 
         if (result.success()) {
@@ -504,8 +510,8 @@ public class ExecutionCompletionHandler implements InvocationDispatch {
         Long e2eMs = finishedAtNanos == null
                 ? null
                 : nanosToMs(executionRecord.admittedAtNanos(), finishedAtNanos);
-        return new FinalCompletion(functionName, result, latencyMs, queueWaitMs, e2eMs,
-                dispatchResult.coldStart(), dispatchResult.initDurationMs(), false, generation);
+        return Conclusion.of(new FinalCompletion(functionName, result, latencyMs, queueWaitMs, e2eMs,
+                dispatchResult.coldStart(), dispatchResult.initDurationMs(), false, generation));
     }
 
     private static Long nanosToMs(long startNanos, long endNanos) {
@@ -513,14 +519,12 @@ public class ExecutionCompletionHandler implements InvocationDispatch {
     }
 
     /**
-     * Returns a final completion when the retry path terminates (queue full), null when the
-     * retry was enqueued or when no retry applies (success or attempts exhausted).
+     * Builds the next attempt and puts the record back in QUEUED, under the record monitor.
+     * Nothing is published here: the returned {@link PendingRetry} is handed to
+     * {@link #publishRetry} once the caller has released the monitor.
      */
-    private FinalCompletion handleRetry(ExecutionRecord executionRecord, InvocationTask currentTask,
-                                        InvocationResult result, FunctionGeneration generation) {
-        if (result.success() || currentTask.attempt() > currentTask.functionSpec().maxRetries()) {
-            return null;
-        }
+    private PendingRetry prepareRetry(ExecutionRecord executionRecord, InvocationTask currentTask,
+                                      InvocationResult result, FunctionGeneration generation) {
         String functionName = currentTask.functionName();
         if (metrics.isCurrentGeneration(functionName, generation)) {
             bestEffort(() -> metrics.retry(functionName));
@@ -539,12 +543,30 @@ public class ExecutionCompletionHandler implements InvocationDispatch {
                 currentTask.kind()
         );
         executionRecord.resetForRetry(retryTask);
+        // The queue-entry input owner is taken here, with the reset, so the attempt that is about
+        // to be published already holds it when it becomes visible to a scheduler.
+        return new PendingRetry(executionRecord.prepareForQueue(), retryTask.attempt(),
+                functionName, result, generation);
+    }
+
+    /**
+     * Publishes the prepared attempt OUTSIDE the record monitor. On failure the same execution
+     * concludes here, after re-validating that it is still parked on this attempt: an
+     * administrative expiry or another terminal path that won the record while the publication
+     * was failing owns the conclusion instead.
+     *
+     * @return a final completion when the attempt could not be published, null when it is queued
+     */
+    // S2445: the record IS the per-execution lock object; a dedicated monitor would serialize all executions.
+    @SuppressWarnings("java:S2445")
+    private FinalCompletion publishRetry(ExecutionRecord executionRecord, PendingRetry retry) {
         try {
-            InvocationEnqueueSupport.enqueueOrThrow(enqueuer::enqueue, metrics, executionRecord);
+            // Not a second user-facing admission: this execution was admitted once, at invoke.
+            InvocationEnqueueSupport.publishOrThrow(enqueuer::enqueue, metrics, retry.task(), false);
             return null;
         } catch (RuntimeException | Error ex) {
             // QueueFullException is the expected refusal; anything else is belt-and-braces.
-            // enqueueOrThrow only throws QueueFullException on its own account, but the enqueuer
+            // publishOrThrow only throws QueueFullException on its own account, but the enqueuer
             // it wraps is pluggable (queue-backed, sync-queue, executor-backed, or a future
             // implementation) and scheduling a retry is exactly the kind of call whose failure
             // must never leave the record parked in QUEUED with nothing left to complete it.
@@ -555,7 +577,14 @@ public class ExecutionCompletionHandler implements InvocationDispatch {
                 log.warn("Retry scheduling failed for execution {}, completing with error: {}",
                         executionRecord.executionId(), ex.toString());
             }
-            return retryExhaustedUnderLock(executionRecord, functionName, result, generation);
+            synchronized (executionRecord) {
+                if (executionRecord.task().attempt() != retry.attempt()
+                        || isTerminal(executionRecord.state())) {
+                    return null;
+                }
+                return retryExhaustedUnderLock(executionRecord, retry.functionName(),
+                        retry.result(), retry.generation());
+            }
         }
     }
 
@@ -621,6 +650,30 @@ public class ExecutionCompletionHandler implements InvocationDispatch {
         if (wonTheConclusion && completion.e2eMs() != null && completion.e2eMs() >= 0) {
             timers.e2eLatency().record(completion.e2eMs(), TimeUnit.MILLISECONDS);
         }
+    }
+
+    /**
+     * What one completion decided under the record monitor: either the invocation's final
+     * completion, or a next attempt still to be published, never both.
+     */
+    private record Conclusion(@Nullable FinalCompletion completion, @Nullable PendingRetry retry) {
+        private static final Conclusion NONE = new Conclusion(null, null);
+
+        static Conclusion of(FinalCompletion completion) {
+            return new Conclusion(completion, null);
+        }
+
+        static Conclusion of(PendingRetry retry) {
+            return new Conclusion(null, retry);
+        }
+    }
+
+    /** A next attempt prepared under the record monitor, waiting to be published outside it. */
+    private record PendingRetry(InvocationTask task,
+                                int attempt,
+                                String functionName,
+                                InvocationResult result,
+                                @Nullable FunctionGeneration generation) {
     }
 
     private record FinalCompletion(String functionName,
