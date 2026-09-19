@@ -18,9 +18,11 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.LongSupplier;
 import java.util.function.Predicate;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
@@ -77,11 +79,21 @@ class SchedulerEngineDispatchTest {
     }
 
     private SchedulerEngine engineOver(PendingWorkStore pendingWorkStore) {
+        return engineOver(pendingWorkStore, () -> 0L);
+    }
+
+    /**
+     * The tick-driven tests freeze nanoTime at 0, as the brief prescribes. The two tests that
+     * actually start the worker thread pass {@link System#nanoTime} instead: a frozen monotonic
+     * source makes a park's deadline unreachable, which is harmless when nothing ever parks but
+     * would hang a running loop.
+     */
+    private SchedulerEngine engineOver(PendingWorkStore pendingWorkStore, LongSupplier nanoTime) {
         SchedulingStrategy strategy = mock(SchedulingStrategy.class);
         when(strategy.id()).thenReturn("test");
         when(strategy.newIndex()).thenReturn(index);
         return new SchedulerEngine(pendingWorkStore, new StrategyRegistry(List.of(strategy)), "test",
-                dispatch, readiness, Clock.fixed(NOW, ZoneOffset.UTC), () -> 0L);
+                dispatch, readiness, Clock.fixed(NOW, ZoneOffset.UTC), nanoTime);
     }
 
     @Test
@@ -99,7 +111,7 @@ class SchedulerEngineDispatchTest {
     }
 
     @Test
-    void aBlockedGenerationIsNotRescannedUntilTheNextSignal() {
+    void aBlockedGenerationIsSkippedByFurtherPassesUntilItIsSignalled() {
         when(dispatch.tryAcquire(ticket)).thenReturn(null);
         engine.enqueue(new PendingEntry(ticket, task));
 
@@ -107,7 +119,10 @@ class SchedulerEngineDispatchTest {
         engine.tick();
 
         // The second pass scanned, but the blocked generation was filtered out of the scan, so
-        // the ticket was not re-selected and no second lease attempt was made.
+        // the ticket was not re-selected and no second lease attempt was made. This is about
+        // consecutive passes with no park in between; the park's own safety bound unblocks the
+        // generation regardless of signals — see
+        // aBlockedGenerationIsReExaminedAfterAParkTimeoutWithNoSignal.
         verify(index, times(2)).select(any(), any());
         verify(dispatch, times(1)).tryAcquire(ticket);
         verify(index, times(1)).defer(ticket.id());
@@ -116,6 +131,91 @@ class SchedulerEngineDispatchTest {
         engine.tick();
 
         verify(dispatch, times(2)).tryAcquire(ticket);
+    }
+
+    @Test
+    void aBlockedGenerationIsReExaminedAfterAParkTimeoutWithNoSignal() {
+        when(dispatch.tryAcquire(ticket)).thenReturn(null);
+        engine.enqueue(new PendingEntry(ticket, task));
+
+        engine.tick();
+        engine.tick();
+        verify(dispatch, times(1)).tryAcquire(ticket);
+
+        // runOnce is a pass plus its park. The engine's nanoTime is fixed at 0, so the park's
+        // capacity-blocked safety bound is already elapsed when it is entered: no signal is sent,
+        // no wake sequence advances, and capacity must still be re-examined on the next pass.
+        engine.runOnce();
+        engine.runOnce();
+
+        verify(dispatch, times(2)).tryAcquire(ticket);
+    }
+
+    @Test
+    void aThrowingLifecycleCalloutNeitherKillsTheWorkerNorStrandsTheClaim() throws Exception {
+        CountDownLatch attempts = new CountDownLatch(3);
+        when(dispatch.isCurrent(ticket)).thenAnswer(invocation -> {
+            attempts.countDown();
+            throw new IllegalStateException("lifecycle is unhappy");
+        });
+        SchedulerEngine running = engineOver(store, System::nanoTime);
+        running.enqueue(new PendingEntry(ticket, task));
+
+        running.start();
+        try {
+            // The loop survives the exception and keeps making passes, which is only possible if
+            // the provisional claim was given back each time: a stranded claim is unselectable.
+            assertThat(attempts.await(5, TimeUnit.SECONDS)).isTrue();
+        } finally {
+            running.close();
+        }
+        assertThat(store.get(ticket.id())).isNotNull();
+        assertThat(store.claimedCount()).isZero();
+    }
+
+    @Test
+    void aWorkerKilledByAnErrorLeavesTheEngineRestartable() throws Exception {
+        CountDownLatch attempts = new CountDownLatch(2);
+        when(dispatch.isCurrent(ticket)).thenAnswer(invocation -> {
+            attempts.countDown();
+            throw new StackOverflowError("the JVM is in trouble");
+        });
+        SchedulerEngine running = engineOver(store, System::nanoTime);
+        running.enqueue(new PendingEntry(ticket, task));
+
+        running.start();
+        try {
+            // An Error is deliberately not swallowed, so it ends that worker. The engine must not
+            // stay "running" with a dead thread, or start() would be a permanent no-op and every
+            // queued invocation would stall with no way back. start() is a no-op only while a
+            // worker is alive, so this retries until the dead one has retired itself.
+            long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (attempts.getCount() > 0 && System.nanoTime() < deadlineNanos) {
+                running.start();
+                attempts.await(50, TimeUnit.MILLISECONDS);
+            }
+            assertThat(attempts.getCount()).isZero();
+        } finally {
+            running.close();
+        }
+    }
+
+    @Test
+    void aSubmitPathThatThrowsStillReleasesTheReservation() {
+        // dispatchWithFailureCleanup itself throws: submit() fails, and the rejected() callback
+        // it runs in its own finally throws on top. Without a finally around the settlement the
+        // ticket would stay in `submitting` forever — reserved, in no index, unreapable.
+        doThrow(new IllegalStateException("transport gone")).when(dispatch).submit(leasedTask);
+        doThrow(new IllegalStateException("listener is unhappy"))
+                .when(dispatch).rejected(any(), any());
+
+        engine.enqueue(new PendingEntry(ticket, task));
+        assertThatThrownBy(() -> engine.tick()).isInstanceOf(IllegalStateException.class);
+
+        verify(lease).release();
+        assertThat(store.submittingCount()).isZero();
+        assertThat(store.get(ticket.id())).isNull();
+        assertThat(engine.enqueue(new PendingEntry(ticket, task))).isTrue();
     }
 
     @Test

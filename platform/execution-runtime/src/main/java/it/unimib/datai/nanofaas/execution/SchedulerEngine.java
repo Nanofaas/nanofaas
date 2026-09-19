@@ -209,16 +209,67 @@ public final class SchedulerEngine implements AutoCloseable {
     }
 
     private void loop() {
-        while (isRunning()) {
-            long observed;
-            synchronized (gate) {
-                // Read BEFORE the pass: anything that fires during it advances the sequence and
-                // the park below returns at once instead of sleeping through the change.
-                observed = wakeSequence;
+        try {
+            while (isRunning()) {
+                try {
+                    runOnce();
+                } catch (RuntimeException failure) {
+                    // Lifecycle code is pluggable and this is the only scheduling thread: one bad
+                    // callout must not take it down and leave every queued invocation stalled.
+                    // Mirrors async-queue Scheduler.loop. An Error is deliberately NOT caught —
+                    // the JVM is compromised at that point and spinning on is worse than stopping
+                    // — but the finally below still leaves the engine restartable.
+                    log.error("Error in scheduler engine loop", failure);
+                    // Park on the same notifiable safety bound before retrying: a callout that
+                    // throws on every pass would otherwise burn a core. The predecessor could not
+                    // spin here because its loop blocked on a 500 ms queue poll.
+                    long observed;
+                    synchronized (gate) {
+                        observed = wakeSequence;
+                    }
+                    await(CAPACITY_BLOCKED_AWAIT_MS, observed);
+                }
             }
-            long budgetMs = pass();
-            if (budgetMs > 0) {
-                await(budgetMs, observed);
+        } finally {
+            retireWorker();
+        }
+    }
+
+    /**
+     * One loop iteration: a pass plus the park that follows it. Package-private so a test can
+     * exercise the park's safety bound without starting a thread.
+     */
+    void runOnce() {
+        long observed;
+        synchronized (gate) {
+            // Read BEFORE the pass: anything that fires during it advances the sequence and
+            // the park below returns at once instead of sleeping through the change.
+            observed = wakeSequence;
+        }
+        long budgetMs = pass();
+        if (budgetMs > 0 && !await(budgetMs, observed)) {
+            // The safety bound elapsed with no notification at all. Re-examine every generation
+            // from scratch on the next pass, the way the predecessors' scans re-evaluated
+            // hasAvailableSlot every time: a capacity release that arrives on a path which never
+            // signals must not park a function forever (SyncScheduler CAPACITY_BLOCKED_AWAIT_MS
+            // exists for exactly this).
+            synchronized (gate) {
+                blocked.clear();
+            }
+        }
+    }
+
+    /**
+     * Whatever ends the worker — a normal stop, an interrupt, or an Error this loop deliberately
+     * does not swallow — must leave the engine restartable instead of claiming to be running
+     * with a dead thread, which would make {@link #start()} a permanent no-op.
+     */
+    @SuppressWarnings("ReferenceEquality") // Thread identity: only THIS worker may retire itself.
+    private void retireWorker() {
+        synchronized (gate) {
+            if (worker == Thread.currentThread()) {
+                worker = null;
+                running = false;
             }
         }
     }
@@ -229,21 +280,28 @@ public final class SchedulerEngine implements AutoCloseable {
         }
     }
 
-    private void await(long budgetMs, long observed) {
+    /**
+     * @return true only when the wake sequence actually advanced — something signalled. False
+     *         when the safety bound elapsed, when the thread was interrupted, or when there was
+     *         nothing to park on: in all three the caller must re-examine capacity from scratch
+     *         rather than trust the previous pass's blocked set.
+     */
+    private boolean await(long budgetMs, long observed) {
         long deadlineNanos = nanoTime.getAsLong() + TimeUnit.MILLISECONDS.toNanos(budgetMs);
         synchronized (gate) {
             while (running && wakeSequence == observed) {
                 long remainingNanos = deadlineNanos - nanoTime.getAsLong();
                 if (remainingNanos <= 0) {
-                    return;
+                    break;
                 }
                 try {
                     gate.wait(TimeUnit.NANOSECONDS.toMillis(remainingNanos) + 1);
                 } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
-                    return;
+                    break;
                 }
             }
+            return wakeSequence != observed;
         }
     }
 
@@ -298,67 +356,98 @@ public final class SchedulerEngine implements AutoCloseable {
     @SuppressWarnings("ReferenceEquality") // Index identity, not content, decides whether the selection still stands.
     private long carry(Claim claim) {
         SchedulingTicket ticket = claim.ticket();
-        if (!dispatch.isCurrent(ticket)) {
-            PendingEntry dropped;
-            synchronized (gate) {
-                dropped = store.remove(ticket.id());
+        // A claim is provisional and lives only inside this method. isCurrent, tryAcquire and
+        // release are all pluggable lifecycle code: if one of them throws, the loop's barrier
+        // catches it, and without this guard the claim would stay in the store forever —
+        // reserved, unselectable and invisible to the deadline reap.
+        boolean claimSettled = false;
+        try {
+            if (!dispatch.isCurrent(ticket)) {
+                PendingEntry dropped;
+                synchronized (gate) {
+                    dropped = store.remove(ticket.id());
+                    if (dropped != null) {
+                        retire(ticket);
+                    }
+                }
+                claimSettled = true;
                 if (dropped != null) {
-                    retire(ticket);
+                    dispatch.removed(dropped.task());
+                }
+                return 0L;
+            }
+            DispatchOwnership lease = dispatch.tryAcquire(ticket);
+            if (lease == null) {
+                synchronized (gate) {
+                    store.abort(ticket.id());
+                    activeIndex.defer(ticket.id());
+                    blocked.add(ticket.generation());
+                }
+                claimSettled = true;
+                return CAPACITY_BLOCKED_AWAIT_MS;
+            }
+
+            InvocationTask task;
+            synchronized (gate) {
+                PendingEntry current = store.get(ticket.id());
+                if (current == null) {
+                    // The claim was removed while the lease was being acquired: nothing to dispatch.
+                    task = null;
+                } else if (claim.index() != activeIndex) {
+                    // The index was swapped under this selection. A provisional claim is not a
+                    // committed dispatch, so this attempt goes back to the index that is active now
+                    // and gets re-selected by the new policy.
+                    store.abort(ticket.id());
+                    activeIndex.add(ticket);
+                    task = null;
+                } else {
+                    store.commit(ticket.id());
+                    activeIndex.remove(ticket.id());
+                    task = current.task();
                 }
             }
-            if (dropped != null) {
-                dispatch.removed(dropped.task());
+            // Past this point the claim is settled either way: aborted above, or committed — and
+            // a committed dispatch's reservation belongs to submit()'s own finally.
+            claimSettled = true;
+            if (task == null) {
+                lease.release();
+                return 0L;
             }
+            submit(ticket, task.withDispatchLease(lease), lease);
             return 0L;
-        }
-        DispatchOwnership lease = dispatch.tryAcquire(ticket);
-        if (lease == null) {
-            synchronized (gate) {
-                store.abort(ticket.id());
-                activeIndex.defer(ticket.id());
-                blocked.add(ticket.generation());
-            }
-            return CAPACITY_BLOCKED_AWAIT_MS;
-        }
-
-        InvocationTask task;
-        synchronized (gate) {
-            PendingEntry current = store.get(ticket.id());
-            if (current == null) {
-                // The claim was removed while the lease was being acquired: nothing to dispatch.
-                task = null;
-            } else if (claim.index() != activeIndex) {
-                // The index was swapped under this selection. A provisional claim is not a
-                // committed dispatch, so this attempt goes back to the index that is active now
-                // and gets re-selected by the new policy.
-                store.abort(ticket.id());
-                activeIndex.add(ticket);
-                task = null;
-            } else {
-                store.commit(ticket.id());
-                activeIndex.remove(ticket.id());
-                task = current.task();
+        } finally {
+            if (!claimSettled) {
+                synchronized (gate) {
+                    store.abort(ticket.id());
+                    activeIndex.defer(ticket.id());
+                }
             }
         }
-        if (task == null) {
-            lease.release();
-            return 0L;
-        }
-        submit(ticket, task.withDispatchLease(lease), lease);
-        return 0L;
     }
 
     private void submit(SchedulingTicket ticket, InvocationTask leased, DispatchOwnership lease) {
-        SchedulerDispatchSupport.Result result = SchedulerDispatchSupport.dispatchWithFailureCleanup(
-                leased,
-                () -> dispatch.submit(leased),
-                lease::release,
-                failure -> dispatch.rejected(leased, failure),
-                log);
-        if (result == SchedulerDispatchSupport.Result.INPUT_BACKPRESSURED) {
-            requeue(ticket);
-        } else {
-            finishSubmit(ticket);
+        SchedulerDispatchSupport.Result result = null;
+        try {
+            result = SchedulerDispatchSupport.dispatchWithFailureCleanup(
+                    leased,
+                    () -> dispatch.submit(leased),
+                    lease::release,
+                    failure -> dispatch.rejected(leased, failure),
+                    log);
+        } finally {
+            // Both predecessors settled the reservation in a finally (SyncScheduler,
+            // Scheduler), and for good reason: dispatchWithFailureCleanup can itself throw — a
+            // throwing rejected() escapes its FAILED branch, a throwing lease.release() escapes
+            // the backpressure branch. A ticket left in `submitting` holds its reservation
+            // forever: no index holds it so nothing can select it, and the deadline reap cannot
+            // remove a submitting ticket either. When the settlement is unknown the reservation
+            // is released, as the predecessors did; concluding that execution is the lifecycle's
+            // job, not the queue's.
+            if (result == SchedulerDispatchSupport.Result.INPUT_BACKPRESSURED) {
+                requeue(ticket);
+            } else {
+                finishSubmit(ticket);
+            }
         }
     }
 
@@ -417,7 +506,23 @@ public final class SchedulerEngine implements AutoCloseable {
         return expired;
     }
 
-    /** Under the gate. */
+    /**
+     * Under the gate.
+     *
+     * <p><strong>Precondition for any future backoff policy.</strong> The engine holds no delayed
+     * index: a ticket whose {@code notBefore} is in the future simply sits in the active index
+     * until a scan finds it due. That is sound only because <em>nothing is ever future-dated in
+     * any current profile</em> — there is no backoff, so a retry is published with
+     * {@code notBefore = enqueuedAt}. It is NOT true that both indexes tolerate future-dated
+     * tickets: {@code SharedQueueSchedulingStrategy.select} scans its window and skips forward,
+     * but {@code PerFunctionSchedulingStrategy.select} inspects only {@code fifo.peekFirst()}
+     * before moving to the next function, so a future-dated head hides every later ticket of the
+     * same function until it comes due. Anyone introducing a backoff that sets
+     * {@code notBefore > enqueuedAt} must therefore either add a bounded delayed index here (and
+     * wake on the nearest {@code notBefore}, not only on the safety bound) or change the
+     * per-function index to scan past a not-yet-due head. Do not assume the current arrangement
+     * survives that change.
+     */
     private void track(SchedulingTicket ticket) {
         if (ticket.queueDeadline() != null) {
             deadlines.add(ticket);
@@ -432,8 +537,21 @@ public final class SchedulerEngine implements AutoCloseable {
      * {@code PerFunctionSchedulingStrategy.remove} advances the round-robin turn as if the
      * ticket had been dispatched. That is accepted deliberately: leaving a ticket in the index
      * after its entry is gone would corrupt selection (it would be picked, fail to claim, and
-     * never leave), and for the common case — expiry of the oldest ticket, which is that
-     * function's head — the turn advance is exactly what a dispatch of it would have done.
+     * never leave). Two cases, both accepted:
+     *
+     * <ul>
+     *   <li><strong>Same function, head ticket</strong> (the common one: expiry of the oldest
+     *       ticket). The turn advance is exactly what dispatching it would have done.</li>
+     *   <li><strong>A different function than the one mid-turn.</strong> Retiring a ticket of
+     *       function B while A is mid-turn sets {@code turnFunction = B, turnCount = 1} and
+     *       discards A's batch progress, so an expiry on one function perturbs another
+     *       function's round-robin turn. No work is lost and no ticket is starved — only the
+     *       batch boundary moves. Adding a {@code withdraw()} to {@link SchedulingIndex} would
+     *       fix it cleanly, but that contract is consumed by both strategies and by the switch
+     *       and fairness work, so it is not widened for a defect that loses nothing. Task 12's
+     *       fairness tests measure this divergence; if it proves material there, {@code
+     *       withdraw()} gets added then, on evidence.</li>
+     * </ul>
      */
     private void retire(SchedulingTicket ticket) {
         activeIndex.remove(ticket.id());
