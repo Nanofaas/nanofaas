@@ -209,6 +209,28 @@ Independent of the ledger, on the current tree:
 | Pre-existing experimental files altered by the campaign's 23 commits | none — zero files under `docs/experiments/` outside the campaign directory |
 | Working tree | clean, no untracked files |
 
+**Three-profile baseline, run on the current tree** (the profile separation matters:
+each profile needs its own Gradle invocation, since module selection changes the
+classpath):
+
+| Profile | Command | Result |
+|---|---|---|
+| async-queue, runtime-config | `:control-plane:test :control-plane-modules:async-queue:test` | BUILD SUCCESSFUL, 1 m 26 s |
+| sync-queue, runtime-config | `:control-plane:test :control-plane-modules:sync-queue:test` | BUILD SUCCESSFUL, 1 m 22 s |
+| runtime-config only | `:control-plane:test` | BUILD SUCCESSFUL, 1 m 13 s |
+
+Control-plane results in the async profile: 835 tests, 0 failures, 0 errors,
+5 skipped (the skips are profile-conditional). Zero result files carry failures or
+errors.
+
+One operational note, recorded because it cost a discarded run: an earlier async
+invocation failed with `java.nio.file.NoSuchFileException` on
+`build/test-results/test/binary/in-progress-results-generic.bin` **while a second
+Gradle build was running on the same checkout**. That is an output-directory
+collision, not a test failure — no result file carried a failure. Builds on this
+repository must be serialised; `--no-parallel` only bounds parallelism inside one
+invocation.
+
 **Why this matters given §2.2.** The campaign's own history records that its first
 "clean" full-suite number, 613 tests / 0 failures, was obtained by **excluding
 `R8HistoryCleanupRegressionTest` with an init script outside the repository**
