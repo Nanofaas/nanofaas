@@ -94,7 +94,7 @@ final class RecoveryFixture {
             return null;
         }).when(containers).remove(anyString(), any());
         ContainerdRuntimeAdapter adapter = new ContainerdRuntimeAdapter(client, "nanofaas", null, null,
-                java.time.Duration.ofSeconds(1));
+                true, "/run/user/1000/containerd/containerd.sock", java.time.Duration.ofSeconds(1));
         EndpointProbe probe = mock(EndpointProbe.class);
         when(probe.isReady(anyString())).thenReturn(true);
         List<ManagedFunctionProxy> proxies = new ArrayList<>();

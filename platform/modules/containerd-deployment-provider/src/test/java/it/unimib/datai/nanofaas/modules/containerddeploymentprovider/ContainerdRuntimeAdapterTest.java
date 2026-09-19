@@ -26,6 +26,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 class ContainerdRuntimeAdapterTest {
+    private static final String SOCKET = "/run/user/1000/containerd/containerd.sock";
     private final ContainerdClient client = mock(ContainerdClient.class);
     private final Containers containers = mock(Containers.class);
     private final Images images = mock(Images.class);
@@ -33,9 +34,11 @@ class ContainerdRuntimeAdapterTest {
 
     ContainerdRuntimeAdapterTest() {
         when(client.containers()).thenReturn(containers);
+        when(client.namespace()).thenReturn("nanofaas");
         when(client.images()).thenReturn(images);
         when(containers.create(any())).thenReturn(mock(io.nanofaas.containerd.Container.class));
-        adapter = new ContainerdRuntimeAdapter(client, "nanofaas", "0-3", "user.slice", Duration.ofSeconds(2));
+        adapter = new ContainerdRuntimeAdapter(client, "nanofaas", "0-3", "user.slice",
+                true, SOCKET, Duration.ofSeconds(2));
     }
 
     @Test
@@ -65,7 +68,9 @@ class ContainerdRuntimeAdapterTest {
         assertThat(spec.getValue().memoryReservationBytes()).isEqualTo(67_108_864);
         assertThat(spec.getValue().memoryLimitBytes()).isEqualTo(134_217_728);
         assertThat(spec.getValue().cpuSetCpus()).isEqualTo("0-3");
-        assertThat(spec.getValue().cgroupsPath()).isEqualTo("user.slice");
+        assertThat(spec.getValue().cgroupsPath()).isEqualTo("user.slice:nanofaas:"
+                + ContainerdDeploymentProvider.namePrefix(SOCKET + "\0nanofaas")
+                + "-nanofaas-echo-092c79e8f8-r1");
     }
 
     @Test
@@ -73,6 +78,66 @@ class ContainerdRuntimeAdapterTest {
         when(containers.networkAttachment("nanofaas-echo-092c79e8f8-r1")).thenReturn(
                 new NetworkAttachment(List.of("fd00::2/64"), List.of(), List.of(), List.of(), null));
         assertThat(adapter.runContainer(instance(List.of())).baseUrl()).isEqualTo("http://[fd00::2]:8080");
+    }
+
+    @Test
+    void systemdScopesAreUniquePerReplicaAndStableAfterRestart() {
+        when(containers.networkAttachment(any())).thenReturn(
+                new NetworkAttachment(List.of("10.90.0.2/24"), List.of(), List.of(), List.of(), null));
+        String first = ContainerdDeploymentProvider.namePrefix("echo") + "-r1";
+        String second = ContainerdDeploymentProvider.namePrefix("echo") + "-r2";
+        String other = ContainerdDeploymentProvider.namePrefix("other") + "-r1";
+        String scope = ContainerdDeploymentProvider.namePrefix(SOCKET + "\0nanofaas");
+        for (String id : List.of(first, second, other)) {
+            adapter.runContainer(new ContainerInstanceSpec(id, "echo:1", List.of(), Map.of(), null, Map.of()));
+        }
+
+        var specs = org.mockito.ArgumentCaptor.forClass(ContainerSpec.class);
+        verify(containers, times(3)).create(specs.capture());
+        assertThat(specs.getAllValues()).extracting(ContainerSpec::cgroupsPath).containsExactly(
+                "user.slice:nanofaas:" + scope + "-" + first,
+                "user.slice:nanofaas:" + scope + "-" + second,
+                "user.slice:nanofaas:" + scope + "-" + other);
+
+        clearInvocations(containers);
+        new ContainerdRuntimeAdapter(client, "nanofaas", "0-3", "user.slice", true, SOCKET,
+                Duration.ofSeconds(2))
+                .runContainer(new ContainerInstanceSpec(first, "echo:1", List.of(), Map.of(), null, Map.of()));
+        verify(containers).create(specs.capture());
+        assertThat(specs.getValue().cgroupsPath()).isEqualTo("user.slice:nanofaas:" + scope + "-" + first);
+
+        clearInvocations(containers);
+        when(client.namespace()).thenReturn("other");
+        new ContainerdRuntimeAdapter(client, "nanofaas", "0-3", "user.slice", true, SOCKET,
+                Duration.ofSeconds(2))
+                .runContainer(new ContainerInstanceSpec(first, "echo:1", List.of(), Map.of(), null, Map.of()));
+        verify(containers).create(specs.capture());
+        assertThat(specs.getValue().cgroupsPath()).isEqualTo("user.slice:nanofaas:"
+                + ContainerdDeploymentProvider.namePrefix(SOCKET + "\0other") + "-" + first);
+
+        clearInvocations(containers);
+        when(client.namespace()).thenReturn("nanofaas");
+        String otherSocket = "/run/user/1000/another-containerd.sock";
+        new ContainerdRuntimeAdapter(client, "nanofaas", "0-3", "user.slice", true, otherSocket,
+                Duration.ofSeconds(2))
+                .runContainer(new ContainerInstanceSpec(first, "echo:1", List.of(), Map.of(), null, Map.of()));
+        verify(containers).create(specs.capture());
+        assertThat(specs.getValue().cgroupsPath()).isEqualTo("user.slice:nanofaas:"
+                + ContainerdDeploymentProvider.namePrefix(otherSocket + "\0nanofaas") + "-" + first);
+    }
+
+    @Test
+    void filesystemCgroupPathUsesConfiguredParentAndStableScopedLeaf() {
+        String id = ContainerdDeploymentProvider.namePrefix("echo") + "-r1";
+        when(containers.networkAttachment(id)).thenReturn(
+                new NetworkAttachment(List.of("10.90.0.2/24"), List.of(), List.of(), List.of(), null));
+        new ContainerdRuntimeAdapter(client, "nanofaas", null, "/delegated/functions", false, SOCKET,
+                Duration.ofSeconds(2))
+                .runContainer(new ContainerInstanceSpec(id, "echo:1", List.of(), Map.of(), null, Map.of()));
+        var spec = org.mockito.ArgumentCaptor.forClass(ContainerSpec.class);
+        verify(containers).create(spec.capture());
+        assertThat(spec.getValue().cgroupsPath()).isEqualTo("/delegated/functions/"
+                + ContainerdDeploymentProvider.namePrefix(SOCKET + "\0nanofaas") + "-" + id);
     }
 
     @Test

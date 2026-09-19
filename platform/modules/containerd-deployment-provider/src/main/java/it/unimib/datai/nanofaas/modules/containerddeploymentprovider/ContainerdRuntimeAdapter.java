@@ -16,6 +16,7 @@ import it.unimib.datai.nanofaas.containerdeployment.ManagedContainer;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -41,21 +42,28 @@ public final class ContainerdRuntimeAdapter implements ContainerRuntimeAdapter {
     private final String networkName;
     private final String cpuset;
     private final String cgroupsPath;
+    private final boolean systemdCgroup;
+    private final String cgroupScope;
     private final Duration availabilityTimeout;
 
     public ContainerdRuntimeAdapter(ContainerdClient client, String networkName, String cpuset,
-                                    String cgroupsPath, Duration availabilityTimeout) {
+                                    String cgroupsPath, boolean systemdCgroup, String socketPath,
+                                    Duration availabilityTimeout) {
         this.client = client;
         this.containers = client.containers();
         this.networkName = networkName;
         this.cpuset = cpuset;
         this.cgroupsPath = cgroupsPath;
+        this.systemdCgroup = systemdCgroup;
+        this.cgroupScope = cgroupsPath == null || cgroupsPath.isBlank() ? null
+                : ContainerdDeploymentProvider.namePrefix(
+                        Path.of(socketPath).toAbsolutePath().normalize() + "\0" + client.namespace());
         this.availabilityTimeout = availabilityTimeout;
     }
 
     public ContainerdRuntimeAdapter(ContainerdClient client, ContainerdProperties properties) {
         this(client, properties.networkName(), properties.cpuset(), properties.cgroupsPath(),
-                properties.availabilityTimeout());
+                properties.systemdCgroup(), properties.socketPath(), properties.availabilityTimeout());
     }
 
     @Override
@@ -93,7 +101,11 @@ public final class ContainerdRuntimeAdapter implements ContainerRuntimeAdapter {
         // An empty command preserves the image's ENTRYPOINT and CMD in containerd-java.
         if (instance.command() != null && !instance.command().isEmpty()) spec.command(instance.command());
         if (cpuset != null && !cpuset.isBlank()) spec.cpuSetCpus(cpuset);
-        if (cgroupsPath != null && !cgroupsPath.isBlank()) spec.cgroupsPath(cgroupsPath);
+        if (cgroupScope != null) {
+            String leaf = cgroupScope + "-" + instance.containerName();
+            spec.cgroupsPath(systemdCgroup ? cgroupsPath + ":nanofaas:" + leaf
+                    : cgroupsPath + (cgroupsPath.endsWith("/") ? "" : "/") + leaf);
+        }
         applyResources(spec, instance.resources());
 
         boolean created = false;

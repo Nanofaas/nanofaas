@@ -110,7 +110,7 @@ names):
 | `NANOFAAS_CONTAINERD_STATEDIRECTORY` | Absolute writable client state; default `$HOME/.local/share/nanofaas/containerd` |
 | `NANOFAAS_CONTAINERD_CALLBACKURL` | Reachable function-to-control-plane URL, e.g. `http://10.90.0.1:8080` |
 | `NANOFAAS_CONTAINERD_BINDHOST` | Local bind host; default `127.0.0.1` |
-| `NANOFAAS_CONTAINERD_SYSTEMDCGROUP`, `NANOFAAS_CONTAINERD_CGROUPSPATH` | `true`, `user.slice` |
+| `NANOFAAS_CONTAINERD_SYSTEMDCGROUP`, `NANOFAAS_CONTAINERD_CGROUPSPATH` | `true`; parent systemd slice `user.slice` (or parent cgroup directory when systemd cgroups are disabled) |
 | `NANOFAAS_CONTAINERD_CPUSET` | Optional cpuset string, subject to delegated CPUs |
 | `NANOFAAS_CONTAINERD_CNIPLUGINTIMEOUT` | CNI plugin timeout; default `30s` |
 | `NANOFAAS_CONTAINERD_STOPTIMEOUT` | Container stop timeout; default `10s` |
@@ -143,6 +143,15 @@ A positive CPU limit below `0.01` can yield a quota below 1000 microseconds and
 may be rejected by the kernel; the provider does not silently clamp it. Optional
 `cpuset` and `cgroups-path` must fit the delegated rootless cgroup subtree.
 These function limits are separate from the control-plane systemd unit limits.
+With systemd cgroups, configure `cgroups-path` as a parent **slice name** such
+as `user.slice`, not a complete OCI scope. The provider derives each scope as
+`<slice>:nanofaas:<client-scope>-<container-id>`, following the
+[systemd cgroup path form](https://github.com/opencontainers/runc/blob/main/docs/systemd.md).
+The client scope derives from the normalized containerd socket path and
+namespace; the container ID includes the function identity and replica index.
+The resulting path is distinct for replicas and remains the same after a
+control-plane restart. With `systemd-cgroup=false`, the provider instead uses
+`<configured-parent>/<client-scope>-<container-id>` as a cgroupfs path.
 
 The persistent function catalog restores the recorded `containerd` backend
 after a control-plane restart. Reconciliation adopts only containers with the
