@@ -99,6 +99,27 @@ public class PerFunctionSchedulingStrategy implements SchedulingStrategy {
             }
         }
 
+        /**
+         * Scans every active function in one call, skipping any whose head ticket is not
+         * runnable right now, rather than surfacing only the front function the way the old
+         * {@code Scheduler.processFunction} did (it handles exactly one function per
+         * invocation and, on a blocked lease, ends the visit and drops the function from
+         * {@code activeFunctions} until an external event re-signals it).
+         *
+         * <p>That difference is intentional, not a gap: {@link SchedulingIndex} is a passive,
+         * thread-free structure by contract (no callbacks, no wake-ups — see the type-level
+         * javadoc), so a function that transiently cannot dispatch is simply "not runnable
+         * now" from here; the drop-and-wait-for-a-wake-event behaviour belongs to the engine
+         * that owns the wake sequence (a later task), not to the index. It does not change
+         * the resulting selection order: a function skipped every scan until it unblocks never
+         * changes which ticket is returned for another function in between, because this
+         * index's own turn/rotation bookkeeping (in {@code remove}) is unaffected by scans
+         * that find it not runnable. Verified against the real {@code Scheduler} with a
+         * corpus covering publish, a function blocked then unblocked mid-stream, dispatches
+         * interleaved across three functions and a standalone removal — see
+         * {@code PerFunctionSchedulingStrategyTraceComparisonTest}: the two traces are
+         * identical.
+         */
         @Override
         public SchedulingTicket select(Instant now, Predicate<FunctionGeneration> runnable) {
             for (String functionName : activeOrder) {
