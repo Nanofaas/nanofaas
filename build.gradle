@@ -9,12 +9,29 @@ plugins {
     id 'org.sonarqube' version "${sonarQubePluginVersion}"
 }
 
+def containerdMavenLocal = providers.gradleProperty('containerdMavenLocal')
+        .map { it.toBoolean() }
+        .getOrElse(false)
+def containerdMavenRepository = System.getProperty('maven.repo.local')
+if (containerdMavenRepository == null) {
+    containerdMavenRepository = new File(System.getProperty('user.home'), '.m2/repository').absolutePath
+}
+
 allprojects {
     group = 'it.unimib.datai.nanofaas'
     version = '0.22.0'
 
     repositories {
         mavenCentral()
+        if (containerdMavenLocal) {
+            maven {
+                url = uri(containerdMavenRepository)
+                content {
+                    includeGroup 'io.nanofaas'
+                    includeGroup 'io.libcni'
+                }
+            }
+        }
     }
 }
 

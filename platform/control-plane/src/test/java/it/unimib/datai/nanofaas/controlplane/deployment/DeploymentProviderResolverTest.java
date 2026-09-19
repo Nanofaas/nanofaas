@@ -71,6 +71,19 @@ class DeploymentProviderResolverTest {
     }
 
     @Test
+    void persistedContainerdBackend_preferred() {
+        ManagedDeploymentProvider containerd = stubProvider("containerd", true, true);
+        ManagedDeploymentProvider k8s = stubProvider("k8s", true, true);
+
+        DeploymentProviderResolver resolver = new DeploymentProviderResolver(
+                List.of(k8s, containerd),
+                new DeploymentProperties("containerd")
+        );
+
+        assertThat(resolver.resolve(spec("fn"), null)).isSameAs(containerd);
+    }
+
+    @Test
     void blankExplicitHint_fallsBackToDefaultBackend() {
         ManagedDeploymentProvider k8s = stubProvider("k8s", true, true);
         ManagedDeploymentProvider local = stubProvider("container-local", true, true);
