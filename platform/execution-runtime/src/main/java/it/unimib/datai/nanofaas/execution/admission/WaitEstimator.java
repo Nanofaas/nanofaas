@@ -1,4 +1,4 @@
-package it.unimib.datai.nanofaas.modules.syncqueue.sync;
+package it.unimib.datai.nanofaas.execution.admission;
 
 import java.time.DateTimeException;
 import java.time.Duration;
@@ -55,7 +55,14 @@ public class WaitEstimator {
                 DEFAULT_CLEANUP_BUDGET, DEFAULT_MAINTENANCE_SAMPLE_BUDGET);
     }
 
-    WaitEstimator(Duration window,
+    /**
+     * Test-only sizing constructor, widened to {@code public} by Task 10 (issue #208): this
+     * class moved into {@code :execution-runtime}, and {@code :modules:sync-queue}'s own
+     * {@code SyncQueueServiceTest}/{@code SyncSchedulerMaintenanceTest} construct an estimator
+     * with these exact bounded-retention parameters from a different module/package now. No
+     * parameter, default or behaviour changed — only this constructor's visibility.
+     */
+    public WaitEstimator(Duration window,
                   int perFunctionMinSamples,
                   int maxGlobalSamples,
                   int maxPerFunctionSamples,
@@ -225,7 +232,9 @@ public class WaitEstimator {
         return estimate;
     }
 
-    RetentionSnapshot retentionSnapshot() {
+    /** Widened to {@code public} by Task 10 (issue #208) for the same cross-module test reason
+     * as the sizing constructor above; the retention accounting it reports is unchanged. */
+    public RetentionSnapshot retentionSnapshot() {
         return new RetentionSnapshot(functionStates.get(), retainedGlobalSamples.get(),
                 retainedPerFunctionSamples.get(), cleanupCandidates.size());
     }
@@ -484,7 +493,7 @@ public class WaitEstimator {
         return value;
     }
 
-    record RetentionSnapshot(int functionStates,
+    public record RetentionSnapshot(int functionStates,
                              int globalSamples,
                              int perFunctionSamples,
                              int cleanupCandidates) {

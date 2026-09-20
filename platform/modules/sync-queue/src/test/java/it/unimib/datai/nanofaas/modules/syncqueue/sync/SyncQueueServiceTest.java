@@ -12,6 +12,7 @@ import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectReason;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.execution.admission.WaitEstimator;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 

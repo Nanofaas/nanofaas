@@ -6,6 +6,7 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.scheduler.QueuedDispatchCapacity;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
+import it.unimib.datai.nanofaas.execution.admission.WaitEstimator;
 import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
 import it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncScheduler;
 import org.junit.jupiter.api.Test;

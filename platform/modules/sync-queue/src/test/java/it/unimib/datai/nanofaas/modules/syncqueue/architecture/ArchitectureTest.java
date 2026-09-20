@@ -42,24 +42,33 @@ class ArchitectureTest {
      * makes this impossible" — false: {@code sync-queue/build.gradle} now depends on
      * {@code :control-plane} and {@code :execution-runtime} in <strong>main</strong> scope, because
      * {@link it.unimib.datai.nanofaas.controlplane.service.EngineSyncQueueGateway}'s factory
-     * (in {@code SyncQueueConfiguration}) composes this module's own admission collaborators
-     * (WaitEstimator, SyncQueueAdmissionController) directly onto the shared
-     * {@code it.unimib.datai.nanofaas.execution.SchedulerEngine} — the one sanctioned exception,
-     * confined to that single factory method, not the whole module. This rule is now the actual
-     * enforcement, not a second line of defence behind an impossible build graph: it is expressed
-     * by type name (and, for the execution package, by package name) rather than only by package
-     * because the core and the contract library deliberately share package names —
-     * {@code controlplane.service} holds both the {@code InvocationEnqueuer} contract and the
-     * {@code Metrics} implementation.</p>
+     * (in {@code SyncQueueConfiguration}) composes the admission collaborators directly onto the
+     * shared {@code it.unimib.datai.nanofaas.execution.SchedulerEngine}.
+     *
+     * <p>Task 10 (issue #208) moved those admission collaborators — {@code WaitEstimator},
+     * {@code SyncQueueAdmissionController}, {@code SyncQueueAdmissionResult} — themselves out of
+     * this module and into {@code :execution-runtime}'s {@code it.unimib.datai.nanofaas.execution
+     * .admission} package, unchanged in behaviour, so the composed engine's admission path and
+     * the module's own retired {@code SyncQueueService}/{@code SyncScheduler} worker (kept until
+     * Task 13) share the exact same classes rather than two copies drifting apart. That move adds
+     * a second, honest exception: {@code SyncQueueService} now legitimately depends on
+     * {@code execution.admission..} the same way {@code SyncQueueConfiguration} always has, and is
+     * named here rather than left to be caught by the regex, because the point of naming an
+     * exception is that every reader can see exactly which classes carry it — widening the
+     * class-name predicate, never narrowing the package regex, is the correct way to extend this
+     * rule (see {@code CoreArchitectureTest}'s R6 for the same pattern applied to a
+     * package-ownership rule).</p>
      */
     @ArchTest
     static final ArchRule does_not_depend_on_core_implementations =
             noClasses()
-                    // The one sanctioned exception (see javadoc above): SyncQueueConfiguration's
-                    // engineSyncQueueGateway factory is the sole place this module is allowed to
-                    // reach into the composed engine.
+                    // The two sanctioned exceptions (see javadoc above): SyncQueueConfiguration's
+                    // engineSyncQueueGateway factory composes the admission collaborators onto the
+                    // engine, and SyncQueueService (Task 10) constructs and calls the same
+                    // collaborators directly for its own retired, still-compiled admission path.
                     .that(DescribedPredicate.not(
-                            com.tngtech.archunit.core.domain.JavaClass.Predicates.simpleName("SyncQueueConfiguration")))
+                            com.tngtech.archunit.core.domain.JavaClass.Predicates.simpleName("SyncQueueConfiguration")
+                                    .or(com.tngtech.archunit.core.domain.JavaClass.Predicates.simpleName("SyncQueueService"))))
                     .should().dependOnClassesThat()
                     .haveNameMatching("it\\.unimib\\.datai\\.nanofaas\\."
                             + "(execution\\..*"

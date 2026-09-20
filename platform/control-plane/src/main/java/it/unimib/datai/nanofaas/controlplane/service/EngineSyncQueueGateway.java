@@ -29,9 +29,11 @@ import java.util.function.LongSupplier;
  * queue (Task 8, issue #208).
  *
  * <p>This class deliberately has no compile-time knowledge of {@code SyncQueueAdmissionController}
- * or {@code WaitEstimator} — those stay owned by the sync-queue module, which is the only module
- * allowed to depend on them. {@code SyncQueueConfiguration} builds this bean and hands it the
- * SAME admission controller and estimator instances the module already had (via
+ * or {@code WaitEstimator} — those live in {@code :execution-runtime}'s {@code
+ * it.unimib.datai.nanofaas.execution.admission} package as of Task 10 (issue #208), and this
+ * class is deliberately not the one that references them; {@code SyncQueueConfiguration} (in the
+ * sync-queue module) builds this bean and hands it the SAME admission controller and estimator
+ * instances the module's own retired {@code SyncQueueService} constructs (via
  * {@link AdmissionCheck}, {@code onDispatched} and {@code onFunctionRemoved}), so admission
  * thresholds and wait estimation are reused byte-for-byte rather than re-derived: there is no
  * second implementation of sync admission to drift from the one the depth cap and wait estimate
@@ -39,7 +41,7 @@ import java.util.function.LongSupplier;
  */
 public final class EngineSyncQueueGateway implements SyncQueueGateway {
 
-    /** Reused verdict of the module's own {@code SyncQueueAdmissionController.evaluate}. */
+    /** Reused verdict of {@code SyncQueueAdmissionController.evaluate}. */
     @FunctionalInterface
     public interface AdmissionCheck {
         /** {@code null} when accepted; the reject reason otherwise. */

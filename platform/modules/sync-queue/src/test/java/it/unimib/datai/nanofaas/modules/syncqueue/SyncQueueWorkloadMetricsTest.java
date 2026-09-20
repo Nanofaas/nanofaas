@@ -52,7 +52,7 @@ class SyncQueueWorkloadMetricsTest {
         );
         FunctionCapacityRegistry registry = new FunctionCapacityRegistry();
         SyncQueueService service = new SyncQueueService(
-                props, new ExecutionStore(), new it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimator(
+                props, new ExecutionStore(), new it.unimib.datai.nanofaas.execution.admission.WaitEstimator(
                         Duration.ofSeconds(30), 3), new SyncQueueMetrics(new SimpleMeterRegistry()),
                 java.time.Clock.systemUTC(), SyncQueueConfigSource.fixed(props.runtimeDefaults()), registry, null);
         SyncQueueInvocationEnqueuer enqueuer = new SyncQueueInvocationEnqueuer(registry);
@@ -192,7 +192,7 @@ class SyncQueueWorkloadMetricsTest {
                 true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(2), 2,
                 Duration.ofSeconds(30), 3);
         return new SyncQueueService(props, new ExecutionStore(),
-                new it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimator(Duration.ofSeconds(30), 3),
+                new it.unimib.datai.nanofaas.execution.admission.WaitEstimator(Duration.ofSeconds(30), 3),
                 metrics, java.time.Clock.systemUTC(), SyncQueueConfigSource.fixed(props.runtimeDefaults()),
                 capacity, null);
     }
