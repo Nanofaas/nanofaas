@@ -16,8 +16,12 @@ dependencyManagement {
 // ':control-plane-spi' brings ':common' transitively (InvocationRequest et al.).
 dependencies {
     api project(':control-plane-spi')
-    implementation 'com.github.ben-manes.caffeine:caffeine'
-    implementation 'io.micrometer:micrometer-core'
+    // api, not implementation: ExecutionStore's and IdempotencyStore's public constructors
+    // expose Caffeine Scheduler/Ticker and Micrometer MeterRegistry, so both are part of this
+    // module's ABI and belong on a consumer's compile classpath (Task 10 carry-forward,
+    // issue #208). It compiled before only because :control-plane declared both itself.
+    api 'com.github.ben-manes.caffeine:caffeine'
+    api 'io.micrometer:micrometer-core'
 
     testImplementation 'org.junit.jupiter:junit-jupiter:6.0.3'
     testImplementation 'org.assertj:assertj-core'
