@@ -27,11 +27,13 @@ import it.unimib.datai.nanofaas.execution.PendingEntry;
 import it.unimib.datai.nanofaas.execution.PendingWorkStore;
 import it.unimib.datai.nanofaas.execution.SchedulerEngine;
 import it.unimib.datai.nanofaas.execution.StrategyRegistry;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.ObjectProvider;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -212,34 +214,35 @@ class AsyncQueueConfigurationTest {
                 }
             }
         });
-        int pendingImmediatelyAfterRemoval;
         admitter.start();
         try {
             // Let a burst of admissions land before racing the removal against them.
             Thread.sleep(20);
             listener.onRemove("echo"); // must not throw: NEW-CRITICAL
+            // Fix round 3, Item 1/2: EngineInvocationEnqueuer.admitDirect now re-checks
+            // capacityRegistry.activeGeneration after a successful engine.enqueue and
+            // compensates (engine.remove + depth release) if the generation was retired in the
+            // instant between the two — but that compensating action runs on the ADMITTING
+            // thread, a few instructions after the enqueue it is undoing, so it is not
+            // necessarily visible the very instant onRemove returns on THIS thread. Asserting an
+            // instantaneous zero here was the round-2 test's flake: real, if rare, exactly
+            // because that window is narrowed rather than eliminated. What must hold — and what
+            // the pre-round-3 code (permanent strand) and the pre-round-2 order (large,
+            // non-self-healing backlog) both fail — is that the count SETTLES to zero quickly and
+            // stays there, even while the admitter keeps hammering a now-retired function.
+            Awaitility.await()
+                    .atMost(Duration.ofSeconds(2))
+                    .untilAsserted(() -> assertThat(store.pendingCount())
+                            .as("tickets pending for 'echo' after onRemove — must settle to "
+                                    + "zero and stay there, not persist as a permanent strand")
+                            .isZero());
         } finally {
-            // Measured the instant onRemove returns, with the admitter still racing: retiring
-            // capacity BEFORE draining (the fix) closes the door to further admissions almost
-            // immediately, so this should be ~0. The pre-fix-round-2 order (drain, then retire
-            // capacity last) leaves the door open for the admitter's entire time inside onRemove
-            // — which does a store scan plus a capacity-registry mutation — so a burst of tickets
-            // keeps being admitted throughout and is left behind by the single already-collected
-            // snapshot the old drain iterated: this is where NEW-IMPORTANT shows up as a
-            // reliably non-trivial backlog, not a one-off race.
-            pendingImmediatelyAfterRemoval = store.pendingCount();
             running.set(false);
             admitter.join(5_000);
         }
 
         assertThat(admitterFailure.get()).isNull();
-        assertThat(pendingImmediatelyAfterRemoval)
-                .as("tickets still pending for 'echo' the instant onRemove returned — capacity "
-                        + "must be retired before the drain so admission stops almost immediately")
-                .isZero();
-        // Cleanup courtesy for anything from the tiny residual window (disclosed, not what this
-        // test targets) that may have landed after the measurement above.
-        engine.removeAllFor("echo");
+        // Firm check once the admitter has fully stopped: nothing reappears afterward either.
         assertThat(store.pendingCount()).isZero();
     }
 

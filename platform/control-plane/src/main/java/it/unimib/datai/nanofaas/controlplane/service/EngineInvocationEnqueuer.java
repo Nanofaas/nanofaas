@@ -135,11 +135,39 @@ public final class EngineInvocationEnqueuer implements InvocationEnqueuer, Retry
         Instant now = clock.instant();
         TicketId id = new TicketId(task.executionId(), task.attempt());
         SchedulingTicket ticket = new SchedulingTicket(id, generation, sequence.getAsLong(), now, now, null);
-        boolean admitted = engine.getObject().enqueue(new PendingEntry(ticket, task));
+        SchedulerEngine schedulerEngine = engine.getObject();
+        boolean admitted = schedulerEngine.enqueue(new PendingEntry(ticket, task));
         if (!admitted) {
             perFunctionDepth.release(task.functionName());
+            return false;
         }
-        return admitted;
+        // Fix round 3: closes the residual admission window between resolving `generation` above
+        // and this enqueue committing. The retired QueueManager admitted under its own capacity
+        // lock, so a concurrent removal could never observe a still-active generation and let a
+        // ticket through; this class has no such lock, so a removal racing exactly here can slip
+        // a ticket in after the generation it was built against has already been retired. Left
+        // alone that ticket strands permanently in this profile: its queueDeadline is null (no
+        // reaper ever collects it) and its generation is no longer active (engineReadiness never
+        // selects it) — the same class of stranding C2 exists to prevent, under the same
+        // redeploy-churn traffic. Re-checking here cannot close the window to zero (the check
+        // itself is still non-atomic with a concurrent removal), but it turns an unbounded,
+        // permanent strand into a bounded compensating removal: worst case, one ticket briefly
+        // occupies a reservation before this catches it on the very next line.
+        //
+        // Deliberately no extra `perFunctionDepth.release` here: `SchedulerEngine.remove(id)`
+        // already releases through `EngineDispatch.removed` -> `settle`/`release` on the one path
+        // where this ticket is actually still pending and gets pulled back out (see
+        // `EngineTransport.removed`, `SchedulerConfiguration`). Adding a second release on this
+        // branch would double-release against that path. If the ticket is no longer pending by
+        // the time `remove` runs — already claimed/submitting, or already reaped by a concurrent
+        // `removeAllFor` — then `remove` is a no-op here and whichever path actually settled that
+        // ticket (dispatch's own `submit`/`expired` settlement, or that concurrent removal) is
+        // the one that already released, or will release, its depth slot exactly once.
+        if (!generation.equals(capacityRegistry.activeGeneration(task.functionName()))) {
+            schedulerEngine.remove(id);
+            return false;
+        }
+        return true;
     }
 
     /**
