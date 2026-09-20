@@ -14,8 +14,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
+import java.time.Duration;
 import java.util.Map;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(
@@ -79,10 +81,13 @@ class PrometheusEndpointTest {
                 .exchange()
                 .expectStatus().isOk();
 
-        Counter dispatch = meterRegistry.find("function_dispatch_total").tag("function", "echo").counter();
-        Timer latency = meterRegistry.find("function_latency_ms").tag("function", "echo").timer();
+        // The response is settled before completion metrics are recorded.
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            Counter dispatch = meterRegistry.find("function_dispatch_total").tag("function", "echo").counter();
+            Timer latency = meterRegistry.find("function_latency_ms").tag("function", "echo").timer();
 
-        assertTrue(dispatch != null && dispatch.count() >= 1.0, "Expected function_dispatch_total counter to be present and >= 1");
-        assertTrue(latency != null && latency.count() >= 1, "Expected function_latency_ms timer to be present and have at least 1 sample");
+            assertTrue(dispatch != null && dispatch.count() >= 1.0, "Expected function_dispatch_total counter to be present and >= 1");
+            assertTrue(latency != null && latency.count() >= 1, "Expected function_latency_ms timer to be present and have at least 1 sample");
+        });
     }
 }

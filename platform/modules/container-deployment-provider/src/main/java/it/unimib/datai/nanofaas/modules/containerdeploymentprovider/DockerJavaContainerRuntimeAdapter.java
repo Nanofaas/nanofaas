@@ -1,5 +1,9 @@
 package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 
+import it.unimib.datai.nanofaas.containerdeployment.ContainerRuntimeAdapter;
+import it.unimib.datai.nanofaas.containerdeployment.ContainerInstanceSpec;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedContainer;
+
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.CreateContainerCmd;
 import com.github.dockerjava.api.command.CreateContainerResponse;
@@ -25,6 +29,8 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
     private final DockerClient client;
     private final String networkName;
     private final String cpuset;
+    private final String bindHost;
+    private final PortAllocator portAllocator;
 
     DockerJavaContainerRuntimeAdapter(DockerClient client) {
         this(client, null);
@@ -35,6 +41,13 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
     }
 
     DockerJavaContainerRuntimeAdapter(DockerClient client, String networkName, String cpuset) {
+        this(client, networkName, cpuset, "127.0.0.1", new EphemeralPortAllocator("127.0.0.1"));
+    }
+
+    DockerJavaContainerRuntimeAdapter(DockerClient client, String networkName, String cpuset,
+                                      String bindHost, PortAllocator portAllocator) {
+        this.bindHost = bindHost;
+        this.portAllocator = portAllocator;
         this.client = client;
         this.networkName = networkName;
         this.cpuset = cpuset;
@@ -61,17 +74,15 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
     }
 
     @Override
-    public void runContainer(ContainerInstanceSpec spec) {
+    public ManagedContainer runContainer(ContainerInstanceSpec spec) {
         removeContainer(spec.containerName());
 
+        Integer hostPort = networkName == null ? portAllocator.nextPort() : null;
         ExposedPort functionPort = ExposedPort.tcp(8080);
         HostConfig hostConfig = HostConfig.newHostConfig();
         if (networkName == null) {
-            if (spec.hostPort() == null) {
-                throw new IllegalArgumentException("hostPort is required when no Docker network is configured");
-            }
             hostConfig.withPortBindings(new PortBinding(
-                    Ports.Binding.bindPort(spec.hostPort()),
+                    Ports.Binding.bindPort(hostPort),
                     functionPort
             ));
         } else {
@@ -97,6 +108,9 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
             CreateContainerResponse created = create.exec();
             client.startContainerCmd(created.getId()).exec();
         }
+        return new ManagedContainer(spec.containerName(),
+                ContainerLocalDeploymentProvider.replicaIndex(spec.containerName()),
+                baseUrl(spec.containerName(), hostPort), true);
     }
 
     @Override
@@ -116,17 +130,24 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
                         ContainerLocalDeploymentProvider.MANAGED_LABEL, "true",
                         ContainerLocalDeploymentProvider.FUNCTION_LABEL, functionName))
                 .exec().stream()
-                .map(DockerJavaContainerRuntimeAdapter::toManagedContainer)
+                .map(this::toManagedContainer)
                 .toList();
     }
 
-    private static ManagedContainer toManagedContainer(Container container) {
+    private ManagedContainer toManagedContainer(Container container) {
         String name = containerName(container);
         return new ManagedContainer(
                 name,
                 ContainerLocalDeploymentProvider.replicaIndex(name),
-                publishedHostPort(container),
+                baseUrl(name, publishedHostPort(container)),
                 "running".equalsIgnoreCase(container.getState()));
+    }
+
+    private String baseUrl(String name, Integer hostPort) {
+        if (networkName != null) {
+            return "http://" + name + ":8080";
+        }
+        return hostPort == null ? null : "http://" + bindHost + ":" + hostPort;
     }
 
     private static String containerName(Container container) {

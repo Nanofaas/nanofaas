@@ -167,34 +167,37 @@ public final class ControlPlaneModulesPlugin implements Plugin<Settings> {
     }
 
     private static List<String> selectAll(List<ModuleDescriptor> descriptors) {
+        List<ModuleDescriptor> defaults = descriptors.stream().filter(ModuleDescriptor::defaultEnabled).toList();
+        validateEqualPriorityConflicts(defaults);
+
+        List<ModuleDescriptor> candidates = new ArrayList<>();
+        for (ModuleDescriptor descriptor : descriptors.stream().filter(descriptor -> !descriptor.defaultEnabled()).toList()) {
+            ModuleDescriptor conflictingDefault = defaults.stream().filter(candidate -> conflicts(descriptor, candidate))
+                    .findFirst().orElse(null);
+            if (conflictingDefault != null) {
+                Logging.getLogger(ControlPlaneModulesPlugin.class).lifecycle("Skipping control-plane module '{}': "
+                                + "conflicts with default-enabled module '{}'",
+                        descriptor.id(), conflictingDefault.id());
+            } else {
+                candidates.add(descriptor);
+            }
+        }
+        validateEqualPriorityConflicts(candidates);
+        return java.util.stream.Stream.concat(defaults.stream(), candidates.stream()).map(ModuleDescriptor::id).toList();
+    }
+
+    private static void validateEqualPriorityConflicts(List<ModuleDescriptor> descriptors) {
         // ponytail: module counts are tiny; replace the pair scan only if that changes materially.
         for (int leftIndex = 0; leftIndex < descriptors.size(); leftIndex++) {
             ModuleDescriptor left = descriptors.get(leftIndex);
             for (int rightIndex = leftIndex + 1; rightIndex < descriptors.size(); rightIndex++) {
                 ModuleDescriptor right = descriptors.get(rightIndex);
-                if (left.defaultEnabled() == right.defaultEnabled() && conflicts(left, right)) {
+                if (conflicts(left, right)) {
                     throw failure("Invalid module constraints: modules '" + left.id()
                             + "' and '" + right.id() + "' conflict with equal defaultEnabled priority");
                 }
             }
         }
-
-        List<ModuleDescriptor> defaults = descriptors.stream().filter(ModuleDescriptor::defaultEnabled).toList();
-        List<String> selected = new ArrayList<>();
-        for (ModuleDescriptor descriptor : descriptors) {
-            ModuleDescriptor conflictingDefault = defaults.stream()
-                    .filter(candidate -> conflicts(descriptor, candidate))
-                    .findFirst()
-                    .orElse(null);
-            if (!descriptor.defaultEnabled() && conflictingDefault != null) {
-                Logging.getLogger(ControlPlaneModulesPlugin.class).lifecycle("Skipping control-plane module '{}': "
-                                + "conflicts with default-enabled module '{}'",
-                        descriptor.id(), conflictingDefault.id());
-            } else {
-                selected.add(descriptor.id());
-            }
-        }
-        return selected;
     }
 
     private static boolean conflicts(ModuleDescriptor left, ModuleDescriptor right) {

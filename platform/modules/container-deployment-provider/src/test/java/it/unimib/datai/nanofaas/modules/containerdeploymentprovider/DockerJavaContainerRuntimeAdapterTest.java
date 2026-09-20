@@ -1,5 +1,8 @@
 package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 
+import it.unimib.datai.nanofaas.containerdeployment.ContainerInstanceSpec;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedContainer;
+
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.CreateContainerCmd;
 import com.github.dockerjava.api.command.CreateContainerResponse;
@@ -36,7 +39,7 @@ class DockerJavaContainerRuntimeAdapterTest {
         PingCmd ping = mock(PingCmd.class);
         when(client.pingCmd()).thenReturn(ping);
 
-        DockerJavaContainerRuntimeAdapter adapter = new DockerJavaContainerRuntimeAdapter(client);
+        DockerJavaContainerRuntimeAdapter adapter = new DockerJavaContainerRuntimeAdapter(client, null, null, "127.0.0.1", () -> 18080);
 
         assertThat(adapter.isAvailable()).isTrue();
     }
@@ -55,11 +58,10 @@ class DockerJavaContainerRuntimeAdapterTest {
         when(create.exec()).thenReturn(response);
         when(client.startContainerCmd("container-id")).thenReturn(start);
 
-        DockerJavaContainerRuntimeAdapter adapter = new DockerJavaContainerRuntimeAdapter(client);
-        adapter.runContainer(new ContainerInstanceSpec(
+        DockerJavaContainerRuntimeAdapter adapter = new DockerJavaContainerRuntimeAdapter(client, null, null, "127.0.0.1", () -> 18080);
+        ManagedContainer managed = adapter.runContainer(new ContainerInstanceSpec(
                 "nanofaas-echo-r1",
                 "example/echo:latest",
-                18080,
                 List.of("java", "-jar", "app.jar"),
                 new LinkedHashMap<>(Map.of("FUNCTION_NAME", "echo", "WARM", "true")),
                 new ResourceSpec(
@@ -79,6 +81,7 @@ class DockerJavaContainerRuntimeAdapterTest {
         verify(create).withHostConfig(hostConfig.capture());
         verify(create).exec();
         verify(start).exec();
+        assertThat(managed).isEqualTo(new ManagedContainer("nanofaas-echo-r1", 1, "http://127.0.0.1:18080", true));
         assertThat(env.getValue()).containsExactly("FUNCTION_NAME=echo", "WARM=true");
         assertThat(hostConfig.getValue().getCpuShares()).isEqualTo(256);
         assertThat(hostConfig.getValue().getNanoCPUs()).isEqualTo(1_000_000_000L);
@@ -102,11 +105,12 @@ class DockerJavaContainerRuntimeAdapterTest {
         when(create.exec()).thenReturn(response);
         when(client.startContainerCmd("container-id")).thenReturn(start);
 
-        DockerJavaContainerRuntimeAdapter adapter = new DockerJavaContainerRuntimeAdapter(client, "nanofaas");
-        adapter.runContainer(new ContainerInstanceSpec(
+        DockerJavaContainerRuntimeAdapter adapter = new DockerJavaContainerRuntimeAdapter(client, "nanofaas", null, "127.0.0.1", () -> {
+            throw new AssertionError("networked replicas must not allocate host ports");
+        });
+        ManagedContainer managed = adapter.runContainer(new ContainerInstanceSpec(
                 "nanofaas-echo-r1",
                 "example/echo:latest",
-                null,
                 List.of(),
                 Map.of(),
                 null,
@@ -115,6 +119,8 @@ class DockerJavaContainerRuntimeAdapterTest {
 
         ArgumentCaptor<HostConfig> hostConfig = ArgumentCaptor.forClass(HostConfig.class);
         verify(create).withHostConfig(hostConfig.capture());
+        assertThat(managed).isEqualTo(new ManagedContainer("nanofaas-echo-r1", 1,
+                "http://nanofaas-echo-r1:8080", true));
         assertThat(hostConfig.getValue().getNetworkMode()).isEqualTo("nanofaas");
         assertThat(hostConfig.getValue().getPortBindings()).isNull();
     }
@@ -126,7 +132,7 @@ class DockerJavaContainerRuntimeAdapterTest {
         when(client.removeContainerCmd("missing")).thenReturn(remove);
         when(remove.exec()).thenThrow(new NotFoundException("missing"));
 
-        DockerJavaContainerRuntimeAdapter adapter = new DockerJavaContainerRuntimeAdapter(client);
+        DockerJavaContainerRuntimeAdapter adapter = new DockerJavaContainerRuntimeAdapter(client, null, null, "127.0.0.1", () -> 18080);
 
         assertThatCode(() -> adapter.removeContainer("missing")).doesNotThrowAnyException();
         verify(remove).withForce(true);
@@ -145,11 +151,10 @@ class DockerJavaContainerRuntimeAdapterTest {
         when(create.exec()).thenReturn(response);
         when(client.startContainerCmd("container-id")).thenReturn(start);
 
-        DockerJavaContainerRuntimeAdapter adapter = new DockerJavaContainerRuntimeAdapter(client);
+        DockerJavaContainerRuntimeAdapter adapter = new DockerJavaContainerRuntimeAdapter(client, null, null, "127.0.0.1", () -> 18080);
         adapter.runContainer(new ContainerInstanceSpec(
                 "nanofaas-echo-r1",
                 "example/echo:latest",
-                18080,
                 List.of(),
                 Map.of(),
                 null,
@@ -183,10 +188,10 @@ class DockerJavaContainerRuntimeAdapterTest {
         when(stopped.getPorts()).thenReturn(new ContainerPort[0]);
         when(list.exec()).thenReturn(List.of(running, stopped));
 
-        DockerJavaContainerRuntimeAdapter adapter = new DockerJavaContainerRuntimeAdapter(client);
+        DockerJavaContainerRuntimeAdapter adapter = new DockerJavaContainerRuntimeAdapter(client, null, null, "127.0.0.1", () -> 18080);
 
         assertThat(adapter.listManagedContainers("echo")).containsExactly(
-                new ManagedContainer("nanofaas-echo-r1", 1, 31001, true),
+                new ManagedContainer("nanofaas-echo-r1", 1, "http://127.0.0.1:31001", true),
                 new ManagedContainer("nanofaas-echo-r2", 2, null, false)
         );
         verify(list).withShowAll(true);

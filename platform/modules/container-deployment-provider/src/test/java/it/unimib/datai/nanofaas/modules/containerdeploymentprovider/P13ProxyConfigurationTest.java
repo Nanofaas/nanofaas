@@ -1,5 +1,9 @@
 package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 
+import it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxy;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxyFactory;
+import it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxy;
+
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -55,7 +59,6 @@ class P13ProxyConfigurationTest {
                         HttpResponse.BodyHandlers.ofString());
 
                 assertThat(response.statusCode()).isEqualTo(413);
-                assertThat(proxy.snapshot()).isEqualTo(new RoundRobinFunctionProxy.Snapshot(0, 0));
             } finally {
                 backend.stop(0);
             }

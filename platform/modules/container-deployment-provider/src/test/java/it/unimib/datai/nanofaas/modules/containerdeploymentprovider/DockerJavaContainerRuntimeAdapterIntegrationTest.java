@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 
+import it.unimib.datai.nanofaas.containerdeployment.ContainerInstanceSpec;
+
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.InspectContainerCmd;
 import com.github.dockerjava.api.command.InspectContainerResponse;
@@ -32,7 +34,6 @@ class DockerJavaContainerRuntimeAdapterIntegrationTest {
             adapter.runContainer(new ContainerInstanceSpec(
                     containerName,
                     TEST_IMAGE,
-                    18089,
                     List.of("sh", "-c", "sleep 30"),
                     Map.of("NANOFAAS_SPIKE", "true"),
                     null,
@@ -71,7 +72,6 @@ class DockerJavaContainerRuntimeAdapterIntegrationTest {
             adapter.runContainer(new ContainerInstanceSpec(
                     containerName,
                     TEST_IMAGE,
-                    null,
                     List.of("sh", "-c", "sleep 30"),
                     Map.of(),
                     null,
