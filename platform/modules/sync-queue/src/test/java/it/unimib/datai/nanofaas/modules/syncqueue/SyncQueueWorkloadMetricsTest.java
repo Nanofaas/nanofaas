@@ -12,7 +12,6 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.service.ExecutionCompletionHandler;
 import it.unimib.datai.nanofaas.controlplane.service.Metrics;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
-import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueMetrics;
@@ -97,14 +96,23 @@ class SyncQueueWorkloadMetricsTest {
         SyncQueueService service = service(compatibility, capacity);
         SyncQueueWorkloadMetricsSource source = new SyncQueueWorkloadMetricsSource(service, capacity);
         WorkloadMetricsBinder binder = new WorkloadMetricsBinder(registry, source);
-        var listener = registrationListener(service, binder,
-                new it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics(registry));
-
-        listener.onRegister(spec("fn", 2));
+        it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics diagnostics =
+                new it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics(registry);
+        // Task 8 fix round (issue #208), finding I4: these three calls used to be glued into one
+        // FunctionRegistrationListener object, but no production bean wires them together that
+        // way anymore — SyncQueueService is not a bean at all, and SchedulerConfiguration's real
+        // listener does capacity only, not metrics. Calling each real, unmodified method directly
+        // is the honest shape of what still exists; wrapping them back into a fake composite
+        // listener would just reintroduce the "asserts dead code" problem under a different name.
+        service.registerFunction("fn", 2);
+        binder.registerFunction("fn");
+        diagnostics.registerFunction("fn");
         assertNotNull(registry.find("function_queue_depth").tag("function", "fn").gauge());
         assertEquals(2, capacity.effectiveConcurrency("fn"));
 
-        listener.onRemove("fn");
+        service.removeFunctionState("fn");
+        binder.removeFunction("fn");
+        diagnostics.removeFunction("fn");
         assertNull(registry.find("function_queue_depth").tag("function", "fn").gauge());
         assertNull(registry.find("sync_queue_depth").tag("function", "fn").gauge());
         assertEquals(0, capacity.effectiveConcurrency("fn"));
@@ -161,11 +169,10 @@ class SyncQueueWorkloadMetricsTest {
         FunctionCapacityRegistry capacity = new FunctionCapacityRegistry();
         SyncQueueMetrics metrics = new SyncQueueMetrics(new SimpleMeterRegistry());
         SyncQueueService service = service(metrics, capacity);
-        WorkloadMetricsBinder binder = new WorkloadMetricsBinder(new SimpleMeterRegistry(),
-                new SyncQueueWorkloadMetricsSource(service, capacity));
-        registrationListener(service, binder,
-                new it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics(new SimpleMeterRegistry()))
-                .onRegister(spec("fn", 1));
+        // Only capacity registration is exercised here (SyncQueueService.registerFunction
+        // already does that as part of its own, unmodified behavior); no metrics binder is
+        // needed for what these two tests assert (capacity release on completion/timeout).
+        service.registerFunction("fn", 1);
         return new Fixture(new ExecutionStore(), service,
                 new SyncQueueInvocationEnqueuer(capacity), capacity);
     }
@@ -188,32 +195,6 @@ class SyncQueueWorkloadMetricsTest {
                 new it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimator(Duration.ofSeconds(30), 3),
                 metrics, java.time.Clock.systemUTC(), SyncQueueConfigSource.fixed(props.runtimeDefaults()),
                 capacity, null);
-    }
-
-    /**
-     * Task 8 (issue #208) retired {@code SyncQueueConfiguration.syncQueueLifecycleListener}: the
-     * capacity-registration half moved to {@code SchedulerConfiguration}'s consolidated listener,
-     * and {@code SyncQueueService} is no longer wired as a bean at all. This test is exercising
-     * the metrics-registration BEHAVIOR the old listener drove, not the (now-gone) bean wiring,
-     * so it rebuilds the equivalent listener body inline.
-     */
-    private static FunctionRegistrationListener registrationListener(SyncQueueService service,
-            WorkloadMetricsBinder binder, it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics diagnostics) {
-        return new FunctionRegistrationListener() {
-            @Override
-            public void onRegister(FunctionSpec spec) {
-                service.registerFunction(spec.name(), spec.concurrency());
-                binder.registerFunction(spec.name());
-                diagnostics.registerFunction(spec.name());
-            }
-
-            @Override
-            public void onRemove(String functionName) {
-                service.removeFunctionState(functionName);
-                binder.removeFunction(functionName);
-                diagnostics.removeFunction(functionName);
-            }
-        };
     }
 
     private static FunctionSpec spec(String name, int concurrency) {

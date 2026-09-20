@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.modules.syncqueue;
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchCapacity;
 import it.unimib.datai.nanofaas.controlplane.config.SyncQueueRuntimeDefaults;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingStrategy;
+import it.unimib.datai.nanofaas.controlplane.service.EngineInvocationEnqueuer.AdmissionProfile;
 import it.unimib.datai.nanofaas.controlplane.service.EngineSyncQueueGateway;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.execution.PendingWorkStore;
@@ -95,7 +96,7 @@ public class SyncQueueConfiguration {
             SyncQueueAdmissionController admissionController, WaitEstimator estimator,
             org.springframework.beans.factory.ObjectProvider<SchedulerEngine> engine,
             PendingWorkStore store, DispatchCapacity capacityRegistry,
-            LongSupplier schedulerTicketSequence) {
+            LongSupplier schedulerTicketSequence, AdmissionProfile admissionProfile) {
         return new EngineSyncQueueGateway(configSource,
                 (functionName, depth, now) -> {
                     SyncQueueAdmissionResult result = admissionController.evaluate(functionName, depth, now);
@@ -103,6 +104,6 @@ public class SyncQueueConfiguration {
                 },
                 estimator::recordDispatch,
                 estimator::removeFunctionState,
-                engine, store, capacityRegistry, schedulerTicketSequence);
+                engine, store, capacityRegistry, schedulerTicketSequence, admissionProfile);
     }
 }

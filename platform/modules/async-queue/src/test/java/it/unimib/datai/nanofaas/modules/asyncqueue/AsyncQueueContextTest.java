@@ -3,6 +3,8 @@ package it.unimib.datai.nanofaas.modules.asyncqueue;
 import it.unimib.datai.nanofaas.controlplane.ControlPlaneApplication;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -19,14 +21,22 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>Task 8 (issue #208) retires this module's own {@code QueueManager}-backed worker and
  * {@code WorkloadMetricsSource}: real scheduling now goes through the shared engine
  * ({@code SchedulerConfiguration}), and Task 11 is where an engine-backed replacement metrics
- * source lands. This test no longer asserts a {@code WorkloadMetricsSource}/{@code QueueManager}
- * bean for that reason — see {@code SyncQueueContextTest}.
+ * source lands. The fix round restored the {@code WorkloadMetricsSource} assertion below as
+ * {@code @Disabled} rather than leaving it deleted — this javadoc, and the assertion, document
+ * the real production incident ({@code AutoscalerConfigurationTest}'s B3 campaign) this guards
+ * against; deleting the assertion would delete that memory too.
  */
 @SpringBootTest(classes = ControlPlaneApplication.class)
 class AsyncQueueContextTest {
 
     @Autowired
     private ApplicationContext context;
+
+    @Test
+    @Disabled("Task 11 — no WorkloadMetricsSource while the engine composition lands")
+    void publishesAWorkloadMetricsSource() {
+        assertThat(context.getBeansOfType(WorkloadMetricsSource.class)).hasSize(1);
+    }
 
     @Test
     void publishesTheWorkloadContractTheConsumingModulesConditionOn() {

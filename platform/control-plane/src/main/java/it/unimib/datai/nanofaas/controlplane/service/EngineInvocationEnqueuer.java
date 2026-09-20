@@ -112,23 +112,33 @@ public final class EngineInvocationEnqueuer implements InvocationEnqueuer, Retry
         return admitDirect(task);
     }
 
+    @Override
+    public boolean isQueueFull(String functionName) {
+        // Advisory only (enqueue remains authoritative). Answerable only once this function has
+        // been admitted at least once (PerFunctionDepth then knows its cap) — the retired
+        // QueueManager.isQueueFull had the same limit, since it too could only report on a
+        // function it already tracked a FunctionQueueState for.
+        return profile == AdmissionProfile.FUNCTION_QUEUE && perFunctionDepth.isFull(functionName);
+    }
+
     private boolean admitDirect(InvocationTask task) {
         int cap = task.functionSpec() != null && task.functionSpec().queueSize() != null
                 ? Math.max(1, task.functionSpec().queueSize())
                 : Integer.MAX_VALUE;
-        if (perFunctionDepth.get(task.functionName()) >= cap) {
+        if (!perFunctionDepth.tryAcquire(task.functionName(), cap)) {
             return false;
         }
         FunctionGeneration generation = capacityRegistry.activeGeneration(task.functionName());
         if (generation == null) {
+            perFunctionDepth.release(task.functionName());
             return false;
         }
         Instant now = clock.instant();
         TicketId id = new TicketId(task.executionId(), task.attempt());
         SchedulingTicket ticket = new SchedulingTicket(id, generation, sequence.getAsLong(), now, now, null);
         boolean admitted = engine.getObject().enqueue(new PendingEntry(ticket, task));
-        if (admitted) {
-            perFunctionDepth.increment(task.functionName());
+        if (!admitted) {
+            perFunctionDepth.release(task.functionName());
         }
         return admitted;
     }
@@ -138,27 +148,52 @@ public final class EngineInvocationEnqueuer implements InvocationEnqueuer, Retry
      * settled, so the async profile's per-function queue-size cap ({@code FunctionSpec.queueSize})
      * is preserved even though {@code PendingWorkStore} enforces only one global cap.
      *
-     * <p>ponytail: decremented when the engine hands a ticket to {@code EngineDispatch.submit},
-     * not at the engine's own {@code finishSubmit}/{@code requeue} boundary (which
-     * {@link it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerDispatchSupport} does not
-     * expose to this adapter). An input-backpressure requeue is therefore under-counted by one
-     * for as long as it stays in retry — a narrow gap since input backpressure is rare and
-     * self-resolving, not a systemic cap defeat. Revisit if it proves material.
+     * <p>{@link #tryAcquire} is a compare-and-increment against the cap (not a separate
+     * read-then-increment), so N concurrent admitters for the same function cannot all observe
+     * room and all pass a cap of 1 — the race the retired {@code FunctionQueueState.offer}'s
+     * {@code synchronized} check-and-add closed and a plain read-then-increment reopened.
+     *
+     * <p>{@link #release} is called by {@code EngineTransport} exactly at the engine's own
+     * {@code finishSubmit}/{@code requeue} decision (whether {@code EngineDispatch.submit}
+     * threw {@code InvocationQuotaExceededException}, matching {@code SchedulerEngine.submit}'s
+     * own branch), and by {@code admitDirect} itself when a slot it reserved does not end up
+     * used (generation gone, or the engine's own store rejected it). A backpressure requeue is
+     * therefore not released — and not double-released either, since it was never released for
+     * that attempt in the first place — closing the previous double-decrement.
      */
     public static final class PerFunctionDepth {
         private final ConcurrentHashMap<String, AtomicInteger> counts = new ConcurrentHashMap<>();
+        private final ConcurrentHashMap<String, Integer> caps = new ConcurrentHashMap<>();
 
-        public void increment(String functionName) {
-            counts.computeIfAbsent(functionName, ignored -> new AtomicInteger()).incrementAndGet();
+        /** Atomically reserves one slot iff doing so would not exceed {@code cap}. */
+        public boolean tryAcquire(String functionName, int cap) {
+            caps.put(functionName, cap);
+            AtomicInteger counter = counts.computeIfAbsent(functionName, ignored -> new AtomicInteger());
+            while (true) {
+                int current = counter.get();
+                if (current >= cap) {
+                    return false;
+                }
+                if (counter.compareAndSet(current, current + 1)) {
+                    return true;
+                }
+            }
         }
 
-        public void decrement(String functionName) {
+        public void release(String functionName) {
             counts.computeIfPresent(functionName, (name, count) -> count.decrementAndGet() <= 0 ? null : count);
         }
 
         public int get(String functionName) {
             AtomicInteger count = counts.get(functionName);
             return count == null ? 0 : count.get();
+        }
+
+        /** {@code false} for a function never seen by {@link #tryAcquire} — matches the SPI's
+         * own {@code isQueueFull} default. */
+        public boolean isFull(String functionName) {
+            Integer cap = caps.get(functionName);
+            return cap != null && get(functionName) >= cap;
         }
     }
 }
