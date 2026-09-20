@@ -4,17 +4,14 @@ import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
 import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * Task 10 (issue #208) independence tests, written RED before the attempt/retry state machine
@@ -28,7 +25,17 @@ import java.util.stream.Stream;
  * sync-queue depth/estimated-wait threshold, the {@code Retry-After} value, and the reject
  * reason the wait estimator produces) before AND after a real strategy switch through
  * {@code SchedulerControl} (backed by the real {@code SchedulerEngine}, not a fake).
+ *
+ * <p>Gated at the CLASS level by {@code nanofaas.selectedControlPlaneModules}, not by an
+ * in-method {@code Assumptions} check (Task 10 step 4 fix, issue #208): this class needs
+ * {@code per-function} (from async-queue) AND {@code shared-queue} (from sync-queue) both on the
+ * classpath to switch between them, and {@code nanofaas.scheduler.strategy=per-function} below
+ * fails Spring context creation outright under a sync-queue-only profile — well before any
+ * method-body {@code Assumptions} check would ever run. Discovered by actually running the
+ * four-profile matrix for this step, which step 1 never did.
  */
+@EnabledIfSystemProperty(named = "nanofaas.selectedControlPlaneModules", matches = ".*\\basync-queue\\b.*")
+@EnabledIfSystemProperty(named = "nanofaas.selectedControlPlaneModules", matches = ".*\\bsync-queue\\b.*")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "nanofaas.rate.maxPerSecond=1000",
@@ -64,11 +71,6 @@ class AdmissionStrategyIndependenceApiTest {
 
     @Test
     void switchingStrategyAloneLeavesSyncAdmissionContractUnchanged() {
-        // Requires BOTH strategies on the classpath (this profile switches per-function ->
-        // shared-queue) and the sync-queue module (the admission policy under test).
-        Assumptions.assumeTrue(selectedModules().contains("sync-queue"));
-        Assumptions.assumeTrue(selectedModules().contains("async-queue"));
-
         functionService.remove("echo");
         functionService.register(new FunctionSpec(
                 "echo", "local", null, Map.of(), null,
@@ -133,13 +135,5 @@ class AdmissionStrategyIndependenceApiTest {
                 .expectStatus().isEqualTo(429)
                 .expectHeader().valueEquals("Retry-After", "2")
                 .expectHeader().valueEquals("X-Queue-Reject-Reason", "est_wait");
-    }
-
-    private static Set<String> selectedModules() {
-        String modules = System.getProperty("nanofaas.selectedControlPlaneModules", "");
-        return Stream.of(modules.split(","))
-                .map(String::trim)
-                .filter(value -> !value.isEmpty())
-                .collect(Collectors.toSet());
     }
 }

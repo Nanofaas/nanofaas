@@ -1,4 +1,5 @@
 plugins {
+    id 'java-library'
     id 'org.springframework.boot'
     id 'io.spring.dependency-management'
     id 'org.graalvm.buildtools.native'
@@ -11,7 +12,13 @@ def selectedOptionalControlPlaneModuleProjects = rootProject.subprojects
 dependencies {
     implementation project(':common')
     implementation project(':control-plane-spi')
-    implementation project(':execution-runtime')
+    // api, not implementation (Task 10 step 4, issue #208): control-plane's own PUBLIC types
+    // (ExecutionCompletionHandler, InvocationExecutionFactory, ...) reference ExecutionRecord,
+    // ExecutionStore and friends directly, so execution-runtime is part of this module's ABI.
+    // A downstream test-only consumer (testImplementation project(':control-plane'), as
+    // :offload and :concurrency-control do) needs these on its own compile classpath; the same
+    // shape as the Caffeine/Micrometer fix already applied in execution-runtime's own build.gradle.
+    api project(':execution-runtime')
     implementation project(':workload-metrics')
     implementation 'com.github.ben-manes.caffeine:caffeine'
     selectedOptionalControlPlaneModuleProjects.each { moduleProject ->

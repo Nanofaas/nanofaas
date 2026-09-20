@@ -4,17 +4,14 @@ import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
 import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * Task 10 (issue #208), RED companion to {@link AdmissionStrategyIndependenceApiTest}: the other
@@ -38,7 +35,16 @@ import java.util.stream.Stream;
  * sync-queue enabled and giving it an estimated-wait threshold of zero turns a silent mis-route
  * into an observable 429/est_wait on plain sync {@code :invoke}, which
  * {@link #assertSyncInvokeIsNotGatedBySyncQueue()} asserts against.
+ *
+ * <p>Gated at the CLASS level by {@code nanofaas.selectedControlPlaneModules} (Task 10 step 4
+ * fix, issue #208), not by an in-method {@code Assumptions} check: {@code
+ * nanofaas.scheduler.strategy=per-function} below fails Spring context creation outright when
+ * async-queue is not on the classpath, well before any method-body {@code Assumptions} check
+ * would run. See {@link AdmissionStrategyIndependenceApiTest} for the same fix and why it was
+ * needed — found by actually running the four-profile matrix for this step.
  */
+@EnabledIfSystemProperty(named = "nanofaas.selectedControlPlaneModules", matches = ".*\\basync-queue\\b.*")
+@EnabledIfSystemProperty(named = "nanofaas.selectedControlPlaneModules", matches = ".*\\bsync-queue\\b.*")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "nanofaas.rate.maxPerSecond=1000",
@@ -67,9 +73,6 @@ class AsyncCapabilityStrategyIndependenceApiTest {
 
     @Test
     void asyncCapabilityStaysAsyncAcrossASwitchToSharedQueue() {
-        Assumptions.assumeTrue(selectedModules().contains("sync-queue"));
-        Assumptions.assumeTrue(selectedModules().contains("async-queue"));
-
         functionService.remove("echo");
         functionService.register(new FunctionSpec(
                 "echo", "local", null, Map.of(), null,
@@ -138,13 +141,5 @@ class AsyncCapabilityStrategyIndependenceApiTest {
                 .bodyValue(new InvocationRequest("payload", Map.of()))
                 .exchange()
                 .expectStatus().isOk();
-    }
-
-    private static Set<String> selectedModules() {
-        String modules = System.getProperty("nanofaas.selectedControlPlaneModules", "");
-        return Stream.of(modules.split(","))
-                .map(String::trim)
-                .filter(value -> !value.isEmpty())
-                .collect(Collectors.toSet());
     }
 }
