@@ -43,13 +43,13 @@ jobs:
       - name: Check out libcni-java
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: miciav/libcni-java
+          repository: Nanofaas/libcni-java
           ref: ${{ steps.containerd-dependencies.outputs.libcni }}
           path: .gradle/ci-sources/libcni-java
       - name: Check out containerd-java
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: miciav/containerd-java
+          repository: Nanofaas/containerd-java
           ref: ${{ steps.containerd-dependencies.outputs.containerd }}
           path: .gradle/ci-sources/containerd-java
       - name: Build containerd dependencies

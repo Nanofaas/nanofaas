@@ -48,9 +48,9 @@ receipt=$maven_repository/containerd-source-revisions.txt
     printf 'Maven outputs: %s, %s, %s\n' \
         "$LIBCNI_JAVA_COORD" "$CONTAINERD_JAVA_COORD" "$CONTAINERD_JAVA_CNI_COORD"
     for artifact in \
-        io/libcni/libcni-java/0.1.1-SNAPSHOT/libcni-java-0.1.1-SNAPSHOT.jar \
-        io/nanofaas/containerd-java/0.4.0-SNAPSHOT/containerd-java-0.4.0-SNAPSHOT.jar \
-        io/nanofaas/containerd-java-cni/0.4.0-SNAPSHOT/containerd-java-cni-0.4.0-SNAPSHOT.jar; do
+        io/libcni/libcni-java/0.22.0/libcni-java-0.22.0.jar \
+        io/nanofaas/containerd-java/0.22.0/containerd-java-0.22.0.jar \
+        io/nanofaas/containerd-java-cni/0.22.0/containerd-java-cni-0.22.0.jar; do
         (cd "$maven_repository" && sha256sum "$artifact")
     done
 } > "$receipt"

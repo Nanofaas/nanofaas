@@ -14,7 +14,7 @@ dependencies {
     implementation project(':common')
     implementation project(':control-plane-spi')
     implementation 'org.springframework.boot:spring-boot-starter'
-    implementation 'io.nanofaas:containerd-java-cni:0.4.0-SNAPSHOT'
+    implementation 'io.nanofaas:containerd-java-cni:0.22.0'
     implementation 'com.google.protobuf:protobuf-java:4.35.0'
     runtimeOnly 'com.google.protobuf:protobuf-java-util:4.35.0'
 
