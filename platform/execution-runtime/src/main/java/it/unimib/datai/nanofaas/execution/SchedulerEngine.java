@@ -274,6 +274,41 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     }
 
     /**
+     * Withdraws every pending ticket whose generation belongs to {@code functionName} — e.g. on
+     * function removal, so queued callers are terminated rather than stranded — and reports each
+     * through {@link EngineDispatch#removed}, exactly as a single {@link #remove(TicketId)}
+     * would for each.
+     *
+     * <p>The scan and every removal happen under {@link #gate} in one section, the same
+     * requirement every other read or mutation of {@link #store} already observes
+     * ({@code PendingWorkStore} documents that it does not lock internally): callers must not
+     * read {@link PendingWorkStore#snapshotPending()} themselves and remove by id afterwards,
+     * since that runs concurrently with the worker's own {@code offer}/{@code finishSubmit}
+     * mutations of the same {@code LinkedHashMap} and can both throw
+     * ({@code ConcurrentModificationException} out of the snapshot's stream) and silently miss
+     * entries. A ticket already claimed or submitting is left untouched here too — its attempt is
+     * already committed and belongs to the lifecycle.
+     */
+    public void removeAllFor(String functionName) {
+        Objects.requireNonNull(functionName, "functionName must not be null");
+        List<PendingEntry> removed = new ArrayList<>();
+        synchronized (gate) {
+            for (PendingEntry entry : store.snapshotPending()) {
+                if (entry.ticket().generation().functionName().equals(functionName)) {
+                    PendingEntry taken = store.remove(entry.ticket().id());
+                    if (taken != null) {
+                        retire(taken.ticket());
+                        removed.add(taken);
+                    }
+                }
+            }
+        }
+        for (PendingEntry entry : removed) {
+            dispatch.removed(entry.task());
+        }
+    }
+
+    /**
      * Advances the wake sequence: new work, released capacity, a capacity change or a shutdown.
      * Clears the blocked generations so the next pass reconsiders them.
      */

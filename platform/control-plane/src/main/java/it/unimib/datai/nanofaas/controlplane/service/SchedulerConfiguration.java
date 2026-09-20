@@ -19,7 +19,6 @@ import it.unimib.datai.nanofaas.controlplane.service.EngineInvocationEnqueuer.Ad
 import it.unimib.datai.nanofaas.controlplane.service.EngineInvocationEnqueuer.PerFunctionDepth;
 import it.unimib.datai.nanofaas.execution.EngineDispatch;
 import it.unimib.datai.nanofaas.execution.EngineReadiness;
-import it.unimib.datai.nanofaas.execution.PendingEntry;
 import it.unimib.datai.nanofaas.execution.PendingWorkStore;
 import it.unimib.datai.nanofaas.execution.SchedulerEngine;
 import it.unimib.datai.nanofaas.execution.StrategyRegistry;
@@ -258,12 +257,30 @@ public class SchedulerConfiguration {
      * engine tickets — the old per-module schedulers each did this on their own queue
      * ({@code QueueManager.remove}, {@code SyncQueueService.removeFunctionState}), terminating a
      * queued caller as {@code ExecutionState.ERROR}/{@code FUNCTION_REMOVED} rather than leaving
-     * it to hang to its own timeout. {@link PendingWorkStore#snapshotPending()} is a bounded scan
-     * (the store is capped), so no per-function ticket index is needed for this.
+     * it to hang to its own timeout.
+     *
+     * <p>Fix round 2 correction: the drain is {@link SchedulerEngine#removeAllFor}, not a direct
+     * {@code PendingWorkStore.snapshotPending()} scan from this listener. {@code PendingWorkStore}
+     * documents that it does not lock internally — the engine serializes every operation on it —
+     * and this listener runs on the request thread serving the removal HTTP call while the
+     * engine's own worker mutates the same store concurrently; reading it directly here could
+     * throw a {@code ConcurrentModificationException} out of the snapshot (leaving the fence
+     * raised and capacity never retired) or silently miss entries. {@code removeAllFor} does the
+     * whole scan-and-remove under the engine's own gate, the same requirement every other access
+     * to that store already observes.
+     *
+     * <p>Fix round 2 correction: capacity is retired <em>before</em> the drain, not after. The
+     * retired async path ({@code QueueManager.remove}) detached its state first and only then
+     * drained the detached, closed state, so a concurrent admission found no state and refused.
+     * Draining first would leave {@code capacityRegistry.activeGeneration} resolvable for the
+     * whole drain window, letting a concurrent {@link EngineInvocationEnqueuer#admitDirect} admit
+     * a ticket the scan has already passed — stranded forever in the {@code FUNCTION_QUEUE}
+     * profile, since that ticket's {@code queueDeadline} is null and the sync removal fence below
+     * does not cover that admission front at all.
      */
     @Bean
     public FunctionRegistrationListener schedulerCapacityGenerationListener(DispatchCapacity capacityRegistry,
-            SchedulerEngine engine, PendingWorkStore store,
+            SchedulerEngine engine, PerFunctionDepth perFunctionDepth,
             ObjectProvider<EngineSyncQueueGateway> syncGateway) {
         return new FunctionRegistrationListener() {
             @Override
@@ -284,18 +301,19 @@ public class SchedulerConfiguration {
                 if (gateway != null) {
                     gateway.raiseRemovalFence(functionName);
                 }
-                // Drain before retiring capacity: a ticket claimed mid-drain by a concurrent
-                // pass is untouched by engine.remove (PendingWorkStore.remove is a no-op once a
-                // ticket is submitting — that attempt is already committed and belongs to the
-                // lifecycle, exactly as SchedulerEngine's own out-of-band removal documents).
-                for (PendingEntry entry : store.snapshotPending()) {
-                    if (entry.ticket().generation().functionName().equals(functionName)) {
-                        engine.remove(entry.ticket().id());
-                    }
-                }
+                // Retire capacity BEFORE draining — see the javadoc above for why the reverse
+                // order reopens the exact race C2 exists to close.
                 capacityRegistry.remove(functionName);
+                engine.removeAllFor(functionName);
+                perFunctionDepth.forget(functionName);
                 if (gateway != null) {
                     gateway.functionRemoved(functionName);
+                    // Redundant once capacityRegistry.remove has run above (enqueueOrThrow then
+                    // rejects on generation == null anyway) — cleared here so a function removed
+                    // and never re-registered does not sit in this set forever. SyncQueueService
+                    // carried the same caution: "retaining the name would turn a lifecycle fence
+                    // into an unbounded history cache."
+                    gateway.clearRemovalFence(functionName);
                 }
             }
         };

@@ -13,7 +13,6 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.LongSupplier;
 
 /**
@@ -148,10 +147,16 @@ public final class EngineInvocationEnqueuer implements InvocationEnqueuer, Retry
      * settled, so the async profile's per-function queue-size cap ({@code FunctionSpec.queueSize})
      * is preserved even though {@code PendingWorkStore} enforces only one global cap.
      *
-     * <p>{@link #tryAcquire} is a compare-and-increment against the cap (not a separate
-     * read-then-increment), so N concurrent admitters for the same function cannot all observe
-     * room and all pass a cap of 1 — the race the retired {@code FunctionQueueState.offer}'s
-     * {@code synchronized} check-and-add closed and a plain read-then-increment reopened.
+     * <p>Fix round 2: {@link #tryAcquire} and {@link #release} both mutate {@code counts}
+     * exclusively through {@link ConcurrentHashMap#compute}/{@code computeIfPresent}, so the
+     * cap-check-and-increment and the decrement-or-unmap are each one atomic operation on the
+     * map's own per-key locking — not a separate read, a CAS loop and an independent unmap that
+     * could interleave. The previous shape (an external CAS loop over a value fetched from
+     * {@code computeIfAbsent}, with {@code release} unmapping the same entry independently) had
+     * exactly that interleaving: a release that unmaps the counter between a concurrent
+     * {@code tryAcquire}'s read and its CAS let the CAS succeed against an orphaned
+     * {@code AtomicInteger}, silently loosening the cap forever. There is no such window here:
+     * both methods only ever touch the map's own atomic per-key operations.
      *
      * <p>{@link #release} is called by {@code EngineTransport} exactly at the engine's own
      * {@code finishSubmit}/{@code requeue} decision (whether {@code EngineDispatch.submit}
@@ -159,34 +164,39 @@ public final class EngineInvocationEnqueuer implements InvocationEnqueuer, Retry
      * own branch), and by {@code admitDirect} itself when a slot it reserved does not end up
      * used (generation gone, or the engine's own store rejected it). A backpressure requeue is
      * therefore not released — and not double-released either, since it was never released for
-     * that attempt in the first place — closing the previous double-decrement.
+     * that attempt in the first place.
+     *
+     * <p>{@link #forget} is called on function removal (the same hook C2 added for the engine's
+     * own drain), so neither map retains a function's cap/count forever once it is never
+     * re-registered.
      */
     public static final class PerFunctionDepth {
-        private final ConcurrentHashMap<String, AtomicInteger> counts = new ConcurrentHashMap<>();
+        private final ConcurrentHashMap<String, Integer> counts = new ConcurrentHashMap<>();
         private final ConcurrentHashMap<String, Integer> caps = new ConcurrentHashMap<>();
 
         /** Atomically reserves one slot iff doing so would not exceed {@code cap}. */
         public boolean tryAcquire(String functionName, int cap) {
             caps.put(functionName, cap);
-            AtomicInteger counter = counts.computeIfAbsent(functionName, ignored -> new AtomicInteger());
-            while (true) {
-                int current = counter.get();
-                if (current >= cap) {
-                    return false;
+            boolean[] acquired = {false};
+            counts.compute(functionName, (name, current) -> {
+                int value = current == null ? 0 : current;
+                if (value >= cap) {
+                    acquired[0] = false;
+                    return current;
                 }
-                if (counter.compareAndSet(current, current + 1)) {
-                    return true;
-                }
-            }
+                acquired[0] = true;
+                return value + 1;
+            });
+            return acquired[0];
         }
 
         public void release(String functionName) {
-            counts.computeIfPresent(functionName, (name, count) -> count.decrementAndGet() <= 0 ? null : count);
+            counts.computeIfPresent(functionName, (name, count) -> count <= 1 ? null : count - 1);
         }
 
         public int get(String functionName) {
-            AtomicInteger count = counts.get(functionName);
-            return count == null ? 0 : count.get();
+            Integer count = counts.get(functionName);
+            return count == null ? 0 : count;
         }
 
         /** {@code false} for a function never seen by {@link #tryAcquire} — matches the SPI's
@@ -194,6 +204,12 @@ public final class EngineInvocationEnqueuer implements InvocationEnqueuer, Retry
         public boolean isFull(String functionName) {
             Integer cap = caps.get(functionName);
             return cap != null && get(functionName) >= cap;
+        }
+
+        /** Drops this function's tracked cap and count entirely; called on removal. */
+        public void forget(String functionName) {
+            counts.remove(functionName);
+            caps.remove(functionName);
         }
     }
 }
