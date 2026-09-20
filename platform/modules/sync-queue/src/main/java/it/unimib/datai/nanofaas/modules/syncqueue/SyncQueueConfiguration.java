@@ -1,77 +1,48 @@
 package it.unimib.datai.nanofaas.modules.syncqueue;
 
-import io.micrometer.core.instrument.MeterRegistry;
-import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchCapacity;
 import it.unimib.datai.nanofaas.controlplane.config.SyncQueueRuntimeDefaults;
-import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
-import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
-import it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle;
-import it.unimib.datai.nanofaas.controlplane.scheduler.QueuedDispatchCapacity;
+import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingStrategy;
+import it.unimib.datai.nanofaas.controlplane.service.EngineSyncQueueGateway;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
-import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
+import it.unimib.datai.nanofaas.execution.PendingWorkStore;
+import it.unimib.datai.nanofaas.execution.SchedulerEngine;
 import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
-import it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncScheduler;
-import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueMetrics;
-import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
-import it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController;
-import it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics;
-import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
+import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueAdmissionController;
+import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueAdmissionResult;
+import it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimator;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 
+import java.time.Instant;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
+
+/**
+ * Registers this module's strategy factory plus the legacy config adapters genuinely still
+ * needed (Task 8, issue #208): the runtime-mutable {@link SyncQueueConfigSource}, the module's
+ * runtime defaults record, and the admission collaborators ({@link WaitEstimator},
+ * {@link SyncQueueAdmissionController}) composed into {@link EngineSyncQueueGateway}. The old
+ * {@code SyncQueueService}/{@code SyncScheduler} worker and its own queue are retired as beans —
+ * {@code SchedulerConfiguration} now owns the single engine they used to duplicate — but the
+ * class itself is untouched (Task 13 removes it, after a full impact pass).
+ */
 @AutoConfiguration
 @EnableConfigurationProperties(SyncQueueProperties.class)
 public class SyncQueueConfiguration {
 
-    @Bean
-    SyncQueueMetrics syncQueueMetrics(MeterRegistry meterRegistry) {
-        return new SyncQueueMetrics(meterRegistry);
-    }
+    /** How often the wait estimator prunes expired samples in the absence of new dispatches,
+     * mirroring the cadence {@code SyncScheduler}'s own tick loop gave it
+     * ({@code SyncScheduler.EMPTY_QUEUE_AWAIT_MS}) before that worker was retired. */
+    private static final long ESTIMATOR_MAINTENANCE_PERIOD_MS = 500L;
 
     @Bean
-    WorkloadDiagnostics syncQueueWorkloadDiagnostics(MeterRegistry meterRegistry) {
-        return new WorkloadDiagnostics(meterRegistry);
-    }
-
-    /** The governor's capacity knob, backed by the shared core registry (P06). */
-    @Bean
-    WorkloadCapacityController syncQueueWorkloadCapacityController(DispatchCapacity capacityRegistry) {
-        return capacityRegistry::setEffectiveConcurrency;
-    }
-
-    @Bean
-    SyncQueueWorkloadMetricsSource syncQueueWorkloadMetricsSource(
-            SyncQueueService syncQueueService, DispatchCapacity capacityRegistry) {
-        return new SyncQueueWorkloadMetricsSource(syncQueueService, capacityRegistry);
-    }
-
-    @Bean
-    WorkloadMetricsBinder syncQueueWorkloadMetricsBinder(MeterRegistry meterRegistry,
-                                                         SyncQueueWorkloadMetricsSource source) {
-        return new WorkloadMetricsBinder(meterRegistry, source);
-    }
-
-    @Bean
-    @Primary
-    SyncQueueInvocationEnqueuer syncQueueInvocationEnqueuer(DispatchCapacity capacityRegistry,
-                                                             WorkloadDiagnostics diagnostics,
-                                                             SyncQueueService syncQueueService) {
-        return new SyncQueueInvocationEnqueuer(capacityRegistry, diagnostics,
-                syncQueueService::onDispatchSlotReleased, syncQueueService);
-    }
-
-    @Bean
-    SyncQueueService syncQueueService(SyncQueueProperties props,
-                                      QueueLifecycle executionStore,
-                                      SyncQueueMetrics metrics,
-                                      SyncQueueConfigSource configSource,
-                                      DispatchCapacity capacityRegistry,
-                                      WorkloadDiagnostics diagnostics) {
-        return new SyncQueueService(props, executionStore, metrics, configSource,
-                capacityRegistry, diagnostics);
+    SchedulingStrategy sharedQueueStrategy() {
+        return new SharedQueueSchedulingStrategy();
     }
 
     @Bean("mutableSyncQueueConfigSource")
@@ -80,51 +51,58 @@ public class SyncQueueConfiguration {
         return new MutableSyncQueueConfigSource(props);
     }
 
-    // Unconditional: the scheduler must exist from module load even when admission is
-    // disabled at startup, because the runtime flag (MutableSyncQueueConfigSource) can
-    // switch the queue on at runtime, and work admitted before a runtime deactivation -
-    // including retries re-enqueued by the completion path - must keep draining. Its
-    // worker idles (parks on the queue's work signal, bounded by a safety timeout) when
-    // there is nothing to dispatch, so an always-on scheduler costs nothing while idle.
-    @Bean
-    SyncScheduler syncScheduler(QueuedDispatchCapacity enqueuer,
-                                SyncQueueService syncQueueService,
-                                InvocationDispatch invocationService,
-                                QueueLifecycle queueLifecycle,
-                                WorkloadDiagnostics diagnostics) {
-        return new SyncScheduler(enqueuer, syncQueueService, invocationService, queueLifecycle, diagnostics);
-    }
-
     @Bean
     @Primary
     SyncQueueRuntimeDefaults moduleSyncQueueRuntimeDefaults(SyncQueueProperties props) {
         return props.runtimeDefaults();
     }
 
-    @Bean
-    @Primary
-    SyncQueueGateway moduleSyncQueueGateway(SyncQueueService syncQueueService) {
-        return syncQueueService;
+    @Bean("syncQueueMaxDepth")
+    Integer syncQueueMaxDepth(SyncQueueProperties props) {
+        return props.maxDepth();
     }
 
     @Bean
-    FunctionRegistrationListener syncQueueLifecycleListener(SyncQueueService syncQueueService,
-                                                             WorkloadMetricsBinder binder,
-                                                             WorkloadDiagnostics diagnostics) {
-        return new FunctionRegistrationListener() {
-            @Override
-            public void onRegister(FunctionSpec spec) {
-                syncQueueService.registerFunction(spec.name(), spec.concurrency());
-                binder.registerFunction(spec.name());
-                diagnostics.registerFunction(spec.name());
-            }
+    WaitEstimator syncQueueWaitEstimator(SyncQueueProperties props) {
+        return new WaitEstimator(props.throughputWindow(), props.perFunctionMinSamples());
+    }
 
-            @Override
-            public void onRemove(String functionName) {
-                syncQueueService.removeFunctionState(functionName);
-                binder.removeFunction(functionName);
-                diagnostics.removeFunction(functionName);
-            }
-        };
+    @Bean
+    SyncQueueAdmissionController syncQueueAdmissionController(SyncQueueConfigSource configSource,
+            SyncQueueProperties props, WaitEstimator estimator) {
+        return new SyncQueueAdmissionController(configSource, props.maxDepth(), estimator);
+    }
+
+    /** ponytail: a single daemon timer, not a general-purpose scheduling facility — its only job
+     * is keeping {@link WaitEstimator#maintain} running while the queue is idle, since nothing
+     * else calls it once {@code SyncScheduler}'s tick loop is retired. */
+    @Bean(destroyMethod = "shutdown")
+    @SuppressWarnings("FutureReturnValueIgnored") // Periodic maintenance; nothing awaits this handle.
+    ScheduledExecutorService syncQueueEstimatorMaintenance(WaitEstimator estimator) {
+        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "nanofaas-sync-queue-estimator-maintenance");
+            thread.setDaemon(true);
+            return thread;
+        });
+        executor.scheduleWithFixedDelay(() -> estimator.maintain(Instant.now()),
+                ESTIMATOR_MAINTENANCE_PERIOD_MS, ESTIMATOR_MAINTENANCE_PERIOD_MS, TimeUnit.MILLISECONDS);
+        return executor;
+    }
+
+    @Bean
+    @Primary
+    EngineSyncQueueGateway engineSyncQueueGateway(SyncQueueConfigSource configSource,
+            SyncQueueAdmissionController admissionController, WaitEstimator estimator,
+            org.springframework.beans.factory.ObjectProvider<SchedulerEngine> engine,
+            PendingWorkStore store, DispatchCapacity capacityRegistry,
+            LongSupplier schedulerTicketSequence) {
+        return new EngineSyncQueueGateway(configSource,
+                (functionName, depth, now) -> {
+                    SyncQueueAdmissionResult result = admissionController.evaluate(functionName, depth, now);
+                    return result.accepted() ? null : result.reason();
+                },
+                estimator::recordDispatch,
+                estimator::removeFunctionState,
+                engine, store, capacityRegistry, schedulerTicketSequence);
     }
 }

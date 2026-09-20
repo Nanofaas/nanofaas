@@ -476,7 +476,9 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             // The index outlived its entry: drop the orphan rather than re-selecting it forever.
             log.warn("Dropping indexed ticket with no pending entry: {}", ticket.id());
             scheduler.index().remove(ticket.id());
-            deadlines.remove(ticket);
+            if (ticket.queueDeadline() != null) {
+                deadlines.remove(ticket);
+            }
             return null;
         }
         return new Claim(ticket, scheduler.epoch());
@@ -594,7 +596,9 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             store.requeueSubmit(ticket.id());
             if (cancelRequests.remove(ticket.id())) {
                 cancelled = store.remove(ticket.id());
-                deadlines.remove(ticket);
+                if (ticket.queueDeadline() != null) {
+                    deadlines.remove(ticket);
+                }
             } else {
                 active.index().add(ticket);
                 // Re-track in case a reap polled this deadline off while the submit was in
@@ -612,7 +616,9 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         synchronized (gate) {
             store.finishSubmit(ticket.id());
             cancelRequests.remove(ticket.id());
-            deadlines.remove(ticket);
+            if (ticket.queueDeadline() != null) {
+                deadlines.remove(ticket);
+            }
         }
     }
 

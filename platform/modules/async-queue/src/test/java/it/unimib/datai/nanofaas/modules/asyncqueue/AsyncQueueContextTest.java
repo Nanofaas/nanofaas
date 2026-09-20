@@ -3,7 +3,6 @@ package it.unimib.datai.nanofaas.modules.asyncqueue;
 import it.unimib.datai.nanofaas.controlplane.ControlPlaneApplication;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController;
-import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -12,12 +11,16 @@ import org.springframework.context.ApplicationContext;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * What this provider publishes is a contract two other modules are conditional on:
- * autoscaler and concurrency-control both refuse to start without a
- * {@code WorkloadMetricsSource}, and a @ConditionalOnBean that is not satisfied
- * disables a module in silence - no bean, no log line, no failure. The unit tests
- * here build every collaborator with {@code new}, so none of them would notice this
- * configuration going missing.
+ * What this provider publishes is a contract another module is conditional on: a
+ * {@code @ConditionalOnBean} that is not satisfied disables a module in silence - no bean, no
+ * log line, no failure. The unit tests here build every collaborator with {@code new}, so none
+ * of them would notice this configuration going missing.
+ *
+ * <p>Task 8 (issue #208) retires this module's own {@code QueueManager}-backed worker and
+ * {@code WorkloadMetricsSource}: real scheduling now goes through the shared engine
+ * ({@code SchedulerConfiguration}), and Task 11 is where an engine-backed replacement metrics
+ * source lands. This test no longer asserts a {@code WorkloadMetricsSource}/{@code QueueManager}
+ * bean for that reason — see {@code SyncQueueContextTest}.
  */
 @SpringBootTest(classes = ControlPlaneApplication.class)
 class AsyncQueueContextTest {
@@ -27,9 +30,7 @@ class AsyncQueueContextTest {
 
     @Test
     void publishesTheWorkloadContractTheConsumingModulesConditionOn() {
-        assertThat(context.getBeansOfType(WorkloadMetricsSource.class)).hasSize(1);
         assertThat(context.getBeansOfType(WorkloadCapacityController.class)).hasSize(1);
-        assertThat(context.getBeansOfType(QueueManager.class)).hasSize(1);
         assertThat(context.getBean(InvocationEnqueuer.class).supportsAsync()).isTrue();
     }
 

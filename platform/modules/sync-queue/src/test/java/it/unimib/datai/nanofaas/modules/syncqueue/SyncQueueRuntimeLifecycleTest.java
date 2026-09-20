@@ -12,18 +12,22 @@ import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionState;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
+import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.controlplane.service.EngineSyncQueueGateway;
 import it.unimib.datai.nanofaas.controlplane.service.ExecutionCompletionHandler;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
 import it.unimib.datai.nanofaas.controlplane.service.Metrics;
+import it.unimib.datai.nanofaas.controlplane.service.SchedulerConfiguration;
+import it.unimib.datai.nanofaas.controlplane.service.SchedulerLifecycleAdapter;
 import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
-import it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncScheduler;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueItem;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueMetrics;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -79,7 +83,8 @@ class SyncQueueRuntimeLifecycleTest {
     }
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
-            .withUserConfiguration(TestSupport.class, SyncQueueConfiguration.class)
+            .withUserConfiguration(TestSupport.class)
+            .withConfiguration(AutoConfigurations.of(SyncQueueConfiguration.class, SchedulerConfiguration.class))
             .withPropertyValues(
                     "sync-queue.enabled=true",
                     "sync-queue.admission-enabled=false",
@@ -95,55 +100,65 @@ class SyncQueueRuntimeLifecycleTest {
         runner.run(context -> {
             assertThat(context).hasNotFailed();
 
-            SyncScheduler scheduler = context.getBean(SyncScheduler.class);
-        // A refreshed context auto-starts SmartLifecycle beans; asserting that is the point,
-        // a "start it if it isn't running" guard would make the next assertion unfalsifiable.
-        assertThat(scheduler.isRunning()).isTrue();
-            assertThat(scheduler.isRunning()).isTrue();
+            // A4's successor: the engine's lifecycle adapter, not a per-module scheduler, is
+            // what stays running regardless of sync-queue.enabled.
+            SchedulerLifecycleAdapter lifecycleAdapter = context.getBean(SchedulerLifecycleAdapter.class);
+            assertThat(lifecycleAdapter.isRunning()).isTrue();
 
             MutableSyncQueueConfigSource configSource = context.getBean(MutableSyncQueueConfigSource.class);
-            SyncQueueService queue = context.getBean(SyncQueueService.class);
-            SyncQueueInvocationEnqueuer enqueuer = context.getBean(SyncQueueInvocationEnqueuer.class);
+            EngineSyncQueueGateway gateway = context.getBean(EngineSyncQueueGateway.class);
             ExecutionStore store = context.getBean(ExecutionStore.class);
+            FunctionCapacityRegistry capacityRegistry = context.getBean(FunctionCapacityRegistry.class);
 
             Queue<String> dispatched = new ConcurrentLinkedQueue<>();
             InvocationDispatch invocationService = context.getBean(InvocationDispatch.class);
             doAnswer(invocation -> {
-                dispatched.add(((InvocationTask) invocation.getArgument(0)).executionId());
+                InvocationTask dispatchedTask = invocation.getArgument(0);
+                dispatched.add(dispatchedTask.executionId());
+                // The mock stands in for the whole execution lifecycle, which is what would
+                // normally release the dispatch lease on completion; releasing it here keeps
+                // the function's one slot usable for the next task in this test, exactly as a
+                // real (fast) completion would.
+                dispatchedTask.dispatchLease().release();
                 return null;
             }).when(invocationService).dispatch(any(InvocationTask.class));
 
             FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null,
                     1000, 1, 2, 3, null, ExecutionMode.LOCAL, null, null, null);
+            // The function must be capacity-registered before it can be admitted at all (the
+            // engine's ticket carries a FunctionGeneration) — register it up front, then hold
+            // its one slot so the engine cannot dispatch the first task yet.
+            context.getBean(FunctionRegistrationListener.class).onRegister(spec);
+            var heldLease = capacityRegistry.tryAcquireLease("fn", 1);
+            assertThat(heldLease).isNotNull();
 
-            // Task admitted while the queue is enabled, but the function has no capacity
-            // yet, so the scheduler cannot dispatch it: it stays queued across the flip.
+            // Task admitted while the queue is enabled, but the function's one slot is held,
+            // so the engine cannot dispatch it: it stays queued across the flip.
             InvocationTask admitted = task("admitted-while-enabled", spec);
             store.put(new ExecutionRecord(admitted.executionId(), admitted));
             assertThat(configSource.syncQueueEnabled()).isTrue();
-            assertThat(enqueuer.enqueue(admitted)).isTrue();
-            assertThat(queue.queuedItems()).isEqualTo(1);
+            assertThat(gateway.enqueue(admitted)).isTrue();
 
             // Deactivate the queue. NEW invocations now take the non-queue path (the core
             // coordinator reads this flag); the already-admitted task must keep draining.
             configSource.apply(Map.of(MutableSyncQueueConfigSource.KEY_ENABLED, false));
             assertThat(configSource.syncQueueEnabled()).isFalse();
 
-            // Release the queued work by giving the function capacity: it must be drained
-            // even though the queue was deactivated before it could be dispatched.
-            queue.registerFunction("fn", 2);
+            // Release the held slot: the engine must drain the admitted task even though the
+            // queue was deactivated before it could be dispatched.
+            heldLease.release();
             Awaitility.await("admitted work drains after deactivation")
                     .atMost(Duration.ofSeconds(5))
                     .untilAsserted(() -> assertThat(dispatched).contains(admitted.executionId()));
 
             // Re-activation: the flag routes NEW invocations back into the queue and the
-            // still-running scheduler dispatches them, again without a restart.
+            // still-running engine dispatches them, again without a restart.
             configSource.apply(Map.of(MutableSyncQueueConfigSource.KEY_ENABLED, true));
             assertThat(configSource.syncQueueEnabled()).isTrue();
 
             InvocationTask reactivated = task("admitted-after-reactivation", spec);
             store.put(new ExecutionRecord(reactivated.executionId(), reactivated));
-            assertThat(enqueuer.enqueue(reactivated)).isTrue();
+            assertThat(gateway.enqueue(reactivated)).isTrue();
 
             Awaitility.await("reactivated queue dispatches new work")
                     .atMost(Duration.ofSeconds(5))

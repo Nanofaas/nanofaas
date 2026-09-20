@@ -12,6 +12,7 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.service.ExecutionCompletionHandler;
 import it.unimib.datai.nanofaas.controlplane.service.Metrics;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
+import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueMetrics;
@@ -96,8 +97,7 @@ class SyncQueueWorkloadMetricsTest {
         SyncQueueService service = service(compatibility, capacity);
         SyncQueueWorkloadMetricsSource source = new SyncQueueWorkloadMetricsSource(service, capacity);
         WorkloadMetricsBinder binder = new WorkloadMetricsBinder(registry, source);
-        SyncQueueConfiguration configuration = new SyncQueueConfiguration();
-        var listener = configuration.syncQueueLifecycleListener(service, binder,
+        var listener = registrationListener(service, binder,
                 new it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics(registry));
 
         listener.onRegister(spec("fn", 2));
@@ -163,7 +163,7 @@ class SyncQueueWorkloadMetricsTest {
         SyncQueueService service = service(metrics, capacity);
         WorkloadMetricsBinder binder = new WorkloadMetricsBinder(new SimpleMeterRegistry(),
                 new SyncQueueWorkloadMetricsSource(service, capacity));
-        new SyncQueueConfiguration().syncQueueLifecycleListener(service, binder,
+        registrationListener(service, binder,
                 new it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics(new SimpleMeterRegistry()))
                 .onRegister(spec("fn", 1));
         return new Fixture(new ExecutionStore(), service,
@@ -188,6 +188,32 @@ class SyncQueueWorkloadMetricsTest {
                 new it.unimib.datai.nanofaas.modules.syncqueue.sync.WaitEstimator(Duration.ofSeconds(30), 3),
                 metrics, java.time.Clock.systemUTC(), SyncQueueConfigSource.fixed(props.runtimeDefaults()),
                 capacity, null);
+    }
+
+    /**
+     * Task 8 (issue #208) retired {@code SyncQueueConfiguration.syncQueueLifecycleListener}: the
+     * capacity-registration half moved to {@code SchedulerConfiguration}'s consolidated listener,
+     * and {@code SyncQueueService} is no longer wired as a bean at all. This test is exercising
+     * the metrics-registration BEHAVIOR the old listener drove, not the (now-gone) bean wiring,
+     * so it rebuilds the equivalent listener body inline.
+     */
+    private static FunctionRegistrationListener registrationListener(SyncQueueService service,
+            WorkloadMetricsBinder binder, it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics diagnostics) {
+        return new FunctionRegistrationListener() {
+            @Override
+            public void onRegister(FunctionSpec spec) {
+                service.registerFunction(spec.name(), spec.concurrency());
+                binder.registerFunction(spec.name());
+                diagnostics.registerFunction(spec.name());
+            }
+
+            @Override
+            public void onRemove(String functionName) {
+                service.removeFunctionState(functionName);
+                binder.removeFunction(functionName);
+                diagnostics.removeFunction(functionName);
+            }
+        };
     }
 
     private static FunctionSpec spec(String name, int concurrency) {

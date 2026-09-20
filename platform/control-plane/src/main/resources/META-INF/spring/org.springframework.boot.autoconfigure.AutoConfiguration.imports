@@ -1,3 +1,4 @@
+it.unimib.datai.nanofaas.controlplane.service.SchedulerConfiguration
 it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuerAutoConfiguration
 it.unimib.datai.nanofaas.controlplane.service.ManagedDeploymentOrchestrationAutoConfiguration
 it.unimib.datai.nanofaas.controlplane.service.UnmanagedDeploymentDefaultsAutoConfiguration

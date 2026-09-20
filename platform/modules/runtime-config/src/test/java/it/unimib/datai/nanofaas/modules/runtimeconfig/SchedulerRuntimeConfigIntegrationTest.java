@@ -120,7 +120,18 @@ class SchedulerRuntimeConfigIntegrationTest {
                     "sync-queue.enabled=false",
                     // The default 5s client-side response timeout is shorter than the latch
                     // windows this class deliberately holds the PATCH open for.
-                    "spring.test.webtestclient.timeout=20s"
+                    "spring.test.webtestclient.timeout=20s",
+                    // Task 8 (issue #208): SchedulerConfiguration now publishes a real
+                    // SchedulerControl (the composed engine) whenever a queue module is on the
+                    // classpath, and SyncQueueConfiguration's EngineSyncQueueGateway bean now
+                    // requires the engine unconditionally (by design: this module always
+                    // contributes a SchedulingStrategy, so in production SchedulerConfiguration
+                    // is always present too). Excluding both queue modules' auto-configurations
+                    // keeps FakeSchedulerControl (imported below) the only SchedulerControl;
+                    // SyncQueueRuntimeConfigAutoConfiguration (the sync-queue admin namespace,
+                    // unrelated to what this class tests) is excluded alongside it rather than
+                    // supplying its MutableSyncQueueConfigSource dependency by hand.
+                    "spring.autoconfigure.exclude=it.unimib.datai.nanofaas.modules.asyncqueue.AsyncQueueConfiguration,it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueConfiguration,it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueRuntimeConfigAutoConfiguration"
             })
     @AutoConfigureWebTestClient
     @Import(FakeSchedulerControlConfig.class)
@@ -322,7 +333,14 @@ class SchedulerRuntimeConfigIntegrationTest {
             webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
             properties = {
                     "nanofaas.admin.runtime-config.enabled=true",
-                    "sync-queue.enabled=false"
+                    "sync-queue.enabled=false",
+                    // Task 8 (issue #208): SchedulerConfiguration now publishes a real
+                    // SchedulerControl (the composed engine) whenever any queue module is on
+                    // the classpath, which every other test in this file runs with. This nested
+                    // class exists specifically to cover the "no SchedulerControl at all" case
+                    // the extension's own @ConditionalOnBean handles — excluded explicitly here
+                    // so that case stays reachable regardless of -PcontrolPlaneModules.
+                    "spring.autoconfigure.exclude=it.unimib.datai.nanofaas.modules.asyncqueue.AsyncQueueConfiguration,it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueConfiguration,it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueRuntimeConfigAutoConfiguration"
             })
     @AutoConfigureWebTestClient
     class WithoutSchedulerControl {

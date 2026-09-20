@@ -8,12 +8,15 @@ import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
+import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
-import it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncScheduler;
-import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
+import it.unimib.datai.nanofaas.controlplane.service.EngineSyncQueueGateway;
+import it.unimib.datai.nanofaas.controlplane.service.SchedulerConfiguration;
+import it.unimib.datai.nanofaas.controlplane.service.SchedulerLifecycleAdapter;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -31,15 +34,17 @@ import static org.mockito.Mockito.mock;
 /**
  * Regression coverage for review finding P1-5 (docs/control-plane-review-2026-09-05.md,
  * "Runtime activation of the sync queue with no scheduler"), which the review only verified
- * statically ("the path was verified statically; the Spring context was not started for this
- * check"). This test starts the real Spring context to confirm the corrected behaviour.
+ * statically. This test starts the real Spring context to confirm the corrected behaviour.
  *
- * <p>The scheduler is created when the sync-queue module is loaded, even if
- * {@code sync-queue.enabled=false} at boot (A4: the runtime flag only decides the path of
- * NEW invocations; already-admitted work and its retries must keep draining, so the
- * draining worker has to exist from module load). Flipping the runtime flag to
- * {@code enabled=true} must therefore be enough for queued invocations to be dispatched -
- * the bug was that no scheduler existed to drain them at all.
+ * <p>Updated for Task 8 (issue #208): the draining worker used to be {@code SyncScheduler},
+ * created unconditionally by {@code SyncQueueConfiguration} regardless of {@code sync-queue.enabled}
+ * (A4: the runtime flag only decides the path of NEW invocations; already-admitted work and its
+ * retries must keep draining). That worker is retired; the SAME property is now provided by the
+ * single composed {@link it.unimib.datai.nanofaas.execution.SchedulerEngine}, started by
+ * {@link SchedulerLifecycleAdapter} from {@code SchedulerConfiguration} the moment a
+ * {@code SchedulingStrategy} exists — not gated on {@code sync-queue.enabled} either. Flipping the
+ * runtime flag to {@code enabled=true} must still be enough for a newly sync-admitted invocation
+ * to dispatch, without a restart.
  */
 class SyncQueueRuntimeActivationRegressionTest {
 
@@ -67,7 +72,8 @@ class SyncQueueRuntimeActivationRegressionTest {
     }
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
-            .withUserConfiguration(TestSupport.class, SyncQueueConfiguration.class)
+            .withUserConfiguration(TestSupport.class)
+            .withConfiguration(AutoConfigurations.of(SyncQueueConfiguration.class, SchedulerConfiguration.class))
             .withPropertyValues(
                     "sync-queue.enabled=false",
                     "sync-queue.admission-enabled=false",
@@ -79,20 +85,16 @@ class SyncQueueRuntimeActivationRegressionTest {
                     "sync-queue.per-function-min-samples=1");
 
     @Test
-    void enablingSyncQueueAtRuntimeDispatchesThroughTheModuleLoadedScheduler() {
+    void enablingSyncQueueAtRuntimeDispatchesThroughTheComposedEngine() {
         runner.run(context -> {
             assertThat(context).hasNotFailed();
 
-            // A4: the scheduler exists from module load even with admission disabled at
-            // startup. Previously this bean was @ConditionalOnProperty(sync-queue.enabled)
-            // and never came into existence for a runtime-only activation.
-            SyncScheduler scheduler = context.getBean(SyncScheduler.class);
-        // A refreshed context auto-starts SmartLifecycle beans; asserting that is the point,
-        // a "start it if it isn't running" guard would make the next assertion unfalsifiable.
-        assertThat(scheduler.isRunning()).isTrue();
-            assertThat(scheduler.isRunning())
-                    .as("the module-loaded scheduler must be running so a runtime "
-                            + "activation is drained without a restart")
+            // A4's successor: the engine's lifecycle adapter exists and is running from module
+            // load, not gated on sync-queue.enabled (which is runtime-mutable).
+            SchedulerLifecycleAdapter lifecycleAdapter = context.getBean(SchedulerLifecycleAdapter.class);
+            assertThat(lifecycleAdapter.isRunning())
+                    .as("the composed engine must be running so a runtime activation is "
+                            + "drained without a restart")
                     .isTrue();
 
             InvocationDispatch invocationService = context.getBean(InvocationDispatch.class);
@@ -107,20 +109,19 @@ class SyncQueueRuntimeActivationRegressionTest {
             configSource.apply(Map.of(MutableSyncQueueConfigSource.KEY_ENABLED, true));
             assertThat(configSource.syncQueueEnabled()).isTrue();
 
-            // A real queued invocation (as the runtime-activated path would admit one):
-            // the running scheduler must pick it up and dispatch it.
+            // A real queued invocation (as the runtime-activated path would admit one): the
+            // running engine must pick it up and dispatch it.
             FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null,
                     1000, 1, 1, 3, null, ExecutionMode.LOCAL, null, null, null);
             InvocationTask task = new InvocationTask("e1", "fn", spec,
                     new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
             context.getBean(ExecutionStore.class).put(new ExecutionRecord(task.executionId(), task));
-            SyncQueueService queue = context.getBean(SyncQueueService.class);
-            queue.registerFunction("fn", 1);
+            context.getBean(FunctionRegistrationListener.class).onRegister(spec);
 
-            assertThat(context.getBean(SyncQueueInvocationEnqueuer.class).enqueue(task)).isTrue();
+            assertThat(context.getBean(EngineSyncQueueGateway.class).enqueue(task)).isTrue();
             assertThat(dispatched.await(5, TimeUnit.SECONDS))
-                    .as("a SyncScheduler must exist once the sync queue is enabled at runtime, "
-                            + "otherwise queued invocations are never dispatched")
+                    .as("the engine must dispatch a sync-admitted task once the sync queue is "
+                            + "enabled at runtime")
                     .isTrue();
         });
     }

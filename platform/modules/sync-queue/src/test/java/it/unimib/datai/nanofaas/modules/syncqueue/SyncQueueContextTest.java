@@ -1,13 +1,11 @@
 package it.unimib.datai.nanofaas.modules.syncqueue;
 
 import it.unimib.datai.nanofaas.controlplane.ControlPlaneApplication;
+import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerControl;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
-import it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncScheduler;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController;
-import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
@@ -15,16 +13,19 @@ import org.springframework.context.ApplicationContext;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The sync provider's half of the same contract, asserted the same way and for the
- * same reason as {@code AsyncQueueContextTest}: autoscaler and concurrency-control
- * declare requires.oneOf=async-queue,sync-queue, so this module has to satisfy
- * their @ConditionalOnBean on its own.
+ * The sync provider's half of the composed-engine contract (Task 8, issue #208).
+ *
+ * <p>Since async-queue and sync-queue now share one classpath by design (no more mutual
+ * {@code conflicts}), this boots with both modules present and asserts what is invariant
+ * regardless of the other module: exactly one {@link WorkloadCapacityController} (there used to
+ * be two, one per module) and this module's own {@link SyncQueueGateway} contract. It does NOT
+ * assert a {@code WorkloadMetricsSource} bean count: the old {@code SyncQueueWorkloadMetricsSource}
+ * was backed by {@code SyncQueueService}'s own (now retired) queue, and Task 11 is where the
+ * engine-backed replacement lands — asserting it here would either fabricate a pass or lock in a
+ * bean this task deliberately does not add.
  */
 @SpringBootTest(classes = ControlPlaneApplication.class,
         properties = "sync-queue.enabled=true")
-// Only under a selection that excludes async-queue: with both providers on the
-// classpath the context cannot start at all, which says nothing about either.
-@EnabledIfSystemProperty(named = "nanofaas.queue.provider", matches = "sync-queue")
 class SyncQueueContextTest {
 
     @Autowired
@@ -32,17 +33,16 @@ class SyncQueueContextTest {
 
     @Test
     void publishesTheWorkloadContractTheConsumingModulesConditionOn() {
-        assertThat(context.getBeansOfType(WorkloadMetricsSource.class)).hasSize(1);
         assertThat(context.getBeansOfType(WorkloadCapacityController.class)).hasSize(1);
         assertThat(context.getBean(SyncQueueGateway.class).enabled()).isTrue();
     }
 
     @Test
-    void theSchedulerIsCreatedWheneverTheModuleIsLoaded() {
-        // A4: the draining scheduler is created from module load (not gated on
-        // sync-queue.enabled, which is runtime-mutable). Without it nothing drains the
-        // queue, and the symptom is invocations that simply never dispatch.
-        assertThat(context.getBeansOfType(SyncScheduler.class)).hasSize(1);
+    void theEngineIsCreatedWheneverAStrategyModuleIsLoaded() {
+        // A4's successor: the shared engine (not a per-module scheduler) is created and running
+        // from module load, not gated on sync-queue.enabled, which is runtime-mutable. Without
+        // it nothing drains the queue, and the symptom is invocations that simply never dispatch.
+        assertThat(context.getBeansOfType(SchedulerControl.class)).hasSize(1);
     }
 
     @Test

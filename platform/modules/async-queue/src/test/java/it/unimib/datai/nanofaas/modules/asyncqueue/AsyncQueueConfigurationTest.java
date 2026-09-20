@@ -12,7 +12,6 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -27,8 +26,24 @@ class AsyncQueueConfigurationTest {
     @Test
     void queueLifecycleListener_marksDrainedQueuedExecutionAsFunctionRemoved() {
         QueueManager queueManager = new QueueManager(new SimpleMeterRegistry(), new FunctionCapacityRegistry());
-        AsyncQueueConfiguration configuration = new AsyncQueueConfiguration();
-        FunctionRegistrationListener listener = configuration.queueLifecycleListener(queueManager, executionStore);
+        // Task 8 (issue #208) retired AsyncQueueConfiguration.queueLifecycleListener as a Spring
+        // bean method: capacity registration moved to SchedulerConfiguration's consolidated
+        // listener, and QueueManager is no longer wired at all. This test still pins
+        // QueueManager's own drain-on-removal behavior, so it rebuilds the equivalent listener
+        // body inline rather than through the (now-gone) bean method.
+        FunctionRegistrationListener listener = new FunctionRegistrationListener() {
+            @Override
+            public void onRegister(FunctionSpec spec) {
+                queueManager.getOrCreate(spec);
+            }
+
+            @Override
+            public void onRemove(String functionName) {
+                for (InvocationTask removedTask : queueManager.remove(functionName)) {
+                    executionStore.removed(removedTask);
+                }
+            }
+        };
         FunctionSpec spec = spec("echo");
         InvocationTask task = task("exec-queued", spec);
         ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
@@ -46,18 +61,6 @@ class AsyncQueueConfigurationTest {
         InvocationResult result = executionRecord.completion().join();
         assertThat(result.success()).isFalse();
         assertThat(result.error().code()).isEqualTo("FUNCTION_REMOVED");
-    }
-
-    @Test
-    void asyncQueueWorkloadMetricsBinder_reusesQueueManagerBinder() {
-        SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        QueueManager queueManager = new QueueManager(registry, new FunctionCapacityRegistry());
-        AsyncQueueConfiguration configuration = new AsyncQueueConfiguration();
-
-        WorkloadMetricsBinder first = configuration.asyncQueueWorkloadMetricsBinder(queueManager);
-        WorkloadMetricsBinder second = configuration.asyncQueueWorkloadMetricsBinder(queueManager);
-
-        assertThat(second).isSameAs(first);
     }
 
     private static FunctionSpec spec(String name) {
