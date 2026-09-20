@@ -25,6 +25,19 @@ import java.util.stream.Stream;
  * sync-queue module — does NOT flip the admission profile or disable {@code :enqueue}. The
  * scheduling strategy and the admission policy are distinct configuration axes (plan-context
  * decision 10); this test is what would fail if a future change conflated them.
+ *
+ * <p>Mutation-proof (Task 10 step 1b, issue #208): deliberately does NOT set
+ * {@code sync-queue.enabled=false}. Task 8's own bug (fix round C1) only manifested in exactly
+ * this "both-modules default artefact" shape — {@code sync-queue.enabled} left at its
+ * {@code application.yml} default of {@code true}, no explicit {@code nanofaas.admission.profile}
+ * — where {@code EngineSyncQueueGateway.enabled()} used to return {@code configSource
+ * .syncQueueEnabled()} alone and silently routed every sync invocation through the sync queue's
+ * depth/estimated-wait admission even though the resolved profile was FUNCTION_QUEUE. An earlier
+ * version of this test set {@code sync-queue.enabled=false}, which defeated that exact scenario
+ * and passed unchanged whether or not the C1 gate was present — a pin that did not pin. Leaving
+ * sync-queue enabled and giving it an estimated-wait threshold of zero turns a silent mis-route
+ * into an observable 429/est_wait on plain sync {@code :invoke}, which
+ * {@link #assertSyncInvokeIsNotGatedBySyncQueue()} asserts against.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
@@ -39,7 +52,9 @@ import java.util.stream.Stream;
                 // resolves to FUNCTION_QUEUE (async-capable), exactly the legacy async mapping
                 // plan-context decision 2 describes.
                 "nanofaas.scheduler.strategy=per-function",
-                "sync-queue.enabled=false"
+                // sync-queue.enabled is left at its application.yml default (true) on purpose —
+                // see the class comment. max-estimated-wait=0s makes a mis-route observable.
+                "sync-queue.max-estimated-wait=0s"
         })
 @AutoConfigureWebTestClient
 class AsyncCapabilityStrategyIndependenceApiTest {
@@ -62,8 +77,10 @@ class AsyncCapabilityStrategyIndependenceApiTest {
                 ExecutionMode.LOCAL, null, null, null
         ));
 
-        // Baseline: FUNCTION_QUEUE admission profile accepts :enqueue.
+        // Baseline: FUNCTION_QUEUE admission profile accepts :enqueue, and a plain sync
+        // :invoke is NOT gated by the sync queue's depth/estimated-wait admission (the C1 defect).
         assertEnqueueAccepted();
+        assertSyncInvokeIsNotGatedBySyncQueue();
 
         // The ONLY change: switch the scheduling strategy, through the real admin API / real
         // SchedulerEngine, to shared-queue — the strategy the sync-queue module contributes.
@@ -73,6 +90,7 @@ class AsyncCapabilityStrategyIndependenceApiTest {
         // accepted. A 501 here would mean the switch silently flipped ASYNC capability to sync,
         // conflating two configuration axes the plan keeps distinct.
         assertEnqueueAccepted();
+        assertSyncInvokeIsNotGatedBySyncQueue();
     }
 
     private void switchStrategyTo(String strategy) {
@@ -104,6 +122,22 @@ class AsyncCapabilityStrategyIndependenceApiTest {
                 .bodyValue(new InvocationRequest("payload", Map.of()))
                 .exchange()
                 .expectStatus().isAccepted();
+    }
+
+    /**
+     * The C1-regression pin: with the resolved profile FUNCTION_QUEUE, a plain sync
+     * {@code :invoke} must dispatch straight through (LOCAL echo, 200) rather than being
+     * evaluated against the sync queue's zero-tolerance estimated-wait threshold. If
+     * {@code EngineSyncQueueGateway.enabled()} ever again answers {@code true} purely from
+     * {@code sync-queue.enabled}, ignoring the resolved admission profile, this invocation
+     * gets rejected 429/est_wait instead.
+     */
+    private void assertSyncInvokeIsNotGatedBySyncQueue() {
+        webTestClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .bodyValue(new InvocationRequest("payload", Map.of()))
+                .exchange()
+                .expectStatus().isOk();
     }
 
     private static Set<String> selectedModules() {
