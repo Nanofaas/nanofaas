@@ -1,9 +1,13 @@
 package it.unimib.datai.nanofaas.controlplane.capacity;
 
-import org.springframework.boot.context.properties.ConfigurationProperties;
-
-/** Public, finite admission and retained-input limits for the control plane. */
-@ConfigurationProperties(prefix = "nanofaas.invocation-capacity")
+/**
+ * Public, finite admission and retained-input limits for the control plane.
+ *
+ * <p>A pure POJO: the control plane binds it from configuration (prefix
+ * {@code nanofaas.invocation-capacity}) via a {@code @ConfigurationProperties}-annotated
+ * {@code @Bean} method in {@code InvocationCapacityConfiguration}, since {@code @ConfigurationProperties}
+ * itself is a Spring annotation this mandatory runtime library must not depend on.
+ */
 public final class InvocationCapacityProperties {
     private long ingressBodyBytes = 1_048_576L;
     private long executionsGlobal = 4_096;

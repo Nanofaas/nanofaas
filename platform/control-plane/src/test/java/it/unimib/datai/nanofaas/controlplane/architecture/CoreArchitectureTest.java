@@ -76,31 +76,37 @@ class CoreArchitectureTest {
                                                                     + ".execution.ExecutionRecord")))))
                     .as("only the execution package may publish a terminal state");
 
-    // R6: the controlplane namespace belongs to the core and to the mandatory contract library,
-    // and to nothing else. P21 split it deliberately: the contracts the optional modules compile
-    // against moved to :control-plane-spi under their existing names, so that AOT hints,
-    // reflect-config, package rules and module descriptors keep addressing them as before. An
-    // optional module, an SDK or a service claiming a package in this namespace is still a
-    // violation, which is what this rule exists to catch.
+    // R6: the controlplane namespace belongs to the core, to the mandatory contract library, and
+    // to the mandatory execution runtime, and to nothing else. P21 split it deliberately: the
+    // contracts the optional modules compile against moved to :control-plane-spi under their
+    // existing names, so that AOT hints, reflect-config, package rules and module descriptors keep
+    // addressing them as before. Task 9 (issue #208) split it further: execution ownership (the
+    // store, capacity and input classes) moved into :execution-runtime, the mandatory library that
+    // owns lifecycle/resources/pending work regardless of which scheduler strategy is active,
+    // again under their existing names for the same reason. An optional module, an SDK or a
+    // service claiming a package in this namespace is still a violation, which is what this rule
+    // exists to catch.
     @ArchTest
     static final ArchRule controlplane_namespace_is_owned_by_core =
             classes()
                     .that().resideInAPackage("it.unimib.datai.nanofaas.controlplane..")
                     .should(haveSourceInCoreOrContractModule())
                     .as("classes in the controlplane namespace must live in the control-plane "
-                            + "module or in its mandatory contract library");
+                            + "module, its mandatory contract library, or its mandatory execution runtime");
 
     private static ArchCondition<JavaClass> haveSourceInCoreOrContractModule() {
-        return new ArchCondition<>("have their class file under the control-plane module or its contract library") {
+        return new ArchCondition<>("have their class file under the control-plane module, its "
+                + "contract library or its execution runtime") {
             @Override
             public void check(JavaClass item, ConditionEvents events) {
                 // ArchUnit 1.4.1 dropped SourceCodeLocation's source-path accessor, so read the
                 // source URI instead; it can point to either a classes directory or a JAR.
                 URI source = item.getSource().map(Source::getUri).orElse(null);
-                if (source == null || !(isCoreSource(source) || isContractSource(source))) {
+                if (source == null
+                        || !(isCoreSource(source) || isContractSource(source) || isRuntimeSource(source))) {
                     events.add(SimpleConditionEvent.violated(item,
-                            item.getDescription() + " lives in neither the control-plane module nor its"
-                                    + " contract library (" + source + ")"));
+                            item.getDescription() + " lives in neither the control-plane module, its"
+                                    + " contract library, nor its execution runtime (" + source + ")"));
                 }
             }
         };
@@ -112,5 +118,9 @@ class CoreArchitectureTest {
 
     static boolean isContractSource(URI uri) {
         return uri.toString().contains("/platform/control-plane-spi/");
+    }
+
+    static boolean isRuntimeSource(URI uri) {
+        return uri.toString().contains("/platform/execution-runtime/");
     }
 }

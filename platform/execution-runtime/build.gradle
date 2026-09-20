@@ -9,18 +9,58 @@ dependencyManagement {
     }
 }
 
-// The scheduling engine module. It compiles against the SPI's scheduling contracts only;
+// The scheduling engine module. It compiles against the SPI's scheduling contracts only,
+// plus Caffeine/Micrometer for the execution/capacity components extracted from the
+// control plane (issue #208, Task 9): no Spring, no fabric8, no queue modules. The
+// RuntimeArchitectureTest ArchUnit check enforces this at build time.
 // ':control-plane-spi' brings ':common' transitively (InvocationRequest et al.).
 dependencies {
     api project(':control-plane-spi')
+    implementation 'com.github.ben-manes.caffeine:caffeine'
+    implementation 'io.micrometer:micrometer-core'
 
     testImplementation 'org.junit.jupiter:junit-jupiter:6.0.3'
     testImplementation 'org.assertj:assertj-core'
     testImplementation 'org.mockito:mockito-core'
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.0'
+    testImplementation 'org.awaitility:awaitility:4.3.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 tasks.named('test') {
     useJUnitPlatform()
+}
+
+// The Gradle-level companion to RuntimeArchitectureTest (issue #208, Task 9): ArchUnit checks
+// the compiled bytecode, this checks the dependency graph itself, so an accidental
+// `implementation project(':control-plane')` (or a provider/queue module) fails the build even
+// before anything gets a chance to import a forbidden class.
+def forbiddenDependencyProjectPaths = [
+        ':control-plane', ':control-plane-modules'
+]
+
+tasks.register('verifyNoForbiddenDependencies') {
+    group = 'verification'
+    description = 'Fails if :execution-runtime depends on :control-plane, a provider or a queue module.'
+    def runtimeClasspath = configurations.runtimeClasspath
+    def compileClasspath = configurations.compileClasspath
+    doLast {
+        [runtimeClasspath, compileClasspath].each { configuration ->
+            def offendingProjects = configuration.allDependencies
+                    .withType(ProjectDependency)
+                    .collect { it.path }
+                    .findAll { path ->
+                        forbiddenDependencyProjectPaths.any { forbidden -> path == forbidden || path.startsWith(forbidden + ':') }
+                    }
+            if (!offendingProjects.isEmpty()) {
+                throw new GradleException(
+                        "execution-runtime's ${configuration.name} must not depend on control-plane, "
+                                + "a provider or a queue module, but resolved: ${offendingProjects}")
+            }
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn 'verifyNoForbiddenDependencies'
 }

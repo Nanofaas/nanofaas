@@ -1,6 +1,5 @@
 package it.unimib.datai.nanofaas.controlplane.execution;
 
-import org.springframework.lang.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -94,12 +93,10 @@ final class OutcomeWeigher {
      * Returns {@code null} when the payload cannot be bounded within the traversal
      * limits, in which case the caller must not retain it.
      */
-    @Nullable
     static FreezeResult freeze(String executionId, Outcome outcome) {
         return freeze(executionId, outcome, Long.MAX_VALUE);
     }
 
-    @Nullable
     static FreezeResult freeze(String executionId, Outcome outcome, long maximumWeight) {
         Walker walker = new Walker(true, maximumWeight);
         walker.add(stringBytes(executionId));
@@ -192,7 +189,6 @@ final class OutcomeWeigher {
             add(FIXED_OVERHEAD_BYTES);
         }
 
-        @Nullable
         Outcome freezeOutcome(Outcome outcome) {
             Object output = walk(outcome.output(), 0);
             Object headers = walk(outcome.headers(), 0);
@@ -225,7 +221,6 @@ final class OutcomeWeigher {
             return (Map<String, String>) headers;
         }
 
-        @Nullable
         Object walk(Object value, int depth) {
             if (++visited > MAX_VISITED_VALUES) {
                 cacheable = false;
@@ -273,7 +268,6 @@ final class OutcomeWeigher {
             return copy ? cloneArray(array) : array;
         }
 
-        @Nullable
         private Object walkObjectArray(Object[] array, int depth) {
             if (!enter(array)) {
                 return null;
@@ -295,7 +289,6 @@ final class OutcomeWeigher {
             return frozen;
         }
 
-        @Nullable
         private Object walkMap(Map<?, ?> map, int depth) {
             if (!enter(map)) {
                 return null;
@@ -320,7 +313,6 @@ final class OutcomeWeigher {
             return frozen != null ? Collections.unmodifiableMap(frozen) : map;
         }
 
-        @Nullable
         private Object walkList(List<?> list, int depth) {
             if (!enter(list)) {
                 return null;
@@ -344,7 +336,6 @@ final class OutcomeWeigher {
             return frozen != null ? Collections.unmodifiableList(frozen) : list;
         }
 
-        @Nullable
         private Object walkSet(Set<?> set, int depth) {
             if (!enter(set)) {
                 return null;

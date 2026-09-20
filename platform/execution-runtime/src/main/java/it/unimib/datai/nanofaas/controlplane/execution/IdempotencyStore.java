@@ -9,9 +9,6 @@ import com.github.benmanes.caffeine.cache.Ticker;
 import io.micrometer.core.instrument.FunctionCounter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
-import jakarta.annotation.PreDestroy;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
 
 import it.unimib.datai.nanofaas.controlplane.config.ExecutionStoreProperties;
 
@@ -64,7 +61,6 @@ import java.util.concurrent.atomic.AtomicLong;
  * removals release in code, so a replacement is never a release and no slot is ever
  * returned twice.
  */
-@Component
 public class IdempotencyStore {
     private final Cache<String, StoredKey> cache;
     private final ConcurrentMap<String, StoredKey> keys;
@@ -90,7 +86,6 @@ public class IdempotencyStore {
         this(ExecutionStoreProperties.of(null, null, null));
     }
 
-    @Autowired
     public IdempotencyStore(ExecutionStoreProperties executions, MeterRegistry registry) {
         this(executions);
         // Occupancy and refusals are otherwise invisible until the heap says so. A
@@ -381,7 +376,6 @@ public class IdempotencyStore {
      * Each successful removal returns exactly its reservation. Concurrent admissions
      * may survive this drain and remain accounted for.
      */
-    @PreDestroy
     public void clear() {
         // Remove only bindings we actually observe and win. Concurrent claims retain
         // their own reservation; never reset a counter shared with active admissions.

@@ -21,10 +21,6 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.lang.Nullable;
-import org.springframework.stereotype.Component;
 
 /**
  * What is executing, and what is left of it afterwards.
@@ -49,7 +45,6 @@ import org.springframework.stereotype.Component;
  * with the arrival rate. On 2026-08-23 that meant 1.05 GB, 50.6% of the time in GC,
  * and a liveness probe missed three times in a row.
  */
-@Component
 public class ExecutionStore implements QueueLifecycle {
     private static final Logger log = LoggerFactory.getLogger(ExecutionStore.class);
 
@@ -109,10 +104,10 @@ public class ExecutionStore implements QueueLifecycle {
         this(ExecutionStoreProperties.of(null, null, null));
     }
 
-    // Production timers have one Spring owner and cancellation removes their queued work.
-    @Autowired
+    // Production timers have one owner (wired explicitly by the control plane's
+    // ExecutionExpiryConfiguration) and cancellation removes their queued work.
     public ExecutionStore(ExecutionStoreProperties properties, MeterRegistry registry,
-                          @Qualifier("executionExpiryScheduler") Scheduler scheduler) {
+                          Scheduler scheduler) {
         this(properties, Ticker.systemTicker(), scheduler);
         // How much the platform is remembering, and how much it is actually executing.
         // It was the distance between these two numbers that exposed the problem:
@@ -226,14 +221,12 @@ public class ExecutionStore implements QueueLifecycle {
         return Optional.ofNullable(inFlight.getIfPresent(executionId));
     }
 
-    /** A read on the hot path, without allocating an Optional. */
-    @Nullable
+    /** A read on the hot path, without allocating an Optional. May return null. */
     public ExecutionRecord getOrNull(String executionId) {
         return inFlight.getIfPresent(executionId);
     }
 
-    /** The archived outcome, if the execution is over and someone can still read it. */
-    @Nullable
+    /** The archived outcome, if the execution is over and someone can still read it. May return null. */
     public Outcome outcomeOf(String executionId) {
         OutcomeWeigher.FreezeResult frozen = outcomes.getIfPresent(executionId);
         return frozen == null ? null : frozen.outcome();

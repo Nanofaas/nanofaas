@@ -1,7 +1,5 @@
 package it.unimib.datai.nanofaas.controlplane.config;
 
-import org.springframework.boot.context.properties.ConfigurationProperties;
-
 import java.time.Duration;
 
 /**
@@ -35,8 +33,12 @@ import java.time.Duration;
  *
  * <p>{@code maxLifetime}: the absolute ceiling past which even a non-terminal (stuck)
  * execution is evicted, so it cannot grow without end.
+ *
+ * <p>A pure record: the control plane binds it from configuration (prefix
+ * {@code nanofaas.execution-store}) via the mutable {@code ExecutionStoreBindingProperties}
+ * bean and its {@code toRuntime()} factory, since {@code @ConfigurationProperties} itself is a
+ * Spring annotation this mandatory runtime library must not depend on.
  */
-@ConfigurationProperties(prefix = "nanofaas.execution-store")
 public record ExecutionStoreProperties(
         Duration ttl,
         Duration maxLifetime,

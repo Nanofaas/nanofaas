@@ -7,7 +7,7 @@ import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.RuntimeMode;
-import it.unimib.datai.nanofaas.controlplane.config.ExecutionStoreProperties;
+import it.unimib.datai.nanofaas.controlplane.config.ExecutionStoreBindingProperties;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.junit.jupiter.api.Test;
@@ -27,10 +27,18 @@ import static org.awaitility.Awaitility.await;
 class ExecutionExpiryOwnershipTest {
     private AnnotationConfigApplicationContext context() {
         var context = new AnnotationConfigApplicationContext();
-        context.registerBean(ExecutionStoreProperties.class, () -> ExecutionStoreProperties.of(
-                Duration.ofMillis(80), Duration.ofMillis(80), Duration.ofMillis(80)));
+        // ExecutionStore/IdempotencyStore no longer carry @Component (Task 9, issue #208): they
+        // are constructed explicitly by ExecutionExpiryConfiguration's @Bean methods, from the
+        // ExecutionStoreBindingProperties Spring binds and converts to the runtime record.
+        context.registerBean(ExecutionStoreBindingProperties.class, () -> {
+            var binding = new ExecutionStoreBindingProperties();
+            binding.setTtl(Duration.ofMillis(80));
+            binding.setMaxLifetime(Duration.ofMillis(80));
+            binding.setSyncTtl(Duration.ofMillis(80));
+            return binding;
+        });
         context.registerBean(MeterRegistry.class, SimpleMeterRegistry::new);
-        context.scan(ExecutionStore.class.getPackageName());
+        context.register(ExecutionExpiryConfiguration.class);
         context.refresh();
         return context;
     }

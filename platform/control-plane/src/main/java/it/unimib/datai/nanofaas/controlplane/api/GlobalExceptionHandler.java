@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.api;
 
+import it.unimib.datai.nanofaas.controlplane.input.InvocationInputRejectedException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionApplicationPendingException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRemovalPendingException;
 import it.unimib.datai.nanofaas.controlplane.registry.ImageValidationException;
@@ -82,6 +83,20 @@ public class GlobalExceptionHandler {
                 ex.getStatusCode().toString(),
                 ex.getReason() != null ? ex.getReason() : "Request error"
         ));
+    }
+
+    /**
+     * {@link InvocationInputRejectedException} used to extend {@code ServerWebInputException}
+     * (caught by {@link #handleServerWebInputException} above) before it moved into the
+     * mandatory {@code :execution-runtime} library, which must not depend on Spring Web (Task 9,
+     * issue #208). This handler reproduces exactly the same HTTP 400 mapping: same status, same
+     * {@code BAD_REQUEST} error code, same message.
+     */
+    @ExceptionHandler(InvocationInputRejectedException.class)
+    public ResponseEntity<Map<String, Object>> handleInvocationInputRejected(
+            InvocationInputRejectedException ex) {
+        log.debug("Bad request: {}", ex.getMessage());
+        return ResponseEntity.badRequest().body(errorBody("BAD_REQUEST", ex.getMessage()));
     }
 
     @ExceptionHandler(ImageValidationException.class)
