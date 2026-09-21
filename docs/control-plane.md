@@ -250,6 +250,21 @@ The switch is manual, effective immediately in both directions without draining 
 or restarting, and does **not** persist across a restart (`persistence: "restart"` in the GET
 response) — the strategy configured at startup wins again on the next boot.
 
+The strategy an instance **starts** on is configuration, not a PATCH: set the environment
+variable `NANOFAAS_SCHEDULER_STRATEGY` to one of the artifact's ids (Helm:
+`controlPlane.scheduler.strategy`; Compose passes the same variable through, where it has an
+effect only on an image built with a queue module). Leaving it empty means "no explicit
+selection" — not a third strategy — and the engine then derives the legacy mapping from the
+strategies the artifact was built with: both queue modules or `async-queue` alone gives
+`per-function`, `sync-queue` alone gives `shared-queue`. An id that no built-in strategy
+provides **prevents startup** rather than falling back: `StrategyRegistry#require` refuses it
+with `unknown scheduling strategy: <id>, available [...]`, so a typo is a crash loop, not a
+silent downgrade to the default. Nothing else about switching is configurable at runtime: the
+preparation budget the engine measures against is a compiled constant, and the thresholds a
+switch is verified against are frozen in
+`docs/experiments/scheduler-switching-2026-09/budgets.json` — they are not keys under
+`nanofaas.scheduler.*` and cannot be set through the admin API.
+
 ## Retries without a queue module
 
 Retries do not depend on a queue module. With none loaded, the core hands the

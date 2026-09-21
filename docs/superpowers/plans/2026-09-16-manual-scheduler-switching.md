@@ -567,7 +567,7 @@ I due vecchi tipi appartengono a package diversi: importarli esplicitamente. Nel
 // SchedulerConfiguration: costruire una sola StrategyRegistry dalla lista delle factory.
 ```
 
-- [ ] Definire proprietà `strategy`, `max-switch-preparation=PT2S`, `max-switch-pause=PT0.25S`; validazione ID in startup e errore esplicito se strategia assente. La compatibilità di prodotto vive in proprietà separate `nanofaas.invocation.async-enabled` e `nanofaas.admission.profile` (`function-queue`, `sync-queue`, `direct`), risolte una volta dai vecchi selettori quando non esplicite. La PATCH scheduler non le modifica.
+- [ ] Definire proprietà `strategy`, `max-switch-preparation=PT2S`, `max-switch-pause=PT0.25S`; validazione ID in startup e errore esplicito se strategia assente. **AMENDMENT (Task 13b):** `max-switch-preparation`/`max-switch-pause` non esistono nel codice finale — erano lette da nessuno mentre il budget del motore è la costante compilata `SchedulerEngine.SWITCH_BUDGET_MS`, e cablarle avrebbe reso impostabile a runtime una soglia di misura congelata in `docs/experiments/scheduler-switching-2026-09/budgets.json`; vedere §6 dell'ADR 0002. La compatibilità di prodotto vive in proprietà separate `nanofaas.invocation.async-enabled` e `nanofaas.admission.profile` (`function-queue`, `sync-queue`, `direct`), risolte una volta dai vecchi selettori quando non esplicite. La PATCH scheduler non le modifica.
 
 | Moduli queue inclusi | Default strategia | Default ammissione | Default ASYNC |
 |---|---|---|---|
@@ -817,6 +817,8 @@ nanofaas:
     max-switch-preparation: PT2S
     max-switch-pause: PT0.25S
 ```
+
+**AMENDMENT (Task 13b):** nel codice finale restano solo `strategy: ${NANOFAAS_SCHEDULER_STRATEGY:}`; le due chiavi di budget sono state cancellate (nessun lettore, soglia congelata in `budgets.json`, non impostabile a runtime) — vedere §6 dell'ADR 0002.
 
 Stringa vuota significa mapping legacy del task 8; non è un terzo scheduler. Helm espone `controlPlane.scheduler.strategy`; Compose passa la variabile. L'abilitazione dell'API amministrativa continua a essere esplicita, senza aggiungere autenticazione fuori scope.
 - [ ] Aggiornare hint native per i nuovi DTO/configurazioni e i componenti spostati; strategie registrate come bean statici, nessuna scansione di plugin/reflection dinamica. Verificare architettura: strategie dipendono dallo SPI, non da store/runtime mutabili; runtime non dipende da Spring Web/provider/application JAR.

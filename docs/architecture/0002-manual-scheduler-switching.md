@@ -21,6 +21,15 @@ and `sync-queue`'s `SyncScheduler` (a single global depth-bounded queue with a w
 Their `module.properties` declare `conflicts=` each other, so they cannot be selected together;
 which one runs is a **build-time** choice today.
 
+**Final state (Task 13b, 2026-09-21).** Both files above are now *deleted*: the two paths are
+kept in this list because this section is the baseline Task 0 froze, not a description of the
+tree it was later read against. Tasks 1–12 composed one `SchedulerEngine`, and 13a made its
+strategy selectable at startup and switchable at runtime over HTTP; each module now contributes
+only a `SchedulingStrategy` (`PerFunctionSchedulingStrategy`, `SharedQueueSchedulingStrategy`),
+so the loops had no remaining consumer. The queue facades they drove (`QueueManager`,
+`QueueState`, `QueueBackedEnqueuer`, `SyncQueueService`, `SyncQueueInvocationEnqueuer`) are still
+present and are a separate, later removal.
+
 This campaign's goal is to make the *scheduling strategy* a **startup-selectable, then
 hot-switchable** choice behind one engine, without changing the execution lifecycle contract ADR
 0001 already froze. This ADR is that contract, written before any production code changes, exactly
@@ -130,3 +139,17 @@ but a scheduled closure of a defect this contract already names.
   measurements.
 - It records no performance numbers. `docs/experiments/scheduler-switching-2026-09/budgets.json`
   freezes the thresholds later tasks measure against; this task ran none of those measurements.
+
+## 6. Amendment recorded by Task 13b: the switch-budget keys are not runtime configuration
+
+The plan prescribed two `nanofaas.scheduler` keys beside `strategy` —
+`max-switch-preparation: PT2S` and `max-switch-pause: PT0.25S`. **The final artifact has
+neither.** They were bound into a properties record that nothing read while the engine's
+preparation budget is the compiled `SchedulerEngine.SWITCH_BUDGET_MS`, so wiring them would have
+made a frozen measurement threshold settable at runtime — the opposite of what a threshold is
+for. Task 13a's review round deleted them and recorded the ruling in `application.yml` and in
+`SchedulerProperties`' javadoc; the thresholds a switch is verified against live in
+`docs/experiments/scheduler-switching-2026-09/budgets.json` and are deliberately settable
+nowhere. The only `nanofaas.scheduler` key is `strategy`, and the only thing the admin API can
+change is the live strategy selection. The plan's own text still carries the two keys at lines
+570 and 818; both now carry this amendment inline. Do not re-add either key.
