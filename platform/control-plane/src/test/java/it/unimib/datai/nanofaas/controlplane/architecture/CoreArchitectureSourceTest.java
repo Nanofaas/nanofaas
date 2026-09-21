@@ -63,11 +63,16 @@ class CoreArchitectureSourceTest {
 
     /**
      * Task 9 (issue #208) moved the execution store, capacity and input classes into
-     * {@code :execution-runtime} and, one task later, the two scheduling strategies began
-     * contributing module classes to the same {@code controlplane} namespace the R6 rule governs.
-     * Without a predicate that recognises the runtime — and one that a module's own build
-     * directory cannot satisfy — {@code controlplane_namespace_is_owned_by_core} would reject
-     * every class of the mandatory runtime, or accept an optional module's copy of one.
+     * {@code :execution-runtime}, keeping their {@code controlplane.} package names — which is
+     * precisely why the R6 rule needs a third predicate: those classes are in the namespace the
+     * rule governs and live in none of the two modules it used to accept, so without
+     * {@code isRuntimeSource} every one of them would be reported as an outsider. The predicate
+     * must also not accept an optional module's build directory, or a module's copy of a
+     * contract would pass the rule that exists to keep the namespace in the mandatory modules.
+     *
+     * <p>(The scheduling strategies are {@code modules.asyncqueue}/{@code modules.syncqueue}
+     * classes and never enter this namespace, so they are not part of this predicate's
+     * justification.)
      */
     @ParameterizedTest
     @ValueSource(strings = {

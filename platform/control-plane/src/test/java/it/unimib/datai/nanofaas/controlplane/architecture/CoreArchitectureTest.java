@@ -28,9 +28,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>The analyzed packages include the optional modules, not only the core: a scheduling
  * strategy is contributed by a module, and its dependency direction is the one thing the build
- * graph of this module cannot see (the core depends on the modules at runtime only). The rules
- * that only concern the core are still expressed as package predicates, so widening the import
- * set does not widen what they check.
+ * graph of this module cannot see (the core depends on the modules at runtime only).
+ *
+ * <p>Widening the import set widens the two rules that select their subjects by <em>exclusion</em>
+ * rather than by package: R2 ({@code resideOutsideOfPackage("..api..")}) and P22
+ * ({@code resideOutsideOfPackage("..execution..")}) now also have module classes in their scope.
+ * They are green with them today, and that is the strict direction — a module that trips one is
+ * looking at a rule the core already obeys — but it is a widening, not a no-op: a module author
+ * can now hit a rule the module's own architecture test never mentions.
  */
 @AnalyzeClasses(packages = {
         "it.unimib.datai.nanofaas.controlplane..",

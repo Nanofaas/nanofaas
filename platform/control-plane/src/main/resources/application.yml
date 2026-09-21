@@ -59,13 +59,16 @@ nanofaas:
     # sync-queue only → shared-queue. An id no built-in strategy provides fails
     # startup (StrategyRegistry#require) instead of silently falling back.
     strategy: ${NANOFAAS_SCHEDULER_STRATEGY:}
-    # The two switch budgets the plan froze and Task 12's gate measured against
-    # (max pause 3.984 ms against the 250 ms below). They are startup-validated
-    # configuration, declared here so an operator sees the contract in one place;
-    # the engine's own rebuild budget is still the compiled constant
-    # (SchedulerEngine.SWITCH_BUDGET_MS), which is what the gate measures.
-    max-switch-preparation: PT2S
-    max-switch-pause: PT0.25S
+    # This namespace deliberately carries no switch-budget keys. The plan's Task 13
+    # YAML put max-switch-preparation/max-switch-pause here, but nothing ever read
+    # them: the engine's preparation budget is the compiled
+    # SchedulerEngine.SWITCH_BUDGET_MS (50 ms, not the 2 s the key claimed) and its
+    # pause is bounded by the engine's own design, not by a setting. The thresholds a
+    # switch is verified against are frozen in
+    # docs/experiments/scheduler-switching-2026-09/budgets.json, where Task 12's
+    # harness enforces them. The switch pause is bounded by the engine and verified at
+    # the frozen threshold; it is not settable at runtime, and a key here would be
+    # read as a supported control by everyone who did not read this comment.
   invocation-capacity:
     # Calibrated for the chart's minimum supported 512 MiB container. These are
     # simultaneous live-owner ceilings, not rate limits and not an RSS promise.

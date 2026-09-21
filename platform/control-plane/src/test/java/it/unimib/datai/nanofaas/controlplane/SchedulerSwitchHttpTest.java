@@ -402,6 +402,14 @@ class SchedulerSwitchHttpTest {
     /**
      * The switch itself, through the real endpoint and the existing runtime-config envelope: the
      * revision the caller last read, 200 on commit, and the committed snapshot in the answer.
+     *
+     * <p>The envelope's own {@code effectiveConfig} is NOT the assertion that the switch took
+     * effect, even though it looks like one: {@code SchedulerRuntimeConfigExtension.prepare}
+     * computes it from the requested target, and {@code RuntimeConfigService.updatePrepared}
+     * deliberately never re-reads the registry after commit — so it would read back
+     * {@code target} even if {@code SchedulerEngine.switchTo} had silently done nothing. The
+     * assertion that the engine really switched is {@link #activeStrategy()}, which reads the
+     * live snapshot.
      */
     private void switchStrategyTo(String target) {
         client.patch().uri("/v1/admin/runtime-config/scheduler")
@@ -411,9 +419,12 @@ class SchedulerSwitchHttpTest {
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
-                .jsonPath("$.effectiveConfig.namespaces.scheduler.strategy").isEqualTo(target)
                 .jsonPath("$.effectiveConfig.namespaces.scheduler.persistence").isEqualTo("restart")
                 .jsonPath("$.warnings").isEmpty();
+
+        assertThat(activeStrategy())
+                .as("the committed switch must be visible in the engine's own live selection")
+                .isEqualTo(target);
     }
 
     private String activeStrategy() {

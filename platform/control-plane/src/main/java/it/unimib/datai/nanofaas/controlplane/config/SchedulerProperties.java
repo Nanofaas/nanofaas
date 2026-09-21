@@ -2,8 +2,6 @@ package it.unimib.datai.nanofaas.controlplane.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-import java.time.Duration;
-
 /**
  * Startup configuration for the composed scheduling engine (Task 8, issue #208).
  *
@@ -12,24 +10,25 @@ import java.time.Duration;
  * strategies actually built into this artifact. An explicit id that no built-in strategy
  * provides is a startup error (surfaced by {@code StrategyRegistry#require}).
  *
- * <p>{@code maxSwitchPreparation} and {@code maxSwitchPause} describe the budget a manual
- * strategy switch must respect; they are validated here but the engine's own rebuild budget
- * ({@code SchedulerEngine.SWITCH_BUDGET_MS}/{@code MAX_SWITCH_REBUILD_TICKETS}) is not yet
- * wired to a runtime-configurable value — connecting these two is left to the task that
- * measures the switch pause against them (plan-context: "Task 12 misura la pausa").
+ * <h2>Why there are no switch-budget keys here</h2>
+ *
+ * <p>Task 13a first declared {@code max-switch-preparation} and {@code max-switch-pause} here, as
+ * the plan's Task 13 YAML specifies. A review found them inert, and they were removed: they bound
+ * to this record and were then read by nobody ({@link SchedulerConfiguration} consumes only
+ * {@code strategy}), nothing range-checked them, and the numbers did not describe what the engine
+ * does — its preparation budget is the compiled {@code SchedulerEngine.SWITCH_BUDGET_MS} (50 ms,
+ * not the 2 s declared), and its pause is bounded by the engine's own design rather than by a
+ * setting.
+ *
+ * <p>The thresholds a switch is verified against live where they are <em>enforced</em>: the frozen
+ * values in {@code docs/experiments/scheduler-switching-2026-09/budgets.json} (Task 12's harness
+ * fails a run that exceeds them) and the engine's own compiled bound at runtime. Wiring a frozen
+ * measurement threshold into runtime configuration would make it settable, which is the opposite
+ * of what a threshold is for, and a second home for the same number is how the two drift apart.
+ *
+ * <p>So: the switch pause is bounded by the engine and verified at the frozen threshold. It is not
+ * settable at runtime, and this record does not pretend otherwise.
  */
 @ConfigurationProperties(prefix = "nanofaas.scheduler")
-public record SchedulerProperties(String strategy, Duration maxSwitchPreparation, Duration maxSwitchPause) {
-
-    private static final Duration DEFAULT_MAX_SWITCH_PREPARATION = Duration.ofSeconds(2);
-    private static final Duration DEFAULT_MAX_SWITCH_PAUSE = Duration.ofMillis(250);
-
-    public SchedulerProperties {
-        if (maxSwitchPreparation == null) {
-            maxSwitchPreparation = DEFAULT_MAX_SWITCH_PREPARATION;
-        }
-        if (maxSwitchPause == null) {
-            maxSwitchPause = DEFAULT_MAX_SWITCH_PAUSE;
-        }
-    }
+public record SchedulerProperties(String strategy) {
 }
