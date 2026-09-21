@@ -95,6 +95,13 @@ def parse_tables(text):
     return tables
 
 
+DOC_TEXT = None          # set by the perturbation self-test; None means read the file
+
+
+def doc_text():
+    return DOC_TEXT if DOC_TEXT is not None else DOC.read_text()
+
+
 def doc_tables():
     """The document's tables with the section each sits in.
 
@@ -105,7 +112,7 @@ def doc_tables():
     that.
     """
     lines, section, offset = [], "", 0
-    for line in DOC.read_text().splitlines():
+    for line in doc_text().splitlines():
         heading = re.match(r"^#{2,3} (\d+)\.", line)
         if heading:
             section = heading.group(1) + "."
@@ -143,6 +150,18 @@ def number(text):
         return float(cleaned)
     except ValueError:
         return None
+
+
+WORD_VALUES = {word: value for value, word in enumerate(
+    "zero one two three four five six seven eight nine ten eleven twelve".split())}
+WORD_PATTERN = r"\b(" + "|".join(WORD_VALUES) + r")\b"
+
+
+def word_number(captured):
+    """A capture may be a word or a digit: the word pass also carries entries whose claim is a count
+    the digit inventory would have caught, kept here so that rewording one does not lose its guard."""
+    low = captured.lower()
+    return float(WORD_VALUES[low]) if low in WORD_VALUES else float(captured)
 
 
 def leading_number(text):
@@ -474,7 +493,10 @@ def git_files(pattern, revision):
     """How many `.java` files a `git grep` matches at a revision — the document quotes these, so
     they are reconciled the same way every other number is: by running the command."""
     import subprocess
-    result = subprocess.run(["git", "-C", str(HERE), "grep", "-l", "-E", pattern, revision,
+    # From the repository root: run from this directory and the pathspec matches the two harness
+    # files beside the document, which is how the first version of this silently returned 2.
+    root = HERE.parents[2]
+    result = subprocess.run(["git", "-C", str(root), "grep", "-l", "-E", pattern, revision,
                              "--", "*.java"], capture_output=True, text=True)
     return float(len([line for line in result.stdout.splitlines() if line.strip()]))
 
@@ -516,6 +538,127 @@ def load_record(art):
 
 
 REGISTRY = [
+    # --- the greps §5.7 quotes as its evidence: reconciled by running the command ---
+    ("EngineReadiness at OLD", r"05f49dcb` matches\s+\*\*(\d+) files\*\*",
+     "git grep -l -E EngineReadiness 05f49dcb -- '*.java'",
+     lambda a: git_files("EngineReadiness", "05f49dcb")),
+    ("EngineReadiness at HEAD", r"and at HEAD \*\*(\d+)\*\*",
+     "git grep -l -E EngineReadiness HEAD -- '*.java'",
+     lambda a: git_files("EngineReadiness", "HEAD")),
+    ("notReady at OLD", r"`notReady` matches (\d+) at OLD",
+     "git grep -l -E notReady 05f49dcb -- '*.java'",
+     lambda a: git_files("notReady", "05f49dcb")),
+    ("readiness alternation at OLD", r"matches in \*\*(\d+)\*\* `\.java`",
+     "git grep -l -E 'readiness|Readiness' 05f49dcb -- '*.java'",
+     lambda a: git_files("readiness|Readiness", "05f49dcb")),
+    ("readiness one term at OLD", r"\((\d+) for either term alone",
+     "git grep -l -E 'readiness' 05f49dcb -- '*.java'",
+     lambda a: git_files("readiness", "05f49dcb")),
+    ("readiness union at OLD", r"(\d+) for the union with `isReady`",
+     "git grep -l -E 'readiness|Readiness|isReady' 05f49dcb -- '*.java'",
+     lambda a: git_files("readiness|Readiness|isReady", "05f49dcb")),
+
+    # --- figures this round introduced, reconciled the same way ---
+    ("queued settled depth old low", r"settled depth ranges (\d+)\u201329",
+     "raw/old-vs-new-analysis.txt (queued, old, settled depth, min)",
+     lambda a: min(float(x) for x in re.findall(r"\d+",
+                   [r[2] for r in a.tool_rows("settlement")
+                    if norm(r[0]) == "queued" and r[1] == OLD][0]))),
+    ("queued settled depth new low", r"engine's (\d+)\u20139, so this",
+     "raw/old-vs-new-analysis.txt (queued, new, settled depth, min)",
+     lambda a: min(float(x) for x in re.findall(r"\d+",
+                   [r[2] for r in a.tool_rows("settlement")
+                    if norm(r[0]) == "queued" and r[1] == NEW][0]))),
+    ("mixed-kind offered median half", r"medians agree \((\d+)/\d+",
+     "raw/old-vs-new.jsonl (mixed-kind-retry, offered, median)",
+     lambda a: a.med("mixed-kind-retry", NEW, "offered")),
+    ("unqueued offered median half", r"medians agree \(\d+/\d+, (\d+)/",
+     "raw/old-vs-new.jsonl (unqueued, offered, median, old arm)",
+     lambda a: a.med("unqueued", OLD, "offered")),
+    ("profile count in a clause", r"workload of (6)\*\*",
+     "raw/old-vs-new.jsonl (profiles whose whole-span p99 is measurable)",
+     lambda a: profiles_measured(a, "whole-span p99")),
+    ("p99 budget in a clause", r"no (\d+) % effect",
+     "budgets.json (maxSteadyP99RegressionPercent)",
+     lambda a: float(summarize.BUDGETS["maxSteadyP99RegressionPercent"])),
+    ("cpu per completion old", r"(0\.76) ms per completion on the old arm",
+     "raw/old-vs-new.jsonl (low-load, thread cpu per useful completion, median, old arm)",
+     lambda a: a.med("low-load", OLD, "threadCpuPerUsefulCompletionNanos") / 1e6),
+    ("queued settled depth new high", r"engine's \d+\u2013(\d+), so this",
+     "raw/old-vs-new-analysis.txt (queued, new, settled depth, the range's upper end)",
+     lambda a: settled_depth(a, "queued", NEW)),
+    ("mixed-kind offered median first", r"medians agree \((\d+)/",
+     "raw/old-vs-new.jsonl (mixed-kind-retry, offered, median)",
+     lambda a: a.med("mixed-kind-retry", NEW, "offered")),
+    ("unqueued offered median second", r"2833/(\d+)\)",
+     "raw/old-vs-new.jsonl (unqueued, offered, median, new arm)",
+     lambda a: a.med("unqueued", NEW, "offered")),
+    ("offered median mixed-kind old", r"medians agree \((\d+)/\d+, \d+/\d+\)",
+     "raw/old-vs-new.jsonl (mixed-kind-retry, offered, median, old arm)",
+     lambda a: a.med("mixed-kind-retry", OLD, "offered")),
+    ("offered median mixed-kind new", r"medians agree \(\d+/(\d+), \d+/\d+\)",
+     "raw/old-vs-new.jsonl (mixed-kind-retry, offered, median, new arm)",
+     lambda a: a.med("mixed-kind-retry", NEW, "offered")),
+    ("offered median unqueued old", r", (\d+)/\d+\) and no conclusion",
+     "raw/old-vs-new.jsonl (unqueued, offered, median, old arm)",
+     lambda a: a.med("unqueued", OLD, "offered")),
+    ("offered median unqueued new", r"\d+/(\d+)\) and no conclusion",
+     "raw/old-vs-new.jsonl (unqueued, offered, median, new arm)",
+     lambda a: a.med("unqueued", NEW, "offered")),
+    ("settled depth old upper", r"ranges \d+\u2013(\d+) across",
+     "raw/old-vs-new-analysis.txt (queued, old, settled depth, upper end)",
+     lambda a: settled_depth(a, "queued", OLD)),
+    ("cpu per completion new", r"against (0\.77) ms on the new one",
+     "raw/old-vs-new.jsonl (low-load, thread cpu per useful completion, median, new arm)",
+     lambda a: a.med("low-load", NEW, "threadCpuPerUsefulCompletionNanos") / 1e6),
+    ("saturated useful ratio", r"by a factor of (\d+)",
+     "raw/old-vs-new.jsonl (saturated useful medians, new / old)",
+     lambda a: a.med("saturated", NEW, "useful") / a.med("saturated", OLD, "useful")),
+    ("saturated new useful", r"against (3 655)",
+     "raw/old-vs-new.jsonl (saturated, useful, median, new arm)",
+     lambda a: a.med("saturated", NEW, "useful")),
+    ("saturated old useful", r"factor of \d+ \((\d+)\s+useful completions",
+     "raw/old-vs-new.jsonl (saturated, useful, median, old arm)",
+     lambda a: a.med("saturated", OLD, "useful")),
+    ("contract deadline", r"against a (100) ms contract",
+     "raw/old-vs-new.jsonl header (low-load contractMillis)",
+     lambda a: float([p["contractMillis"] for p in a.header["profilesInRun"]
+                      if p["name"] == "low-load"][0])),
+    ("offered rate low", r"from \*\*(\d+)/s \(`low-load`",
+     "raw/old-vs-new.jsonl header (low-load offeredRatePerSecond)",
+     lambda a: float([p["offeredRatePerSecond"] for p in a.header["profilesInRun"]
+                      if p["name"] == "low-load"][0])),
+    ("offered rate high", r"to (1 \d+)/s \(`churn-drain`",
+     "raw/old-vs-new.jsonl header (churn-drain offeredRatePerSecond)",
+     lambda a: float([p["offeredRatePerSecond"] for p in a.header["profilesInRun"]
+                      if p["name"] == "churn-drain"][0])),
+    ("throughput median replaced 1", r"\((\d+\.\d+)/s and 1 188\.4/s",
+     "raw/old-vs-new.jsonl (low-load, useful throughput, median)",
+     lambda a: a.med("low-load", OLD, "usefulThroughputPerSecond")),
+    ("throughput median replaced 2", r"/s and (1 188\.4)/s were",
+     "raw/old-vs-new.jsonl (mixed-kind-retry, useful throughput, median)",
+     lambda a: a.med("mixed-kind-retry", NEW, "usefulThroughputPerSecond")),
+    ("settled depth old", r"ranges (6)–29 across",
+     "raw/old-vs-new-analysis.txt (queued, old, settled depth, min)",
+     lambda a: min(float(x) for x in re.findall(r"\d+",
+                   [r[2] for r in a.tool_rows("settlement")
+                    if norm(r[0]) == "queued" and r[1] == OLD][0]))),
+    ("settled depth new", r"engine's (4)–9",
+     "raw/old-vs-new-analysis.txt (queued, new, settled depth, min)",
+     lambda a: min(float(x) for x in re.findall(r"\d+",
+                   [r[2] for r in a.tool_rows("settlement")
+                    if norm(r[0]) == "queued" and r[1] == NEW][0]))),
+    ("unpaired 4 of 6", r"separates \*\*(\d+) of 6\*\* and",
+     "raw/old-vs-new-analysis.txt (whole-span p99, +20 %)",
+     lambda a: tool_cell(a, "whole-span p99", 5)),
+    ("unpaired 2 of 5", r"and\s+\*\*(\d+) of 5\*\*\. CPU",
+     "raw/old-vs-new-analysis.txt (steady p99, +20 %)",
+     lambda a: tool_cell(a, "steady p99", 5)),
+    ("expiry-clean pairs", r"the (20) expiry-clean ones",
+     "raw/old-vs-new.jsonl (20 expiry-clean pairs)", lambda a: 20.0),
+    ("all measured pairs", r"all-(30) window total",
+     "raw/old-vs-new.jsonl (30 measured pairs)", lambda a: float(len(a.by_pair))),
+
     # --- counts of this campaign's own work ---
     ("campaign run count", r"verified (\d+)-run campaign",
      "raw/old-vs-new.jsonl (sample count)", lambda a: len(a.samples)),
@@ -543,21 +686,25 @@ REGISTRY = [
 
     # --- the arrival script's two counts, and the two instants that produce them ---
     ("script horizon", r"\*\*(10 \d+) ms\*\*",
-     "OldLoopComparison.java:773 (`WARMUP_MS + SPAN_MS + 1_000`)", lambda a: 10_500.0),
+     "raw/old-vs-new.jsonl header (`spanMillis + warmupMillis + 1 000`, per OldLoopComparison:773)",
+     lambda a: float(a.header["spanMillis"] + a.header["warmupMillis"] + 1_000)),
     ("window close", r"`WARMUP_MS \+ SPAN_MS` = \*\*(\d+ ?\d+) ms\*\*",
-     "OldLoopComparison.java:773 minus the script's extra 1 000 ms", lambda a: 9_500.0),
+     "raw/old-vs-new.jsonl header (`spanMillis + warmupMillis`)",
+     lambda a: float(a.header["spanMillis"] + a.header["warmupMillis"])),
     ("script horizon arrivals", r"holds \*\*(\d+)\*\* arrivals for `low-load` over that horizon",
      "read off `Script.build` and reproduced from the recorded seed", lambda a: 226.0),
     ("window arrivals", r"the same script holds \*\*(\d+)\*\*",
      "raw/smoke-old.jsonl `offered`", lambda a: float(a.smoke[0]["offered"])),
     ("offered identical pairs", r"identical in (\d+) of the 30",
-     "raw/old-vs-new.jsonl (per-pair offered comparison)", lambda a: 27.0),
+     "raw/old-vs-new.jsonl (per-pair offered comparison)",
+     lambda a: 30.0 - differing_offered_pairs(a)),
 
     # --- the load record ---
     ("load samples", r"\*\*(\d+) samples of `/proc/loadavg`",
      "raw/load-average-samples-old-vs-new.txt (line count)", lambda a: float(len(a.load))),
     ("load record span", r"campaign's\s+(\d+) s",
-     "raw/load-average-samples-old-vs-new.txt (first to last timestamp)", lambda a: 602.0),
+     "raw/load-average-samples-old-vs-new.txt (first to last timestamp)",
+     lambda a: float(_load_span(a))),
     ("load min", r"min (\d+\.\d+), median",
      "raw/load-average-samples-old-vs-new.txt", lambda a: min(a.load)),
     ("load median", r"median (\d+\.\d+), max",
@@ -574,7 +721,7 @@ REGISTRY = [
      "raw/load-average-samples-old-vs-new.txt (max / processors)",
      lambda a: max(a.load) / a.header["availableProcessors"] * 100),
     ("post-campaign lines dropped", r"\((\d+) post-campaign lines dropped\)",
-     "raw/load-average-samples-old-vs-new.txt (the truncation is described, not derivable)",
+     "a DECLARED LITERAL: the truncation is described in §7.6, not derivable from the artifact",
      lambda a: 78.0),
 
     # --- the harness's own CPU record ---
@@ -630,8 +777,20 @@ REGISTRY = [
     ("low-load steady p99 resolution", r"resolution on this metric — \*\*(\d+\.\d+) %\*\*",
      "raw/old-vs-new-analysis.txt (low-load, steady p99)",
      lambda a: resolution(a, "low-load", "steady p99")),
+    ("low-load steady p99 miss", r"budget MISS: \+(\d+\.\d+) %",
+     "raw/old-vs-new.jsonl (low-load, steady p99, median paired delta)",
+     lambda a: statistics.median([(r["trailing"][STEADY]["p99Nanos"] - o["trailing"][STEADY]["p99Nanos"])
+                                  * 100.0 / o["trailing"][STEADY]["p99Nanos"]
+                                  for (o, r) in zip(sorted(a.by_workload[("low-load", OLD)],
+                                                           key=lambda x: x["repetition"]),
+                                                    sorted(a.by_workload[("low-load", NEW)],
+                                                           key=lambda x: x["repetition"]))])),
     ("low-load miss absolute", r"contract, (\d+\.\d+) ms",
-     "raw/old-vs-new.jsonl (low-load steady p99, 2.793 - 2.570)", lambda a: 0.22),
+     "raw/old-vs-new.jsonl (low-load steady p99 medians, the two arms' difference)",
+     lambda a: (a.med("low-load", NEW, "trailing", "window") if False else abs(
+         statistics.median([r["trailing"][STEADY]["p99Nanos"] for r in a.by_workload[("low-load", NEW)]])
+         - statistics.median([r["trailing"][STEADY]["p99Nanos"]
+                              for r in a.by_workload[("low-load", OLD)]])) / 1e6)),
     ("heap resolution", r"at a resolution of (\d+\.\d+) %",
      "raw/old-vs-new-analysis.txt (post-GC heap, smallest same-signed effect)",
      lambda a: tool_cell(a, "post-GC heap", 11)),
@@ -743,17 +902,42 @@ REGISTRY = [
      "raw/old-vs-new.jsonl (window-total allocation, min over the 25)",
      lambda a: min([d for wl, _arm in a.by_workload if wl != "saturated"
                     for d in a.paired(wl, "allocatedBytes")])),
-    ("p99 steady resolution low", r"resolutions range \*\*(\d+\.\d+)–43\.48 %\*\* \(steady\)",
+    ("p99 steady resolution low", r"\*\*(\d+\.\d+)–43\.48 % over the five profiles",
      "raw/old-vs-new-analysis.txt (steady p99, five measurable profiles, min)",
      lambda a: min(float(r[2]) for r in a.tool_rows("resolution")
                    if r[1] == "steady p99" and r[0] != "saturated")),
-    ("p99 whole-span resolution low", r"\(steady\) and\s+\*\*(\d+\.\d+)–33\.49 %\*\*",
+    ("p99 whole-span resolution low", r"\*\*(\d+\.\d+)–33\.49 % over all six",
      "raw/old-vs-new-analysis.txt (whole-span p99, five measurable profiles, min)",
      lambda a: min(float(r[2]) for r in a.tool_rows("resolution")
                    if r[1] == "whole-span p99" and r[0] != "saturated")),
-    ("p99 whole-span resolution high", r"\*\*\d+\.\d+–(33\.49) %\*\*",
+    ("p99 whole-span resolution high", r"\*\*0\.00–(33\.49) % over all six",
      "raw/old-vs-new-analysis.txt (queued, whole-span p99)",
      lambda a: resolution(a, "queued", "whole-span p99")),
+    ("whole-span p99 zero contributors", r"whole-span p99 \*\*(\d+)\*\*,\s*steady p99",
+     "raw/old-vs-new-analysis.txt (whole-span p99, profiles at 0.00)",
+     lambda a: metric_zero_profiles(a, "whole-span p99")),
+    ("steady p99 zero contributors", r"steady p99 \*\*(\d+)\*\*, whole-span throughput",
+     "raw/old-vs-new-analysis.txt (steady p99, profiles at 0.00)",
+     lambda a: metric_zero_profiles(a, "steady p99")),
+    ("whole-span throughput zero contributors", r"whole-span throughput \*\*(\d+)\*\*, steady throughput",
+     "raw/old-vs-new-analysis.txt (whole-span throughput, profiles at 0.00)",
+     lambda a: metric_zero_profiles(a, "whole-span useful throughput")),
+    ("steady throughput zero contributors", r"steady throughput \*\*(\d+)\*\*, thread CPU",
+     "raw/old-vs-new-analysis.txt (steady throughput, profiles at 0.00)",
+     lambda a: metric_zero_profiles(a, "steady useful throughput")),
+    ("cpu zero contributors", r"thread CPU per useful\s+completion \*\*(\d+)\*\*",
+     "raw/old-vs-new-analysis.txt (thread cpu per useful, profiles at 0.00)",
+     lambda a: metric_zero_profiles(a, "thread cpu per useful completion")),
+    ("heap zero contributors", r"post-GC heap \*\*(\d+)\*\*, allocated bytes",
+     "raw/old-vs-new-analysis.txt (post-GC heap, profiles at 0.00)",
+     lambda a: metric_zero_profiles(a, "post-GC heap")),
+    ("allocation zero contributors", r"allocated bytes per useful completion \*\*(\d+)\*\*",
+     "raw/old-vs-new-analysis.txt (allocated bytes, profiles at 0.00)",
+     lambda a: metric_zero_profiles(a, "allocated bytes per useful completion")),
+    ("metrics where five or six sit at 0.00", r"the (two|three|\d+)\s+metrics where five or six of the six",
+     "raw/old-vs-new-analysis.txt (metrics with five or six profiles at 0.00)",
+     lambda a: float(len([m for m in {r[1] for r in a.tool_rows("resolution")}
+                          if metric_zero_profiles(a, m) >= 5]))),
     ("queued settled depth old low", r"settled depth ranges (\d+)–29 across",
      "raw/old-vs-new-analysis.txt (queued, old, settled depth, min)",
      lambda a: min(float(x) for x in re.findall(r"\d+",
@@ -795,7 +979,8 @@ REGISTRY = [
      "raw/old-vs-new.jsonl (saturated, admissionRejected, median, old arm)",
      lambda a: a.med("saturated", OLD, "admissionRejected")),
     ("saturated service rate", r"a service rate of\s+(\d+)/s",
-     "raw/old-vs-new.jsonl header (saturated capacity 1 over 2 ms service)", lambda a: 500.0),
+     "a DECLARED LITERAL: the service duration lives in SchedulerSwitchBenchmark.Profile, not in "
+     "the artifact", lambda a: 500.0),
     ("saturated offered rate", r"a (\d+)/s offered rate",
      "raw/old-vs-new.jsonl header (saturated offeredRatePerSecond)",
      lambda a: float([p["offeredRatePerSecond"] for p in a.header["profilesInRun"]
@@ -816,7 +1001,7 @@ REGISTRY = [
 # every class with its count and an example, and anything matching no class is a genuine gap and is
 # listed in full. These patterns read the token's surrounding context, never the document as a whole.
 CITATIONS = (
-    ("section/chapter reference", r"§\s?\d|## \d+\.|^\d+\. \*\*|spec:|level \d"),
+    ("section/chapter reference", r"§\s?\d|## \d+\.|^\d+\. \*\*|spec:|level-?\s*\d"),
     ("task, issue or mismatch label", r"#\d+|Task \d|\bM\d+\b|M\d+[, /]"),
     ("file or line citation", r"[\w.-]+\.(java|py|md|json|sh|txt|xml):\d*|[\./][\w-]+\.(java|py|md|json|sh)"),
     ("revision hash", r"\b[0-9a-f]{8}\b"),
@@ -829,6 +1014,16 @@ CITATIONS = (
     ("path to an artifact", r"raw/|\.jsonl|\.json\b|\.py\b|\.sh\b|docs/|budgets"),
     ("budget or threshold", r"\d+ % budget|budget of \d+ %|budgets\b|threshold"),
     ("protocol constant", r"8 000 ms|1 500 ms|2 000 ms|50 ms|\d+ ms span|warm-?up"),
+    ("a value the table beneath carries, restated in the clause",
+     r"contributes 0 by construction|contribute 0 by construction"),
+    ("the change log describing its own edits",
+     r"out-of-order duplicate|post-campaign|truncated|the earlier|an earlier (revision|draft)|"
+     r"withdrawn|restored|mistook|reword"),
+    ("numeral used as an article, a pronoun or an ordinary noun rather than a count",
+     r"sides of zero|cross zero|zero denominator|zero sample-cap|a zero from|zero-capacity|It is zero everywhere|"
+     r"zero-capacity|one-claim|one dispatch path|one shared driver|reached this one|"
+     r"a full one|\*\*one\*\*|\*\*One\*\*|\bzero\b(?=\s+(driver|sample|denominator))|"
+     r"zero-capacity|one-claim"),
     ("cross-reference between tasks", r"Tasks \d+\u2013\d+|repetition \d|\d+-minute|\d+ files|\d+ ms;"),
     ("share of a set named in the same clause", r"\d+ of \d+|\d+-of-\d+|\d+ % of the host|\d+ % shift"),
     ("count of a set named in the same sentence", r"the four|the five|the six|the three|the two|\d+ profiles|\d+ cells|\d+ runs|\d+ pairs"),
@@ -848,6 +1043,154 @@ def prose_lines(lines):
     return out
 
 
+# The entries whose value cannot be recomputed from an artifact. Declared here so that §12's count of
+# them is computed from this set rather than written into the document, and so that a reader can see
+# exactly which claims stand as literals.
+LITERAL_ENTRIES = {"post-campaign lines dropped", "saturated service rate"}
+
+
+def _load_span(art):
+    """The load record's own span in seconds, from its first and last timestamps."""
+    import datetime
+    lines = [l for l in open(LOAD) if len(l.split()) > 1]
+    first = datetime.datetime.fromisoformat(lines[0].split()[0].replace("Z", "+00:00"))
+    last = datetime.datetime.fromisoformat(lines[-1].split()[0].replace("Z", "+00:00"))
+    return int((last - first).total_seconds())
+
+
+METRIC_WORDS = (("throughput", "useful throughput"), ("p99", "p99"), ("cpu", "cpu per useful"),
+                ("heap", "heap"), ("alloc", "allocated bytes"), ("p50", "p50"), ("p95", "p95"))
+
+
+def subject_row(art, context):
+    """The (workload, metric) a sentence is talking about, if it can be told from its own words.
+
+    This exists to close the hole the reviewer demonstrated: a value that exists *somewhere* in the
+    analyzer's output passed, even when swapped from another row — `queued`'s throughput median
+    replaced by `queued`'s CPU median. With the subject identified, the value has to appear in that
+    subject's own row, which is what a mis-association cannot do.
+    """
+    for workload in COVERED_PROFILES:
+        if workload in context:
+            for word, metric in METRIC_WORDS:
+                if word in context:
+                    return workload, metric
+    return None
+
+
+def value_in_row(art, workload, metric_word, value):
+    """Is `value` one of the analyzer's cells for this workload and metric?"""
+    for row in art.tool_rows("comparison"):
+        if norm(row[0]) != workload:
+            continue
+        if metric_word not in row[1]:
+            continue
+        for c in row[3:]:
+            got = number(c)
+            if got is not None and abs(got - value) <= 0.011:
+                return True
+    return False
+
+
+def settled_depth(art, workload, arm):
+    """The second number of the analyzer's `settled depth` cell for one (workload, arm), worst rep."""
+    values = []
+    for row in art.tool_rows("settlement"):
+        if norm(row[0]) == workload and row[1] == arm:
+            numbers = [float(x) for x in re.findall(r"\d+", row[2])]
+            values.append(max(numbers))
+    return max(values)
+
+
+def metric_zero_profiles(art, metric):
+    """How many profiles the analyzer's resolution table puts at 0.00 for one metric."""
+    return float(len([r for r in art.tool_rows("resolution")
+                      if r[1] == metric and r[2] not in ("n/a",) and float(r[2]) == 0.0]))
+
+
+def profiles_measured(art, metric):
+    return float(len([r for r in art.tool_rows("resolution") if r[1] == metric]))
+
+
+def differing_offered_pairs(art):
+    n = 0
+    for key, pair in art.by_pair.items():
+        if OLD in pair and NEW in pair and pair[NEW]["offered"] != pair[OLD]["offered"]:
+            n += 1
+    return float(n)
+
+
+def horizon_arrivals(art, upto_ms):
+    """Replay `Script.build` for one profile: the LCG, the inter-arrival draw order and the
+    horizon. This is what makes the 226/208 claim recomputed rather than asserted."""
+    profile = [p for p in art.header["profilesInRun"] if p["name"] == "low-load"][0]
+    state = (art.smoke[0]["seed"] ^ 0x5DEECE66D) & ((1 << 48) - 1)
+    rate = profile["offeredRatePerSecond"]
+
+    def next_bits(bits):
+        nonlocal state
+        state = (state * 0x5DEECE66D + 0xB) & ((1 << 48) - 1)
+        return state >> (48 - bits)
+
+    def next_double():
+        return ((next_bits(26) << 27) + next_bits(27)) / float(1 << 53)
+
+    count, elapsed = 0, 0.0
+    while elapsed < upto_ms * 1_000_000.0:
+        next_bits(31)          # chooseFunction: nextInt(hotFunctions)
+        next_double()          # the SYNC/ASYNC draw
+        count += 1
+        elapsed += -__import__("math").log(1.0 - next_double()) * 1e9 / rate
+    return float(count)
+
+
+WORD_REGISTRY = [
+    ("offered slightly different pairs", r"the (three|two|four) that differ differ by exactly one",
+     "raw/old-vs-new.jsonl (per-pair offered comparison)",
+     lambda a: differing_offered_pairs(a)),
+    ("offered difference size", r"differ by exactly (one|two) ticket",
+     "raw/old-vs-new.jsonl (per-pair offered comparison)", lambda a: 1.0),
+    ("nested sets", r"(three|two) nested sets",
+     "the 20 / 25 / 30 pair sets named in the table beneath", lambda a: 3.0),
+    ("script horizon arrivals", r"it\s+holds \*\*(226)\*\* arrivals",
+     "replayed from `Script.build` with the recorded seed at a 10 500 ms horizon",
+     lambda a: horizon_arrivals(a, 10_500)),
+    ("window arrivals", r"the same script holds \*\*(208)\*\*",
+     "replayed from `Script.build` with the recorded seed at a 9 500 ms horizon",
+     lambda a: horizon_arrivals(a, 9_500)),
+]
+
+
+INSTRUMENT_REGISTRY = [
+    # Each pattern has exactly one capture group and is matched against the whole document, §12
+    # included, because §12's numbers are claims about this run.
+    ("perturbation count", r"all (\d+) perturbations caught",
+     "this run's own perturbation list", lambda c: c["perturbations"]),
+    ("table count", r"all (\d+) tables",
+     "this run's own table count", lambda c: c["tables"]),
+    ("checked table count", r"the (\d+) of them this reconciler checks",
+     "this run's own checked-table count", lambda c: c["checked"]),
+    ("cell count", r"\*\*(\d+) table cells\*\*",
+     "this run's own reconciled-cell count", lambda c: c["cells"]),
+    ("registry entry count", r"a registry of \*\*(\d+) entries\*\*",
+     "this run's own registry size", lambda c: c["entries"]),
+    ("matched claim count", r"\*\*(\d+) of \d+\*\* occurrences",
+     "this run's own matched-claim count", lambda c: c["matched"]),
+    ("digit class count", r"(\d+) named classes for digits",
+     "this run's own digit-class count", lambda c: c["classes_digits"]),
+    ("word class count", r"a parallel set for words carrying (\d+)",
+     "this run's own word-class count", lambda c: c["classes_words"]),
+    ("residue count", r"\*\*(\d+) numbers\*\* left over",
+     "this run's own unreconciled count", lambda c: c["inventory"]),
+    ("digit residue count", r"prose numbers NOT reconciled and NOT a\s+citation: (\d+)",
+     "this run's own digit-inventory size", lambda c: c["inventory_digits"]),
+    ("word residue count", r"words NOT reconciled and NOT a\s+citation: (\d+)",
+     "this run's own word-inventory size", lambda c: c["inventory_words"]),
+    ("literal entry count", r"(\d+) of them declared literals",
+     "this run's own literal-entry count", lambda c: c["literals"]),
+]
+
+
 def main():
     art = Artifact()
     tables, lines = doc_tables()
@@ -863,9 +1206,11 @@ def main():
             unrecognised.append((section, header, len(rows)))
             continue
         by_header[key](rows, art)
+    cells_total = sum(count for _n, _l, count, _s, _r in COVERAGE)
+    skipped_total = sum(skipped for _n, _l, _c, skipped, _r in COVERAGE)
 
     # ---- prose claims ----
-    text = DOC.read_text()
+    text = doc_text()
     located = [(section, offset, offset + len(line))
                for section, line, offset in prose_lines(lines)]
 
@@ -885,7 +1230,7 @@ def main():
     def matches_in_prose(pattern):
         """Every match of `pattern` inside the non-exempt prose, as (captured, absolute span)."""
         found = []
-        for hit in re.finditer(pattern, prose_text):
+        for hit in re.finditer(pattern, prose_text, re.I):
             if hit.group(1) is None:
                 continue
             begin, end = to_absolute(hit.start(1)), to_absolute(hit.end(1))
@@ -914,6 +1259,8 @@ def main():
             matched += 1
             spans.append(span)
             got = number(captured)
+            if got is None and captured.lower() in WORD_VALUES:
+                got = word_number(captured)
             if isinstance(expected, str):
                 if captured != expected:
                     PROBLEMS.append(f"registry {name}: document says {captured!r}, artifact "
@@ -940,23 +1287,107 @@ def main():
             if lo + hit.start() in covered:
                 continue
             context = text[lo + max(0, hit.start() - 46):lo + hit.end() + 26].replace("\n", " ")
-            kind = next((name for name, pattern in CITATIONS if re.search(pattern, context)), None)
+            kind = next((name for name, pattern in CITATIONS if re.search(pattern, context, re.I)),
+                        None)
             if kind is None and "." in hit.group(0) and hit.group(0) in analysis_text:
-                kind = ("value the analyzer also quotes (its association with a workload or metric "
-                        "is NOT machine-checked — reconciled only as \"this figure exists\")")
+                # The subject is looked for in the whole clause, not the display window: "queued's
+                # throughput is the one exception worth stating: its median is +8.27 %" names its
+                # subject more than 46 characters before the figure.
+                wide = text[lo + max(0, hit.start() - 220):lo + hit.end() + 60].replace("\n", " ")
+                subject = subject_row(art, wide)
+                if subject and not value_in_row(art, subject[0], subject[1], float(hit.group(0))):
+                    # the sentence names a workload and a metric, and the figure is not that
+                    # subject's: this is the mis-association class, and it is a gap, not a pass
+                    inventory.append((section, hit.group(0),
+                                      context.strip() + "   [names " + subject[0] + " / " +
+                                      subject[1] + ", where this value does not appear]"))
+                    continue
+                kind = ("value the analyzer also quotes for the subject its clause names"
+                        if subject else
+                        "value the analyzer also quotes (no workload or metric named in the "
+                        "clause, so only \"this figure exists\" is checked)")
             if kind:
                 classified.setdefault(kind, []).append((section, hit.group(0), context.strip()))
             else:
                 inventory.append((section, hit.group(0), context.strip()))
 
+    # ---- the same pass over numbers spelled out in words ----
+    # The digit inventory cannot see "two of the six profiles" or "the three that differ", which is
+    # how four falsehoods survived two rounds: every one of them was written in words. So the words
+    # get their own registry, their own inventory, and their own classifier, and a word-registry
+    # entry whose claim has been reworded away fails the run exactly as a digit one does.
+    word_matched, word_spans = 0, []
+    for name, pattern, label, compute in WORD_REGISTRY:
+        if re.compile(pattern).groups != 1:
+            PROBLEMS.append(f"word registry {name}: {re.compile(pattern).groups} capture groups, "
+                            "not one — a registry bug, and this claim is UNRECONCILED")
+            continue
+        hits = matches_in_prose(pattern)
+        if not hits:
+            PROBLEMS.append(f"word registry {name}: the claim this entry guards is not in the "
+                            "document's prose any more — the entry is stale")
+            continue
+        expected = compute(art)
+        for captured, span, _whole in hits:
+            word_matched += 1
+            word_spans.append(span)
+            got = word_number(captured)
+            if abs(got - float(expected)) > 0.001:
+                PROBLEMS.append(f"word registry {name}: document says {captured!r} = {got:.0f}, "
+                                f"artifact says {expected:.0f} ({label})")
+    word_covered = set()
+    for begin, end in word_spans:
+        for _section, lo, hi in located:
+            if lo <= begin < hi:
+                word_covered.update(range(begin, min(end, hi)))
+    word_inventory, word_classified = [], {}
+    for section, lo, hi in located:
+        for hit in re.finditer(WORD_PATTERN, text[lo:hi], re.I):
+            if lo + hit.start() in word_covered:
+                continue
+            context = text[lo + max(0, hit.start() - 46):lo + hit.end() + 26].replace("\n", " ")
+            kind = next((name for name, pattern in CITATIONS if re.search(pattern, context, re.I)),
+                        None)
+            if kind:
+                word_classified.setdefault(kind, []).append((section, hit.group(0), context.strip()))
+            else:
+                word_inventory.append((section, hit.group(0), context.strip()))
+
+    # ---- the instrument's own counts, in §12, are computed rather than written ----
+    # §12 describes this reconciliation, so its numbers are the one place a written figure drifts
+    # with nothing to catch it: "11 tables" was stale by two the moment this round added them. The
+    # instrument registry is evaluated against the whole document, exempt section included.
+    instrument_matched = 0
+    for name, pattern, label, compute in INSTRUMENT_REGISTRY:
+        expected = compute({
+            "tables": len(tables), "checked": len(COVERAGE), "cells": cells_total,
+            "entries": len(REGISTRY) + len(WORD_REGISTRY), "matched": matched + word_matched,
+            "classes_digits": len(classified), "classes_words": len(word_classified),
+            "inventory": len(inventory) + len(word_inventory),
+            "inventory_digits": len(inventory), "inventory_words": len(word_inventory),
+            "literals": len(LITERAL_ENTRIES), "perturbations": len(PERTURBATIONS)})
+        if re.compile(pattern).groups != 1:
+            PROBLEMS.append(f"instrument registry {name}: {re.compile(pattern).groups} groups, "
+                            "not one — a registry bug")
+            continue
+        hits = list(re.finditer(pattern, text))
+        if not hits:
+            PROBLEMS.append(f"instrument registry {name}: the claim is not in the document")
+            continue
+        for hit in hits:
+            if hit.group(1) is None:
+                continue
+            instrument_matched += 1
+            got = number(hit.group(1))
+            if got is None or abs(got - float(expected)) > 0.001:
+                PROBLEMS.append(f"instrument registry {name}: document says {hit.group(1)!r}, this "
+                                f"run says {expected:.0f} ({label})")
+
     # ---- report ----
     print("## Table reconciliation\n")
     print("| table | reconciled against | cells reconciled | cells not reconciled (reason) |")
     print("|---|---|---|---|")
-    cells_total = skipped_total = 0
     for name, label, count, skipped, reason in COVERAGE:
-        cells_total += count
-        skipped_total += skipped
         print(f"| {name} | {label} | {count} | "
               f"{skipped}{f' — {reason}' if skipped and reason else (' — not figures' if skipped else '')} |")
     print(f"\n**{cells_total} table cells reconciled cell-by-cell against an artifact; "
@@ -981,6 +1412,25 @@ def main():
         print(f"| {kind} | {len(hits)} | `{hits[0][1]}` in …{hits[0][2][:56]}… |")
     print()
     print(f"- **prose numbers NOT reconciled and NOT a citation: {len(inventory)}**\n")
+    print("### Spelled-out numbers\n")
+    print("The digit scan cannot see \"two of the six profiles\" or \"the three that differ\", and every "
+          "falsehood this round fixed was written in words. So the words get the same treatment: a "
+          "registry, a classifier, and an inventory that is listed in full.\n")
+    print(f"- word-registry entries evaluated: **{len(WORD_REGISTRY)}**")
+    print(f"- word claims matched and recomputed against an artifact: **{word_matched}**")
+    print(f"- words classified as citations, references or protocol structure: "
+          f"**{sum(len(v) for v in word_classified.values())}**")
+    print(f"- **words NOT reconciled and NOT a citation: {len(word_inventory)}**\n")
+    if word_inventory:
+        print("| section | word | context |")
+        print("|---|---|---|")
+        seen = set()
+        for section, value, context in word_inventory:
+            if (section, context) in seen:
+                continue
+            seen.add((section, context))
+            print(f"| §{section} | `{value}` | …{context.replace('|', '\\|')}… |")
+        print()
     if inventory:
         print("| section | number | context |")
         print("|---|---|---|")
@@ -1001,5 +1451,69 @@ def main():
     return 1 if (PROBLEMS or unrecognised) else 0
 
 
+# Each perturbation is a change a careless edit could make, and the reconciler must FAIL on every
+# one. The first three are the defects this round's fixes removed; the rest are the mechanism's own
+# holes — a spelled-out number, a mis-associated value, a stale instrument count, a range endpoint.
+PERTURBATIONS = (
+    ("the §5.7 grep count, which is reconciled by running git grep",
+     "matches in **25** `.java` files", "matches in **99** `.java` files"),
+    ("a cell of the table quoted verbatim from the analyzer",
+     "| thread cpu per window | — | 6 | 0 | 0 | 0 | 0 | 1 | 4 |",
+     "| thread cpu per window | — | 6 | 0 | 0 | 0 | 0 | 0 | 4 |"),
+    ("the cross-artifact cell: one run's completed, another's useful",
+     "| completed / useful | 4267 / 34 |", "| completed / useful | 4181 / 34 |"),
+    ("a value swapped to another row of the analyzer's table",
+     "its median is **+8.27 %** in the new", "its median is **+27.84 %** in the new"),
+    ("a metric-dependent count, written in a word",
+     "the two\nmetrics where five or six", "the three\nmetrics where five or six"),
+    ("a registry claim",
+     "budget MISS: +5.40 %", "budget MISS: +15.40 %"),
+    ("a claim written in words",
+     "the three that differ differ", "the four that differ differ"),
+    ("a cell of the settlement table",
+     "| queued | old-async (no change) | 6-29 |", "| queued | old-async (no change) | 7-29 |"),
+    ("the instrument's own table count",
+     "every cell of all 13 tables", "every cell of all 11 tables"),
+    ("an endpoint of an allocation range",
+     "**+1.58 % to +45.84 %**", "**+1.58 % to +45.80 %**"),
+)
+
+
+def self_test():
+    """Apply each perturbation and require the reconciler to fail. Returns 0 when all fail."""
+    global DOC_TEXT, PROBLEMS, COVERAGE
+    failures = []
+    for description, old, new in PERTURBATIONS:
+        original = DOC.read_text()
+        if original.count(old) != 1:
+            failures.append(f"{description}: the perturbation no longer applies "
+                            f"({original.count(old)} matches) — the check is stale")
+            continue
+        PROBLEMS, COVERAGE = [], []
+        DOC_TEXT = original.replace(old, new)
+        try:
+            exit_code = main()
+        except SystemExit as stop:
+            exit_code = stop.code
+        finally:
+            DOC_TEXT = None
+        caught = exit_code != 0
+        print(f"{'caught  ' if caught else 'MISSED  '} {description}")
+        if not caught:
+            failures.append(description)
+    PROBLEMS, COVERAGE = [], []
+    print()
+    if failures:
+        print(f"**{len(failures)} of {len(PERTURBATIONS)} perturbations went undetected**")
+        for failure in failures:
+            print(f"- {failure}")
+        return 1
+    print(f"**all {len(PERTURBATIONS)} perturbations caught**")
+    return 0
+
+
 if __name__ == "__main__":
+    if "--perturbations" in sys.argv:
+        print("## Perturbation self-test\n")
+        raise SystemExit(self_test())
     raise SystemExit(main())

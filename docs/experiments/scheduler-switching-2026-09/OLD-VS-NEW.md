@@ -486,10 +486,14 @@ That is what the pairing buys, and it is what makes §7.4's nulls readable.
 **Those medians are aggregates across workloads and are not any one workload's resolution.** A
 profile whose five paired differences already agree in sign contributes `0.00` *by construction*:
 `0.00` there means the arms were already separated, which is not a fine resolution at all, and
-averaging it in pulls the median down. **How many profiles do that is metric-dependent, so it is
-stated per metric rather than once:** `saturated` contributes `0.00` on every metric, and on
-whole-span p99 `mixed-kind-retry` joins it — one profile on steady p99, whole-span throughput and
-steady throughput, two on whole-span p99. The table beneath
+averaging it in pulls the median down. **How many profiles do that is metric-dependent, and the
+spread is wide, so it is stated per metric** — counted from the table beneath: whole-span p99 **2**,
+steady p99 **1**, whole-span throughput **1**, steady throughput **2**, thread CPU per useful
+completion **3**, post-GC heap **5**, allocated bytes per useful completion **6**. `saturated` is one
+of them everywhere except steady throughput, where it is `n/a` rather than `0.00`. On the two
+metrics where five or six of the six profiles sit at `0.00` — post-GC heap (five) and allocated
+bytes (all six) — that column's median is close to meaningless, which is the whole reason the table, and
+not the median, is what a reader should quote. The table beneath
 gives the number to use whenever a specific workload's effect is established or dismissed, and it is
 the one quoted in §9.1 and §9.5:
 
@@ -532,17 +536,18 @@ except where all five repetitions agree in sign — see §9.2.
   direction is suggested and **not** established. It is reported as a suggestion, not as a result.
 - **p99: no difference established anywhere except `mixed-kind-retry`'s whole-span figure.** That one
   is same-signed at **+1.79 %** (range +0.87…+6.98) and below the 5 % budget, so a PASS with a
-  measured direction. Elsewhere the five repetitions straddle zero, and **on the five profiles where
-  p99 is measurable** the workloads' own resolutions range **3.06–43.48 %** (steady) and
-  **0.00–33.49 %** (whole-span) — `saturated` is the sixth, and it contributes 0.00 because its arms
-  are separated everywhere. On `queued` no 5 % effect could have been established at all, and on
-  `low-load`'s steady p99 not below 9.36 %.
+  measured direction. Elsewhere the five repetitions straddle zero, and the workloads' own
+  resolutions on p99 are **3.06–43.48 % over the five profiles whose steady window is measurable**
+  and **0.00–33.49 % over all six on the whole-span figure** — the `0.00` lower endpoint *is*
+  `saturated`'s, whose arms are separated on every metric, so the two ranges are over different sets
+  and excluding `saturated` the whole-span range is 5.14–33.49 %. On `queued` no 5 % effect could
+  have been established at all, and on `low-load`'s steady p99 not below 9.36 %.
 - **`low-load`'s steady p99 is a budget MISS: +5.40 %.** It is reported as a MISS and not excused.
   Its ground is the straddle: the five paired differences run −19.52 % to +9.36 %, so they fall on
   both sides of zero and the median is not a measured effect. Its *second* ground, which an earlier
   draft got backwards, is this **workload's own** resolution on this metric — **9.36 %**, from the
-  table in §8 — not the 3.5 % aggregate, which is a median over workloads including two that
-  contribute 0 by construction. Read against its own number the sentence is now consistent: a
+  table in §8 — not the 3.5 % aggregate, which is a median over five workloads of which **one**
+  contributes 0 by construction (`saturated`; the other four are 3.06, 3.49, 9.36 and 43.48). Read against its own number the sentence is now consistent: a
   uniform effect of +5.4 % is smaller than the 9.36 % this design could have seen on `low-load`, and
   the straddle says the same thing independently. In absolute terms the figure is 2.570 ms → 2.793 ms
   against a 100 ms contract, 0.22 ms.
@@ -609,7 +614,8 @@ work, at a magnitude above the budget in every repetition.** The direction is co
 allocation finding of §9.2, and the mechanism is likewise not established. On `queued` and
 `churn-drain` the same direction is suggested by the median and corroborated by the window-CPU
 cross-check for `queued`, but not separated on the per-completion figure. On `low-load` the whole
-figure is small (0.76 ms per completion) and near the noise floor.
+figure is small — 0.76 ms per completion on the old arm against 0.77 ms on the new one — and near
+the noise floor.
 
 The one asymmetry in this metric is declared, and **its net sign is not measured**: the two arms'
 release paths charge the driver different work (M6, §5.4) — the old arm a conditional micrometer
@@ -631,7 +637,8 @@ withdrawn. The `mixed-kind-retry` direction above stands on its own repetitions,
 | thread cpu per useful completion | 7.35 ms | 0.17 ms |
 | allocated bytes per useful completion | 449984 | 5867 |
 
-Every paired delta is same-signed, and the direction is the new engine's by a factor of 100. **It is
+Every paired delta is same-signed, and the direction is the new engine's by a factor of 108 (34
+useful completions against 3 655). **It is
 also not a loop result.** With `maxPending` 512 and a 2000/s offered rate against a service rate of
 500/s, the old loop's queue fills and stays full *of work that is already past its 60 ms contract*,
 because it has no deadline and therefore never drops anything: 512 tickets are permanently held,
@@ -768,37 +775,80 @@ the one place a value is stated as a range is labelled as one.
 Round 1 swept for the *class* of "prose outrunning the artifact" in five themes and still missed
 things — including a table cell that paired one run's `completed` with another's `useful`. The
 diagnosis is not that prose drifts; it is that **verification was partial**, and the one place this
-document was checked by machine (its largest table) was the one place nothing was ever found. So the
-sweep is replaced by a committed reconciler, `reconcile-12e.py`, whose output is
-`raw/reconciliation-12e.txt`. It recomputes rather than reads:
+document was checked by machine (its largest table) was the one place nothing was ever found. Round 3
+added the mechanism that made the earlier rounds miss: the inventory scanned **digits**, so every
+number spelled out in words — "two of the six profiles", "the three that differ" — was invisible to
+both the registry and the inventory, and every falsehood this round fixed was written in words.
+
+So the sweep is replaced by a committed reconciler, `reconcile-12e.py`, whose output is
+`raw/reconciliation-12e.txt`.
+
+**The exemption, stated where a reader of this document can see it.** This section is the one place
+the reconciler's *inventory* exempts, and the reason is that its numbers are claims about the
+reconciler's own run rather than about the artifact. They are not therefore unchecked: a second
+registry — the instrument registry — is evaluated against the whole document, this section included,
+and it recomputes every count below from the run. That is why the table count here is **13** and not
+the 11 this section said before the round that added two tables, and why a stale number in this
+section fails the reconciler exactly as a stale figure in §9 does.
 
 | what | how it is reconciled | coverage |
 |---|---|---|
-| every cell of every table (11 tables) | sheet by sheet against the artifact or the tool | **797 cells**, 0 mismatches; 13 cells are names, types or declared omissions |
+| every cell of all 13 tables — the 12 of them this reconciler checks, the thirteenth being this table | recomputed from `raw/old-vs-new.jsonl`, `raw/smoke-old.jsonl`, `summarize.workload_table` or the analyzer's own output | **797 table cells**, 0 mismatches; 13 cells are names, types or declared omissions |
 | tables quoted verbatim from the analyzer | **string equality** against the analyzer's own output | the settlement, comparison, medians, resolving-power and per-workload-resolution tables |
-| tables that reformat or rearrange | recomputed cell by cell from `raw/old-vs-new.jsonl` / `raw/smoke-old.jsonl` | coverage, smoke, allocation, saturated, pair-sets, arms, excluded |
-| numeric claims in the prose | a registry of **90 entries**, each recomputing its value from an artifact | **91 of 91** occurrences matched and recomputed, 0 mismatches |
-| prose numbers that are not claims | 15 named classes (section references, line citations, revision hashes, code constants, …) | **290 numbers**, each printed with its class and an example so the filter can be audited |
-| what is left | listed in full, never truncated | **20 numbers**, below |
+| numeric claims in the prose | a registry of **140 entries**, each recomputing its value from an artifact or from a declared literal | **146 of 146** occurrences matched and recomputed, 0 mismatches |
+| numbers spelled out in words | a second registry, the same discipline: a stale entry fails the run | 5 word claims recomputed |
+| prose numbers that are not claims | 18 named classes for digits, and a parallel set for words, each printed with an example so the filter can be audited | 297 + 131 numbers |
+| what is left | listed in full, never truncated | **0 numbers** left over |
+
+Of the registry entries, **2 of them declared literals**: their value cannot be recomputed from an
+artifact (the count of post-campaign lines dropped from the load record, and the saturated profile's
+service rate, which lives in `SchedulerSwitchBenchmark.Profile` rather than in the artifact), and
+each declares itself as such in the entry rather than hiding among the recomputed ones. Every other
+entry recomputes.
+
+**The instrument's bite is itself measured, not asserted.** `reconcile-12e.py --perturbations`
+applies ten changes a careless edit could make and requires the reconciler to fail on every one; its
+output is `raw/reconciliation-perturbations.txt`, and **all 10 perturbations caught** is a computed
+claim like every other count here. Three of the ten are the defects this round's fixes removed (the
+grep count, a cell of the table quoted verbatim, and the cross-artifact `completed / useful` cell);
+the rest are the mechanism's own holes — a value swapped to another row of the analyzer's table, a
+metric-dependent count written in a word, a claim written in words, a settlement-table cell, an
+instrument count, and a range endpoint. The self-test was what found that the MISS's own `+5.40 %`
+had no registry entry at all: the perturbation for it failed to apply, which is a check being stale
+rather than a check passing.
 
 A table the reconciler has no checker for **fails its run**, so adding a table to this document
-requires adding a checker; and a registry entry whose claim has been reworded away **also fails**,
-so a stale pattern cannot silently stop guarding anything. Both failed repeatedly while this section
-was being written, which is the point.
+requires adding a checker; a registry entry whose claim has been reworded away **also fails**, so a
+stale pattern cannot silently stop guarding anything; and a word-form claim is guarded whether it is
+written as a digit or as a word. All of those failed repeatedly while this section was being written,
+which is the point.
 
-**One class is deliberately weaker than the rest** and is labelled as such: 31 numbers are reconciled
-only as "this figure exists in the analyzer's output". The value is checked; the sentence's
-*association* of that value with a workload or a metric is not machine-checked there. They are
-counted separately rather than folded into the strong class.
+The two inventories are reported separately because they are not the same size or the same kind:
+**prose numbers NOT reconciled and NOT a
+citation: 0**, and **words NOT reconciled and NOT a
+citation: 0**. Their classes are separate too — the digits fall into 18 named classes for digits and
+a parallel set for words carrying 9.
 
-**The 20 prose numbers that are neither reconciled nor classified**, taken from
-`raw/reconciliation-12e.txt` and reproduced here so the cap is not implicit: the three `git grep`
-counts in §5.7 that the registry did not anchor (0, 25, 16 — the same greps are reconciled where
-§5.7 states them in full), the `9510`/`2834` halves of §6's two median pairs, "1 out-of-order
-duplicate dropped" (§7.6), the single `6` of "1 workload of 6" (§8), "no 5 % effect" and "contribute
-0" (§9), the `100 ms` contract and `20 expiry-clean`/`all-30` counts (§9), the `20/s`–`1 120/s`
-offered rates and the `24.2/s`/`1 188.4/s` they replaced, `0.76 ms` (§9.3), "a factor of 100" (§9.4),
-the `6–29` and `4–9` settled depths (§9.5), and the `level-1` of §10. Each is either a restatement of
-a figure reconciled elsewhere in this document or a count of a set described in the same clause;
-none is a measurement standing on its own. They are listed rather than filtered because a cap that
-reads as complete when it is not is this campaign's most repeated failure.
+**One class is deliberately weaker than the rest** and is labelled as such: the numbers that are
+neither a registry claim nor a citation are classified as "a value the analyzer also quotes", which
+checks that the figure exists in the analyzer's output — **not** that the sentence attributes it to
+the right workload or metric. A value swapped from one row of the analyzer's table to another would
+pass that class, so it is counted separately, never folded into the strong classes, and the residue
+below is listed rather than summarised.
+
+**The residue is now zero, and that is a stronger statement than it looks — with one caveat kept
+visible.** Round 3's word pass and its subject check closed the two holes that let earlier numbers
+pass: figures spelled out in words, and figures that exist in the analyzer's output but belong to a
+different row. Every prose number and every spelled-out number in the non-exempt document is now
+either recomputed by a registry entry or classified as a citation, reference, code or ordinary prose.
+
+The caveat is that the classes are not all equally strong, and one of them is deliberately weaker. A
+number classified as "a value the analyzer also quotes for the subject its clause names" has had
+**both** its value and its subject checked — but only against the analyzer's table, not against the
+sentence's own arithmetic; a number classified as an article, a pronoun or an ordinary noun is not a
+claim at all; and a citation is a pointer, not a figure. The classes are printed with their counts and
+an example each in `raw/reconciliation-12e.txt`, so which class a given number fell into is auditable
+rather than asserted. Two registry entries declare themselves **literals**, because their value
+cannot be recomputed from an artifact at all.
+
+complete when it is not is this campaign's most repeated failure.

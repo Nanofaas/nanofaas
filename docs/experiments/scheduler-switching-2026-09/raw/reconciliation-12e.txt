@@ -19,52 +19,41 @@
 
 ### Prose claims
 
-- registry entries evaluated: **90**
-- claim occurrences matched and recomputed against an artifact: **91**
-- prose lines read (tables, code fences and §12 excluded): **540** of 804 lines
-- prose numbers classified as citations, references or code rather than claims about the artifact: **290**, in 15 classes (each named, with an example, so the filter is auditable):
+- registry entries evaluated: **135**
+- claim occurrences matched and recomputed against an artifact: **141**
+- prose lines read (tables, code fences and §12 excluded): **547** of 854 lines
+- prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
 |---|---|---|
-| section/chapter reference | 92 | `11` in …sue #208. The comparison the specification's §11 asks th… |
-| code constant or expression | 31 | `0` in …fires only when `expected.queued() > 0`. In the new arm … |
-| value the analyzer also quotes (its association with a workload or metric is NOT machine-checked — reconciled only as "this figure exists") | 31 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
-| task, issue or mismatch label | 27 | `12` in …Task 12e, issue #208. The compari… |
-| prose enumeration or count of things in this document | 25 | `5` in …d mean one of two inventions. Dispatching the 5 not-read… |
+| section/chapter reference | 94 | `11` in …sue #208. The comparison the specification's §11 asks th… |
+| code constant or expression | 29 | `0` in …fires only when `expected.queued() > 0`. In the new arm … |
+| prose enumeration or count of things in this document | 27 | `5` in …d mean one of two inventions. Dispatching the 5 not-read… |
+| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 27 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
+| task, issue or mismatch label | 26 | `12` in …Task 12e, issue #208. The compari… |
 | metric, clock or artifact name | 21 | `99` in …iour of the old loop, and the old loop's own p99 would b… |
 | revision hash | 12 | `05` in …queue/src/main` at the pre-refactor revision `05f49dcb` … |
 | bare line or revision reference | 11 | `208` in …LT_MAX_BATCH_PER_FUNCTION = 2`, consumed at `:208`), whi… |
-| cross-reference between tasks | 10 | `9` in …try` and dispatch into a transport that Tasks 9–10 rewro… |
 | file or line citation | 9 | `31` in …(`Scheduler.java:31` `DEFAULT_MAX_BATCH_PER_F… |
 | share of a set named in the same clause | 9 | `5` in …repetitions, and a *perfectly uniform* 5 % shift of the … |
+| cross-reference between tasks | 8 | `9` in …try` and dispatch into a transport that Tasks 9–10 rewro… |
 | date, version or JVM flag | 6 | `1` in …repetition, with the same heap (`-Xms1g -Xmx1g -XX:+Alwa… |
 | count of a set named in the same sentence | 3 | `60` in …60 runs by construction.  ##… |
 | budget or threshold | 2 | `10` in …identically. Its budget of 10 % is therefore **below th… |
+| value the analyzer also quotes for the subject its clause names | 2 | `8.27` in …e exception worth stating**: its median is **+8.27 %** i… |
 | path to an artifact | 1 | `1` in …l=smoke-old --profiles=low-load --repetitions=1` produce… |
+| the change log describing its own edits | 1 | `1` in …(1 out-of-order duplicate dr… |
+| a value the table beneath carries, restated in the clause | 1 | `0` in …contributes 0 by construction (`saturat… |
 
-- **prose numbers NOT reconciled and NOT a citation: 20**
+- **prose numbers NOT reconciled and NOT a citation: 0**
 
-| section | number | context |
-|---|---|---|
-| §5. | `0` | …iles** and at HEAD **15**; `notReady` matches 0 at OLD. (The greps have t… |
-| §5. | `25` | …matches in **25** `.java` files (16 for e… |
-| §5. | `16` | …matches in **25** `.java` files (16 for either term alone, 34… |
-| §6. | `9510` | …close race). The medians agree (9510/9510, 2833/2834) and no conclu… |
-| §6. | `2834` | …ose race). The medians agree (9510/9510, 2833/2834) and no conclusion rests… |
-| §7. | `1` | …(1 out-of-order duplicate dr… |
-| §8. | `6` | …**1 workload of 6** (whole-span) and **1 of… |
-| §9. | `5` | …are separated everywhere. On `queued` no 5 % effect could have been… |
-| §9. | `0` | …contribute 0 by construction. Read aga… |
-| §9. | `100` | …against a 100 ms contract, 0.22 ms.  ##… |
-| §9. | `20` | …the 20 expiry-clean ones. (The a… |
-| §9. | `30` | …the 20 expiry-clean ones. (The all-30 window total reaches +65.… |
-| §9. | `20` | …les it holds across have offered rates from **20/s (`low-load`) to 1 120/s… |
-| §9. | `1` | …an earlier draft mistook for them (24.2/s and 1 188.4/s were the *through… |
-| §9. | `0.76` | …figure is small (0.76 ms per completion) and ne… |
-| §9. | `100` | …direction is the new engine's by a factor of 100. **It is also not a loop… |
-| §9. | `5` | …budget, so no 5 % effect could have been… |
-| §9. | `29` | …rofile: the old loop's settled depth ranges 6–29 across repetitions agains… |
-| §9. | `9` | …repetitions against the engine's 4–9, so this workload's stead… |
-| §10. | `1` | …comparison; the level-1 number already exists in… |
+### Spelled-out numbers
+
+The digit scan cannot see "two of the six profiles" or "the three that differ", and every falsehood this round fixed was written in words. So the words get the same treatment: a registry, a classifier, and an inventory that is listed in full.
+
+- word-registry entries evaluated: **5**
+- word claims matched and recomputed against an artifact: **5**
+- words classified as citations, references or protocol structure: **149**
+- **words NOT reconciled and NOT a citation: 0**
 
 **Result: PASS** (0 mismatches, 0 unchecked tables)

@@ -566,3 +566,35 @@ count as unverified, and the reviewer's replay showed it was true and derivable 
 horizon is 10 500 ms (`OldLoopComparison.java:773`) and 9 500 ms is the driver's window close, giving
 226 and 208 respectively. Both are now in the deliverable with the correct horizons, and the clause
 that justified them by the wrong one is corrected.
+
+**Revision — fix round 3/5, the mechanism that let the earlier rounds miss.** Round 2's reconciler was
+verified genuine (it reproduced all three defects it claimed to find, from the base commit, plus seven
+further perturbations, and the 226/208 horizon counts were re-derived from the committed Java) — but
+it had a hole with a name: **it scanned digits, not words.** Numbers spelled out — "two of the six
+profiles", "the three that differ" — were invisible to both its registry and its inventory, and every
+one of the four falsehoods round 3 had to fix was written in words. The reviewer also demonstrated the
+weak class rather than arguing it: swapping `queued`'s throughput median for its CPU median, a value
+that genuinely exists in the analyzer's output, still returned PASS.
+
+So round 3 closes the mechanism. A **word pass** now runs over the same prose with its own registry,
+inventory and classifier, and a stale word entry fails the run exactly as a digit one does. The weak
+class now identifies the **subject its clause names** and requires the value to appear in that
+subject's own row, which is what catches the demonstrated swap (it is listed as «names queued / useful
+throughput, where this value does not appear»). `git_files()` — written and never called, so that
+changing §5.7's grep count from 25 to 99 still passed — is wired and perturbation-tested. §12's
+instrument counts are now computed by a second registry that evaluates the whole document including
+that section, which is how "11 tables" became 13: the document has thirteen and the reconciler checks
+twelve. Of the registry's 140 entries, **2 declare themselves literals** rather than hiding among the
+recomputed ones. And the instrument's bite is itself measured: `reconcile-12e.py --perturbations`
+applies ten careless edits and requires failure on each — **all 10 caught**, committed as
+`raw/reconciliation-perturbations.txt`. Building it found that the MISS's own `+5.40 %` had no registry
+entry at all.
+
+**Coverage now: 797 table cells and 146 prose claims recomputed at 0 mismatches, 18 + 9 named classes,
+and an unreconciled residue of 0** — down from 20. The four falsehoods round 3 fixed were the
+finding-7 replacement under-counting the profiles at `0.00` and omitting the three metrics where the
+effect is largest; the same miscount surviving in §9.1 and in the report; a false claim that the §5.7
+greps were reconciled when none were; and a table count stale by the two tables the previous round
+added. Finding 9 is fixed too: §9.1's whole-span p99 range had excluded the profile that supplies its
+own `0.00` endpoint. §12's exemption is now stated where a reader looks rather than only in the
+script.
