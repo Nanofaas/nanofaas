@@ -27,6 +27,13 @@ Coverage limits, stated so they are not read as more than they are:
   full and never truncated.
 - §12 is the change log: it quotes earlier revisions and describes this reconciliation. Its numbers
   are reported as an exempt class with the reason — not silently dropped, not counted as reconciled.
+  They are not unchecked either: `INSTRUMENT_REGISTRY` recomputes every count in it, this section
+  included.
+- Every comparison carries a flat absolute tolerance, `TOLERANCE`, because the document rounds. It is
+  a real weakening — a two-decimal figure is accepted within that slack — and it is stated in the
+  document for that reason rather than left for a reader to discover.
+- This script resolves `git` from its own location and refuses to run outside a checkout of the
+  repository; `--perturbations` asserts the unperturbed run passes before applying anything.
 """
 import contextlib
 import io
@@ -57,6 +64,12 @@ REFUSED_PROFILES = {"head-of-line-blocking", "hot-plus-500-sporadic", "heterogen
 
 PROBLEMS = []
 COVERAGE = []          # (table, artifact, cells reconciled, cells skipped, skip reason)
+
+# The flat absolute slack every comparison here carries. It exists because the document rounds —
+# a two-decimal percentage cannot be matched exactly — and it is *stated in the document*, because a
+# reader cannot otherwise know how much slack a check here has. One named constant rather than a
+# literal at each comparison, so the document's statement of it and the checks cannot drift apart.
+TOLERANCE = 0.011
 
 
 # ------------------------------------------------------------------------------------------------
@@ -180,11 +193,11 @@ def agree(cell_text, expected, tol):
             return True
         exp_number, got_number = number(expected), leading_number(cell_text)
         return (exp_number is not None and got_number is not None
-                and abs(exp_number - got_number) <= max(tol, 0.011))
+                and abs(exp_number - got_number) <= max(tol, TOLERANCE))
     if isinstance(expected, bool):
         return plain.lower() == str(expected).lower()
     got = leading_number(cell_text)
-    return got is not None and abs(got - float(expected)) <= max(tol, 0.011)
+    return got is not None and abs(got - float(expected)) <= max(tol, TOLERANCE)
 
 
 def cell(name, cell_text, expected, tol, label):
@@ -404,10 +417,10 @@ def table_allocation(rows, art):
                 cells += cell(f"§9.2 {wl} old", row[old_col], art.med(wl, OLD, field), 0.5, label)[0]
                 cells += cell(f"§9.2 {wl} new", row[new_col], art.med(wl, NEW, field), 0.5, label)[0]
             cells += cell(f"§9.2 {wl} {field} delta", row[delta_col],
-                          statistics.median(diffs), 0.011, label)[0]
+                          statistics.median(diffs), TOLERANCE, label)[0]
             parts = re.split("…", row[range_col].replace("**", ""))
-            cells += cell(f"§9.2 {wl} {field} low", parts[0], min(diffs), 0.011, label)[0]
-            cells += cell(f"§9.2 {wl} {field} high", parts[1], max(diffs), 0.011, label)[0]
+            cells += cell(f"§9.2 {wl} {field} low", parts[0], min(diffs), TOLERANCE, label)[0]
+            cells += cell(f"§9.2 {wl} {field} high", parts[1], max(diffs), TOLERANCE, label)[0]
     COVERAGE.append(("§9.2 allocation", label, cells, 0, ""))
 
 
@@ -655,7 +668,8 @@ REGISTRY = [
      "raw/old-vs-new-analysis.txt (steady p99, +20 %)",
      lambda a: tool_cell(a, "steady p99", 5)),
     ("expiry-clean pairs", r"the (20) expiry-clean ones",
-     "raw/old-vs-new.jsonl (20 expiry-clean pairs)", lambda a: 20.0),
+     "raw/old-vs-new.jsonl (the pairs in which neither arm expired anything)",
+     lambda a: float(pair_set_sizes(a)[0])),
     ("all measured pairs", r"all-(30) window total",
      "raw/old-vs-new.jsonl (30 measured pairs)", lambda a: float(len(a.by_pair))),
 
@@ -692,7 +706,8 @@ REGISTRY = [
      "raw/old-vs-new.jsonl header (`spanMillis + warmupMillis`)",
      lambda a: float(a.header["spanMillis"] + a.header["warmupMillis"])),
     ("script horizon arrivals", r"holds \*\*(\d+)\*\* arrivals for `low-load` over that horizon",
-     "read off `Script.build` and reproduced from the recorded seed", lambda a: 226.0),
+     "read off `Script.build` and reproduced from the recorded seed at the 10 500 ms horizon",
+     lambda a: horizon_arrivals(a, 10_500)),
     ("window arrivals", r"the same script holds \*\*(\d+)\*\*",
      "raw/smoke-old.jsonl `offered`", lambda a: float(a.smoke[0]["offered"])),
     ("offered identical pairs", r"identical in (\d+) of the 30",
@@ -791,9 +806,13 @@ REGISTRY = [
          statistics.median([r["trailing"][STEADY]["p99Nanos"] for r in a.by_workload[("low-load", NEW)]])
          - statistics.median([r["trailing"][STEADY]["p99Nanos"]
                               for r in a.by_workload[("low-load", OLD)]])) / 1e6)),
+    # Pointed at the column the sentence actually quotes. It used to read column 11 — the smallest
+    # *same-signed* effect, which is 0.00 for post-GC heap — while §9.1 said "a resolution of
+    # 0.01 %", and it passed only because the flat tolerance swallows 0.01 against 0.00. That is the
+    # tolerance doing a check's work, which is why the tolerance is stated in the document now.
     ("heap resolution", r"at a resolution of (\d+\.\d+) %",
-     "raw/old-vs-new-analysis.txt (post-GC heap, smallest same-signed effect)",
-     lambda a: tool_cell(a, "post-GC heap", 11)),
+     "raw/old-vs-new-analysis.txt (post-GC heap, median paired spread)",
+     lambda a: tool_cell(a, "post-GC heap", 10)),
     ("throughput envelope low", r"deltas run\s+\*\*−(\d+\.\d+) % to",
      "raw/old-vs-new.jsonl (four expiry-clean profiles, whole-span throughput, min)",
      lambda a: abs(min([d for wl in ("low-load", "unqueued", "churn-drain", "mixed-kind-retry")
@@ -902,14 +921,28 @@ REGISTRY = [
      "raw/old-vs-new.jsonl (window-total allocation, min over the 25)",
      lambda a: min([d for wl, _arm in a.by_workload if wl != "saturated"
                     for d in a.paired(wl, "allocatedBytes")])),
+    # The two entries below read the *whole* set the sentence names, `saturated` included. The
+    # earlier versions excluded it while their labels said "five measurable profiles", so they
+    # encoded the same exclusion as the sentence they guarded and could never catch it — the range
+    # the tool prints for those five profiles is 0.00–43.48 %, and 3.06 is the minimum over the
+    # other four. Both numbers are stated in the document and each has its own entry now.
     ("p99 steady resolution low", r"\*\*(\d+\.\d+)–43\.48 % over the five profiles",
-     "raw/old-vs-new-analysis.txt (steady p99, five measurable profiles, min)",
+     "raw/old-vs-new-analysis.txt (steady p99, all five measurable profiles, min)",
+     lambda a: min(float(r[2]) for r in a.tool_rows("resolution") if r[1] == "steady p99")),
+    ("p99 steady resolution without saturated", r"the steady range is (\d+\.\d+)–43\.48",
+     "raw/old-vs-new-analysis.txt (steady p99, the four profiles excluding `saturated`, min)",
      lambda a: min(float(r[2]) for r in a.tool_rows("resolution")
                    if r[1] == "steady p99" and r[0] != "saturated")),
     ("p99 whole-span resolution low", r"\*\*(\d+\.\d+)–33\.49 % over all six",
-     "raw/old-vs-new-analysis.txt (whole-span p99, five measurable profiles, min)",
+     "raw/old-vs-new-analysis.txt (whole-span p99, the five profiles excluding `saturated`, min)",
      lambda a: min(float(r[2]) for r in a.tool_rows("resolution")
                    if r[1] == "whole-span p99" and r[0] != "saturated")),
+    ("p99 whole-span resolution without the separated pair",
+     r"excluding those\s+the\s+whole-span\s+range is (\d+\.\d+)–33\.49",
+     "raw/old-vs-new-analysis.txt (whole-span p99, excluding the two profiles whose arms are "
+     "already separated, min)",
+     lambda a: min(float(r[2]) for r in a.tool_rows("resolution")
+                   if r[1] == "whole-span p99" and r[0] not in ("saturated", "mixed-kind-retry"))),
     ("p99 whole-span resolution high", r"\*\*0\.00–(33\.49) % over all six",
      "raw/old-vs-new-analysis.txt (queued, whole-span p99)",
      lambda a: resolution(a, "queued", "whole-span p99")),
@@ -1087,7 +1120,7 @@ def value_in_row(art, workload, metric_word, value):
             continue
         for c in row[3:]:
             got = number(c)
-            if got is not None and abs(got - value) <= 0.011:
+            if got is not None and abs(got - value) <= TOLERANCE:
                 return True
     return False
 
@@ -1120,6 +1153,27 @@ def differing_offered_pairs(art):
     return float(n)
 
 
+def offered_difference_size(art):
+    """The ticket count the differing pairs differ by — the largest one, so a pair differing by two
+    cannot pass behind one differing by one."""
+    return float(max(abs(pair[NEW]["offered"] - pair[OLD]["offered"])
+                     for pair in art.by_pair.values()
+                     if OLD in pair and NEW in pair
+                     and pair[NEW]["offered"] != pair[OLD]["offered"]))
+
+
+def pair_set_sizes(art):
+    """The three nested pair sets §9.2 names, counted from the artifact: the pairs in which neither
+    arm expired anything (what the document calls expiry-clean), those not on `saturated`, and all
+    of them. The first is a property of the artifact, not of the profile names, because "expired
+    nothing" is what the sample records."""
+    return (sum(1 for pair in art.by_pair.values()
+                if OLD in pair and NEW in pair
+                and pair[OLD]["expired"] == 0 and pair[NEW]["expired"] == 0),
+            sum(1 for (workload, _repetition) in art.by_pair if workload != "saturated"),
+            len(art.by_pair))
+
+
 def horizon_arrivals(art, upto_ms):
     """Replay `Script.build` for one profile: the LCG, the inter-arrival draw order and the
     horizon. This is what makes the 226/208 claim recomputed rather than asserted."""
@@ -1149,9 +1203,11 @@ WORD_REGISTRY = [
      "raw/old-vs-new.jsonl (per-pair offered comparison)",
      lambda a: differing_offered_pairs(a)),
     ("offered difference size", r"differ by exactly (one|two) ticket",
-     "raw/old-vs-new.jsonl (per-pair offered comparison)", lambda a: 1.0),
+     "raw/old-vs-new.jsonl (the largest per-pair offered difference)",
+     lambda a: offered_difference_size(a)),
     ("nested sets", r"(three|two) nested sets",
-     "the 20 / 25 / 30 pair sets named in the table beneath", lambda a: 3.0),
+     "raw/old-vs-new.jsonl (the distinct sizes of the three nested pair sets)",
+     lambda a: float(len(set(pair_set_sizes(a))))),
     ("script horizon arrivals", r"it\s+holds \*\*(226)\*\* arrivals",
      "replayed from `Script.build` with the recorded seed at a 10 500 ms horizon",
      lambda a: horizon_arrivals(a, 10_500)),
@@ -1188,6 +1244,23 @@ INSTRUMENT_REGISTRY = [
      "this run's own word-inventory size", lambda c: c["inventory_words"]),
     ("literal entry count", r"(\d+) of them declared literals",
      "this run's own literal-entry count", lambda c: c["literals"]),
+    # The per-class occurrence totals. §12 is the document's account of how much of itself is
+    # checked, so its two totals are the last place a stale figure could sit unguarded — the
+    # registry above guards the counts of *claims*, and nothing guarded the counts of *non-claims*.
+    ("digit non-claim total", r"(\d+) \+ \d+ numbers",
+     "this run's own classified-digit count", lambda c: c["classified_digits"]),
+    ("word non-claim total", r"\d+ \+ (\d+) numbers",
+     "this run's own classified-word count", lambda c: c["classified_words"]),
+    # The slack every comparison carries, and the two figures the coverage-limits section quotes to
+    # show what a metric name in the clause does to the subject check.
+    ("comparison tolerance", r"flat absolute tolerance of ±(\d+\.\d+)",
+     "this script's own TOLERANCE constant", lambda c: c["tolerance"]),
+    ("p99 paired spread, whole-span", r"paired spreads are \*\*(\d+\.\d+) %\*\* \(whole-span\)",
+     "raw/old-vs-new-analysis.txt (whole-span p99, median paired spread)",
+     lambda c: c["p99_paired_whole"]),
+    ("p99 paired spread, steady", r"and \*\*(\d+\.\d+) %\*\* \(steady\)",
+     "raw/old-vs-new-analysis.txt (steady p99, median paired spread)",
+     lambda c: c["p99_paired_steady"]),
 ]
 
 
@@ -1270,7 +1343,7 @@ def main():
             # the artifact's value is rounded to the precision the document itself states.
             decimals = len(captured.split(".")[1]) if "." in captured else 0
             if got is None or not (round(float(expected), decimals) == got
-                                   or abs(got - float(expected)) <= 0.011):
+                                   or abs(got - float(expected)) <= TOLERANCE):
                 PROBLEMS.append(f"registry {name}: document says {captured!r}, artifact says "
                                 f"{float(expected):.4f} ({label})")
 
@@ -1365,7 +1438,12 @@ def main():
             "classes_digits": len(classified), "classes_words": len(word_classified),
             "inventory": len(inventory) + len(word_inventory),
             "inventory_digits": len(inventory), "inventory_words": len(word_inventory),
-            "literals": len(LITERAL_ENTRIES), "perturbations": len(PERTURBATIONS)})
+            "literals": len(LITERAL_ENTRIES), "perturbations": len(PERTURBATIONS),
+            "classified_digits": sum(len(hits) for hits in classified.values()),
+            "classified_words": sum(len(hits) for hits in word_classified.values()),
+            "tolerance": TOLERANCE,
+            "p99_paired_whole": tool_cell(art, "whole-span p99", 10),
+            "p99_paired_steady": tool_cell(art, "steady p99", 10)})
         if re.compile(pattern).groups != 1:
             PROBLEMS.append(f"instrument registry {name}: {re.compile(pattern).groups} groups, "
                             "not one — a registry bug")
@@ -1476,12 +1554,51 @@ PERTURBATIONS = (
      "every cell of all 13 tables", "every cell of all 11 tables"),
     ("an endpoint of an allocation range",
      "**+1.58 % to +45.84 %**", "**+1.58 % to +45.80 %**"),
+    # This cell had no entry at all until this round: `297 + 131 numbers` sat in the section that
+    # claims its numbers are computed, and `999 + 999 numbers` returned PASS.
+    ("a per-class occurrence total in §12 — the document's own account of how much of itself is "
+     "checked, which had no entry at all until this round",
+     "290 + 149 numbers", "999 + 999 numbers"),
 )
 
 
+def assert_in_checkout():
+    """Six registry entries are `git grep` claims run from this repository's root, so this script
+    only means anything inside a checkout of it. Outside one they do not fail — they have nothing to
+    run — which is the silent pass this document exists to stop."""
+    import subprocess
+    root = HERE.parents[2]
+    try:
+        toplevel = subprocess.run(["git", "-C", str(root), "rev-parse", "--show-toplevel"],
+                                  capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError) as failure:
+        raise SystemExit(f"reconcile-12e.py: no checkout at {root} to resolve git against "
+                         f"({failure}) — the six §5.7 `git grep` entries would report themselves "
+                         "uncomputable rather than checked") from None
+    if pathlib.Path(toplevel).resolve() != root.resolve():
+        raise SystemExit(f"reconcile-12e.py: {root} is not the root of a checkout "
+                         f"(git says {toplevel}); run this from a clone of the repository")
+
+
 def self_test():
-    """Apply each perturbation and require the reconciler to fail. Returns 0 when all fail."""
+    """Apply each perturbation and require the reconciler to fail. Returns 0 when all fail.
+
+    The unperturbed run is asserted to pass first. Without it a broken environment reports its ten
+    (or eleven) `caught`s out of a document that was already failing, which is a self-test reporting
+    the opposite of what it measured.
+    """
     global DOC_TEXT, PROBLEMS, COVERAGE
+    DOC_TEXT, PROBLEMS, COVERAGE = None, [], []
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        baseline = main()
+    print(f"- unperturbed run: **{'PASS' if baseline == 0 else 'FAIL'}**")
+    if baseline != 0:
+        print()
+        print(buffer.getvalue())
+        print("**The unperturbed document does not reconcile, so the perturbations below would be "
+              "vacuous.**\n")
+        return 1
     failures = []
     for description, old, new in PERTURBATIONS:
         original = DOC.read_text()
@@ -1513,6 +1630,7 @@ def self_test():
 
 
 if __name__ == "__main__":
+    assert_in_checkout()
     if "--perturbations" in sys.argv:
         print("## Perturbation self-test\n")
         raise SystemExit(self_test())

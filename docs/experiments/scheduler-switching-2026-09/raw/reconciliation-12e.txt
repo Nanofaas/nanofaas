@@ -19,18 +19,18 @@
 
 ### Prose claims
 
-- registry entries evaluated: **135**
-- claim occurrences matched and recomputed against an artifact: **141**
-- prose lines read (tables, code fences and §12 excluded): **547** of 854 lines
-- prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
+- registry entries evaluated: **137**
+- claim occurrences matched and recomputed against an artifact: **143**
+- prose lines read (tables, code fences and §12 excluded): **549** of 921 lines
+- prose numbers classified as citations, references or code rather than claims about the artifact: **290**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
 |---|---|---|
-| section/chapter reference | 94 | `11` in …sue #208. The comparison the specification's §11 asks th… |
+| section/chapter reference | 95 | `11` in …sue #208. The comparison the specification's §11 asks th… |
 | code constant or expression | 29 | `0` in …fires only when `expected.queued() > 0`. In the new arm … |
-| prose enumeration or count of things in this document | 27 | `5` in …d mean one of two inventions. Dispatching the 5 not-read… |
-| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 27 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
+| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 28 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
 | task, issue or mismatch label | 26 | `12` in …Task 12e, issue #208. The compari… |
+| prose enumeration or count of things in this document | 26 | `5` in …d mean one of two inventions. Dispatching the 5 not-read… |
 | metric, clock or artifact name | 21 | `99` in …iour of the old loop, and the old loop's own p99 would b… |
 | revision hash | 12 | `05` in …queue/src/main` at the pre-refactor revision `05f49dcb` … |
 | bare line or revision reference | 11 | `208` in …LT_MAX_BATCH_PER_FUNCTION = 2`, consumed at `:208`), whi… |

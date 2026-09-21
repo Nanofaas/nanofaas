@@ -522,8 +522,9 @@ except where all five repetitions agree in sign — see §9.2.
 
 - **Post-GC heap: indistinguishable, at a resolution of 0.01 %.** Every one of the six profiles'
   paired deltas is 5-of-5 same-signed and lies between −0.25 % and −0.03 %, and the metric's own
-  resolution is 0.01 % (the arms' medians are identical to two decimals: 77.24–77.45 MB). The new
-  engine's retained heap is not measurably different from the old loop's, against a 10 % budget.
+  resolution is 0.01 % — the median paired spread, §8's paired-spread column (the arms' medians are
+  identical to two decimals: 77.24–77.45 MB). The new engine's retained heap is not measurably
+  different from the old loop's, against a 10 % budget.
 - **Useful throughput: indistinguishable on the four profiles this design resolves it on, to
   0.00–0.05 %.** `low-load`, `unqueued`, `churn-drain` and `mixed-kind-retry`: their whole-span paired deltas run
   **−0.02 % to +0.03 %**, and their own resolutions on the **whole-span throughput column** of §8's
@@ -537,11 +538,12 @@ except where all five repetitions agree in sign — see §9.2.
 - **p99: no difference established anywhere except `mixed-kind-retry`'s whole-span figure.** That one
   is same-signed at **+1.79 %** (range +0.87…+6.98) and below the 5 % budget, so a PASS with a
   measured direction. Elsewhere the five repetitions straddle zero, and the workloads' own
-  resolutions on p99 are **3.06–43.48 % over the five profiles whose steady window is measurable**
-  and **0.00–33.49 % over all six on the whole-span figure** — the `0.00` lower endpoint *is*
-  `saturated`'s, whose arms are separated on every metric, so the two ranges are over different sets
-  and excluding `saturated` the whole-span range is 5.14–33.49 %. On `queued` no 5 % effect could
-  have been established at all, and on `low-load`'s steady p99 not below 9.36 %.
+  resolutions on p99 are **0.00–43.48 % over the five profiles whose steady window is measurable**
+  — that `0.00` is `saturated`'s, and excluding it the steady range is 3.06–43.48 % — and
+  **0.00–33.49 % over all six on the whole-span figure** — those zeros are the two profiles already
+  separated on that metric (`saturated` and `mixed-kind-retry`), so excluding those the whole-span
+  range is 5.14–33.49 %. On `queued` no 5 % effect could have been established at all, and on
+  `low-load`'s steady p99 not below 9.36 %.
 - **`low-load`'s steady p99 is a budget MISS: +5.40 %.** It is reported as a MISS and not excused.
   Its ground is the straddle: the five paired differences run −19.52 % to +9.36 %, so they fall on
   both sides of zero and the median is not a measured effect. Its *second* ground, which an earlier
@@ -795,27 +797,45 @@ section fails the reconciler exactly as a stale figure in §9 does.
 |---|---|---|
 | every cell of all 13 tables — the 12 of them this reconciler checks, the thirteenth being this table | recomputed from `raw/old-vs-new.jsonl`, `raw/smoke-old.jsonl`, `summarize.workload_table` or the analyzer's own output | **797 table cells**, 0 mismatches; 13 cells are names, types or declared omissions |
 | tables quoted verbatim from the analyzer | **string equality** against the analyzer's own output | the settlement, comparison, medians, resolving-power and per-workload-resolution tables |
-| numeric claims in the prose | a registry of **140 entries**, each recomputing its value from an artifact or from a declared literal | **146 of 146** occurrences matched and recomputed, 0 mismatches |
+| numeric claims in the prose | a registry of **142 entries**, each recomputing its value from an artifact or from a declared literal | **148 of 148** occurrences matched and recomputed, 0 mismatches |
 | numbers spelled out in words | a second registry, the same discipline: a stale entry fails the run | 5 word claims recomputed |
-| prose numbers that are not claims | 18 named classes for digits, and a parallel set for words, each printed with an example so the filter can be audited | 297 + 131 numbers |
+| prose numbers that are not claims | 18 named classes for digits, and a parallel set for words, each printed with an example so the filter can be audited | 290 + 149 numbers |
 | what is left | listed in full, never truncated | **0 numbers** left over |
 
 Of the registry entries, **2 of them declared literals**: their value cannot be recomputed from an
 artifact (the count of post-campaign lines dropped from the load record, and the saturated profile's
 service rate, which lives in `SchedulerSwitchBenchmark.Profile` rather than in the artifact), and
 each declares itself as such in the entry rather than hiding among the recomputed ones. Every other
-entry recomputes.
+entry recomputes. That sentence was false until this round: four further entries returned bare
+constants while declaring themselves recomputed — the two pair-set sizes of §9.2, the ticket size
+the differing offered pairs differ by, and the arrival count on the script's horizon — and an
+instrument whose own account of itself is wrong is the failure this document is written against. All
+four now compute their value from `raw/old-vs-new.jsonl` or from a replay of `Script.build`, and a
+perturbation of any of them fails the run.
+
+**The tolerance every check here carries, stated because a reader cannot otherwise know it.** Each
+comparison accepts a figure within a flat absolute tolerance of ±0.011 of the artifact's value —
+that is slack, not rounding, and it is the same for every claim regardless of the precision it is
+written at. A figure carrying two decimals is therefore checked no more tightly than that, which for
+the finest claims in this document — a resolution of a hundredth of a percentage point, or the heap
+deltas' hundredths — is a large *relative* error. `TOLERANCE` is one named constant in the script
+that both the checks and this sentence are read from, so the two cannot drift apart. It exists
+because the document rounds and a two-decimal percentage cannot be matched exactly; it is stated
+here because an unstated tolerance is exactly the slack that let a heap resolution pass while
+reading a column that does not contain it (see the coverage limits below).
 
 **The instrument's bite is itself measured, not asserted.** `reconcile-12e.py --perturbations`
-applies ten changes a careless edit could make and requires the reconciler to fail on every one; its
-output is `raw/reconciliation-perturbations.txt`, and **all 10 perturbations caught** is a computed
-claim like every other count here. Three of the ten are the defects this round's fixes removed (the
-grep count, a cell of the table quoted verbatim, and the cross-artifact `completed / useful` cell);
-the rest are the mechanism's own holes — a value swapped to another row of the analyzer's table, a
+applies eleven changes a careless edit could make and requires the reconciler to fail on every one;
+it first asserts that the **unperturbed** document passes, because ten `caught`s out of a document
+that was already failing measure the environment rather than the checks. Its output is
+`raw/reconciliation-perturbations.txt`, and **all 11 perturbations caught** is a computed claim like
+every other count here. Three of the eleven are the defects round 3's fixes removed (the grep count,
+a cell of the table quoted verbatim, and the cross-artifact `completed / useful` cell); the rest are
+the mechanism's own holes — a value swapped to another row of the analyzer's table, a
 metric-dependent count written in a word, a claim written in words, a settlement-table cell, an
-instrument count, and a range endpoint. The self-test was what found that the MISS's own `+5.40 %`
-had no registry entry at all: the perturbation for it failed to apply, which is a check being stale
-rather than a check passing.
+instrument count, a range endpoint, and this section's own per-class totals. The self-test was what
+found that the MISS's own `+5.40 %` had no registry entry at all: the perturbation for it failed to
+apply, which is a check being stale rather than a check passing.
 
 A table the reconciler has no checker for **fails its run**, so adding a table to this document
 requires adding a checker; a registry entry whose claim has been reworded away **also fails**, so a
@@ -851,4 +871,51 @@ an example each in `raw/reconciliation-12e.txt`, so which class a given number f
 rather than asserted. Two registry entries declare themselves **literals**, because their value
 cannot be recomputed from an artifact at all.
 
-complete when it is not is this campaign's most repeated failure.
+### What this instrument was demonstrated not to catch
+
+Every limit below was **demonstrated** — someone made the change and the reconciler still returned
+PASS — rather than argued from the code. They are stated here rather than closed, because an
+instrument whose holes are known is usable and one that claims to have none is not: these are the
+edges of what a PASS above means, and they are parked for the whole-branch review rather than
+patched one at a time.
+
+1. **A count spelled out in words is not a claim.** Changing "post-GC heap (five)" to "(two)"
+   returns PASS: the digits are guarded by registry entries, their word restatements are guarded by
+   the word pass only where an entry names them, and everything else falls to the classifier's
+   "prose enumeration or count of things in this document" class, which is a citation class and
+   checks nothing. The same class let a spelled-out count survive inside the very sentence round 3
+   rewrote to fix a spelled-out count.
+2. **A figure whose clause names no workload falls to the weakest class.** Changing §9.2's `queued`
+   confound range from "1.0 % to 2.5 %" to "3.5 % to 4.5 %" returns PASS: both strings exist as
+   substrings of the analyzer's output, so "the analyzer also quotes this figure" accepts them, and
+   with no workload and metric word in the clause the subject check never runs. The window it looks
+   through is the line, not the paragraph — the subject has to be named in the clause itself.
+3. **A figure bracketed by a metric name short-circuits the subject check.** Appending "On p99 the
+   pairing cuts the spread to a hundredth of a percent." returns PASS although it is false: p99's
+   paired spreads are **13.66 %** (whole-span) and **11.96 %** (steady), per §8. `p99` in the
+   preceding text matches the citation classifier's metric-name class, which returns before the
+   subject test is reached.
+4. **A whole inserted sentence of false prose passes.** Appending "Three of the six profiles are
+   expiry-confounded." returns PASS although one is (§9.2's own pair-set table says so). A sentence
+   of prose whose numbers sit in no registry entry and match no citation class is exactly what the
+   classifier calls ordinary prose, and the classifier does not read.
+5. **The tolerance is flat and absolute.** Every comparison carries the same slack, stated above,
+   whatever precision the claim is written at — so a two-decimal claim, or a delta written as a
+   hundredth, is accepted with up to that error, which in relative terms is a large one for the
+   finest claims in this document. A **range endpoint** is the case to watch, because the endpoints
+   are what the ranges in §9.1 turn on: writing the five-profile steady range as `0.01–43.48 %`
+   rather than `0.00–43.48 %` — which would change which set the sentence describes — is inside the
+   slack and returns PASS. The tolerance is stated above for this reason; it is not a substitute for
+   a check.
+
+Three further bounds on how this may be used, each of them a property of the script rather than of
+the document:
+
+- **It only means anything inside a checkout of this repository.** Six entries are `git grep`
+  claims, run from the repository root; outside a checkout they have nothing to run against. The
+  script now **refuses to start** outside one instead of reporting those six as uncomputable.
+- **`WORD_VALUES` stops at "twelve".** A count spelled above twelve is invisible to the word pass —
+  the same hole as limit 1, one word past its table.
+- **`--perturbations` asserts the unperturbed run passes before applying anything.** It did not
+  until this round, so an environment whose document was already failing reported its `caught`s as
+  though they were checks; that precondition is now the first thing it applies.
