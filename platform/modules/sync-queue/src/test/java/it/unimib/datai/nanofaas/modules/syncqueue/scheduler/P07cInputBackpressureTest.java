@@ -4,7 +4,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
-import it.unimib.datai.nanofaas.controlplane.capacity.InvocationQuotaExceededException;
+import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacity;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
@@ -13,86 +13,59 @@ import it.unimib.datai.nanofaas.controlplane.dispatch.LocalDispatcher;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionState;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
-import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
-import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import it.unimib.datai.nanofaas.controlplane.scheduler.QueuedDispatchCapacity;
-import it.unimib.datai.nanofaas.controlplane.service.ExecutionCompletionHandler;
-import it.unimib.datai.nanofaas.controlplane.service.InvocationExecutionFactory;
-import it.unimib.datai.nanofaas.controlplane.service.Metrics;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
 import it.unimib.datai.nanofaas.controlplane.input.CanonicalInvocationInput;
 import it.unimib.datai.nanofaas.controlplane.input.RetainedInputEstimator;
-import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
-import it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport;
-import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
-import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueMetrics;
-import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
+import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingStrategy;
+import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingTicket;
+import it.unimib.datai.nanofaas.controlplane.service.ExecutionCompletionHandler;
+import it.unimib.datai.nanofaas.controlplane.service.InvocationExecutionFactory;
+import it.unimib.datai.nanofaas.controlplane.service.Metrics;
+import it.unimib.datai.nanofaas.execution.EngineDispatch;
+import it.unimib.datai.nanofaas.execution.PendingEntry;
+import it.unimib.datai.nanofaas.execution.PendingWorkStore;
+import it.unimib.datai.nanofaas.execution.SchedulerEngine;
+import it.unimib.datai.nanofaas.execution.StrategyRegistry;
+import it.unimib.datai.nanofaas.modules.syncqueue.SharedQueueSchedulingStrategy;
 import org.junit.jupiter.api.Test;
 
-import java.time.Duration;
+import java.time.Clock;
 import java.time.Instant;
-import java.util.Map;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.when;
 
+/**
+ * P07c: input backpressure under a real, saturated {@link InvocationCapacity}.
+ *
+ * <p>Task 13b (issue #208) moved this file off the module's own {@code SyncScheduler}: the
+ * composed {@link SchedulerEngine} is the product now, so the acceptance is proved on it. Two of
+ * the three tests this file used to hold are deleted rather than migrated, because the engine
+ * pins their property directly and more sharply:
+ *
+ * <ul>
+ *   <li>"input saturation requeues instead of settling a function failure" -
+ *       {@code SchedulerEngineDispatchTest.exhaustedInputQuotaKeepsTheReservationAndRequeues}
+ *       asserts the reservation is kept, the ticket re-added to the index and no rejection
+ *       callback made.</li>
+ *   <li>"a reserved dispatch prevents concurrent admission from displacing the backpressured
+ *       item" - {@code SchedulerEngineDispatchTest
+ *       .aConcurrentEnqueueCannotTakeTheSlotReservedByAnInFlightSubmit}.</li>
+ * </ul>
+ *
+ * <p>The remaining test is the one whose subject is not the scheduler at all but the real
+ * physical-copy reservation: it keeps the saturated {@link InvocationCapacity} and the real
+ * {@link ExecutionCompletionHandler}, and replaces only the retired loop with the engine.
+ */
 class P07cInputBackpressureTest {
+
     private static final RetainedInputEstimator.Limits INPUT_LIMITS =
             new RetainedInputEstimator.Limits(12, 128, 1_024, 64 * 1_024);
-
-    @Test
-    void physicalCopySaturationRequeuesInsteadOfSettlingAFunctionFailure() {
-        QueuedDispatchCapacity enqueuer = SchedulerLeaseTestSupport.enqueuer();
-        when(enqueuer.hasAvailableSlot("fn")).thenReturn(true);
-        it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.allow(enqueuer, "fn", true);
-        ExecutionStore store = new ExecutionStore();
-        SyncQueueService queue = queue(store);
-        InvocationTask task = task();
-        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
-        store.put(record);
-        queue.enqueueOrThrow(task);
-        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, ignored -> {
-            throw new InvocationQuotaExceededException(InvocationQuotaExceededException.Resource.INPUT);
-        }, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
-
-        scheduler.tickOnce();
-
-        assertThat(queue.queuedItems()).isOne();
-        assertThat(record.state()).isEqualTo(ExecutionState.QUEUED);
-        assertThat(record.completion()).isNotDone();
-    }
-
-    @Test
-    void dispatchReservationPreventsConcurrentAdmissionFromDisplacingBackpressuredItem() {
-        QueuedDispatchCapacity enqueuer = SchedulerLeaseTestSupport.enqueuer();
-        when(enqueuer.hasAvailableSlot("fn")).thenReturn(true);
-        it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.allow(enqueuer, "fn", true);
-        ExecutionStore store = new ExecutionStore();
-        SyncQueueService queue = queue(store, 1);
-        InvocationTask first = task("first");
-        InvocationTask second = task("second");
-        store.put(new ExecutionRecord(first.executionId(), first));
-        queue.enqueueOrThrow(first);
-        AtomicBoolean secondRejected = new AtomicBoolean();
-        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, ignored -> {
-            try {
-                queue.enqueueOrThrow(second);
-            } catch (it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException expected) {
-                secondRejected.set(true);
-            }
-            throw new InvocationQuotaExceededException(InvocationQuotaExceededException.Resource.INPUT);
-        }, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
-
-        scheduler.tickOnce();
-
-        assertThat(secondRejected).isTrue();
-        assertThat(queue.queuedItems()).isOne();
-        assertThat(queue.pollReady(Instant.now()).task().executionId()).isEqualTo("first");
-    }
 
     @Test
     void realPhysicalCopyLargerThanHalfQuotaRemainsQueuedUnderInputSaturation() {
@@ -114,66 +87,85 @@ class P07cInputBackpressureTest {
         coreMetrics.registerFunction("fn");
         InvocationExecutionFactory factory = new InvocationExecutionFactory(
                 store, new IdempotencyStore(), coreMetrics, capacity, INPUT_LIMITS);
-        FunctionSpec spec = functionSpec();
+
         InvocationExecutionFactory.ExecutionLookup lookup = factory.createOrReuseExecution(
-                "fn", spec, request, null, null, InvocationKind.SYNC);
+                "fn", functionSpec(), request, null, null, InvocationKind.SYNC);
         InvocationTask queuedTask = lookup.executionRecord().prepareForQueue();
-        SyncQueueService queue = queue(store);
-        queue.enqueueOrThrow(queuedTask);
-        QueuedDispatchCapacity enqueuer = SchedulerLeaseTestSupport.enqueuer();
-        when(enqueuer.hasAvailableSlot("fn")).thenReturn(true);
-        it.unimib.datai.nanofaas.modules.syncqueue.SchedulerLeaseTestSupport.allow(enqueuer, "fn", true);
+
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
                 store, null,
                 new DispatcherRouter(new LocalDispatcher() {
                     @Override
                     public CompletableFuture<DispatchResult> dispatch(InvocationTask task) {
                         return CompletableFuture.completedFuture(
-                                DispatchResult.warm(it.unimib.datai.nanofaas.common.model.InvocationResult.success("unused")));
+                                DispatchResult.warm(
+                                        it.unimib.datai.nanofaas.common.model.InvocationResult.success("unused")));
                     }
                 }, null),
                 coreMetrics, null, generations);
-        SyncScheduler scheduler = new SyncScheduler(enqueuer, queue, handler::dispatch, org.mockito.Mockito.mock(it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle.class));
 
-        scheduler.tickOnce();
+        // The engine's transport is the real completion handler: it is what refuses the physical
+        // copy reservation, and SchedulerEngine.submit is what turns that refusal into a requeue.
+        EngineDispatch dispatch = new EngineDispatch() {
+            @Override
+            public DispatchOwnership tryAcquire(SchedulingTicket ticket) {
+                return generations.tryAcquireLease(ticket.generation(), ignored -> { });
+            }
 
-        assertThat(queue.queuedItems()).isOne();
+            @Override
+            public boolean isCurrent(SchedulingTicket ticket) {
+                return true;
+            }
+
+            @Override
+            public void submit(InvocationTask task) {
+                handler.dispatch(task);
+            }
+
+            @Override
+            public void expired(InvocationTask task) {
+                store.expired(task);
+            }
+
+            @Override
+            public void removed(InvocationTask task) {
+                store.removed(task);
+            }
+
+            @Override
+            public void rejected(InvocationTask task, Throwable failure) {
+                store.rejected(task, failure);
+            }
+        };
+        SchedulingStrategy strategy = new SharedQueueSchedulingStrategy();
+        PendingWorkStore pending = new PendingWorkStore(16);
+        SchedulerEngine engine = new SchedulerEngine(pending, new StrategyRegistry(List.of(strategy)),
+                strategy.id(), dispatch, generation -> true, Clock.systemUTC(), System::nanoTime);
+
+        SchedulingTicket ticket = new SchedulingTicket(
+                new it.unimib.datai.nanofaas.controlplane.scheduler.TicketId(
+                        queuedTask.executionId(), queuedTask.attempt()),
+                generations.activeGeneration("fn"), 0, Instant.now(), Instant.now(), null);
+        assertThat(engine.enqueue(new PendingEntry(ticket, queuedTask))).isTrue();
+
+        engine.tick();
+
+        // The item is back in the index, still admitted and not concluded, and the capacity
+        // accounting says exactly which reservation is still held: the canonical input, never the
+        // physical copy the saturated quota refused.
+        assertThat(pending.pendingCount()).isOne();
         assertThat(lookup.executionRecord().state()).isEqualTo(ExecutionState.QUEUED);
         assertThat(lookup.executionRecord().completion()).isNotDone();
         assertThat(capacity.executionReservedGlobally()).isOne();
         assertThat(capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
         assertThat(capacity.physicalInputCopyReservedGlobally()).isZero();
 
-        queue.pollReady(Instant.now()).task().releaseQueuedInput();
+        // Draining the queued ticket releases everything it was holding.
+        engine.removeAllFor("fn");
         lookup.abandonAdmission();
         assertThat(capacity.executionReservedGlobally()).isZero();
         assertThat(capacity.inputReservedGlobally()).isZero();
         assertThat(capacity.physicalInputCopyReservedGlobally()).isZero();
-    }
-
-    private static SyncQueueService queue(ExecutionStore store) {
-        return queue(store, 10);
-    }
-
-    private static SyncQueueService queue(ExecutionStore store, int maxDepth) {
-        SyncQueueProperties properties = new SyncQueueProperties(
-                true, false, maxDepth, Duration.ofSeconds(2), Duration.ofSeconds(2), 2,
-                Duration.ofSeconds(30), 3);
-        return new SyncQueueService(properties, store,
-                new SyncQueueMetrics(new SimpleMeterRegistry()),
-                SyncQueueConfigSource.fixed(properties.runtimeDefaults()),
-                new FunctionCapacityRegistry(), null);
-    }
-
-    private static InvocationTask task() {
-        return task("exec");
-    }
-
-    private static InvocationTask task(String executionId) {
-        FunctionSpec spec = functionSpec();
-        return new InvocationTask(executionId, "fn", spec,
-                new InvocationRequest("payload", Map.of()), null, null, Instant.now(), 1,
-                InvocationKind.SYNC);
     }
 
     private static FunctionSpec functionSpec() {

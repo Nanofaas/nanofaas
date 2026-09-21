@@ -14,12 +14,13 @@ import java.util.Map;
 import java.util.function.Predicate;
 
 /**
- * Ports the selection logic of {@link Scheduler} onto the {@link SchedulingIndex} contract:
+ * Ports the selection logic of the retired {@code modules.asyncqueue.Scheduler} loop onto the
+ * {@link SchedulingIndex} contract (that loop was deleted in Task 13b, issue #208):
  * one FIFO of tickets per function, visited round-robin, with a bounded number of
  * consecutive dispatches per function turn before moving on to the next active function.
  *
- * <p>This mirrors the existing scheduler exactly: {@code Scheduler} takes function names off
- * a work-signal queue (coalesced while pending) and drains up to
+ * <p>This mirrors the retired loop exactly: it took function names off
+ * a work-signal queue (coalesced while pending) and drained up to
  * {@value #DEFAULT_MAX_BATCH_PER_FUNCTION} tasks from that function's own FIFO
  * ({@link FunctionQueueState}) before moving to the next signalled function. Here the
  * function-name queue is {@code activeOrder} and the per-function FIFO is a
@@ -27,11 +28,11 @@ import java.util.function.Predicate;
  * must not mutate anything (see the {@link SchedulingIndex} contract).
  *
  * <p>Batch size is not tunable here: preserving the measured value is this class's whole
- * point (see {@code Scheduler#DEFAULT_MAX_BATCH_PER_FUNCTION}).
+ * point (that loop's own {@code DEFAULT_MAX_BATCH_PER_FUNCTION}, recorded here).
  */
 public class PerFunctionSchedulingStrategy implements SchedulingStrategy {
 
-    /** Mirrors {@code Scheduler.DEFAULT_MAX_BATCH_PER_FUNCTION}; do not retune. */
+    /** The retired loop's {@code DEFAULT_MAX_BATCH_PER_FUNCTION}, preserved; do not retune. */
     static final int DEFAULT_MAX_BATCH_PER_FUNCTION = 2;
 
     @Override

@@ -22,6 +22,18 @@ class PerFunctionSchedulingStrategyTest {
         assertThat(new PerFunctionSchedulingStrategy().id()).isEqualTo("per-function");
     }
 
+    /**
+     * The turn rotation and its bound. Task 13b (issue #208) retired three loop-driven tests whose
+     * property is this one: {@code AsyncSchedulerFairnessPerfTest
+     * .asyncScheduler_hotFunctionDoesNotStarveSecondFunction} (a hot function with three queued
+     * tickets must not hold the turn past the batch while a second function waits),
+     * {@code SchedulerResilienceTest
+     * .scheduler_requeuesFunctionAfterBoundedBatchInsteadOfDrainingWholeBurst} and
+     * {@code AsyncQueueDiagnosticsTest}'s batch-limit assertion. All three built the deleted
+     * {@code modules.asyncqueue.Scheduler}; the trace they observed is asserted here directly on
+     * the index, and the blocked variant of the same fairness property is
+     * {@link #blockedFunctionDoesNotHideReadyWork}.
+     */
     @Test
     void turnMovesToNextFunctionAfterMaxBatchPerFunctionDispatches() {
         SchedulingIndex index = new PerFunctionSchedulingStrategy().newIndex();

@@ -42,7 +42,8 @@ import static org.mockito.Mockito.when;
  * {@link ExecutionCompletionHandler}'s retry path still calls {@code enqueue}
  * unconditionally and it must work - that is exactly what these tests pin down.
  *
- * <p>The production {@link it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncScheduler}
+ * <p>The module's production scheduler (its own {@code SyncScheduler} loop was deleted in
+ * Task 13b, issue #208; the composed {@code SchedulerEngine} owns selection now)
  * thread is not started here; each attempt is pumped manually the same way {@code
  * SyncScheduler.tickOnceInternal} would (acquire the function's slot, pop the real
  * queue, dispatch), which keeps the test deterministic.
@@ -89,7 +90,7 @@ class SyncQueueInvocationEnqueuerRetryIntegrationTest {
         return router;
     }
 
-    /** Stand-in for SyncScheduler.tickOnceInternal: acquire the slot, pop the real ready queue, dispatch. */
+    /** Stand-in for a scheduler pass: acquire the slot, pop the real ready queue, dispatch. */
     private static void pollAndDispatch(SyncQueueService queue, SyncQueueInvocationEnqueuer enqueuer,
                                         ExecutionCompletionHandler handler, String functionName) {
         SyncQueueItem item = queue.pollReady(Instant.now());

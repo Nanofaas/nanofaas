@@ -13,6 +13,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.SmartLifecycle;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 /**
  * Task 8 (issue #208): both scheduler strategies compose around ONE engine, ONE control surface
@@ -64,9 +65,15 @@ class SchedulerCompositionTest {
     }
 
     @Test
-    void hasNoLegacyPerModuleSchedulerBeans() throws Exception {
+    void theRetiredPerModuleSchedulerClassesAreGoneAndPublishNoBeans() throws Exception {
+        // Task 13b (issue #208) deleted both classes, which is strictly stronger than "not a
+        // bean": a re-added class is a regression before anyone even wires it. `assertNoBeanOfType`
+        // below already treats "not on the classpath" as absent, so this is the assertion that
+        // fails if either class comes back on any profile.
         assertNoBeanOfType(context, "it.unimib.datai.nanofaas.modules.asyncqueue.Scheduler");
         assertNoBeanOfType(context, "it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncScheduler");
+        assertClassNotOnClasspath("it.unimib.datai.nanofaas.modules.asyncqueue.Scheduler");
+        assertClassNotOnClasspath("it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncScheduler");
     }
 
     @Test
@@ -81,6 +88,14 @@ class SchedulerCompositionTest {
                 .count();
         long expected = context.getBeansOfType(SchedulingStrategy.class).isEmpty() ? 0 : 1;
         assertThat(schedulingLifecycles).isEqualTo(expected);
+    }
+
+    /** Fails when the named class is present on this profile's classpath at all. */
+    private static void assertClassNotOnClasspath(String className) {
+        assertThat(catchThrowable(() ->
+                Class.forName(className, false, SchedulerCompositionTest.class.getClassLoader())))
+                .as("%s must have been deleted, not merely left unpublished", className)
+                .isInstanceOf(ClassNotFoundException.class);
     }
 
     private static void assertNoBeanOfType(ApplicationContext context, String className) throws Exception {

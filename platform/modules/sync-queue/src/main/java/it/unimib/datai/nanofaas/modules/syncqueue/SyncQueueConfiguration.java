@@ -32,7 +32,8 @@ import java.util.function.LongSupplier;
  * needed (Task 8, issue #208): the runtime-mutable {@link SyncQueueConfigSource}, the module's
  * runtime defaults record, and the admission collaborators ({@link WaitEstimator},
  * {@link SyncQueueAdmissionController}) composed into {@link EngineSyncQueueGateway}. The old
- * {@code SyncQueueService}/{@code SyncScheduler} worker and its own queue are retired as beans —
+ * {@code SyncQueueService}/{@code SyncScheduler} worker and its own queue are retired as beans
+ * ({@code SyncScheduler} itself was deleted in Task 13b, issue #208) —
  * {@code SchedulerConfiguration} now owns the single engine they used to duplicate — but the
  * class itself is untouched (Task 13 removes it, after a full impact pass).
  */
@@ -41,8 +42,8 @@ import java.util.function.LongSupplier;
 public class SyncQueueConfiguration {
 
     /** How often the wait estimator prunes expired samples in the absence of new dispatches,
-     * mirroring the cadence {@code SyncScheduler}'s own tick loop gave it
-     * ({@code SyncScheduler.EMPTY_QUEUE_AWAIT_MS}) before that worker was retired. */
+     * mirroring the cadence the retired {@code SyncScheduler} loop gave it before that worker was
+     * deleted in Task 13b. */
     private static final long ESTIMATOR_MAINTENANCE_PERIOD_MS = 500L;
 
     @Bean
@@ -80,7 +81,7 @@ public class SyncQueueConfiguration {
 
     /** ponytail: a single daemon timer, not a general-purpose scheduling facility — its only job
      * is keeping {@link WaitEstimator#maintain} running while the queue is idle, since nothing
-     * else calls it once {@code SyncScheduler}'s tick loop is retired. */
+     * else calls it since the per-module tick loop was deleted. */
     @Bean(destroyMethod = "shutdown")
     @SuppressWarnings("FutureReturnValueIgnored") // Periodic maintenance; nothing awaits this handle.
     ScheduledExecutorService syncQueueEstimatorMaintenance(WaitEstimator estimator) {

@@ -30,7 +30,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Compares the selection order of the real {@code SyncQueueService} scan/rotation methods
- * (exactly what {@code SyncScheduler#tickOnceInternal} drives) against
+ * (exactly what the retired {@code SyncScheduler}'s tick drove, before Task 13b deleted it) against
  * {@link SharedQueueSchedulingStrategy} on a corpus covering every mandated event kind:
  * publish, a function going blocked then unblocked mid-stream, dispatches interleaved
  * across three functions, and a standalone removal that is not a dispatch.
@@ -45,7 +45,7 @@ class SharedQueueSchedulingStrategyTraceComparisonTest {
 
     @Test
     void oldServiceAndNewIndexAgreeOnFullCorpusTrace() {
-        // ---- OLD: real SyncQueueService, driven the way SyncScheduler#tickOnceInternal does ----
+        // ---- OLD: real SyncQueueService, driven the way the retired loop's tick did ----
         SyncQueueProperties props = new SyncQueueProperties(
                 true, false, 200, Duration.ofSeconds(30), Duration.ofSeconds(30), 2, Duration.ofSeconds(30), 3);
         FunctionCapacityRegistry capacity = new FunctionCapacityRegistry();
@@ -114,7 +114,7 @@ class SharedQueueSchedulingStrategyTraceComparisonTest {
         assertThat(newOrder).containsExactlyElementsOf(oldOrder);
     }
 
-    /** Drains every currently-dispatchable item, exactly as {@code SyncScheduler} would. */
+    /** Drains every currently-dispatchable item, exactly as the retired loop's tick would. */
     private static List<String> drainOld(SyncQueueService service, Set<String> blocked) {
         List<String> order = new ArrayList<>();
         SyncQueueItem item;

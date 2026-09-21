@@ -31,7 +31,8 @@ import static org.mockito.Mockito.when;
  * A3: retry round trip for the async-queue profile, using the real {@link
  * QueueBackedEnqueuer} + {@link QueueManager} + {@link FunctionQueueState} (not a mock
  * {@code InvocationEnqueuer}) wired to a real {@link ExecutionCompletionHandler}. The
- * production {@link Scheduler} thread is not started here - each attempt is pumped
+ * production scheduler thread (the module's own loop was deleted in Task 13b; the composed
+ * {@code SchedulerEngine} owns selection now) is not started here - each attempt is pumped
  * manually (acquire a slot, poll the real queue, dispatch), which keeps the test
  * deterministic while still exercising the real enqueue/queue-full behaviour that
  * backs the retry path.
@@ -70,7 +71,7 @@ class QueueBackedEnqueuerRetryIntegrationTest {
         return router;
     }
 
-    /** Stand-in for the Scheduler loop: acquire the function's dispatch slot, pop the head of its real queue, dispatch it. */
+    /** Stand-in for a scheduler pass: acquire the function's dispatch slot, pop the head of its real queue, dispatch it. */
     private static void pollAndDispatch(QueueManager queueManager, ExecutionCompletionHandler handler, String functionName) {
         var lease = queueManager.tryAcquireLease(functionName, queueManager.get(functionName));
         assertThat(lease).isNotNull();

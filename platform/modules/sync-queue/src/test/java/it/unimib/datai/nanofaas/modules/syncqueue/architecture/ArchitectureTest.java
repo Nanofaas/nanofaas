@@ -49,7 +49,8 @@ class ArchitectureTest {
      * {@code SyncQueueAdmissionController}, {@code SyncQueueAdmissionResult} — themselves out of
      * this module and into {@code :execution-runtime}'s {@code it.unimib.datai.nanofaas.execution
      * .admission} package, unchanged in behaviour, so the composed engine's admission path and
-     * the module's own retired {@code SyncQueueService}/{@code SyncScheduler} worker (kept until
+     * the module's own retired {@code SyncQueueService}/{@code SyncScheduler} worker ({@code SyncScheduler}
+     * deleted in Task 13b; the queue retained until
      * Task 13) share the exact same classes rather than two copies drifting apart. That move adds
      * a second, honest exception: {@code SyncQueueService} now legitimately depends on
      * {@code execution.admission..} the same way {@code SyncQueueConfiguration} always has, and is

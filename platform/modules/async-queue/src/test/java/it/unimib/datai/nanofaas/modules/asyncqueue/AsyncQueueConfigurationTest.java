@@ -441,6 +441,89 @@ class AsyncQueueConfigurationTest {
                 .hasSize(baseline);
     }
 
+    /**
+     * Task 13b (issue #208): the migrated home of the dispatch-failure property that two retired
+     * tests held on their own loops - {@code SchedulerResilienceTest
+     * .dispatchExceptionRecordsSlotHoldAndReleasesTheAcquiredState} (async-queue) and
+     * {@code SyncSchedulerDispatchExceptionTest.realDispatchFailure_releasesCapacitySlot}
+     * (sync-queue). Both drove a per-module scheduler; both schedulers are gone, so the property
+     * is pinned here instead, end to end on the product path: a submit that throws must release
+     * the capacity lease and conclude the already-admitted execution as {@code DISPATCH_REJECTED},
+     * leaving nothing pending.
+     *
+     * <p>The engine-level half of the same property - that the throwing submit is reported through
+     * {@code EngineDispatch.rejected} with the task and the failure - is
+     * {@code SchedulerEngineDispatchTest.aSubmitThatThrowsReturnsTheLeaseAndRejectsTheTask}. This
+     * test supplies the other half: the real {@code ExecutionStore} as {@code QueueLifecycle}, so
+     * the callout is proved to conclude the caller rather than only to have been made.
+     */
+    @Test
+    void aFailingDispatchConcludesTheQueuedExecutionAsDispatchRejectedAndReleasesTheSlot() {
+        FunctionCapacityRegistry capacityRegistry = new FunctionCapacityRegistry();
+        PendingWorkStore store = new PendingWorkStore(8);
+        RuntimeException failure = new IllegalStateException("transport is down");
+        EngineDispatch dispatch = new EngineDispatch() {
+            @Override
+            public DispatchOwnership tryAcquire(SchedulingTicket ticket) {
+                return capacityRegistry.tryAcquireLease(ticket.generation(), ignored -> { });
+            }
+
+            @Override
+            public boolean isCurrent(SchedulingTicket ticket) {
+                return true;
+            }
+
+            @Override
+            public void submit(InvocationTask task) {
+                throw failure;
+            }
+
+            @Override
+            public void expired(InvocationTask task) {
+                executionStore.expired(task);
+            }
+
+            @Override
+            public void removed(InvocationTask task) {
+                executionStore.removed(task);
+            }
+
+            @Override
+            public void rejected(InvocationTask task, Throwable cause) {
+                executionStore.rejected(task, cause);
+            }
+        };
+        SchedulingStrategy strategy = new PerFunctionSchedulingStrategy();
+        SchedulerEngine engine = new SchedulerEngine(store, new StrategyRegistry(List.of(strategy)),
+                strategy.id(), dispatch, generation -> true, Clock.systemUTC(), System::nanoTime);
+        FunctionRegistrationListener listener = new SchedulerConfiguration()
+                .schedulerCapacityGenerationListener(capacityRegistry, engine, new PerFunctionDepth(),
+                        noSyncGateway(), testMetricsBinder());
+
+        FunctionSpec spec = spec("echo");
+        InvocationTask task = task("exec-rejected", spec);
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+
+        listener.onRegister(spec);
+        executionStore.put(executionRecord);
+        SchedulingTicket ticket = new SchedulingTicket(
+                new TicketId(task.executionId(), task.attempt()),
+                capacityRegistry.activeGeneration("echo"), 0,
+                Instant.now(), Instant.now(), null);
+        assertThat(engine.enqueue(new PendingEntry(ticket, task))).isTrue();
+
+        engine.tick();
+
+        assertThat(capacityRegistry.inFlight("echo"))
+                .as("the failed dispatch must not leak the capacity slot it acquired")
+                .isZero();
+        assertThat(store.pendingCount()).isZero();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
+        assertThat(executionRecord.lastError().code()).isEqualTo("DISPATCH_REJECTED");
+        assertThat(executionRecord.completion().isDone()).isTrue();
+        assertThat(executionRecord.completion().join().success()).isFalse();
+    }
+
     private static void awaitUninterruptibly(CountDownLatch latch) {
         try {
             if (!latch.await(5, TimeUnit.SECONDS)) {

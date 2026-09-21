@@ -76,7 +76,7 @@ class AsyncQueueInvokeEnqueueContractRegressionTest {
         }
     }
 
-    /** Stand-in for the Scheduler loop: acquire the dispatch slot, pop the head, dispatch it. */
+    /** Stand-in for a scheduler pass: acquire the dispatch slot, pop the head, dispatch it. */
     private static InvocationTask pollAndDispatch(QueueManager queueManager,
                                                   ExecutionCompletionHandler handler,
                                                   String functionName) {

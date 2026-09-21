@@ -49,7 +49,8 @@ import java.util.function.Predicate;
  *
  * <h2>One selection per pass</h2>
  * A pass reaps due queue deadlines, then makes at most one selection and carries it to a
- * decision, mirroring {@code SyncScheduler.tickOnceInternal}. A generation whose lease could not
+ * decision, mirroring the retired {@code SyncScheduler}'s tick (deleted in Task 13b). A
+ * generation whose lease could not
  * be acquired is dropped from consideration until the next {@link #signal()} — the wake sequence
  * replaces the old schedulers' "drop the function from activeFunctions and wait to be
  * re-signalled", which the passive index contract deliberately leaves to the engine.
@@ -536,7 +537,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             // The safety bound elapsed with no notification at all. Re-examine every generation
             // from scratch on the next pass, the way the predecessors' scans re-evaluated
             // hasAvailableSlot every time: a capacity release that arrives on a path which never
-            // signals must not park a function forever (SyncScheduler CAPACITY_BLOCKED_AWAIT_MS
+            // signals must not park a function forever (the retired loop's CAPACITY_BLOCKED_AWAIT_MS
             // exists for exactly this).
             synchronized (gate) {
                 blocked.clear();
@@ -786,7 +787,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
                     failure -> dispatch.rejected(leased, failure),
                     log);
         } finally {
-            // Both predecessors settled the reservation in a finally (SyncScheduler,
+            // Both predecessors settled the reservation in a finally (the retired SyncScheduler,
             // Scheduler), and for good reason: dispatchWithFailureCleanup can itself throw — a
             // throwing rejected() escapes its FAILED branch, a throwing lease.release() escapes
             // the backpressure branch. A ticket left in `submitting` holds its reservation

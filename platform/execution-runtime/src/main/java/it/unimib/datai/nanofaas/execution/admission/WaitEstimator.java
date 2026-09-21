@@ -58,7 +58,7 @@ public class WaitEstimator {
     /**
      * Test-only sizing constructor, widened to {@code public} by Task 10 (issue #208): this
      * class moved into {@code :execution-runtime}, and {@code :modules:sync-queue}'s own
-     * {@code SyncQueueServiceTest}/{@code SyncSchedulerMaintenanceTest} construct an estimator
+     * {@code SyncQueueServiceTest}/{@code SyncQueueEstimatorMaintenanceTest} construct an estimator
      * with these exact bounded-retention parameters from a different module/package now. No
      * parameter, default or behaviour changed — only this constructor's visibility.
      */
