@@ -17,12 +17,18 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
 
@@ -102,6 +108,28 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     private boolean running;
     private Thread worker;
 
+    /**
+     * Total reservations (pending + claimed + submitting) held per function, maintained
+     * incrementally at every point one is opened or closed — see {@link #adjustReserved} — so a
+     * {@code WorkloadMetricsSource} can read a function's depth without ever scanning
+     * {@link #store}. A {@code ConcurrentHashMap} because
+     * {@link #reservedCount(String)} is read from a Micrometer gauge callback, which may run on
+     * any thread and must never contend with the engine's own gate.
+     */
+    private final Map<String, AtomicInteger> reservedByFunction = new ConcurrentHashMap<>();
+
+    /** Function names whose removal drained the pending index but may still hold a physically
+     * active lease; reconciled at the end of every {@link #pass()}. Guarded by {@link #gate}. */
+    private final Set<String> draining = new HashSet<>();
+    /** Registered once, on the engine (never by a strategy): fired with a function's name the
+     * first time its reservation count reaches zero after {@link #markDraining} was called for
+     * it. */
+    private final List<Consumer<String>> drainListeners = new CopyOnWriteArrayList<>();
+
+    /** No-op until {@link #setSwitchObserver} binds one; observation is best-effort and must
+     * never affect a switch's own outcome — see {@link #switchTo}. */
+    private volatile SwitchObserver switchObserver = (strategy, outcome, durationNanos) -> { };
+
     public SchedulerEngine(PendingWorkStore store, StrategyRegistry strategies, String initialStrategy,
                            EngineDispatch dispatch, EngineReadiness readiness,
                            Clock clock, LongSupplier nanoTime) {
@@ -121,6 +149,79 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         // The selection is an API override that does not outlive the process: on restart the
         // configured initial strategy wins again.
         return new SchedulerSelection(active.id(), strategies.ids(), "restart");
+    }
+
+    /** A point-in-time view of the pending population; see {@link EngineQueueSnapshot}. Cheap
+     * enough to compute under the gate on demand — it is not on any Prometheus scrape path. */
+    public EngineQueueSnapshot snapshotQueues() {
+        Instant now = clock.instant();
+        synchronized (gate) {
+            List<PendingEntry> pendingEntries = store.snapshotPending();
+            int delayed = 0;
+            Map<FunctionGeneration, Integer> perGeneration = new HashMap<>();
+            for (PendingEntry entry : pendingEntries) {
+                if (entry.ticket().notBefore().isAfter(now)) {
+                    delayed++;
+                }
+                perGeneration.merge(entry.ticket().generation(), 1, Integer::sum);
+            }
+            return new EngineQueueSnapshot(pendingEntries.size(), store.claimedCount(),
+                    store.submittingCount(), delayed, perGeneration);
+        }
+    }
+
+    /** Outcome of one {@link #switchTo} call, reported to a {@link SwitchObserver}. */
+    public enum SwitchOutcome { COMMITTED, NOOP, REFUSED }
+
+    /**
+     * Reports every {@link #switchTo} outcome and its wall-clock duration. Deliberately not part
+     * of the switch's correctness transaction (Task 5's invariant: nothing fallible follows the
+     * linearization point) — a throwing observer is caught and logged, never allowed to make a
+     * committed switch look like it failed, or vice versa.
+     */
+    @FunctionalInterface
+    public interface SwitchObserver {
+        void observe(String strategy, SwitchOutcome outcome, long durationNanos);
+    }
+
+    /** Registered once, by the composition root. Not required; defaults to a no-op. */
+    public void setSwitchObserver(SwitchObserver observer) {
+        this.switchObserver = Objects.requireNonNull(observer, "observer must not be null");
+    }
+
+    /**
+     * Registered once, on the engine — never by a strategy (the plan's own constraint: indexes
+     * own ticket order only). Fired the first time a function marked {@link #markDraining} has no
+     * reservation left, so a caller can retire per-function meters without doing so while a
+     * physically active attempt still holds a lease.
+     */
+    public void addDrainListener(Consumer<String> listener) {
+        drainListeners.add(Objects.requireNonNull(listener, "listener must not be null"));
+    }
+
+    /**
+     * Marks {@code functionName} as awaiting drain: the next time its reservation count reaches
+     * zero (checked at the end of every {@link #pass()}, not scanned on demand), every registered
+     * drain listener fires once with its name.
+     */
+    public void markDraining(String functionName) {
+        Objects.requireNonNull(functionName, "functionName must not be null");
+        synchronized (gate) {
+            draining.add(functionName);
+        }
+    }
+
+    /**
+     * Cancels a pending {@link #markDraining} for {@code functionName} without firing its
+     * listeners. Call this on re-registration: a function removed and re-registered before its
+     * old generation finished draining must not have the new generation's freshly-registered
+     * meters torn down when the old generation's last reservation happens to settle afterwards.
+     */
+    public void clearDraining(String functionName) {
+        Objects.requireNonNull(functionName, "functionName must not be null");
+        synchronized (gate) {
+            draining.remove(functionName);
+        }
     }
 
     /**
@@ -145,29 +246,46 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         Objects.requireNonNull(strategy, "strategy must not be null");
         // Validated before the gate is even taken, let alone the old index touched.
         SchedulingStrategy target = strategies.require(strategy);
-        synchronized (gate) {
-            ActiveScheduler current = active;
-            if (current.id().equals(target.id())) {
-                // Same strategy: a no-op for indexes and for the worker, by contract.
-                return;
+        long startNanos = nanoTime.getAsLong();
+        SwitchOutcome outcome = SwitchOutcome.REFUSED;
+        try {
+            synchronized (gate) {
+                ActiveScheduler current = active;
+                if (current.id().equals(target.id())) {
+                    // Same strategy: a no-op for indexes and for the worker, by contract.
+                    outcome = SwitchOutcome.NOOP;
+                    return;
+                }
+                SchedulingIndex superseded;
+                try {
+                    SchedulingIndex candidate = prepare(target);
+                    // Linearization point. Every validation is behind us and nothing below can
+                    // fail in a way that would have to undo this: discarding the old index is
+                    // isolated cleanup, not part of the transaction.
+                    active = new ActiveScheduler(target.id(), candidate, current.epoch() + 1);
+                    superseded = current.index();
+                    outcome = SwitchOutcome.COMMITTED;
+                } finally {
+                    // Whether committed or refused, the selector re-examines everything: a
+                    // generation blocked against the old index must not stay blocked against an
+                    // index that has never been consulted for it.
+                    wake();
+                }
+                discard(superseded);
             }
-            SchedulingIndex superseded;
+            log.info("Scheduler strategy switched to {}", target.id());
+        } finally {
+            // Observation is not part of the correctness transaction above (Task 5's invariant):
+            // it runs after every possible outcome, including a thrown SchedulerSwitchException,
+            // and a throwing observer must never be allowed to turn a committed switch into a
+            // reported failure or vice versa.
+            long durationNanos = nanoTime.getAsLong() - startNanos;
             try {
-                SchedulingIndex candidate = prepare(target);
-                // Linearization point. Every validation is behind us and nothing below can fail
-                // in a way that would have to undo this: discarding the old index is isolated
-                // cleanup, not part of the transaction.
-                active = new ActiveScheduler(target.id(), candidate, current.epoch() + 1);
-                superseded = current.index();
-            } finally {
-                // Whether committed or refused, the selector re-examines everything: a generation
-                // blocked against the old index must not stay blocked against an index that has
-                // never been consulted for it.
-                wake();
+                switchObserver.observe(target.id(), outcome, durationNanos);
+            } catch (RuntimeException observerFailure) {
+                log.warn("Switch observer failed for strategy {}", target.id(), observerFailure);
             }
-            discard(superseded);
         }
-        log.info("Scheduler strategy switched to {}", target.id());
     }
 
     /**
@@ -243,6 +361,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             if (!store.offer(entry)) {
                 return false;
             }
+            adjustReserved(entry.ticket().generation().functionName(), 1);
             active.index().add(entry.ticket());
             track(entry.ticket());
             wake();
@@ -264,6 +383,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             removed = store.remove(id);
             if (removed != null) {
                 retire(removed.ticket());
+                adjustReserved(removed.ticket().generation().functionName(), -1);
             } else if (store.get(id) != null) {
                 cancelRequests.add(id);
             }
@@ -298,6 +418,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
                     PendingEntry taken = store.remove(entry.ticket().id());
                     if (taken != null) {
                         retire(taken.ticket());
+                        adjustReserved(taken.ticket().generation().functionName(), -1);
                         removed.add(taken);
                     }
                 }
@@ -485,10 +606,60 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         for (PendingEntry entry : expired) {
             dispatch.expired(entry.task());
         }
-        if (claim == null) {
-            return expired.isEmpty() ? idleBudgetMs() : 0L;
+        long budgetMs = claim == null
+                ? (expired.isEmpty() ? idleBudgetMs() : 0L)
+                : carry(claim);
+        checkDrained();
+        return budgetMs;
+    }
+
+    /**
+     * Reconciles {@link #draining} against {@link #reservedByFunction}, bounded by the (normally
+     * empty, at most a handful of entries) set of functions actually awaiting drain — never a
+     * scan of the backlog itself. Listener callbacks run outside {@link #gate}, mirroring every
+     * other lifecycle notification in this class.
+     */
+    private void checkDrained() {
+        if (draining.isEmpty()) {
+            // Cheap racy read before taking the gate: draining is only ever cleared or drained,
+            // never resurrected without a fresh markDraining, so a false negative here just waits
+            // for the next pass and a false positive is impossible (isEmpty() cannot lie true
+            // when it is not).
+            return;
         }
-        return carry(claim);
+        List<String> drained = new ArrayList<>();
+        synchronized (gate) {
+            draining.removeIf(name -> {
+                if (reservedCount(name) == 0) {
+                    drained.add(name);
+                    return true;
+                }
+                return false;
+            });
+        }
+        for (String name : drained) {
+            for (Consumer<String> listener : drainListeners) {
+                try {
+                    listener.accept(name);
+                } catch (RuntimeException failure) {
+                    log.warn("Drain listener failed for function {}", name, failure);
+                }
+            }
+        }
+    }
+
+    /** Total reservations (pending + claimed + submitting) held for {@code functionName}; never
+     * scans {@link #store}. Safe from any thread — see {@link #reservedByFunction}. */
+    public int reservedCount(String functionName) {
+        AtomicInteger count = reservedByFunction.get(functionName);
+        return count == null ? 0 : count.get();
+    }
+
+    /** Under the gate, at every point a reservation opens ({@code delta > 0}) or closes
+     * ({@code delta < 0}). Never removes the map entry: a zero count is a legitimate steady
+     * state for an active function between bursts, not evidence it is gone. */
+    private void adjustReserved(String functionName, int delta) {
+        reservedByFunction.computeIfAbsent(functionName, ignored -> new AtomicInteger()).addAndGet(delta);
     }
 
     private long idleBudgetMs() {
@@ -534,6 +705,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
                     dropped = store.remove(ticket.id());
                     if (dropped != null) {
                         retire(ticket);
+                        adjustReserved(ticket.generation().functionName(), -1);
                     }
                 }
                 claimSettled = true;
@@ -631,6 +803,9 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             store.requeueSubmit(ticket.id());
             if (cancelRequests.remove(ticket.id())) {
                 cancelled = store.remove(ticket.id());
+                if (cancelled != null) {
+                    adjustReserved(ticket.generation().functionName(), -1);
+                }
                 if (ticket.queueDeadline() != null) {
                     deadlines.remove(ticket);
                 }
@@ -650,6 +825,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     private void finishSubmit(SchedulingTicket ticket) {
         synchronized (gate) {
             store.finishSubmit(ticket.id());
+            adjustReserved(ticket.generation().functionName(), -1);
             cancelRequests.remove(ticket.id());
             if (ticket.queueDeadline() != null) {
                 deadlines.remove(ticket);
@@ -671,6 +847,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
                 // Out-of-band removal: the per-function index treats this exactly as it treats a
                 // dispatch of that function's turn (see remove()).
                 active.index().remove(head.id());
+                adjustReserved(head.generation().functionName(), -1);
                 expired.add(entry);
             }
             // A null entry is a ticket already gone or already submitting: its dispatch is

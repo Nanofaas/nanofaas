@@ -4,7 +4,6 @@ import it.unimib.datai.nanofaas.controlplane.ControlPlaneApplication;
 import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -18,13 +17,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * log line, no failure. The unit tests here build every collaborator with {@code new}, so none
  * of them would notice this configuration going missing.
  *
- * <p>Task 8 (issue #208) retires this module's own {@code QueueManager}-backed worker and
+ * <p>Task 8 (issue #208) retired this module's own {@code QueueManager}-backed worker and
  * {@code WorkloadMetricsSource}: real scheduling now goes through the shared engine
- * ({@code SchedulerConfiguration}), and Task 11 is where an engine-backed replacement metrics
- * source lands. The fix round restored the {@code WorkloadMetricsSource} assertion below as
- * {@code @Disabled} rather than leaving it deleted — this javadoc, and the assertion, document
- * the real production incident ({@code AutoscalerConfigurationTest}'s B3 campaign) this guards
- * against; deleting the assertion would delete that memory too.
+ * ({@code SchedulerConfiguration}). The {@code WorkloadMetricsSource} assertion below was held
+ * {@code @Disabled} from Task 8 through Task 10 rather than deleted — this javadoc, and the
+ * assertion, document the real production incident ({@code AutoscalerConfigurationTest}'s B3
+ * campaign) this guards against. Task 11 restores the bean as
+ * {@code EngineWorkloadMetricsSource} and re-enables this test.
  */
 @SpringBootTest(classes = ControlPlaneApplication.class)
 class AsyncQueueContextTest {
@@ -33,7 +32,6 @@ class AsyncQueueContextTest {
     private ApplicationContext context;
 
     @Test
-    @Disabled("Task 11 — no WorkloadMetricsSource while the engine composition lands")
     void publishesAWorkloadMetricsSource() {
         assertThat(context.getBeansOfType(WorkloadMetricsSource.class)).hasSize(1);
     }

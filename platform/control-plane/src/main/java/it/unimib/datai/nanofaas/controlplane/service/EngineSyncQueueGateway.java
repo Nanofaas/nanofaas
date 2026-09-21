@@ -52,6 +52,13 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
     private final AdmissionCheck admissionCheck;
     private final BiConsumer<String, Instant> onDispatched;
     private final Consumer<String> onFunctionRemoved;
+    /** Reclaims {@code SyncQueueMetrics}' admitted/rejected counters (Task 11, issue #208): the
+     * retired {@code SyncQueueService} recorded these itself, and this gateway recorded neither
+     * until now. A plain {@link Consumer} rather than the concrete metrics type, matching
+     * {@link #onDispatched}/{@link #onFunctionRemoved} above, so this class stays free of a
+     * compile-time dependency on the sync-queue module. */
+    private final Consumer<String> onAdmitted;
+    private final Consumer<String> onRejected;
     // A provider, not a direct reference: see EngineInvocationEnqueuer for why this must be
     // lazy — the engine's own dispatch calls back into a RetryScheduler, and a direct
     // constructor reference here would put this bean on that same cycle whenever it is the
@@ -94,7 +101,22 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
                                   LongSupplier sequence,
                                   EngineInvocationEnqueuer.AdmissionProfile profile) {
         this(configSource, admissionCheck, onDispatched, onFunctionRemoved, engine, store, capacityRegistry,
-                sequence, profile, Clock.systemUTC());
+                sequence, profile, name -> { }, name -> { }, Clock.systemUTC());
+    }
+
+    public EngineSyncQueueGateway(SyncQueueConfigSource configSource,
+                                  AdmissionCheck admissionCheck,
+                                  BiConsumer<String, Instant> onDispatched,
+                                  Consumer<String> onFunctionRemoved,
+                                  ObjectProvider<SchedulerEngine> engine,
+                                  PendingWorkStore store,
+                                  DispatchCapacity capacityRegistry,
+                                  LongSupplier sequence,
+                                  EngineInvocationEnqueuer.AdmissionProfile profile,
+                                  Consumer<String> onAdmitted,
+                                  Consumer<String> onRejected) {
+        this(configSource, admissionCheck, onDispatched, onFunctionRemoved, engine, store, capacityRegistry,
+                sequence, profile, onAdmitted, onRejected, Clock.systemUTC());
     }
 
     EngineSyncQueueGateway(SyncQueueConfigSource configSource,
@@ -106,6 +128,8 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
                           DispatchCapacity capacityRegistry,
                           LongSupplier sequence,
                           EngineInvocationEnqueuer.AdmissionProfile profile,
+                          Consumer<String> onAdmitted,
+                          Consumer<String> onRejected,
                           Clock clock) {
         this.configSource = Objects.requireNonNull(configSource, "configSource must not be null");
         this.admissionCheck = Objects.requireNonNull(admissionCheck, "admissionCheck must not be null");
@@ -116,6 +140,8 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
         this.capacityRegistry = Objects.requireNonNull(capacityRegistry, "capacityRegistry must not be null");
         this.sequence = Objects.requireNonNull(sequence, "sequence must not be null");
         this.profile = Objects.requireNonNull(profile, "profile must not be null");
+        this.onAdmitted = Objects.requireNonNull(onAdmitted, "onAdmitted must not be null");
+        this.onRejected = Objects.requireNonNull(onRejected, "onRejected must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
     }
 
@@ -135,6 +161,16 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
 
     @Override
     public void enqueueOrThrow(InvocationTask task) {
+        try {
+            doEnqueueOrThrow(task);
+        } catch (SyncQueueRejectedException rejected) {
+            onRejected.accept(task.functionName());
+            throw rejected;
+        }
+        onAdmitted.accept(task.functionName());
+    }
+
+    private void doEnqueueOrThrow(InvocationTask task) {
         // Mirrors SyncQueueService.enqueueOrThrow's two isRemovalFenced checks: an early
         // rejection, and a second one immediately before the commit to narrow the window a
         // concurrent removal could otherwise slip through.

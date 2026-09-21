@@ -1,7 +1,10 @@
 package it.unimib.datai.nanofaas.modules.syncqueue;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchCapacity;
 import it.unimib.datai.nanofaas.controlplane.config.SyncQueueRuntimeDefaults;
+import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingStrategy;
 import it.unimib.datai.nanofaas.controlplane.service.EngineInvocationEnqueuer.AdmissionProfile;
 import it.unimib.datai.nanofaas.controlplane.service.EngineSyncQueueGateway;
@@ -12,6 +15,7 @@ import it.unimib.datai.nanofaas.execution.admission.SyncQueueAdmissionController
 import it.unimib.datai.nanofaas.execution.admission.SyncQueueAdmissionResult;
 import it.unimib.datai.nanofaas.execution.admission.WaitEstimator;
 import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
+import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueMetrics;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -90,13 +94,47 @@ public class SyncQueueConfiguration {
         return executor;
     }
 
+    /**
+     * Reclaims {@code SyncQueueMetrics}' {@code sync_queue_admitted_total}/
+     * {@code sync_queue_rejected_total} counters (Task 11, issue #208): the retired
+     * {@code SyncQueueService} recorded these on its own queue; {@link EngineSyncQueueGateway}
+     * previously recorded neither. A dedicated bean, not shared with the engine-backed
+     * {@code WorkloadMetricsBinder}/{@code WorkloadDiagnostics} in {@code SchedulerConfiguration}:
+     * those are cumulative depth/backlog gauges the whole composition owns; this is this module's
+     * own admission counter, exactly as it was before Task 8.
+     */
+    @Bean
+    SyncQueueMetrics syncQueueMetrics(MeterRegistry registry) {
+        return new SyncQueueMetrics(registry);
+    }
+
+    /** Registers/retires this module's own admission counters alongside every other per-function
+     * resource; independent of {@code SchedulerConfiguration}'s own
+     * {@code FunctionRegistrationListener} — {@code FunctionService} notifies every listener
+     * bean, so both run on every register/remove without needing to know about each other. */
+    @Bean
+    FunctionRegistrationListener syncQueueMetricsLifecycleListener(SyncQueueMetrics metrics) {
+        return new FunctionRegistrationListener() {
+            @Override
+            public void onRegister(FunctionSpec spec) {
+                metrics.registerFunction(spec.name());
+            }
+
+            @Override
+            public void onRemove(String functionName) {
+                metrics.removeFunctionState(functionName);
+            }
+        };
+    }
+
     @Bean
     @Primary
     EngineSyncQueueGateway engineSyncQueueGateway(SyncQueueConfigSource configSource,
             SyncQueueAdmissionController admissionController, WaitEstimator estimator,
             org.springframework.beans.factory.ObjectProvider<SchedulerEngine> engine,
             PendingWorkStore store, DispatchCapacity capacityRegistry,
-            LongSupplier schedulerTicketSequence, AdmissionProfile admissionProfile) {
+            LongSupplier schedulerTicketSequence, AdmissionProfile admissionProfile,
+            SyncQueueMetrics metrics) {
         return new EngineSyncQueueGateway(configSource,
                 (functionName, depth, now) -> {
                     SyncQueueAdmissionResult result = admissionController.evaluate(functionName, depth, now);
@@ -104,6 +142,7 @@ public class SyncQueueConfiguration {
                 },
                 estimator::recordDispatch,
                 estimator::removeFunctionState,
-                engine, store, capacityRegistry, schedulerTicketSequence, admissionProfile);
+                engine, store, capacityRegistry, schedulerTicketSequence, admissionProfile,
+                metrics::admitted, metrics::rejected);
     }
 }

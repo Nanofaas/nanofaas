@@ -6,7 +6,6 @@ import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityState;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,13 +51,12 @@ class SyncConcurrencyControlE2eTest {
     }
 
     /**
-     * Disabled by Task 8's fix round (issue #208): the engine composition retires the
-     * per-module {@code WorkloadMetricsSource} beans, and Task 11 owns their engine-backed
-     * replacement. Until then the second assertion below is genuinely red — do not delete this
-     * test.
+     * Held {@code @Disabled} since Task 8's fix round (issue #208): the engine composition
+     * retired the per-module {@code WorkloadMetricsSource} beans with no replacement, so the
+     * second assertion below was genuinely red. Task 11 restores the bean as
+     * {@code EngineWorkloadMetricsSource} and re-enables this test.
      */
     @Test
-    @Disabled("Task 11 — no WorkloadMetricsSource while the engine composition lands")
     void governorUpdatesTheSharedSyncCapacityState() {
         assertThat(applicationContext.getBeansOfType(FunctionCapacityRegistry.class)).hasSize(1);
         assertThat(applicationContext.getBeansOfType(WorkloadMetricsSource.class)).hasSize(1);

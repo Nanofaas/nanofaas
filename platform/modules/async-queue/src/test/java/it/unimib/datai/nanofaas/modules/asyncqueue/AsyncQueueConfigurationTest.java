@@ -27,6 +27,10 @@ import it.unimib.datai.nanofaas.execution.PendingEntry;
 import it.unimib.datai.nanofaas.execution.PendingWorkStore;
 import it.unimib.datai.nanofaas.execution.SchedulerEngine;
 import it.unimib.datai.nanofaas.execution.StrategyRegistry;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
@@ -98,7 +102,8 @@ class AsyncQueueConfigurationTest {
 
         ObjectProvider<EngineSyncQueueGateway> noSyncGateway = noSyncGateway();
         FunctionRegistrationListener listener = new SchedulerConfiguration()
-                .schedulerCapacityGenerationListener(capacityRegistry, engine, new PerFunctionDepth(), noSyncGateway);
+                .schedulerCapacityGenerationListener(capacityRegistry, engine, new PerFunctionDepth(),
+                        noSyncGateway, testMetricsBinder(), testDiagnostics());
 
         FunctionSpec spec = spec("echo");
         InvocationTask task = task("exec-queued", spec);
@@ -191,7 +196,8 @@ class AsyncQueueConfigurationTest {
                 sequence::incrementAndGet, AdmissionProfile.FUNCTION_QUEUE, true, noSyncGateway(), perFunctionDepth);
 
         FunctionRegistrationListener listener = new SchedulerConfiguration()
-                .schedulerCapacityGenerationListener(capacityRegistry, engine, perFunctionDepth, noSyncGateway());
+                .schedulerCapacityGenerationListener(capacityRegistry, engine, perFunctionDepth,
+                        noSyncGateway(), testMetricsBinder(), testDiagnostics());
 
         // A large queueSize: the per-function cap (I1) must not be what stops the admitter mid-race
         // — this test is about the removal/admission race, not the per-function depth cap.
@@ -253,6 +259,22 @@ class AsyncQueueConfigurationTest {
                 throw new NoSuchBeanDefinitionException(EngineSyncQueueGateway.class);
             }
         };
+    }
+
+    /** A throwaway binder/registry pair: this test exercises the listener's own drain/removal
+     * behavior, not meter registration, so a real {@link WorkloadMetricsSource} is unnecessary. */
+    private static WorkloadMetricsBinder testMetricsBinder() {
+        WorkloadMetricsSource zeroSource = new WorkloadMetricsSource() {
+            @Override public int queueDepth(String functionName) { return 0; }
+            @Override public int inFlight(String functionName) { return 0; }
+            @Override public int effectiveConcurrency(String functionName) { return 0; }
+            @Override public int dispatchableBacklog(String functionName) { return 0; }
+        };
+        return new WorkloadMetricsBinder(new SimpleMeterRegistry(), zeroSource);
+    }
+
+    private static WorkloadDiagnostics testDiagnostics() {
+        return new WorkloadDiagnostics(new SimpleMeterRegistry());
     }
 
     private static FunctionSpec spec(String name) {

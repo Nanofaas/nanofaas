@@ -23,7 +23,13 @@ import it.unimib.datai.nanofaas.execution.PendingWorkStore;
 import it.unimib.datai.nanofaas.execution.SchedulerEngine;
 import it.unimib.datai.nanofaas.execution.StrategyRegistry;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics;
+import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -40,6 +46,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -178,23 +185,62 @@ public class SchedulerConfiguration {
     }
 
     /**
-     * Fix round C3: autoscaler and the concurrency governor both refuse to start without a
-     * {@code WorkloadMetricsSource} bean (each declares its own {@code @ConditionalOnBean}), and
-     * this composition retires the per-module sources (Task 11 owns their engine-backed
-     * replacement — see the Task 8 fix-round report). A silently-skipped {@code @ConditionalOnBean}
-     * produces no bean, no log line and no failure on its own, which is exactly the shape of the
-     * 2026-08-29 incident this ledger already carries a test for
-     * ({@code AutoscalerConfigurationTest}) — so this makes the gap loud instead of silent.
+     * Task 11 (issue #208): the engine-backed replacement for the two per-module
+     * {@code WorkloadMetricsSource} beans Task 8 retired. Autoscaler and the concurrency
+     * governor both gate their own startup on a bean of this type
+     * ({@code @ConditionalOnBean(WorkloadMetricsSource.class)}); its absence between Task 8 and
+     * this one silently disabled both — the 2026-08-29 incident {@code AutoscalerConfigurationTest}
+     * documents. There is no longer a presence-check log.warn: a genuine source is always present
+     * whenever this configuration activates at all, so the loud-failure stopgap is retired with it.
      */
     @Bean
-    public Object schedulerWorkloadMetricsSourcePresenceCheck(ObjectProvider<WorkloadMetricsSource> metricsSources) {
-        if (metricsSources.stream().findAny().isEmpty()) {
-            log.warn("No WorkloadMetricsSource bean is present: autoscaler and the concurrency "
-                    + "governor will stay inactive (their @ConditionalOnBean on this type will not "
-                    + "be satisfied) until Task 11 restores an engine-backed source (issue #208).");
+    public EngineWorkloadMetricsSource schedulerWorkloadMetricsSource(SchedulerEngine engine,
+            DispatchCapacity capacityRegistry) {
+        return new EngineWorkloadMetricsSource(engine, capacityRegistry);
+    }
+
+    @Bean
+    public WorkloadDiagnostics schedulerWorkloadDiagnostics(MeterRegistry registry) {
+        return new WorkloadDiagnostics(registry);
+    }
+
+    @Bean
+    public WorkloadMetricsBinder schedulerWorkloadMetricsBinder(MeterRegistry registry,
+            EngineWorkloadMetricsSource source) {
+        return new WorkloadMetricsBinder(registry, source);
+    }
+
+    /**
+     * Two gauges (one per built-in strategy, so cardinality is bounded by the artefact's own
+     * {@link StrategyRegistry}, never by execution/ticket/generation identity) plus one bounded
+     * switch-outcome counter and a switch-duration timer. Registered once, at composition time —
+     * not per switch — since {@code Gauge} is pull-based and {@code Counter}/{@code Timer}
+     * lookups by the same id are idempotent.
+     *
+     * <p>The switch observer runs after {@link SchedulerEngine#switchTo}'s own linearization
+     * point and cannot affect its outcome (Task 5's invariant, restated on
+     * {@code SchedulerEngine.switchTo}'s own javadoc): a throwing observer is caught inside the
+     * engine itself, never here.
+     */
+    @Bean
+    public Object schedulerSwitchObservability(MeterRegistry registry, StrategyRegistry strategies,
+            SchedulerEngine engine) {
+        for (String id : strategies.ids()) {
+            Gauge.builder("scheduler_active", engine,
+                            candidate -> candidate.snapshot().strategy().equals(id) ? 1 : 0)
+                    .tag("strategy", id)
+                    .register(registry);
         }
-        // The return value is never consumed; this bean exists solely for the constructor-time
-        // side effect above, evaluated once at startup alongside every other composition bean.
+        Timer switchDuration = Timer.builder("scheduler_switch_duration").register(registry);
+        engine.setSwitchObserver((strategy, outcome, durationNanos) -> {
+            Counter.builder("scheduler_switch_total")
+                    .tag("outcome", outcome.name().toLowerCase(Locale.ROOT))
+                    .register(registry)
+                    .increment();
+            switchDuration.record(durationNanos, TimeUnit.NANOSECONDS);
+        });
+        // The return value is never consumed; this bean exists for the registration side effects
+        // above, run once at startup like every other composition bean here.
         return new Object();
     }
 
@@ -277,11 +323,33 @@ public class SchedulerConfiguration {
      * a ticket the scan has already passed — stranded forever in the {@code FUNCTION_QUEUE}
      * profile, since that ticket's {@code queueDeadline} is null and the sync removal fence below
      * does not cover that admission front at all.
+     *
+     * <p>Task 11 addition: also owns the per-function {@link WorkloadMetricsBinder}/
+     * {@link WorkloadDiagnostics} meter lifecycle, and is the sole place that registers the
+     * engine's drain listener — once, here, never in a strategy (the plan's own constraint on
+     * capacity/lifecycle listeners).
+     *
+     * <p>Meters register at {@code onRegister} like every other per-function resource, but do
+     * NOT come down at {@code onRemove}: a generation's meters (queue depth, in-flight,
+     * dispatchable backlog) are still meaningful while a physically active attempt is still
+     * draining under the retired generation's lease, and removing them early would blind that
+     * drain rather than document it. Instead {@code onRemove} calls
+     * {@link SchedulerEngine#markDraining}, and the drain listener registered below fires the
+     * first time this function's reservations reach zero. {@code onRegister} calls
+     * {@link SchedulerEngine#clearDraining} first, so a function removed and re-registered before
+     * the old generation finished draining does not have the new generation's freshly
+     * (re-)registered meters torn down by the old generation's belated zero-crossing.
      */
     @Bean
     public FunctionRegistrationListener schedulerCapacityGenerationListener(DispatchCapacity capacityRegistry,
             SchedulerEngine engine, PerFunctionDepth perFunctionDepth,
-            ObjectProvider<EngineSyncQueueGateway> syncGateway) {
+            ObjectProvider<EngineSyncQueueGateway> syncGateway,
+            WorkloadMetricsBinder metricsBinder, WorkloadDiagnostics diagnostics) {
+        engine.addDrainListener(functionName -> {
+            metricsBinder.removeFunction(functionName);
+            diagnostics.removeFunction(functionName);
+            log.debug("Removed per-function meters for {} after its retired generation drained", functionName);
+        });
         return new FunctionRegistrationListener() {
             @Override
             public void onRegister(FunctionSpec spec) {
@@ -292,7 +360,10 @@ public class SchedulerConfiguration {
                 if (gateway != null) {
                     gateway.clearRemovalFence(spec.name());
                 }
+                engine.clearDraining(spec.name());
                 capacityRegistry.register(spec.name(), spec.concurrency());
+                metricsBinder.registerFunction(spec.name());
+                diagnostics.registerFunction(spec.name());
             }
 
             @Override
@@ -306,6 +377,9 @@ public class SchedulerConfiguration {
                 capacityRegistry.remove(functionName);
                 engine.removeAllFor(functionName);
                 perFunctionDepth.forget(functionName);
+                // Meters come down once every reservation this function holds has settled, not
+                // here — see this method's own javadoc.
+                engine.markDraining(functionName);
                 if (gateway != null) {
                     gateway.functionRemoved(functionName);
                     // Redundant once capacityRegistry.remove has run above (enqueueOrThrow then

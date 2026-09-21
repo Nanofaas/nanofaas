@@ -6,7 +6,6 @@ import it.unimib.datai.nanofaas.controlplane.service.InvocationEnqueuer;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -27,10 +26,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code nanofaas.admission.profile=sync-queue} explicitly to exercise this module's own gateway
  * being the active one, rather than asserting a profile default this module does not control.
  *
- * <p>The {@code WorkloadMetricsSource} assertion is restored as {@code @Disabled} rather than
- * left deleted: the old {@code SyncQueueWorkloadMetricsSource} was backed by
- * {@code SyncQueueService}'s own (now retired) queue, and Task 11 is where the engine-backed
- * replacement lands.
+ * <p>The {@code WorkloadMetricsSource} assertion below was held {@code @Disabled} through Task 8
+ * and Task 10: the old {@code SyncQueueWorkloadMetricsSource} was backed by
+ * {@code SyncQueueService}'s own (now retired) queue, and Task 11 restores it as
+ * {@code EngineWorkloadMetricsSource}, backed by the composed engine instead.
  */
 @SpringBootTest(classes = ControlPlaneApplication.class,
         properties = {"sync-queue.enabled=true", "nanofaas.admission.profile=sync-queue"})
@@ -40,7 +39,6 @@ class SyncQueueContextTest {
     private ApplicationContext context;
 
     @Test
-    @Disabled("Task 11 — no WorkloadMetricsSource while the engine composition lands")
     void publishesAWorkloadMetricsSource() {
         assertThat(context.getBeansOfType(WorkloadMetricsSource.class)).hasSize(1);
     }

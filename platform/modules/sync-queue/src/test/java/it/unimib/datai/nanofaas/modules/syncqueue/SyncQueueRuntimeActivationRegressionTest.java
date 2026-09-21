@@ -116,7 +116,7 @@ class SyncQueueRuntimeActivationRegressionTest {
             InvocationTask task = new InvocationTask("e1", "fn", spec,
                     new InvocationRequest("one", Map.of()), null, null, Instant.now(), 1, InvocationKind.SYNC);
             context.getBean(ExecutionStore.class).put(new ExecutionRecord(task.executionId(), task));
-            context.getBean(FunctionRegistrationListener.class).onRegister(spec);
+            context.getBean("schedulerCapacityGenerationListener", FunctionRegistrationListener.class).onRegister(spec);
 
             assertThat(context.getBean(EngineSyncQueueGateway.class).enqueue(task)).isTrue();
             assertThat(dispatched.await(5, TimeUnit.SECONDS))

@@ -128,7 +128,7 @@ class SyncQueueRuntimeLifecycleTest {
             // The function must be capacity-registered before it can be admitted at all (the
             // engine's ticket carries a FunctionGeneration) — register it up front, then hold
             // its one slot so the engine cannot dispatch the first task yet.
-            context.getBean(FunctionRegistrationListener.class).onRegister(spec);
+            context.getBean("schedulerCapacityGenerationListener", FunctionRegistrationListener.class).onRegister(spec);
             var heldLease = capacityRegistry.tryAcquireLease("fn", 1);
             assertThat(heldLease).isNotNull();
 

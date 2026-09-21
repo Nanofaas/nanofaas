@@ -121,9 +121,14 @@ within one build.
 
 Current modules:
 
-- `async-queue` — per-function queues + scheduler for the async path
-- `sync-queue` — sync admission/backpressure queue
-- `async-queue` conflicts with `sync-queue`; select only one of them
+- `async-queue` — per-function scheduling strategy for the composed engine
+- `sync-queue` — shared-queue scheduling strategy + sync admission/backpressure
+- `async-queue` and `sync-queue` may both be selected: each contributes a
+  `SchedulingStrategy` to one shared `SchedulerEngine` (issue #208's manual
+  scheduler switching), not a separate worker; with both present the active
+  strategy is chosen at startup (`nanofaas.scheduler.strategy`, defaulting to
+  `per-function`) and can be hot-switched afterwards through
+  `/v1/admin/runtime-config/scheduler` — see "Workload metrics" below
 - `autoscaler` — internal replica scaler and scaling metrics integration
 - `concurrency-control` — per-function concurrency governor (`FIXED`,
   `STATIC_PER_POD`, `ADAPTIVE_PER_POD`, `BUDGETED`, `SOJOURN`); **requires
@@ -140,16 +145,38 @@ Current modules:
 
 ### Modules that need other modules
 
-`concurrency-control` consumes two contracts from the selected queue provider:
-`WorkloadMetricsSource` for queue depth and in-flight observations, and
+`concurrency-control` consumes two contracts published once by the composed
+engine: `WorkloadMetricsSource` for queue depth and in-flight observations, and
 `WorkloadCapacityController` for publishing the computed limits that enforce
 concurrency. The module declares `requires.oneOf=async-queue,sync-queue`, so
-exactly one provider must be selected; it **refuses to start** when neither is
-present.
+at least one strategy module must be selected; it **refuses to start** when
+neither is present (silently — no bean satisfies its
+`@ConditionalOnBean(WorkloadMetricsSource.class)` — which is why the context
+tests for both queue modules assert this bean's presence directly).
 
 `autoscaler` requires one of `async-queue` or `sync-queue`; its workload metrics
-source is supplied by the selected provider. The Gradle module selector rejects
-an autoscaler selection without a queue provider.
+source is the same single, engine-backed bean. The Gradle module selector
+rejects an autoscaler selection without a queue provider.
+
+### Workload metrics
+
+Whichever strategy module(s) are selected, `SchedulerConfiguration` publishes
+exactly one `WorkloadMetricsSource` (`EngineWorkloadMetricsSource`, backed by
+the engine's own per-function reservation counters and `DispatchCapacity`'s
+per-function state — never a backlog scan) and binds it through
+`WorkloadMetricsBinder` to the per-function gauges `function_queue_depth`,
+`function_inFlight`, `function_effective_concurrency` and
+`function_dispatchable_backlog`. These gauges retire when a removed
+function's last physically active attempt finishes draining, not at the
+moment it is removed — see `SchedulerConfiguration.schedulerCapacityGenerationListener`.
+
+Two additional gauges, `scheduler_active{strategy=...}` (one per built-in
+strategy the artifact was actually assembled with — cardinality bounded by
+that count, never by execution/ticket/generation identity) and a
+`scheduler_switch_total{outcome=committed|noop|refused}` counter plus a
+`scheduler_switch_duration` timer, observe `SchedulerEngine.switchTo` from
+outside its own correctness transaction: a throwing observer can never turn a
+committed switch into a reported failure or vice versa.
 
 Image validation is **not** a standalone module: each deployment provider owns
 its validator (`KubernetesImageValidator`, `DockerImageValidator`) and
