@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.execution;
 
+import static com.tngtech.archunit.base.DescribedPredicate.not;
+import static com.tngtech.archunit.core.domain.JavaClass.Predicates.belongToAnyOf;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -40,6 +42,15 @@ class RuntimeArchitectureTest {
                 .isTrue();
 
         noClasses()
+                // Named exemption (issue #208, Task 12), in the shape of Task 9's R6 change: two
+                // test-only classes that exist specifically to run the shared conformance/model
+                // suite against both real strategy implementations, per the plan's own
+                // requirement (spec section 10: "portare... i test R1-R8... aggiungere sequenze
+                // randomizzate/model-based"). Nothing else gains this exemption, so a future test
+                // that imports a modules.. class still fails here — see build.gradle's
+                // `transitive = false` comment for why the dependency itself does not also leak
+                // :control-plane's Spring beans onto this classpath.
+                .that(not(belongToAnyOf(SchedulerConformanceTest.class, SchedulerModelTest.class)))
                 .should()
                 .dependOnClassesThat()
                 .resideInAnyPackage(
