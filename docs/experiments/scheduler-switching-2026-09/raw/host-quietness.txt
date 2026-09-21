@@ -64,7 +64,8 @@ epoch_seconds  loadavg_1min
    1789999641          1.14
 ```
 
-1-minute load over that span: min 0.08, max 1.14 on 20 CPUs.
+1-minute load over that span: min 0.08, max 1.14 on 20 CPUs. The samples themselves are committed
+in `raw/load-average-samples-round1-tail.txt`.
 
 Readings taken either side of the campaign itself: **0.17** (1-minute) immediately before it
 started, **0.41** immediately after it finished.
@@ -101,10 +102,13 @@ with that.
 
 ## The settlement campaign (round 3)
 
-`/proc/loadavg` (1-minute) sampled every 45 s, 65 samples from 2026-09-21T16:54:03+02:00 to
-2026-09-21T17:42:04+02:00, load average min 0.05, max 1.37 on 20 CPUs. This sampler
-was started with the campaign rather than after it, so unlike the round-1 sampling it covers the
-run: the completed-sample counter in the same file goes from 0 to 240 across it. No Gradle daemon
+`/proc/loadavg` (1-minute) sampled every 45 s, 72 samples from 2026-09-21T16:54:03+02:00 to
+2026-09-21T17:47:19+02:00, load average min 0.05, max 1.37 on 20 CPUs. This sampler was started with
+the campaign rather than after it, so unlike the round-1 sampling it covers the run: the
+completed-sample counter in the same file goes from 0 to 240 across it. The last few samples fall
+after the campaign had finished (the counter already at 240) and are included rather than trimmed.
+The samples themselves are committed beside this file, in `raw/load-average-samples-steady.txt`, so
+these figures can be checked against the data rather than taken on trust. No Gradle daemon
 existed during it (`run.sh` stops it before the measured JVM starts) and nothing else CPU-bound was
 started.
 

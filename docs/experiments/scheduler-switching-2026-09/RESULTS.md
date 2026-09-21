@@ -89,17 +89,22 @@ share one heap. The harness reads `budgets.json` itself rather than being told t
 echoes what it read into the `header` line of its output — so a result cannot be compared against
 thresholds that differ from the frozen file.
 
-The shorter runs used while the harness was being brought up, and their single-value overrides:
+The shorter run used while the harness was being brought up — one backlog size, one repetition,
+one arm, which is exactly what `raw/smoke.jsonl` contains. The settlement campaign's own command is
+in the provenance table below:
 
 ```bash
-./run.sh --label=smoke --parts=backlog,profiles --backlogs=100 --repetitions=1 \
-    --profiles=low-load --window-ms=1500
+./run.sh --label=smoke --parts=backlog --backlogs=100 --repetitions=1
 ```
 
 A full campaign run is a foreground measurement: no Gradle build, no other sampling run, nothing
 else CPU-bound. `run.sh` stops the Gradle daemon before the measured JVM starts for that reason —
 for a latency, CPU or post-GC heap figure a concurrent run does not corrupt a file, it corrupts
-the number.
+the number. `raw/host-quietness.txt` records what was checked, the load average observed, and the
+part of each campaign the load sampling does **not** cover; the samples themselves are committed
+beside it, so those figures can be checked rather than taken on trust. In the artifacts themselves,
+the useful-throughput spread across the five repetitions has a median of 3.12 % over the 48
+(workload, arm) pairs, which is the shape of an undisturbed host.
 
 ## The headline: every frozen value, with the artifact it came from
 
@@ -710,8 +715,14 @@ task: they are Task 13's (`NANOLAB.md`, `SchedulerSwitchHttpTest`) and are not c
 | artifact | command | what it holds |
 |---|---|---|
 | `raw/full.jsonl` (+`raw/full.err`) | `./run.sh --label=full` | the campaign: pause sweep, all twelve workloads × four arms × five repetitions, and the 1000-switch return-to-baseline phase. 260 `sample` lines, 140 `switch` lines, one `baseline` line, one `summary` line, one `header` line |
-| `raw/smoke.jsonl` (+`raw/smoke.err`) | `./run.sh --label=smoke --parts=backlog,profiles --backlogs=100 --repetitions=1 --profiles=low-load --window-ms=1500` | the end-to-end proof that the harness works: one backlog size, one repetition, one workload |
-| `raw/diagnostic-hol-window-1200.jsonl`, `…-4000.jsonl`, `…-10000.jsonl` | `./run.sh --label=win<N> --parts=profiles --profiles=head-of-line-blocking --repetitions=3 --window-ms=<N>` | the window-length diagnostic that characterises the head-of-line-blocking tail difference — see below |
+| `raw/smoke.jsonl` (+`raw/smoke.err`) | `./run.sh --label=smoke --parts=backlog --backlogs=100 --repetitions=1` | the end-to-end proof that the harness works: one backlog size, one repetition |
+| `raw/steady.err` (note) | — | two of its lines — the capacity read-back — end in a trailing space, an artefact of the diagnostic's own formatting. `git diff --check` flags them. They are left as captured: the artifact has to keep matching the `harnessSha256` in its own header, and editing evidence to satisfy a whitespace check is the wrong trade |
+| `raw/steady.jsonl` (+`raw/steady.err`) | `./run.sh --label=steady --parts=profiles` | the settlement campaign: all twelve workloads × four arms × five repetitions on an 8 000 ms span, with the queue-depth trajectory and the trailing-window grid. 240 `sample` lines, 120 `switch` lines |
+| `raw/diagnostic-hol-window-1200.jsonl`, `…-4000.jsonl`, `…-10000.jsonl` | `./run.sh --label=win<N> --parts=profiles --profiles=head-of-line-blocking --repetitions=3 --window-ms=<N>` (renamed after the run) | the window-length diagnostic on the head-of-line-blocking tail |
+| `raw/diagnostic-cc-window-4000.jsonl`, `…-10000.jsonl` | `./run.sh --label=diagcc<N> --parts=profiles --profiles=capacity-change --repetitions=3 --window-ms=<N>` (renamed after the run) | the window-length diagnostic that first characterised the round-1 capacity-change miss. Superseded by round 3, which found the workload itself was mis-specified — the clamp defect below |
+| `raw/clock-resolution.txt` | `javac ClockTest.java && java ClockTest` (source: `ClockTest.java` in this directory) | the CPU-clock resolution measurement the CPU budget's adjudication rests on |
+| `raw/host-quietness.txt` | written by hand from the `/proc/loadavg` samples beside it, plus the readings either side of each campaign | what was checked about the host, and the coverage limit of that sampling |
+| `raw/load-average-samples-steady.txt`, `raw/load-average-samples-round1-tail.txt` | `/proc/loadavg` sampled every 45 s by an independent loop, committed verbatim | the load data the quietness claims were read from. The round-1 file covers the diagnostics and the tail of the run before the round-1 campaign, **not** that campaign — the limit is stated in `host-quietness.txt` |
 
 `raw/full.jsonl`'s `header` line records the revision (`a7e7c47c…`), the JVM and host, the max
 heap, and the `budgets.json` values the harness read — so the artifact states the thresholds it
