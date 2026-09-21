@@ -421,22 +421,32 @@ new API is reached. The service model publishes a due time and returns, holding 
 `T2BatchBench` busy-wait precedent is not copied.
 
 **Result — the nulls, with their resolution.** Stated beside every figure because a null without one
-is an assertion about the instrument: p99 (steady 3.5 %, whole-span 5.4 %), useful throughput
-(0.01–0.05 %), post-GC heap (0.01 %). No regression is established for those metrics on any
-unconfounded profile. One budget **MISS**: `low-load`'s steady p99, **+5.40 %** — reported as a MISS,
-not excused; in absolute terms 2.570 ms → 2.793 ms against a 100 ms contract, with the five paired
-differences running −19.52 % to +9.36 %, i.e. below what this design resolves. The unpaired design
+is an assertion about the instrument. The headline resolutions are **medians across workloads** —
+p99 (steady 3.5 %, whole-span 5.4 %), useful throughput (0.01–0.05 %), post-GC heap (0.01 %) — and
+the median is pulled down by profiles whose paired differences already agree in sign and therefore
+contribute 0 by construction, so it is never any one workload's figure. The artifact carries the
+per-workload table, and the numbers that matter are the workloads': `low-load`'s steady p99 resolves
+to **9.36 %** and `unqueued`'s whole-span p99 to **11.41 %**, against `queued`'s 33.49 % and 43.48 %.
+No regression is established for those metrics on any expiry-clean profile. One budget **MISS**:
+`low-load`'s steady p99, **+5.40 %** — reported as a MISS, not excused; in absolute terms 2.570 ms →
+2.793 ms against a 100 ms contract, with the five paired differences running −19.52 % to +9.36 %,
+i.e. straddling zero, and 5.40 % below that workload's own 9.36 % resolution. The unpaired design
 Tasks 12c had could not have adjudicated the 5 % p99 budget: its arms' own medians spread 17.5–22.1 %
 between repetitions, and a perfectly uniform 5 % shift of the control arm separates the arms in
 **1 workload of 6** (whole-span p99) and **1 of 5** (steady); CPU per useful completion is the same,
 1 of 6. Only post-GC heap was adjudicable unpaired, and only because its arms agree to 0.01 %.
 
 **Result — the one consistent direction.** The new engine allocates **more per useful completion** in
-every repetition of every unconfounded profile: +5.5 % (`churn-drain`), +14.7 % (`mixed-kind-retry`),
-+18.5 % (`queued`), +27.5 % (`unqueued`), +27.8 % (`low-load`), 5-of-5 same-signed each. No frozen
-budget covers allocation, so there is no verdict — but the direction is consistent with the named
-hypothesis (the old loop amortises one visit over up to two dispatches; the engine's pass claims
-one). The mechanism is **not** established by this harness and the document does not guess at it.
+every repetition of every expiration-clean profile and of `queued` too: +5.5 % (`churn-drain`),
++14.7 % (`mixed-kind-retry`), +18.5 % (`queued`, flagged `*`, whose confound is an expiry share of
+1.0–2.5 % of its offers), +27.5 % (`unqueued`), +27.8 % (`low-load`), 5-of-5 same-signed each; the
+direction holds on the four genuinely clean profiles without `queued`. Those are the per-profile
+**medians**, spanning +5.5 % to +27.8 %; the repetition-level deltas span **+1.59 % to +45.92 %** and
+the window-total figures **+1.58 % to +45.84 %**, both same-signed — the finding is not rounded down
+to the medians. No frozen budget covers allocation, so there is no verdict — but the direction is
+consistent with the named hypothesis (the old loop amortises one visit over up to two dispatches; the
+engine's pass claims one). The mechanism is **not** established by this harness and the document does
+not guess at it.
 
 **Result — CPU per useful completion is the metric the pairing did not sharpen.** Its paired spread
 (43.15 %) exceeds its unpaired arm spread (33.31 %), so its noise is intra-run JVM activity, not host
@@ -444,9 +454,11 @@ drift, and the 10 % budget is below this design's resolution on it. Four `MISS` 
 with the five repetitions on both sides of zero (not resolved), and `mixed-kind-retry` at
 **+29.02 %** (range +17.96…+47.92, 5-of-5 positive, every repetition above budget), corroborated by the
 window-total CPU cross-check at +29.02 %. On that one profile the cost is measured; elsewhere the
-direction is suggested and not separated. The one unfairness in this metric is declared and points
-the other way: the old arm's release path does micrometer work on the driver thread that the new
-arm's does not (M6).
+direction is suggested and not separated. The completion wiring does charge the two arms' driver
+differently (M6) — the old arm does conditional micrometer bookkeeping and a conditional wake, the
+new one an unconditional lock-and-notify — but **which costs more was not measured**, and an earlier
+revision's claim that it pointed against the old arm has been withdrawn rather than kept as an
+argument.
 
 **`saturated` is established, huge, and NOT a loop result.** 77 % of its offers are expired by the
 engine and none by the old loop, which has no deadline: the old loop's 512-ticket queue stays
@@ -474,9 +486,14 @@ the shared-queue side. `churn-drain`'s two window metrics are NOT MEASURABLE bec
 traffic at 60 % of the span and its steady window holds no arrivals.
 
 **Corrections to the 12e brief, from the code.** The brief's included set names
-`head-of-line-blocking`, which is defined by `notReadyCount = 5` — and **readiness exists nowhere in
-the old tree** (`git grep` at `05f49dcb` for `readiness|isReady|notReady|wakeup` over the modules'
-`src/main` returns zero files) while it is new at HEAD (`EngineReadiness`). Driving it on the old arm
+`head-of-line-blocking`, which is defined by `notReadyCount = 5`. The gate it exercises is
+`EngineReadiness`, and **that does not exist at the pre-refactor revision** — `git grep -l
+EngineReadiness -- '*.java'` returns 0 files at `05f49dcb` and 15 at HEAD, and `notReady` returns 0
+at OLD. (An earlier revision of this entry said "readiness exists nowhere in the old tree" on the
+strength of a `git grep` over `platform/*/src/main`, which matches nothing at all under that tool —
+the evidence was void and the sentence false as written; what the old tree has is *deployment*
+readiness, `DeploymentReadiness.ensureReady`, a different concept consulted from the execution path
+and a wait-for-wake rather than a dispatchability predicate.) Driving the profile on the old arm
 would have had 5 of its 6 functions dispatch work the engine refuses — a policy difference, not a
 loop one, in the old arm's favour. It is excluded as a miscategorised inclusion, not a skipped
 profile; the brief's mismatch list does not mention readiness at all and its numbering skips M4 and
@@ -500,3 +517,25 @@ reduced to a strictly increasing series; the truncated lines are post-campaign a
 duplicate — no sample was altered). The smoke run committed with the arm is
 `raw/smoke-old.jsonl` (both arms: 208 offered, 208 admitted, 208 useful, closure 208, conserved), and
 its `offered` figure is checkable independently against the arrival script.
+
+**Revision — fix round 1/5, one class swept rather than four sites.** The review that closed the
+initial dispatch named four findings, all of the same shape: **prose outrunning the artifact** — a
+cross-workload resolution median quoted as one workload's (`low-load`'s MISS read against 3.5 %
+instead of its own 9.36 %, which made the sentence contradict its own conclusion), "every unconfounded
+profile" containing the `queued` row the coverage table flags `*`, a readiness grep whose pathspec
+(`'platform/*/src/main'`) matches nothing at all so its zero was void, and an M6 direction inference
+that was asserted and not measured. All four are fixed in `OLD-VS-NEW.md`, and because Task 12c cost
+this campaign five rounds by fixing named sites and leaving the class, the section **§12** records the
+five sweeps run for the class afterwards — aggregated figures used as a workload's, scope words
+containing a flagged row, numbers whose unit is not the sentence's, claims repeated at two precisions,
+and evidence that does not reproduce. The sweeps found four things the fix round had not named:
+two more aggregate-scope errors in §9.1, a `queued` throughput direction that had been left implicit,
+the fact that only one of the three `offered` differences is the reactive retry draw (the other two
+have equal retry counts and are the window-close race), and a JVM CPU share with no artifact behind it
+— replaced by the harness's own `threadCpuNanos` (140.6–658.0 ms per 8 000 ms window, median 276.3 ms,
+1.8–8.2 % of one core). Two claims were **withdrawn** rather than softened: the M6 direction, and the
+arrival script's "226 over its whole horizon", whose method was not committed; the analyzer now prints
+the `offered` pair check instead (identical in 27 of 30 pairs, three differing by one). No measurement
+was re-run, `budgets.json` was not touched, and the analyzer's regeneration of
+`raw/old-vs-new-analysis.txt` was re-verified byte-identical after the tool gained the per-workload
+resolution and offered-pair tables.

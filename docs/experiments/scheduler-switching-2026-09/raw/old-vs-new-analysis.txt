@@ -19,6 +19,10 @@
 - runs with a driver failure: **0**
 - runs whose sample cap was reached: **0**
 - runs whose steady window holds no arrivals on one arm: **1** of 6 workloads
+- `offered` identical across the two arms in **27 of 30** (workload, repetition) pairs
+  - they differ by -1 on `mixed-kind-retry` repetition 1 (retries -1): the reactive retry draw
+  - they differ by -1 on `mixed-kind-retry` repetition 3 (retries +0): the window-close race, retry counts equal
+  - they differ by +1 on `unqueued` repetition 5 (retries +0): the window-close race, retry counts equal
 
 ## Does the old loop settle? — the committed rule, read off its own depth trajectory
 
@@ -100,6 +104,8 @@ A `MISS` with `separated: no` is a median that is not a measured effect: five re
 
 Both operations are deterministic and read the arms, never the observed effect. **Unpaired** multiplies the old arm's own five values by `(1 + f)` — a perfectly uniform change with no added noise — and counts how often the shifted arm reads disjoint from the new arm's range; that is the operation a cross-run design can perform, and the count is its resolving power. **Paired** asks the smaller question this design can ask: how large `f` must be before all five within-repetition differences take the sign `f` implies, which is what makes a paired median an effect rather than one draw. A budget below the unpaired row's first detectable factor could not have been adjudicated without the pairing.
 
+**The median column of the first table is an aggregate across workloads and must never be read as any one workload's resolution.** A workload whose five differences already agree in sign contributes 0 by construction, and that is not a fine resolution: it means the arms were already separated there. The second table gives the number to quote when dismissing a specific workload's effect.
+
 | metric | budget % | eligible | +5 % | +10 % | +20 % | +30 % | +50 % | +100 % | median unpaired arm spread % | median paired spread % | median smallest paired same-signed effect % |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | whole-span p99 | 5 | 6 | 1 | 2 | 4 | 5 | 5 | 6 | 17.49 | 13.66 | 5.38 |
@@ -110,6 +116,58 @@ Both operations are deterministic and read the arms, never the observed effect. 
 | post-GC heap | 10 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 0.01 | 0.01 | 0.00 |
 | allocated bytes per useful completion | — | 6 | 1 | 1 | 2 | 3 | 6 | 6 | 9.57 | 5.73 | 0.00 |
 | thread cpu per window | — | 6 | 0 | 0 | 0 | 0 | 1 | 4 | 28.44 | 37.60 | 0.00 |
+
+### The resolution each workload's own effect was measured at
+
+Percentage points of the old arm's value: the smallest uniform difference on that metric for that workload that would have made all five repetitions agree in sign. `n/a` is a metric the comparison table marks NOT MEASURABLE there, and `0.00` means the arms were already separated, which is a resolution no finer than the effect it found.
+
+| workload | metric | resolution of that (workload, metric) % |
+|---|---|---|
+| churn-drain | whole-span p99 | 5.14 |
+| churn-drain | whole-span useful throughput | 0.02 |
+| churn-drain | thread cpu per useful completion | 9.94 |
+| churn-drain | post-GC heap | 0.00 |
+| churn-drain | allocated bytes per useful completion | 0.00 |
+| churn-drain | thread cpu per window | 9.94 |
+| low-load | whole-span p99 | 5.63 |
+| low-load | steady p99 | 9.36 |
+| low-load | whole-span useful throughput | 0.01 |
+| low-load | steady useful throughput | 0.00 |
+| low-load | thread cpu per useful completion | 0.00 |
+| low-load | post-GC heap | 0.04 |
+| low-load | allocated bytes per useful completion | 0.00 |
+| low-load | thread cpu per window | 0.00 |
+| mixed-kind-retry | whole-span p99 | 0.00 |
+| mixed-kind-retry | steady p99 | 3.49 |
+| mixed-kind-retry | whole-span useful throughput | 0.02 |
+| mixed-kind-retry | steady useful throughput | 0.05 |
+| mixed-kind-retry | thread cpu per useful completion | 0.00 |
+| mixed-kind-retry | post-GC heap | 0.00 |
+| mixed-kind-retry | allocated bytes per useful completion | 0.00 |
+| mixed-kind-retry | thread cpu per window | 0.00 |
+| queued | whole-span p99 | 33.49 |
+| queued | steady p99 | 43.48 |
+| queued | whole-span useful throughput | 1.30 |
+| queued | steady useful throughput | 3.57 |
+| queued | thread cpu per useful completion | 0.40 |
+| queued | post-GC heap | 0.00 |
+| queued | allocated bytes per useful completion | 0.00 |
+| queued | thread cpu per window | 0.00 |
+| saturated | whole-span p99 | 0.00 |
+| saturated | steady p99 | 0.00 |
+| saturated | whole-span useful throughput | 0.00 |
+| saturated | thread cpu per useful completion | 0.00 |
+| saturated | post-GC heap | 0.00 |
+| saturated | allocated bytes per useful completion | 0.00 |
+| saturated | thread cpu per window | 0.00 |
+| unqueued | whole-span p99 | 11.41 |
+| unqueued | steady p99 | 3.06 |
+| unqueued | whole-span useful throughput | 0.01 |
+| unqueued | steady useful throughput | 0.00 |
+| unqueued | thread cpu per useful completion | 3.95 |
+| unqueued | post-GC heap | 0.00 |
+| unqueued | allocated bytes per useful completion | 0.00 |
+| unqueued | thread cpu per window | 3.95 |
 
 The arms' own spread is what the unpaired column pays: without the pairing a uniform 5 % effect on p99 or on useful throughput is invisible against arm-to-arm disagreement several times larger, which is the position Task 12c was left in. The paired column asks the same question of the quantity this design actually measures, and it is what makes a null here a statement about the effect rather than about the instrument.
 

@@ -93,8 +93,50 @@ def coverage(samples, header):
     print(f"- runs whose sample cap was reached: "
           f"**{sum(1 for s in samples if s.get('sampleCapReached'))}**")
     print(f"- runs whose steady window holds no arrivals on one arm: "
-          f"**{not_measurable_count(table)}** of {len(workloads)} workloads\n")
+          f"**{not_measurable_count(table)}** of {len(workloads)} workloads")
+    offered_pairs(samples)
     return workloads, table, confounded
+
+
+def offered_pairs(samples):
+    """The two arms' `offered` counts, pair by pair.
+
+    The script is one object replayed to both arms, so these should be identical; they are not
+    always, and the reason is worth separating rather than averaging. Two mechanisms can move a
+    count by one: the last scripted arrival of the span falls either side of the loop's own
+    observational instant, and — only on a profile with retries — the retry draw is reactive, so a
+    completion-driven retry is the one offer that is not scripted. The retry column is what tells
+    the two apart, and printing it is the point: a reader who assumed the retry mechanism explained
+    every difference would be wrong about at least one pair.
+    """
+    pairs = defaultdict(dict)
+    for sample in samples:
+        pairs[(sample["workload"], sample["repetition"])][sample["arm"]] = sample
+    identical, differing = 0, []
+    for key in sorted(pairs):
+        pair = pairs[key]
+        if OLD not in pair or NEW not in pair:
+            continue
+        delta = pair[NEW]["offered"] - pair[OLD]["offered"]
+        retry_delta = pair[NEW]["retries"] - pair[OLD]["retries"]
+        if delta == 0:
+            identical += 1
+        else:
+            differing.append((key[0], key[1], delta, retry_delta))
+    total = identical + len(differing)
+    print(f"- `offered` identical across the two arms in **{identical} of {total}** "
+          "(workload, repetition) pairs")
+    for workload, repetition, delta, retry_delta in differing:
+        if retry_delta == delta:
+            cause = "the reactive retry draw"
+        elif retry_delta == 0:
+            cause = "the window-close race, retry counts equal"
+        else:
+            cause = "both, in opposite directions"
+        print(f"  - they differ by {delta:+d} on `{workload}` repetition {repetition} "
+              f"(retries {retry_delta:+d}): {cause}")
+    print()
+    return identical, total, differing
 
 
 def steady_arrivals(table, workload, arm):
@@ -256,10 +298,16 @@ def resolving_power(table, workloads, settlements):
           "implies, which is what makes a paired median an effect rather than one draw. A budget "
           "below the unpaired row's first detectable factor could not have been adjudicated "
           "without the pairing.\n")
+    print("**The median column of the first table is an aggregate across workloads and must never "
+          "be read as any one workload's resolution.** A workload whose five differences already "
+          "agree in sign contributes 0 by construction, and that is not a fine resolution: it "
+          "means the arms were already separated there. The second table gives the number to quote "
+          "when dismissing a specific workload's effect.\n")
     print("| metric | budget % | eligible | " + " | ".join(f"+{int(f * 100)} %" for f in FACTORS)
           + " | median unpaired arm spread % | median paired spread % | "
           "median smallest paired same-signed effect % |")
     print("|---|---|---|" + "---|" * len(FACTORS) + "---|---|---|")
+    by_workload = {}
     for label, extract, session, budget_key, _direction in METRICS:
         budget = BUDGETS[budget_key] if budget_key else None
         unpaired_hits = {f: 0 for f in FACTORS}
@@ -292,12 +340,32 @@ def resolving_power(table, workloads, settlements):
             paired_spreads.append(max(diffs) - min(diffs))
             # The smallest uniform shift that would make every repetition agree in sign: a +f shift
             # needs f > -min(d), a -f one needs f > max(d); 0 means the arms already agree.
-            paired_effects.append(min(max(0.0, -min(diffs)), max(0.0, max(diffs))))
+            effect = min(max(0.0, -min(diffs)), max(0.0, max(diffs)))
+            paired_effects.append(effect)
+            by_workload[(workload, label)] = effect
         print(f"| {label} | {budget if budget is not None else '—'} | {eligible} | "
               + " | ".join(str(unpaired_hits[f]) for f in FACTORS)
               + f" | {summarize.median(unpaired_spreads):.2f} | "
               f"{summarize.median(paired_spreads):.2f} | "
               f"{summarize.median(paired_effects):.2f} |")
+    print()
+    resolution_by_workload(by_workload, workloads)
+
+
+def resolution_by_workload(by_workload, workloads):
+    """The resolution to quote when dismissing or establishing one workload's effect."""
+    print("### The resolution each workload's own effect was measured at\n")
+    print("Percentage points of the old arm's value: the smallest uniform difference on that metric "
+          "for that workload that would have made all five repetitions agree in sign. `n/a` is a "
+          "metric the comparison table marks NOT MEASURABLE there, and `0.00` means the arms were "
+          "already separated, which is a resolution no finer than the effect it found.\n")
+    print("| workload | metric | resolution of that (workload, metric) % |")
+    print("|---|---|---|")
+    for workload in workloads:
+        for label, _extract, _session, _budget, _direction in METRICS:
+            key = (workload, label)
+            if key in by_workload:
+                print(f"| {workload} | {label} | {by_workload[key]:.2f} |")
     print()
     print("The arms' own spread is what the unpaired column pays: without the pairing a uniform "
           "5 % effect on p99 or on useful throughput is invisible against arm-to-arm disagreement "

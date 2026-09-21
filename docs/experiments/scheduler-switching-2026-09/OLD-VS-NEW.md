@@ -156,12 +156,24 @@ Reported as the result. §7's comparison is where it shows.
 
 ### 5.4 M6 — the completion wiring charges the driver differently: declared
 
-In the new arm the release wake is the driver's call (`releasedNanos -> engine.signal()`). In the old
-arm it is production code inside `QueueManager.tryAcquireLease`, which also records
-`recordDispatchSlotHold` and `recordSchedulerSignalEnqueueDuration` into micrometer — on the
-driver's thread. So the old arm's release path does *more* work on the driver thread than the new
-arm's, which means the CPU figures in §7 are, if anything, charged against the old arm. That is
-worth stating because the CPU direction found there is the opposite one.
+The two arms do not charge the driver the same work on a completion, and the difference is real but
+its **net sign is not measured by this harness**. In the old arm the release path is production code
+inside `QueueManager.tryAcquireLease`: a micrometer `recordDispatchSlotHold`, and a `notifyWork` that
+fires only when `expected.queued() > 0`. In the new arm it is the driver's `releasedNanos ->
+engine.signal()`, which takes the engine's gate, increments `wakeSequence`, clears the blocked set
+and calls `notifyAll()` — on **every** completion, unconditionally. One path does conditional
+bookkeeping, the other an unconditional lock-and-notify; which costs more is not something the
+artifact reports, and an earlier draft of this section asserted the first was the larger and used
+that to argue the CPU figures were charged against the old arm. **That inference is withdrawn**: the
+direction was not measured, and it may be the reverse.
+
+What survives is the reason to state M6 at all: the two arms' CPU figures include different
+driver-side work, so a CPU delta is not purely the loop's. And there is a candidate for the extra
+work in the new arm that is worth naming, since it is this task's own subject: an unconditional wake
+on every completion is what a one-claim-per-pass cadence needs (`SchedulerEngine` re-examines
+capacity after each ticket), whereas the old loop's up-to-two-per-visit cadence can afford to wake
+only when its queue is non-empty. If that is where the CPU difference lives, it is M5, not
+bookkeeping.
 
 ### 5.5 M9 — neither loop's time is fully controllable: measured in real time
 
@@ -178,16 +190,30 @@ M11 available and it is why the heap comparison in §7 is quotable at all.
 
 ### 5.7 Not found in the brief's list: **readiness**, and it costs a profile
 
-Readiness exists **nowhere** in the old tree — a grep of the pre-refactor revision for
-`readiness|isReady|notReady|wakeup` over the modules' `src/main` returns zero files — and is new at
-HEAD (`EngineReadiness`, wired by `SchedulerConfiguration.engineReadiness`). The brief's included set
-names **`head-of-line-blocking`**, and that workload is *defined* by `notReadyCount = 5`.
+The brief's included set names **`head-of-line-blocking`**, and that workload is *defined* by
+`notReadyCount = 5`. The gate it exercises is `EngineReadiness`, and **`EngineReadiness` does not
+exist at the pre-refactor revision**: `git grep -l EngineReadiness -- '*.java'` at `05f49dcb` matches
+**0 files** and at HEAD **15**; `notReady` matches 0 at OLD. (The greps have to be run with a
+concrete pathspec — `'platform/*/src/main'` style patterns match nothing at all under `git grep`, so
+a zero from them proves nothing; an earlier draft of this section quoted one and its evidence was
+void.) What the old tree *does* have is a different concept with a similar name: *deployment*
+readiness, `DeploymentReadiness.ensureReady(task)`, which `readiness|Readiness` matches in 16 `.java`
+files and which is consulted from the **execution** path (`ExecutionCompletionHandler`), not from the
+loop's selection — and which is a **wait-for-wake**, a `CompletableFuture` that completes once the
+backend can take the attempt, not a predicate that withholds a ticket.
 
-Driving it on the old arm would mean 5 of its 6 functions dispatching work the engine refuses to
-dispatch — a difference of policy the refactor introduced (not of loop), in the old arm's favour,
-and it would fabricate a result. There is no faithful mapping either: at OLD, capacity is a
-*configured* property, not a readiness property, so "no capacity" is not what a not-ready function
-meant at OLD.
+So driving the profile on the old arm would mean one of two inventions. Dispatching the 5 not-ready
+functions' work is the first: a difference of policy the refactor introduced (not of loop), in the
+old arm's favour, which would fabricate a result. The second is a gate in the old loop that does not
+exist there — and the old loop's only capacity lever is not a substitute, because at OLD capacity is
+a *configured* property and `FunctionCapacityState` clamps it to `Math.max(1, concurrency)`, so a
+zero-capacity "not dispatchable" mapping is not merely unfaithful but impossible.
+
+The profile's subject is a third reason, independent of the gate: head-of-line blocking is a property
+of a **shared scan** that visits many functions and can be held up by one blocked head, and the old
+loop has no such scan at all — `Scheduler.processFunction` takes one function per poll and ends the
+visit when its lease does not come. There is no structure in the old arm for this workload to
+exercise.
 
 **So `head-of-line-blocking` is excluded from this comparison, and the reason is a mismatch the
 brief's list does not contain.** The brief's numbering also skips M4 and M10, which is consistent
@@ -229,12 +255,16 @@ submitting + in flight). Zero driver failures, zero sample-cap overruns.
   traffic is not exempt from them.
 - `saturated`'s control arm has a steady-window useful throughput of **0**, so that one metric is
   NOT MEASURABLE (a ratio with a zero denominator is not a figure).
-- `offered` can differ by one ticket between the arms: the script is identical, but the last
-  scripted arrival before the window close falls either side of the loop's own observational
-  instant. It differs in one profile's median (`unqueued`, 2833 against 2834).
-- The retry draw is **reactive** — a retry follows a completion, which is arm-dependent — so on
-  `mixed-kind-retry` the offered totals can differ by the retry count. They do not in this artifact
-  (9510/9510 in the median), and the mechanism is declared because it could.
+- **`offered` differs between the arms in three of the thirty (workload, repetition) pairs, always
+  by one ticket, and two different mechanisms account for them.** One is the window-close race — the
+  last scripted arrival of the span falls either side of the loop's own observational instant — and
+  the other is the **reactive retry draw**, which is unscripted. The analysis names which is which
+  per pair, because the retry mechanism alone does not explain all three: `mixed-kind-retry`
+  repetition 1 differs with its retry count differing by the same one (the reactive draw);
+  `mixed-kind-retry` repetition 3 and `unqueued` repetition 5 differ with retry counts **equal** (the
+  close race). The medians agree (9510/9510, 2833/2834) and no conclusion rests on any of this — but
+  the equal medians are all the medians show, and an explanation that stopped at the retry draw
+  would be wrong about two pairs.
 - `allocatedBytesPerUsefulCompletion` and the engine's reaper interaction: see §7.
 
 ## 7. The comparison
@@ -389,20 +419,25 @@ a `header` line and two `sample` lines. The two samples' figures, as emitted:
 | postGcHeapBytes | 76999840 | 77199840 |
 | driverFailures | 0 | 0 |
 
-`offered = 208` on both arms is the arrival script's own figure, checkable independently: the
-script for `low-load` at seed `-57957290846` holds 208 arrivals before 9.5 s
-(warm-up 1500 ms + span 8000 ms) and 226 over its whole horizon, and the driver stops at the window
-close.
+`offered = 208` on both arms is the arrival script's own figure, and the arithmetic is checkable
+from the committed Java: the script holds the arrivals whose offset is below
+`WARMUP_MS + SPAN_MS` = 9 500 ms, and the driver stops offering at the window close, so the two arms
+are offered the same count by construction rather than by coincidence. Across the whole campaign the
+analysis prints the check rather than asserting it: **`offered` is identical in 27 of the 30
+(workload, repetition) pairs, and the three that differ differ by exactly one ticket**, with the
+cause named per pair (§6).
 
 ### 7.6 Was the host quiet?
 
 `raw/load-average-samples-old-vs-new.txt`: **122 samples of `/proc/loadavg` spanning the campaign's
 602 s** (17:22:24Z to 17:32:26Z), strictly increasing, 5 s apart except one 2 s step.
 **1-minute load average: min 0.10, median 0.29, max 0.61** on 20 processors — 0.5 % to 3 % of the
-host — and nothing else CPU-bound was started during it. The measured JVM itself accounted for 31.4 s
-of user and 14.6 s of system CPU over 604 s of wall time — 46 s of CPU, **7.6 % of one core**,
-shared by both arms and the driver. The Gradle daemon was stopped by `run-old.sh` before the measured
-JVM started, and the queue modules' jars were rebuilt (and found up to date) *before* that.
+host — and nothing else CPU-bound was started during it. **The harness's own CPU figure agrees:**
+every sample carries `threadCpuNanos`, the summed CPU of every live thread over its 8 000 ms window,
+and across the 60 runs that is **140.6 ms to 658.0 ms, median 276.3 ms** — 1.8 % to 8.2 % of one
+core, median 3.5 %, shared by both arms, the driver and the JVM's own housekeeping. The Gradle daemon
+was stopped by `run-old.sh` before the measured JVM started, and the queue modules' jars were rebuilt
+(and found up to date) *before* that.
 
 Two provenance notes about that file, because it is not a recording of one clean run. **Two samplers
 were started for this campaign** — the first in a command that failed before the campaign launched —
@@ -438,11 +473,29 @@ repetitions, and a *perfectly uniform* 5 % shift of the control arm would separa
 **1 workload of 6** (whole-span) and **1 of 5** (steady); even at 20 % it separates **4 of 6** and
 **2 of 5**. CPU per useful completion is the same: 1 of 6 at 5 %. Only post-GC heap was ever
 adjudicable unpaired, and only because its arms agree to 0.01 %.
-**The paired design resolves the same metrics to 3.5 % (steady p99), 5.4 %
+**The paired design resolves the same metrics to a median of 3.5 % (steady p99), 5.4 %
 (whole-span p99) and 0.01–0.03 % (useful throughput)** — because the arrival script is identical and
 the completion counts are then nearly identical, so the throughput figure is close to deterministic.
-That is what the pairing buys, and it is what makes §7.4's nulls readable: "no difference
-established" there means "a difference larger than 0.01–5 % would have been seen".
+That is what the pairing buys, and it is what makes §7.4's nulls readable.
+
+**Those medians are aggregates across workloads and are not any one workload's resolution.** Two of
+the six profiles — `saturated`, and any workload whose five paired differences already agree in sign
+— contribute `0.00` to them *by construction*: `0.00` there means the arms were already separated,
+which is not a fine resolution at all, and averaging it in pulls the median down. The table beneath
+gives the number to use whenever a specific workload's effect is established or dismissed, and it is
+the one quoted in §9.1 and §9.5:
+
+| workload | whole-span p99 | steady p99 | whole-span throughput | steady throughput | cpu per useful | alloc per useful | post-GC heap |
+|---|---|---|---|---|---|---|---|
+| `churn-drain` | 5.14 | n/a | 0.02 | n/a | 9.94 | 0.00 | 0.00 |
+| `low-load` | 5.63 | **9.36** | 0.01 | 0.00 | 0.00 | 0.00 | 0.04 |
+| `mixed-kind-retry` | 0.00 | 3.49 | 0.02 | 0.05 | 0.00 | 0.00 | 0.00 |
+| `queued` | **33.49** | **43.48** | 1.30 | 3.57 | 0.40 | 0.00 | 0.00 |
+| `saturated` | 0.00 | 0.00 | 0.00 | n/a | 0.00 | 0.00 | 0.00 |
+| `unqueued` | **11.41** | 3.06 | 0.01 | 0.00 | 3.95 | 0.00 | 0.00 |
+
+Whoever quotes the aggregate for a workload with a number like `queued`'s 43.48 or `unqueued`'s 11.41
+is claiming a sharpness that workload does not have. The sweep that produced this table is §12.
 
 **One metric the pairing did not sharpen: CPU per useful completion.** Its paired spread (43.15 %)
 is *larger* than its unpaired arm spread (33.31 %), so the noise in it is not host drift — it is
@@ -459,38 +512,65 @@ except where all five repetitions agree in sign — see §9.2.
   paired deltas is 5-of-5 same-signed and lies between −0.25 % and −0.03 %, and the metric's own
   resolution is 0.01 % (the arms' medians are identical to two decimals: 77.24–77.45 MB). The new
   engine's retained heap is not measurably different from the old loop's, against a 10 % budget.
-- **Useful throughput: indistinguishable on four of five unconfounded profiles, at 0.01–0.05 %.**
-  `low-load`, `unqueued`, `churn-drain` and `mixed-kind-retry` all sit inside ±0.02 %. The engine
-  does not lose or gain useful work relative to the old loop on those workloads.
-- **p99: no difference established at a resolution of 3.5 % (steady) and 5.4 % (whole-span).** No
-  unconfounded profile separates on p99 except `mixed-kind-retry`'s whole-span figure, which is
-  same-signed at **+1.79 %** (range +0.87…+6.98) — above the resolution, below the 5 % budget, so a
-  PASS with a measured direction.
+- **Useful throughput: indistinguishable on the four profiles this design resolves it on, to
+  0.00–0.05 %.** `low-load`, `unqueued`, `churn-drain` and `mixed-kind-retry` all sit inside ±0.02 %,
+  and each workload's *own* resolution on this metric (0.00, 0.01, 0.02 and 0.05 % — §8's table) is
+  the finest instrument in this document, because the arrival script is identical. The engine does
+  not lose or gain useful work relative to the old loop there.
+- **`queued`'s throughput is the one exception worth stating**: its median is **+8.27 %** in the new
+  engine's favour and its own resolution is 1.30 %, but one of the five repetitions is −1.30 %, so the
+  direction is suggested and **not** established. It is reported as a suggestion, not as a result.
+- **p99: no difference established anywhere except `mixed-kind-retry`'s whole-span figure.** That one
+  is same-signed at **+1.79 %** (range +0.87…+6.98) and below the 5 % budget, so a PASS with a
+  measured direction. Elsewhere the five repetitions straddle zero, and the workloads' own p99
+  resolutions range 3.06–43.48 % (steady) and 0.00–33.49 % (whole-span): on `queued` no 5 % effect
+  could have been established at all, and on `low-load`'s steady p99 not below 9.36 %.
 - **`low-load`'s steady p99 is a budget MISS: +5.40 %.** It is reported as a MISS and not excused.
-  In absolute terms it is 2.570 ms → 2.793 ms against a 100 ms contract, i.e. **0.22 ms**, and the
-  five paired differences run −19.52 % to +9.36 %, so the arms are not separated and the design's
-  resolution on this metric is 3.5 %. The figure is real; the effect is below what this design can
-  see.
+  Its ground is the straddle: the five paired differences run −19.52 % to +9.36 %, so they fall on
+  both sides of zero and the median is not a measured effect. Its *second* ground, which an earlier
+  draft got backwards, is this **workload's own** resolution on this metric — **9.36 %**, from the
+  table in §8 — not the 3.5 % aggregate, which is a median over workloads including two that
+  contribute 0 by construction. Read against its own number the sentence is now consistent: a
+  uniform effect of +5.4 % is smaller than the 9.36 % this design could have seen on `low-load`, and
+  the straddle says the same thing independently. In absolute terms the figure is 2.570 ms → 2.793 ms
+  against a 100 ms contract, 0.22 ms.
 
 ### 9.2 The one direction that is both measured and consistent: allocation
 
-**The new engine allocates more per useful completion, in every repetition, on every unconfounded
-profile**, and the total allocated in the window moves with it:
+**The new engine allocates more per useful completion in every repetition of every profile that is
+not expiry-confounded — and of `queued` too, whose `*` flag is a small confound stated here rather
+than waved away.** The two rows below are the same five workloads:
 
-| workload | alloc/useful old B | new B | paired Δ % | paired range | separated |
-|---|---|---|---|---|---|
-| churn-drain | 3885 | 4033 | +5.50 | +1.59…+5.93 | yes |
-| mixed-kind-retry | 1316 | 1517 | +14.69 | +11.79…+16.44 | yes |
-| queued | 1259 | 1450 | +18.51 | +9.69…+35.51 | yes |
-| unqueued | 1100 | 1399 | +27.51 | +23.64…+30.46 | yes |
-| low-load | 1654 | 1959 | +27.75 | +8.77…+45.92 | yes |
+| workload | alloc/useful old B | new B | paired Δ % | paired range | window total Δ % | window total range | separated |
+|---|---|---|---|---|---|---|---|
+| churn-drain | 3885 | 4033 | +5.50 | +1.59…+5.93 | +5.50 | +1.58…+5.92 | yes |
+| mixed-kind-retry | 1316 | 1517 | +14.69 | +11.79…+16.44 | +14.74 | +11.79…+16.42 | yes |
+| queued `*` | 1259 | 1450 | +18.51 | +9.69…+35.51 | +31.19 | +28.28…+34.89 | yes |
+| unqueued | 1100 | 1399 | +27.51 | +23.64…+30.46 | +27.53 | +23.69…+30.46 | yes |
+| low-load | 1654 | 1959 | +27.75 | +8.77…+45.92 | +27.76 | +8.80…+45.84 | yes |
 
-Five repetitions, five same-signed results each, on five workloads whose offered rates span 24/s to
-1189/s. No frozen budget covers allocation, so there is no verdict to give — but the direction is
-consistent and it is coherent with M5: the old loop amortises one visit's machinery over up to two
-dispatches, while the engine's pass selects, claims, commits and finishes one ticket. **The
-mechanism is not established by this harness**, and this document does not guess at it beyond that
-the two per-dispatch machinery profiles differ. It is the clearest loop-layer signal this comparison
+**Both spans, because they answer different questions.** The **per-profile medians** span
+**+5.50 % to +27.75 %** — that is the sentence's headline, and it is a statement about five medians.
+The **repetition-level** deltas span **+1.59 % to +45.92 %** across the 20 unconfounded pairs, and
+the window-total figure, which covers all 30 pairs, spans **+1.58 % to +45.84 %** over the 25
+unconfounded ones (it reaches +65.00 % on `saturated`, which is confounded and excluded here). An
+earlier draft quoted "every unconfounded profile" — which included `queued`, flagged `*` in §7.2 and
+§7.4 — and gave the window totals as "+5.5 % to +38 %", which is neither of those spans.
+
+The direction holds on both readings and is **not rounded down**: even the smallest repetition-level
+allocation delta, +1.58 %, is same-signed, and the 25 unconfounded pairs are same-signed in every
+case. The `queued` confound is an expiry share of **1.0 % to 2.5 %** of its offers across the five
+repetitions, against a `+18.51 %` allocation delta, and removing `queued` entirely leaves the
+direction established on the four genuinely clean profiles.
+
+The profiles it holds across have offered rates from **20/s (`low-load`) to 1 120/s (`churn-drain`)**
+— read off the header's own `profilesInRun` block, and offered rates rather than the useful-throughput
+figures an earlier draft mistook for them (24.2/s and 1 188.4/s were the *throughput* medians). No
+frozen budget covers allocation, so there is no verdict to give — but the direction is consistent and
+it is coherent with M5: the old loop amortises one visit's machinery over up to two dispatches, while
+the engine's pass selects, claims, commits and finishes one ticket. **The mechanism is not
+established by this harness**, and this document does not guess at it beyond that the two
+per-dispatch machinery profiles differ. It is the clearest loop-layer signal this comparison
 produced.
 
 ### 9.3 CPU per useful completion: three misses the design cannot resolve, one it can
@@ -510,9 +590,12 @@ allocation finding of §9.2, and the mechanism is likewise not established. On `
 cross-check for `queued`, but not separated on the per-completion figure. On `low-load` the whole
 figure is small (0.76 ms per completion) and near the noise floor.
 
-The one unfairness in this metric is declared and points the other way: the old arm's release path
-does micrometer work on the driver thread that the new arm's does not (M6, §5.4), so the old arm's
-CPU is if anything charged more, not less, than its loop's own cost.
+The one asymmetry in this metric is declared, and **its net sign is not measured**: the two arms'
+release paths charge the driver different work (M6, §5.4) — the old arm a conditional micrometer
+record and a conditional wake, the new one an unconditional gate-lock-and-notify — and nothing in
+this artifact says which costs more. An earlier revision of both documents asserted the charge landed
+against the old arm and called its CPU figures conservative on that basis; that inference is
+withdrawn. The `mixed-kind-retry` direction above stands on its own repetitions, not on it.
 
 ### 9.4 `saturated`: a large, established, and *policy-confounded* difference
 
@@ -543,9 +626,11 @@ That is a real and favourable difference the refactor introduced — but it is t
 
 The old loop's whole-span p99 is 124.1 ms against the new engine's 87.1 ms (paired −25.53 %), and
 its useful throughput 331.8/s against 348.1/s (paired +8.27 %) — but both ranges cross zero
-(−40.65…+33.49 % and −1.30…+18.26 %), and the settlement table shows why: the old loop's settled
-depth ranges 6–29 across repetitions against the engine's 4–9, so this workload's steady state is
-not stable on the old side. The single-repetition diagnostic run had shown −68.5 % on p99; across
+(−40.65…+33.49 % and −1.30…+18.26 %), and `queued` is also the workload this design resolves worst:
+its own resolutions are **33.49 %** on whole-span p99 and **43.48 %** on steady p99 against a 5 %
+budget, so no 5 % effect could have been established here whatever the arms did. The settlement table
+shows why the design is that blunt on this profile: the old loop's settled depth ranges 6–29 across
+repetitions against the engine's 4–9, so this workload's steady state is not stable on the old side. The single-repetition diagnostic run had shown −68.5 % on p99; across
 five repetitions the effect is −25.5 % with one repetition at +33 %. **That gap is the whole reason
 for five repetitions and for a paired design**, and it is why this document does not report a
 `queued` regression or improvement as established.
@@ -601,3 +686,58 @@ together with `SchedulerSwitchBenchmark.java`, stops the Gradle daemon, and runs
 pre-touched 1 GiB heap. The classpath is that module's test classpath, not `:execution-runtime`'s,
 because `Scheduler` implements `SmartLifecycle` and its type does not resolve without Spring; the
 async-queue test classpath carries both queue modules, the engine and Spring.
+
+## 12. The sweep this revision ran
+
+The fix round that produced this revision was about one class, not four sites: **prose outrunning the
+artifact**. So after fixing the four findings it swept for the class itself, in both this document and
+the working report. Five sweeps, each mechanical, each re-runnable:
+
+1. **Aggregated figures used as a workload's figure.** Every occurrence of a resolution, a spread or a
+   span was checked for whether the sentence around it names one workload or all of them. It found
+   the one the fix round named (the MISS's resolution, now `low-load`'s own 9.36 %) and two more of
+   exactly that shape: the p99 and throughput bullets of §9.1 both quoted the cross-workload median,
+   and `queued` was silently riding on an aggregate it is the worst case of. All three now quote the
+   workload's own number, and §8 carries the whole per-workload table so no reader has to take one on
+   trust. The tool prints it (`old-vs-new.py`), it is not hand-built.
+2. **Scope words that include a flagged row.** Every "every", "all", "each" and "no" was read against
+   the coverage table of §7.2. It found "every unconfounded profile" in §9.2 including `queued`,
+   which §7.2 and §7.4 flag `*` — the artifact contradicted the sentence three sections earlier. The
+   claim is now scoped to the four expiry-clean profiles plus `queued` with its 1.0–2.5 % confound
+   stated, and the finding is shown to survive without `queued` at all.
+3. **Numbers whose unit or denominator is not the sentence's.** Every rate, count and ratio was
+   checked against the field it came from. It found two: "offered rates span 24/s to 1189/s" — those
+   were *useful-throughput* medians, and the offered rates are 20/s to 1 120/s read off the header's
+   `profilesInRun` — and the window-total allocation span, which was quoted as "+5.5 % to +38 %" and
+   is "+1.58 % to +45.84 %" over the unconfounded pairs (the earlier range was the per-profile
+   medians of the *other* metric). Both corrected, and §9.2 now prints both spans side by side
+   because they answer different questions rather than being interchangeable.
+4. **Claims repeated in two places at two precisions.** Each figure in this document was matched
+   against the report and against `STATO.md`. It found the JVM's CPU share, which appeared as a
+   measured-looking "31.4 s user + 14.6 s system … 7.6 % of one core" in both, from the shell's
+   `time` around the campaign invocation — **an artifact that does not exist in the repository**.
+   Replaced everywhere with the harness's own `threadCpuNanos`, which every sample carries
+   (140.6–658.0 ms per 8 000 ms window, median 276.3 ms = 1.8–8.2 % of one core). The same sweep
+   caught a figure with only half an artifact behind it: the arrival script's "226 over its whole
+   horizon" was a replayed count with no committed method, and the paragraph now makes only the
+   claim the analyzer prints (`offered` identical in 27 of 30 pairs, three differing by one, cause
+   named per pair).
+5. **Evidence that does not reproduce.** Every `git grep` cited in this document was re-run with a
+   concrete pathspec, because one of them was quoted from a pattern that matches nothing at all:
+   `'platform/*/src/main'` under `git grep` returns zero for *any* term, which the sweep confirmed
+   with a term that certainly exists. That is what §5.7 had leaned on. Its replacement is a grep that
+   reproduces (`EngineReadiness`: 0 `.java` files at `05f49dcb`, 15 at HEAD; `notReady`: 0 at OLD),
+   and the section now says what *does* exist at OLD rather than denying it exists. The §5.2 expiry
+   grep was checked the same way and passes — it uses a concrete path and returns 0 files for the
+   async module against 5 for the sync module, which is the asymmetry M8 rests on.
+
+**What the sweep found that the fix round did not name:** the two scope errors of §8/§9.1, the
+`queued` throughput suggestion that had been left implicit, the second mechanism behind the offered
+differences (two of the three differing pairs have *equal* retry counts, so the retry draw explains
+one pair and not the other two), and the CPU figure with no artifact. The sweep also confirmed three
+things rather than changing them: the `saturated` numbers, the conservation tally and the settlement
+table are all exactly as the tool prints them.
+
+**One sweep found nothing and that is worth recording too:** no figure in either document is quoted
+to a precision the artifact does not carry — every percentage here is the tool's own two decimals, and
+the one place a value is stated as a range is labelled as one.
