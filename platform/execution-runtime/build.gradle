@@ -54,6 +54,17 @@ tasks.named('test') {
     useJUnitPlatform()
 }
 
+// Il classpath di test, per i banchi di misura fuori da Gradle
+// (docs/experiments/*/run.sh). Vedi i gemelli in platform/control-plane/build.gradle,
+// platform/modules/async-queue/build.gradle e platform/modules/sync-queue/build.gradle:
+// non e' un task di build, serve solo a evitare che un banco debba indovinare dove
+// stanno i jar. Include i due moduli strategia, dichiarati qui sopra come test-only.
+tasks.register('printTestClasspath') {
+    doLast {
+        println sourceSets.test.runtimeClasspath.asPath
+    }
+}
+
 // The Gradle-level companion to RuntimeArchitectureTest (issue #208, Task 9): ArchUnit checks
 // the compiled bytecode, this checks the dependency graph itself, so an accidental
 // `implementation project(':control-plane')` (or a provider/queue module) fails the build even
