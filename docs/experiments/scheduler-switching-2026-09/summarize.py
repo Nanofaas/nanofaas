@@ -97,11 +97,34 @@ def per_arm(samples):
     return table
 
 
+# Which CPU clock an artifact carries depends on the harness build that wrote it: the round-3
+# build emits `threadCpuPerUsefulCompletionNanos` (and the process figure beside it), the round-1/2
+# build only `cpuPerUsefulCompletionNanos`, which is the *process* figure — quantised to 10 ms on
+# Linux. The label is therefore read off the field the sample actually has, rather than fixed: a
+# fixed label printed over a fallback read is how this table came to call process numbers "thread".
+CPU_FIELDS = (("threadCpuPerUsefulCompletionNanos", "thread"),
+              ("processCpuPerUsefulCompletionNanos", "process"),
+              ("cpuPerUsefulCompletionNanos", "process"))
+
+
+def cpu_of(sample):
+    """(value in microseconds, the clock it was read from) for one sample."""
+    for field, clock in CPU_FIELDS:
+        if field in sample:
+            return sample[field] / 1e3, clock
+    return -1.0, "unknown"
+
+
+def cpu_column_name(table):
+    clocks = {clock for runs in table.values() for _, clock in map(cpu_of, runs)}
+    return f"{clocks.pop()} cpu/useful us" if len(clocks) == 1 else "cpu/useful us (mixed clocks)"
+
+
 def workload_table(samples):
     table = per_arm(samples)
     workloads = sorted({w for w, _ in table})
     print("## Per-workload medians over the 5 repetitions (min-max in brackets)\n")
-    print("| workload | arm | reps | useful/s | p99 ms | thread cpu/useful us | alloc/useful B | "
+    print(f"| workload | arm | reps | useful/s | p99 ms | {cpu_column_name(table)} | alloc/useful B | "
           "post-GC heap MB | pending | conserved |")
     print("|---|---|---|---|---|---|---|---|---|---|")
     for workload in workloads:
@@ -109,8 +132,7 @@ def workload_table(samples):
             runs = table[(workload, arm)]
             useful = [r["usefulThroughputPerSecond"] for r in runs]
             p99 = [ms(r["p99Nanos"]) for r in runs]
-            cpu = [r.get("threadCpuPerUsefulCompletionNanos",
-                    r.get("cpuPerUsefulCompletionNanos", -1)) / 1e3 for r in runs]
+            cpu = [cpu_of(r)[0] for r in runs]
             alloc = [r["allocatedBytesPerUsefulCompletion"] for r in runs]
             heap = [r["postGcHeapBytes"] / 1e6 for r in runs]
             pending = [r["pendingAtClose"] for r in runs]
@@ -154,7 +176,7 @@ def legacy_regression(samples):
          BUDGETS["maxPostGcHeapRegressionPercent"]),
     ]
     print("## Switched arm vs the same strategy's no-change arm (median of 5 repetitions)\n")
-    print("A delta over budget is a miss. `dispersion` says whether it is *distinguishable*: "
+    print("A delta over budget is a miss. `dispersion` says whether it is *separable*: "
           "arms whose 5-repetition ranges overlap are not separated by this measurement, and the "
           "brief's own criterion for that case is to declare the result not distinguishable rather "
           "than to read the delta as an effect.\n")

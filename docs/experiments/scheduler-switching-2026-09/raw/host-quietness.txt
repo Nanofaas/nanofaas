@@ -82,22 +82,26 @@ indicator below, which is the one that comes from the campaign's own artifact.
 
 A host with a competing CPU-bound process does not produce repetitions that agree closely. In
 `raw/full.jsonl` the useful-throughput spread across the five repetitions, over all 48
-(workload, arm) pairs, has a **median of 3.12 %**, with 37 of the 48 under 5 % and 40 of the 48
-under 10 %. That is the shape of an undisturbed host, and it is a property of the recorded artifact
-rather than of anything observed outside it.
+(workload, arm) pairs — "spread" being (max − min) / mean over the arm's five values, the
+normalisation these figures are computed under — has a **median of 3.12 %**, with 37 of the 48
+under 5 % and 40 of the 48 under 10 %. That is the shape of an undisturbed host, and it is a
+property of the recorded artifact rather than of anything observed outside it.
 
-The wide end is explained by the workloads, not by the host: the four widest arms (31.9 %) are all
-`low-load`, whose offered rate is 20/s, so a 2.5 s window holds about 50 arrivals and the count
-itself varies. Those four arms report the *identical* range in every one of them — 208, 188, 174, 212 and 194
-offerings in reps 1–5, the same count in all four arms. That is **not** a general property of this
-harness, and this indicator therefore covers `low-load` only. Six groups of sixty in
+The wide end is explained by the workloads, not by the host: the four widest arms (31.9–32.0 %) are
+all `low-load`, whose offered rate is 20/s, so a repetition carries fewer than a hundred arrivals
+and the count itself varies. Those four arms report the *identical* count in every one of them —
+83, 84, 71, 98 and 86 offerings in reps 1–5, the same count in all four arms. That is **not** a
+general property of this harness, and this indicator therefore covers `low-load` only. Six groups of sixty in
 `raw/steady.jsonl` have identical counts across all four arms, and five of the six are `low-load`'s;
 the sixth is `unqueued` repetition 4. The other fifty-four differ, by up to 301 tickets
 (`switch-under-load`, repetition 3: 10 680 against 10 981).
 
 **What the spread varies with is not established by this campaign, and no story is told here that
 its own numbers refute.** The table below is every workload's spread over the four arms, from
-`raw/steady.jsonl`:
+`raw/steady.jsonl`. The `offered/s (measured)` column is `mean(offered)` over the workload's 20
+samples divided by **9 500 ms** — the 1 500 ms warm-up plus the 8 000 ms measured span, which is the
+interval the `offered` counter covers; dividing by the 8 000 ms span alone gives a figure about 19 %
+higher and is not this column:
 
 | workload | offered/s (configured) | offered/s (measured) | spread over the 4 arms |
 |---|---|---|---|
