@@ -103,8 +103,27 @@ public final class SchedulerSwitchBenchmark {
     static final String PER_FUNCTION = "per-function";
     static final String SHARED_QUEUE = "shared-queue";
 
-    /** Measured window per repetition unless a workload overrides it. */
-    static final int WINDOW_MS = 2500;
+    /**
+     * The measured span per repetition unless a workload overrides it. Long enough that an arm
+     * which inherits a queue at the switch can be observed after that queue has settled as well as
+     * while it is settling: the span is reported in trailing-window slices, so the settling segment
+     * and the steady segment are both in the artifact rather than one of them being chosen away.
+     */
+    static final int SPAN_MS = 8000;
+    /**
+     * Trailing windows, in milliseconds before the end of the span, that the artifact reports the
+     * latency distribution over. The steady figure is read off whichever of these the backlog's own
+     * convergence points at; the grid exists so that choice is a reading of the trajectory rather
+     * than a re-run.
+     */
+    static final int[] TRAILING_WINDOWS_MS = {250, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000,
+            6000, 8000};
+    /** How often the driver samples the queue depth while the span is open. */
+
+    /** How often the driver samples the queue depth, in milliseconds. */
+    static final int DEPTH_SAMPLE_MS = 50;
+    /** Upper bound on the sampled depth trajectory: 4x the longest supported span. */
+    static final int DEPTH_SAMPLES = 4096;
     /** Warm-up before the measured window, identical for every arm. */
     static final int WARMUP_MS = 1500;
 
@@ -117,6 +136,8 @@ public final class SchedulerSwitchBenchmark {
     private static final int SAMPLE_CAPACITY = 1 << 20;
     private static final long[] LATENCY = new long[SAMPLE_CAPACITY];
     private static final int[] LATENCY_FUNCTION = new int[SAMPLE_CAPACITY];
+    /** When each recorded sample was admitted: what puts it in one trailing window or another. */
+    private static final long[] LATENCY_ADMITTED = new long[SAMPLE_CAPACITY];
     private static final long[] SCRATCH = new long[SAMPLE_CAPACITY];
     private static int sampleCount;
     private static boolean sampleOverflow;
@@ -135,7 +156,9 @@ public final class SchedulerSwitchBenchmark {
         int repetitions = intOpt(opts, "repetitions", budgets.repetitions());
         int[] backlogs = opts.containsKey("backlogs")
                 ? parseInts(opts.get("backlogs")) : budgets.switchBacklogSizes();
-        int windowMs = intOpt(opts, "window-ms", 0);
+        // --window-ms is the name this option had before the span replaced the window; it still
+        // works so the commands recorded in RESULTS.md for the earlier protocol remain runnable.
+        int spanOverrideMs = intOpt(opts, "span-ms", intOpt(opts, "window-ms", 0));
         Set<String> parts = Set.of(opts.getOrDefault("parts", "backlog,profiles,switches").split(","));
         String selection = opts.getOrDefault("profiles", "all");
 
@@ -151,8 +174,8 @@ public final class SchedulerSwitchBenchmark {
         }
         if (parts.contains("profiles")) {
             for (Profile profile : Profiles.select(selection)) {
-                if (windowMs > 0) {
-                    profile.windowMs = windowMs;
+                if (spanOverrideMs > 0) {
+                    profile.spanMs = spanOverrideMs;
                 }
                 new WorkloadCampaign(profile, repetitions).run();
             }
@@ -311,6 +334,14 @@ public final class SchedulerSwitchBenchmark {
         volatile int pendingAtSwitch = -1;
         volatile long windowStartCpuNanos = -1;
         volatile long windowEndCpuNanos = -1;
+        /** Sum of every live thread's CPU time: process CPU at the thread clock's resolution. */
+        volatile long windowStartThreadCpuNanos = -1;
+        volatile long windowEndThreadCpuNanos = -1;
+        /** Queue depth sampled every DEPTH_SAMPLE_MS across the span, from the harness's counters. */
+        final int[] depthSeries = new int[DEPTH_SAMPLES];
+        volatile int depthCount;
+        /** The nominal depth-sampling cadence; the sample count shows whether it held. */
+        volatile long depthIntervalNanos = DEPTH_SAMPLE_MS * 1_000_000L;
         volatile long windowStartAllocBytes = -1;
         volatile long windowEndAllocBytes = -1;
         volatile long preRunHeapBytes = -1;
@@ -401,11 +432,11 @@ public final class SchedulerSwitchBenchmark {
             engine.start();
             Driver driver = newDriver();
             // A run with a window is bounded by it; one without is bounded by its caller.
-            driver.budgetNanos = (profile.warmupMs + profile.windowMs + 5_000L) * 1_000_000L;
+            driver.budgetNanos = (profile.warmupMs + profile.spanMs + 8_000L) * 1_000_000L;
             Thread driverThread = new Thread(driver, "benchmark-driver");
             driverThread.start();
 
-            if (profile.windowMs > 0) {
+            if (profile.spanMs > 0) {
                 if (arm.switched()) {
                     // The switch lands on a fully loaded engine (the warm-up load is running and
                     // the driver keeps servicing it), and the measured window opens only once the
@@ -522,8 +553,10 @@ public final class SchedulerSwitchBenchmark {
             private long nextArrivalNanos;
             private boolean burstFired;
             private boolean capacityChanged;
+            private boolean capacityRestored;
             private boolean churned;
             private long completionsSinceBacklogSample;
+            private long nextDepthSampleNanos;
 
             @Override
             public void run() {
@@ -536,7 +569,7 @@ public final class SchedulerSwitchBenchmark {
                     nextArrivalNanos = startedNanos;
                     long warmupEnd = startedNanos + profile.warmupMs * 1_000_000L;
                     prefill();
-                    if (profile.windowMs <= 0) {
+                    if (profile.spanMs <= 0) {
                         openWindow(startedNanos);
                     }
                     while (running) {
@@ -546,7 +579,12 @@ public final class SchedulerSwitchBenchmark {
                         }
                         events(now);
                         serviceDue(now);
-                        if (profile.windowMs > 0) {
+                        if (windowStartNanos != 0L && windowEndNanos == 0L
+                                && now >= nextDepthSampleNanos) {
+                            sampleDepth();
+                            nextDepthSampleNanos = now + DEPTH_SAMPLE_MS * 1_000_000L;
+                        }
+                        if (profile.spanMs > 0) {
                             if (windowStartNanos == 0L && now >= warmupEnd) {
                                 if (switchPending && !switchDone) {
                                     // Hand the switch to the caller and keep servicing the load:
@@ -561,7 +599,7 @@ public final class SchedulerSwitchBenchmark {
                             // a clock: this is how the return-to-baseline phase keeps the load
                             // running for exactly as long as its caller wants it to.
                             if (windowStartNanos != 0L
-                                    && now >= windowStartNanos + profile.windowMs * 1_000_000L) {
+                                    && now >= windowStartNanos + profile.spanMs * 1_000_000L) {
                                 closeWindow(now);
                                 return;
                             }
@@ -581,15 +619,34 @@ public final class SchedulerSwitchBenchmark {
 
             private void openWindow(long now) {
                 windowStartCpuNanos = OS.getProcessCpuTime();
+                windowStartThreadCpuNanos = threadCpuSum();
                 windowStartAllocBytes = allocatedBytes();
-                windowCloseAtNanos = now + profile.windowMs * 1_000_000L;
+                windowCloseAtNanos = now + profile.spanMs * 1_000_000L;
                 windowEndNanos = 0L;
+                depthCount = 0;
+                nextDepthSampleNanos = now;
+                sampleDepth();
                 // Published last: the measuring thread keys the switch off this field.
                 windowStartNanos = now;
             }
 
+            /**
+             * One point of the queue-depth trajectory, taken from the harness's own counters so it
+             * never touches the engine's gate. This series is what says whether an arm has settled
+             * and whether two arms are comparable at steady state — a maximum over the span cannot
+             * tell either of those apart from a peak that has already decayed.
+             */
+            void sampleDepth() {
+                long pending = admitted - completed - expired.get() - removed.get()
+                        - rejected.get();
+                if (depthCount < DEPTH_SAMPLES) {
+                    depthSeries[depthCount++] = (int) Math.max(pending, 0);
+                }
+            }
+
             private void closeWindow(long now) {
                 windowEndCpuNanos = OS.getProcessCpuTime();
+                windowEndThreadCpuNanos = threadCpuSum();
                 windowEndAllocBytes = allocatedBytes();
                 EngineQueueSnapshot snapshot = engine.snapshotQueues();
                 pendingAtEnd = snapshot.pending();
@@ -607,21 +664,46 @@ public final class SchedulerSwitchBenchmark {
 
             /** Time-triggered workload events: capacity change, churn, burst, arrivals. */
             private void events(long now) {
-                long elapsedMs = (now - startedNanos) / 1_000_000L;
-                if (profile.capacityChangeAtMs > 0 && !capacityChanged
-                        && elapsedMs >= profile.capacityChangeAtMs) {
+                long spanElapsedMs = spanStartNanos() == 0L ? 0L
+                        : (now - spanStartNanos()) / 1_000_000L;
+                if (profile.capacityChangeAtPercent > 0 && !capacityChanged
+                        && spanElapsedMs >= percentOfSpan(profile.capacityChangeAtPercent)) {
                     capacityChanged = true;
                     for (String function : profile.functions) {
                         capacity.setEffectiveConcurrency(function, profile.capacityChangeTo);
                     }
                     engine.signal();
-                    report("capacity change to " + profile.capacityChangeTo);
+                    // Read back what the registry now reports: a capacity change that did not take
+                    // effect would silently turn this workload into a different one.
+                    StringBuilder observed = new StringBuilder();
+                    for (String function : profile.functions) {
+                        observed.append(function).append('=')
+                                .append(capacity.effectiveConcurrency(function)).append(' ');
+                    }
+                    report("capacity change requested " + profile.capacityChangeTo
+                            + ", effective now: " + observed);
                 }
-                if (profile.churnAtMs > 0 && !churned && elapsedMs >= profile.churnAtMs) {
+                if (profile.capacityRestoreAtPercent > 0 && capacityChanged && !capacityRestored
+                        && spanElapsedMs >= percentOfSpan(profile.capacityRestoreAtPercent)) {
+                    capacityRestored = true;
+                    for (String function : profile.functions) {
+                        capacity.setEffectiveConcurrency(function, profile.capacity);
+                    }
+                    engine.signal();
+                    StringBuilder restored = new StringBuilder();
+                    for (String function : profile.functions) {
+                        restored.append(function).append('=')
+                                .append(capacity.effectiveConcurrency(function)).append(' ');
+                    }
+                    report("capacity restored to " + profile.capacity + ", effective now: " + restored);
+                }
+                if (profile.churnAtPercent > 0 && !churned
+                        && spanElapsedMs >= percentOfSpan(profile.churnAtPercent)) {
                     churned = true;
                     churn();
                 }
-                if (profile.burstCount > 0 && !burstFired && elapsedMs >= profile.burstAtMs) {
+                if (profile.burstCount > 0 && !burstFired
+                        && spanElapsedMs >= percentOfSpan(profile.burstAtPercent)) {
                     burstFired = true;
                     for (int i = 0; i < profile.burstCount; i++) {
                         offer(false, null);
@@ -707,8 +789,9 @@ public final class SchedulerSwitchBenchmark {
 
             /** One offered arrival: exponential inter-arrivals, i.e. a Poisson offered load. */
             private void offer(boolean retry, Integer functionIndexOverride) {
-                if (profile.stopAtMs > 0
-                        && (System.nanoTime() - startedNanos) / 1_000_000L >= profile.stopAtMs) {
+                if (profile.stopAtPercent > 0 && spanStartNanos() != 0L
+                        && (System.nanoTime() - spanStartNanos()) / 1_000_000L
+                        >= percentOfSpan(profile.stopAtPercent)) {
                     return;
                 }
                 int index = functionIndexOverride != null ? functionIndexOverride
@@ -768,6 +851,16 @@ public final class SchedulerSwitchBenchmark {
             private long sequenceCounter;
         }
 
+        /** The instant the measured span opened, or 0 while it has not. */
+        long spanStartNanos() {
+            return windowStartNanos;
+        }
+
+        /** One workload-event offset, as a millisecond position inside the span. */
+        long percentOfSpan(int percent) {
+            return profile.spanMs * (long) percent / 100L;
+        }
+
         /** Queue depth from the harness's own counters, without touching the engine's gate. */
         void sampleBacklog() {
             long pending = admitted - completed - expired.get() - removed.get() - rejected.get();
@@ -796,17 +889,19 @@ public final class SchedulerSwitchBenchmark {
             }
             if (attempt.admittedNanos >= windowStartNanos
                     && completionNanos <= windowCloseAtNanos) {
-                recordSample(attempt.functionIndex, latency);
+                recordSample(attempt.functionIndex, attempt.admittedNanos, latency);
             }
         }
 
-        private static synchronized void recordSample(int functionIndex, long latency) {
+        private static synchronized void recordSample(int functionIndex, long admittedNanos,
+                                                     long latency) {
             if (sampleCount == SAMPLE_CAPACITY) {
                 sampleOverflow = true;
                 return;
             }
             LATENCY[sampleCount] = latency;
             LATENCY_FUNCTION[sampleCount] = functionIndex;
+            LATENCY_ADMITTED[sampleCount] = admittedNanos;
             sampleCount++;
         }
 
@@ -1471,6 +1566,16 @@ public final class SchedulerSwitchBenchmark {
                 .append(",\"contractMillis\":").append(profile.contractMs)
                 .append(",\"samplesRecorded\":").append(n)
                 .append(",\"sampleCapReached\":").append(Run.sampleOverflow())
+                .append(",\"processCpuPerUsefulCompletionNanos\":")
+                .append(run.useful == 0 ? -1L : cpuNanos / run.useful)
+                .append(",\"threadCpuNanos\":")
+                .append(run.windowEndThreadCpuNanos - run.windowStartThreadCpuNanos)
+                .append(",\"threadCpuPerUsefulCompletionNanos\":")
+                .append(run.useful == 0 || run.windowEndThreadCpuNanos < 0 ? -1L
+                        : (run.windowEndThreadCpuNanos - run.windowStartThreadCpuNanos) / run.useful)
+                .append(",\"depthSampleIntervalNanos\":").append(run.depthIntervalNanos)
+                .append(",\"depthSeries\":").append(depthSeries(run))
+                .append(",\"trailing\":").append(trailingWindows(run, windowNanos))
                 .append(",\"p50Nanos\":").append(percentile(sorted, n, 0.50))
                 .append(",\"p95Nanos\":").append(percentile(sorted, n, 0.95))
                 .append(",\"p99Nanos\":").append(percentile(sorted, n, 0.99))
@@ -1497,8 +1602,6 @@ public final class SchedulerSwitchBenchmark {
                 .append(",\"slotsInFlightAtEnd\":").append(slots)
                 .append(",\"slotCapacity\":").append(capacityTotal)
                 .append(",\"processCpuNanos\":").append(cpuNanos)
-                .append(",\"cpuPerUsefulCompletionNanos\":")
-                .append(run.useful == 0 ? -1L : cpuNanos / run.useful)
                 .append(",\"allocatedBytes\":").append(allocated)
                 .append(",\"allocatedBytesPerUsefulCompletion\":")
                 .append(run.useful == 0 ? -1L : allocated / run.useful)
@@ -1523,6 +1626,69 @@ public final class SchedulerSwitchBenchmark {
         appendPerFunction(json, profile, run);
         json.append('}');
         out.println(json);
+    }
+
+    /** The sampled queue-depth trajectory, as a JSON array, and how it was sampled. */
+    private static String depthSeries(Run run) {
+        int count = run.depthCount;
+        StringBuilder json = new StringBuilder(count * 5 + 2);
+        json.append('[');
+        for (int i = 0; i < count; i++) {
+            if (i > 0) {
+                json.append(',');
+            }
+            json.append(run.depthSeries[i]);
+        }
+        return json.append(']').toString();
+    }
+
+    /**
+     * The latency distribution over each trailing window of the span, a JSON object keyed by the
+     * window's length in milliseconds. A sample belongs to a window when it was <em>admitted</em>
+     * inside it, so a window answers "how did work that arrived in this segment fare" rather than
+     * "how did work that finished in it fare" — the settling work admitted earlier cannot be
+     * counted into a late window's arrivals.
+     *
+     * <p>Reporting a grid rather than one chosen window is the point: the steady figure is then a
+     * reading of the backlog trajectory, and both the settling segment and the steady segment stay
+     * in the artifact for a reader who wants either.
+     */
+    private static String trailingWindows(Run run, long spanNanos) {
+        StringBuilder json = new StringBuilder(2048);
+        json.append('{');
+        boolean first = true;
+        for (int lengthMs : TRAILING_WINDOWS_MS) {
+            long lengthNanos = Math.min(lengthMs * 1_000_000L, spanNanos);
+            long from = run.windowEndNanos - lengthNanos;
+            int count = 0;
+            long useful = 0;
+            for (int i = 0; i < Run.sampleCount(); i++) {
+                if (LATENCY_ADMITTED[i] >= from && LATENCY_ADMITTED[i] <= run.windowEndNanos) {
+                    SCRATCH[count++] = LATENCY[i];
+                    if (LATENCY[i] <= run.contractNanos()) {
+                        useful++;
+                    }
+                }
+            }
+            long[] sorted = Arrays.copyOf(SCRATCH, count);
+            Arrays.sort(sorted);
+            double seconds = lengthNanos / 1e9;
+            if (!first) {
+                json.append(',');
+            }
+            first = false;
+            json.append('"').append(lengthMs).append("\":{")
+                    .append("\"samples\":").append(count)
+                    .append(",\"useful\":").append(useful)
+                    .append(",\"usefulThroughputPerSecond\":").append(fmt(count == 0 ? 0.0
+                            : useful / seconds))
+                    .append(",\"p50Nanos\":").append(percentile(sorted, count, 0.50))
+                    .append(",\"p95Nanos\":").append(percentile(sorted, count, 0.95))
+                    .append(",\"p99Nanos\":").append(percentile(sorted, count, 0.99))
+                    .append(",\"maxNanos\":").append(count == 0 ? -1L : sorted[count - 1])
+                    .append('}');
+        }
+        return json.append('}').toString();
     }
 
     /**
@@ -1665,6 +1831,24 @@ public final class SchedulerSwitchBenchmark {
         LockSupport.parkNanos(nanos);
     }
 
+    /**
+     * CPU time of every live thread, summed. The process figure ({@code getProcessCpuTime}) is
+     * quantised to 10 ms on this platform, which cannot resolve a 10 % budget on the
+     * low-throughput workloads; summing {@code getThreadCpuTime} over the live threads gives the
+     * same quantity at the thread clock's own resolution (microseconds here). Both are emitted, so
+     * the agreement between them is checkable in the artifact rather than asserted.
+     */
+    private static long threadCpuSum() {
+        long total = 0;
+        for (long id : THREADS.getAllThreadIds()) {
+            long cpu = THREADS.getThreadCpuTime(id);
+            if (cpu > 0) {
+                total += cpu;
+            }
+        }
+        return total;
+    }
+
     private static long allocatedBytes() {
         if (!THREADS.isThreadAllocatedMemorySupported() || !THREADS.isThreadAllocatedMemoryEnabled()) {
             return -1L;
@@ -1722,19 +1906,33 @@ public final class SchedulerSwitchBenchmark {
         int payloadBytes = 0;
         int sporadicPayloadBytes = 0;
         int maxPending = 4096;
-        int windowMs = WINDOW_MS;
+        int spanMs = SPAN_MS;
         int warmupMs = WARMUP_MS;
         int contractMs = 100;
         double retryFraction = 0.0;
         double syncFraction = 0.0;
         int burstCount = 0;
-        int burstAtMs = 0;
-        int capacityChangeAtMs = 0;
+        /**
+         * Workload events are placed as percentages of the measured span, not as absolute
+         * milliseconds from the run's start: a span that is three times longer must still contain
+         * the burst, the churn and the capacity change at the same point of the arm's own history,
+         * or the arms would be compared over different phases of their load.
+         */
+        int burstAtPercent = 0;
+        int capacityChangeAtPercent = 0;
+        /**
+         * The effective concurrency requested at {@link #capacityChangeAtPercent}, and the point at
+         * which the configured one is restored. {@code FunctionCapacityState.setEffectiveConcurrency}
+         * clamps to {@code [1, configuredConcurrency]}, so a capacity change this harness can make
+         * is a <em>reduction</em> followed by a restore — an increase needs a re-registration, which
+         * retires the generation and would confound the measurement rather than exercise it.
+         */
         int capacityChangeTo = 0;
+        int capacityRestoreAtPercent = 0;
         /** Function churn: retire the second half of the sporadic functions and re-register them. */
-        int churnAtMs = 0;
-        /** Stop offering this many ms into the run; 0 means never. */
-        int stopAtMs = 0;
+        int churnAtPercent = 0;
+        /** Stop offering this far into the span; 0 means never. */
+        int stopAtPercent = 0;
         int notReadyCount = 0;
         int prefill = 0;
 
@@ -1754,7 +1952,7 @@ public final class SchedulerSwitchBenchmark {
             // Replacements are appended only for the churn workload: the functions the churn
             // retires are re-registered under these names, so they need array slots (and therefore
             // per-function counters) from the start.
-            if (churnAtMs > 0) {
+            if (churnAtPercent > 0) {
                 for (int i = 0; i < sporadicFunctions / 2; i++) {
                     names.add("sporadic-r" + i);
                 }
@@ -1801,7 +1999,7 @@ public final class SchedulerSwitchBenchmark {
         }
 
         List<String> churnedFunctions() {
-            if (churnAtMs == 0) {
+            if (churnAtPercent == 0) {
                 return List.of();
             }
             List<String> churned = new ArrayList<>();
@@ -1812,7 +2010,7 @@ public final class SchedulerSwitchBenchmark {
         }
 
         List<String> replacementFunctions() {
-            if (churnAtMs == 0) {
+            if (churnAtPercent == 0) {
                 return List.of();
             }
             List<String> replacements = new ArrayList<>();
@@ -1919,7 +2117,7 @@ public final class SchedulerSwitchBenchmark {
             p.maxPending = 2048;
             p.contractMs = 300;
             p.burstCount = 1500;
-            p.burstAtMs = 2500;
+            p.burstAtPercent = 12;
             return p;
         }
 
@@ -1973,23 +2171,34 @@ public final class SchedulerSwitchBenchmark {
             p.sporadicPayloadBytes = 64;
             p.maxPending = 4096;
             p.contractMs = 200;
-            p.churnAtMs = 2600;
-            p.stopAtMs = 3200;
+            p.churnAtPercent = 25;
+            p.stopAtPercent = 60;
             return p;
         }
 
-        /** §11.8 — cambi di capacità durante il carico: progressi e correttezza del protocollo. */
+        /**
+         * §11.8 — cambi di capacità durante il carico: progressi e correttezza del protocollo.
+         *
+         * <p>The change is a <em>reduction</em> (2 → 1 per function) followed by a restore, because
+         * that is the direction the registry's API can actually make: an increase is clamped to the
+         * configured value and silently does nothing, which is exactly the defect this workload had
+         * while this task was being measured — it asked for 8 against a configured 2 and produced a
+         * workload that never changed capacity at all. The read-back in {@code Driver.events} is
+         * what caught that and is kept so it cannot recur unnoticed.
+         */
         static Profile capacityChangeUnderLoad() {
             Profile p = new Profile("capacity-change");
-            p.note = "cambi di capacita' durante il carico: progressi e correttezza del protocollo";
+            p.note = "cambi di capacita' durante il carico (riduzione effettiva 2->1 e ripristino): "
+                    + "progressi e correttezza del protocollo";
             p.hotFunctions = 2;
             p.hotRatePerSecond = 600.0;
             p.capacity = 2;
             p.hotServiceMs = 3;
             p.maxPending = 2048;
             p.contractMs = 150;
-            p.capacityChangeAtMs = 2600;
-            p.capacityChangeTo = 8;
+            p.capacityChangeAtPercent = 25;
+            p.capacityChangeTo = 1;
+            p.capacityRestoreAtPercent = 60;
             return p;
         }
 
@@ -2013,7 +2222,7 @@ public final class SchedulerSwitchBenchmark {
             p.contractMs = 250;
             p.retryFraction = 0.1;
             p.burstCount = 1000;
-            p.burstAtMs = 2200;
+            p.burstAtPercent = 12;
             p.notReadyCount = 4;
             return p;
         }
@@ -2059,7 +2268,7 @@ public final class SchedulerSwitchBenchmark {
             p.maxPending = Math.max(1024, backlog + 512);
             // The pending work must survive long enough to be the backlog the switch rebuilds.
             p.contractMs = 300_000;
-            p.windowMs = 600;
+            p.spanMs = 600;
             p.warmupMs = 300;
             p.prefill = backlog;
             return p.build();
@@ -2082,7 +2291,7 @@ public final class SchedulerSwitchBenchmark {
             p.contractMs = 30_000;
             p.prefill = 400;
             // No measured window: the run is bounded by the caller's 1000 switches, not by a clock.
-            p.windowMs = 0;
+            p.spanMs = 0;
             p.warmupMs = 0;
             return p.build();
         }

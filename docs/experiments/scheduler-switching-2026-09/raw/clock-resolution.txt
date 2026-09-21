@@ -1,0 +1,77 @@
+# CPU clock resolution on this host
+
+The CPU-per-completion budget is 10 %, so the measurement it is read from has to resolve better
+than that. Measured with `ClockTest.java` (same directory) — a busy loop of known duration against
+each clock. Source:
+
+```java
+import java.lang.management.ManagementFactory;
+
+public final class ClockTest {
+    public static void main(String[] args) throws Exception {
+        com.sun.management.OperatingSystemMXBean os =
+                (com.sun.management.OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
+        com.sun.management.ThreadMXBean threads =
+                (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
+        System.out.println("processCpuTime: 10 ms busy-loop deltas (ns):");
+        for (int i = 0; i < 8; i++) {
+            long a = os.getProcessCpuTime();
+            long end = System.nanoTime() + 10_000_000L;
+            long x = 1;
+            while (System.nanoTime() < end) { x = x * 31 + 7; }
+            long b = os.getProcessCpuTime();
+            System.out.printf("  %d (busy work %d)%n", b - a, x & 1);
+        }
+        System.out.println("getCurrentThreadCpuTime: 10 ms busy-loop deltas (ns):");
+        for (int i = 0; i < 8; i++) {
+            long a = threads.getCurrentThreadCpuTime();
+            long end = System.nanoTime() + 10_000_000L;
+            long x = 1;
+            while (System.nanoTime() < end) { x = x * 31 + 7; }
+            long b = threads.getCurrentThreadCpuTime();
+            System.out.printf("  %d (busy work %d)%n", b - a, x & 1);
+        }
+        System.out.println("getThreadCpuTime(main): 1 ms busy-loop deltas (ns):");
+        long id = Thread.currentThread().getId();
+        for (int i = 0; i < 8; i++) {
+            long a = threads.getThreadCpuTime(id);
+            long end = System.nanoTime() + 1_000_000L;
+            long x = 1;
+            while (System.nanoTime() < end) { x = x * 31 + 7; }
+            long b = threads.getThreadCpuTime(id);
+            System.out.printf("  %d (busy work %d)%n", b - a, x & 1);
+        }
+    }
+}
+```
+
+
+```
+processCpuTime: 10 ms busy-loop deltas (ns):
+  10000000 (busy work 1)
+  20000000 (busy work 1)
+  10000000 (busy work 0)
+  10000000 (busy work 0)
+  10000000 (busy work 1)
+  10000000 (busy work 1)
+  10000000 (busy work 0)
+  10000000 (busy work 1)
+getCurrentThreadCpuTime: 10 ms busy-loop deltas (ns):
+  10004912 (busy work 1)
+  10000640 (busy work 1)
+  10000592 (busy work 1)
+  10000720 (busy work 0)
+  10000912 (busy work 0)
+  10000656 (busy work 0)
+  10000624 (busy work 0)
+  10000640 (busy work 1)
+getThreadCpuTime(main): 1 ms busy-loop deltas (ns):
+  1001840 (busy work 0)
+  1009584 (busy work 0)
+  1000976 (busy work 0)
+  1005232 (busy work 0)
+  1001168 (busy work 0)
+  1001168 (busy work 1)
+  1000800 (busy work 0)
+  1000848 (busy work 1)
+```

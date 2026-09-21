@@ -98,3 +98,16 @@ editor, and other agent processes at a few percent of one core each). The claim 
 is the narrower one: no Gradle build, no second sampling run and no other CPU-bound work of the
 kind that would move these figures was running, and the campaign's own dispersion is consistent
 with that.
+
+## The settlement campaign (round 3)
+
+`/proc/loadavg` (1-minute) sampled every 45 s, 65 samples from 2026-09-21T16:54:03+02:00 to
+2026-09-21T17:42:04+02:00, load average min 0.05, max 1.37 on 20 CPUs. This sampler
+was started with the campaign rather than after it, so unlike the round-1 sampling it covers the
+run: the completed-sample counter in the same file goes from 0 to 240 across it. No Gradle daemon
+existed during it (`run.sh` stops it before the measured JVM starts) and nothing else CPU-bound was
+started.
+
+The same in-artifact indicator applies to `raw/steady.jsonl`: 240 of 240 runs conserve work, none
+reports a driver failure, and the useful-throughput spread across the five repetitions of each of
+the 48 (workload, arm) pairs is the shape an undisturbed host produces.

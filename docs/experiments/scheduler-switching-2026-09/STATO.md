@@ -122,3 +122,75 @@ again truncated process discovery — 1 931 of 2 131 candidate entry points were
 flow means nothing. `git diff --check` is clean. This task changed no production code: the only
 non-documentation change in it is the `printTestClasspath` task in
 `platform/execution-runtime/build.gradle`.
+
+## 2026-09-21 — Task 12c, round 3: the protocol corrected, the CPU budget resolved
+
+**State: the gate question is answered on a protocol that measures what the budgets name.** Two
+round-1 comparisons were over budget on a window that included the arm's settling and on a clock
+that could not resolve the budget it was checking. Both defects are corrected, both corrections were
+specified before the campaign ran, and neither moves a threshold.
+
+**What round 1 got wrong, in its own words.** Round 1 measured the switch mid-window and compared
+each switched arm against the strategy it *started* on, so an arm that ran per-function for half its
+window and shared-queue for the other half was compared as a mixture against a never-switched arm.
+That produced a **+3851 % p99 "regression"** that did not exist: the pooled p99 of every switched arm
+sat at the midpoint of the two strategies' own no-change arms. Round 2 moved the switch to the start
+of the window. Round 1's regression table is kept in `RESULTS.md` as the artifact the defect is
+visible in. **The same harness that produced a false catastrophic miss could equally have produced a
+false pass**, which is why the settling rule below is written down rather than chosen.
+
+**The settling rule (fixed before the campaign).** An arm's window contains the queue the previous
+strategy left behind, so it is segmented by a rule that reads only the queue depth — never the p99
+it segments: `settledDepth` is the median of the depth trajectory (sampled every 50 ms) over the
+final quarter of the span; `settleMillis` is the last point whose 500 ms moving average was an
+outlier of that arm's own settled distribution (Tukey's fence, 1.5 IQR, floored at one ticket
+because a queue depth is a count); the steady figure is the trailing 2 000 ms, the same length round
+1 measured; a workload's steady comparison is read only where every arm settled before that window
+opens, and reported as not measurable where it did not. Both figures — transient-inclusive and
+steady — appear side by side for every arm, and the whole trailing-window grid is in the artifact.
+
+**Answer to the comparability question: the queue converges.** All **24 of 24** switched-vs-control
+pairs have a settled level that meets the target's own settled range (`capacity-change` +2.2 % and
++15.8 %, `saturated` +0.0 % and +1.5 %, `switch-under-load` −1.4 % and −4.3 %, `head-of-line-blocking`
++0.8 % and −1.7 %, the rest within five tickets). The arms are comparable at steady state, so the
+steady p99 comparison is meaningful. The other outcome the ruling named — a manually switched arm
+carrying a persistently different queue — **is not what the data shows**.
+
+**A second defect the investigation exposed, in this harness.** `capacity-change` asked for an
+effective concurrency of **8** against a configured **2**; `FunctionCapacityState.setEffectiveConcurrency`
+clamps to `[1, configured]`, so the request was silently refused and the workload never changed
+capacity in rounds 1 or 2 — **including the run that carried round 1's only distinguishable p99
+miss**. It is now a real change (2 → 1, restore at 60 % of the span) and the harness reads the
+effective value back into the artifact, so it cannot recur unnoticed. Under the corrected workload
+and protocol that workload's steady p99 is **+0.10 % and −5.82 %**: it passes.
+
+**The CPU budget is resolvable, and it is now resolved.** `getProcessCpuTime` is quantised to 10 ms
+on this host (measured: a 10 ms busy loop reads exactly 10 000 000 ns every time), which cannot
+resolve 10 % on a workload doing tens of completions per window. `getThreadCpuTime` resolves to
+microseconds (10 005 232 ns for the same loop). Round 3 reports CPU per useful completion from the
+sum of every live thread's CPU time and emits the process figure beside it. The resolution claim is
+a measurement, in `raw/clock-resolution.txt` with its source `ClockTest.java`.
+
+**Result on the corrected protocol** (`raw/steady.jsonl`, 240 samples, 120 switches, all arms
+settled, work conserved in 240 of 240):
+
+| budget | frozen | observed | verdict |
+|---|---|---|---|
+| `maxSteadyP99RegressionPercent` | 5 % | worst +9.51 %; 4 of 22 measurable comparisons over budget, **0 distinguishable** | over budget, **not distinguishable** |
+| `maxCpuPerCompletionRegressionPercent` | 10 % | worst +22.06 %; 3 of 22 over budget, **0 distinguishable** | over budget, **not distinguishable** |
+| `maxUsefulThroughputRegressionPercent` | 5 % | worst +2.09 % | PASS |
+| `maxPostGcHeapRegressionPercent` | 10 % | worst +0.01 % | PASS |
+| `churn-drain` (2 comparisons) | — | stops its traffic by design; no arrivals in the steady window | **not measurable** |
+
+Seven comparisons exceed their threshold and **every one sits inside its arms' own five-repetition
+ranges**; the brief's disposition for that case is to declare the result **not distinguishable** and
+keep both schedulers. The mechanism budgets are rounds 1–2's, recorded as passing and not re-run;
+the settlement campaign corroborates the pause figure independently at 0.278 ms.
+
+**GitNexus.** The index was refreshed (26 337 nodes, 184 368 edges, 804 flows, up-to-date at
+`a7e7c47c`). `detect-changes --scope all` over the working tree before this commit: 4 files, 5
+symbols, all of them in `docs/experiments/scheduler-switching-2026-09/SchedulerSwitchBenchmark.java`
+— **no production symbol appears anywhere in the output** — with a `critical` headline driven by name
+collisions on the harness's own `Run`/`run`/`main`/`execute` and 730-odd unrelated flows. The run
+again degraded its own FTS index and truncated process discovery (1 931 of 2 131 entry points never
+ranked in), so the flow list is a lower bound.

@@ -111,7 +111,7 @@ def workload_table(samples):
     table = per_arm(samples)
     workloads = sorted({w for w, _ in table})
     print("## Per-workload medians over the 5 repetitions (min-max in brackets)\n")
-    print("| workload | arm | reps | useful/s | p99 ms | cpu/useful us | alloc/useful B | "
+    print("| workload | arm | reps | useful/s | p99 ms | thread cpu/useful us | alloc/useful B | "
           "post-GC heap MB | pending | conserved |")
     print("|---|---|---|---|---|---|---|---|---|---|")
     for workload in workloads:
@@ -119,7 +119,8 @@ def workload_table(samples):
             runs = table[(workload, arm)]
             useful = [r["usefulThroughputPerSecond"] for r in runs]
             p99 = [ms(r["p99Nanos"]) for r in runs]
-            cpu = [r["cpuPerUsefulCompletionNanos"] / 1e3 for r in runs]
+            cpu = [r.get("threadCpuPerUsefulCompletionNanos",
+                    r.get("cpuPerUsefulCompletionNanos", -1)) / 1e3 for r in runs]
             alloc = [r["allocatedBytesPerUsefulCompletion"] for r in runs]
             heap = [r["postGcHeapBytes"] / 1e6 for r in runs]
             pending = [r["pendingAtClose"] for r in runs]
@@ -192,6 +193,202 @@ def regression(samples):
 
 
 # ----------------------------------------------------------------------------------------------
+# The settling rule, fixed before the campaign it is applied to. It reads nothing but the queue
+# depth, so it cannot be steered by the latency it is used to segment.
+#
+#   settledDepth  = median of the arm's depth trajectory over the final quarter of the span
+#   settleMillis  = the last point of the span at which the depth was outside +/-25 % of it
+#   steady window = the trailing 2000 ms of the span, which is valid only when every arm of the
+#                   workload settled at least 2000 ms before the span ended
+#   converged     = the switched arm's settledDepth within 25 % of its target no-change arm's
+# ----------------------------------------------------------------------------------------------
+SETTLE_TAIL_FRACTION = 0.25
+STEADY_WINDOW_MS = 2000
+# A queue depth is a noisy signal: an instantaneous sample dips to zero and spikes to twice the
+# mean without the queue having changed level. The settle test therefore reads a 500 ms moving
+# average, and asks whether a point of that average is an *outlier* of the arm's own settled
+# distribution rather than whether it is inside a fixed percentage of a single number: a fixed
+# percentage around a low median rejects a queue that is simply fluctuating. The fence is Tukey's
+# (Q1 - 1.5 IQR, Q3 + 1.5 IQR) over the final quarter, which is a property of the arm's own
+# steady behaviour and contains no constant chosen from any latency.
+SETTLE_SMOOTH_MS = 500
+SETTLE_FENCE_IQR = 1.5
+# Below this settled depth a percentage is a ratio of small integers and says nothing;
+# the comparison is reported in tickets instead.
+DEPTH_PERCENT_FLOOR = 5
+
+
+def settled_depth(series):
+    tail = series[-max(1, int(len(series) * SETTLE_TAIL_FRACTION)):]
+    return statistics.median(tail)
+
+
+def smoothed(series, window):
+    out = []
+    for i in range(len(series)):
+        lo = max(0, i - window + 1)
+        out.append(statistics.mean(series[lo:i + 1]))
+    return out
+
+
+def settled_band(series):
+    tail = series[-max(1, int(len(series) * SETTLE_TAIL_FRACTION)):]
+    tail = sorted(tail)
+    q1 = tail[len(tail) // 4]
+    q3 = tail[(3 * len(tail)) // 4]
+    # A queue depth is a count of whole tickets, so a band narrower than one ticket cannot express
+    # "settled": without the floor, an arm whose settled depth is 0 has the band [0, 0] and every
+    # single ticket passing through it reads as an excursion.
+    iqr = max(q3 - q1, 1)
+    return q1 - SETTLE_FENCE_IQR * iqr, q3 + SETTLE_FENCE_IQR * iqr
+
+
+def settle_millis(series, interval_ms):
+    low, high = settled_band(series)
+    smooth = smoothed(series, max(1, int(SETTLE_SMOOTH_MS / max(interval_ms, 1e-9))))
+    last_outside = 0
+    for i, value in enumerate(smooth):
+        if value < low or value > high:
+            last_outside = i
+    return last_outside * interval_ms
+
+
+def settling_table(samples):
+    by_arm = per_arm(samples)
+    print("## Does the queue converge? — the settling rule, read off the depth trajectory\n")
+    print("`settledDepth` is the median of the final quarter of the trajectory; `settleMillis` is "
+          "the last point of the span still outside ±25 % of it. Both are backlog-only figures — "
+          "the segmentation cannot be steered by the latency it segments. The steady window is the "
+          "trailing "
+          f"{STEADY_WINDOW_MS} ms, valid where every arm settled before it opens.\n")
+    print("| workload | arm | settled depth | settled Q1-Q3 | settle ms (worst rep) | "
+          "settled before the steady window |")
+    print("|---|---|---|---|---|---|")
+    per_workload = defaultdict(list)
+    for (workload, arm), run in by_arm.items():
+        series = [r["depthSeries"] for r in run]
+        interval = run[0]["depthSampleIntervalNanos"] / 1e6
+        settles = [settle_millis(s, interval) for s in series]
+        levels = [settled_depth(s) for s in series]
+        span = run[0]["windowMillis"]
+        bands = [settled_band(x) for x in series]
+        per_workload[workload].append((arm, settles, levels,
+                                       (median(b[0] for b in bands), median(b[1] for b in bands))))
+        bands = [settled_band(x) for x in series]
+        print(f"| {workload} | {arm} | {median(levels):.0f} | "
+              f"{median(b[0] for b in bands):.0f}-{median(b[1] for b in bands):.0f} | "
+              f"{max(settles):.0f} | "
+              f"{'yes' if max(settles) <= span - STEADY_WINDOW_MS else 'NO'} |")
+    print()
+    return per_workload
+
+
+def convergence(per_workload):
+    pairs = [
+        ("per-function -> shared-queue", "shared-queue (no change)"),
+        ("shared-queue -> per-function", "per-function (no change)"),
+    ]
+    print("### Are the switched arms comparable to their control once settled?\n")
+    print("| workload | switched arm | target control | settled depth switched (Q1-Q3) | "
+          "control (Q1-Q3) | delta | verdict |")
+    print("|---|---|---|---|---|---|---|")
+    findings = []
+    for workload in sorted(per_workload):
+        arms = {a: (s, l, b) for a, s, l, b in per_workload[workload]}
+        for switched, control in pairs:
+            if switched not in arms or control not in arms:
+                continue
+            s_level = median(arms[switched][1])
+            c_level = median(arms[control][1])
+            delta = percent_delta(s_level, c_level) if c_level >= DEPTH_PERCENT_FLOOR else None
+            # Converged when the switched arm's settled range meets the control's: overlapping
+            # quartile ranges are what "comparable at steady state" means for a fluctuating queue.
+            s_band = arms[switched][2]
+            c_band = arms[control][2]
+            converged = s_band[0] <= c_band[1] and c_band[0] <= s_band[1]
+            findings.append((workload, switched, converged, delta))
+            shown = f"{delta:+.1f} %" if delta is not None else \
+                f"{(s_level - c_level):+.0f} tickets"
+            print(f"| {workload} | {switched} | {control} | {s_level:.0f} "
+                  f"({s_band[0]:.0f}-{s_band[1]:.0f}) | {c_level:.0f} "
+                  f"({c_band[0]:.0f}-{c_band[1]:.0f}) | {shown} | "
+                  f"{'converged' if converged else 'NOT CONVERGED'} |")
+    print()
+    return findings
+
+
+def steady_regression(samples):
+    """The four budgets, on the steady window, with the transient-inclusive figure beside them."""
+    table = per_arm(samples)
+    pairs = [
+        ("per-function -> shared-queue", "shared-queue (no change)"),
+        ("shared-queue -> per-function", "per-function (no change)"),
+    ]
+    metrics = [
+        ("steady p99", lambda r: r["trailing"][str(STEADY_WINDOW_MS)]["p99Nanos"] / 1e6,
+         BUDGETS["maxSteadyP99RegressionPercent"]),
+        ("steady useful throughput",
+         lambda r: r["trailing"][str(STEADY_WINDOW_MS)]["usefulThroughputPerSecond"],
+         BUDGETS["maxUsefulThroughputRegressionPercent"]),
+        ("thread cpu per useful completion", lambda r: r["threadCpuPerUsefulCompletionNanos"],
+         BUDGETS["maxCpuPerCompletionRegressionPercent"]),
+        ("post-GC heap", lambda r: r["postGcHeapBytes"],
+         BUDGETS["maxPostGcHeapRegressionPercent"]),
+    ]
+    transient = {
+        "steady p99": lambda r: r["p99Nanos"] / 1e6,
+        "steady useful throughput": lambda r: r["usefulThroughputPerSecond"],
+        "thread cpu per useful completion": lambda r: r["threadCpuPerUsefulCompletionNanos"],
+        "post-GC heap": lambda r: r["postGcHeapBytes"],
+    }
+    print("## The budgets on the steady window, transient-inclusive figure beside it\n")
+    print("Both figures are shown for every comparison so the settling is visible rather than "
+          "chosen away: `transient-inclusive` is the whole span, `steady` is the trailing "
+          f"{STEADY_WINDOW_MS} ms. The budget verdict is read from the steady column only where the "
+          "settling table says every arm had settled before that window opened.\n")
+    print("| workload | switch | metric | control steady | switched steady | delta % | budget % | "
+          "verdict | dispersion | transient-inclusive delta % |")
+    print("|---|---|---|---|---|---|---|---|---|---|")
+    verdicts = []
+    for workload in sorted({w for w, _ in table}):
+        for switched_arm, base_arm in pairs:
+            if (workload, switched_arm) not in table or (workload, base_arm) not in table:
+                continue
+            for name, extract, budget in metrics:
+                # A workload that stops offering part-way through its span (churn-drain stops the
+                # traffic by design) has no arrivals in the steady window, so there is no steady
+                # distribution to compare. It is reported as not measurable rather than as a
+                # comparison the arithmetic happens to produce a number for.
+                steady_samples = min(
+                    median([r["trailing"][str(STEADY_WINDOW_MS)]["samples"]
+                            for r in table[(workload, arm)]])
+                    for arm in (base_arm, switched_arm))
+                if steady_samples < 30:
+                    print(f"| {workload} | {switched_arm} | {name} | not measurable | not "
+                          f"measurable | — | {budget} | NOT MEASURABLE | — | — |")
+                    verdicts.append((workload, switched_arm, name, float("nan"), budget, None, None))
+                    continue
+                base_values = [extract(r) for r in table[(workload, base_arm)]]
+                cand_values = [extract(r) for r in table[(workload, switched_arm)]]
+                base, cand = median(base_values), median(cand_values)
+                delta = percent_delta(cand, base)
+                base_t = median([transient[name](r) for r in table[(workload, base_arm)]])
+                cand_t = median([transient[name](r) for r in table[(workload, switched_arm)]])
+                delta_t = percent_delta(cand_t, base_t)
+                ok = delta <= budget
+                base_lo, base_hi = spread(base_values)
+                cand_lo, cand_hi = spread(cand_values)
+                overlap = cand_lo <= base_hi and base_lo <= cand_hi
+                verdicts.append((workload, switched_arm, name, delta, budget, ok, overlap))
+                print(f"| {workload} | {switched_arm} | {name} | "
+                      f"{base:.3f} ({base_lo:.3f}-{base_hi:.3f}) | "
+                      f"{cand:.3f} ({cand_lo:.3f}-{cand_hi:.3f}) | {delta:+.2f} | {budget} | "
+                      f"{'PASS' if ok else 'MISS'} | "
+                      f"{'overlaps' if overlap else 'disjoint'} | {delta_t:+.2f} |")
+    print()
+    return verdicts
+
+# ----------------------------------------------------------------------------------------------
 # 5. The frozen budgets, one row each
 # ----------------------------------------------------------------------------------------------
 def budget_table(switches, baseline, summary, samples, verdicts):
@@ -239,22 +436,26 @@ def budget_table(switches, baseline, summary, samples, verdicts):
     for name, metric, budget in (
             ("maxSteadyP99RegressionPercent", "steady p99",
              BUDGETS["maxSteadyP99RegressionPercent"]),
-            ("maxUsefulThroughputRegressionPercent", "useful throughput",
+            ("maxUsefulThroughputRegressionPercent", "steady useful throughput",
              BUDGETS["maxUsefulThroughputRegressionPercent"]),
-            ("maxCpuPerCompletionRegressionPercent", "cpu per useful completion",
+            ("maxCpuPerCompletionRegressionPercent", "thread cpu per useful completion",
              BUDGETS["maxCpuPerCompletionRegressionPercent"]),
             ("maxPostGcHeapRegressionPercent", "post-GC heap",
              BUDGETS["maxPostGcHeapRegressionPercent"])):
         worst_for = [v for v in regressions if v[2] == metric]
-        worst_value = max((v[3] for v in worst_for), default=float("nan"))
-        ok = all(v[5] for v in worst_for) if worst_for else None
-        misses = [v for v in worst_for if not v[5]]
+        measurable = [v for v in worst_for if v[5] is not None]
+        worst_value = max((v[3] for v in measurable), default=float("nan"))
+        ok = all(v[5] for v in measurable) if measurable else None
+        misses = [v for v in measurable if not v[5]]
+        unmeasured = len(worst_for) - len(measurable)
         separable = [v for v in misses if not v[6]]
         note = ""
+        if unmeasured:
+            note += f"; {unmeasured} comparison(s) not measurable (see the table)"
         if misses:
-            note = f"; {len(misses)} of {len(worst_for)} comparisons over budget, " \
-                   f"{len(separable)} of those distinguishable"
-        row(name, budget, f"{worst_value:+.2f} %" if worst_for else "not measured",
+            note = f"; {len(misses)} of {len(measurable)} measurable comparisons over budget, " \
+                   f"{len(separable)} of those distinguishable" + note
+        row(name, budget, f"{worst_value:+.2f} %" if measurable else "not measured",
             "worst switched-vs-no-change delta (see the regression table)" + note,
             ok, unit="%")
     # The two structural values budgets.json also freezes: how many repetitions each arm got, and
@@ -274,10 +475,13 @@ def budget_table(switches, baseline, summary, samples, verdicts):
         f"{counts} measured samples per (workload, arm)",
         "counted over every workload sample in the artifact",
         counts == [BUDGETS["repetitions"]], unit="")
-    row("switchBacklogSizes", BUDGETS["switchBacklogSizes"], f"{swept}",
-        "sizes swept, each with "
-        + ", ".join(f"{s}/{swept_reps[s]} reps" for s in swept),
-        swept == sorted(BUDGETS["switchBacklogSizes"]), unit="")
+    row("switchBacklogSizes", BUDGETS["switchBacklogSizes"],
+        f"{swept}" if swept else "not run in this artifact",
+        ("sizes swept, each with "
+         + ", ".join(f"{s}/{swept_reps[s]} reps" for s in swept)) if swept else
+        "this campaign ran the workload profiles only; the backlog sweep is recorded in "
+        "raw/full.jsonl and was not re-run",
+        None if not swept else swept == sorted(BUDGETS["switchBacklogSizes"]), unit="")
 
     print()
     print(f"Client-side corroboration, never substituted for the engine's figure: worst client "
@@ -294,7 +498,9 @@ def main():
               f"max heap {header['maxHeapBytes'] / 2**30:.2f} GiB")
         print(f"- harness `SchedulerSwitchBenchmark.java` sha256 `{header.get('harnessSha256')}`")
         print(f"- budgets read from `{header['budgetsFile']}`: `{json.dumps(header['budgets'])}`\n")
-    verdicts = regression(samples)
+    per_workload = settling_table(samples)
+    convergence(per_workload)
+    verdicts = steady_regression(samples)
     budget_table(switches, baseline, summary, samples, verdicts)
     pause_sweep(switches)
     workload_table(samples)
