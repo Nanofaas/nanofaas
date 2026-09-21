@@ -444,30 +444,42 @@ class SchedulerSwitchRaceTest {
         store.put(record);
         record.markRunning();
 
-        CountDownLatch bothDone = new CountDownLatch(2);
+        List<String> order = new CopyOnWriteArrayList<>();
+        CountDownLatch disconnected = new CountDownLatch(1);
+        Thread disconnecter = new Thread(() -> {
+            // The client gives up waiting: it stops watching the shared future. That must not
+            // affect the server-side record of what actually happened.
+            record.completion().cancel(false);
+            order.add("disconnect");
+            disconnected.countDown();
+        });
+        // The barrier: the disconnect is serialised strictly ahead of the commit, so the
+        // interleaving the brief names is the one that actually runs rather than whichever order
+        // the two threads happened to reach the record in. No sleep is involved — the committer
+        // thread is not started until the disconnect has completed.
+        disconnecter.start();
+        await(disconnected);
+
         Thread committer = new Thread(() -> {
             synchronized (record) {
                 record.markSuccess("ok", 200, java.util.Map.of(), null);
             }
             store.settle(record);
-            bothDone.countDown();
-        });
-        Thread disconnecter = new Thread(() -> {
-            // The client gives up waiting: it stops watching the shared future. That must not
-            // affect the server-side record of what actually happened.
-            record.completion().cancel(false);
-            bothDone.countDown();
+            order.add("commit");
         });
         committer.start();
-        disconnecter.start();
         committer.join(TimeUnit.SECONDS.toMillis(5));
         disconnecter.join(TimeUnit.SECONDS.toMillis(5));
-        assertThat(bothDone.await(5, TimeUnit.SECONDS)).isTrue();
+
+        assertThat(committer.isAlive()).isFalse();
+        assertThat(disconnecter.isAlive()).isFalse();
+        // Forced, not incidental: the latch is what puts the disconnect first, and this is the
+        // observable that says so — the two effects on the record landed in the mandated order.
+        assertThat(order).containsExactly("disconnect", "commit");
 
         // GET, after both: the live record is gone (terminal + settled), but the archived
-        // outcome — exactly what GET /v1/executions/{id} serves — reflects the true commit,
-        // independent of whichever order the disconnect and the commit actually ran in and
-        // independent of the disconnect having cancelled the caller's own future.
+        // outcome — exactly what GET /v1/executions/{id} serves — reflects the true commit that
+        // landed after the client's own wait was already cancelled.
         assertThat(store.getOrNull("e1")).isNull();
         Outcome outcome = store.outcomeOf("e1");
         assertThat(outcome).isNotNull();
