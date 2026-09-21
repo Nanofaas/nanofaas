@@ -24,14 +24,14 @@
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 921 lines
-- prose numbers classified as citations, references or code rather than claims about the artifact: **290**, in 18 classes (each named, with an example, so the filter is auditable):
+- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
 |---|---|---|
 | section/chapter reference | 95 | `11` in …sue #208. The comparison the specification's §11 asks th… |
 | code constant or expression | 29 | `0` in …fires only when `expected.queued() > 0`. In the new arm … |
-| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 28 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
+| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 27 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
 | task, issue or mismatch label | 26 | `12` in …Task 12e, issue #208. The compari… |
 | prose enumeration or count of things in this document | 26 | `5` in …d mean one of two inventions. Dispatching the 5 not-read… |
 | metric, clock or artifact name | 21 | `99` in …iour of the old loop, and the old loop's own p99 would b… |
@@ -56,7 +56,19 @@ The digit scan cannot see "two of the six profiles" or "the three that differ", 
 
 - word-registry entries evaluated: **5**
 - word claims matched and recomputed against an artifact: **5**
-- words classified as citations, references or protocol structure: **149**
+- words classified as citations, references or protocol structure: **149**, in 8 classes (each named, with an example, so the filter is auditable):
+
+| class | words | example |
+|---|---|---|
+| prose enumeration or count of things in this document | 113 | `two` in …The old async loop dispatches **up to two attempts back … |
+| numeral used as an article, a pronoun or an ordinary noun rather than a count | 13 | `one` in …Each arm has **one** dispatch path, its own,… |
+| section/chapter reference | 12 | `one` in …c's harness can only swap strategies *inside* one engine… |
+| code constant or expression | 6 | `six` in …`--repetitions=5`: six profiles × two arms × fiv… |
+| task, issue or mismatch label | 2 | `two` in …urvives is the reason to state M6 at all: the two arms' … |
+| revision hash | 1 | `zero` in …he pre-refactor revision `05f49dcb` matches **zero files… |
+| metric, clock or artifact name | 1 | `two` in …er each ticket), whereas the old loop's up-to-two-per-vi… |
+| file or line citation | 1 | `one` in …- `raw/old-vs-new.jsonl` — 61 JSONL lines: one `header`,… |
+
 - **words NOT reconciled and NOT a citation: 0**
 
 ## MISMATCHES
@@ -88,14 +100,14 @@ caught   the §5.7 grep count, which is reconciled by running git grep
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 921 lines
-- prose numbers classified as citations, references or code rather than claims about the artifact: **290**, in 18 classes (each named, with an example, so the filter is auditable):
+- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
 |---|---|---|
 | section/chapter reference | 95 | `11` in …sue #208. The comparison the specification's §11 asks th… |
 | code constant or expression | 29 | `0` in …fires only when `expected.queued() > 0`. In the new arm … |
-| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 28 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
+| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 27 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
 | task, issue or mismatch label | 26 | `12` in …Task 12e, issue #208. The compari… |
 | prose enumeration or count of things in this document | 26 | `5` in …d mean one of two inventions. Dispatching the 5 not-read… |
 | metric, clock or artifact name | 21 | `99` in …iour of the old loop, and the old loop's own p99 would b… |
@@ -120,7 +132,19 @@ The digit scan cannot see "two of the six profiles" or "the three that differ", 
 
 - word-registry entries evaluated: **5**
 - word claims matched and recomputed against an artifact: **5**
-- words classified as citations, references or protocol structure: **149**
+- words classified as citations, references or protocol structure: **149**, in 8 classes (each named, with an example, so the filter is auditable):
+
+| class | words | example |
+|---|---|---|
+| prose enumeration or count of things in this document | 113 | `two` in …The old async loop dispatches **up to two attempts back … |
+| numeral used as an article, a pronoun or an ordinary noun rather than a count | 13 | `one` in …Each arm has **one** dispatch path, its own,… |
+| section/chapter reference | 12 | `one` in …c's harness can only swap strategies *inside* one engine… |
+| code constant or expression | 6 | `six` in …`--repetitions=5`: six profiles × two arms × fiv… |
+| task, issue or mismatch label | 2 | `two` in …urvives is the reason to state M6 at all: the two arms' … |
+| revision hash | 1 | `zero` in …he pre-refactor revision `05f49dcb` matches **zero files… |
+| metric, clock or artifact name | 1 | `two` in …er each ticket), whereas the old loop's up-to-two-per-vi… |
+| file or line citation | 1 | `one` in …- `raw/old-vs-new.jsonl` — 61 JSONL lines: one `header`,… |
+
 - **words NOT reconciled and NOT a citation: 0**
 
 ## MISMATCHES
@@ -153,14 +177,14 @@ caught   a cell of the table quoted verbatim from the analyzer
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 921 lines
-- prose numbers classified as citations, references or code rather than claims about the artifact: **290**, in 18 classes (each named, with an example, so the filter is auditable):
+- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
 |---|---|---|
 | section/chapter reference | 95 | `11` in …sue #208. The comparison the specification's §11 asks th… |
 | code constant or expression | 29 | `0` in …fires only when `expected.queued() > 0`. In the new arm … |
-| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 28 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
+| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 27 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
 | task, issue or mismatch label | 26 | `12` in …Task 12e, issue #208. The compari… |
 | prose enumeration or count of things in this document | 26 | `5` in …d mean one of two inventions. Dispatching the 5 not-read… |
 | metric, clock or artifact name | 21 | `99` in …iour of the old loop, and the old loop's own p99 would b… |
@@ -185,7 +209,19 @@ The digit scan cannot see "two of the six profiles" or "the three that differ", 
 
 - word-registry entries evaluated: **5**
 - word claims matched and recomputed against an artifact: **5**
-- words classified as citations, references or protocol structure: **149**
+- words classified as citations, references or protocol structure: **149**, in 8 classes (each named, with an example, so the filter is auditable):
+
+| class | words | example |
+|---|---|---|
+| prose enumeration or count of things in this document | 113 | `two` in …The old async loop dispatches **up to two attempts back … |
+| numeral used as an article, a pronoun or an ordinary noun rather than a count | 13 | `one` in …Each arm has **one** dispatch path, its own,… |
+| section/chapter reference | 12 | `one` in …c's harness can only swap strategies *inside* one engine… |
+| code constant or expression | 6 | `six` in …`--repetitions=5`: six profiles × two arms × fiv… |
+| task, issue or mismatch label | 2 | `two` in …urvives is the reason to state M6 at all: the two arms' … |
+| revision hash | 1 | `zero` in …he pre-refactor revision `05f49dcb` matches **zero files… |
+| metric, clock or artifact name | 1 | `two` in …er each ticket), whereas the old loop's up-to-two-per-vi… |
+| file or line citation | 1 | `one` in …- `raw/old-vs-new.jsonl` — 61 JSONL lines: one `header`,… |
+
 - **words NOT reconciled and NOT a citation: 0**
 
 ## MISMATCHES
@@ -218,14 +254,14 @@ caught   the cross-artifact cell: one run's completed, another's useful
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 921 lines
-- prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
+- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose numbers classified as citations, references or code rather than claims about the artifact: **288**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
 |---|---|---|
 | section/chapter reference | 95 | `11` in …sue #208. The comparison the specification's §11 asks th… |
 | code constant or expression | 29 | `0` in …fires only when `expected.queued() > 0`. In the new arm … |
-| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 28 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
+| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 27 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
 | task, issue or mismatch label | 26 | `12` in …Task 12e, issue #208. The compari… |
 | prose enumeration or count of things in this document | 26 | `5` in …d mean one of two inventions. Dispatching the 5 not-read… |
 | metric, clock or artifact name | 21 | `99` in …iour of the old loop, and the old loop's own p99 would b… |
@@ -250,7 +286,19 @@ The digit scan cannot see "two of the six profiles" or "the three that differ", 
 
 - word-registry entries evaluated: **5**
 - word claims matched and recomputed against an artifact: **5**
-- words classified as citations, references or protocol structure: **149**
+- words classified as citations, references or protocol structure: **149**, in 8 classes (each named, with an example, so the filter is auditable):
+
+| class | words | example |
+|---|---|---|
+| prose enumeration or count of things in this document | 113 | `two` in …The old async loop dispatches **up to two attempts back … |
+| numeral used as an article, a pronoun or an ordinary noun rather than a count | 13 | `one` in …Each arm has **one** dispatch path, its own,… |
+| section/chapter reference | 12 | `one` in …c's harness can only swap strategies *inside* one engine… |
+| code constant or expression | 6 | `six` in …`--repetitions=5`: six profiles × two arms × fiv… |
+| task, issue or mismatch label | 2 | `two` in …urvives is the reason to state M6 at all: the two arms' … |
+| revision hash | 1 | `zero` in …he pre-refactor revision `05f49dcb` matches **zero files… |
+| metric, clock or artifact name | 1 | `two` in …er each ticket), whereas the old loop's up-to-two-per-vi… |
+| file or line citation | 1 | `one` in …- `raw/old-vs-new.jsonl` — 61 JSONL lines: one `header`,… |
+
 - **words NOT reconciled and NOT a citation: 0**
 
 | section | number | context |
@@ -261,7 +309,7 @@ The digit scan cannot see "two of the six profiles" or "the three that differ", 
 
 - instrument registry residue count: document says '0', this run says 1 (this run's own unreconciled count)
 - instrument registry digit residue count: document says '0', this run says 1 (this run's own digit-inventory size)
-- instrument registry digit non-claim total: document says '290', this run says 289 (this run's own classified-digit count)
+- instrument registry digit non-claim total: document says '289', this run says 288 (this run's own classified-digit count)
 
 **Result: FAIL** (3 mismatches, 0 unchecked tables)
 caught   a value swapped to another row of the analyzer's table
@@ -288,14 +336,14 @@ caught   a value swapped to another row of the analyzer's table
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 921 lines
-- prose numbers classified as citations, references or code rather than claims about the artifact: **290**, in 18 classes (each named, with an example, so the filter is auditable):
+- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
 |---|---|---|
 | section/chapter reference | 95 | `11` in …sue #208. The comparison the specification's §11 asks th… |
 | code constant or expression | 29 | `0` in …fires only when `expected.queued() > 0`. In the new arm … |
-| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 28 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
+| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 27 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
 | task, issue or mismatch label | 26 | `12` in …Task 12e, issue #208. The compari… |
 | prose enumeration or count of things in this document | 26 | `5` in …d mean one of two inventions. Dispatching the 5 not-read… |
 | metric, clock or artifact name | 21 | `99` in …iour of the old loop, and the old loop's own p99 would b… |
@@ -320,7 +368,19 @@ The digit scan cannot see "two of the six profiles" or "the three that differ", 
 
 - word-registry entries evaluated: **5**
 - word claims matched and recomputed against an artifact: **5**
-- words classified as citations, references or protocol structure: **149**
+- words classified as citations, references or protocol structure: **149**, in 8 classes (each named, with an example, so the filter is auditable):
+
+| class | words | example |
+|---|---|---|
+| prose enumeration or count of things in this document | 113 | `two` in …The old async loop dispatches **up to two attempts back … |
+| numeral used as an article, a pronoun or an ordinary noun rather than a count | 13 | `one` in …Each arm has **one** dispatch path, its own,… |
+| section/chapter reference | 12 | `one` in …c's harness can only swap strategies *inside* one engine… |
+| code constant or expression | 6 | `six` in …`--repetitions=5`: six profiles × two arms × fiv… |
+| task, issue or mismatch label | 2 | `two` in …urvives is the reason to state M6 at all: the two arms' … |
+| revision hash | 1 | `zero` in …he pre-refactor revision `05f49dcb` matches **zero files… |
+| metric, clock or artifact name | 1 | `two` in …er each ticket), whereas the old loop's up-to-two-per-vi… |
+| file or line citation | 1 | `one` in …- `raw/old-vs-new.jsonl` — 61 JSONL lines: one `header`,… |
+
 - **words NOT reconciled and NOT a citation: 0**
 
 ## MISMATCHES
@@ -352,14 +412,14 @@ caught   a metric-dependent count, written in a word
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 921 lines
-- prose numbers classified as citations, references or code rather than claims about the artifact: **290**, in 18 classes (each named, with an example, so the filter is auditable):
+- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
 |---|---|---|
 | section/chapter reference | 95 | `11` in …sue #208. The comparison the specification's §11 asks th… |
 | code constant or expression | 29 | `0` in …fires only when `expected.queued() > 0`. In the new arm … |
-| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 28 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
+| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 27 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
 | task, issue or mismatch label | 26 | `12` in …Task 12e, issue #208. The compari… |
 | prose enumeration or count of things in this document | 26 | `5` in …d mean one of two inventions. Dispatching the 5 not-read… |
 | metric, clock or artifact name | 21 | `99` in …iour of the old loop, and the old loop's own p99 would b… |
@@ -384,7 +444,19 @@ The digit scan cannot see "two of the six profiles" or "the three that differ", 
 
 - word-registry entries evaluated: **5**
 - word claims matched and recomputed against an artifact: **5**
-- words classified as citations, references or protocol structure: **149**
+- words classified as citations, references or protocol structure: **149**, in 8 classes (each named, with an example, so the filter is auditable):
+
+| class | words | example |
+|---|---|---|
+| prose enumeration or count of things in this document | 113 | `two` in …The old async loop dispatches **up to two attempts back … |
+| numeral used as an article, a pronoun or an ordinary noun rather than a count | 13 | `one` in …Each arm has **one** dispatch path, its own,… |
+| section/chapter reference | 12 | `one` in …c's harness can only swap strategies *inside* one engine… |
+| code constant or expression | 6 | `six` in …`--repetitions=5`: six profiles × two arms × fiv… |
+| task, issue or mismatch label | 2 | `two` in …urvives is the reason to state M6 at all: the two arms' … |
+| revision hash | 1 | `zero` in …he pre-refactor revision `05f49dcb` matches **zero files… |
+| metric, clock or artifact name | 1 | `two` in …er each ticket), whereas the old loop's up-to-two-per-vi… |
+| file or line citation | 1 | `one` in …- `raw/old-vs-new.jsonl` — 61 JSONL lines: one `header`,… |
+
 - **words NOT reconciled and NOT a citation: 0**
 
 ## MISMATCHES
@@ -416,14 +488,14 @@ caught   a registry claim
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 921 lines
-- prose numbers classified as citations, references or code rather than claims about the artifact: **290**, in 18 classes (each named, with an example, so the filter is auditable):
+- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
 |---|---|---|
 | section/chapter reference | 95 | `11` in …sue #208. The comparison the specification's §11 asks th… |
 | code constant or expression | 29 | `0` in …fires only when `expected.queued() > 0`. In the new arm … |
-| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 28 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
+| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 27 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
 | task, issue or mismatch label | 26 | `12` in …Task 12e, issue #208. The compari… |
 | prose enumeration or count of things in this document | 26 | `5` in …d mean one of two inventions. Dispatching the 5 not-read… |
 | metric, clock or artifact name | 21 | `99` in …iour of the old loop, and the old loop's own p99 would b… |
@@ -448,7 +520,19 @@ The digit scan cannot see "two of the six profiles" or "the three that differ", 
 
 - word-registry entries evaluated: **5**
 - word claims matched and recomputed against an artifact: **5**
-- words classified as citations, references or protocol structure: **149**
+- words classified as citations, references or protocol structure: **149**, in 8 classes (each named, with an example, so the filter is auditable):
+
+| class | words | example |
+|---|---|---|
+| prose enumeration or count of things in this document | 113 | `two` in …The old async loop dispatches **up to two attempts back … |
+| numeral used as an article, a pronoun or an ordinary noun rather than a count | 13 | `one` in …Each arm has **one** dispatch path, its own,… |
+| section/chapter reference | 12 | `one` in …c's harness can only swap strategies *inside* one engine… |
+| code constant or expression | 6 | `six` in …`--repetitions=5`: six profiles × two arms × fiv… |
+| task, issue or mismatch label | 2 | `two` in …urvives is the reason to state M6 at all: the two arms' … |
+| revision hash | 1 | `zero` in …he pre-refactor revision `05f49dcb` matches **zero files… |
+| metric, clock or artifact name | 1 | `two` in …er each ticket), whereas the old loop's up-to-two-per-vi… |
+| file or line citation | 1 | `one` in …- `raw/old-vs-new.jsonl` — 61 JSONL lines: one `header`,… |
+
 - **words NOT reconciled and NOT a citation: 0**
 
 ## MISMATCHES
@@ -480,14 +564,14 @@ caught   a claim written in words
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 921 lines
-- prose numbers classified as citations, references or code rather than claims about the artifact: **290**, in 18 classes (each named, with an example, so the filter is auditable):
+- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
 |---|---|---|
 | section/chapter reference | 95 | `11` in …sue #208. The comparison the specification's §11 asks th… |
 | code constant or expression | 29 | `0` in …fires only when `expected.queued() > 0`. In the new arm … |
-| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 28 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
+| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 27 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
 | task, issue or mismatch label | 26 | `12` in …Task 12e, issue #208. The compari… |
 | prose enumeration or count of things in this document | 26 | `5` in …d mean one of two inventions. Dispatching the 5 not-read… |
 | metric, clock or artifact name | 21 | `99` in …iour of the old loop, and the old loop's own p99 would b… |
@@ -512,7 +596,19 @@ The digit scan cannot see "two of the six profiles" or "the three that differ", 
 
 - word-registry entries evaluated: **5**
 - word claims matched and recomputed against an artifact: **5**
-- words classified as citations, references or protocol structure: **149**
+- words classified as citations, references or protocol structure: **149**, in 8 classes (each named, with an example, so the filter is auditable):
+
+| class | words | example |
+|---|---|---|
+| prose enumeration or count of things in this document | 113 | `two` in …The old async loop dispatches **up to two attempts back … |
+| numeral used as an article, a pronoun or an ordinary noun rather than a count | 13 | `one` in …Each arm has **one** dispatch path, its own,… |
+| section/chapter reference | 12 | `one` in …c's harness can only swap strategies *inside* one engine… |
+| code constant or expression | 6 | `six` in …`--repetitions=5`: six profiles × two arms × fiv… |
+| task, issue or mismatch label | 2 | `two` in …urvives is the reason to state M6 at all: the two arms' … |
+| revision hash | 1 | `zero` in …he pre-refactor revision `05f49dcb` matches **zero files… |
+| metric, clock or artifact name | 1 | `two` in …er each ticket), whereas the old loop's up-to-two-per-vi… |
+| file or line citation | 1 | `one` in …- `raw/old-vs-new.jsonl` — 61 JSONL lines: one `header`,… |
+
 - **words NOT reconciled and NOT a citation: 0**
 
 ## MISMATCHES
@@ -545,14 +641,14 @@ caught   a cell of the settlement table
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 921 lines
-- prose numbers classified as citations, references or code rather than claims about the artifact: **290**, in 18 classes (each named, with an example, so the filter is auditable):
+- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
 |---|---|---|
 | section/chapter reference | 95 | `11` in …sue #208. The comparison the specification's §11 asks th… |
 | code constant or expression | 29 | `0` in …fires only when `expected.queued() > 0`. In the new arm … |
-| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 28 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
+| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 27 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
 | task, issue or mismatch label | 26 | `12` in …Task 12e, issue #208. The compari… |
 | prose enumeration or count of things in this document | 26 | `5` in …d mean one of two inventions. Dispatching the 5 not-read… |
 | metric, clock or artifact name | 21 | `99` in …iour of the old loop, and the old loop's own p99 would b… |
@@ -577,7 +673,19 @@ The digit scan cannot see "two of the six profiles" or "the three that differ", 
 
 - word-registry entries evaluated: **5**
 - word claims matched and recomputed against an artifact: **5**
-- words classified as citations, references or protocol structure: **149**
+- words classified as citations, references or protocol structure: **149**, in 8 classes (each named, with an example, so the filter is auditable):
+
+| class | words | example |
+|---|---|---|
+| prose enumeration or count of things in this document | 113 | `two` in …The old async loop dispatches **up to two attempts back … |
+| numeral used as an article, a pronoun or an ordinary noun rather than a count | 13 | `one` in …Each arm has **one** dispatch path, its own,… |
+| section/chapter reference | 12 | `one` in …c's harness can only swap strategies *inside* one engine… |
+| code constant or expression | 6 | `six` in …`--repetitions=5`: six profiles × two arms × fiv… |
+| task, issue or mismatch label | 2 | `two` in …urvives is the reason to state M6 at all: the two arms' … |
+| revision hash | 1 | `zero` in …he pre-refactor revision `05f49dcb` matches **zero files… |
+| metric, clock or artifact name | 1 | `two` in …er each ticket), whereas the old loop's up-to-two-per-vi… |
+| file or line citation | 1 | `one` in …- `raw/old-vs-new.jsonl` — 61 JSONL lines: one `header`,… |
+
 - **words NOT reconciled and NOT a citation: 0**
 
 ## MISMATCHES
@@ -609,14 +717,14 @@ caught   the instrument's own table count
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 921 lines
-- prose numbers classified as citations, references or code rather than claims about the artifact: **290**, in 18 classes (each named, with an example, so the filter is auditable):
+- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
 |---|---|---|
 | section/chapter reference | 95 | `11` in …sue #208. The comparison the specification's §11 asks th… |
 | code constant or expression | 29 | `0` in …fires only when `expected.queued() > 0`. In the new arm … |
-| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 28 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
+| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 27 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
 | task, issue or mismatch label | 26 | `12` in …Task 12e, issue #208. The compari… |
 | prose enumeration or count of things in this document | 26 | `5` in …d mean one of two inventions. Dispatching the 5 not-read… |
 | metric, clock or artifact name | 21 | `99` in …iour of the old loop, and the old loop's own p99 would b… |
@@ -641,7 +749,19 @@ The digit scan cannot see "two of the six profiles" or "the three that differ", 
 
 - word-registry entries evaluated: **5**
 - word claims matched and recomputed against an artifact: **5**
-- words classified as citations, references or protocol structure: **149**
+- words classified as citations, references or protocol structure: **149**, in 8 classes (each named, with an example, so the filter is auditable):
+
+| class | words | example |
+|---|---|---|
+| prose enumeration or count of things in this document | 113 | `two` in …The old async loop dispatches **up to two attempts back … |
+| numeral used as an article, a pronoun or an ordinary noun rather than a count | 13 | `one` in …Each arm has **one** dispatch path, its own,… |
+| section/chapter reference | 12 | `one` in …c's harness can only swap strategies *inside* one engine… |
+| code constant or expression | 6 | `six` in …`--repetitions=5`: six profiles × two arms × fiv… |
+| task, issue or mismatch label | 2 | `two` in …urvives is the reason to state M6 at all: the two arms' … |
+| revision hash | 1 | `zero` in …he pre-refactor revision `05f49dcb` matches **zero files… |
+| metric, clock or artifact name | 1 | `two` in …er each ticket), whereas the old loop's up-to-two-per-vi… |
+| file or line citation | 1 | `one` in …- `raw/old-vs-new.jsonl` — 61 JSONL lines: one `header`,… |
+
 - **words NOT reconciled and NOT a citation: 0**
 
 ## MISMATCHES
@@ -673,14 +793,14 @@ caught   an endpoint of an allocation range
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 921 lines
-- prose numbers classified as citations, references or code rather than claims about the artifact: **290**, in 18 classes (each named, with an example, so the filter is auditable):
+- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
 |---|---|---|
 | section/chapter reference | 95 | `11` in …sue #208. The comparison the specification's §11 asks th… |
 | code constant or expression | 29 | `0` in …fires only when `expected.queued() > 0`. In the new arm … |
-| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 28 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
+| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 27 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
 | task, issue or mismatch label | 26 | `12` in …Task 12e, issue #208. The compari… |
 | prose enumeration or count of things in this document | 26 | `5` in …d mean one of two inventions. Dispatching the 5 not-read… |
 | metric, clock or artifact name | 21 | `99` in …iour of the old loop, and the old loop's own p99 would b… |
@@ -705,15 +825,103 @@ The digit scan cannot see "two of the six profiles" or "the three that differ", 
 
 - word-registry entries evaluated: **5**
 - word claims matched and recomputed against an artifact: **5**
-- words classified as citations, references or protocol structure: **149**
+- words classified as citations, references or protocol structure: **149**, in 8 classes (each named, with an example, so the filter is auditable):
+
+| class | words | example |
+|---|---|---|
+| prose enumeration or count of things in this document | 113 | `two` in …The old async loop dispatches **up to two attempts back … |
+| numeral used as an article, a pronoun or an ordinary noun rather than a count | 13 | `one` in …Each arm has **one** dispatch path, its own,… |
+| section/chapter reference | 12 | `one` in …c's harness can only swap strategies *inside* one engine… |
+| code constant or expression | 6 | `six` in …`--repetitions=5`: six profiles × two arms × fiv… |
+| task, issue or mismatch label | 2 | `two` in …urvives is the reason to state M6 at all: the two arms' … |
+| revision hash | 1 | `zero` in …he pre-refactor revision `05f49dcb` matches **zero files… |
+| metric, clock or artifact name | 1 | `two` in …er each ticket), whereas the old loop's up-to-two-per-vi… |
+| file or line citation | 1 | `one` in …- `raw/old-vs-new.jsonl` — 61 JSONL lines: one `header`,… |
+
 - **words NOT reconciled and NOT a citation: 0**
 
 ## MISMATCHES
 
-- instrument registry digit non-claim total: document says '999', this run says 290 (this run's own classified-digit count)
+- instrument registry digit non-claim total: document says '999', this run says 289 (this run's own classified-digit count)
 - instrument registry word non-claim total: document says '999', this run says 149 (this run's own classified-word count)
 
 **Result: FAIL** (2 mismatches, 0 unchecked tables)
 caught   a per-class occurrence total in §12 — the document's own account of how much of itself is checked, which had no entry at all until this round
+## Table reconciliation
 
-**all 11 perturbations caught**
+| table | reconciled against | cells reconciled | cells not reconciled (reason) |
+|---|---|---|---|
+| §2 arms | raw/old-vs-new.jsonl header `arms` | 2 | 6 — loop/strategy/type names, not figures |
+| §6 excluded | raw/old-vs-new.jsonl header `profilesInRun` | 6 | 7 — reason text is prose about the code |
+| §7.2 coverage | raw/old-vs-new.jsonl (medians) | 36 | 0 |
+| §7.3 settlement | raw/old-vs-new-analysis.txt (the tool's own output, quoted verbatim, string-equal) | 48 | 0 |
+| §7.4 comparison | raw/old-vs-new-analysis.txt (the tool's own output, quoted verbatim, string-equal) | 378 | 0 |
+| §7.4 medians | summarize.workload_table, reused unchanged | 96 | 0 |
+| §7.5 smoke | raw/smoke-old.jsonl | 38 | 0 |
+| §8 resolving power | raw/old-vs-new-analysis.txt (the tool's own output, quoted verbatim, string-equal) | 88 | 0 |
+| §8 per-workload resolution | raw/old-vs-new-analysis.txt (the tool's own output, quoted verbatim, string-equal) | 42 | 0 |
+| §9.2 allocation | raw/old-vs-new.jsonl (paired differences) | 40 | 0 |
+| §9.2 pair sets | raw/old-vs-new.jsonl (pair counts) | 3 | 0 |
+| §9.4 saturated | raw/old-vs-new.jsonl (medians, saturated) | 20 | 0 |
+
+**797 table cells reconciled cell-by-cell against an artifact; 13 cells in the tables are not figures (names, types, or declared omissions).**
+
+### Prose claims
+
+- registry entries evaluated: **137**
+- claim occurrences matched and recomputed against an artifact: **143**
+- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
+
+| class | numbers | example |
+|---|---|---|
+| section/chapter reference | 95 | `11` in …sue #208. The comparison the specification's §11 asks th… |
+| code constant or expression | 29 | `0` in …fires only when `expected.queued() > 0`. In the new arm … |
+| value the analyzer also quotes (no workload or metric named in the clause, so only "this figure exists" is checked) | 27 | `3.5` in …core, median 3.5 %, shared by both arms, t… |
+| task, issue or mismatch label | 26 | `12` in …Task 12e, issue #208. The compari… |
+| prose enumeration or count of things in this document | 26 | `5` in …d mean one of two inventions. Dispatching the 5 not-read… |
+| metric, clock or artifact name | 21 | `99` in …iour of the old loop, and the old loop's own p99 would b… |
+| revision hash | 12 | `05` in …queue/src/main` at the pre-refactor revision `05f49dcb` … |
+| bare line or revision reference | 11 | `208` in …LT_MAX_BATCH_PER_FUNCTION = 2`, consumed at `:208`), whi… |
+| file or line citation | 9 | `31` in …(`Scheduler.java:31` `DEFAULT_MAX_BATCH_PER_F… |
+| share of a set named in the same clause | 9 | `5` in …repetitions, and a *perfectly uniform* 5 % shift of the … |
+| cross-reference between tasks | 8 | `9` in …try` and dispatch into a transport that Tasks 9–10 rewro… |
+| date, version or JVM flag | 6 | `1` in …repetition, with the same heap (`-Xms1g -Xmx1g -XX:+Alwa… |
+| count of a set named in the same sentence | 3 | `60` in …60 runs by construction.  ##… |
+| budget or threshold | 2 | `10` in …identically. Its budget of 10 % is therefore **below th… |
+| value the analyzer also quotes for the subject its clause names | 2 | `8.27` in …e exception worth stating**: its median is **+8.27 %** i… |
+| path to an artifact | 1 | `1` in …l=smoke-old --profiles=low-load --repetitions=1` produce… |
+| the change log describing its own edits | 1 | `1` in …(1 out-of-order duplicate dr… |
+| a value the table beneath carries, restated in the clause | 1 | `0` in …contributes 0 by construction (`saturat… |
+
+- **prose numbers NOT reconciled and NOT a citation: 0**
+
+### Spelled-out numbers
+
+The digit scan cannot see "two of the six profiles" or "the three that differ", and every falsehood this round fixed was written in words. So the words get the same treatment: a registry, a classifier, and an inventory that is listed in full.
+
+- word-registry entries evaluated: **5**
+- word claims matched and recomputed against an artifact: **5**
+- words classified as citations, references or protocol structure: **149**, in 8 classes (each named, with an example, so the filter is auditable):
+
+| class | words | example |
+|---|---|---|
+| prose enumeration or count of things in this document | 113 | `two` in …The old async loop dispatches **up to two attempts back … |
+| numeral used as an article, a pronoun or an ordinary noun rather than a count | 13 | `one` in …Each arm has **one** dispatch path, its own,… |
+| section/chapter reference | 12 | `one` in …c's harness can only swap strategies *inside* one engine… |
+| code constant or expression | 6 | `six` in …`--repetitions=5`: six profiles × two arms × fiv… |
+| task, issue or mismatch label | 2 | `two` in …urvives is the reason to state M6 at all: the two arms' … |
+| revision hash | 1 | `zero` in …he pre-refactor revision `05f49dcb` matches **zero files… |
+| metric, clock or artifact name | 1 | `two` in …er each ticket), whereas the old loop's up-to-two-per-vi… |
+| file or line citation | 1 | `one` in …- `raw/old-vs-new.jsonl` — 61 JSONL lines: one `header`,… |
+
+- **words NOT reconciled and NOT a citation: 0**
+
+## MISMATCHES
+
+- instrument registry perturbation count as caughts: document says 'nine', this run says 12 (this run's own perturbation list)
+
+**Result: FAIL** (1 mismatches, 0 unchecked tables)
+caught   a count §12 states in words — the perturbation count, whose digit form was guarded and whose word form was not
+
+**all 12 perturbations caught**

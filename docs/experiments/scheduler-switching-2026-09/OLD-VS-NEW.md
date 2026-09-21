@@ -521,10 +521,10 @@ except where all five repetitions agree in sign — see §9.2.
 ### 9.1 The nulls, with their resolution
 
 - **Post-GC heap: indistinguishable, at a resolution of 0.01 %.** Every one of the six profiles'
-  paired deltas is 5-of-5 same-signed and lies between −0.25 % and −0.03 %, and the metric's own
-  resolution is 0.01 % — the median paired spread, §8's paired-spread column (the arms' medians are
-  identical to two decimals: 77.24–77.45 MB). The new engine's retained heap is not measurably
-  different from the old loop's, against a 10 % budget.
+  paired deltas is 5-of-5 same-signed and lies between −0.25 % and −0.03 %, and that resolution is
+  the median paired spread of §8's paired-spread column (the arms' medians are identical to two
+  decimals: 77.24–77.45 MB). The new engine's retained heap is not measurably different from the
+  old loop's, against a 10 % budget.
 - **Useful throughput: indistinguishable on the four profiles this design resolves it on, to
   0.00–0.05 %.** `low-load`, `unqueued`, `churn-drain` and `mixed-kind-retry`: their whole-span paired deltas run
   **−0.02 % to +0.03 %**, and their own resolutions on the **whole-span throughput column** of §8's
@@ -799,7 +799,7 @@ section fails the reconciler exactly as a stale figure in §9 does.
 | tables quoted verbatim from the analyzer | **string equality** against the analyzer's own output | the settlement, comparison, medians, resolving-power and per-workload-resolution tables |
 | numeric claims in the prose | a registry of **142 entries**, each recomputing its value from an artifact or from a declared literal | **148 of 148** occurrences matched and recomputed, 0 mismatches |
 | numbers spelled out in words | a second registry, the same discipline: a stale entry fails the run | 5 word claims recomputed |
-| prose numbers that are not claims | 18 named classes for digits, and a parallel set for words, each printed with an example so the filter can be audited | 290 + 149 numbers |
+| prose numbers that are not claims | 18 named classes for digits, and a parallel set for words, each printed with an example so the filter can be audited | 289 + 149 numbers |
 | what is left | listed in full, never truncated | **0 numbers** left over |
 
 Of the registry entries, **2 of them declared literals**: their value cannot be recomputed from an
@@ -825,15 +825,15 @@ here because an unstated tolerance is exactly the slack that let a heap resoluti
 reading a column that does not contain it (see the coverage limits below).
 
 **The instrument's bite is itself measured, not asserted.** `reconcile-12e.py --perturbations`
-applies eleven changes a careless edit could make and requires the reconciler to fail on every one;
-it first asserts that the **unperturbed** document passes, because ten `caught`s out of a document
+applies twelve changes a careless edit could make and requires the reconciler to fail on every one;
+it first asserts that the **unperturbed** document passes, because twelve `caught`s out of a document
 that was already failing measure the environment rather than the checks. Its output is
-`raw/reconciliation-perturbations.txt`, and **all 11 perturbations caught** is a computed claim like
-every other count here. Three of the eleven are the defects round 3's fixes removed (the grep count,
+`raw/reconciliation-perturbations.txt`, and **all 12 perturbations caught** is a computed claim like
+every other count here. Three of the twelve are the defects round 3's fixes removed (the grep count,
 a cell of the table quoted verbatim, and the cross-artifact `completed / useful` cell); the rest are
 the mechanism's own holes — a value swapped to another row of the analyzer's table, a
 metric-dependent count written in a word, a claim written in words, a settlement-table cell, an
-instrument count, a range endpoint, and this section's own per-class totals. The self-test was what
+instrument count, a range endpoint, this section's own per-class totals, and this count in words. The self-test was what
 found that the MISS's own `+5.40 %` had no registry entry at all: the perturbation for it failed to
 apply, which is a check being stale rather than a check passing.
 
@@ -847,7 +847,7 @@ The two inventories are reported separately because they are not the same size o
 **prose numbers NOT reconciled and NOT a
 citation: 0**, and **words NOT reconciled and NOT a
 citation: 0**. Their classes are separate too — the digits fall into 18 named classes for digits and
-a parallel set for words carrying 9.
+a parallel set for words carrying 8.
 
 **One class is deliberately weaker than the rest** and is labelled as such: the numbers that are
 neither a registry claim nor a citation are classified as "a value the analyzer also quotes", which
@@ -866,10 +866,12 @@ The caveat is that the classes are not all equally strong, and one of them is de
 number classified as "a value the analyzer also quotes for the subject its clause names" has had
 **both** its value and its subject checked — but only against the analyzer's table, not against the
 sentence's own arithmetic; a number classified as an article, a pronoun or an ordinary noun is not a
-claim at all; and a citation is a pointer, not a figure. The classes are printed with their counts and
-an example each in `raw/reconciliation-12e.txt`, so which class a given number fell into is auditable
-rather than asserted. Two registry entries declare themselves **literals**, because their value
-cannot be recomputed from an artifact at all.
+claim at all; and a citation is a pointer, not a figure. Both sets of classes — the digits' and the
+words' — are printed with their counts and an example each in `raw/reconciliation-12e.txt`, so which
+class a given number or word fell into is auditable rather than asserted. (Until this round the
+sentence above was true of the digits only: the word pass reported a total and nothing behind it,
+which is the difference between an auditable filter and a claim.) Two registry entries declare
+themselves **literals**, because their value cannot be recomputed from an artifact at all.
 
 ### What this instrument was demonstrated not to catch
 
@@ -896,9 +898,10 @@ patched one at a time.
    preceding text matches the citation classifier's metric-name class, which returns before the
    subject test is reached.
 4. **A whole inserted sentence of false prose passes.** Appending "Three of the six profiles are
-   expiry-confounded." returns PASS although one is (§9.2's own pair-set table says so). A sentence
-   of prose whose numbers sit in no registry entry and match no citation class is exactly what the
-   classifier calls ordinary prose, and the classifier does not read.
+   expiry-confounded." returns PASS although **two** are — `queued` and `saturated`, as §7.2's
+   `policy-confounded` column and the very pair-set table the sentence would be checked against both
+   say. A sentence of prose whose numbers sit in no registry entry and match no citation class is
+   exactly what the classifier calls ordinary prose, and the classifier does not read.
 5. **The tolerance is flat and absolute.** Every comparison carries the same slack, stated above,
    whatever precision the claim is written at — so a two-decimal claim, or a delta written as a
    hundredth, is accepted with up to that error, which in relative terms is a large one for the

@@ -824,7 +824,10 @@ REGISTRY = [
     ("heap paired median range low", r"lies between −(\d+\.\d+) % and",
      "raw/old-vs-new.jsonl (post-GC heap, the six paired deltas' medians, min)",
      lambda a: abs(min(heap_medians(a)))),
-    ("heap paired median range high", r"and −(\d+\.\d+) %, and the",
+    # Re-anchored on the range it is a claim about. It used to hang off the words that followed the
+    # figure ("%, and the"), so rewording the sentence after the number made the entry stale — which
+    # fails the run, as designed, but for a reason that has nothing to do with the figure.
+    ("heap paired median range high", r"lies between −\d+\.\d+ % and −(\d+\.\d+) %",
      "raw/old-vs-new.jsonl (post-GC heap, the six paired deltas' medians, max)",
      lambda a: abs(max(heap_medians(a)))),
 
@@ -1222,6 +1225,13 @@ INSTRUMENT_REGISTRY = [
     # included, because §12's numbers are claims about this run.
     ("perturbation count", r"all (\d+) perturbations caught",
      "this run's own perturbation list", lambda c: c["perturbations"]),
+    # The same count, in the two places this document states it in words. Only the digit form above
+    # was guarded, so changing the word to `nine` or to `eleven` both passed — the A1/A3 class,
+    # reintroduced by the round that fixed it, which is why the word forms are entries now too.
+    ("perturbation count in words", r"applies (\w+) changes a careless edit",
+     "this run's own perturbation list", lambda c: c["perturbations"]),
+    ("perturbation count as caughts", r"because (\w+) `caught`s out of a document",
+     "this run's own perturbation list", lambda c: c["perturbations"]),
     ("table count", r"all (\d+) tables",
      "this run's own table count", lambda c: c["tables"]),
     ("checked table count", r"the (\d+) of them this reconciler checks",
@@ -1457,6 +1467,10 @@ def main():
                 continue
             instrument_matched += 1
             got = number(hit.group(1))
+            if got is None and hit.group(1).lower() in WORD_VALUES:
+                # A count §12 states in words is the same count, and the digit-only form of this
+                # loop is what let the word drift. Same fallback as the prose registry's.
+                got = word_number(hit.group(1))
             if got is None or abs(got - float(expected)) > 0.001:
                 PROBLEMS.append(f"instrument registry {name}: document says {hit.group(1)!r}, this "
                                 f"run says {expected:.0f} ({label})")
@@ -1497,7 +1511,16 @@ def main():
     print(f"- word-registry entries evaluated: **{len(WORD_REGISTRY)}**")
     print(f"- word claims matched and recomputed against an artifact: **{word_matched}**")
     print(f"- words classified as citations, references or protocol structure: "
-          f"**{sum(len(v) for v in word_classified.values())}**")
+          f"**{sum(len(v) for v in word_classified.values())}**, in {len(word_classified)} classes "
+          f"(each named, with an example, so the filter is auditable):\n")
+    # Printed for the words too. The document says the classes are printed with their counts and an
+    # example each, and until this round that was true of the digits only — the word pass reported a
+    # total and nothing behind it, which is the difference between an auditable filter and a claim.
+    print("| class | words | example |")
+    print("|---|---|---|")
+    for kind, hits in sorted(word_classified.items(), key=lambda item: -len(item[1])):
+        print(f"| {kind} | {len(hits)} | `{hits[0][1]}` in …{hits[0][2][:56]}… |")
+    print()
     print(f"- **words NOT reconciled and NOT a citation: {len(word_inventory)}**\n")
     if word_inventory:
         print("| section | word | context |")
@@ -1558,7 +1581,13 @@ PERTURBATIONS = (
     # claims its numbers are computed, and `999 + 999 numbers` returned PASS.
     ("a per-class occurrence total in §12 — the document's own account of how much of itself is "
      "checked, which had no entry at all until this round",
-     "290 + 149 numbers", "999 + 999 numbers"),
+     "289 + 149 numbers", "999 + 999 numbers"),
+    # The same count as the digit perturbation above, written in words. Only the digit form was
+    # guarded, which is the A1/A3 class one round after it was closed — so both word forms are
+    # entries now, and this is the change that proves it.
+    ("a count §12 states in words — the perturbation count, whose digit form was guarded and whose "
+     "word form was not",
+     "because twelve `caught`s", "because nine `caught`s"),
 )
 
 
@@ -1583,9 +1612,9 @@ def assert_in_checkout():
 def self_test():
     """Apply each perturbation and require the reconciler to fail. Returns 0 when all fail.
 
-    The unperturbed run is asserted to pass first. Without it a broken environment reports its ten
-    (or eleven) `caught`s out of a document that was already failing, which is a self-test reporting
-    the opposite of what it measured.
+    The unperturbed run is asserted to pass first. Without it a broken environment reports its
+    eleven `caught`s out of a document that was already failing, which is a self-test reporting the
+    opposite of what it measured.
     """
     global DOC_TEXT, PROBLEMS, COVERAGE
     DOC_TEXT, PROBLEMS, COVERAGE = None, [], []
