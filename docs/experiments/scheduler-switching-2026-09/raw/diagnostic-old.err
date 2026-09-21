@@ -1,0 +1,46 @@
+19:18:35.390 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler starting
+19:18:35.394 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler loop started
+19:18:44.898 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler stopping...
+19:18:45.327 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler loop exited
+19:18:45.328 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler stopped
+19:18:55.249 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler starting
+19:18:55.250 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler loop started
+19:19:04.753 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler stopping...
+19:19:05.253 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler loop exited
+19:19:05.254 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler stopped
+19:19:15.179 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler starting
+19:19:15.180 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler loop started
+19:19:24.684 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler stopping...
+19:19:25.182 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler loop exited
+19:19:25.183 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler stopped
+19:19:35.083 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler starting
+19:19:35.085 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler loop started
+19:19:44.586 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler stopping...
+19:19:45.084 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler loop exited
+19:19:45.085 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler stopped
+19:19:54.990 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler starting
+19:19:54.991 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler loop started
+[old-vs-new] churned out sporadic-0
+[old-vs-new] churned out sporadic-1
+[old-vs-new] churned out sporadic-2
+[old-vs-new] churned out sporadic-3
+[old-vs-new] churned out sporadic-4
+[old-vs-new] churned out sporadic-5
+[old-vs-new] churned out sporadic-6
+[old-vs-new] churned out sporadic-7
+19:20:04.495 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler stopping...
+19:20:04.793 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler loop exited
+19:20:04.794 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler stopped
+[old-vs-new] churned out sporadic-0
+[old-vs-new] churned out sporadic-1
+[old-vs-new] churned out sporadic-2
+[old-vs-new] churned out sporadic-3
+[old-vs-new] churned out sporadic-4
+[old-vs-new] churned out sporadic-5
+[old-vs-new] churned out sporadic-6
+[old-vs-new] churned out sporadic-7
+19:20:14.704 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler starting
+19:20:14.705 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler loop started
+19:20:24.207 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler stopping...
+19:20:24.707 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler loop exited
+19:20:24.707 INFO  i.u.d.n.modules.asyncqueue.Scheduler - Scheduler stopped

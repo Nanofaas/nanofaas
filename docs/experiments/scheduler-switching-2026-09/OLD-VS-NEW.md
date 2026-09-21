@@ -1,0 +1,603 @@
+# The refactor's own cost: the old async loop against the new engine
+
+Task 12e, issue #208. The comparison the specification's §11 asks the benchmarks to produce —
+*«verificano regressioni rispetto alle implementazioni precedenti»* — and that did not exist,
+because Task 0 froze thresholds and a revision but no figures (`BASELINE.md:155`), and because
+Task 12c's harness can only swap strategies *inside* one engine (`spec:315`).
+
+**This is a profile comparison — level 2 of the spec's taxonomy, not level 1.** The spec defines
+level 1 as one engine with only the strategy exchanged (`spec:315`); `spec:316` says of
+engine-versus-engine that «Questo misura un profilo, non attribuisce il risultato al solo
+algoritmo». A ruling earlier in this campaign cited level 1 for this comparison and was corrected
+in the ledger; nothing here may be read as satisfying level 1.
+
+---
+
+## 1. The hypothesis, named before the measurement
+
+The old async loop dispatches **up to two attempts back to back per function visit**
+(`Scheduler.java:31` `DEFAULT_MAX_BATCH_PER_FUNCTION = 2`, consumed at `:208`), while the new engine
+takes **exactly one claim per pass** (`SchedulerEngine.selectAndClaim` → one `carry`). That is the
+loop-layer difference the refactor introduced, and it is the subject of this measurement — not a
+defect in either implementation and not to be discounted as noise.
+
+Nothing here measures the switch. The old loop has no `switchTo`, so switch cost and switch pause
+remain Task 12c's, and a document that claimed to cover both would be quoting a number it cannot
+produce.
+
+## 2. The two arms, and why they run in one process
+
+| | old arm | new arm |
+|---|---|---|
+| loop | `Scheduler` over `QueueManager`/`FunctionQueueState` | `SchedulerEngine` |
+| strategy | — (the loop *is* the policy) | `PerFunctionSchedulingStrategy`, the port of that same loop |
+| dispatch seat | `InvocationDispatch` | `EngineDispatch` |
+| arm label | `old-async (no change)` | `per-function (no change)` |
+
+Each arm has **one** dispatch path, its own, taking the place of the transport/lifecycle on the far
+side of that interface — the seat the real adapter occupies, not a second path beside it. The old
+loop is never re-wired into the engine: a re-wired old loop would acquire leases from a relocated
+`FunctionCapacityRegistry` and dispatch into a transport that Tasks 9–10 rewrote, a configuration
+that exists in no revision, and it could produce no switch figure anyway.
+
+CPU and post-GC heap are process-wide and attribute to no scheduler (M11). A cross-JVM comparison
+of them measures the JVMs, so **both arms run in the same JVM**, alternating repetition by
+repetition, with the same heap (`-Xms1g -Xmx1g -XX:+AlwaysPreTouch`), the same thread count (one
+scheduler/worker thread per arm plus one shared driver thread) and the same allocation profile.
+Arm order alternates with the repetition parity, so a monotone host drift cannot land on one arm.
+
+## 3. What is shared, and therefore not a variable
+
+The harness is compiled together with the committed `SchedulerSwitchBenchmark.java` and is in its
+package, so:
+
+- **the corpus is `SchedulerSwitchBenchmark.Profiles` itself** — not a copy. The profile values,
+  their derived rates, service durations, payload sizes, churn and readiness sets and the
+  hot/sporadic function draws are read from the committed code. A restated corpus is a second thing
+  that can drift from the one being compared, and this campaign has been burned by exactly that.
+- **the span, warm-up, depth-sampling cadence and trailing-window grid are its constants**
+  (`SPAN_MS`, `WARMUP_MS`, `DEPTH_SAMPLE_MS`, `TRAILING_WINDOWS_MS`).
+- **the JSONL schema is its schema**, with its field names, so `summarize.py` reads this artifact
+  unchanged — §7 quotes `summarize.workload_table` run on `raw/old-vs-new.jsonl`.
+- **the settlement rule and the "shift the control arm's own values" operation are `summarize.py`'s**,
+  imported by `old-vs-new.py` (`settled_depth`, `settle_millis`, `settled_band`, `median`,
+  `percent_delta`, `STEADY_WINDOW_MS`). `summarize.py` is not modified.
+
+One arrival script per (workload, repetition) is materialised before either arm runs and replayed to
+both, so the two arms are offered the **identical sequence**, not merely the same rate. The
+committed harness drives each arm from its own `Random` and says in its own comment that its arms
+therefore share a rate but not an arrival sequence — that is the difference this design removes,
+and §8 shows what it is worth.
+
+The service model is the committed harness's: `submit`/`dispatch` publishes a due time and returns,
+the capacity lease is held until the driver judges the service duration elapsed, and only then
+released. The committed precedent that busy-waits *inside* the dispatch callback
+(`control-plane-tuning-2026-09/bench/T2BatchBench.java:97`) is not copied.
+
+## 4. The driver recipe, and the one seam
+
+The in-tree precedent (`PerFunctionSchedulingStrategyTraceComparisonTest`) builds
+`QueueManager`/`FunctionQueueState`/`Scheduler`, admits a corpus and releases the lease it receives.
+A measurement driver differs from it in exactly three things, all of which this harness adds:
+
+1. **it holds each lease for the function's declared service duration** instead of releasing it
+   immediately, so a slot is genuinely occupied and work that cannot get one genuinely waits;
+2. **it decides the expiry question explicitly** — see M3, §5.2 — and its decision here is to add
+   no reaper;
+3. **it emits the JSONL schema**, with the committed field names.
+
+It also reaps nothing itself, signals nothing itself for the old arm, and never touches the engine's
+gate on the measurement path: the queue-depth trajectory comes from the driver's own counters
+(`admitted − completed − expired − removed − rejected`), not from `snapshotQueues()`.
+
+**The single seam: one reflected constructor.** `QueueManager`'s constructor is package-private in
+`it.unimib.datai.nanofaas.modules.asyncqueue`, and this class must be in
+`SchedulerSwitchBenchmark`'s package to reuse the corpus. `newQueueManager` reaches exactly that one
+constructor by reflection; `Scheduler`, `FunctionQueueState`, `QueueManager.getOrCreate`,
+`QueueManager.enqueue` and `QueueManager.remove` are all ordinary public API, as the in-tree
+precedent already uses them. **Nothing in the engine's new API is reached by reflection or at all**
+— the new arm is constructed exactly as `SchedulerSwitchBenchmark.Run` constructs it.
+
+The old loop logs through logback, whose default configuration writes to **stdout** — the stream the
+artifact is on. `run-old.sh` writes a `logback.xml` routing the root logger to stderr, so the
+artifact stays parseable and the loop's own error path still reaches `raw/*.err`.
+
+**One piece of the harness is unused, and is declared rather than removed.** The CLI carries
+`--out=<path>` (mirroring the committed harness's own), which this campaign never passes: the
+artifact's destination is `run-old.sh`'s tee. It is retained because *any* edit to
+`OldLoopComparison.java` changes the digest that both artifacts' header lines record, and re-running
+a verified 60-run campaign to delete four unused lines is the wrong trade this late — the digest
+tracing the artifact to a commit is worth more than the tidiness.
+
+## 5. The semantic mismatches: designed around, declared, and one the brief missed
+
+The reconnaissance behind the brief mapped the disparities that decide whether this comparison means
+anything. What was done with each:
+
+### 5.1 M2 — admission differs in *kind*, not degree: aligned, and the residual is in the artifact
+
+The engine bounds the **total** offered-but-not-submitted population
+(`PendingWorkStore(profile.maxPending)`); the old async loop bounds **each function's** own queue
+plus its dispatch reservations (`FunctionQueueState.queueSize`). The alignment applied is
+
+```
+old queueSize per function = max(1, floor(profile.maxPending / profile.functions.length))
+```
+
+so the two arms' admission bounds have the **same total**. They still cannot refuse the same offer
+at the same instant: the engine refuses globally, the old loop refuses per function. That residual
+is not hidden — every sample carries `offered`, `admitted` and `admissionRejected`, and §7's
+coverage table prints them side by side. It is zero everywhere except on `saturated`, where it is
+large and is explained there.
+
+### 5.2 M3 — expiry exists only on the new side: declared, and the direction chosen is *no reaper*
+
+The old async module has no deadline at all: `git grep -E "expir|deadline|Clock|maxQueueWait"` over
+`platform/modules/async-queue/src/main` at the pre-refactor revision `05f49dcb` matches **zero
+files** (the same grep over `platform/modules/sync-queue/src/main` matches five — the *sync* side has
+a queue wait, which is M8, and is one of the reasons §6 excludes it). Both directions the brief
+names are unfair. **This comparison leaves the old loop without a reaper and declares it.**
+
+The reason is not only fairness but expressibility: a reaper that shadows the engine's would have to
+remove *stale* entries from `FunctionQueueState`, and the only mutators that loop's API exposes are
+`poll()` and `pollForDispatch()` — head-only, FIFO — plus `closeAndDrainQueued()`, which closes the
+state. Reaping a non-head entry would mean draining and re-offering the survivors, which reorders
+the queue and can fail on a full one. A reaper written that way would be a new policy of the
+driver's, not a behaviour of the old loop, and the old loop's own p99 would be measuring it.
+
+The consequence is declared in the artifact (`expiryInOldArm` in the header) and per profile in §7's
+coverage table: where the engine's `expired` is non-zero, the two arms differ by the **expiry
+policy** as well as by the loop, and those rows are flagged `*`. The old arm's `expired` is 0 in all
+60 runs by construction.
+
+### 5.3 M5 — the claim cadence *is* the object, not a defect
+
+Reported as the result. §7's comparison is where it shows.
+
+### 5.4 M6 — the completion wiring charges the driver differently: declared
+
+In the new arm the release wake is the driver's call (`releasedNanos -> engine.signal()`). In the old
+arm it is production code inside `QueueManager.tryAcquireLease`, which also records
+`recordDispatchSlotHold` and `recordSchedulerSignalEnqueueDuration` into micrometer — on the
+driver's thread. So the old arm's release path does *more* work on the driver thread than the new
+arm's, which means the CPU figures in §7 are, if anything, charged against the old arm. That is
+worth stating because the CPU direction found there is the opposite one.
+
+### 5.5 M9 — neither loop's time is fully controllable: measured in real time
+
+The old async loop's `LongSupplier` affects diagnostics only (its pacing is a real
+`activeFunctions.poll(500, MILLISECONDS)` and `loop()` is private), and `SyncScheduler` hardcodes
+`Instant.now()`. No fake clock is used anywhere; the engine's `nanoTime` supplier is bound to
+`System::nanoTime`, as the committed harness does.
+
+### 5.6 M11 — CPU and heap are process-wide: designed around, not merely declared
+
+Satisfied by construction rather than by assertion: one JVM, both arms, identical thread count,
+identical heap flags, identical allocation profile, alternating order. This is the strongest form of
+M11 available and it is why the heap comparison in §7 is quotable at all.
+
+### 5.7 Not found in the brief's list: **readiness**, and it costs a profile
+
+Readiness exists **nowhere** in the old tree — a grep of the pre-refactor revision for
+`readiness|isReady|notReady|wakeup` over the modules' `src/main` returns zero files — and is new at
+HEAD (`EngineReadiness`, wired by `SchedulerConfiguration.engineReadiness`). The brief's included set
+names **`head-of-line-blocking`**, and that workload is *defined* by `notReadyCount = 5`.
+
+Driving it on the old arm would mean 5 of its 6 functions dispatching work the engine refuses to
+dispatch — a difference of policy the refactor introduced (not of loop), in the old arm's favour,
+and it would fabricate a result. There is no faithful mapping either: at OLD, capacity is a
+*configured* property, not a readiness property, so "no capacity" is not what a not-ready function
+meant at OLD.
+
+**So `head-of-line-blocking` is excluded from this comparison, and the reason is a mismatch the
+brief's list does not contain.** The brief's numbering also skips M4 and M10, which is consistent
+with the reconnaissance not having reached this one. The harness *refuses* a profile with
+`notReadyCount > 0` rather than silently skipping its readiness (`checkSupported`), so an attempt to
+run it fails loudly.
+
+### 5.8 The other refusals, made loud rather than silent
+
+`checkSupported` also refuses a profile with a burst, a capacity change or a prefill: those driver
+features are not implemented for this comparison, and a profile whose `note` describes a workload
+that did not run is worse than a skipped profile. That is why `heterogeneous-burst`,
+`capacity-change` and `switch-under-load` are not in the covered set.
+
+## 6. Coverage, and what is not covered
+
+**Covered**, `--profiles=low-load,saturated,unqueued,queued,churn-drain,mixed-kind-retry`,
+`--repetitions=5`: six profiles × two arms × five repetitions = **60 measured runs**, and all 60
+conserve work (admitted == completed + expired + removed + rejected + pending + claimed +
+submitting + in flight). Zero driver failures, zero sample-cap overruns.
+
+**Not covered, with the reason:**
+
+| excluded | reason |
+|---|---|
+| `head-of-line-blocking` | readiness is new-at-HEAD only; no OLD counterpart (M4, §5.7) |
+| `hot-plus-500-sporadic` | M2: 501 × queueSize vs one global bound cannot be aligned |
+| `heterogeneous-burst` | burst not implemented; refused loudly by `checkSupported` |
+| `capacity-change` | capacity change not implemented; refused loudly |
+| `switch-under-load` | burst + readiness, both of the above |
+| **the sync arm** (old `SyncScheduler`/`SyncQueueService` vs new `SharedQueueSchedulingStrategy`) | **not attempted in this pass.** M8 says it is comparable only when `syncQueueMaxQueueWait == contractMs` per profile — a configurable `SyncQueueConfigSource` makes that alignment possible, and the committed `SyncQueueInvocationEnqueuer` + `SyncQueueService` wiring is in `SyncSchedulerWakeupTest`. It is a real second comparison and it is not in this document; nothing here speaks for the shared-queue side |
+| `unqueued`'s "direct admission path" | unchanged from Task 12c: it lives in the control-plane, so both arms run the engine-level approximation, as the profile's own note says |
+
+**Residual coverage facts, stated rather than implied:**
+
+- `churn-drain` stops offering traffic at 60 % of the span (`stopAtPercent`), so its trailing
+  2000 ms steady window holds **no arrivals** and its two `window` metrics are NOT MEASURABLE. Its
+  four whole-run metrics are reported; per Task 12c's own reasoning a workload that stops its
+  traffic is not exempt from them.
+- `saturated`'s control arm has a steady-window useful throughput of **0**, so that one metric is
+  NOT MEASURABLE (a ratio with a zero denominator is not a figure).
+- `offered` can differ by one ticket between the arms: the script is identical, but the last
+  scripted arrival before the window close falls either side of the loop's own observational
+  instant. It differs in one profile's median (`unqueued`, 2833 against 2834).
+- The retry draw is **reactive** — a retry follows a completion, which is arm-dependent — so on
+  `mixed-kind-retry` the offered totals can differ by the retry count. They do not in this artifact
+  (9510/9510 in the median), and the mechanism is declared because it could.
+- `allocatedBytesPerUsefulCompletion` and the engine's reaper interaction: see §7.
+
+## 7. The comparison
+
+### 7.1 The artifact, and how every figure below was produced
+
+```bash
+docs/experiments/scheduler-switching-2026-09/run-old.sh --label=old-vs-new --repetitions=5
+docs/experiments/scheduler-switching-2026-09/old-vs-new.py raw/old-vs-new.jsonl
+```
+
+- `raw/old-vs-new.jsonl` — 61 JSONL lines: one `header`, 60 `sample`. Revision
+  `c64da071` (the commit that added the arm), harness
+  `OldLoopComparison.java` sha256 `761908913d93…`, committed harness
+  `SchedulerSwitchBenchmark.java` sha256 `353ee27881ef…`. All three travel in the header line.
+- `raw/old-vs-new.err` — the run's stderr (logback).
+- `raw/old-vs-new-analysis.txt` — `old-vs-new.py`'s output, **verbatim**, which is what the tables
+  in this section are.
+- `raw/smoke-old.jsonl`, `raw/smoke-old.err` — the smoke run (§7.5). Its header records revision
+  `7beabc33` and the same harness digest as the campaign's, because it ran before the harness was
+  committed; the digest identifies the build, the revision records where the tree was. The
+  campaign artifact's pair is `c64da071` + `761908913d93`, which exists in history.
+- `raw/load-average-samples-old-vs-new.txt` — the host-quietness record (§7.6).
+
+### 7.2 Coverage and the expiry confound
+
+| workload | old reps | new reps | new expired | old expired | offered old/new | admitted old/new | policy-confounded |
+|---|---|---|---|---|---|---|---|
+| churn-drain | 5 | 5 | 0 | 0 | 6180/6180 | 6180/6180 | no |
+| low-load | 5 | 5 | 0 | 0 | 194/194 | 194/194 | no |
+| mixed-kind-retry | 5 | 5 | 0 | 0 | 9510/9510 | 9510/9510 | no |
+| queued | 5 | 5 | 41 | 0 | 2830/2830 | 2830/2830 | yes |
+| saturated | 5 | 5 | 14524 | 0 | 18926/18926 | 4780/18926 | yes |
+| unqueued | 5 | 5 | 0 | 0 | 2833/2834 | 2833/2834 | no |
+
+For `queued`, 41 of 2830 expiries is 1.4 % — the confound is present but small. For `saturated`,
+14524 of 18926 is **77 %**, and that profile's comparison is a comparison of two *policies*, not two
+loops: see §7.4.
+
+### 7.3 The settlement check, on the committed rule
+
+| workload | arm | settled depth | settle ms (worst rep) | settled before the steady window | arrivals in the steady window |
+|---|---|---|---|---|---|
+| churn-drain | old-async (no change) | 0-0 | 5000 | yes | 0 |
+| churn-drain | per-function (no change) | 0-0 | 5000 | yes | 0 |
+| low-load | old-async (no change) | 0-0 | 0 | yes | 43 |
+| low-load | per-function (no change) | 0-0 | 0 | yes | 42 |
+| mixed-kind-retry | old-async (no change) | 3-4 | 50 | yes | 1966 |
+| mixed-kind-retry | per-function (no change) | 2-4 | 0 | yes | 1966 |
+| queued | old-async (no change) | 6-29 | 2400 | yes | 599 |
+| queued | per-function (no change) | 4-9 | 0 | yes | 589 |
+| saturated | old-async (no change) | 513-513 | 0 | yes | 348 |
+| saturated | per-function (no change) | 109-112 | 50 | yes | 894 |
+| unqueued | old-async (no change) | 0-1 | 0 | yes | 604 |
+| unqueued | per-function (no change) | 0-1 | 0 | yes | 603 |
+
+The old loop reaches a steady state in every workload where a steady state exists — including
+`queued`, where it takes up to 2400 ms of settled time against the new engine's 50 ms, and where its
+settled depth ranges 6–29 across the five repetitions against the new engine's 4–9. That spread is
+the reason `queued`'s steady figures below resolve poorly.
+
+### 7.4 The per-profile comparison
+
+`paired` is the median of the five within-repetition differences `(new − old)/old`. `separated` says
+whether all five agree in sign — the only thing that makes the median a measured effect rather than
+one draw. Verdicts apply the frozen budgets with a regression read as the new engine being *worse*:
+upward for p99, CPU per useful completion, heap and allocation; downward for useful throughput.
+
+Two rows of `old-vs-new.py`'s table are **not** reproduced here, to keep the table navigable: the
+`thread cpu per window` row for each profile, which §9.3 quotes and which
+`raw/old-vs-new-analysis.txt` carries in full, and the settlement and resolving-power tables, which
+are §7.3 and §8 verbatim.
+
+| workload | metric | session | old | new | unpaired Δ % | paired Δ % | paired range | separated | budget % | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|
+| churn-drain | whole-span p99 | whole | 2.729 | 2.641 | -3.24 | -4.10 | -7.06…+5.14 | no | 5 | PASS |
+| churn-drain | steady p99 | window | — | — | — | — | — | — | 5 | NOT MEASURABLE (fewer than 30 arrivals in the steady window) |
+| churn-drain | whole-span useful throughput | whole | 772.497 | 772.327 | -0.02 | -0.01 | -0.02…+0.02 | no | 5 | PASS |
+| churn-drain | steady useful throughput | window | — | — | — | — | — | — | 5 | NOT MEASURABLE (fewer than 30 arrivals in the steady window) |
+| churn-drain | thread cpu per useful completion | whole | 42134 | 46977 | +11.49 | +14.75 | -9.94…+72.54 | no | 10 | MISS |
+| churn-drain | post-GC heap | whole | 77449232 | 77255304 | -0.25 | -0.25 | -0.25…-0.25 | yes | 10 | PASS |
+| churn-drain | allocated bytes per useful completion | whole | 3885 | 4033 | +3.81 | +5.50 | +1.59…+5.93 | yes | — | no budget |
+| low-load | whole-span p99 | whole | 2.778 | 2.814 | +1.29 | +1.29 | -9.48…+5.63 | no | 5 | PASS |
+| low-load | steady p99 | window | 2.570 | 2.793 | +8.67 | +5.40 | -19.52…+9.36 | no | 5 | MISS |
+| low-load | whole-span useful throughput | whole | 24.243 | 24.247 | +0.02 | +0.00 | -0.01…+0.02 | no | 5 | PASS |
+| low-load | steady useful throughput | window | 21.500 | 21.000 | -2.33 | +0.00 | -2.33…+0.00 | no | 5 | PASS |
+| low-load | thread cpu per useful completion | whole | 755178 | 768948 | +1.82 | +1.62 | +0.95…+11.25 | yes | 10 | PASS |
+| low-load | post-GC heap | whole | 77271168 | 77244288 | -0.03 | -0.03 | -0.04…+0.25 | no | 10 | PASS |
+| low-load | allocated bytes per useful completion | whole | 1654 | 1959 | +18.44 | +27.75 | +8.77…+45.92 | yes | — | no budget |
+| mixed-kind-retry | whole-span p99 | whole | 5.153 | 5.258 | +2.05 | +1.79 | +0.87…+6.98 | yes | 5 | PASS |
+| mixed-kind-retry | steady p99 | window | 5.283 | 5.186 | -1.83 | +3.41 | -3.49…+8.47 | no | 5 | PASS |
+| mixed-kind-retry | whole-span useful throughput | whole | 1188.449 | 1188.449 | +0.00 | +0.00 | -0.02…+0.03 | no | 5 | PASS |
+| mixed-kind-retry | steady useful throughput | window | 983.000 | 983.000 | +0.00 | +0.00 | -0.05…+0.15 | no | 5 | PASS |
+| mixed-kind-retry | thread cpu per useful completion | whole | 36995 | 47492 | +28.37 | +29.02 | +17.96…+47.92 | yes | 10 | MISS |
+| mixed-kind-retry | post-GC heap | whole | 77272840 | 77245336 | -0.04 | -0.04 | -0.04…-0.03 | yes | 10 | PASS |
+| mixed-kind-retry | allocated bytes per useful completion | whole | 1316 | 1517 | +15.27 | +14.69 | +11.79…+16.44 | yes | — | no budget |
+| queued * | whole-span p99 | whole | 124.134 | 87.116 | -29.82 | -25.53 | -40.65…+33.49 | no | 5 | PASS |
+| queued * | steady p99 | window | 99.280 | 87.532 | -11.83 | -6.57 | -43.48…+78.98 | no | 5 | PASS |
+| queued * | whole-span useful throughput | whole | 331.786 | 348.066 | +4.91 | +8.27 | -1.30…+18.26 | no | 5 | PASS |
+| queued * | steady useful throughput | window | 293.500 | 294.500 | +0.34 | -0.16 | -3.57…+74.26 | no | 5 | PASS |
+| queued * | thread cpu per useful completion | whole | 90045 | 110649 | +22.88 | +27.84 | -0.40…+55.95 | no | 10 | MISS |
+| queued * | post-GC heap | whole | 77273032 | 77247592 | -0.03 | -0.03 | -0.04…-0.03 | yes | 10 | PASS |
+| queued * | allocated bytes per useful completion | whole | 1259 | 1450 | +15.17 | +18.51 | +9.69…+35.51 | yes | — | no budget |
+| saturated * | whole-span p99 | whole | 1201.337 | 62.004 | -94.84 | -94.84 | -95.05…-94.74 | yes | 5 | PASS |
+| saturated * | steady p99 | window | 1206.798 | 61.935 | -94.87 | -94.87 | -95.09…-94.49 | yes | 5 | PASS |
+| saturated * | whole-span useful throughput | whole | 4.250 | 456.857 | +10649.95 | +10594.13 | +9271.79…+12746.66 | yes | 5 | PASS |
+| saturated * | steady useful throughput | window | 0 | — | — | — | — | — | 5 | NOT MEASURABLE (the control arm's own value there is zero) |
+| saturated * | thread cpu per useful completion | whole | 7354219 | 169136 | -97.70 | -97.92 | -98.31…-97.68 | yes | 10 | PASS |
+| saturated * | post-GC heap | whole | 77466240 | 77310912 | -0.20 | -0.19 | -0.20…-0.16 | yes | 10 | PASS |
+| saturated * | allocated bytes per useful completion | whole | 449984 | 5867 | -98.70 | -98.71 | -98.76…-98.46 | yes | — | no budget |
+| unqueued | whole-span p99 | whole | 4.295 | 4.295 | +0.00 | +2.04 | -11.41…+24.22 | no | 5 | PASS |
+| unqueued | steady p99 | window | 4.258 | 4.154 | -2.45 | +1.73 | -6.59…+3.06 | no | 5 | PASS |
+| unqueued | whole-span useful throughput | whole | 354.112 | 354.046 | -0.02 | +0.01 | -0.02…+0.01 | no | 5 | PASS |
+| unqueued | steady useful throughput | window | 302.000 | 301.500 | -0.17 | +0.00 | -0.17…+0.00 | no | 5 | PASS |
+| unqueued | thread cpu per useful completion | whole | 86299 | 95828 | +11.04 | +18.67 | -3.95…+77.75 | no | 10 | MISS |
+| unqueued | post-GC heap | whole | 77271552 | 77244752 | -0.03 | -0.03 | -0.03…-0.03 | yes | 10 | PASS |
+| unqueued | allocated bytes per useful completion | whole | 1100 | 1399 | +27.18 | +27.51 | +23.64…+30.46 | yes | — | no budget |
+
+Medians per arm, produced by the committed `summarize.workload_table` on this artifact:
+
+| workload | arm | reps | useful/s | p99 ms | thread cpu/useful us | alloc/useful B | post-GC heap MB | pending | conserved |
+|---|---|---|---|---|---|---|---|---|---|
+| churn-drain | old-async (no change) | 5 | 772.5 (757.6-780.1) | 2.729 | 42.13 | 3885 | 77.45 | 0 | True |
+| churn-drain | per-function (no change) | 5 | 772.3 (757.6-780.2) | 2.641 | 46.98 | 4033 | 77.26 | 0 | True |
+| low-load | old-async (no change) | 5 | 24.2 (21.7-26.5) | 2.778 | 755.18 | 1654 | 77.27 | 0 | True |
+| low-load | per-function (no change) | 5 | 24.2 (21.7-26.5) | 2.814 | 768.95 | 1959 | 77.24 | 0 | True |
+| mixed-kind-retry | old-async (no change) | 5 | 1188.4 (1175.6-1193.1) | 5.153 | 36.99 | 1316 | 77.27 | 0 | True |
+| mixed-kind-retry | per-function (no change) | 5 | 1188.4 (1175.6-1193.2) | 5.258 | 47.49 | 1517 | 77.25 | 0 | True |
+| queued | old-async (no change) | 5 | 331.8 (293.5-350.9) | 124.134 | 90.05 | 1259 | 77.27 | 4 | True |
+| queued | per-function (no change) | 5 | 348.1 (346.3-359.2) | 87.116 | 110.65 | 1450 | 77.25 | 3 | True |
+| saturated | old-async (no change) | 5 | 4.2 (3.7-4.9) | 1201.337 | 7354.22 | 449984 | 77.47 | 512 | True |
+| saturated | per-function (no change) | 5 | 456.9 (408.7-481.7) | 62.004 | 169.14 | 5867 | 77.31 | 103 | True |
+| unqueued | old-async (no change) | 5 | 354.1 (344.1-358.5) | 4.295 | 86.30 | 1100 | 77.27 | 0 | True |
+| unqueued | per-function (no change) | 5 | 354.0 (344.1-358.5) | 4.295 | 95.83 | 1399 | 77.24 | 0 | True |
+
+### 7.5 The smoke run, verbatim
+
+`./run-old.sh --label=smoke-old --profiles=low-load --repetitions=1` produces `raw/smoke-old.jsonl`:
+a `header` line and two `sample` lines. The two samples' figures, as emitted:
+
+| field | old-async (no change) | per-function (no change) |
+|---|---|---|
+| offered rate/s | 20.0 | 20.0 |
+| offered / admitted / admissionRejected | 208 / 208 / 0 | 208 / 208 / 0 |
+| completed / useful | 208 / 208 | 208 / 208 |
+| expired / removed / rejected | 0 / 0 / 0 | 0 / 0 / 0 |
+| accountingClosure / workConserved | 208 / true | 208 / true |
+| p50Nanos / p99Nanos | 2708792 / 3046071 | 2456633 / 3085447 |
+| samplesRecorded / windowMillis | 172 / 8001 | 172 / 8000 |
+| depthSeries length | 158 | 158 |
+| threadCpuPerUsefulCompletionNanos | 963058 | 994681 |
+| postGcHeapBytes | 76999840 | 77199840 |
+| driverFailures | 0 | 0 |
+
+`offered = 208` on both arms is the arrival script's own figure, checkable independently: the
+script for `low-load` at seed `-57957290846` holds 208 arrivals before 9.5 s
+(warm-up 1500 ms + span 8000 ms) and 226 over its whole horizon, and the driver stops at the window
+close.
+
+### 7.6 Was the host quiet?
+
+`raw/load-average-samples-old-vs-new.txt`: **122 samples of `/proc/loadavg` spanning the campaign's
+602 s** (17:22:24Z to 17:32:26Z), strictly increasing, 5 s apart except one 2 s step.
+**1-minute load average: min 0.10, median 0.29, max 0.61** on 20 processors — 0.5 % to 3 % of the
+host — and nothing else CPU-bound was started during it. The measured JVM itself accounted for 31.4 s
+of user and 14.6 s of system CPU over 604 s of wall time — 46 s of CPU, **7.6 % of one core**,
+shared by both arms and the driver. The Gradle daemon was stopped by `run-old.sh` before the measured
+JVM started, and the queue modules' jars were rebuilt (and found up to date) *before* that.
+
+Two provenance notes about that file, because it is not a recording of one clean run. **Two samplers
+were started for this campaign** — the first in a command that failed before the campaign launched —
+so the file merges two 5 s series from the same host; the one 2 s step is where the survivor's line
+lands on top of the first one's, and the two agree to within a sample. It was also **truncated to
+the campaign window** (78 post-campaign lines dropped) and reduced to a strictly increasing series
+(1 out-of-order duplicate dropped). The samples themselves are unmodified; only post-campaign lines
+and the duplicate were removed, and the level figures above are the remaining 122.
+
+## 8. Resolving power, and what the pairing bought
+
+Both operations below read the arms, never the observed effect, and are deterministic. **Unpaired**
+multiplies the old arm's own five values by `(1 + f)` — a perfectly uniform change with no added
+noise, the most favourable case for the test — and counts how often the shifted arm reads disjoint
+from the new arm's range. That is the operation a cross-run design can perform, and it is what
+Task 12c had. **Paired** asks how large `f` must be before all five within-repetition differences
+take the sign `f` implies.
+
+| metric | budget % | eligible | unpaired +5 % | +10 % | +20 % | +30 % | +50 % | +100 % | median unpaired arm spread % | median paired spread % | median smallest paired same-signed effect % |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| whole-span p99 | 5 | 6 | 1 | 2 | 4 | 5 | 5 | 6 | 17.49 | 13.66 | 5.38 |
+| steady p99 | 5 | 5 | 1 | 1 | 2 | 2 | 4 | 5 | 22.10 | 11.96 | 3.49 |
+| whole-span useful throughput | 5 | 6 | 3 | 3 | 3 | 5 | 5 | 5 | 10.87 | 0.05 | 0.01 |
+| steady useful throughput | 5 | 4 | 1 | 1 | 2 | 2 | 2 | 4 | 24.12 | 1.26 | 0.03 |
+| thread cpu per useful completion | 10 | 6 | 1 | 1 | 1 | 1 | 2 | 5 | 33.31 | 43.15 | 0.20 |
+| post-GC heap | 10 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 0.01 | 0.01 | 0.00 |
+| allocated bytes per useful completion | — | 6 | 1 | 1 | 2 | 3 | 6 | 6 | 9.57 | 5.73 | 0.00 |
+| thread cpu per window | — | 6 | 0 | 0 | 0 | 0 | 0 | 4 | 28.44 | 37.60 | 0.00 |
+
+**Reading it.** The unpaired columns are the reason Task 12c could not adjudicate a 5 % or 10 %
+budget: on p99 the arms' own medians spread 17.5 % (whole-span) and 22.1 % (steady) between
+repetitions, and a *perfectly uniform* 5 % shift of the control arm would separate the arms in
+**1 workload of 6** (whole-span) and **1 of 5** (steady); even at 20 % it separates **4 of 6** and
+**2 of 5**. CPU per useful completion is the same: 1 of 6 at 5 %. Only post-GC heap was ever
+adjudicable unpaired, and only because its arms agree to 0.01 %.
+**The paired design resolves the same metrics to 3.5 % (steady p99), 5.4 %
+(whole-span p99) and 0.01–0.03 % (useful throughput)** — because the arrival script is identical and
+the completion counts are then nearly identical, so the throughput figure is close to deterministic.
+That is what the pairing buys, and it is what makes §7.4's nulls readable: "no difference
+established" there means "a difference larger than 0.01–5 % would have been seen".
+
+**One metric the pairing did not sharpen: CPU per useful completion.** Its paired spread (43.15 %)
+is *larger* than its unpaired arm spread (33.31 %), so the noise in it is not host drift — it is
+intra-run JVM activity (GC and JIT thread CPU inside the window), which the arms share but not
+identically. Its budget of 10 % is therefore **below the resolution of this design on that metric**,
+and the four `MISS` rows in §7.4 are reported as misses of a figure this design cannot resolve,
+except where all five repetitions agree in sign — see §9.2.
+
+## 9. What the comparison says
+
+### 9.1 The nulls, with their resolution
+
+- **Post-GC heap: indistinguishable, at a resolution of 0.01 %.** Every one of the six profiles'
+  paired deltas is 5-of-5 same-signed and lies between −0.25 % and −0.03 %, and the metric's own
+  resolution is 0.01 % (the arms' medians are identical to two decimals: 77.24–77.45 MB). The new
+  engine's retained heap is not measurably different from the old loop's, against a 10 % budget.
+- **Useful throughput: indistinguishable on four of five unconfounded profiles, at 0.01–0.05 %.**
+  `low-load`, `unqueued`, `churn-drain` and `mixed-kind-retry` all sit inside ±0.02 %. The engine
+  does not lose or gain useful work relative to the old loop on those workloads.
+- **p99: no difference established at a resolution of 3.5 % (steady) and 5.4 % (whole-span).** No
+  unconfounded profile separates on p99 except `mixed-kind-retry`'s whole-span figure, which is
+  same-signed at **+1.79 %** (range +0.87…+6.98) — above the resolution, below the 5 % budget, so a
+  PASS with a measured direction.
+- **`low-load`'s steady p99 is a budget MISS: +5.40 %.** It is reported as a MISS and not excused.
+  In absolute terms it is 2.570 ms → 2.793 ms against a 100 ms contract, i.e. **0.22 ms**, and the
+  five paired differences run −19.52 % to +9.36 %, so the arms are not separated and the design's
+  resolution on this metric is 3.5 %. The figure is real; the effect is below what this design can
+  see.
+
+### 9.2 The one direction that is both measured and consistent: allocation
+
+**The new engine allocates more per useful completion, in every repetition, on every unconfounded
+profile**, and the total allocated in the window moves with it:
+
+| workload | alloc/useful old B | new B | paired Δ % | paired range | separated |
+|---|---|---|---|---|---|
+| churn-drain | 3885 | 4033 | +5.50 | +1.59…+5.93 | yes |
+| mixed-kind-retry | 1316 | 1517 | +14.69 | +11.79…+16.44 | yes |
+| queued | 1259 | 1450 | +18.51 | +9.69…+35.51 | yes |
+| unqueued | 1100 | 1399 | +27.51 | +23.64…+30.46 | yes |
+| low-load | 1654 | 1959 | +27.75 | +8.77…+45.92 | yes |
+
+Five repetitions, five same-signed results each, on five workloads whose offered rates span 24/s to
+1189/s. No frozen budget covers allocation, so there is no verdict to give — but the direction is
+consistent and it is coherent with M5: the old loop amortises one visit's machinery over up to two
+dispatches, while the engine's pass selects, claims, commits and finishes one ticket. **The
+mechanism is not established by this harness**, and this document does not guess at it beyond that
+the two per-dispatch machinery profiles differ. It is the clearest loop-layer signal this comparison
+produced.
+
+### 9.3 CPU per useful completion: three misses the design cannot resolve, one it can
+
+The `MISS` rows on `churn-drain` (+14.75 %, range −9.94…+72.54), `queued` (+27.84 %, range
+−0.40…+55.95) and `unqueued` (+18.67 %, range −3.95…+77.75) are each a median with the five
+repetitions on both sides of zero: the design did not resolve that metric on that profile.
+`mixed-kind-retry`'s is different: **+29.02 %, range +17.96…+47.92, 5 of 5 positive, every
+repetition above the 10 % budget.** The cross-check in §7.4's script (`thread cpu per window`, the
+same measurement with the useful count cancelled out of the denominator) is same-signed positive
+there too, at +29.02 % (range +17.96…+47.97), and for `queued` (+30.56 %) and `low-load` (+1.62 %).
+
+So: **on `mixed-kind-retry` the new engine costs measurably more thread CPU for the same useful
+work, at a magnitude above the budget in every repetition.** The direction is consistent with the
+allocation finding of §9.2, and the mechanism is likewise not established. On `queued` and
+`churn-drain` the same direction is suggested by the median and corroborated by the window-CPU
+cross-check for `queued`, but not separated on the per-completion figure. On `low-load` the whole
+figure is small (0.76 ms per completion) and near the noise floor.
+
+The one unfairness in this metric is declared and points the other way: the old arm's release path
+does micrometer work on the driver thread that the new arm's does not (M6, §5.4), so the old arm's
+CPU is if anything charged more, not less, than its loop's own cost.
+
+### 9.4 `saturated`: a large, established, and *policy-confounded* difference
+
+| | old | new |
+|---|---|---|
+| admitted of offered | 4780 of 18926 | 18926 of 18926 |
+| admissionRejected | 14149 | 0 |
+| expired | 0 | 14524 |
+| completed / useful | 4181 / 34 | 4403 / 3655 |
+| useful throughput | 4.25/s | 456.86/s |
+| whole-span p99 | 1201.3 ms | 62.0 ms |
+| thread cpu per useful completion | 7.35 ms | 0.17 ms |
+| allocated bytes per useful completion | 449984 | 5867 |
+
+Every paired delta is same-signed, and the direction is the new engine's by a factor of 100. **It is
+also not a loop result.** With `maxPending` 512 and a 2000/s offered rate against a service rate of
+500/s, the old loop's queue fills and stays full *of work that is already past its 60 ms contract*,
+because it has no deadline and therefore never drops anything: 512 tickets are permanently held,
+fresh arrivals are refused at admission (14149 of them), and only 34 completions in the whole run
+were inside the contract. The engine reaps: 14524 tickets are dropped before dispatch, which frees
+the store, and 3655 useful completions result.
+
+That is a real and favourable difference the refactor introduced — but it is the **expiry policy**
+(M3), which this comparison deliberately did not equalise, not the claim cadence. The row is flagged
+`*` for exactly this reason, and no part of `saturated`'s delta should be attributed to the loop.
+
+### 9.5 `queued`: a direction suggested, not established
+
+The old loop's whole-span p99 is 124.1 ms against the new engine's 87.1 ms (paired −25.53 %), and
+its useful throughput 331.8/s against 348.1/s (paired +8.27 %) — but both ranges cross zero
+(−40.65…+33.49 % and −1.30…+18.26 %), and the settlement table shows why: the old loop's settled
+depth ranges 6–29 across repetitions against the engine's 4–9, so this workload's steady state is
+not stable on the old side. The single-repetition diagnostic run had shown −68.5 % on p99; across
+five repetitions the effect is −25.5 % with one repetition at +33 %. **That gap is the whole reason
+for five repetitions and for a paired design**, and it is why this document does not report a
+`queued` regression or improvement as established.
+
+## 10. What this does not establish
+
+1. **Nothing about the switch.** The old loops have no `switchTo`; the cost and the pause of a
+   manual strategy change remain Task 12c's, and its result stands unchanged.
+2. **Not level 1** in the spec's taxonomy, as the preamble above says. This is a profile
+   comparison; the level-1 number already exists in Task 12c's harness.
+3. **No 500-function and no mixed-subsystem comparison** (M1/M2). No profile with 500 sporadic
+   functions was run, and the old async and old sync subsystems are not compared against each other
+   — at OLD they could not both be enabled.
+4. **No absolute better-or-worse verdict.** CPU and post-GC heap are process-wide (M11). This
+   design makes them *comparable* by running both arms in one JVM, which is not the same as
+   attributing them to a scheduler. Where a CPU direction is reported (§9.3) it is the thread-CPU
+   sum over the window, which includes the driver and JVM housekeeping.
+5. **Nothing about the async front under production configuration.** In production the async front
+   passes `queueDeadline = null` (`EngineInvocationEnqueuer.java:137`) and only the sync front sets
+   one (`EngineSyncQueueGateway.java:206-207`); this harness, like Task 12c's, stamps the contract
+   on every ticket. **Both arms therefore run a stricter async deadline policy than the system
+   ships**, and the expiry figures above are harness figures, not production ones.
+6. **No validation of production wiring.** Spring composition, module defaults and profile selection
+   are Task 13's HTTP/native tests.
+
+And one more, added by this task rather than inherited:
+
+7. **Nothing about the shared-queue side.** The old sync loop (`SyncScheduler` over
+   `SyncQueueService`) is not in this comparison; §6 records why and what it would need.
+
+## 11. Reproducing it
+
+```bash
+# the smoke run this task was committed with
+docs/experiments/scheduler-switching-2026-09/run-old.sh \
+    --label=smoke-old --profiles=low-load --repetitions=1
+
+# the campaign
+docs/experiments/scheduler-switching-2026-09/run-old.sh --label=old-vs-new --repetitions=5
+
+# the tables, verbatim into raw/old-vs-new-analysis.txt
+docs/experiments/scheduler-switching-2026-09/old-vs-new.py raw/old-vs-new.jsonl
+
+# the committed harness's own view of the same artifact (reuse, not a reimplementation)
+python3 -c "import summarize, sys; sys.path.insert(0, '.'); \
+  summarize.workload_table(summarize.load('raw/old-vs-new.jsonl')[0])"
+```
+
+`run-old.sh` rebuilds the queue modules' jars first (a stale jar would drive a different revision of
+the old loop than the one reported), resolves `:control-plane-modules:async-queue`'s test classpath
+into `.classpath-async-queue` if the cache is missing or invalid, compiles `OldLoopComparison.java`
+together with `SchedulerSwitchBenchmark.java`, stops the Gradle daemon, and runs on a fixed
+pre-touched 1 GiB heap. The classpath is that module's test classpath, not `:execution-runtime`'s,
+because `Scheduler` implements `SmartLifecycle` and its type does not resolve without Spring; the
+async-queue test classpath carries both queue modules, the engine and Spring.

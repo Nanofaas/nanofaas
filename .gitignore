@@ -26,6 +26,10 @@ k6/results/
 experiments/k6/results/
 experiments/loadtest/results/
 experiments/.image-cache/
+# Compiled benchmark harnesses under docs/experiments/*/. Their .class files are already covered by
+# the global rule; the directory also receives generated run configuration.
+docs/experiments/*/.classes/
+docs/experiments/*/.classes-old/
 tooling/runs/
 tools/controlplane/runs/
 tools/controlplane/profiles/proxmox.toml

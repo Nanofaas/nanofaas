@@ -390,3 +390,113 @@ the committed tool. It is re-spliced from the current tool. *(Round 6 also claim
 thread CPU field, so that column is the **process** clock, and relabelling it "thread" put a false
 clock in front of a reader. Round 7 restored the process label and made `summarize.py` read the label
 off the field it actually read, so it cannot drift again.)*
+
+## 2026-09-21 — Task 12e: the refactor's own cost, old loop against new engine
+
+**State: implemented, measured, verified — and the comparison the spec asked for now exists.** Task 0
+froze thresholds and a revision but no performance figures (`BASELINE.md:155`), so §11's obligation —
+*«verificano regressioni rispetto alle implementazioni precedenti»* — was unmet: Task 12c's harness
+can only exchange strategies **inside** one engine. This step produces the missing number.
+
+**What exists now.** `OldLoopComparison.java` drives the old async loop (`Scheduler` over
+`QueueManager`/`FunctionQueueState`, dispatching into `InvocationDispatch`) as the subject of its own
+arm, and the new engine with `PerFunctionSchedulingStrategy` — the port of that same loop — as the
+other, **in one JVM**, with one shared driver, alternating repetition by repetition. `run-old.sh`
+builds it and runs it; `old-vs-new.py` turns its JSONL into the tables, importing `summarize.py`
+rather than restating its settlement rule; `raw/old-vs-new-analysis.txt` is that tool's output
+verbatim and `OLD-VS-NEW.md` is the deliverable. `budgets.json`, `SchedulerSwitchBenchmark.java` and
+`summarize.py` are **unchanged**.
+
+**It is a profile comparison — level 2 of the spec's taxonomy, not level 1.** The ruling recorded
+earlier in this ledger that cited level 1 for this comparison was wrong and stays corrected;
+`OLD-VS-NEW.md` says so in its first paragraph. Level 1 already exists in Task 12c's harness.
+
+**The design, in one line each.** One arrival script per (workload, repetition), materialised before
+either arm runs and replayed to both, so the arms are offered the *identical sequence* and a
+per-repetition difference is paired — which the committed harness could not do and says so in its own
+comment. Corpus, span, warm-up, depth cadence, trailing-window grid and JSONL schema come from the
+committed harness, which this file is compiled together with, so none of them can drift. One
+reflected constructor (`QueueManager`'s, package-private) is the entire seam; nothing in the engine's
+new API is reached. The service model publishes a due time and returns, holding the lease — the
+`T2BatchBench` busy-wait precedent is not copied.
+
+**Result — the nulls, with their resolution.** Stated beside every figure because a null without one
+is an assertion about the instrument: p99 (steady 3.5 %, whole-span 5.4 %), useful throughput
+(0.01–0.05 %), post-GC heap (0.01 %). No regression is established for those metrics on any
+unconfounded profile. One budget **MISS**: `low-load`'s steady p99, **+5.40 %** — reported as a MISS,
+not excused; in absolute terms 2.570 ms → 2.793 ms against a 100 ms contract, with the five paired
+differences running −19.52 % to +9.36 %, i.e. below what this design resolves. The unpaired design
+Tasks 12c had could not have adjudicated the 5 % p99 budget: its arms' own medians spread 17.5–22.1 %
+between repetitions, and a perfectly uniform 5 % shift of the control arm separates the arms in
+**1 workload of 6** (whole-span p99) and **1 of 5** (steady); CPU per useful completion is the same,
+1 of 6. Only post-GC heap was adjudicable unpaired, and only because its arms agree to 0.01 %.
+
+**Result — the one consistent direction.** The new engine allocates **more per useful completion** in
+every repetition of every unconfounded profile: +5.5 % (`churn-drain`), +14.7 % (`mixed-kind-retry`),
++18.5 % (`queued`), +27.5 % (`unqueued`), +27.8 % (`low-load`), 5-of-5 same-signed each. No frozen
+budget covers allocation, so there is no verdict — but the direction is consistent with the named
+hypothesis (the old loop amortises one visit over up to two dispatches; the engine's pass claims
+one). The mechanism is **not** established by this harness and the document does not guess at it.
+
+**Result — CPU per useful completion is the metric the pairing did not sharpen.** Its paired spread
+(43.15 %) exceeds its unpaired arm spread (33.31 %), so its noise is intra-run JVM activity, not host
+drift, and the 10 % budget is below this design's resolution on it. Four `MISS` rows result: three
+with the five repetitions on both sides of zero (not resolved), and `mixed-kind-retry` at
+**+29.02 %** (range +17.96…+47.92, 5-of-5 positive, every repetition above budget), corroborated by the
+window-total CPU cross-check at +29.02 %. On that one profile the cost is measured; elsewhere the
+direction is suggested and not separated. The one unfairness in this metric is declared and points
+the other way: the old arm's release path does micrometer work on the driver thread that the new
+arm's does not (M6).
+
+**`saturated` is established, huge, and NOT a loop result.** 77 % of its offers are expired by the
+engine and none by the old loop, which has no deadline: the old loop's 512-ticket queue stays
+permanently full of work already past contract, refuses 14 149 fresh offers at admission, and yields
+34 useful completions against the engine's 3 655. The row is flagged in the artifact and the document
+attributes none of it to the claim cadence — it is the **expiry policy** (M3), which this comparison
+chose, and declared, not to equalise: a reaper that shadowed the engine's is not expressible through
+the old loop's API (`poll`/`pollForDispatch` are head-only; `closeAndDrainQueued` closes the state)
+and would have been a new driver policy masquerading as the old loop's behaviour.
+
+**`queued` is the cautionary example.** The single-repetition diagnostic showed the old loop 68.5 %
+*worse* on p99; across five repetitions it is 25.5 % worse with one repetition +33 % — the range
+crosses zero, so nothing is established. That gap is why there are five repetitions and a paired
+design.
+
+**Coverage: 6 profiles × 2 arms × 5 repetitions = 60 runs, 60 of 60 conserving work**, zero driver
+failures and zero sample-cap overruns. Covered: `low-load`, `saturated`, `unqueued`, `queued`,
+`churn-drain`, `mixed-kind-retry`. Excluded, with the reason in the document: `hot-plus-500-sporadic`
+(M2 — no alignment exists), `heterogeneous-burst`, `capacity-change`, `switch-under-load` (driver
+features not implemented; the harness **refuses** them loudly rather than running a workload whose
+`note` describes something that did not happen), and **the sync arm**, not attempted in this pass —
+M8 makes it comparable only when `syncQueueMaxQueueWait == contractMs` per profile, the committed
+`SyncQueueService`/`SyncQueueInvocationEnqueuer` wiring exists, and nothing in this step speaks for
+the shared-queue side. `churn-drain`'s two window metrics are NOT MEASURABLE because it stops its
+traffic at 60 % of the span and its steady window holds no arrivals.
+
+**Corrections to the 12e brief, from the code.** The brief's included set names
+`head-of-line-blocking`, which is defined by `notReadyCount = 5` — and **readiness exists nowhere in
+the old tree** (`git grep` at `05f49dcb` for `readiness|isReady|notReady|wakeup` over the modules'
+`src/main` returns zero files) while it is new at HEAD (`EngineReadiness`). Driving it on the old arm
+would have had 5 of its 6 functions dispatch work the engine refuses — a policy difference, not a
+loop one, in the old arm's favour. It is excluded as a miscategorised inclusion, not a skipped
+profile; the brief's mismatch list does not mention readiness at all and its numbering skips M4 and
+M10. The brief's other figures were checked against the code and hold: the old loop's batch of two
+(`Scheduler.java:31`, `:208`), the engine's one claim per pass, the two loop classes' byte-identity
+across the refactor, and `FunctionCapacityRegistry`'s unchanged FQN.
+
+**Provenance, and the one artifact whose pair is not in history.** `raw/old-vs-new.jsonl` (the
+campaign) records revision `c64da0717f9ec47f60c70108b019d2b91d02c9b1` (`Add the old-loop arm and its
+driver`) with harness digest `761908913d93…` and committed-harness digest `353ee27881ef…` — **a pair
+that exists in history**, because the corpus the harness is measured on *is* that committed file.
+`raw/smoke-old.jsonl` (the smoke run, committed with the harness) records revision
+`7beabc332d356de6cbdf290328fafe7a7f39b95f` with the *same* harness digest, because it ran before the
+harness was committed: at `7beabc33` there was no `OldLoopComparison.java`. That is Task 12c's own
+pattern and its own wording — the digest identifies the build, the revision records where the tree
+was — and it is stated rather than left for a reader to discover. Both artifacts' digests match the
+files as committed (checked, not asserted).
+The host was quiet: 122 load-average samples spanning the campaign's 602 s, 1-minute load average
+**min 0.10, median 0.29, max 0.61** on 20 processors (record truncated to the campaign window and
+reduced to a strictly increasing series; the truncated lines are post-campaign and one out-of-order
+duplicate — no sample was altered). The smoke run committed with the arm is
+`raw/smoke-old.jsonl` (both arms: 208 offered, 208 admitted, 208 useful, closure 208, conserved), and
+its `offered` figure is checkable independently against the arrival script.
