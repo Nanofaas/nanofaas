@@ -197,8 +197,9 @@ exist at the pre-refactor revision**: `git grep -l EngineReadiness -- '*.java'` 
 concrete pathspec — `'platform/*/src/main'` style patterns match nothing at all under `git grep`, so
 a zero from them proves nothing; an earlier draft of this section quoted one and its evidence was
 void.) What the old tree *does* have is a different concept with a similar name: *deployment*
-readiness, `DeploymentReadiness.ensureReady(task)`, which `readiness|Readiness` matches in 16 `.java`
-files and which is consulted from the **execution** path (`ExecutionCompletionHandler`), not from the
+readiness, `DeploymentReadiness.ensureReady(task)`, which the alternation `readiness|Readiness`
+matches in **25** `.java` files (16 for either term alone, 34 for the union with `isReady`) and which
+is consulted from the **execution** path (`ExecutionCompletionHandler`), not from the
 loop's selection — and which is a **wait-for-wake**, a `CompletableFuture` that completes once the
 backend can take the attempt, not a predicate that withholds a ticket.
 
@@ -322,7 +323,7 @@ loops: see §7.4.
 | unqueued | per-function (no change) | 0-1 | 0 | yes | 603 |
 
 The old loop reaches a steady state in every workload where a steady state exists — including
-`queued`, where it takes up to 2400 ms of settled time against the new engine's 50 ms, and where its
+`queued`, where it takes up to 2400 ms of settled time against the new engine's 0 ms, and where its
 settled depth ranges 6–29 across the five repetitions against the new engine's 4–9. That spread is
 the reason `queued`'s steady figures below resolve poorly.
 
@@ -419,10 +420,14 @@ a `header` line and two `sample` lines. The two samples' figures, as emitted:
 | postGcHeapBytes | 76999840 | 77199840 |
 | driverFailures | 0 | 0 |
 
-`offered = 208` on both arms is the arrival script's own figure, and the arithmetic is checkable
-from the committed Java: the script holds the arrivals whose offset is below
-`WARMUP_MS + SPAN_MS` = 9 500 ms, and the driver stops offering at the window close, so the two arms
-are offered the same count by construction rather than by coincidence. Across the whole campaign the
+`offered = 208` on both arms is the arrival script's own figure, and both counts that belong to it
+are derivable from the committed Java. The script's horizon is `WARMUP_MS + SPAN_MS + 1_000` =
+**10 500 ms** (`OldLoopComparison.java:773`, the extra second absorbing scheduling slack), and it
+holds **226** arrivals for `low-load` over that horizon; the driver stops offering at the **window
+close**, `WARMUP_MS + SPAN_MS` = **9 500 ms**, below which the same script holds **208** — which is
+what both samples record. The two arms are therefore offered the same count by construction rather
+than by coincidence. (An earlier revision of this paragraph said the *script* ended at 9 500 ms;
+that is the driver's window close, not the horizon.) Across the whole campaign the
 analysis prints the check rather than asserting it: **`offered` is identical in 27 of the 30
 (workload, repetition) pairs, and the three that differ differ by exactly one ticket**, with the
 cause named per pair (§6).
@@ -465,7 +470,7 @@ take the sign `f` implies.
 | thread cpu per useful completion | 10 | 6 | 1 | 1 | 1 | 1 | 2 | 5 | 33.31 | 43.15 | 0.20 |
 | post-GC heap | 10 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 0.01 | 0.01 | 0.00 |
 | allocated bytes per useful completion | — | 6 | 1 | 1 | 2 | 3 | 6 | 6 | 9.57 | 5.73 | 0.00 |
-| thread cpu per window | — | 6 | 0 | 0 | 0 | 0 | 0 | 4 | 28.44 | 37.60 | 0.00 |
+| thread cpu per window | — | 6 | 0 | 0 | 0 | 0 | 1 | 4 | 28.44 | 37.60 | 0.00 |
 
 **Reading it.** The unpaired columns are the reason Task 12c could not adjudicate a 5 % or 10 %
 budget: on p99 the arms' own medians spread 17.5 % (whole-span) and 22.1 % (steady) between
@@ -478,10 +483,13 @@ adjudicable unpaired, and only because its arms agree to 0.01 %.
 the completion counts are then nearly identical, so the throughput figure is close to deterministic.
 That is what the pairing buys, and it is what makes §7.4's nulls readable.
 
-**Those medians are aggregates across workloads and are not any one workload's resolution.** Two of
-the six profiles — `saturated`, and any workload whose five paired differences already agree in sign
-— contribute `0.00` to them *by construction*: `0.00` there means the arms were already separated,
-which is not a fine resolution at all, and averaging it in pulls the median down. The table beneath
+**Those medians are aggregates across workloads and are not any one workload's resolution.** A
+profile whose five paired differences already agree in sign contributes `0.00` *by construction*:
+`0.00` there means the arms were already separated, which is not a fine resolution at all, and
+averaging it in pulls the median down. **How many profiles do that is metric-dependent, so it is
+stated per metric rather than once:** `saturated` contributes `0.00` on every metric, and on
+whole-span p99 `mixed-kind-retry` joins it — one profile on steady p99, whole-span throughput and
+steady throughput, two on whole-span p99. The table beneath
 gives the number to use whenever a specific workload's effect is established or dismissed, and it is
 the one quoted in §9.1 and §9.5:
 
@@ -513,18 +521,22 @@ except where all five repetitions agree in sign — see §9.2.
   resolution is 0.01 % (the arms' medians are identical to two decimals: 77.24–77.45 MB). The new
   engine's retained heap is not measurably different from the old loop's, against a 10 % budget.
 - **Useful throughput: indistinguishable on the four profiles this design resolves it on, to
-  0.00–0.05 %.** `low-load`, `unqueued`, `churn-drain` and `mixed-kind-retry` all sit inside ±0.02 %,
-  and each workload's *own* resolution on this metric (0.00, 0.01, 0.02 and 0.05 % — §8's table) is
-  the finest instrument in this document, because the arrival script is identical. The engine does
+  0.00–0.05 %.** `low-load`, `unqueued`, `churn-drain` and `mixed-kind-retry`: their whole-span paired deltas run
+  **−0.02 % to +0.03 %**, and their own resolutions on the **whole-span throughput column** of §8's
+  table are **0.01, 0.01, 0.02 and 0.02 %**. (Their steady-window resolutions are a different column
+  — 0.00, 0.00, n/a and 0.05 % — and an earlier revision quoted the union of the two as one list.)
+  This is the finest instrument in this document, because the arrival script is identical. The engine does
   not lose or gain useful work relative to the old loop there.
 - **`queued`'s throughput is the one exception worth stating**: its median is **+8.27 %** in the new
   engine's favour and its own resolution is 1.30 %, but one of the five repetitions is −1.30 %, so the
   direction is suggested and **not** established. It is reported as a suggestion, not as a result.
 - **p99: no difference established anywhere except `mixed-kind-retry`'s whole-span figure.** That one
   is same-signed at **+1.79 %** (range +0.87…+6.98) and below the 5 % budget, so a PASS with a
-  measured direction. Elsewhere the five repetitions straddle zero, and the workloads' own p99
-  resolutions range 3.06–43.48 % (steady) and 0.00–33.49 % (whole-span): on `queued` no 5 % effect
-  could have been established at all, and on `low-load`'s steady p99 not below 9.36 %.
+  measured direction. Elsewhere the five repetitions straddle zero, and **on the five profiles where
+  p99 is measurable** the workloads' own resolutions range **3.06–43.48 %** (steady) and
+  **0.00–33.49 %** (whole-span) — `saturated` is the sixth, and it contributes 0.00 because its arms
+  are separated everywhere. On `queued` no 5 % effect could have been established at all, and on
+  `low-load`'s steady p99 not below 9.36 %.
 - **`low-load`'s steady p99 is a budget MISS: +5.40 %.** It is reported as a MISS and not excused.
   Its ground is the straddle: the five paired differences run −19.52 % to +9.36 %, so they fall on
   both sides of zero and the median is not a measured effect. Its *second* ground, which an earlier
@@ -549,17 +561,26 @@ than waved away.** The two rows below are the same five workloads:
 | unqueued | 1100 | 1399 | +27.51 | +23.64…+30.46 | +27.53 | +23.69…+30.46 | yes |
 | low-load | 1654 | 1959 | +27.75 | +8.77…+45.92 | +27.76 | +8.80…+45.84 | yes |
 
-**Both spans, because they answer different questions.** The **per-profile medians** span
-**+5.50 % to +27.75 %** — that is the sentence's headline, and it is a statement about five medians.
-The **repetition-level** deltas span **+1.59 % to +45.92 %** across the 20 unconfounded pairs, and
-the window-total figure, which covers all 30 pairs, spans **+1.58 % to +45.84 %** over the 25
-unconfounded ones (it reaches +65.00 % on `saturated`, which is confounded and excluded here). An
-earlier draft quoted "every unconfounded profile" — which included `queued`, flagged `*` in §7.2 and
-§7.4 — and gave the window totals as "+5.5 % to +38 %", which is neither of those spans.
+**Both spans, because they answer different questions, and all three sets named, because one word
+was doing two jobs.** Three nested sets are in play, and an earlier revision called two of them
+"unconfounded" in the same paragraph:
 
-The direction holds on both readings and is **not rounded down**: even the smallest repetition-level
-allocation delta, +1.58 %, is same-signed, and the 25 unconfounded pairs are same-signed in every
-case. The `queued` confound is an expiry share of **1.0 % to 2.5 %** of its offers across the five
+| set | pairs | which | what it is for |
+|---|---|---|---|
+| expiry-clean | **20** | the four profiles that are neither `queued` nor `saturated` | the direction's independent ground |
+| not `saturated` | **25** | those four plus `queued` | the spans quoted here |
+| all measured | **30** | those five plus `saturated` | nothing — `saturated` is confounded |
+
+The **per-profile medians** of the allocation delta span **+5.50 % to +27.75 %** — that is the
+sentence's headline, and it is a statement about five medians. The **repetition-level** deltas span
+**+1.59 % to +45.92 %** for allocation per useful completion, and the **window total** spans
+**+1.58 % to +45.84 %** — both over the 25 pairs that are not `saturated`, and both identical over
+the 20 expiry-clean ones. (The all-30 window total reaches +65.00 %, on `saturated`.)
+
+The direction holds on every reading and is **not rounded down**: the smallest repetition-level
+allocation delta is **+1.59 %**, the smallest window-total one is **+1.58 %**, and both are
+same-signed across all five repetitions of every profile in the 25 — including the four that are
+expiry-clean, where the direction stands without `queued` at all. The `queued` confound is an expiry share of **1.0 % to 2.5 %** of its offers across the five
 repetitions, against a `+18.51 %` allocation delta, and removing `queued` entirely leaves the
 direction established on the four genuinely clean profiles.
 
@@ -604,7 +625,7 @@ withdrawn. The `mixed-kind-retry` direction above stands on its own repetitions,
 | admitted of offered | 4780 of 18926 | 18926 of 18926 |
 | admissionRejected | 14149 | 0 |
 | expired | 0 | 14524 |
-| completed / useful | 4181 / 34 | 4403 / 3655 |
+| completed / useful | 4267 / 34 | 4264 / 3655 |
 | useful throughput | 4.25/s | 456.86/s |
 | whole-span p99 | 1201.3 ms | 62.0 ms |
 | thread cpu per useful completion | 7.35 ms | 0.17 ms |
@@ -741,3 +762,43 @@ table are all exactly as the tool prints them.
 **One sweep found nothing and that is worth recording too:** no figure in either document is quoted
 to a precision the artifact does not carry — every percentage here is the tool's own two decimals, and
 the one place a value is stated as a range is labelled as one.
+
+### The reconciliation, and the coverage it reaches
+
+Round 1 swept for the *class* of "prose outrunning the artifact" in five themes and still missed
+things — including a table cell that paired one run's `completed` with another's `useful`. The
+diagnosis is not that prose drifts; it is that **verification was partial**, and the one place this
+document was checked by machine (its largest table) was the one place nothing was ever found. So the
+sweep is replaced by a committed reconciler, `reconcile-12e.py`, whose output is
+`raw/reconciliation-12e.txt`. It recomputes rather than reads:
+
+| what | how it is reconciled | coverage |
+|---|---|---|
+| every cell of every table (11 tables) | sheet by sheet against the artifact or the tool | **797 cells**, 0 mismatches; 13 cells are names, types or declared omissions |
+| tables quoted verbatim from the analyzer | **string equality** against the analyzer's own output | the settlement, comparison, medians, resolving-power and per-workload-resolution tables |
+| tables that reformat or rearrange | recomputed cell by cell from `raw/old-vs-new.jsonl` / `raw/smoke-old.jsonl` | coverage, smoke, allocation, saturated, pair-sets, arms, excluded |
+| numeric claims in the prose | a registry of **90 entries**, each recomputing its value from an artifact | **91 of 91** occurrences matched and recomputed, 0 mismatches |
+| prose numbers that are not claims | 15 named classes (section references, line citations, revision hashes, code constants, …) | **290 numbers**, each printed with its class and an example so the filter can be audited |
+| what is left | listed in full, never truncated | **20 numbers**, below |
+
+A table the reconciler has no checker for **fails its run**, so adding a table to this document
+requires adding a checker; and a registry entry whose claim has been reworded away **also fails**,
+so a stale pattern cannot silently stop guarding anything. Both failed repeatedly while this section
+was being written, which is the point.
+
+**One class is deliberately weaker than the rest** and is labelled as such: 31 numbers are reconciled
+only as "this figure exists in the analyzer's output". The value is checked; the sentence's
+*association* of that value with a workload or a metric is not machine-checked there. They are
+counted separately rather than folded into the strong class.
+
+**The 20 prose numbers that are neither reconciled nor classified**, taken from
+`raw/reconciliation-12e.txt` and reproduced here so the cap is not implicit: the three `git grep`
+counts in §5.7 that the registry did not anchor (0, 25, 16 — the same greps are reconciled where
+§5.7 states them in full), the `9510`/`2834` halves of §6's two median pairs, "1 out-of-order
+duplicate dropped" (§7.6), the single `6` of "1 workload of 6" (§8), "no 5 % effect" and "contribute
+0" (§9), the `100 ms` contract and `20 expiry-clean`/`all-30` counts (§9), the `20/s`–`1 120/s`
+offered rates and the `24.2/s`/`1 188.4/s` they replaced, `0.76 ms` (§9.3), "a factor of 100" (§9.4),
+the `6–29` and `4–9` settled depths (§9.5), and the `level-1` of §10. Each is either a restatement of
+a figure reconciled elsewhere in this document or a count of a set described in the same clause;
+none is a measurement standing on its own. They are listed rather than filtered because a cap that
+reads as complete when it is not is this campaign's most repeated failure.

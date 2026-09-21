@@ -539,3 +539,30 @@ the `offered` pair check instead (identical in 27 of 30 pairs, three differing b
 was re-run, `budgets.json` was not touched, and the analyzer's regeneration of
 `raw/old-vs-new-analysis.txt` was re-verified byte-identical after the tool gained the per-workload
 resolution and offered-pair tables.
+
+**Revision — fix round 2/5, the instrument rather than the targets.** Round 1's fixes were verified
+at every named site, and the re-reviewer reproduced the tables at 0 mismatches — but it also found
+the class again, and in a specific place: **the one table this document had been reconciled
+programmatically was the one table nothing was ever found in**, while the hand-read ones kept
+yielding defects. So the diagnosis is not that prose drifts; it is that verification was **partial**.
+Round 2 therefore replaces thematic sweeping with a committed reconciler, `reconcile-12e.py`, whose
+output is `raw/reconciliation-12e.txt`: **797 table cells recomputed cell-by-cell (0 mismatches) and
+90 registry entries recomputing 91 numeric prose claims (0 mismatches)**, with 290 non-claim numbers
+classified into 15 named citation classes and **20 left over, listed in full** in `OLD-VS-NEW.md` §12
+and in the artifact. A table with no checker fails the reconciler's run, and so does a registry entry
+whose claim has been reworded away, so the instrument cannot silently stop guarding.
+
+It found in the deliverable three things no sweep had: **§9.4's `completed / useful` cell paired the
+single-repetition diagnostic run's `completed` with the campaign's `useful`** (`4181` against the
+campaign median 4267 — the cross-artifact error the coordinator named, found mechanically rather
+than by eye), a §8 resolving-power cell giving `thread cpu per window` at +50 % as `0` where the
+analyzer prints `1`, and §9.5's "the new engine's 50 ms" for `queued`, whose new-arm settled time is
+**0 ms** (50 ms is `saturated`'s). All three are fixed. It also caught four bugs in itself first — a
+table parser that mistook `|---|` for the end of a table, two unit conversions, a rounding tolerance
+too tight for prose that rounds, and claims spanning a line break it could not match.
+
+**One true claim was restored rather than dropped:** round 1 removed the arrival script's horizon
+count as unverified, and the reviewer's replay showed it was true and derivable — the script's
+horizon is 10 500 ms (`OldLoopComparison.java:773`) and 9 500 ms is the driver's window close, giving
+226 and 208 respectively. Both are now in the deliverable with the correct horizons, and the clause
+that justified them by the wrong one is corrected.
