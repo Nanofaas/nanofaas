@@ -714,7 +714,7 @@ used the **uncommitted working tree**, and `run.sh` records the revision it was 
 the file it compiled. The digest is what matters, and it is `sha256sum` of `git show
 90e0e4ac:…/SchedulerSwitchBenchmark.java`: the harness was committed unchanged afterwards, at
 `90e0e4ac`. It is **not** the digest of the committed harness today — `sha256sum
-SchedulerSwitchBenchmark.java` now returns `353ee278…`, the round-3 javadoc edit — and no measurement
+SchedulerSwitchBenchmark.java` now returns `353ee278…`, the round-6 javadoc edit — and no measurement
 in this directory was produced by that build (see *Which harness produced which artifact*). This is
 the artifact the plan requires for the check:
 
@@ -919,8 +919,10 @@ Three builds, and what separates them:
   depth trajectory, trailing-window grid, thread CPU, the real capacity change, the switch at the
   span's start). It produced `raw/steady.jsonl`.
 - **`d42cd7f7…`** — the harness as committed at `90e0e4ac`. From `831828d6` it differs by a comment
-  block: `git diff 5ecd6def -- …/SchedulerSwitchBenchmark.java` showed **2** lines removed and **11**
-  added, with no executable statement touched. `raw/baseline.jsonl` carries it.
+  block: `git diff 5ecd6def 90e0e4ac -- …/SchedulerSwitchBenchmark.java` showed **2** lines removed
+  and **11** added, with no executable statement touched. (Both revisions are given because a bare
+  `5ecd6def` is compared against the working tree and returns a different count.)
+  `raw/baseline.jsonl` carries it.
 - **`353ee278…`** — the **current committed harness** (`b766cc51`'s successor). It differs from
   `d42cd7f7` by one further javadoc block, and from every other digest here by comment text only:
   `git diff 90e0e4ac -- …/SchedulerSwitchBenchmark.java` shows the seed comment replaced, with no
@@ -957,11 +959,14 @@ headline budget table, the clock-resolution table, the re-run return-to-baseline
 workload-coverage table, and the three provenance tables.
 
 A *block* is a maximal run of consecutive lines beginning with `|`, header and separator rows
-included; a blank line or a line of prose ends one. The three provenance tables are separated from
-each other by a heading and a paragraph, so they are **three** blocks, not one — counting two of them
-together is the only way to reach a total of 14, and this file does not do that. Both counts are by
-exact string match of each block against the tool's output, not by inspection; every other statement
-in this file about what is generated defers to this paragraph.
+included; a blank line or a line of prose ends one. The three provenance tables all sit under the one
+`## Provenance` heading, separated from each other by a bold lead-in line and a paragraph of prose, so
+they are **three** blocks, not one. Counting two of them as one gives a total of 14 — that is **one
+reading** under which the earlier "7 of 14" could have been written, and not a claim about the file:
+under this rule every adjacent pair of blocks in this document is separated by prose and could be
+merged the same way. Both counts here are by exact string match of each block against the tool's
+output, not by inspection; every other statement in this file about what is generated defers to this
+paragraph.
 
 The *measured* tables are the output of
 

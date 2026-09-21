@@ -46,6 +46,18 @@ measurement. It records the state Task 0 inherited and the decision that let it 
 
 ## 2026-09-21 — Task 12c: the benchmark harness, the campaign, and the frozen-budget comparison
 
+**How the rounds are numbered — canonical, and the numbering every document in this task uses.**
+Eight rounds ran: **round 1** the campaign; **round 2** the protocol correction (the switch moved to
+the start of the measured window); **round 3** the settling correction and the CPU budget's
+resolution (`5ecd6def`); **round 4** the claim and provenance corrections (`90e0e4ac`, `7f2c44c0`);
+**round 5** the fix wave's own claims (`b766cc51`); **round 6** the retracted-claims sweep
+(`7e70f9c4`); **round 7** the table count, the CPU clock moved to the tool, and the provenance
+citations (`174a1a03`); **round 8** the numbering itself and the repair of the provenance citations
+(the commit carrying this paragraph). The campaign report (`task-12c-report.md`, in the plan's
+gitignored ledger) uses these numbers for rounds 1–3 and labels the later ones "Fix round 1/5" …
+"Fix round 5/5": fix wave *k* there is **round *k + 3*** here. A round reference anywhere in this
+file, in `RESULTS.md` or in that report means the numbering on this page.
+
 **State: implemented and verified, with one regression-budget miss reported rather than smoothed.**
 The gate figure — the pause a manual switch costs — passes by roughly sixty times over.
 
@@ -239,8 +251,8 @@ committed / 0 refused; 2 live indexes; return-to-baseline pending 399 vs 400; he
   reality; event offsets described as absolute milliseconds when they are percent-of-span; and a
   `cpu/useful` column labelled process CPU — see the correction below). All four fixed, though the
   fourth fix was itself in the wrong direction: `raw/full.jsonl` carries no thread CPU field, so
-  that table's process label was right and round 4 relabelled it thread. Round 6 is where that is put
-  right.
+  that table's process label was right and round 4 relabelled it thread. **Round 7** is where that is
+  put right — see *How the rounds are numbered* at the head of this Task 12c record.
 - **The pairing claim was false and one piece of evidence leaned on it.** The four arms do *not* see
   the same arrivals: one `Random` drives three draws per arrival, so 54 of 60 (workload, repetition)
   groups differ in `offered`, by up to 301 tickets. Six groups agree, five of them `low-load`'s and
@@ -322,8 +334,10 @@ spread 0.0 %, 24 of 24) is named as passing, and the resolving-power table is co
   script's output when the headline and return-to-baseline tables are hand-written transcriptions.
   Both corrected, and the two commands that do produce the generated tables are now given.
 - **The provenance table cited a revision that does not exist**: `0062ab2a` is a pre-amend object,
-  unreachable from `HEAD`; the harness was committed at `90e0e4ac`, and the diff it describes is 2
-  lines removed and 11 added, not four and nine, checked with `git diff` rather than from memory.
+  unreachable from `HEAD`; the harness was committed at `90e0e4ac`, and the diff it describes —
+  `git diff 5ecd6def 90e0e4ac -- …/SchedulerSwitchBenchmark.java`; both revisions, because a bare
+  `5ecd6def` is compared against the working tree and returns a different count — is 2 lines removed
+  and 11 added, not four and nine, checked with `git diff` rather than from memory.
 - **`raw/baseline.jsonl`'s header pair does not exist either** — it records revision `3f352ee4` with
   harness `d42cd7f7`, because the run used the **uncommitted working tree**. The numbers are
   unaffected, and the digest is that of the file *as committed at `90e0e4ac`* — not of the committed

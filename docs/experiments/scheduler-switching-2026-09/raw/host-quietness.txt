@@ -89,7 +89,10 @@ property of the recorded artifact rather than of anything observed outside it.
 
 The wide end is explained by the workloads, not by the host: the four widest arms (31.9–32.0 %) are
 all `low-load`, whose offered rate is 20/s, so a repetition carries fewer than a hundred arrivals
-and the count itself varies. Those four arms report the *identical* count in every one of them —
+and the count itself varies. That count is larger than the 2 500 ms `windowMillis` alone would give
+at 20/s — about 50 — because the `offered` counter spans the warm-up as well as the measured span,
+the same ~4 000 ms interval that the 9 500 ms denominator below states for `raw/steady.jsonl`. Those
+four arms report the *identical* count in every one of them —
 83, 84, 71, 98 and 86 offerings in reps 1–5, the same count in all four arms. That is **not** a
 general property of this harness, and this indicator therefore covers `low-load` only. Six groups of sixty in
 `raw/steady.jsonl` have identical counts across all four arms, and five of the six are `low-load`'s;
