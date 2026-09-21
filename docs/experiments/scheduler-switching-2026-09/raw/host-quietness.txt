@@ -89,14 +89,20 @@ rather than of anything observed outside it.
 The wide end is explained by the workloads, not by the host: the four widest arms (31.9 %) are all
 `low-load`, whose offered rate is 20/s, so a 2.5 s window holds about 50 arrivals and the count
 itself varies. Those four arms report the *identical* range in every one of them — 208, 188, 174, 212 and 194
-offerings in reps 1–5, the same count in all four arms. That is a property of `low-load`
-specifically: at 20/s no retry or refill path fires, so its arms never desynchronise. It is **not**
-a general property of this harness and must not be read as one. Only one Random drives the arrival
-interval, the SYNC/ASYNC draw and the function choice, so any extra offer in one arm shifts every
-later draw in that arm: across `raw/steady.jsonl` the four arms' `offered` counts differ in **54 of
-60** (workload, repetition) groups, by up to 301 tickets (`switch-under-load`, repetition 3:
-10 680 against 10 981). The arms are therefore compared under the same offered *rate*, not over the
-same arrival *sequence*, and this indicator covers `low-load` only.
+offerings in reps 1–5, the same count in all four arms. That is **not** a general property of this
+harness, and this indicator therefore covers `low-load` only. Six groups of sixty in
+`raw/steady.jsonl` have identical counts across all four arms, and five of the six are `low-load`'s;
+the sixth is `unqueued` repetition 4. The other fifty-four differ, by up to 301 tickets
+(`switch-under-load`, repetition 3: 10 680 against 10 981).
+
+The spread scales with the offered rate, which is the useful fact: 0 tickets at 20/s (`low-load`),
+0–15 at 300/s (`unqueued`), 4–81 at 3 540/s, 37–96 at 2 000/s, 87–301 at 1 040/s
+(`switch-under-load`). Two mechanisms are consistent with that and this campaign does not separate
+them: an extra offer — a retry or a refill — shifts every later draw in that arm, because one
+Random drives the inter-arrival interval, the kind draw and the function choice; and the arrival
+loop stops when the span closes, so whether the final arrival lands inside the span is a race that
+is worth more tickets the more tickets there are. So the arms are compared under the same offered
+*rate*, not over the same arrival *sequence*.
 
 ## What this does not establish
 

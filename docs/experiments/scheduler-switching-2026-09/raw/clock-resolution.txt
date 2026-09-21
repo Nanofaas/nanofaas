@@ -35,9 +35,10 @@ A busy loop of 1 000 000 ns, measured by getCurrentThreadCpuTime:
 ## What it shows
 
 - `getProcessCpuTime` answers only in multiples of 10 ms, and does not report the interval
-  faithfully within that step: a 10.0 ms busy loop reads as 10 000 000 ns five times and as
-  20 000 000 ns three times. Its resolution is 10 ms, so a workload that accumulates a few
-  hundred milliseconds of CPU cannot have its per-completion cost resolved to 10 %.
+  faithfully within that step: a 10.0 ms busy loop reads as 10 000 000 ns in **six** of the eight
+  trials and as 20 000 000 ns in the other **two** (trials 1 and 4, in the table above). Its
+  resolution is 10 ms, so a workload that accumulates a few hundred milliseconds of CPU cannot have
+  its per-completion cost resolved to 10 %.
 - `getCurrentThreadCpuTime` reports the same 10.0 ms loop as 10 000 640-10 007 536 ns and a
   1.0 ms loop as 978 112-1 005 168 ns: sub-microsecond resolution, three orders of magnitude
   finer than the budget. This is the clock the campaign reads CPU per useful completion from.

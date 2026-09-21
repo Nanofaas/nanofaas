@@ -165,9 +165,12 @@ effective value back into the artifact, so it cannot recur unnoticed. Under the 
 and protocol that workload's steady p99 is **+0.10 % and −5.82 %**: it passes.
 
 **The CPU budget is resolvable, and it is now resolved.** `getProcessCpuTime` is quantised to 10 ms
-on this host (measured: a 10 ms busy loop reads exactly 10 000 000 ns every time), which cannot
+on this host (measured: a 10 ms busy loop reads 10 000 000 ns in six of eight trials and
+20 000 000 ns in the other two — a 10 ms step that does not report the interval faithfully inside
+it), which cannot
 resolve 10 % on a workload doing tens of completions per window. `getThreadCpuTime` resolves to
-microseconds (10 005 232 ns for the same loop). Round 3 reports CPU per useful completion from the
+microseconds (10 000 640-10 007 536 ns for the same loop). Round 3 reports CPU per useful
+completion from the
 sum of every live thread's CPU time and emits the process figure beside it. The resolution claim is
 a measurement, in `raw/clock-resolution.txt` with its source `ClockTest.java`.
 
@@ -176,8 +179,8 @@ settled, work conserved in 240 of 240):
 
 | budget | frozen | observed | verdict |
 |---|---|---|---|
-| `maxSteadyP99RegressionPercent` | 5 % | worst +9.51 %; 4 of 22 measurable comparisons over budget, **0 distinguishable** | over budget, **not distinguishable** |
-| `maxCpuPerCompletionRegressionPercent` | 10 % | worst +22.06 %; 3 of 22 over budget, **0 distinguishable** | over budget, **not distinguishable** |
+| `maxSteadyP99RegressionPercent` | 5 % | worst +9.51 %; 4 of 22 measurable comparisons over budget, 0 separable | over budget; **no regression established — the test cannot resolve 5 %** |
+| `maxCpuPerCompletionRegressionPercent` | 10 % | worst +22.06 %; 3 of 24 over budget, 0 separable | over budget; **no regression established — the test cannot resolve 10 %** |
 | `maxUsefulThroughputRegressionPercent` | 5 % | worst +2.09 % | PASS |
 | `maxPostGcHeapRegressionPercent` | 10 % | worst +0.01 % | PASS |
 | `churn-drain` (2 comparisons) | — | stops its traffic by design; no arrivals in the steady window | **not measurable** |
@@ -234,8 +237,12 @@ committed / 0 refused; 2 live indexes; return-to-baseline pending 399 vs 400; he
   `cpu/useful` column labelled process CPU while the table reads the thread figure). All four fixed.
 - **The pairing claim was false and one piece of evidence leaned on it.** The four arms do *not* see
   the same arrivals: one `Random` drives three draws per arrival, so 54 of 60 (workload, repetition)
-  groups differ in `offered`, by up to 301 tickets. Corrected in `RESULTS.md`, in the harness javadoc
-  and in `raw/host-quietness.txt`. The pairing fix itself is deliberately **not** half-applied here.
+  groups differ in `offered`, by up to 301 tickets. Six groups agree, five of them `low-load`'s and
+  the sixth `unqueued` repetition 4; the spread scales with the offered rate (0 tickets at 20/s,
+  0–15 at 300/s, up to 301 at 1 040/s), which two mechanisms both predict and this campaign does not
+  separate — an extra retry or refill offer shifting every later draw, and the span's close making
+  the final arrival a race. Corrected in `RESULTS.md`, in the harness javadoc and in
+  `raw/host-quietness.txt`. The pairing fix itself is deliberately **not** half-applied here.
 - **Two figures could not be traced to an artifact.** The quoted clock values were from an earlier
   run than the committed evidence; they are now the artifact's own numbers, re-measured, and
   `ClockTest.java` carries a package declaration. Round 1's +3851 % was quoted with no artifact
@@ -272,3 +279,49 @@ stated in `RESULTS.md` rather than left implicit.
 this task's fix rounds: *keep the mechanism verdicts, do not re-run the campaign to look for a
 different answer.* It is recorded here because until now it lived only in the campaign ledger
 (gitignored) and was therefore unverifiable from inside the repository.
+
+## 2026-09-21 — Task 12c, round 5: the fix wave's own claims corrected
+
+**State: text and tool prose only. No measurement re-run, no threshold moved.** The scoped
+re-review confirmed the framing correction came back honest — the headline table still carries
+"over budget" with +9.51 % and +22.06 % spelled out, the regression table still prints MISS on all
+seven comparisons, the limitation is stated as one of the instrument, the metric with teeth (heap,
+spread 0.0 %, 24 of 24) is named as passing, and the resolving-power table is computed by
+`summarize.py` rather than quoted. What this wave fixes is defects the wave itself introduced.
+
+- **The transient-inclusive column had become a duplicate of the delta column.** `steady_regression`
+  was handed the same extractor for both, so every window row printed its delta twice and the
+  whole-span figures — including the informative ones (`queued` +9.36 % steady against **+22.68 %**
+  whole-span) — were gone while the label promising them stayed. Restored: the transient counterpart
+  of a window metric is now the whole-span figure, and whole-run rows say `— (no steady form)`.
+- **The clock evidence contradicted its own data.** `raw/clock-resolution.txt` said the 10 ms loop
+  read 10 000 000 ns "five times and 20 000 000 ns three times"; its table says six and two. Fixed to
+  the data, in the file this task cites as the evidence for the CPU budget's adjudication.
+- **"Only `low-load` stays in lockstep" was one group too strong.** Six of sixty groups agree:
+  `low-load`'s five, and `unqueued` repetition 4 — which the stated mechanism ("at 20/s no extra path
+  fires") cannot explain. The count is corrected and the mechanism sentence replaced with one that
+  covers its own evidence: the spread scales with the offered rate, two mechanisms predict that, and
+  this campaign does not separate them.
+- **`churn-drain`'s row count was wrong** — the table has 8 rows, 4 not measurable and 4 passing, not
+  2 and 2. Corrected.
+- **The tool was not brought to the corrected wording**: it printed "0 of those distinguishable"
+  where the document says "separable". Aligned.
+- **`legacy_regression`'s docstring described the wrong pairing**, contradicting both the code and
+  its own inline comment; it now describes what the function does.
+- **The reproduction block and the "not retyped" claim were both wrong.** The block named
+  `raw/full.jsonl` for tables that come from `raw/steady.jsonl`; the claim said every table is the
+  script's output when the headline and return-to-baseline tables are hand-written transcriptions.
+  Both corrected, and the two commands that do produce the generated tables are now given.
+- **The provenance table cited a revision that does not exist**: `0062ab2a` is a pre-amend object,
+  unreachable from `HEAD`; the harness was committed at `90e0e4ac`, and the diff it describes is 2
+  lines removed and 11 added, not four and nine, checked with `git diff` rather than from memory.
+- **`raw/baseline.jsonl`'s header pair does not exist either** — it records revision `3f352ee4` with
+  harness `d42cd7f7`, because the run used the **uncommitted working tree**. The numbers are
+  unaffected and the digest matches the committed file exactly; the text now says which is which.
+- **The resolving-power caption overclaimed its own method**: the code shifts the *control* arm's own
+  five values and tests separation from itself, so the table is a deterministic restatement of the
+  arms' spread and not an independent power calculation. Reworded to what the code does. It is the
+  more conservative reading either way, and the verdicts do not move.
+- The duplicated pairing table — hand-written in the narrative and generated below it, with different
+  column labels for identical numbers — is now generated in one place, with the narrative pointing
+  at it.

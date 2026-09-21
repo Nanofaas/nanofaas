@@ -126,12 +126,15 @@ def workload_table(samples):
 # 4. Switched arm against the same strategy's no-change arm: the four regression budgets
 # ----------------------------------------------------------------------------------------------
 def legacy_regression(samples):
-    """The round-1 protocol's table: the switched arm compared against the strategy it *started*
-    on, over the whole measured window — how round 1 measured, and the artifact the mid-window
-    mixture defect is visible in. Round-3 artifacts do not call this; they call steady_regression,
-    which compares against the strategy the arm ends on and segments the settling. Kept because a
-    committed artifact has to be reproducible by the committed tool, and raw/full.jsonl is this
-    protocol's output."""
+    """The round-1 artifact's table: the whole measured window, no settling segmentation, so its
+    "steady" rows are whole-window figures mislabelled by that protocol's own vocabulary.
+
+    It pairs like the corrected table — each switched arm against the strategy it *ends* on — because
+    this function was rewritten when the pairing defect was fixed, and the artifact it is pointed at
+    (`raw/full.jsonl`) was measured under the corrected pairing with the switch at the window's
+    start. What it lacks is the segmentation: no depth trajectory, no trailing-window grid, so a
+    round-1 artifact cannot support the steady table. Kept because a committed artifact has to be
+    reproducible by the committed tool."""
     table = per_arm(samples)
     # Each switched arm is compared against the arm whose strategy it ends on: the switch lands at
     # the start of the measured window, so the whole window runs on the target strategy and the
@@ -331,10 +334,16 @@ def steady_regression(samples, settlements):
     ]
     window_p99 = lambda r: r["trailing"][str(STEADY_WINDOW_MS)]["p99Nanos"] / 1e6
     window_tput = lambda r: r["trailing"][str(STEADY_WINDOW_MS)]["usefulThroughputPerSecond"]
+    # The transient-inclusive counterpart is the whole-span figure — the same quantity over the
+    # whole measured span instead of the trailing window. For the window metrics those two differ,
+    # and the difference is the settling; printing the steady delta twice, as an earlier draft did,
+    # removed the very comparison the column exists for.
+    whole_p99 = lambda r: r["p99Nanos"] / 1e6
+    whole_tput = lambda r: r["usefulThroughputPerSecond"]
     metrics = [
-        ("steady p99", window_p99, BUDGETS["maxSteadyP99RegressionPercent"], "window", window_p99),
+        ("steady p99", window_p99, BUDGETS["maxSteadyP99RegressionPercent"], "window", whole_p99),
         ("steady useful throughput", window_tput,
-         BUDGETS["maxUsefulThroughputRegressionPercent"], "window", window_tput),
+         BUDGETS["maxUsefulThroughputRegressionPercent"], "window", whole_tput),
         ("thread cpu per useful completion",
          lambda r: r["threadCpuPerUsefulCompletionNanos"],
          BUDGETS["maxCpuPerCompletionRegressionPercent"], "whole run", None),
@@ -426,11 +435,14 @@ def resolving_power(samples, verdicts):
     }
     factors = (0.05, 0.10, 0.20, 0.30, 0.50, 1.00)
     print("## Resolving power: the smallest consistent regression this test could have caught\n")
-    print("Each cell is how many eligible comparisons would read `disjoint` if the switched arm's "
-          "true value were exactly (1 + factor) times its control's, arm by arm — a uniform "
-          "multiplicative effect, the easiest possible case to detect, and one the test still has to "
-          "beat. A budget well below the row's first detectable factor cannot have been adjudicated "
-          "by this campaign.\n")
+    print("The operation is deterministic and reads one arm: each control arm's own five values "
+          "are multiplied by (1 + factor) and tested for separation from that same control's "
+          "range. It never reads the switched arm's data, so the table is a restatement of the "
+          "control arms' own spread — how much a perfectly uniform shift would have to be before "
+          "this test could see it at all — and not an independent power calculation over the "
+          "observed effect. It is the more conservative reading for that reason: a real effect "
+          "carries noise the shifted arm does not have. A budget below the row's first detectable "
+          "factor could not have been adjudicated by this campaign.\n")
     print("| metric | budget % | eligible | " + " | ".join(f"+{int(f * 100)} %" for f in factors)
           + " | median arm spread % |")
     print("|---|---|---|" + "---|" * len(factors) + "---|")
@@ -569,7 +581,7 @@ def budget_table(switches, baseline, summary, samples, verdicts):
             note += f"; {unmeasured} comparison(s) not measurable (see the table)"
         if misses:
             note = f"; {len(misses)} of {len(measurable)} measurable comparisons over budget, " \
-                   f"{len(separable)} of those distinguishable" + note
+                   f"{len(separable)} of those separable" + note
         row(name, budget, f"{worst_value:+.2f} %" if measurable else "not measured",
             "worst switched-vs-no-change delta (see the regression table)" + note,
             ok, unit="%")
