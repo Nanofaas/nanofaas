@@ -1,0 +1,35 @@
+SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+[bench] capacity change to 8
+[bench] warm-up capacity-change per-function (no change)
+[bench] capacity change to 8
+[bench] warm-up capacity-change shared-queue (no change)
+[bench] capacity change to 8
+[bench] warm-up capacity-change per-function -> shared-queue
+[bench] capacity change to 8
+[bench] warm-up capacity-change shared-queue -> per-function
+[bench] capacity change to 8
+[bench] capacity-change per-function (no change) rep=1 useful=6123 p99=34.532ms backlogMax=24
+[bench] capacity change to 8
+[bench] capacity-change shared-queue (no change) rep=1 useful=5673 p99=148.780ms backlogMax=83
+[bench] capacity change to 8
+[bench] capacity-change per-function -> shared-queue rep=1 useful=5784 p99=144.397ms backlogMax=95
+[bench] capacity change to 8
+[bench] capacity-change shared-queue -> per-function rep=1 useful=5927 p99=85.045ms backlogMax=88
+[bench] capacity change to 8
+[bench] capacity-change shared-queue -> per-function rep=2 useful=5963 p99=84.215ms backlogMax=86
+[bench] capacity change to 8
+[bench] capacity-change per-function -> shared-queue rep=2 useful=5775 p99=147.758ms backlogMax=86
+[bench] capacity change to 8
+[bench] capacity-change shared-queue (no change) rep=2 useful=5642 p99=147.973ms backlogMax=86
+[bench] capacity change to 8
+[bench] capacity-change per-function (no change) rep=2 useful=6101 p99=37.588ms backlogMax=21
+[bench] capacity change to 8
+[bench] capacity-change per-function (no change) rep=3 useful=6125 p99=63.348ms backlogMax=36
+[bench] capacity change to 8
+[bench] capacity-change shared-queue (no change) rep=3 useful=5605 p99=146.554ms backlogMax=104
+[bench] capacity change to 8
+[bench] capacity-change per-function -> shared-queue rep=3 useful=5701 p99=148.317ms backlogMax=103
+[bench] capacity change to 8
+[bench] capacity-change shared-queue -> per-function rep=3 useful=6030 p99=93.777ms backlogMax=82

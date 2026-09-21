@@ -1,0 +1,100 @@
+# Was the host quiet while the campaign ran?
+
+The campaign is a latency, CPU and post-GC heap measurement. A concurrent CPU-bound run does not
+corrupt a file, it corrupts the number, silently — so this records what was checked and, just as
+importantly, what was not.
+
+## What was controlled
+
+- **Build.** `run.sh` stops Gradle's daemon (`./gradlew --stop`) immediately before the measured JVM
+  starts, so no Gradle process — daemon, worker or build — existed at any point during a run. The
+  classpath was resolved and the harness compiled before that point.
+- **Serialisation.** The smoke run, the campaign and the six window-length diagnostics were run one
+  at a time, never concurrently, and nothing else CPU-bound was started while any of them ran. The
+  campaign this file reports on began at `2026-09-21T14:07:15.862268874Z`.
+- **Host.** gx10-1b52, 20 CPUs, Linux 6.17.0-1032-nvidia aarch64 (Linux, kernel
+  Linux 6.17.0-1032-nvidia aarch64).
+
+## What was measured
+
+`/proc/loadavg` (1-minute) sampled every 45 s, 40 samples from 2026-09-21T15:38:06+02:00 to
+2026-09-21T16:07:21+02:00:
+
+```
+epoch_seconds  loadavg_1min
+   1789997886          0.85
+   1789997931          0.53
+   1789997976          0.25
+   1789998021          0.46
+   1789998066          0.22
+   1789998111          0.24
+   1789998156          0.30
+   1789998201          0.20
+   1789998246          0.16
+   1789998291          0.12
+   1789998336          0.45
+   1789998381          0.21
+   1789998426          0.56
+   1789998471          0.35
+   1789998516          0.52
+   1789998561          0.30
+   1789998606          0.14
+   1789998651          0.13
+   1789998696          0.14
+   1789998741          0.20
+   1789998786          0.30
+   1789998831          0.34
+   1789998876          0.25
+   1789998921          0.12
+   1789998966          0.30
+   1789999011          0.24
+   1789999056          0.39
+   1789999101          0.49
+   1789999146          0.52
+   1789999191          0.49
+   1789999236          0.27
+   1789999281          0.26
+   1789999326          0.36
+   1789999371          0.36
+   1789999416          0.34
+   1789999461          0.30
+   1789999506          0.19
+   1789999551          0.09
+   1789999596          0.08
+   1789999641          1.14
+```
+
+1-minute load over that span: min 0.08, max 1.14 on 20 CPUs.
+
+Readings taken either side of the campaign itself: **0.17** (1-minute) immediately before it
+started, **0.41** immediately after it finished.
+
+## Coverage limit — stated, not glossed
+
+The sampler's 2026-09-21T15:38:06+02:00–2026-09-21T16:07:21+02:00 span covers the window-length diagnostics and the tail
+of the preceding full run, and it ends within seconds of this campaign's own start. **The campaign
+itself is not covered by that sampling.** For the campaign the evidence is the readings either side
+of it, the absence of any Gradle process, and the fact that nothing else was started — plus the
+indicator below, which is the one that comes from the campaign's own artifact.
+
+## The in-artifact indicator
+
+A host with a competing CPU-bound process does not produce repetitions that agree closely. In
+`raw/full.jsonl` the useful-throughput spread across the five repetitions, over all 48
+(workload, arm) pairs, has a **median of 3.12 %**, with 37 of the 48 under 5 % and 40 of the 48
+under 10 %. That is the shape of an undisturbed host, and it is a property of the recorded artifact
+rather than of anything observed outside it.
+
+The wide end is explained by the workloads, not by the host: the four widest arms (31.9 %) are all
+`low-load`, whose offered rate is 20/s, so a 2.5 s window holds about 50 arrivals and the count
+itself varies. Those four arms report the *identical* range, 28.4–39.2/s, in every one of them —
+which is the corpus seeding doing what it is for: the four arms of a repetition saw the same
+arrivals, so an arm-to-arm difference there cannot be arrival-count noise.
+
+## What this does not establish
+
+It does not certify the machine was idle. Other sessions on this host were alive throughout (an
+editor, and other agent processes at a few percent of one core each). The claim this file supports
+is the narrower one: no Gradle build, no second sampling run and no other CPU-bound work of the
+kind that would move these figures was running, and the campaign's own dispersion is consistent
+with that.

@@ -1,0 +1,19 @@
+SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+[bench] warm-up head-of-line-blocking per-function (no change)
+[bench] warm-up head-of-line-blocking shared-queue (no change)
+[bench] warm-up head-of-line-blocking per-function -> shared-queue
+[bench] warm-up head-of-line-blocking shared-queue -> per-function
+[bench] head-of-line-blocking per-function (no change) rep=1 useful=615 p99=2.991ms backlogMax=137
+[bench] head-of-line-blocking shared-queue (no change) rep=1 useful=602 p99=152.565ms backlogMax=132
+[bench] head-of-line-blocking per-function -> shared-queue rep=1 useful=602 p99=146.423ms backlogMax=132
+[bench] head-of-line-blocking shared-queue -> per-function rep=1 useful=615 p99=3.290ms backlogMax=137
+[bench] head-of-line-blocking shared-queue -> per-function rep=2 useful=615 p99=3.206ms backlogMax=146
+[bench] head-of-line-blocking per-function -> shared-queue rep=2 useful=606 p99=134.377ms backlogMax=148
+[bench] head-of-line-blocking shared-queue (no change) rep=2 useful=602 p99=136.853ms backlogMax=148
+[bench] head-of-line-blocking per-function (no change) rep=2 useful=616 p99=2.862ms backlogMax=139
+[bench] head-of-line-blocking per-function (no change) rep=3 useful=575 p99=2.732ms backlogMax=146
+[bench] head-of-line-blocking shared-queue (no change) rep=3 useful=570 p99=131.431ms backlogMax=132
+[bench] head-of-line-blocking per-function -> shared-queue rep=3 useful=568 p99=131.128ms backlogMax=137
+[bench] head-of-line-blocking shared-queue -> per-function rep=3 useful=579 p99=3.548ms backlogMax=146

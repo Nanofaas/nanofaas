@@ -1,12 +1,4 @@
 SLF4J(W): No SLF4J providers were found.
 SLF4J(W): Defaulting to no-operation (NOP) logger implementation
 SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
-[bench] backlog=100 rep=1 pause=3.378ms pending=99 liveIndexes=1 outcome=COMMITTED
-[bench] warm-up low-load per-function (no change)
-[bench] warm-up low-load shared-queue (no change)
-[bench] warm-up low-load per-function -> shared-queue
-[bench] warm-up low-load shared-queue -> per-function
-[bench] low-load per-function (no change) rep=1 useful=64 p99=2.906ms backlogMax=0
-[bench] low-load shared-queue (no change) rep=1 useful=64 p99=2.740ms backlogMax=0
-[bench] low-load per-function -> shared-queue rep=1 useful=64 p99=2.532ms backlogMax=0
-[bench] low-load shared-queue -> per-function rep=1 useful=64 p99=2.628ms backlogMax=0
+[bench] backlog=100 rep=1 pause=2.222ms pending=99 liveIndexes=1 outcome=COMMITTED

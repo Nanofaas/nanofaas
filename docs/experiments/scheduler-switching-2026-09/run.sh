@@ -48,13 +48,16 @@ mkdir -p "$HERE/raw"
 (cd "$ROOT" && ./gradlew --stop > /dev/null 2>&1) || true
 
 SHA=$(cd "$ROOT" && git rev-parse HEAD)
+# The harness source is data that changes independently of the repository revision, so its own
+# digest travels in the artifact beside the SHA that produced it.
+HARNESS_SHA=$(sha256sum "$SRC" | cut -d' ' -f1)
 
 # A fixed, pre-touched heap: post-GC heap and the pause figures are only comparable across arms
 # when the heap the arms run in is the same one.
 java -Xms1g -Xmx1g -XX:+AlwaysPreTouch \
      -cp "$(cat "$CP_CACHE"):$OUT" \
      --enable-native-access=ALL-UNNAMED \
-     -Dnanofaas.sha="$SHA" -Dnanofaas.artifact=jvm \
+     -Dnanofaas.sha="$SHA" -Dnanofaas.harnessSha="$HARNESS_SHA" -Dnanofaas.artifact=jvm \
      it.unimib.datai.nanofaas.SchedulerSwitchBenchmark \
      --budgets="$HERE/budgets.json" "$@" \
      2> >(tee "$HERE/raw/$LABEL.err" >&2) | tee "$HERE/raw/$LABEL.jsonl"

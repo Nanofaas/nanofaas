@@ -136,7 +136,6 @@ public final class SchedulerSwitchBenchmark {
         int[] backlogs = opts.containsKey("backlogs")
                 ? parseInts(opts.get("backlogs")) : budgets.switchBacklogSizes();
         int windowMs = intOpt(opts, "window-ms", 0);
-        int switches = intOpt(opts, "switches", 0);
         Set<String> parts = Set.of(opts.getOrDefault("parts", "backlog,profiles,switches").split(","));
         String selection = opts.getOrDefault("profiles", "all");
 
@@ -158,8 +157,11 @@ public final class SchedulerSwitchBenchmark {
                 new WorkloadCampaign(profile, repetitions).run();
             }
         }
-        if (parts.contains("switches") && switches > 0) {
-            new ReturnToBaseline(switches).run();
+        if (parts.contains("switches")) {
+            // The count is the frozen one, never an option: a default of zero would let the
+            // documented command run everything except the switch-count check, and a silently
+            // omitted part is indistinguishable from a passing one.
+            new ReturnToBaseline(budgets.switchesInSoak()).run();
         }
         emitSummary(budgets);
         out.flush();
@@ -177,6 +179,8 @@ public final class SchedulerSwitchBenchmark {
                 .append(",\"startedAt\":\"").append(Instant.now()).append('"')
                 .append(",\"sha\":\"").append(prop("nanofaas.sha", "unknown")).append('"')
                 .append(",\"artifact\":\"").append(prop("nanofaas.artifact", "jvm")).append('"')
+                .append(",\"harnessSha256\":\"").append(prop("nanofaas.harnessSha", "unknown"))
+                .append('"')
                 .append(",\"jvm\":\"").append(escape(System.getProperty("java.vm.name", "?"))).append(' ')
                 .append(escape(System.getProperty("java.vm.version", "?"))).append('"')
                 .append(",\"javaVersion\":\"").append(escape(System.getProperty("java.version", "?")))
@@ -287,6 +291,11 @@ public final class SchedulerSwitchBenchmark {
         final int[] perFunctionSync;
         final int[] perFunctionAsync;
 
+        /** True when this run's arm performs a manual switch; the window waits for it. */
+        volatile boolean switchPending;
+        volatile boolean switchArmed;
+        volatile boolean switchDone;
+
         volatile long windowStartNanos;
         volatile long windowEndNanos;
         /** When the measured window closes. Set by the driver before any completion is recorded. */
@@ -316,6 +325,7 @@ public final class SchedulerSwitchBenchmark {
             // same offered rate, so an arm comparison is paired rather than merely similar.
             this.seed = 208_000L + profile.name.hashCode() * 31L + repetition;
 
+            this.switchPending = arm.switched();
             this.store = new PendingWorkStore(profile.maxPending);
             for (String function : profile.functions) {
                 capacity.register(function, profile.capacity);
@@ -396,20 +406,28 @@ public final class SchedulerSwitchBenchmark {
             driverThread.start();
 
             if (profile.windowMs > 0) {
-                long giveUp = System.nanoTime() + driver.budgetNanos;
-                while (windowStartNanos == 0L && System.nanoTime() < giveUp) {
-                    LockSupport.parkNanos(100_000L);
-                    if (!driverThread.isAlive()) {
-                        break;
+                if (arm.switched()) {
+                    // The switch lands on a fully loaded engine (the warm-up load is running and
+                    // the driver keeps servicing it), and the measured window opens only once the
+                    // switch has committed. That is what makes the comparison a same-strategy one:
+                    // the whole measured window then runs on the target, so the delta against the
+                    // target's no-change arm is the switch's own residue and not the other
+                    // strategy's steady state leaking into the average.
+                    long giveUp = System.nanoTime() + driver.budgetNanos;
+                    while (!switchArmed && System.nanoTime() < giveUp && driverThread.isAlive()) {
+                        LockSupport.parkNanos(100_000L);
                     }
+                    if (switchArmed) {
+                        performSwitch(arm.target);
+                    } else {
+                        broken = true;
+                        report("window never armed for the switch: " + profile.name);
+                    }
+                    switchDone = true;
                 }
-                if (arm.switched() && windowStartNanos != 0L) {
-                    long switchAt = windowStartNanos + (profile.windowMs / 2) * 1_000_000L;
-                    long wait = switchAt - System.nanoTime();
-                    if (wait > 0) {
-                        LockSupport.parkNanos(wait);
-                    }
-                    performSwitch(arm.target);
+                long giveUp = System.nanoTime() + driver.budgetNanos;
+                while (windowStartNanos == 0L && System.nanoTime() < giveUp && driverThread.isAlive()) {
+                    LockSupport.parkNanos(100_000L);
                 }
             }
 
@@ -530,7 +548,14 @@ public final class SchedulerSwitchBenchmark {
                         serviceDue(now);
                         if (profile.windowMs > 0) {
                             if (windowStartNanos == 0L && now >= warmupEnd) {
-                                openWindow(now);
+                                if (switchPending && !switchDone) {
+                                    // Hand the switch to the caller and keep servicing the load:
+                                    // the switch must land on a running engine, and the backlog it
+                                    // rebuilds has to be a real one.
+                                    switchArmed = true;
+                                } else {
+                                    openWindow(now);
+                                }
                             }
                             // A profile with no measured window is bounded by its caller, not by
                             // a clock: this is how the return-to-baseline phase keeps the load
