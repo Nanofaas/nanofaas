@@ -132,10 +132,11 @@ artifact carries them (`low-load`'s steady p99 resolves to **9.36 %**, `unqueued
 **The nulls, with their resolutions.**
 
 - **Steady p99, useful throughput, post-GC heap: no regression established on any expiry-clean
-  profile.** Useful throughput resolves to **0.01–0.03 %** paired — §7.4's median across the
-  resolved profiles, the same table the 12e document's own headline quotes; §9.1 states the
-  per-column figures instead (0.01–0.02 % whole-span, 0.00–0.05 % steady), which is why the union of
-  the two is not quoted here. Post-GC heap resolves to **0.01 %**, with
+  profile.** Useful throughput resolves to **0.01–0.03 %** paired — §8's median, the figure that
+  section's own headline sentence introduces. §9.1 labels the same metric differently: its headline
+  range for useful throughput is **0.00–0.05 %**, and it then gives the two columns separately
+  (0.01–0.02 % whole-span; 0.00, 0.00, n/a and 0.05 % steady), which is why the union of the two is
+  not quoted here. Post-GC heap resolves to **0.01 %**, with
   every per-profile median *negative* (the new engine's heap is marginally the lower of the two) —
   five of the six profiles are also same-signed, `low-load` alone having a range that crosses zero.
 - **One budget MISS, reported as a MISS and not excused:** `low-load`'s steady p99 at **+5.40 %**

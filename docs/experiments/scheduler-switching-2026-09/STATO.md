@@ -946,8 +946,8 @@ below.
   either arm runs and replayed to both. **60 runs, 60 of 60 conserving work**, zero driver failures,
   zero sample-cap overruns. The nulls and their resolutions: steady p99 **3.5 %** (median across
   workloads; `low-load`'s own is 9.36 %), whole-span p99 **5.4 %** (`unqueued`'s 11.41 %), useful
-  throughput **0.01–0.03 %**, post-GC heap **0.01 %** with all six per-profile medians negative
-  negative. `budgets.json`, `SchedulerSwitchBenchmark.java` and `summarize.py` unchanged.
+  throughput **0.01–0.03 %**, post-GC heap **0.01 %** with all six per-profile medians negative.
+  `budgets.json`, `SchedulerSwitchBenchmark.java` and `summarize.py` unchanged.
 - **Limits** (i) **allocation per useful completion is consistently heavier in the new engine** —
   5 of 5 same-signed on every non-confounded profile, per-profile medians **+5.5 % to +27.8 %**,
   repetition-level deltas **+1.59 % to +45.92 %**, window totals **+1.58 % to +45.84 %**; **no frozen

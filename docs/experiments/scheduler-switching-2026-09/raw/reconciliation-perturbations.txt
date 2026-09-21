@@ -24,7 +24,7 @@
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose lines read (tables, code fences and §12 excluded): **550** of 925 lines
 - prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
@@ -100,7 +100,7 @@ caught   the §5.7 grep count, which is reconciled by running git grep
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose lines read (tables, code fences and §12 excluded): **550** of 925 lines
 - prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
@@ -177,7 +177,7 @@ caught   a cell of the table quoted verbatim from the analyzer
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose lines read (tables, code fences and §12 excluded): **550** of 925 lines
 - prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
@@ -254,7 +254,7 @@ caught   the cross-artifact cell: one run's completed, another's useful
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose lines read (tables, code fences and §12 excluded): **550** of 925 lines
 - prose numbers classified as citations, references or code rather than claims about the artifact: **288**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
@@ -336,7 +336,7 @@ caught   a value swapped to another row of the analyzer's table
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose lines read (tables, code fences and §12 excluded): **550** of 925 lines
 - prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
@@ -412,7 +412,7 @@ caught   a metric-dependent count, written in a word
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose lines read (tables, code fences and §12 excluded): **550** of 925 lines
 - prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
@@ -488,7 +488,7 @@ caught   a registry claim
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose lines read (tables, code fences and §12 excluded): **550** of 925 lines
 - prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
@@ -564,7 +564,7 @@ caught   a claim written in words
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose lines read (tables, code fences and §12 excluded): **550** of 925 lines
 - prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
@@ -641,7 +641,7 @@ caught   a cell of the settlement table
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose lines read (tables, code fences and §12 excluded): **550** of 925 lines
 - prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
@@ -717,7 +717,7 @@ caught   the instrument's own table count
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose lines read (tables, code fences and §12 excluded): **550** of 925 lines
 - prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
@@ -793,7 +793,7 @@ caught   an endpoint of an allocation range
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose lines read (tables, code fences and §12 excluded): **550** of 925 lines
 - prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
@@ -870,7 +870,7 @@ caught   a per-class occurrence total in §12 — the document's own account of 
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose lines read (tables, code fences and §12 excluded): **550** of 925 lines
 - prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |
