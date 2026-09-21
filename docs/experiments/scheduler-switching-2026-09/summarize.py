@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Turns the harness's JSONL into the tables RESULTS.md records.
 
-    ./summarize.py raw/full.jsonl
+    ./summarize.py raw/steady.jsonl   # the corrected-protocol tables
+    ./summarize.py raw/full.jsonl     # the round-1 protocol's tables
 
 Every figure RESULTS.md quotes against a frozen budget comes from this script's output, so the
 comparison can be re-derived from the raw artifact rather than trusted. The budgets are read from

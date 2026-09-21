@@ -69,7 +69,8 @@ harness changed after that commit and the repository SHA alone would not say so.
 ```bash
 ./run.sh --label=full                                  # the campaign: 260 samples, 164 switch events,
                                                        # 1000-switch phase, one artifact
-python3 summarize.py raw/full.jsonl                    # every table in RESULTS.md
+python3 summarize.py raw/steady.jsonl                    # the corrected-protocol tables, the resolving power and the pairing table
+python3 summarize.py raw/full.jsonl                    # the round-1 tables, and the mechanism rows
 ./run.sh --label=smoke --parts=backlog --backlogs=100 --repetitions=1
 ./run.sh --label=diagcc4000 --parts=profiles --profiles=capacity-change --repetitions=3 --window-ms=4000
 ./run.sh --label=diagcc10000 --parts=profiles --profiles=capacity-change --repetitions=3 --window-ms=10000
@@ -90,8 +91,8 @@ stopped before the measured JVM starts), no other sampling run.
 | `switchesInSoak` | 1 000 | 1 000 committed, 0 refused | PASS |
 | `maxUsefulThroughputRegressionPercent` | 5 % | +4.11 % | PASS |
 | `maxPostGcHeapRegressionPercent` | 10 % | +0.01 % | PASS |
-| `maxSteadyP99RegressionPercent` | 5 % | +76.13 %, 1 of 24 comparisons distinguishable | **MISS** |
-| `maxCpuPerCompletionRegressionPercent` | 10 % | +23.83 %, 8 of 24 over budget, 0 distinguishable | **MISS** |
+| `maxSteadyP99RegressionPercent` | 5 % | +76.13 %, 1 of 24 comparisons separable *(round 1's reading, on a protocol later found to pool two strategies)* | **MISS** |
+| `maxCpuPerCompletionRegressionPercent` | 10 % | +23.83 %, 8 of 24 over budget, 0 separable *(round 1's reading, through the 10 ms process clock)* | **MISS** |
 
 The one distinguishable miss is `capacity-change` switching `shared-queue → per-function`
 (p99 48.704 ms → 85.784 ms, disjoint ranges) and it is a **settling transient, not the switch
@@ -183,7 +184,7 @@ settled, work conserved in 240 of 240):
 | `maxCpuPerCompletionRegressionPercent` | 10 % | worst +22.06 %; 3 of 24 over budget, 0 separable | over budget; **no regression established — the test cannot resolve 10 %** |
 | `maxUsefulThroughputRegressionPercent` | 5 % | worst +2.09 % | PASS |
 | `maxPostGcHeapRegressionPercent` | 10 % | worst +0.01 % | PASS |
-| `churn-drain` (2 comparisons) | — | stops its traffic by design; no arrivals in the steady window | **not measurable** |
+| `churn-drain`'s 4 window rows | — | stops its traffic by design, so its steady window holds no arrivals. Its 4 whole-run rows (CPU, heap) are measured and all pass | **4 not measurable, 4 pass** |
 
 Seven comparisons exceed their threshold and **every one sits inside its arms' own five-repetition
 ranges**; the brief's disposition for that case is to declare the result **not distinguishable** and
@@ -230,7 +231,8 @@ committed / 0 refused; 2 live indexes; return-to-baseline pending 399 vs 400; he
 - **The `churn-drain` exemption was over-broad.** Calling CPU-per-completion and post-GC heap
   "steady" dropped two plan-mandated comparisons for a workload that stops its traffic. Both are
   whole-run quantities and both are answerable: **+7.26 % / +7.67 % CPU, +0.00 % / +0.00 % heap, all
-  inside budget.** Only its two window rows are genuinely unmeasurable, and they say so.
+  inside budget.** Only its four window rows (steady p99 and steady useful throughput, one per
+  direction) are genuinely unmeasurable; its four whole-run rows pass, and the table says so.
 - **The coverage table contradicted the harness** on four counts (`capacity-change` still described
   as raising 2 → 8, which is the defect round 3 removed; a stop offset of 1.8 s against a 4.8 s
   reality; event offsets described as absolute milliseconds when they are percent-of-span; and a
@@ -238,10 +240,11 @@ committed / 0 refused; 2 live indexes; return-to-baseline pending 399 vs 400; he
 - **The pairing claim was false and one piece of evidence leaned on it.** The four arms do *not* see
   the same arrivals: one `Random` drives three draws per arrival, so 54 of 60 (workload, repetition)
   groups differ in `offered`, by up to 301 tickets. Six groups agree, five of them `low-load`'s and
-  the sixth `unqueued` repetition 4; the spread scales with the offered rate (0 tickets at 20/s,
-  0–15 at 300/s, up to 301 at 1 040/s), which two mechanisms both predict and this campaign does not
-  separate — an extra retry or refill offer shifting every later draw, and the span's close making
-  the final arrival a race. Corrected in `RESULTS.md`, in the harness javadoc and in
+  the sixth `unqueued` repetition 4. **The spread is not a function of the offered rate** — the
+  widest is at 1 148/s measured and a higher-rate workload spreads less (`hot-plus-500-sporadic`,
+  2 219/s, 4–81 against `switch-under-load`'s 87–301) — so no rate-scaling story is told; two
+  mechanisms are present and this campaign does not measure them apart, and `raw/host-quietness.txt`
+  carries the per-workload table. Corrected in `RESULTS.md`, in the harness javadoc and in
   `raw/host-quietness.txt`. The pairing fix itself is deliberately **not** half-applied here.
 - **Two figures could not be traced to an artifact.** The quoted clock values were from an earlier
   run than the committed evidence; they are now the artifact's own numbers, re-measured, and
@@ -299,9 +302,10 @@ spread 0.0 %, 24 of 24) is named as passing, and the resolving-power table is co
   the data, in the file this task cites as the evidence for the CPU budget's adjudication.
 - **"Only `low-load` stays in lockstep" was one group too strong.** Six of sixty groups agree:
   `low-load`'s five, and `unqueued` repetition 4 — which the stated mechanism ("at 20/s no extra path
-  fires") cannot explain. The count is corrected and the mechanism sentence replaced with one that
-  covers its own evidence: the spread scales with the offered rate, two mechanisms predict that, and
-  this campaign does not separate them.
+  fires") cannot explain. The count is corrected. The sentence written to replace it then claimed a
+  relation to the offered rate that the same data refutes (the widest spread is at 1 148/s measured,
+  and a higher-rate workload spreads less), so it was replaced again with what the artifact supports:
+  the spread varies by workload, it is not monotone in the rate, and the causes are not separated.
 - **`churn-drain`'s row count was wrong** — the table has 8 rows, 4 not measurable and 4 passing, not
   2 and 2. Corrected.
 - **The tool was not brought to the corrected wording**: it printed "0 of those distinguishable"
@@ -325,3 +329,38 @@ spread 0.0 %, 24 of 24) is named as passing, and the resolving-power table is co
 - The duplicated pairing table — hand-written in the narrative and generated below it, with different
   column labels for identical numbers — is now generated in one place, with the narrative pointing
   at it.
+
+## 2026-09-21 — Task 12c, round 6: the retracted claims swept out
+
+**State: text and one javadoc. No measurement re-run, no threshold moved.** Rounds 4 and 5 each
+corrected a retracted figure where it was cited and left copies standing elsewhere, so this round
+grep'd the whole directory for every retracted item rather than re-reading the places that were
+named. The greps and their results are in the report.
+
+**The harness javadoc was edited** (controller decision), which moved its digest from `d42cd7f7` to
+`353ee278`. It still carried the retracted pairing claim and the retracted rate-scaling story
+verbatim, and a retracted technical claim standing in source is believed by whoever reads the file
+rather than the report — this campaign's whole lesson. The digest moving is the discipline working:
+the mechanism exists so a changed harness is visible, and the provenance text now says which build
+produced which artifact rather than implying the artifact names its own revision.
+
+**Every artifact in this campaign was produced from an uncommitted working tree**, which is why
+three of them record a revision-and-digest pair that does not exist in history: `raw/full.jsonl`
+records `a7e7c47c` with `f1941ab4` (committed at `83522ee8`), `raw/steady.jsonl` records `83522ee8`
+with `831828d6` (committed at `5ecd6def`), and `raw/baseline.jsonl` records `3f352ee4` with
+`d42cd7f7` (committed at `90e0e4ac`). The digest identifies the build; the revision records where
+the tree was. `RESULTS.md` carries the table.
+
+**The spread of the four arms' `offered` counts is not a function of the offered rate**, and the
+sentence that said it was — written in round 5 to replace the one it replaced — was refuted by its
+own list. The widest spread is `switch-under-load`'s 301 tickets at 1 148/s measured, while
+`hot-plus-500-sporadic` at 2 219/s spreads 4–81. The per-workload table is now in
+`raw/host-quietness.txt`, the claim is gone from all three documents, and what is stated is that two
+mechanisms are present and this campaign does not measure them apart.
+
+**The generation count is seven of fourteen table blocks**, classified by exact string match against
+the tool's output rather than by inspection, and the seven are enumerated. Doing it that way caught a
+stale table: the round-1 per-workload medians were computed by an older `summarize.py` under a
+header the tool no longer prints, so the table could not be regenerated from the committed tool. It
+is re-spliced from the current tool, which also brings its CPU column onto the **thread** figure the
+column note describes.

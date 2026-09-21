@@ -95,13 +95,38 @@ harness, and this indicator therefore covers `low-load` only. Six groups of sixt
 the sixth is `unqueued` repetition 4. The other fifty-four differ, by up to 301 tickets
 (`switch-under-load`, repetition 3: 10 680 against 10 981).
 
-The spread scales with the offered rate, which is the useful fact: 0 tickets at 20/s (`low-load`),
-0–15 at 300/s (`unqueued`), 4–81 at 3 540/s, 37–96 at 2 000/s, 87–301 at 1 040/s
-(`switch-under-load`). Two mechanisms are consistent with that and this campaign does not separate
-them: an extra offer — a retry or a refill — shifts every later draw in that arm, because one
-Random drives the inter-arrival interval, the kind draw and the function choice; and the arrival
-loop stops when the span closes, so whether the final arrival lands inside the span is a race that
-is worth more tickets the more tickets there are. So the arms are compared under the same offered
+**What the spread varies with is not established by this campaign, and no story is told here that
+its own numbers refute.** The table below is every workload's spread over the four arms, from
+`raw/steady.jsonl`:
+
+| workload | offered/s (configured) | offered/s (measured) | spread over the 4 arms |
+|---|---|---|---|
+| `capacity-change` | 1200 | 1118 | 37-64 tickets |
+| `churn-drain` | 1120 | 617 | 12-23 tickets |
+| `head-of-line-blocking` | 720 | 688 | 20-37 tickets |
+| `heterogeneous-burst` | 450 | 593 | 8-21 tickets |
+| `hot-plus-50-sporadic` | 1600 | 1484 | 17-48 tickets |
+| `hot-plus-500-sporadic` | 2500 | 2219 | 4-81 tickets |
+| `low-load` | 20 | 21 | 0-0 tickets |
+| `mixed-kind-retry` | 800 | 956 | 4-70 tickets |
+| `queued` | 300 | 294 | 1-15 tickets |
+| `saturated` | 2000 | 1799 | 37-96 tickets |
+| `switch-under-load` | 1040 | 1148 | 87-301 tickets |
+| `unqueued` | 300 | 291 | 0-15 tickets |
+
+It is not a function of the offered rate. The widest spread, `switch-under-load`'s 301 tickets, is
+at the *lowest* measured rate of those three; `hot-plus-500-sporadic` at 2 219/s spreads 4–81 while
+`saturated` at 1 799/s spreads 37–96. The two narrowest are the two profiles that fire no retry,
+refill or churn path at all — but `unqueued` is not zero (0–15), so "no extra path" does not by
+itself produce agreement either.
+
+Two mechanisms are known to be present and neither is measured apart from the other: one Random
+drives the inter-arrival interval, the SYNC/ASYNC kind and the function choice, so any draw only one
+arm makes shifts every later draw in that arm; and the arrival loop stops when the span's close is
+observed, so whether the final arrival lands inside the span is a race. Which of them dominates a
+given workload's spread is not something this artifact answers.
+
+So the arms are compared under the same offered
 *rate*, not over the same arrival *sequence*.
 
 ## What this does not establish

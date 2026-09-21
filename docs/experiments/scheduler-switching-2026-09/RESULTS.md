@@ -77,12 +77,16 @@ baseline this campaign can compare against is therefore one it measures itself:
   refill path fires an extra offer, every later draw in that arm shifts. Measured on the settlement
   artifact: the four arms' `offered` counts differ in **54 of 60** (workload, repetition) groups, by
   up to 301 tickets (`switch-under-load`, repetition 3: 10 680 against 10 981). Six groups agree, and
-  five of them are `low-load`'s — the sixth is `unqueued` repetition 4. The spread scales with the
-  offered rate (0 tickets at 20/s, 0–15 at 300/s, up to 301 at 1 040/s), which two mechanisms both
-  predict and this campaign does not separate: an extra retry or refill offer shifts every later
-  draw in that arm, and the arrival loop stops when the span closes, so the last arrival is a race
-  that is worth more tickets the more tickets there are. An earlier draft of this file claimed
-  identical arrivals and one piece of the host-quietness evidence leaned on it; both are corrected. This is
+  five of them are `low-load`'s — the sixth is `unqueued` repetition 4. **The spread is not a function
+  of the offered rate**: `switch-under-load` at 1 148/s measured spreads 87–301 tickets while
+  `hot-plus-500-sporadic` at 2 219/s spreads 4–81, and the two narrowest cases are the two profiles
+  that fire no retry, refill or churn path at all — except that `unqueued` spreads 0–15 rather than
+  0, so "no extra path" does not by itself produce agreement either. Two mechanisms are present and
+  this campaign does not measure them apart: a draw only one arm makes shifts every later draw in
+  that arm, and the span's close leaves the final arrival a race. `raw/host-quietness.txt` carries
+  the per-workload table. An earlier draft of this file claimed identical arrivals, then claimed a
+  rate-scaling relation its own numbers refute; the host-quietness evidence leaned on the first of
+  those, and all three are corrected. This is
   also the design lever a genuinely paired rerun would pull, and it is deliberately left for the
   step that owns it rather than half-applied here.
 - **Repetitions alternate** (the arm order is reversed on even repetitions) and every arm gets an
@@ -205,8 +209,10 @@ Neither has a "steady" form, so neither can be unmeasurable for want of steady a
 draft labelled them "steady" and exempted a workload whose traffic stops; that was a label defect
 and a coverage gap at once, and it dropped the plan-mandated memory comparison from `churn-drain`,
 which the corrected table now reports as a **pass** (CPU +7.26 % / +7.67 %, heap +0.00 % / +0.00 %,
-all inside a 10 % budget). Only `churn-drain`'s two window rows are genuinely unmeasurable, and they
-are reported that way rather than as passes.
+all inside a 10 % budget). Only `churn-drain`'s **four window rows** — steady p99 and steady useful
+throughput, one per direction — are genuinely unmeasurable; its four whole-run rows are measured and
+pass. All four unmeasurable rows are reported that way rather than as passes, and the table above
+counts them: eight `churn-drain` rows, four NOT MEASURABLE and four PASS.
 
 ### The settling correction, and the defect it exposed
 
@@ -526,7 +532,7 @@ These are the earlier protocol's figures. Round 1's regression table is **supers
 
 ## Per-workload medians over the 5 repetitions (min-max in brackets)
 
-| workload | arm | reps | useful/s | p99 ms | cpu/useful us | alloc/useful B | post-GC heap MB | pending | conserved |
+| workload | arm | reps | useful/s | p99 ms | thread cpu/useful us | alloc/useful B | post-GC heap MB | pending | conserved |
 |---|---|---|---|---|---|---|---|---|---|
 | capacity-change | per-function (no change) | 5 | 1791.0 (1766.4-1810.4) | 48.704 | 26.80 | 884 | 27.73 | 3 | True |
 | capacity-change | per-function -> shared-queue | 5 | 1683.8 (1676.0-1724.4) | 145.380 | 30.88 | 929 | 27.76 | 64 | True |
@@ -577,9 +583,13 @@ These are the earlier protocol's figures. Round 1's regression table is **supers
 | unqueued | shared-queue (no change) | 5 | 467.4 (451.5-471.0) | 4.088 | 70.86 | 732 | 27.66 | 0 | True |
 | unqueued | shared-queue -> per-function | 5 | 467.6 (451.9-470.6) | 4.214 | 84.96 | 779 | 27.66 | 0 | True |
 
+The `cpu/useful` column is the **thread** figure, which is what the committed tool reads and
+what the column note at the end of this file describes; an earlier version of this table carried
+the process figure under a header the tool no longer prints, so it could not be regenerated.
+
 ## Switched arm vs the same strategy's no-change arm (median of 5 repetitions)
 
-A delta over budget is a miss. `dispersion` says whether the arms are separated by this measurement at all: arms whose 5-repetition ranges overlap are not, and the brief's own criterion for that case is to declare the result not distinguishable rather than to read the delta as an effect. That phrase describes the **instrument**, not the code — for p99 and CPU the ranges are wide enough that a consistent effect of the budget's own size would not separate them, which the resolving-power table below quantifies. This is the table the summary above calls **superseded** for those two metrics.
+A delta over budget is a miss. `dispersion` says whether the arms are **separable** by this measurement at all: arms whose 5-repetition ranges overlap are not, and the brief's own criterion for that case is to declare the result not distinguishable rather than to read the delta as an effect. That phrase describes the **instrument**, not the code — for p99 and CPU the ranges are wide enough that a consistent effect of the budget's own size would not separate them, which the resolving-power table below quantifies. This is the table the summary above calls **superseded** for those two metrics.
 
 | workload | switch | metric | no-change (5-rep range) | switched (5-rep range) | delta % | budget % | verdict | dispersion |
 |---|---|---|---|---|---|---|---|---|
@@ -852,11 +862,11 @@ task: they are Task 13's (`NANOLAB.md`, `SchedulerSwitchHttpTest`) and are not c
 
 | artifact | command | what it holds |
 |---|---|---|
-| `raw/full.jsonl` (+`raw/full.err`) | `./run.sh --label=full` | the campaign: pause sweep, all twelve workloads × four arms × five repetitions, and the 1000-switch return-to-baseline phase. 260 `sample` lines, 140 `switch` lines, one `baseline` line, one `summary` line, one `header` line |
+| `raw/full.jsonl` (+`raw/full.err`) | `./run.sh --label=full` | the campaign: pause sweep, all twelve workloads × four arms × five repetitions, and the 1000-switch return-to-baseline phase. 260 `sample` lines, **164** `"kind":"switch"` lines, one `baseline` line, one `summary` line, one `header` line |
 | `raw/smoke.jsonl` (+`raw/smoke.err`) | `./run.sh --label=smoke --parts=backlog --backlogs=100 --repetitions=1` | the end-to-end proof that the harness works: one backlog size, one repetition |
 | `raw/steady.err` (note) | — | `git diff --check` over this task's whole range reports **96 lines of output, which are 48 flagged lines** (`git diff --check` prints each offender twice: the complaint and the line itself, the latter with the leading `+` its own output adds). All 48 are in this file: two capacity read-back messages — a trailing space from the diagnostic's own formatting — once per run of the `capacity-change` workload, 24 runs each. They are **left as captured**, deliberately: the artifact has to keep matching the `harnessSha256` in its own header, and editing captured evidence to satisfy a linter is the wrong trade. The check was previously reported as clean, which was wrong — it had been run on the unstaged diff only. A `new blank line at EOF` in `RESULTS.md` was also flagged and is fixed, because a document is not captured evidence |
-| `raw/baseline.jsonl` (+`raw/baseline.err`) | `./run.sh --label=baseline --parts=switches` | the 1 000-switch return-to-baseline phase re-run against the committed harness (digest in its own header), with its no-switch control phase |
-| `raw/steady.jsonl` (+`raw/steady.err`) | `./run.sh --label=steady --parts=profiles` | the settlement campaign: all twelve workloads × four arms × five repetitions on an 8 000 ms span, with the queue-depth trajectory and the trailing-window grid. 240 `sample` lines, 120 `switch` lines |
+| `raw/baseline.jsonl` (+`raw/baseline.err`) | `./run.sh --label=baseline --parts=switches` | the 1 000-switch return-to-baseline phase, with its no-switch control phase; no `switch` lines, because that phase records its switches in the `baseline` line rather than one per switch |
+| `raw/steady.jsonl` (+`raw/steady.err`) | `./run.sh --label=steady --parts=profiles` | the settlement campaign: all twelve workloads × four arms × five repetitions on an 8 000 ms span, with the queue-depth trajectory and the trailing-window grid. 240 `sample` lines, **144** `"kind":"switch"` lines |
 | `raw/diagnostic-hol-window-1200.jsonl`, `…-4000.jsonl`, `…-10000.jsonl` | `./run.sh --label=win<N> --parts=profiles --profiles=head-of-line-blocking --repetitions=3 --window-ms=<N>` (renamed after the run) | the window-length diagnostic on the head-of-line-blocking tail |
 | `raw/diagnostic-cc-window-4000.jsonl`, `…-10000.jsonl` | `./run.sh --label=diagcc<N> --parts=profiles --profiles=capacity-change --repetitions=3 --window-ms=<N>` (renamed after the run) | the window-length diagnostic that first characterised the round-1 capacity-change miss. Superseded by round 3, which found the workload itself was mis-specified — the clamp defect below |
 | `raw/clock-resolution.txt` | `javac ClockTest.java && java ClockTest` (source: `ClockTest.java` in this directory) | the CPU-clock resolution measurement the CPU budget's adjudication rests on |
@@ -884,11 +894,29 @@ Three builds, and what separates them:
 - **`831828d6…`** — the round-3 harness, committed at `5ecd6def`: the settlement protocol (span,
   depth trajectory, trailing-window grid, thread CPU, the real capacity change, the switch at the
   span's start). It produced `raw/steady.jsonl`.
-- **`d42cd7f7…`** — the current harness, committed at `90e0e4ac`. The only change from `831828d6` is
-  a comment block: `git diff 5ecd6def -- …/SchedulerSwitchBenchmark.java` shows **2** lines removed
-  and **11** added (`grep -c '^-[^-]'` / `'^+[^+]'` over that diff), with no executable statement
-  touched. That is why `raw/baseline.jsonl` carries this digest while measuring the same thing as the
-  campaign it is reported beside.
+- **`d42cd7f7…`** — the harness as committed at `90e0e4ac`. From `831828d6` it differs by a comment
+  block: `git diff 5ecd6def -- …/SchedulerSwitchBenchmark.java` showed **2** lines removed and **11**
+  added, with no executable statement touched. `raw/baseline.jsonl` carries it.
+- **`353ee278…`** — the **current committed harness** (`b766cc51`'s successor). It differs from
+  `d42cd7f7` by one further javadoc block, and from every other digest here by comment text only:
+  `git diff 90e0e4ac -- …/SchedulerSwitchBenchmark.java` shows the seed comment replaced, with no
+  executable statement touched. **No measurement in this directory was produced by this build.** The
+  digest moved because a retracted claim — the assertion that the four arms see paired arrivals, and
+  the rate-scaling story that replaced it — was standing in source where a reader would believe it;
+  removing it is worth a moved digest, and the move is what makes the change visible.
+
+**Every artifact here was produced from an uncommitted working tree**, and each header records the
+revision `run.sh` was on and the digest of the file it compiled. For three of them those two values
+are not a pair that exists in history, which is what an uncommitted run looks like:
+
+| artifact | recorded revision | recorded digest | where that digest was committed |
+|---|---|---|---|
+| `raw/full.jsonl` | `a7e7c47c` | `f1941ab4…` | at `83522ee8`, i.e. after the run |
+| `raw/steady.jsonl` | `83522ee8` | `831828d6…` | at `5ecd6def`, i.e. after the run |
+| `raw/baseline.jsonl` | `3f352ee4` | `d42cd7f7…` | at `90e0e4ac`, i.e. after the run |
+
+The digests are what identify the build, and they are what the tables' provenance rests on; the
+revisions record where the tree was, not what compiled.
 
 `raw/full.jsonl`'s `header` line records the revision (`a7e7c47c…`), the JVM and host, the max
 heap, and the `budgets.json` values the harness read — so the artifact states the thresholds it
@@ -896,7 +924,16 @@ was checked against rather than leaving them to be inferred. `run.sh` also passe
 source's own sha256, which is in that same line, because the harness is data that changes
 independently of the repository revision.
 
-**Which tables are generated and which are written.** The *measured* tables are the output of
+**Which tables are generated and which are written.** Of the **14 table blocks** in this file,
+**7 are `summarize.py`'s output byte-for-byte** — four from `raw/steady.jsonl` (the settling table,
+the steady-budget table, the resolving-power table, the pairing table) and three from
+`raw/full.jsonl` (the pause sweep, the legacy regression table, the round-1 return-to-baseline block)
+— and **7 are hand-written transcriptions**: the headline budget table, the clock-resolution table,
+the re-run return-to-baseline table, the per-workload-medians table *(see the note below)*, the
+workload-coverage table, and the two provenance tables. Classified by exact string match against the
+tool's output, not by inspection.
+
+The *measured* tables are the output of
 
 ```bash
 python3 summarize.py raw/steady.jsonl   # the corrected protocol: per-workload, settling,
