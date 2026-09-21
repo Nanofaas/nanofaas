@@ -422,7 +422,7 @@ new API is reached. The service model publishes a due time and returns, holding 
 
 **Result — the nulls, with their resolution.** Stated beside every figure because a null without one
 is an assertion about the instrument. The headline resolutions are **medians across workloads** —
-p99 (steady 3.5 %, whole-span 5.4 %), useful throughput (0.01–0.05 %), post-GC heap (0.01 %) — and
+p99 (steady 3.5 %, whole-span 5.4 %), useful throughput (0.01–0.03 %), post-GC heap (0.01 %) — and
 the median is pulled down by profiles whose paired differences already agree in sign and therefore
 contribute 0 by construction, so it is never any one workload's figure. The artifact carries the
 per-workload table, and the numbers that matter are the workloads': `low-load`'s steady p99 resolves
@@ -902,7 +902,7 @@ below.
   (range `a90885c1..7beabc33`, 10 commits, review clean after 5 fix rounds). Campaign artifacts carry
   `nanofaas.sha = a7e7c47c` **and** `harnessSha256 = f1941ab4…`, because the harness changed after
   that commit and the repository SHA alone would not say so.
-- **What it answers:** what a **manual switch** costs. Its own sections below carry the round-by-round
+- **What it answers:** what a **manual switch** costs. Its own sections above carry the round-by-round
   detail; `RESULTS.md` carries the tables and the command that produced each.
 - **Command**
   ```bash
@@ -921,8 +921,8 @@ below.
 - **Limits** the regression budgets resolve to **"no regression established at this campaign's
   resolution, which is coarser than the budgets"**: the arms' own median spread is **16.1 %** (steady
   p99) and **26.9 %** (thread CPU per useful completion) against budgets of 5 % and 10 %, so a
-  uniform +10 % CPU regression — exactly the budget — would have been invisible in **22 of 22**
-  comparisons. The two over-budget rows (+9.51 % p99, +22.06 % CPU) remain over budget and are
+  uniform +10 % CPU regression — exactly the budget — would have been invisible in **24 of 24**
+  comparisons (the CPU row's eligible count in the resolving-power table; +10 % detects 0 of them). The two over-budget rows (+9.51 % p99, +22.06 % CPU) remain over budget and are
   attributed to the instrument, not reported as regressions. Post-GC heap is the one metric with
   teeth — its arms agree to 0.0 %, so a uniform +5 % shift separates them in **24 of 24** comparisons
   — and it **passes**. Round 1's larger readings (+76.13 % p99
@@ -934,7 +934,7 @@ below.
 - **SHAs** arm and driver `c64da071`, campaign `9e380ca1`, corrective rounds `84cbb476`, `d78e5f51`,
   `4dc6b0f9`, `df8beb20`, `0d652898` (range `7beabc33..0d652898`).
 - **What it answers:** what the **refactor itself** costs — the pre-refactor async loop against the
-  new engine on the same algorithm. Its own section below carries the detail; `OLD-VS-NEW.md` is the
+  new engine on the same algorithm. Its own section above carries the detail; `OLD-VS-NEW.md` is the
   deliverable and `raw/old-vs-new.jsonl` the artifact.
 - **Command**
   ```bash
@@ -946,7 +946,7 @@ below.
   either arm runs and replayed to both. **60 runs, 60 of 60 conserving work**, zero driver failures,
   zero sample-cap overruns. The nulls and their resolutions: steady p99 **3.5 %** (median across
   workloads; `low-load`'s own is 9.36 %), whole-span p99 **5.4 %** (`unqueued`'s 11.41 %), useful
-  throughput **0.01–0.05 %**, post-GC heap **0.01 %** with every paired difference same-signed
+  throughput **0.01–0.03 %**, post-GC heap **0.01 %** with all six per-profile medians negative
   negative. `budgets.json`, `SchedulerSwitchBenchmark.java` and `summarize.py` unchanged.
 - **Limits** (i) **allocation per useful completion is consistently heavier in the new engine** —
   5 of 5 same-signed on every non-confounded profile, per-profile medians **+5.5 % to +27.8 %**,

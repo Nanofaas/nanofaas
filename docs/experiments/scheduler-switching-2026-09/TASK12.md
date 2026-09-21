@@ -48,7 +48,7 @@ part of 12a/12b's review surface, not a separate step.
 |---|---|---|
 | **12a** | `9ff3f72d`, and the gap fix `52017320` | `SchedulerConformanceTest.java` — the conformance matrix, parameterised over **both real strategy implementations** — and `SchedulerModelTest.java`, the model test: seed `208L`, 10 000 randomised operations, a reference model carrying the attempts map, and `complete` wired as a **real** completion driven through the engine rather than a remove-no-op. Covered 342 completions and 198 retries. |
 | **12b** | `9faa63b9`, and the gap fix `a90885c1` | `SchedulerSwitchRaceTest.java` — the eight barrier-forced interleavings the brief mandates, including `claim→switch→lease acquired` over a genuine shared `FunctionCapacityRegistry`, and row (8)'s client-disconnect serialised ahead of the commit by a latch rather than asserted order-independent. |
-| **12c** | harness `a7e7c47c`, the run `83522ee8`, then the corrective rounds `5ecd6def`, `90e0e4ac`, `3f352ee4`, `7f2c44c0`, `b766cc51`, `7e70f9c4`, `174a1a03`, `7beabc33` | `SchedulerSwitchBenchmark.java` (2 366 lines, standalone, no benchmark library — the JDK is enough), `run.sh`, `summarize.py`, `ClockTest.java`, the `printTestClasspath` Gradle task, `raw/*.jsonl` and `RESULTS.md`. **Answers Question A.** |
+| **12c** | harness `a7e7c47c`, the run `83522ee8`, then the corrective rounds `5ecd6def`, `90e0e4ac`, `3f352ee4`, `7f2c44c0`, `b766cc51`, `7e70f9c4`, `174a1a03`, `7beabc33` | `SchedulerSwitchBenchmark.java` (2 380 lines as committed; it was 2 132 at the harness commit `a7e7c47c` and grew over the corrective rounds), `run.sh`, `summarize.py`, `ClockTest.java`, the `printTestClasspath` Gradle task, `raw/*.jsonl` and `RESULTS.md`. **Answers Question A.** |
 | **12e** | arm and driver `c64da071`, campaign `9e380ca1`, then the corrective rounds `84cbb476`, `d78e5f51`, `4dc6b0f9`, `df8beb20`, `0d652898` | `OldLoopComparison.java`, `run-old.sh`, `old-vs-new.py`, `reconcile-12e.py`, `raw/old-vs-new.jsonl`, `raw/reconciliation-12e.txt` and `OLD-VS-NEW.md`. **Answers Question B.** |
 | **12d** | the commit carrying this file | The verification sweep, the GitNexus audit, the consolidated `STATO.md` entry for tasks 0-12, and this consuntivo. No measurement of its own. |
 
@@ -89,8 +89,10 @@ return-to-baseline phase ends with pending **398 vs 398** and a reservations del
 called regressions.** The design is **unpaired**: the arms were measured in separate runs, so any
 drift between runs lands in the comparison. The arms' own median spread across five repetitions is
 **16.1 %** for steady p99 and **26.9 %** for thread CPU per useful completion, against budgets of
-**5 %** and **10 %**. The criterion is therefore *coarser than the budget it is testing*: a uniform
-**+10 % CPU regression — exactly the budget — would have been invisible in 22 of 22 comparisons**.
+**5 %** and **10 %**. The criterion is therefore *coarser than the budget it is testing*: for thread
+CPU per useful completion — the metric the 10 % budget names, and the one with 24 eligible
+comparisons — a uniform **+10 % regression, exactly the budget, would have been invisible in 24 of
+24 comparisons** (the resolving-power table's CPU row detects 0 of its 24 at +10 %).
 The honest statement of the regression result is not "no regression" but:
 
 > **No regression is established at this campaign's resolution, and that resolution is coarser than
@@ -130,8 +132,12 @@ artifact carries them (`low-load`'s steady p99 resolves to **9.36 %**, `unqueued
 **The nulls, with their resolutions.**
 
 - **Steady p99, useful throughput, post-GC heap: no regression established on any expiry-clean
-  profile.** Useful throughput resolves to **0.01–0.05 %** paired; post-GC heap to **0.01 %**, with
-  every per-profile median *negative* (the new engine's heap is marginally the lower of the two).
+  profile.** Useful throughput resolves to **0.01–0.03 %** paired — §7.4's median across the
+  resolved profiles, the same table the 12e document's own headline quotes; §9.1 states the
+  per-column figures instead (0.01–0.02 % whole-span, 0.00–0.05 % steady), which is why the union of
+  the two is not quoted here. Post-GC heap resolves to **0.01 %**, with
+  every per-profile median *negative* (the new engine's heap is marginally the lower of the two) —
+  five of the six profiles are also same-signed, `low-load` alone having a range that crosses zero.
 - **One budget MISS, reported as a MISS and not excused:** `low-load`'s steady p99 at **+5.40 %**
   (2.570 ms → 2.793 ms against a 100 ms contract). Its five paired differences run −19.52 % to
   +9.36 % — they straddle zero, and 5.40 % is below that workload's own 9.36 % resolution.
@@ -174,8 +180,8 @@ are.
    resolution). Quoting B's resolution to support A's null, or reading A and B together as one
    "no regression" claim, is wrong. They measure different things.
 2. **Task 12c's criterion is coarser than the budgets it tests.** A uniform +10 % CPU regression was
-   invisible in 22 of 22 comparisons. Nothing in 12c can exclude a regression of the size the budgets
-   name.
+   invisible in **24 of 24** eligible comparisons (the CPU row's own count). Nothing in 12c can
+   exclude a regression of the size the budgets name.
 3. **Task 12e's CPU metric has a 43 % paired spread**, so its own 10 % budget sits below its
    resolution. Only `mixed-kind-retry` separates on CPU; the other four MISS rows are not resolved in
    either direction.

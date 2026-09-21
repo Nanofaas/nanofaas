@@ -21,7 +21,7 @@
 
 - registry entries evaluated: **137**
 - claim occurrences matched and recomputed against an artifact: **143**
-- prose lines read (tables, code fences and §12 excluded): **549** of 924 lines
+- prose lines read (tables, code fences and §12 excluded): **550** of 925 lines
 - prose numbers classified as citations, references or code rather than claims about the artifact: **289**, in 18 classes (each named, with an example, so the filter is auditable):
 
 | class | numbers | example |

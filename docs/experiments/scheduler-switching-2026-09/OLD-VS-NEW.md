@@ -521,7 +521,8 @@ except where all five repetitions agree in sign — see §9.2.
 ### 9.1 The nulls, with their resolution
 
 - **Post-GC heap: indistinguishable, at a resolution of 0.01 %.** Every one of the six profiles'
-  paired deltas is 5-of-5 same-signed and lies between −0.25 % and −0.03 %, and that resolution is
+  paired deltas has a negative median and lies between −0.25 % and −0.03 %, and 5-of-5 same-signed
+  holds on all but `low-load`, whose repetition range straddles the axis. That resolution is
   the median paired spread of §8's paired-spread column (the arms' medians are identical to two
   decimals: 77.24–77.45 MB). The new engine's retained heap is not measurably different from the
   old loop's, against a 10 % budget.
