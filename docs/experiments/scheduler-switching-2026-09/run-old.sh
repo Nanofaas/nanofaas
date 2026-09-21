@@ -1,4 +1,31 @@
 #!/bin/bash
+#
+# ---------------------------------------------------------------------------------------------
+# TOMBSTONE (Task 13b, issue #208, 2026-09-21): THIS SCRIPT CAN NO LONGER BUILD, for either arm.
+#
+# `OldLoopComparison.java` imports `it.unimib.datai.nanofaas.modules.asyncqueue.Scheduler` (line
+# 27), and Task 13b deleted that class together with
+# `modules.syncqueue.scheduler.SyncScheduler`: once Tasks 1-12 had composed one `SchedulerEngine`
+# and 13a had made its strategy selectable and hot-switchable, the per-module loops had no consumer
+# left. The old arm's subject does not exist at this commit or after it, so the harness cannot be
+# compiled and 12e cannot be re-run from this tree.
+#
+# What this changes, and what it does not:
+#   - The failure is fail-closed and loud. `set -euo pipefail` aborts at the `javac` below, before
+#     any `raw/$LABEL.jsonl` is opened, so a re-run cannot leave a half-written or empty artifact
+#     behind for someone to analyse. Non-zero exit, nothing written.
+#   - 12e's RESULTS still stand: `raw/old-vs-new.jsonl` (+ `.err`, `-analysis.txt`), `smoke-old.*`,
+#     `old-vs-new.py` and OLD-VS-NEW.md are committed artifacts of a build that DID compile, at
+#     revision `c64da071`, with the harness digest the artifact's own header records. Re-reading or
+#     re-analyzing them does not need the harness to compile.
+#   - `OldLoopComparison.java` is deliberately NOT edited: its bytes are the digest OLD-VS-NEW.md
+#     §7.1 pins (`761908913d93…`), so editing it would invalidate a provenance claim for no benefit.
+#     It is kept as the record of what produced the committed artifact.
+#
+# To re-measure the old loop you need the loop: check out a revision before Task 13b (the last one
+# that compiles this harness is 25388b1a) and run the script there.
+# ---------------------------------------------------------------------------------------------
+#
 # Runs the old-loop-vs-new-engine comparison harness against :execution-runtime's test classpath
 # (issue #208, Task 12e).
 #

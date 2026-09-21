@@ -91,6 +91,20 @@ graalvmNative {
         main {
             // Kubernetes-oriented optional modules may still rely on SnakeYAML charsets.
             buildArgs.add('-H:+AddAllCharsets')
+            // An executable, explicitly. This module applies `java-library` (Task 10 step 4,
+            // d456915f, so `api project(':execution-runtime')` exists alongside the Boot plugin),
+            // and native-build-tools 1.1.6's NativeImagePlugin.configureJavaProject registers
+            // plugins.withId("java-library") -> options.getSharedLibrary().convention(true) --
+            // a shared library, where the otherwise-identical plain `java` project gets the false
+            // default. :control-plane applies no `application` plugin either, so no main class is
+            // derived and the `main` binary silently became control-plane.so: `nativeCompile`
+            // went green while producing nothing runnable, which is also what
+            // scripts/native-java-image.sh copies as its /app/application. Set it back to false
+            // here rather than by dropping `java-library`, which the module needs for its ABI.
+            // Verified by artifact, not by the build's exit code:
+            //   file platform/control-plane/build/native/nativeCompile/control-plane
+            // must say "ELF ... pie executable", never "shared object".
+            sharedLibrary.set(false)
         }
     }
 }

@@ -265,6 +265,15 @@ switch is verified against are frozen in
 `docs/experiments/scheduler-switching-2026-09/budgets.json` — they are not keys under
 `nanofaas.scheduler.*` and cannot be set through the admin API.
 
+**In a native image, enabling the admin API is a build-time decision.** The admin routes are gated
+by `@ConditionalOnProperty(nanofaas.admin.runtime-config.enabled=true)`, which Spring AOT evaluates
+while the image is built, so a native artifact compiled without the flag answers `404` on
+`/v1/admin/runtime-config` and on this namespace however it is started — passing the property at run
+time changes nothing. Set it **before** `nativeCompile` to get a native artifact whose strategy can
+be switched over HTTP. The same flag also gates the rest of the admin surface, so "the switch works
+in native" and "the native image ships with its admin API off" describe two different builds of the
+same sources; the shipped default is off.
+
 ## Retries without a queue module
 
 Retries do not depend on a queue module. With none loaded, the core hands the

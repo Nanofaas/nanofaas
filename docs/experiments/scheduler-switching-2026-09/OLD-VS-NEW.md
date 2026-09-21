@@ -277,6 +277,17 @@ docs/experiments/scheduler-switching-2026-09/run-old.sh --label=old-vs-new --rep
 docs/experiments/scheduler-switching-2026-09/old-vs-new.py raw/old-vs-new.jsonl
 ```
 
+> **Tombstone (Task 13b, issue #208, 2026-09-21): the first command above can no longer run.**
+> Task 13b deleted `modules.asyncqueue.Scheduler` and `modules.syncqueue.scheduler.SyncScheduler`
+> — the old arm's subject — so `OldLoopComparison.java`, which imports `Scheduler`, no longer
+> compiles at this commit or after it: `run-old.sh` aborts at its `javac` step with a non-zero exit
+> and writes no `raw/*.jsonl`. The second command still runs, because it reads the committed
+> `raw/old-vs-new.jsonl`, so every figure in this section stays re-derivable from the artifact.
+> The run these numbers came from was a real one at revision `c64da071`, when the harness compiled.
+> To re-measure the old loop, check out a revision before Task 13b — `25388b1a` is the last that
+> compiles the harness — and run it there. `OldLoopComparison.java` is deliberately left unedited,
+> because its bytes are one of the digests recorded in the header below.
+
 - `raw/old-vs-new.jsonl` — 61 JSONL lines: one `header`, 60 `sample`. Revision
   `c64da071` (the commit that added the arm), harness
   `OldLoopComparison.java` sha256 `761908913d93…`, committed harness
