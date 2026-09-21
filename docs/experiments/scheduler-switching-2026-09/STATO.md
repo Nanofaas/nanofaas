@@ -101,7 +101,7 @@ stopped before the measured JVM starts), no other sampling run.
 | `maxSwitchPreparationMs` | 2 000 ms | 3.984 ms (total switch duration, an upper bound) | PASS |
 | `maxLiveStrategyIndexes` | 2 | 2 | PASS |
 | `switchesInSoak` | 1 000 | 1 000 committed, 0 refused | PASS |
-| `maxUsefulThroughputRegressionPercent` | 5 % | +4.11 % | PASS |
+| `maxUsefulThroughputRegressionPercent` | 5 % | +2.09 % (worst of the 22 measurable comparisons, `raw/steady.jsonl`) | PASS |
 | `maxPostGcHeapRegressionPercent` | 10 % | +0.01 % | PASS |
 | `maxSteadyP99RegressionPercent` | 5 % | +76.13 %, 1 of 24 comparisons separable *(round 1's reading, on a protocol later found to pool two strategies)* | **MISS** |
 | `maxCpuPerCompletionRegressionPercent` | 10 % | +23.83 %, 8 of 24 over budget, 0 separable *(round 1's reading, through the 10 ms process clock)* | **MISS** |
@@ -598,3 +598,422 @@ greps were reconciled when none were; and a table count stale by the two tables 
 added. Finding 9 is fixed too: §9.1's whole-span p99 range had excluded the profile that supplies its
 own `0.00` endpoint. §12's exemption is now stated where a reader looks rather than only in the
 script.
+
+## 2026-09-21 — Tasks 0-12 consolidated: the git-tracked record, written at Task 12d
+
+**Why one entry, and why now.** Until Task 12c this file had been touched by exactly one commit
+(`d8a30879`, Task 0). Tasks 1 through 12ab completed — every one with SHAs and a review verdict — and
+none of them updated it. What recorded them is `.superpowers/sdd/2026-09-16-manual-scheduler-switching/progress.md`,
+which is gitignored (`.gitignore:35` = `.superpowers/`) and is scheduled for deletion when the
+workspace is torn down. A prior ruling (recorded in that ledger) decided against retro-fitting eleven
+separate entries, because they would be reconstructions rather than records. This section is that
+ruling's remedy: **one consolidated entry covering tasks 0-12, per task: SHA, what was verified, the
+command, the evidence, the limits.** It is written at Task 12d from the ledger and every SHA is
+confirmed against `git log`. The Task 12c and Task 12e sections already above carry their own detail
+and are not repeated here; this entry states where the record for each lives.
+
+**On commands.** Where the ledger preserves the literal command line it is quoted verbatim. Where it
+records only the outcome and the counts, this entry names the Gradle task that produced them rather
+than inventing a command string that was never written down.
+
+**On the two questions Task 12 asks.** Task 12c measures what a *manual switch* costs. Task 12e
+measures what the *refactor itself* costs. They are distinct questions with distinct resolving power
+and they are kept apart here and in `TASK12.md`. `budgets.json` has not been modified by any task
+below.
+
+### Task 0 — baseline frozen; P25 closure recorded as an operator decision
+- **SHA** `d8a30879` (`05f49dcb..d8a30879`). Docs-only; verified no `src/main` file in the diff.
+- **Verified** the baseline `BASELINE.md` at revision `05f49dcb` (host, three test profiles, GitNexus
+  symbol analysis with callers/risk/epistemic per symbol, every UNKNOWN/lower-bound resolved by text
+  search); `budgets.json` copied value-for-value from the task brief (11 keys, order and values
+  independently confirmed by the reviewer); the architectural contract
+  `docs/architecture/0002-manual-scheduler-switching.md` and its lock order.
+- **Command** the three baseline suite runs, with `--rerun-tasks` (not in the plan's literal command
+  text; the reviewer did not flag it).
+- **Evidence** async-queue+runtime-config **901 tests / 0 fail / 5 skip**; sync-queue+runtime-config
+  **954 / 0 / 5**; runtime-config only **835 / 0 / 6**. The skips are module-gated JUnit assumption
+  aborts. `BASELINE.md`, `budgets.json`, ADR 0002.
+- **Limits** (i) GitNexus FTS was degraded and process-flow discovery truncated on this run, so no
+  later task may lean on Task 0's graph pass — each re-runs its own. (ii) The P25 paired
+  requalification soak was never run, so a memory or latency regression observed later cannot be
+  attributed cleanly between the scheduler work and the still-unqualified candidate revision
+  inherited from lifecycle-memory. (iii) Two deferred minors: ADR 0002 §1 has no correspondence table
+  to ADR 0001's section numbers; `BASELINE.md` rounds inherited P25 memory figures to 1 decimal where
+  the source has 3 (`budgets.json` unaffected).
+- **Review** clean, 0 Critical / 0 Important / 2 Minor.
+
+### Task 1 — the engine module and its ticket contracts
+- **SHA** `8e95356b` (`d8a30879..8e95356b`), additive only: the `:execution-runtime` module and the
+  scheduler SPI.
+- **Verified** all six contract signatures field-for-field against the plan's shared-contracts
+  section, validation including nullable `queueDeadline` against non-null `notBefore`, `List.copyOf`
+  defensive copies, and that the module exposes only the SPI with no new production dependency.
+- **Command** `:control-plane:compileJava` plus the module's test task.
+- **Evidence** RED observed first as 6 "cannot find symbol" errors, then `SchedulingTicketTest`
+  **7/7**; `:control-plane:compileJava` green.
+- **Limits** no engine, strategy or index implementation leaked in. One deferred minor: the test uses
+  the fully-qualified `SchedulerSelection` name at three sites instead of an import.
+- **Review** clean, 0 / 0 / 2 Minor. The reviewer's Minor on `SchedulerControl.java`'s javadoc was
+  **overruled** with evidence (plan line 382, Task 5, settles the taxonomy the javadoc anticipates).
+
+### Task 2 — the two existing algorithms preserved as ticket indexes
+- **SHA** `07b152c8`, fix round to `eaecbc64` (`8e95356b..eaecbc64`).
+- **Verified** that both strategies reproduce the old algorithms. Trace-compared against the **real**
+  `Scheduler`/`QueueManager`/`FunctionQueueState` and the **real** `SyncQueueService` (package-private
+  constructors, not mocks): per-function corpus `[a0,a1,a2,b0]` against the real loop, both yielding
+  `[a0,a1,b0,a2]` — the turn moving after batch 2 — and shared-queue 65 blocked + 1 ready against the
+  real service, both yielding `[NONE, ready]`. Constants `batch=2` and `scan=64` were **not** tuned,
+  checked both ways by the re-reviewer.
+- **Command** the module suites plus the trace-comparison tests.
+- **Evidence** 4+4 tests GREEN after RED-for-missing-factory; the reviewer hand-traced both corpora
+  independently and derived the same orders itself, confirming the comparison is not two sides
+  derived from one source.
+- **Limits** two structural narrowings carried to Task 4: `PerFunctionSchedulingStrategy.select`
+  scans past a blocked function within one call where the old loop drops it and waits for a re-signal
+  (justification pinned in the javadoc — drop-and-resignal is the engine's job, and Task 4 owns the
+  wake sequence that makes it true); and `SyncScheduler.rotateReadyItem` (single-item rotation on
+  lease failure) has no equivalent in the new index, so the engine must cover that case itself. Two
+  deferred minors, both cosmetic.
+- **Review** first pass NEEDS FIXES (2 Important: the plan-mandated corpus "publish, block, unblock,
+  dispatch, removal" was not exercised, and the structural divergence was real). Both remedies were
+  required and taken; re-review clean.
+
+### Task 3 — authoritative pending store and queue reservations
+- **SHA** `3d1620cf`, fix round to `cad3fa7b` (`eaecbc64..cad3fa7b`).
+- **Verified** every mandated transition line-for-line against the brief, and — the load-bearing
+  check — that `snapshotPending` excludes both `claimed` and `submitting` with no side effects on the
+  counts, asserted rather than return-value-only.
+- **Command** the module's test task.
+- **Evidence** RED a genuine compile error for two missing classes, then `PendingWorkStoreTest`
+  **14/14**; the rest of `:execution-runtime:test` unaffected.
+- **Limits** two carried forward, both confirmed real by review: `remove()` on a submitting ticket
+  returns null **by design**, so the store offers no handle to cancel an already-committed dispatch,
+  and the engine must own that cancellation explicitly rather than assume it; and even with the guard
+  the store cannot stop a caller claiming a submitting ticket in every ordering, so the engine must
+  claim only tickets it knows are not submitting (call discipline). Three deferred minors.
+- **Review** NEEDS FIXES (2 Important), both fixed in a fix round whose new tests were judged on
+  whether they would fail if the defect returned, not on their names.
+
+### Task 4 — the single engine loop and dispatch protocol
+- **SHA** `665934a1`, fix round to `2764b939` (`cad3fa7b..2764b939`).
+- **Verified** the engine loop: gate-held state, the wake sequence, the budgeted pass, worker
+  start/stop, and the retry-publication split that ADR 0002's lock order requires.
+- **Command** the module's test task.
+- **Evidence** 3 Critical fixed and re-traced rather than accepted: worker replacement guarded by
+  `worker == currentThread` on **all** exit paths (normal stop, caught `RuntimeException`, uncaught
+  `Error`, `InterruptedException`); the three throw paths out of `SchedulerDispatchSupport` all
+  leaving the result null so the `finally` takes the `finishSubmit` arm and the reservation is
+  released, double-settlement impossible; and a lost-wake audit showing `wakeSequence` is mutated
+  only inside the same critical section that notifies, with all four callers already under
+  `synchronized(gate)`. Tests **11 → 15**, each new one checked to fail if its defect returned.
+- **Limits** four deferred minors, two of them load-bearing later: (i) `blocked` is never cleared
+  while the engine is busy — a delay, not starvation, and re-checkable once `signal()` has real
+  production callers (which Task 8 gives it); (ii) the `claimSettled` guard **narrows** rather than
+  closes the stranding window when `activeIndex.remove` throws after `store.commit`, unreachable with
+  the two in-repo indexes but reachable for an SPI index; (iii) a **latent NPE** in
+  `finishSubmit`/`requeue` — `deadlines.remove(ticket)` unguarded against the
+  `Comparator.comparing(SchedulingTicket::queueDeadline)` comparator, safe today only because a pure
+  profile makes the set empty or uniformly non-null, and **Task 8 creates exactly the mixed case**;
+  made a binding requirement with a mandated regression, not left deferred; (iv) the new timeout
+  test's comment states the wrong mechanism and one break stays unexercised. A trap for Task 5/6
+  tests was also carried: with `running == true` and a frozen `nanoTime`, `await()` never returns.
+- **Review** NEEDS FIXES (3 CRITICAL, 2 Important, 5 Minor), clean after one fix round.
+
+### Task 5 — atomic index replacement under load
+- **SHA** `8caf681f` (`2764b939..8caf681f`), +725/-25 across 3 files.
+- **Verified** that the index swap is a genuine linearization point: the build happens outside the
+  gate, the commit inside it, and nothing fallible follows.
+- **Command** the module's test task.
+- **Evidence** RED was 41 compile errors; GREEN `:execution-runtime:test` **48/48** with 13 new switch
+  tests.
+- **Limits** four deferred minors, none load-bearing: `carry`'s index-swap branch calls
+  `active.index().add(ticket)` unguarded after `store.abort` (so the report's blanket "nothing is
+  stranded on any path" overstates it); `discard()` and one pre-existing `log.warn` do logging under
+  the gate, in nominal tension with the class's own "leaf lock, no I/O under the gate" doctrine; the
+  in-flight-claim test verifies `lease.release()` was called but does not independently pin that it
+  happens outside the gate; and the brief's literal "transition flag removed in a `finally`" was not
+  built, the class javadoc instead stating "no separate flag: the gate itself is the flag".
+- **Review** clean, no fix round.
+
+### Task 6 — runtime-config commit coherent with an irreversible time change
+- **SHA** `a87a7c12` (`8caf681f..a87a7c12`), 6 files, +496/-4.
+- **Verified** the commit ordering — revision check → `validate()` → `prepare()` →
+  `snapshotReplacing()` → `commit()` → `revision.set`, with no re-read of `registry.snapshot()` after
+  the commit; and that `close()` is called on both the success and the failure path with the original
+  failure propagated rather than replaced.
+- **Command** the module's test task and `./gradlew build --no-parallel`.
+- **Evidence** `RuntimeConfigServiceTest` **19/19** (10 legacy + 9 new, both mandated regressions);
+  the sync-queue legacy apply/restore 4 tests still green; full build succeeds. The deviation from
+  the brief's try-with-resources snippet is verified on every path it had to hold:
+  `cleanupFailureAfterSuccessfulCommitDoesNotFailTheUpdate` stubs `doThrow` on `close()` and asserts
+  the revision advanced, `commit()` ran, and nothing propagated.
+- **Limits** four deferred minors (no `verify(ok2, never()).snapshot()` on the other-namespace
+  failure; no combined pre-commit-failure-with-throwing-`close()` test; no
+  `verify(change).close()` on a pure success path; `SchedulerRuntimeConfigExtension.apply()`
+  unreachable through the service and undocumented). GitNexus produced a **third distinct failure
+  mode** here: `detect-changes` omitted the three new files under both `--scope compare` and
+  `--scope all` after a fresh reindex, while `context` showed the symbols correctly indexed.
+- **Review** APPROVED, 0 / 0 / 4 Minor, no fix round. The deliberate deviation from the brief's
+  snippet was accepted by ruling because the brief contradicts itself — line 19 declares `close()`
+  cannot abort a commit, line 61 mandates a test in which cleanup *does* fail.
+
+### Task 7 — the administrative API and OpenAPI contract
+- **SHA** `5b9e360c` (`a87a7c12..5b9e360c`), 5 files, +506/-9.
+- **Verified** that the diff touches no engine, service or SPI file; that the 503 rejection is
+  genuinely pre-service (`supplyAsync`'s `execute()` throws on the calling thread, so
+  `RejectedExecutionException` is caught in the controller and `applyPatch` is never entered); that
+  422 and 400 are correctly separated; and that the Netty loop is never blocked.
+- **Command** `./gradlew :control-plane-modules:runtime-config:test` and
+  `:control-plane:composeControlPlaneOpenApi`, run three times.
+- **Evidence** BUILD SUCCESSFUL with the results XML giving **total = 35, failures/errors = 0,
+  skipped = 0**, both `SchedulerRuntimeConfigIntegrationTest` nested classes present in the results;
+  `composeControlPlaneOpenApi` exits 0; module suite 35/35 across 3 reruns.
+- **Limits** two deferred minors: the new `SchedulerNamespace` component schema in `openapi.yaml` is
+  defined but never `$ref`'d, so `GET /{namespace}` still returns a generic object; and the 503
+  description says "rolled back or never applied", which overstates the pre-commit path — nothing is
+  ever applied to roll back, `close()` being a no-op by design. GitNexus failure mode #4 recurred: a
+  new test file was omitted and an unrelated symbol included.
+- **Review** clean, no fix round.
+
+### Task 8 — single composition and profile compatibility
+- **SHA** `81bedbeb`, three fix rounds to `f20cb234` (`5b9e360c..f20cb234`) — the largest task by file
+  count (14) and the first to put both queue modules on one classpath.
+- **Verified** the four-profile composition matrix (both / async-only / sync-only / none); the three
+  NPE guards landed with a 3-case regression observed RED as a real NPE with a stack trace through
+  `TreeSet.remove` and then GREEN; `EngineReadiness.runnable` implemented non-blocking and
+  side-effect-free, which is what Task 4's "gate is a leaf" property depends on; and the capacity and
+  scaling paths wired to `signal()`.
+- **Command** the four-profile control-plane matrix plus the execution-runtime, async-queue,
+  sync-queue, runtime-config and gradle-plugin suites.
+- **Evidence** all **nine suites BUILD SUCCESSFUL** at `f20cb234`, run serially.
+  `SchedulerEngineRemoveAllForGateDisciplineTest` was verified RED — ConcurrentModificationException,
+  the finding predicted — then GREEN 3/3.
+- **Limits** the autoscaler and concurrency governor were genuinely inactive from this task until
+  Task 11, with two suites left red in between and the tests `@Disabled` by an explicit reason string
+  rather than silently: re-enabling them, and restoring the two context assertions, was made binding
+  for Task 11. Item 2 of round 3 was closed by widening an Awaitility window (2 s) rather than
+  eliminating the cause, correctly disclosed. Task 8 also carries the forward-looking consequence of
+  Task 4's latent NPE: composing both queues is what creates the mixed-deadline case.
+- **Review** round 1: 3 CRITICAL + 6 Important + ~8 Minor; round 2 introduced and fixed 1 Critical +
+  1 Important; round 3: 3 items. Clean after 3 fix rounds. One `NEEDS_CONTEXT` escalation ruled on.
+
+### Task 9 — store, capacity and input extracted into the mandatory runtime
+- **SHA** `fbadce46` (`f20cb234..fbadce46`), 56 files.
+- **Verified**, by the controller before review, that `execution-runtime/build.gradle` depends on
+  exactly `api project(':control-plane-spi')` + Caffeine + Micrometer (+ test-only); that the FQNs of
+  `ExecutionStore`, `ExecutionLifecycle`, `FunctionCapacityRegistry`,
+  `InvocationInputRejectedException` and `ExecutionStoreProperties` are preserved; and that zero
+  duplicate copies of the three key classes remain in `control-plane/src/main`.
+- **Command** `./gradlew :execution-runtime:test` and `./gradlew :control-plane:test`.
+- **Evidence** BUILD SUCCESSFUL, exit 0; `control-plane:test` **690/690** across all four module
+  profiles with **3 pre-existing skips**; `RuntimeArchitectureTest` RED→GREEN with its new rule; the
+  `spring-configuration-metadata.json` concern did not materialise — all 14 `nanofaas.invocation-capacity.*`
+  and all 6 `nanofaas.execution-store.*` keys survive.
+- **Limits** (i) the graph's CRITICAL tier was trusted but its 282-entry impacted list was **not** —
+  roughly half the rows had empty `filePath` and one pointed at an unrelated Rust experiment file, so
+  the move was driven from a grep census instead; (ii) GitNexus failure mode #7 followed:
+  `detect-changes` silently omitted 5 of 6 rename+modify files that had real content diffs; (iii)
+  native AOT for the cross-jar `@ConfigurationProperties` bean remains unverified — it is genuinely
+  Task 13's native gate; (iv) the downstream `:offload` and `:concurrency-control`
+  `compileTestJava` regression introduced here was missed by the task's review **and** by the
+  controller's own verification, and was found by Task 10's implementer — the standing correction is
+  that every module depending on a changed one must have its suite run; (v) three further deferred
+  minors, including Caffeine and Micrometer declared `implementation` while `ExecutionStore`'s and
+  `IdempotencyStore`'s public constructors expose their types (an ABI leak that compiles only because
+  `:control-plane` happens to declare both), carried to Task 10.
+- **Review** APPROVED, 0 Critical / 0 Important / 6 Minor. The risky item — a pre-existing ArchUnit
+  rule modified from "two modules" to "three" — was verified four ways as **extended, not weakened**
+  (selector byte-identical, importer scope untouched, condition a strict superset, and the added
+  disjunct a single literal path swallowing no package).
+
+### Task 10 — attempts, retry and admission through the common engine
+- **SHA** six commits, `fbadce46..0063a9aa` (4 sub-steps, 1b, and a fix round). Escalated BLOCKED
+  with zero files touched before any edit — correct, and the four-way split it triggered is what
+  surfaced the vacuous independence pin, the too-late `Assumptions` gate and the Task 9 ABI
+  regression.
+- **Verified** the attempt state machine, the wait estimator and sync admission moved into the
+  runtime; `AttemptCoordinatorTest`; and that the fix round's assertions would fail if the defect
+  returned (checked mechanically: `AttemptCoordinator.java` is byte-identical across the fix, so the
+  falsifiability mutation was genuinely reverted).
+- **Command** the module suites, plus the downstream `:offload` and `:concurrency-control` test
+  compilation.
+- **Evidence** the fix-round diff touches only the test file (+69); both new test methods present;
+  suite green.
+- **Limits** the strategy-switch axis of invariant #2 was accepted as **formally addressed** and its
+  substantive pin **carried to Task 12**: the new test's assertions are real but structurally inert,
+  because `SchedulerEngine`'s constructor takes no `FunctionCapacityRegistry` and the two subsystems
+  share no reference in that fixture, so no defect inside `switchTo` can flip either assertion. The
+  meaningful version needs the engine and the attempt path sharing a real registry, which Task 12's
+  brief already mandates verbatim (`claim→switch→lease acquired`). Eight deferred minors.
+- **Review** APPROVED, 0 Critical / 0 Important / 8 Minor, plus **one genuine missing requirement**
+  (the brief-mandated strategy-switch conformity test), fixed in one round.
+
+### Task 11 — shared observation, controllers and cleanup
+- **SHA** `21266b22` (`0063a9aa..21266b22`), one fix round.
+- **Verified** the switch observer placed in the outer `finally`, outside the gate and wrapped so the
+  composition root cannot break the invariant; that the diff adds no fallible step after Task 5's
+  linearization point; and — by tracing, not by claim — that the `sync_queue_depth` gauge is
+  balanced: `onAdmitted` runs only after `engine.enqueue` succeeds, and the only three terminal paths
+  out of the engine each call `settleIfSyncOrigin` exactly once, with double-settle structurally
+  impossible because the pending set is a `Set` with an idempotent `remove`.
+- **Command** the module suites.
+- **Evidence** both `@Disabled` tests re-enabled and the two context assertions restored; the brief's
+  **named acceptance test** written and verified deterministic — it parks the worker inside `submit()`
+  via a latch entered only after claim/commit, and asserts all three brief properties separately:
+  meters back to baseline, `reservedCount` to zero, and the still-claimed ticket holding
+  `reservedCount == 1` while `onRemove` has fired.
+- **Limits** three Important were real and all in code this task touches: `sync_queue_depth` was
+  newly wrong rather than merely absent (nothing called `metrics.dequeued()` once its only callers,
+  in the retired `SyncQueueService`, were gone — so the gauge published a cumulative admission count
+  under a name that says depth); `WorkloadDiagnostics` was half-wired, registering 6 per-function and
+  2 global meters that nothing records; and the brief's named acceptance test was missing. All three
+  fixed. Seven deferred minors. The controller's own framing of concern 1 was **wrong** and the
+  reviewer corrected it with evidence: the depth divergence is bounded at +1 globally, not N.
+- **Review** NEEDS FIXES (0 Critical, 3 Important, 7 Minor), then all findings ADDRESSED with no new
+  breakage.
+
+### Task 12a / 12b — common suite, races
+- **SHAs** 12a `9ff3f72d` + `52017320` (gap); 12b `9faa63b9` + `a90885c1` (gap); reviewed as one
+  surface, `9faa63b9..a90885c1`.
+- **Verified** the conformance matrix parameterised over **both real strategy implementations**, and
+  the model test (seed `208L`, 10 000 operations) with the mandated attempts map, in which `complete`
+  is a **real completion driven through the engine** rather than a no-op, and a failure inside the
+  budget republishes through a real `RetryScheduler`. The eight mandated barrier-forced interleavings,
+  with row (8) serialised by a latch that starts the committer thread only after the disconnecter's.
+- **Command** the three module suites, run **serially** — a concurrent Gradle build in this checkout
+  corrupted a previous verification pass through shared `build/test-results`.
+- **Evidence** `:execution-runtime` **281/0**, `:control-plane` **696/0/4 skipped**,
+  `:runtime-config` **35/0**; 342 completions and 198 retries in the model run.
+  **Falsifiability, which is why this pass existed:** mutating `attempt <= maxRetries` to `<` gave
+  BUILD SUCCESSFUL on the previous revision (blind) and FAILS at op 293 on this one, then reverts
+  green; reversing row (8)'s order fails deterministically with
+  `Expecting actual: ["commit","disconnect"] to contain exactly (and in same order): ["disconnect","commit"]`.
+- **Limits** the retry-exhaustion (ERROR) branch is exercised once, at seed 208, because queued
+  retries are withdrawn before a tick reaches them; the review adjudicated it a **pin** despite the
+  single sample, because both directions of an off-by-one at the retry boundary are caught. Four
+  deferred minors, including one non-vacuity asymmetry (nothing forces a SUCCESS value in
+  `completedStateById`) and the fact that `containsExactly("disconnect","commit")` pins the test's
+  own barrier rather than production behaviour.
+- **Review** clean, 0 Critical / 0 Important / 4 Minor.
+
+### Task 12c — the benchmark harness, the campaign, and the frozen-budget comparison
+- **SHAs** harness `a7e7c47c`, the run `83522ee8`, corrective rounds `5ecd6def`, `90e0e4ac`,
+  `3f352ee4`, `7f2c44c0`, `b766cc51`, `7e70f9c4`, `174a1a03`, `7beabc33`
+  (range `a90885c1..7beabc33`, 10 commits, review clean after 5 fix rounds). Campaign artifacts carry
+  `nanofaas.sha = a7e7c47c` **and** `harnessSha256 = f1941ab4…`, because the harness changed after
+  that commit and the repository SHA alone would not say so.
+- **What it answers:** what a **manual switch** costs. Its own sections below carry the round-by-round
+  detail; `RESULTS.md` carries the tables and the command that produced each.
+- **Command**
+  ```bash
+  ./run.sh --label=full                       # 260 samples, 1 140 switch events, the 1 000-switch phase
+  python3 summarize.py raw/steady.jsonl       # the corrected-protocol tables and the resolving power
+  python3 summarize.py raw/full.jsonl         # the round-1 tables and the mechanism rows
+  ```
+- **Evidence** `maxSwitchPauseMs` **3.984 ms** (budget 250) — `raw/full.jsonl`, max over 1 140
+  measured switches, and that maximum is the process's **first** switch on an empty engine, the
+  harshest available reading; `maxSwitchPauseP99Ms` **0.266 ms** (budget 100); `maxSwitchPreparationMs`
+  **3.984 ms** (budget 2 000, an upper bound — total switch duration); `maxLiveStrategyIndexes` **2**
+  (budget 2); the 1 000-switch return-to-baseline phase **1 000 committed, 0 refused**, pending
+  **398 vs 398** and reservations delta **0** (`raw/baseline.jsonl`); work conserved in **240 of 240**
+  runs. Host quiet throughout: load average 0.12–0.85 on 20 CPUs, no Gradle build in flight, no other
+  sampling run.
+- **Limits** the regression budgets resolve to **"no regression established at this campaign's
+  resolution, which is coarser than the budgets"**: the arms' own median spread is **16.1 %** (steady
+  p99) and **26.9 %** (thread CPU per useful completion) against budgets of 5 % and 10 %, so a
+  uniform +10 % CPU regression — exactly the budget — would have been invisible in **22 of 22**
+  comparisons. The two over-budget rows (+9.51 % p99, +22.06 % CPU) remain over budget and are
+  attributed to the instrument, not reported as regressions. Post-GC heap is the one metric with
+  teeth — its arms agree to 0.0 %, so a uniform +5 % shift separates them in **24 of 24** comparisons
+  — and it **passes**. Round 1's larger readings (+76.13 % p99
+  on `capacity-change`, +23.83 % CPU) came from a protocol later found to pool two strategies and are
+  superseded. The 1 000-switch phase here is **not** the ≥60-minute soak — that is Task 13.
+- **Review** clean after 5 fix rounds, with every load-bearing claim reproduced by computation.
+
+### Task 12e — the refactor's own cost, old loop against new engine
+- **SHAs** arm and driver `c64da071`, campaign `9e380ca1`, corrective rounds `84cbb476`, `d78e5f51`,
+  `4dc6b0f9`, `df8beb20`, `0d652898` (range `7beabc33..0d652898`).
+- **What it answers:** what the **refactor itself** costs — the pre-refactor async loop against the
+  new engine on the same algorithm. Its own section below carries the detail; `OLD-VS-NEW.md` is the
+  deliverable and `raw/old-vs-new.jsonl` the artifact.
+- **Command**
+  ```bash
+  ./run-old.sh                                  # the paired campaign, old arm vs new arm, one JVM
+  python3 old-vs-new.py                         # the tables, importing summarize.py's settlement rule
+  python3 reconcile-12e.py --perturbations      # the reconciler and its own demonstrated bite
+  ```
+- **Evidence** paired design — one arrival script per (workload, repetition), materialised before
+  either arm runs and replayed to both. **60 runs, 60 of 60 conserving work**, zero driver failures,
+  zero sample-cap overruns. The nulls and their resolutions: steady p99 **3.5 %** (median across
+  workloads; `low-load`'s own is 9.36 %), whole-span p99 **5.4 %** (`unqueued`'s 11.41 %), useful
+  throughput **0.01–0.05 %**, post-GC heap **0.01 %** with every paired difference same-signed
+  negative. `budgets.json`, `SchedulerSwitchBenchmark.java` and `summarize.py` unchanged.
+- **Limits** (i) **allocation per useful completion is consistently heavier in the new engine** —
+  5 of 5 same-signed on every non-confounded profile, per-profile medians **+5.5 % to +27.8 %**,
+  repetition-level deltas **+1.59 % to +45.92 %**, window totals **+1.58 % to +45.84 %**; **no frozen
+  budget covers allocation**, so this is a finding with no verdict, and the mechanism is **not**
+  established by this harness and not guessed at. (ii) CPU per useful completion is **the metric the
+  pairing did not sharpen**: its paired spread is **43.15 %**, worse than the 33.31 % unpaired, so the
+  10 % budget sits below this design's resolution on it. Four MISS rows result; only
+  `mixed-kind-retry` separates, at **+29.02 %** (range +17.96…+47.92, 5 of 5 positive, every
+  repetition above budget). (iii) One budget MISS is reported as a MISS: `low-load`'s steady p99
+  **+5.40 %**, in absolute terms 2.570 ms → 2.793 ms against a 100 ms contract, with the five paired
+  differences straddling zero. (iv) `saturated` is huge and **established but is not a loop result** —
+  77 % of its offers expire on the engine and none on the old loop, which has no deadline; it is the
+  **expiry policy** (M3), chosen and declared rather than equalised. (v) **the sync arm is not
+  attempted** — M8 makes it comparable only when `syncQueueMaxQueueWait == contractMs` per profile,
+  and nothing in this step speaks for the shared-queue side. (vi) **`head-of-line-blocking` is
+  excluded** because `EngineReadiness` does not exist at the pre-refactor revision
+  (`git grep -l EngineReadiness -- '*.java'` returns 0 files at `05f49dcb`, 15 at HEAD), so driving it
+  on the old arm would have had 5 of its 6 functions dispatch work the engine refuses — a policy
+  difference in the old arm's favour, not a loop one. `hot-plus-500-sporadic` (M2), `heterogeneous-burst`,
+  `capacity-change` and `switch-under-load` are refused loudly by the harness because their driver
+  features are not implemented. `churn-drain`'s two window metrics are NOT MEASURABLE.
+- **Review** clean after 5 fix rounds, the last adjudicated at the cap rather than dispatched again.
+
+### Task 12d — this entry, and `TASK12.md`
+- **SHA** the commit carrying this section.
+- **Verified** the two suite commands the Task 12 brief mandates, re-run with `--rerun-tasks` and
+  serially, reading the per-module counts from the JUnit results XML rather than from an aggregate;
+  the GitNexus audit over the Task 12 range with the index regenerated first; and the coherence of
+  the figures in `RESULTS.md` and `OLD-VS-NEW.md` against their artifacts.
+- **Command**
+  ```bash
+  ./gradlew :execution-runtime:test -PcontrolPlaneModules=async-queue,sync-queue,runtime-config --no-parallel --console=plain --rerun-tasks
+  ./gradlew :control-plane:test :control-plane-modules:runtime-config:test -PcontrolPlaneModules=async-queue,sync-queue,runtime-config --no-parallel --console=plain --rerun-tasks
+  node .gitnexus/run.cjs analyze --index-only
+  node .gitnexus/run.cjs detect-changes --scope compare --base-ref 21266b22 --repo nanofaas
+  ```
+- **Evidence** both builds **BUILD SUCCESSFUL**; per module `:execution-runtime` **281 tests / 0
+  failures / 0 errors / 0 skipped** (36 suites), `:control-plane` **696 / 0 / 0 / 4 skipped**
+  (116 suites), `:control-plane-modules:runtime-config` **35 / 0 / 0 / 0** (7 suites) — matching the
+  Task 12ab counts exactly. The Task 9 entry's `:control-plane` reading of 690 with 3 skips and this
+  reading of 696 with 4 are different revisions, not a contradiction — tasks 10 and 11 added tests
+  in between; the four skips are 2 in `CoreOnlyApiTest`, 1 in `P07ConfiguredHttpCalibrationTest` and
+  1 in `OpenApiRouteCoverageTest`. The audit reports **51 files, 315 symbols, 816 affected processes,
+  risk level CRITICAL**.
+- **Limits** the CRITICAL tier is **not** evidence of production risk on this range, and the reason
+  is checkable rather than asserted. (i) `git diff --name-only 21266b22..HEAD | grep src/main`
+  returns **0**: nothing in production source changed in the whole range. (ii) The graph indexes
+  **447 nodes** under `docs/experiments/scheduler-switching-2026-09/` alone (126 Property, 90
+  Section, 86 Function, 48 Variable, 40 File, 22 Method, 16 Constructor, 15 Class), and the changed
+  symbols the tool renders are drawn from that population: documentation `Section` nodes from
+  `RESULTS.md` and `OLD-VS-NEW.md`, and standalone-harness symbols — `MeasuredRun`, `Run`, `Attempt`
+  and `TicketId` are each whole words in the harness sources (13, 28, 15 and 17 occurrences). (iii)
+  The ordinary names the tool uses for symbols are not qualified by file, which is what lets a
+  generic bare name on a documentation or harness symbol match unrelated code; the specific
+  collisions were not reconstructed here because the CLI truncates its own rendering (15 symbols, 10
+  flows, even with `--limit 10000`) and the graph is degraded this run. (iv) The reported "affected
+  flows" — `Main → Attempt`, `Churn → AdmitsNewWork`, `RunT2 → Tag` — all list the **same single
+  changed step**, the harness method `MeasuredRun`, which is what a name-based attribution looks
+  like rather than a production call path. (v) The graph's own condition supports no stronger claim:
+  the FTS index build failed (`File.file_fts`), process discovery reported whole flows missing
+  (2 020 of 2 220 candidate entry points never ranked), and direct `impact` queries on the two
+  symbols Task 0 recorded as CRITICAL returned `UNKNOWN` (empty walk) for `FunctionCapacityRegistry`
+  and `ambiguous` over 13 same-name candidates for `ExecutionStore`. The tier is a **recurrence of
+  the third distinct failure mode** in the campaign's running tally — a confident CRITICAL raised
+  from bare-name collisions — not a new one; the full-diff reviews remain the control that has
+  carried the weight.
+- **Still open, and not this task's to close** the ledger ruling that the gitignored ledger and task
+  reports be force-added to git before the workspace is deleted has **not** been executed. Until it
+  is, this section and `TASK12.md` are the durable record and the ledger is the richer one.
