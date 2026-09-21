@@ -12,11 +12,13 @@ images; it does not own the running functions.
 ## Build from reviewed source revisions
 
 `io.nanofaas:containerd-java`, `io.nanofaas:containerd-java-cni`, and
-`io.libcni:libcni-java` are source snapshots. Their exact revisions and Maven
-coordinates are in [`dependencies.env`](../deploy/containerd-rootless/dependencies.env).
-The feature commits may not yet be present on public remotes. Supply local
-checkouts containing those commits; the script exports the recorded trees to a
-temporary directory and never builds or edits the supplied checkout in place:
+`io.libcni:libcni-java` are built from recorded revisions of their public
+repositories rather than resolved from a package registry. The revisions, and the
+Maven coordinates they produce, are in
+[`dependencies.env`](../deploy/containerd-rootless/dependencies.env); each is a
+commit on its repository's default branch. Supply checkouts containing those
+commits -- the script exports the recorded trees to a temporary directory and
+never builds or edits the supplied checkout in place:
 
 ```bash
 scripts/bootstrap-containerd-dependencies.sh \
