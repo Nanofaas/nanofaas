@@ -6,6 +6,17 @@ namespace:
 
 controlPlane:
   replicaCount: 1
+  # The scheduling strategy the composed engine starts on. Empty is the default and
+  # means "no explicit selection": the engine derives the legacy mapping from the
+  # queue modules baked into the image (both, or async only -> per-function;
+  # sync-queue only -> shared-queue). Set "per-function" or "shared-queue" to pin
+  # one; an id no strategy in the image provides fails startup rather than falling
+  # back. A switch made through PATCH /v1/admin/runtime-config/scheduler (which
+  # needs NANOFAAS_ADMIN_RUNTIME_CONFIG_ENABLED=true, via controlPlane.extraEnv) is
+  # deliberately not persisted — it lives in memory only, so this value wins again
+  # on the next start.
+  scheduler:
+    strategy: ""
   persistence:
     enabled: true
     size: 1Gi

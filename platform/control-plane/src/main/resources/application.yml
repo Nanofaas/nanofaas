@@ -49,6 +49,23 @@ nanofaas:
   admin:
     runtime-config:
       enabled: false
+  scheduler:
+    # Which strategy the composed engine starts on, and stays on until someone
+    # switches it through PATCH /v1/admin/runtime-config/scheduler (which needs
+    # nanofaas.admin.runtime-config.enabled=true — the enablement stays explicit).
+    # The empty string is NOT a third strategy: it means "no explicit selection",
+    # and the engine then derives the legacy mapping from the strategies this
+    # artifact was built with — both queue modules present or async only → per-function,
+    # sync-queue only → shared-queue. An id no built-in strategy provides fails
+    # startup (StrategyRegistry#require) instead of silently falling back.
+    strategy: ${NANOFAAS_SCHEDULER_STRATEGY:}
+    # The two switch budgets the plan froze and Task 12's gate measured against
+    # (max pause 3.984 ms against the 250 ms below). They are startup-validated
+    # configuration, declared here so an operator sees the contract in one place;
+    # the engine's own rebuild budget is still the compiled constant
+    # (SchedulerEngine.SWITCH_BUDGET_MS), which is what the gate measures.
+    max-switch-preparation: PT2S
+    max-switch-pause: PT0.25S
   invocation-capacity:
     # Calibrated for the chart's minimum supported 512 MiB container. These are
     # simultaneous live-owner ceilings, not rate limits and not an RSS promise.

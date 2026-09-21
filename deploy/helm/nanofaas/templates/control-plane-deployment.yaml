@@ -34,6 +34,11 @@ spec:
                   fieldPath: metadata.namespace
             - name: NANOFAAS_REGISTRY_PATH
               value: /var/lib/nanofaas/functions.json
+            # Rendered even when empty: the empty string is the documented "no
+            # explicit selection" case, not an unset one, and application.yml
+            # resolves ${NANOFAAS_SCHEDULER_STRATEGY:} to whatever lands here.
+            - name: NANOFAAS_SCHEDULER_STRATEGY
+              value: {{ .Values.controlPlane.scheduler.strategy | quote }}
             - name: NANOFAAS_INVOCATION_CAPACITY_INGRESS_BODY_BYTES
               value: {{ .Values.controlPlane.invocationCapacity.ingressBodyBytes | int64 | quote }}
             - name: NANOFAAS_INVOCATION_CAPACITY_EXECUTIONS_GLOBAL

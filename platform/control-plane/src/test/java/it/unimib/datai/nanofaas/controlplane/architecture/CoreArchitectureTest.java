@@ -1,6 +1,8 @@
 package it.unimib.datai.nanofaas.controlplane.architecture;
 
+import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.domain.Source;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
@@ -10,12 +12,29 @@ import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
 
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
 
+import static com.tngtech.archunit.base.DescribedPredicate.not;
+import static com.tngtech.archunit.core.domain.JavaClass.Predicates.assignableTo;
+import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
+import static org.assertj.core.api.Assertions.assertThat;
 
-@AnalyzeClasses(packages = "it.unimib.datai.nanofaas.controlplane..")
+/**
+ * The composition-level architecture rules for the scheduler work (issue #208, Task 13).
+ *
+ * <p>The analyzed packages include the optional modules, not only the core: a scheduling
+ * strategy is contributed by a module, and its dependency direction is the one thing the build
+ * graph of this module cannot see (the core depends on the modules at runtime only). The rules
+ * that only concern the core are still expressed as package predicates, so widening the import
+ * set does not widen what they check.
+ */
+@AnalyzeClasses(packages = {
+        "it.unimib.datai.nanofaas.controlplane..",
+        "it.unimib.datai.nanofaas.modules.."})
 class CoreArchitectureTest {
 
     // R1: the core must contain no cycles between its top-level packages.
@@ -110,6 +129,91 @@ class CoreArchitectureTest {
                 }
             }
         };
+    }
+
+    /**
+     * A strategy implements a scheduling POLICY and nothing else: it holds no threads, no meters,
+     * no callbacks and no store, so the engine can swap one for another without either side
+     * knowing. That is what the {@code SchedulingIndex} contract already promises in prose; this
+     * rule is the bytecode check behind it, and it is the one direction the build graph cannot
+     * see from here — {@code :control-plane} has the queue modules on its RUNTIME classpath only,
+     * so the modules' own {@code ArchitectureTest}s (which name the core implementations they
+     * refuse) are the other half.
+     *
+     * <p>Whitelisted rather than blacklisted, and by package rather than by class: a whitelist
+     * notices a dependency someone adds later, where a list of forbidden names only notices the
+     * ones that were already there. See {@link #scheduling_policy_dependencies()} for exactly what
+     * is allowed.
+     *
+     * <p>What this forbids in particular: the engine and its mutable store
+     * ({@code ..controlplane.execution}, {@code it.unimib.datai.nanofaas.execution}), which would
+     * be a cycle the moment the engine switched strategies, and Spring, which would mean a
+     * strategy registered by annotation scanning or reflection instead of being handed to
+     * {@code StrategyRegistry}'s constructor.
+     */
+    @ArchTest
+    static final ArchRule scheduling_policies_depend_on_the_spi_alone =
+            classes().that(scheduling_policy_types())
+                    .should().onlyDependOnClassesThat(scheduling_policy_dependencies())
+                    .as("a scheduling strategy depends on the scheduling SPI and the values it "
+                            + "names, never on the runtime, a mutable store or Spring");
+
+    /**
+     * What a policy is allowed to name: the SPI contracts it implements, the value types those
+     * contracts carry ({@code FunctionGeneration}), the JDK — and the indexes it is a factory for,
+     * which is how {@code newIndex()} constructs its own nested index. Naming the indexes rather
+     * than the modules they live in keeps the rest of each module out (a queue manager, a gateway,
+     * a Spring configuration are all still refused), and it stays correct for a strategy added
+     * later without anyone having to extend a package list.
+     */
+    private static DescribedPredicate<JavaClass> scheduling_policy_dependencies() {
+        return resideInAPackage("it.unimib.datai.nanofaas.controlplane.scheduler..")
+                .or(resideInAPackage("it.unimib.datai.nanofaas.controlplane.capacity.."))
+                .or(resideInAPackage("java.."))
+                .or(resideInAPackage("javax.."))
+                .or(assignableTo("it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingIndex")
+                        .and(resideInAPackage("it.unimib.datai.nanofaas.modules..")))
+                .as("the scheduling SPI, the values it names, the JDK, and the indexes a policy builds");
+    }
+
+    private static DescribedPredicate<JavaClass> scheduling_policy_types() {
+        return assignableTo("it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingStrategy")
+                .or(assignableTo("it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingIndex"))
+                // The SPI's own package is where those contracts live; the rule is about the
+                // implementations of them.
+                .and(not(resideInAPackage("it.unimib.datai.nanofaas.controlplane.scheduler..")))
+                .as("types implementing the scheduling SPI outside the SPI's own package");
+    }
+
+    /**
+     * An ArchUnit rule over an empty (or partial) import set is vacuously true, which is exactly
+     * how a rule like the one above stops meaning anything: a package renamed out from under the
+     * {@code @AnalyzeClasses} list, or a module dropped from the classpath, would leave it green
+     * and silent. This pins the SUBJECTS, not just the import: one strategy and the index it
+     * builds, per queue module the profile selected. A new strategy fails here until it is added,
+     * which is the reviewable step this guard is for.
+     */
+    @ArchTest
+    static void the_scheduling_policy_rule_has_exactly_the_subjects_the_profile_selected(JavaClasses classes) {
+        String selected = System.getProperty("nanofaas.selectedControlPlaneModules");
+        if (selected == null) {
+            // Not a Gradle-profile run (an IDE run of the class alone): nothing to compare to.
+            return;
+        }
+        List<String> expected = new ArrayList<>();
+        if (selected.contains("async-queue")) {
+            expected.addAll(List.of("PerFunctionSchedulingStrategy", "PerFunctionIndex"));
+        }
+        if (selected.contains("sync-queue")) {
+            expected.addAll(List.of("SharedQueueSchedulingStrategy", "SharedQueueIndex"));
+        }
+
+        assertThat(classes.stream()
+                .filter(scheduling_policy_types())
+                .map(JavaClass::getSimpleName)
+                .toList())
+                .as("the strategy rule's subjects for the selected profile [%s]", selected)
+                .containsExactlyInAnyOrderElementsOf(expected);
     }
 
     static boolean isCoreSource(URI uri) {
