@@ -632,6 +632,14 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             draining.removeIf(name -> {
                 if (reservedCount(name) == 0) {
                     drained.add(name);
+                    // A drain, unlike an ordinary zero-crossing between bursts (see
+                    // adjustReserved's own javadoc), IS evidence the function is gone: this is
+                    // the removal listener's own signal, not traffic ebbing. Pruning here keeps
+                    // this map from retaining an entry forever for every function ever removed —
+                    // every sibling per-function map in this composition (WorkloadMetricsBinder,
+                    // SyncQueueMetrics, PerFunctionDepth, WaitEstimator) has an equivalent
+                    // removal hook; this one had none until fix round 1.
+                    reservedByFunction.remove(name);
                     return true;
                 }
                 return false;
@@ -656,8 +664,10 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     }
 
     /** Under the gate, at every point a reservation opens ({@code delta > 0}) or closes
-     * ({@code delta < 0}). Never removes the map entry: a zero count is a legitimate steady
-     * state for an active function between bursts, not evidence it is gone. */
+     * ({@code delta < 0}). Never removes the map entry itself: a zero count reached this way is
+     * a legitimate steady state for an active function between bursts, not evidence it is gone.
+     * {@link #checkDrained} is the one place that DOES prune an entry — there, unlike here, a
+     * zero count is coupled with the removal listener's own {@link #markDraining} signal. */
     private void adjustReserved(String functionName, int delta) {
         reservedByFunction.computeIfAbsent(functionName, ignored -> new AtomicInteger()).addAndGet(delta);
     }

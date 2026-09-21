@@ -96,12 +96,21 @@ public class SyncQueueConfiguration {
 
     /**
      * Reclaims {@code SyncQueueMetrics}' {@code sync_queue_admitted_total}/
-     * {@code sync_queue_rejected_total} counters (Task 11, issue #208): the retired
-     * {@code SyncQueueService} recorded these on its own queue; {@link EngineSyncQueueGateway}
+     * {@code sync_queue_rejected_total}/{@code sync_queue_depth} meters (Task 11, issue #208): the
+     * retired {@code SyncQueueService} recorded these on its own queue; {@link EngineSyncQueueGateway}
      * previously recorded neither. A dedicated bean, not shared with the engine-backed
-     * {@code WorkloadMetricsBinder}/{@code WorkloadDiagnostics} in {@code SchedulerConfiguration}:
-     * those are cumulative depth/backlog gauges the whole composition owns; this is this module's
-     * own admission counter, exactly as it was before Task 8.
+     * {@code WorkloadMetricsBinder} in {@code SchedulerConfiguration}: those are the composed
+     * engine's own reservation-based gauges; this is this module's own admission counter/gauge,
+     * exactly as it was before Task 8.
+     *
+     * <p>Fix round 1 correction: {@code sync_queue_depth} is a stateful gauge — {@code admitted}
+     * increments it, and only {@code dequeued} decrements it. The first pass wired
+     * {@code metrics::admitted} into {@link EngineSyncQueueGateway} but never wired a matching
+     * decrement, which made this gauge a permanent, ever-growing admission counter mislabelled as
+     * a depth. {@link EngineSyncQueueGateway#settleIfSyncOrigin} now calls {@code metrics::dequeued}
+     * exactly once per admitted ticket, at the same choke point every terminal engine event
+     * (submit, expired, removed) already funnels through — see
+     * {@code engineSyncQueueGateway} below.
      */
     @Bean
     SyncQueueMetrics syncQueueMetrics(MeterRegistry registry) {
@@ -143,6 +152,6 @@ public class SyncQueueConfiguration {
                 estimator::recordDispatch,
                 estimator::removeFunctionState,
                 engine, store, capacityRegistry, schedulerTicketSequence, admissionProfile,
-                metrics::admitted, metrics::rejected);
+                metrics::admitted, metrics::rejected, metrics::dequeued);
     }
 }

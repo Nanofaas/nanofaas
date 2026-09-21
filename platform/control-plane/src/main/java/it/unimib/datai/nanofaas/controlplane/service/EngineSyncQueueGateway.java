@@ -59,6 +59,12 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
      * compile-time dependency on the sync-queue module. */
     private final Consumer<String> onAdmitted;
     private final Consumer<String> onRejected;
+    /** Fix round 1 (issue #208): paired with {@link #onAdmitted} exactly once per ticket, at
+     * {@link #settleIfSyncOrigin} — the single choke point every terminal engine event (submit,
+     * expired, removed) already funnels through. Without this pairing {@code sync_queue_depth}
+     * only ever counted up: a gauge named "depth" that was actually a permanent admission
+     * counter, never clearing on any dashboard or alert. */
+    private final Consumer<String> onDequeued;
     // A provider, not a direct reference: see EngineInvocationEnqueuer for why this must be
     // lazy — the engine's own dispatch calls back into a RetryScheduler, and a direct
     // constructor reference here would put this bean on that same cycle whenever it is the
@@ -101,7 +107,7 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
                                   LongSupplier sequence,
                                   EngineInvocationEnqueuer.AdmissionProfile profile) {
         this(configSource, admissionCheck, onDispatched, onFunctionRemoved, engine, store, capacityRegistry,
-                sequence, profile, name -> { }, name -> { }, Clock.systemUTC());
+                sequence, profile, name -> { }, name -> { }, name -> { }, Clock.systemUTC());
     }
 
     public EngineSyncQueueGateway(SyncQueueConfigSource configSource,
@@ -114,9 +120,10 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
                                   LongSupplier sequence,
                                   EngineInvocationEnqueuer.AdmissionProfile profile,
                                   Consumer<String> onAdmitted,
-                                  Consumer<String> onRejected) {
+                                  Consumer<String> onRejected,
+                                  Consumer<String> onDequeued) {
         this(configSource, admissionCheck, onDispatched, onFunctionRemoved, engine, store, capacityRegistry,
-                sequence, profile, onAdmitted, onRejected, Clock.systemUTC());
+                sequence, profile, onAdmitted, onRejected, onDequeued, Clock.systemUTC());
     }
 
     EngineSyncQueueGateway(SyncQueueConfigSource configSource,
@@ -130,6 +137,7 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
                           EngineInvocationEnqueuer.AdmissionProfile profile,
                           Consumer<String> onAdmitted,
                           Consumer<String> onRejected,
+                          Consumer<String> onDequeued,
                           Clock clock) {
         this.configSource = Objects.requireNonNull(configSource, "configSource must not be null");
         this.admissionCheck = Objects.requireNonNull(admissionCheck, "admissionCheck must not be null");
@@ -142,6 +150,7 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
         this.profile = Objects.requireNonNull(profile, "profile must not be null");
         this.onAdmitted = Objects.requireNonNull(onAdmitted, "onAdmitted must not be null");
         this.onRejected = Objects.requireNonNull(onRejected, "onRejected must not be null");
+        this.onDequeued = Objects.requireNonNull(onDequeued, "onDequeued must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
     }
 
@@ -224,9 +233,19 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
      * admitted through this gateway. Called by {@code EngineTransport} on every terminal engine
      * event (submit, expired, removed) so the estimator is fed sync-origin dispatches only and
      * this set never leaks an id whose ticket left the engine without reaching submit.
+     *
+     * <p>Fix round 1: this is also the single choke point for {@link #onDequeued}, paired with
+     * {@link #onAdmitted} in {@link #enqueueOrThrow} — every ticket this gateway admits leaves
+     * through exactly one of submit/expired/removed, and each of those three paths already calls
+     * this method, so pairing the decrement here (rather than in each of the three callers
+     * separately) cannot double-decrement or miss a path.
      */
-    public boolean settleIfSyncOrigin(TicketId id) {
-        return pendingSyncTicketIds.remove(id);
+    public boolean settleIfSyncOrigin(String functionName, TicketId id) {
+        boolean settled = pendingSyncTicketIds.remove(id);
+        if (settled) {
+            onDequeued.accept(functionName);
+        }
+        return settled;
     }
 
     /**

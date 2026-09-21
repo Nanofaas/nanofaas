@@ -20,6 +20,7 @@ import it.unimib.datai.nanofaas.controlplane.service.EngineInvocationEnqueuer;
 import it.unimib.datai.nanofaas.controlplane.service.EngineInvocationEnqueuer.AdmissionProfile;
 import it.unimib.datai.nanofaas.controlplane.service.EngineInvocationEnqueuer.PerFunctionDepth;
 import it.unimib.datai.nanofaas.controlplane.service.EngineSyncQueueGateway;
+import it.unimib.datai.nanofaas.controlplane.service.EngineWorkloadMetricsSource;
 import it.unimib.datai.nanofaas.controlplane.service.SchedulerConfiguration;
 import it.unimib.datai.nanofaas.execution.EngineDispatch;
 import it.unimib.datai.nanofaas.execution.EngineReadiness;
@@ -27,7 +28,6 @@ import it.unimib.datai.nanofaas.execution.PendingEntry;
 import it.unimib.datai.nanofaas.execution.PendingWorkStore;
 import it.unimib.datai.nanofaas.execution.SchedulerEngine;
 import it.unimib.datai.nanofaas.execution.StrategyRegistry;
-import it.unimib.datai.nanofaas.workloadmetrics.WorkloadDiagnostics;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -41,6 +41,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -103,7 +105,7 @@ class AsyncQueueConfigurationTest {
         ObjectProvider<EngineSyncQueueGateway> noSyncGateway = noSyncGateway();
         FunctionRegistrationListener listener = new SchedulerConfiguration()
                 .schedulerCapacityGenerationListener(capacityRegistry, engine, new PerFunctionDepth(),
-                        noSyncGateway, testMetricsBinder(), testDiagnostics());
+                        noSyncGateway, testMetricsBinder());
 
         FunctionSpec spec = spec("echo");
         InvocationTask task = task("exec-queued", spec);
@@ -197,7 +199,7 @@ class AsyncQueueConfigurationTest {
 
         FunctionRegistrationListener listener = new SchedulerConfiguration()
                 .schedulerCapacityGenerationListener(capacityRegistry, engine, perFunctionDepth,
-                        noSyncGateway(), testMetricsBinder(), testDiagnostics());
+                        noSyncGateway(), testMetricsBinder());
 
         // A large queueSize: the per-function cap (I1) must not be what stops the admitter mid-race
         // — this test is about the removal/admission race, not the per-function depth cap.
@@ -252,6 +254,204 @@ class AsyncQueueConfigurationTest {
         assertThat(store.pendingCount()).isZero();
     }
 
+    /**
+     * Task 11 fix round 1 (issue #208): the brief's own named acceptance test (brief line 14),
+     * missing from the first pass. It is written against a real {@link WorkloadMetricsBinder}
+     * bound to a real {@link EngineWorkloadMetricsSource} (not the zero-source stand-in the other
+     * tests in this file use) specifically so it can observe actual meter registration/removal —
+     * the first-pass gap this test would have caught: {@code WorkloadDiagnostics} half-wired
+     * (registered, never recorded) and {@code sync_queue_depth} never decremented would both have
+     * been visible here had this file's helper still wired {@code WorkloadDiagnostics} in.
+     *
+     * <p>Falsifiable against the pre-fix code two different ways: (1) reverting the drain-listener
+     * registration in {@code SchedulerConfiguration.schedulerCapacityGenerationListener} (calling
+     * {@code metricsBinder.removeFunction} directly from {@code onRemove} instead of via
+     * {@code engine.markDraining}/{@code addDrainListener}) makes the "still active" assertion
+     * below fail — the meters would already be gone. (2) reverting
+     * {@code SchedulerEngine.checkDrained}'s new {@code reservedByFunction.remove(name)} does NOT
+     * fail this test (the Minor fix has no externally observable effect through
+     * {@code WorkloadMetricsBinder} — its own gauges are removed identically either way), which is
+     * exactly why the Minor is verified separately, by asserting {@code engine.reservedCount}
+     * directly rather than only meter counts.
+     *
+     * <p>Correction after this test's first draft (still fix round 1, caught by actually running
+     * it rather than by inspection): the "still physically active" ticket cannot be represented
+     * by a readiness-blocked selection — a ticket blocked that way never leaves "pending", and
+     * {@code removeAllFor} purges pending work on removal by design (fix round C2), so it was
+     * reaped exactly like an ordinary queued caller instead of surviving. Genuine "physically
+     * active" here means claimed/submitting, which {@code removeAllFor}'s own contract leaves
+     * untouched — and since {@code submit()} is contractually non-blocking (the reservation is
+     * released in its own {@code finally}, on the same thread, immediately after it returns),
+     * observing that state from outside needs a real interleaving: a latch parks the worker
+     * thread inside {@code submit()} so the main thread can call {@code onRemove} while the
+     * reservation is still open, then releases it to let the drain reconcile.
+     */
+    @Test
+    void oneHundredGenerationsOfTheSameNameReturnMetersAndDrainSetToBaselineWhileAStillActiveLeaseSurvivesUntilDrain()
+            throws InterruptedException {
+        FunctionCapacityRegistry capacityRegistry = new FunctionCapacityRegistry();
+        PendingWorkStore store = new PendingWorkStore(64);
+        EngineReadiness readiness = generation -> true;
+        // A ticket blocked by readiness never leaves "pending" (SchedulingIndex#select simply
+        // will not offer it), and removeAllFor purges pending work on function removal by
+        // design (fix round C2) — so "readiness=false" cannot stand in for "still physically
+        // active" here; it stands in for "never got to run" and gets reaped exactly like every
+        // other queued caller of a removed function. The ONLY reservation state removeAllFor
+        // deliberately leaves untouched is "already claimed or submitting" (see its own javadoc),
+        // and submit() itself is contractually non-blocking (finishSubmit — and the reservation
+        // release with it — runs synchronously in submit()'s own finally, back-to-back, on
+        // whichever thread called tick()). Observing "claimed/submitting, not yet settled" from
+        // outside therefore needs a real interleaving: a latch holds the worker thread INSIDE
+        // submit() so the main thread can call onRemove while the reservation is still open.
+        CountDownLatch submitEntered = new CountDownLatch(1);
+        CountDownLatch releaseSubmit = new CountDownLatch(1);
+        AtomicBoolean holdNextSubmit = new AtomicBoolean(false);
+        EngineDispatch dispatch = new EngineDispatch() {
+            @Override
+            public DispatchOwnership tryAcquire(SchedulingTicket ticket) {
+                return new DispatchOwnership() {
+                    private volatile boolean released;
+
+                    @Override
+                    public FunctionGeneration generation() {
+                        return ticket.generation();
+                    }
+
+                    @Override
+                    public void release() {
+                        released = true;
+                    }
+
+                    @Override
+                    public boolean isReleased() {
+                        return released;
+                    }
+                };
+            }
+
+            @Override
+            public boolean isCurrent(SchedulingTicket ticket) {
+                return true;
+            }
+
+            @Override
+            public void submit(InvocationTask task) {
+                if (holdNextSubmit.compareAndSet(true, false)) {
+                    submitEntered.countDown();
+                    awaitUninterruptibly(releaseSubmit);
+                    return;
+                }
+                // No-op success: SchedulerDispatchSupport treats this as DISPATCHED and the
+                // engine settles the reservation (finishSubmit) synchronously within the same
+                // tick — see SchedulerEngineQueueSnapshotTest for the same observation.
+            }
+
+            @Override
+            public void expired(InvocationTask task) {
+                executionStore.expired(task);
+            }
+
+            @Override
+            public void removed(InvocationTask task) {
+                executionStore.removed(task);
+            }
+
+            @Override
+            public void rejected(InvocationTask task, Throwable failure) {
+                executionStore.rejected(task, failure);
+            }
+        };
+        SchedulingStrategy strategy = new PerFunctionSchedulingStrategy();
+        SchedulerEngine engine = new SchedulerEngine(store, new StrategyRegistry(List.of(strategy)),
+                strategy.id(), dispatch, readiness, Clock.systemUTC(), System::nanoTime);
+
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        WorkloadMetricsBinder binder = new WorkloadMetricsBinder(
+                registry, new EngineWorkloadMetricsSource(engine, capacityRegistry));
+        FunctionRegistrationListener listener = new SchedulerConfiguration()
+                .schedulerCapacityGenerationListener(capacityRegistry, engine, new PerFunctionDepth(),
+                        noSyncGateway(), binder);
+
+        int baseline = registry.getMeters().size();
+        assertThat(baseline).isZero();
+
+        // 99 churns with nothing admitted: the removal listener's own onRemove->markDraining
+        // path finds reservedCount already zero, so the drain listener fires on the very next
+        // tick and meters return to baseline every time — no leak across repeated
+        // register/remove cycles of the SAME function name (a repeated re-registration of one
+        // name, not 99 distinct names).
+        for (int i = 0; i < 99; i++) {
+            listener.onRegister(spec("echo"));
+            assertThat(registry.getMeters())
+                    .as("generation #%d: registration must publish exactly the 4 function_* gauges", i)
+                    .hasSize(baseline + 4);
+
+            listener.onRemove("echo");
+            engine.tick();
+            assertThat(registry.getMeters())
+                    .as("generation #%d: meters must return to baseline after the drain reconciles", i)
+                    .hasSize(baseline);
+        }
+        assertThat(engine.reservedCount("echo"))
+                .as("the signal-set (draining/reservation bookkeeping) must also be back at baseline")
+                .isZero();
+
+        // The 100th generation: an admitted ticket the engine has already claimed and started
+        // submitting — genuinely "still physically active", not merely queued — when the removal
+        // arrives. Readiness stays true throughout: what keeps the reservation open here is the
+        // held submit() call, not a blocked selection.
+        FunctionSpec spec = spec("echo");
+        listener.onRegister(spec);
+        InvocationTask task = task("exec-100", spec);
+        FunctionGeneration generation = capacityRegistry.activeGeneration("echo");
+        SchedulingTicket ticket = new SchedulingTicket(new TicketId(task.executionId(), task.attempt()),
+                generation, 0, Instant.now(), Instant.now(), null);
+        assertThat(engine.enqueue(new PendingEntry(ticket, task))).isTrue();
+
+        holdNextSubmit.set(true);
+        Thread worker = new Thread(engine::tick, "test-engine-tick");
+        worker.start();
+        try {
+            assertThat(submitEntered.await(5, TimeUnit.SECONDS))
+                    .as("the worker thread must be parked inside submit(), ticket claimed")
+                    .isTrue();
+
+            // The removal arrives while the ticket is mid-submit: removeAllFor's own contract
+            // ("a ticket already claimed or submitting is left untouched") is what this proves,
+            // not a readiness gate.
+            listener.onRemove("echo");
+
+            assertThat(engine.reservedCount("echo"))
+                    .as("the ticket is still physically reserved: submit() has not returned yet")
+                    .isEqualTo(1);
+            assertThat(registry.getMeters())
+                    .as("meters must survive while a reservation from the retired generation is still open")
+                    .hasSize(baseline + 4);
+        } finally {
+            releaseSubmit.countDown();
+        }
+        worker.join(TimeUnit.SECONDS.toMillis(5));
+        assertThat(worker.isAlive()).isFalse();
+
+        // submit() returning settles the reservation (finishSubmit) and reconciles the drain —
+        // both inside the same tick() call, on the worker thread, before join() returns.
+        assertThat(engine.reservedCount("echo")).isZero();
+        assertThat(registry.getMeters())
+                .as("meters must be retired once the drained generation's last reservation settles")
+                .hasSize(baseline);
+    }
+
+    private static void awaitUninterruptibly(CountDownLatch latch) {
+        try {
+            if (!latch.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("latch was never released");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
+
     private static ObjectProvider<EngineSyncQueueGateway> noSyncGateway() {
         return new ObjectProvider<>() {
             @Override
@@ -271,10 +471,6 @@ class AsyncQueueConfigurationTest {
             @Override public int dispatchableBacklog(String functionName) { return 0; }
         };
         return new WorkloadMetricsBinder(new SimpleMeterRegistry(), zeroSource);
-    }
-
-    private static WorkloadDiagnostics testDiagnostics() {
-        return new WorkloadDiagnostics(new SimpleMeterRegistry());
     }
 
     private static FunctionSpec spec(String name) {
