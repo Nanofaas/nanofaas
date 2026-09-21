@@ -20,9 +20,29 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../../.." && pwd)
 CP_CACHE="$HERE/.classpath-execution-runtime"
 
-if [ ! -s "$CP_CACHE" ]; then
-    echo "[run] resolving the classpath for :execution-runtime (once)..." >&2
+# The cache holds the implementer machine's absolute paths, so a cache committed to the repository
+# is a cache that cannot be right on another host. It is validated on every run rather than trusted:
+# empty, missing a path, or missing this module's own output all mean "re-resolve", loudly.
+cache_is_valid() {
+    [ -s "$CP_CACHE" ] || return 1
+    # The compiled output of this module must be there...
+    grep -q 'execution-runtime/build/classes/java/main' "$CP_CACHE" || return 1
+    grep -q 'execution-runtime/build/classes/java/test' "$CP_CACHE" || return 1
+    # ...and every jar it names must exist. Resource directories are deliberately not required:
+    # Gradle emits one whether or not a module has resources, when it does.
+    local entry
+    while IFS= read -r entry; do
+        case "$entry" in
+            *.jar) [ -e "$entry" ] || return 1 ;;
+        esac
+    done < <(tr ':' '\n' < "$CP_CACHE")
+    return 0
+}
+
+if ! cache_is_valid; then
+    echo "[run] classpath cache is absent, incomplete or built for another host: re-resolving" >&2
     (cd "$ROOT" && ./gradlew -q :execution-runtime:printTestClasspath) > "$CP_CACHE"
+    cache_is_valid || { echo "[run] resolved classpath still fails validation" >&2; exit 1; }
 fi
 
 LABEL=run

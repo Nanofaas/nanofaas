@@ -87,17 +87,6 @@ def pause_sweep(switches):
 # ----------------------------------------------------------------------------------------------
 # 2. Every measured switch in the campaign, for the process-wide budget
 # ----------------------------------------------------------------------------------------------
-def all_pauses(switches, baseline, summary):
-    measured = [e for e in switches if e["repetition"] > 0]
-    pauses = [ms(e["enginePauseNanos"]) for e in measured]
-    if summary:
-        pauses.append(summary["pauseMaxMs"])
-    return pauses
-
-
-# ----------------------------------------------------------------------------------------------
-# 3. Per-workload, per-arm medians
-# ----------------------------------------------------------------------------------------------
 def per_arm(samples):
     table = defaultdict(list)
     for sample in samples:
@@ -136,7 +125,13 @@ def workload_table(samples):
 # ----------------------------------------------------------------------------------------------
 # 4. Switched arm against the same strategy's no-change arm: the four regression budgets
 # ----------------------------------------------------------------------------------------------
-def regression(samples):
+def legacy_regression(samples):
+    """The round-1 protocol's table: the switched arm compared against the strategy it *started*
+    on, over the whole measured window — how round 1 measured, and the artifact the mid-window
+    mixture defect is visible in. Round-3 artifacts do not call this; they call steady_regression,
+    which compares against the strategy the arm ends on and segments the settling. Kept because a
+    committed artifact has to be reproducible by the committed tool, and raw/full.jsonl is this
+    protocol's output."""
     table = per_arm(samples)
     # Each switched arm is compared against the arm whose strategy it ends on: the switch lands at
     # the start of the measured window, so the whole window runs on the target strategy and the
@@ -265,6 +260,7 @@ def settling_table(samples):
           "settled before the steady window |")
     print("|---|---|---|---|---|---|")
     per_workload = defaultdict(list)
+    settlements = {}
     for (workload, arm), run in by_arm.items():
         series = [r["depthSeries"] for r in run]
         interval = run[0]["depthSampleIntervalNanos"] / 1e6
@@ -274,13 +270,13 @@ def settling_table(samples):
         bands = [settled_band(x) for x in series]
         per_workload[workload].append((arm, settles, levels,
                                        (median(b[0] for b in bands), median(b[1] for b in bands))))
-        bands = [settled_band(x) for x in series]
+        settlements[(workload, arm)] = max(settles) <= span - STEADY_WINDOW_MS
         print(f"| {workload} | {arm} | {median(levels):.0f} | "
               f"{median(b[0] for b in bands):.0f}-{median(b[1] for b in bands):.0f} | "
               f"{max(settles):.0f} | "
-              f"{'yes' if max(settles) <= span - STEADY_WINDOW_MS else 'NO'} |")
+              f"{'yes' if settlements[(workload, arm)] else 'NO'} |")
     print()
-    return per_workload
+    return per_workload, settlements
 
 
 def convergence(per_workload):
@@ -317,80 +313,199 @@ def convergence(per_workload):
     return findings
 
 
-def steady_regression(samples):
-    """The four budgets, on the steady window, with the transient-inclusive figure beside them."""
+def steady_regression(samples, settlements):
+    """The four budgets on the corrected protocol, eligibility tested per metric.
+
+    Two of the four are window-derived — the steady p99 and the steady useful throughput, read off
+    the trailing window — and only they need arrivals in that window, and only they are gated on the
+    settling rule. The other two are whole-run quantities by construction: CPU per useful completion
+    is span CPU over span completions and post-GC heap is measured after the run, so neither has a
+    "steady" form and neither can be unmeasurable for want of steady arrivals. Calling them steady
+    was a label defect; treating them as unmeasurable for a workload that stops its traffic was a
+    coverage gap, since the brief mandates the memory comparison from that workload.
+    """
     table = per_arm(samples)
     pairs = [
         ("per-function -> shared-queue", "shared-queue (no change)"),
         ("shared-queue -> per-function", "per-function (no change)"),
     ]
+    window_p99 = lambda r: r["trailing"][str(STEADY_WINDOW_MS)]["p99Nanos"] / 1e6
+    window_tput = lambda r: r["trailing"][str(STEADY_WINDOW_MS)]["usefulThroughputPerSecond"]
     metrics = [
-        ("steady p99", lambda r: r["trailing"][str(STEADY_WINDOW_MS)]["p99Nanos"] / 1e6,
-         BUDGETS["maxSteadyP99RegressionPercent"]),
-        ("steady useful throughput",
-         lambda r: r["trailing"][str(STEADY_WINDOW_MS)]["usefulThroughputPerSecond"],
-         BUDGETS["maxUsefulThroughputRegressionPercent"]),
-        ("thread cpu per useful completion", lambda r: r["threadCpuPerUsefulCompletionNanos"],
-         BUDGETS["maxCpuPerCompletionRegressionPercent"]),
+        ("steady p99", window_p99, BUDGETS["maxSteadyP99RegressionPercent"], "window", window_p99),
+        ("steady useful throughput", window_tput,
+         BUDGETS["maxUsefulThroughputRegressionPercent"], "window", window_tput),
+        ("thread cpu per useful completion",
+         lambda r: r["threadCpuPerUsefulCompletionNanos"],
+         BUDGETS["maxCpuPerCompletionRegressionPercent"], "whole run", None),
         ("post-GC heap", lambda r: r["postGcHeapBytes"],
-         BUDGETS["maxPostGcHeapRegressionPercent"]),
+         BUDGETS["maxPostGcHeapRegressionPercent"], "whole run", None),
     ]
-    transient = {
-        "steady p99": lambda r: r["p99Nanos"] / 1e6,
-        "steady useful throughput": lambda r: r["usefulThroughputPerSecond"],
-        "thread cpu per useful completion": lambda r: r["threadCpuPerUsefulCompletionNanos"],
-        "post-GC heap": lambda r: r["postGcHeapBytes"],
-    }
-    print("## The budgets on the steady window, transient-inclusive figure beside it\n")
-    print("Both figures are shown for every comparison so the settling is visible rather than "
-          "chosen away: `transient-inclusive` is the whole span, `steady` is the trailing "
-          f"{STEADY_WINDOW_MS} ms. The budget verdict is read from the steady column only where the "
-          "settling table says every arm had settled before that window opened.\n")
-    print("| workload | switch | metric | control steady | switched steady | delta % | budget % | "
+    print("## The budgets on the corrected protocol, eligibility tested per metric\n")
+    print("`window` metrics are read off the trailing "
+          f"{STEADY_WINDOW_MS} ms and are eligible only where both arms settled before that window "
+          "opened (the settling table above) *and* the window holds arrivals. `whole run` metrics — "
+          "CPU per useful completion, which is span CPU over span completions, and post-GC heap, "
+          "measured after the run — have no steady form, so they have one column and no "
+          "transient-inclusive counterpart, and a workload that stops its traffic is not an obstacle "
+          "to them and is not exempted from them.\n")
+    print("| workload | switch | metric | nature | control | switched | delta % | budget % | "
           "verdict | dispersion | transient-inclusive delta % |")
-    print("|---|---|---|---|---|---|---|---|---|---|")
+    print("|---|---|---|---|---|---|---|---|---|---|---|")
     verdicts = []
     for workload in sorted({w for w, _ in table}):
         for switched_arm, base_arm in pairs:
             if (workload, switched_arm) not in table or (workload, base_arm) not in table:
                 continue
-            for name, extract, budget in metrics:
-                # A workload that stops offering part-way through its span (churn-drain stops the
-                # traffic by design) has no arrivals in the steady window, so there is no steady
-                # distribution to compare. It is reported as not measurable rather than as a
-                # comparison the arithmetic happens to produce a number for.
-                steady_samples = min(
-                    median([r["trailing"][str(STEADY_WINDOW_MS)]["samples"]
-                            for r in table[(workload, arm)]])
-                    for arm in (base_arm, switched_arm))
-                if steady_samples < 30:
-                    print(f"| {workload} | {switched_arm} | {name} | not measurable | not "
-                          f"measurable | — | {budget} | NOT MEASURABLE | — | — |")
+            steady_arrivals = min(
+                median([r["trailing"][str(STEADY_WINDOW_MS)]["samples"]
+                        for r in table[(workload, arm)]])
+                for arm in (base_arm, switched_arm))
+            settled_ok = all(settlements.get((workload, arm), True)
+                             for arm in (base_arm, switched_arm))
+            for name, extract, budget, nature, transient_extract in metrics:
+                if nature == "window" and not settled_ok:
+                    print(f"| {workload} | {switched_arm} | {name} | {nature} | — | — | — | "
+                          f"{budget} | NOT MEASURABLE (an arm had not settled) | — | — |")
+                    verdicts.append((workload, switched_arm, name, float("nan"), budget, None, None))
+                    continue
+                if nature == "window" and steady_arrivals < 30:
+                    print(f"| {workload} | {switched_arm} | {name} | {nature} | — | — | — | "
+                          f"{budget} | NOT MEASURABLE (no arrivals in the steady window) | — | — |")
                     verdicts.append((workload, switched_arm, name, float("nan"), budget, None, None))
                     continue
                 base_values = [extract(r) for r in table[(workload, base_arm)]]
                 cand_values = [extract(r) for r in table[(workload, switched_arm)]]
                 base, cand = median(base_values), median(cand_values)
                 delta = percent_delta(cand, base)
-                base_t = median([transient[name](r) for r in table[(workload, base_arm)]])
-                cand_t = median([transient[name](r) for r in table[(workload, switched_arm)]])
-                delta_t = percent_delta(cand_t, base_t)
                 ok = delta <= budget
                 base_lo, base_hi = spread(base_values)
                 cand_lo, cand_hi = spread(cand_values)
                 overlap = cand_lo <= base_hi and base_lo <= cand_hi
+                if transient_extract is None:
+                    transient = "— (no steady form)"
+                else:
+                    transient = f"{percent_delta(median([transient_extract(r) for r in table[(workload, switched_arm)]]), median([transient_extract(r) for r in table[(workload, base_arm)]])):+.2f}"
                 verdicts.append((workload, switched_arm, name, delta, budget, ok, overlap))
-                print(f"| {workload} | {switched_arm} | {name} | "
+                print(f"| {workload} | {switched_arm} | {name} | {nature} | "
                       f"{base:.3f} ({base_lo:.3f}-{base_hi:.3f}) | "
                       f"{cand:.3f} ({cand_lo:.3f}-{cand_hi:.3f}) | {delta:+.2f} | {budget} | "
                       f"{'PASS' if ok else 'MISS'} | "
-                      f"{'overlaps' if overlap else 'disjoint'} | {delta_t:+.2f} |")
+                      f"{'overlaps' if overlap else 'disjoint'} | {transient} |")
     print()
     return verdicts
 
-# ----------------------------------------------------------------------------------------------
-# 5. The frozen budgets, one row each
-# ----------------------------------------------------------------------------------------------
+
+def resolving_power(samples, verdicts):
+    """How large a *consistent* regression this test could have caught.
+
+    A range-overlap test is only as sharp as the width of the arms' own five-repetition ranges. This
+    multiplies each control arm's own five values by (1 + factor) — the most favourable possible
+    case for the test: a uniform multiplicative effect with no added noise — and counts how often
+    the shifted arm would read disjoint. That count is the test's resolving power, and it is what
+    makes a null readable: an instrument that cannot see a 10 % effect says nothing about a 10 %
+    effect, so "not distinguishable" is a statement about the instrument, not about the code.
+    """
+    table = per_arm(samples)
+    pairs = [
+        ("per-function -> shared-queue", "shared-queue (no change)"),
+        ("shared-queue -> per-function", "per-function (no change)"),
+    ]
+    extractors = {
+        "steady p99": lambda r: r["trailing"][str(STEADY_WINDOW_MS)]["p99Nanos"] / 1e6,
+        "steady useful throughput":
+            lambda r: r["trailing"][str(STEADY_WINDOW_MS)]["usefulThroughputPerSecond"],
+        "thread cpu per useful completion": lambda r: r["threadCpuPerUsefulCompletionNanos"],
+        "post-GC heap": lambda r: r["postGcHeapBytes"],
+    }
+    budgets = {
+        "steady p99": BUDGETS["maxSteadyP99RegressionPercent"],
+        "steady useful throughput": BUDGETS["maxUsefulThroughputRegressionPercent"],
+        "thread cpu per useful completion": BUDGETS["maxCpuPerCompletionRegressionPercent"],
+        "post-GC heap": BUDGETS["maxPostGcHeapRegressionPercent"],
+    }
+    factors = (0.05, 0.10, 0.20, 0.30, 0.50, 1.00)
+    print("## Resolving power: the smallest consistent regression this test could have caught\n")
+    print("Each cell is how many eligible comparisons would read `disjoint` if the switched arm's "
+          "true value were exactly (1 + factor) times its control's, arm by arm — a uniform "
+          "multiplicative effect, the easiest possible case to detect, and one the test still has to "
+          "beat. A budget well below the row's first detectable factor cannot have been adjudicated "
+          "by this campaign.\n")
+    print("| metric | budget % | eligible | " + " | ".join(f"+{int(f * 100)} %" for f in factors)
+          + " | median arm spread % |")
+    print("|---|---|---|" + "---|" * len(factors) + "---|")
+    for name, extract in extractors.items():
+        eligible = 0
+        hits = {f: 0 for f in factors}
+        spreads = []
+        for workload in sorted({w for w, _ in table}):
+            for switched_arm, base_arm in pairs:
+                if (workload, switched_arm) not in table or (workload, base_arm) not in table:
+                    continue
+                if any(v[0] == workload and v[1] == switched_arm and v[2] == name and v[5] is None
+                       for v in verdicts):
+                    continue
+                base_values = sorted(extract(r) for r in table[(workload, base_arm)])
+                eligible += 1
+                for factor in factors:
+                    if base_values[0] * (1 + factor) > base_values[-1]:
+                        hits[factor] += 1
+        for (workload, arm), runs in table.items():
+            values = [extract(r) for r in runs]
+            mean = sum(values) / len(values)
+            if mean:
+                spreads.append((max(values) - min(values)) * 100.0 / mean)
+        print(f"| {name} | {budgets[name]} | {eligible} | "
+              + " | ".join(str(hits[f]) for f in factors) + f" | {median(spreads):.1f} |")
+    print()
+    print("The arms' own spread is the reason, and it is two to three times the p99 and CPU "
+          "budgets: a uniform 5 % effect is invisible to a test whose arms disagree by 16 % between "
+          "repetitions.\n")
+
+
+def pairing_demo(samples):
+    """What the round-1 pairing defect is worth, computed from this artifact.
+
+    Round 1 compared each switched arm against the strategy it *started* on. On a workload where the
+    two strategies differ, that compares an arm which ends on one strategy against an arm which
+    never leaves the other — a difference that has nothing to do with switching. Round 1 reported
+    +3851 % for this; that number's artifact was overwritten before it was committed, so instead of
+    quoting it, this computes the same quantity from the artifact that does exist.
+    """
+    table = per_arm(samples)
+    window_p99 = lambda r: r["trailing"][str(STEADY_WINDOW_MS)]["p99Nanos"] / 1e6
+    wrong = [("per-function -> shared-queue", "per-function (no change)"),
+             ("shared-queue -> per-function", "shared-queue (no change)")]
+    right = [("per-function -> shared-queue", "shared-queue (no change)"),
+             ("shared-queue -> per-function", "per-function (no change)")]
+    best = None
+    for workload in sorted({w for w, _ in table}):
+        if (workload, wrong[0][0]) not in table:
+            continue
+        base = median([window_p99(r) for r in table[(workload, wrong[0][1])]])
+        cand = median([window_p99(r) for r in table[(workload, wrong[0][0])]])
+        delta = percent_delta(cand, base)
+        if best is None or abs(delta) > abs(best[1]):
+            best = (workload, delta)
+    print("## What the round-1 pairing defect is worth, recomputed from this artifact\n")
+    print(f"The largest wrong-pairing delta in this campaign is on **{best[0]}**: "
+          f"**{best[1]:+.1f} %**, purely from comparing each switched arm against the strategy it "
+          "started on rather than the one it ended on. The same comparisons, paired correctly:\n")
+    print("| workload | switched arm | compared against | steady p99 control ms | switched ms | delta % |")
+    print("|---|---|---|---|---|---|")
+    for label, pairs in (("wrong (round 1)", wrong), ("right (round 3)", right)):
+        for switched_arm, base_arm in pairs:
+            workload = best[0]
+            base = median([window_p99(r) for r in table[(workload, base_arm)]])
+            cand = median([window_p99(r) for r in table[(workload, switched_arm)]])
+            print(f"| {workload} | {switched_arm} | {label}: {base_arm} | {base:.3f} | "
+                  f"{cand:.3f} | {percent_delta(cand, base):+.1f} |")
+    print()
+    print("Reproduce with `python3 summarize.py raw/steady.jsonl`. Round 1's own +3851 % cannot be "
+          "reproduced: its artifact was overwritten by the corrected run before it was committed, "
+          "which is itself the reason this file now computes the figure instead of quoting one.\n")
+
+
 def budget_table(switches, baseline, summary, samples, verdicts):
     measured = [e for e in switches if e["repetition"] > 0]
     pause_max = max([ms(e["enginePauseNanos"]) for e in measured]
@@ -498,10 +613,24 @@ def main():
               f"max heap {header['maxHeapBytes'] / 2**30:.2f} GiB")
         print(f"- harness `SchedulerSwitchBenchmark.java` sha256 `{header.get('harnessSha256')}`")
         print(f"- budgets read from `{header['budgetsFile']}`: `{json.dumps(header['budgets'])}`\n")
-    per_workload = settling_table(samples)
-    convergence(per_workload)
-    verdicts = steady_regression(samples)
-    budget_table(switches, baseline, summary, samples, verdicts)
+    steady_schema = any("trailing" in sample for sample in samples)
+    if steady_schema:
+        per_workload, settlements = settling_table(samples)
+        convergence(per_workload)
+        verdicts = steady_regression(samples, settlements)
+        resolving_power(samples, verdicts)
+        pairing_demo(samples)
+        budget_table(switches, baseline, summary, samples, verdicts)
+    else:
+        # A round-1 artifact: no depth trajectory and no trailing-window grid, so the round-3 tables
+        # cannot be computed from it and the round-1 protocol's own table is the one it supports.
+        print("## This artifact predates the settling protocol\n")
+        print("It carries neither a depth trajectory nor a trailing-window grid, so the steady "
+              "tables cannot be derived from it. The table below is the protocol it *was* measured "
+              "under — the switched arm against the strategy it started on, over the whole window — "
+              "which is the artifact the mid-window mixture defect is visible in.\n")
+        verdicts = legacy_regression(samples)
+        budget_table(switches, baseline, summary, samples, verdicts)
     pause_sweep(switches)
     workload_table(samples)
     if baseline:

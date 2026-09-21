@@ -88,9 +88,15 @@ rather than of anything observed outside it.
 
 The wide end is explained by the workloads, not by the host: the four widest arms (31.9 %) are all
 `low-load`, whose offered rate is 20/s, so a 2.5 s window holds about 50 arrivals and the count
-itself varies. Those four arms report the *identical* range, 28.4–39.2/s, in every one of them —
-which is the corpus seeding doing what it is for: the four arms of a repetition saw the same
-arrivals, so an arm-to-arm difference there cannot be arrival-count noise.
+itself varies. Those four arms report the *identical* range in every one of them — 208, 188, 174, 212 and 194
+offerings in reps 1–5, the same count in all four arms. That is a property of `low-load`
+specifically: at 20/s no retry or refill path fires, so its arms never desynchronise. It is **not**
+a general property of this harness and must not be read as one. Only one Random drives the arrival
+interval, the SYNC/ASYNC draw and the function choice, so any extra offer in one arm shifts every
+later draw in that arm: across `raw/steady.jsonl` the four arms' `offered` counts differ in **54 of
+60** (workload, repetition) groups, by up to 301 tickets (`switch-under-load`, repetition 3:
+10 680 against 10 981). The arms are therefore compared under the same offered *rate*, not over the
+same arrival *sequence*, and this indicator covers `low-load` only.
 
 ## What this does not establish
 

@@ -194,3 +194,81 @@ symbols, all of them in `docs/experiments/scheduler-switching-2026-09/SchedulerS
 collisions on the harness's own `Run`/`run`/`main`/`execute` and 730-odd unrelated flows. The run
 again degraded its own FTS index and truncated process discovery (1 931 of 2 131 entry points never
 ranked in), so the flow list is a lower bound.
+
+## 2026-09-21 — Task 12c, round 4: the claim corrected, provenance made traceable
+
+**State: the deliverables now say what the measurement supports.** The review's central finding was
+that my "0 distinguishable" was a property of the test, not of the effect, and it was right. Nothing
+about the settlement protocol changed; what changed is what the null is claimed to mean.
+
+**The claim, corrected.** The arms' own median spread across five repetitions is **16.1 % for p99**
+and **26.9 % for CPU per useful completion**, against budgets of 5 % and 10 %. Shifting each control
+arm by a *uniform multiplicative* factor — the most favourable possible case for a range-overlap
+test — shows the campaign could not have separated a real 5 % p99 effect (6 of 22 comparisons would
+read it) or a 10 % CPU effect (**0 of 24** at 10 %, 11 of 24 only by 30 %). So the deliverable now
+says **"no regression established at this campaign's resolution, which is coarser than the budgets"**
+wherever it said "not distinguishable", and carries that resolving-power table on the artifact
+itself (computed by `summarize.py`, not quoted). Post-GC heap is the one metric with teeth — 24 of 24
+at +5 %, arm spread 0.0 % — and it passes. The disposition is unchanged and is the brief's own:
+«dichiarare risultato non distinguibile e conservare entrambi gli scheduler».
+
+**The mechanism verdicts are untouched**, and were re-derived line by line from `raw/full.jsonl`:
+pause max 3.984176 ms against 250 (60×) — the first switch of the process, on an empty engine and a
+cold JIT, the harshest available reading; soak p99 0.266335 against 100; 1 140 pauses; 1 000
+committed / 0 refused; 2 live indexes; return-to-baseline pending 399 vs 400; heap +0.31 %.
+
+**What this round fixed.**
+
+- **The settling rule's validity check was documented but not wired.** `steady_regression` never
+  consulted `settleMillis`; its only gate was an arrivals floor. It is now gated per metric — the
+  two window-derived metrics on the settling rule *and* arrivals, the two whole-run metrics on
+  neither, because they have no steady form. Verified by forcing a workload's arms unsettled: its 4
+  window rows read NOT MEASURABLE while its 4 whole-run rows stay measured.
+- **The `churn-drain` exemption was over-broad.** Calling CPU-per-completion and post-GC heap
+  "steady" dropped two plan-mandated comparisons for a workload that stops its traffic. Both are
+  whole-run quantities and both are answerable: **+7.26 % / +7.67 % CPU, +0.00 % / +0.00 % heap, all
+  inside budget.** Only its two window rows are genuinely unmeasurable, and they say so.
+- **The coverage table contradicted the harness** on four counts (`capacity-change` still described
+  as raising 2 → 8, which is the defect round 3 removed; a stop offset of 1.8 s against a 4.8 s
+  reality; event offsets described as absolute milliseconds when they are percent-of-span; and a
+  `cpu/useful` column labelled process CPU while the table reads the thread figure). All four fixed.
+- **The pairing claim was false and one piece of evidence leaned on it.** The four arms do *not* see
+  the same arrivals: one `Random` drives three draws per arrival, so 54 of 60 (workload, repetition)
+  groups differ in `offered`, by up to 301 tickets. Corrected in `RESULTS.md`, in the harness javadoc
+  and in `raw/host-quietness.txt`. The pairing fix itself is deliberately **not** half-applied here.
+- **Two figures could not be traced to an artifact.** The quoted clock values were from an earlier
+  run than the committed evidence; they are now the artifact's own numbers, re-measured, and
+  `ClockTest.java` carries a package declaration. Round 1's +3851 % was quoted with no artifact
+  (its run was overwritten); it is replaced by a **recomputed +3805.3 %** that `summarize.py`
+  derives from `raw/steady.jsonl` under a stated command, with the matched pairings beside it at
+  −0.5 % and −4.4 %.
+- **`run.sh` no longer trusts a committed classpath cache.** It validates that the module's compiled
+  output is named and that every jar exists, and re-resolves loudly otherwise — the committed cache
+  holds the implementer host's absolute paths.
+- **`git diff --check` is no longer misreported.** It reports 96 lines of output (48 flagged lines,
+  two capacity read-back messages once per `capacity-change` run) in `raw/steady.err`. They stay as
+  captured: the artifact must keep matching the `harnessSha256` in its own header, and captured
+  evidence is not edited to satisfy a linter. The one line it flagged in `RESULTS.md` — a blank line
+  at EOF — is fixed, because a document is not captured evidence.
+
+**Two limits added to the limitations section**, neither requiring a measurement. The **p99 figures
+are censored** by the contract deadline: under load, queueing becomes expiry rather than latency, so
+the 4 loaded p99 rows sit at their cap and are structurally insensitive (useful throughput is what
+carries those workloads — the spec's own point). And **the async deadline this harness applies is
+stricter than the one that ships**: production passes `queueDeadline = null` for the async front
+(`EngineInvocationEnqueuer.java:137`) and sets a deadline only for sync
+(`EngineSyncQueueGateway.java:206`), while the harness stamps the profile contract on every ticket
+including ASYNC — so its async expiry and dependent p99 figures bound a stricter policy than
+production, not a prediction of it.
+
+**Return-to-baseline re-run against the committed harness** (controller instruction): artifact
+`raw/baseline.jsonl`, harness digest `d42cd7f7…`, 1 000 switches committed and 0 refused, pending
+398 against the control's 398 (**delta 0**), largest per-function reservation difference **0
+tickets**, one live index in both phases, work conserved in both. The mechanism rows still come from
+`raw/full.jsonl`, whose header names the earlier harness digest `f1941ab4…`; that provenance is now
+stated in `RESULTS.md` rather than left implicit.
+
+**On the "not re-run, on instruction" claim.** The instruction is the controller's, given during
+this task's fix rounds: *keep the mechanism verdicts, do not re-run the campaign to look for a
+different answer.* It is recorded here because until now it lived only in the campaign ledger
+(gitignored) and was therefore unverifiable from inside the repository.

@@ -352,8 +352,17 @@ public final class SchedulerSwitchBenchmark {
             this.profile = profile;
             this.arm = arm;
             this.repetition = repetition;
-            // Identical across the four arms of one (workload, repetition): the same corpus and the
-            // same offered rate, so an arm comparison is paired rather than merely similar.
+            // The same seed for the four arms of one (workload, repetition): the same offered rate
+            // and the same initial corpus. It does NOT make the arms' arrival *streams* identical,
+            // and an earlier draft of this file claimed it did. One Random is consumed by three
+            // draws per arrival — the inter-arrival interval, the SYNC/ASYNC kind, and the function
+            // — so the moment one arm's retry/refill path fires an extra offer, every later draw in
+            // that arm is shifted. Measured on the settlement campaign: the four arms' `offered`
+            // counts differ in 54 of 60 (workload, repetition) groups, by up to 301 tickets
+            // (switch-under-load, repetition 3: 10 680 against 10 981). Only workloads whose arms
+            // never desynchronise — low-load, whose rate is low enough that no extra path fires —
+            // stay in lockstep. So the arms are compared under the same *offered rate*, not over the
+            // same arrival sequence, and a paired design would need the seed split per draw stream.
             this.seed = 208_000L + profile.name.hashCode() * 31L + repetition;
 
             this.switchPending = arm.switched();

@@ -1,77 +1,105 @@
 # CPU clock resolution on this host
 
-The CPU-per-completion budget is 10 %, so the measurement it is read from has to resolve better
-than that. Measured with `ClockTest.java` (same directory) — a busy loop of known duration against
-each clock. Source:
+The CPU-per-completion budget is 10 %, so the clock it is read from has to resolve better than
+that. Measured with `ClockTest.java` (same directory), a busy loop of known duration run against
+each clock. Reproduce with:
+
+```bash
+javac -nowarn -d .classes ClockTest.java
+java -cp .classes it.unimib.datai.nanofaas.ClockTest
+```
+
+```
+A busy loop of 10 000 000 ns, measured by each clock (8 trials):
+trial  processCpuTime  getCurrentThreadCpuTime
+    1         20000000                  10007536
+    2         10000000                  10004080
+    3         10000000                  10000688
+    4         20000000                  10003872
+    5         10000000                  10000688
+    6         10000000                  10000656
+    7         10000000                  10000640
+    8         10000000                  10000688
+
+A busy loop of 1 000 000 ns, measured by getCurrentThreadCpuTime:
+    1  1005168
+    2  1000784
+    3  1002944
+    4  1000784
+    5  978112
+    6  1000688
+    7  1000704
+    8  1000704
+```
+
+## What it shows
+
+- `getProcessCpuTime` answers only in multiples of 10 ms, and does not report the interval
+  faithfully within that step: a 10.0 ms busy loop reads as 10 000 000 ns five times and as
+  20 000 000 ns three times. Its resolution is 10 ms, so a workload that accumulates a few
+  hundred milliseconds of CPU cannot have its per-completion cost resolved to 10 %.
+- `getCurrentThreadCpuTime` reports the same 10.0 ms loop as 10 000 640-10 007 536 ns and a
+  1.0 ms loop as 978 112-1 005 168 ns: sub-microsecond resolution, three orders of magnitude
+  finer than the budget. This is the clock the campaign reads CPU per useful completion from.
+
+## Source
 
 ```java
+package it.unimib.datai.nanofaas;
+
 import java.lang.management.ManagementFactory;
 
+/**
+ * Measures the resolution of the two CPU clocks the benchmark harness can read, by running a busy
+ * loop of known duration against each and printing what the clock reports for it.
+ *
+ * <p>The answer decides whether a 10 % CPU-per-completion budget can be read from this host at all:
+ * a clock that answers "10 ms" for a 10 ms loop and "20 ms" for another has a 10 ms step, and a
+ * budget of 10 % cannot be resolved from a total of a few hundred milliseconds of CPU.
+ *
+ * <p>Standalone, like {@code SchedulerSwitchBenchmark}: compiled against the same classpath and run
+ * with {@code java it.unimib.datai.nanofaas.ClockTest}. Not a test — it asserts nothing, it measures.
+ */
 public final class ClockTest {
-    public static void main(String[] args) throws Exception {
+
+    private static final long LOOP_NANOS = 10_000_000L;
+
+    public static void main(String[] args) {
         com.sun.management.OperatingSystemMXBean os =
                 (com.sun.management.OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
         com.sun.management.ThreadMXBean threads =
                 (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
-        System.out.println("processCpuTime: 10 ms busy-loop deltas (ns):");
-        for (int i = 0; i < 8; i++) {
-            long a = os.getProcessCpuTime();
-            long end = System.nanoTime() + 10_000_000L;
-            long x = 1;
-            while (System.nanoTime() < end) { x = x * 31 + 7; }
-            long b = os.getProcessCpuTime();
-            System.out.printf("  %d (busy work %d)%n", b - a, x & 1);
+
+        System.out.println("A busy loop of 10 000 000 ns, measured by each clock (8 trials):");
+        System.out.println("trial  processCpuTime  getCurrentThreadCpuTime");
+        for (int trial = 1; trial <= 8; trial++) {
+            System.out.printf("%5d  %15d  %24d%n", trial, busy(os::getProcessCpuTime),
+                    busy(threads::getCurrentThreadCpuTime));
         }
-        System.out.println("getCurrentThreadCpuTime: 10 ms busy-loop deltas (ns):");
-        for (int i = 0; i < 8; i++) {
-            long a = threads.getCurrentThreadCpuTime();
-            long end = System.nanoTime() + 10_000_000L;
-            long x = 1;
-            while (System.nanoTime() < end) { x = x * 31 + 7; }
-            long b = threads.getCurrentThreadCpuTime();
-            System.out.printf("  %d (busy work %d)%n", b - a, x & 1);
-        }
-        System.out.println("getThreadCpuTime(main): 1 ms busy-loop deltas (ns):");
-        long id = Thread.currentThread().getId();
-        for (int i = 0; i < 8; i++) {
-            long a = threads.getThreadCpuTime(id);
-            long end = System.nanoTime() + 1_000_000L;
-            long x = 1;
-            while (System.nanoTime() < end) { x = x * 31 + 7; }
-            long b = threads.getThreadCpuTime(id);
-            System.out.printf("  %d (busy work %d)%n", b - a, x & 1);
+        System.out.println();
+        System.out.println("A busy loop of 1 000 000 ns, measured by getCurrentThreadCpuTime:");
+        for (int trial = 1; trial <= 8; trial++) {
+            System.out.printf("%5d  %d%n", trial, busy(threads::getCurrentThreadCpuTime, 1_000_000L));
         }
     }
+
+    /** Busy work for the loop's duration; returns what the clock says the work cost. */
+    private static long busy(java.util.function.LongSupplier clock) {
+        return busy(clock, LOOP_NANOS);
+    }
+
+    private static long busy(java.util.function.LongSupplier clock, long nanos) {
+        long before = clock.getAsLong();
+        long end = System.nanoTime() + nanos;
+        long sink = 1;
+        while (System.nanoTime() < end) {
+            sink = sink * 31 + 7;
+        }
+        long after = clock.getAsLong();
+        if (sink == 0) {
+            System.out.println("(impossible)");
+        }
+        return after - before;
+    }
 }
-```
-
-
-```
-processCpuTime: 10 ms busy-loop deltas (ns):
-  10000000 (busy work 1)
-  20000000 (busy work 1)
-  10000000 (busy work 0)
-  10000000 (busy work 0)
-  10000000 (busy work 1)
-  10000000 (busy work 1)
-  10000000 (busy work 0)
-  10000000 (busy work 1)
-getCurrentThreadCpuTime: 10 ms busy-loop deltas (ns):
-  10004912 (busy work 1)
-  10000640 (busy work 1)
-  10000592 (busy work 1)
-  10000720 (busy work 0)
-  10000912 (busy work 0)
-  10000656 (busy work 0)
-  10000624 (busy work 0)
-  10000640 (busy work 1)
-getThreadCpuTime(main): 1 ms busy-loop deltas (ns):
-  1001840 (busy work 0)
-  1009584 (busy work 0)
-  1000976 (busy work 0)
-  1005232 (busy work 0)
-  1001168 (busy work 0)
-  1001168 (busy work 1)
-  1000800 (busy work 0)
-  1000848 (busy work 1)
 ```
