@@ -49,6 +49,48 @@ jobs:
       - name: Run Sync-Queue Concurrency Tests
         run: ./gradlew :control-plane-modules:concurrency-control:test :control-plane-modules:sync-queue:test -PcontrolPlaneModules=sync-queue,concurrency-control,runtime-config
 
+  # No other job here compiles a native image, and that silence is what let a three-commit-old
+  # `.so` sit in the release path (issue #208; `docs/experiments/scheduler-switching-2026-09/
+  # FINAL.md` §7.3). native-image build-tools registers
+  # `options.getSharedLibrary().convention(true)` for any module applying BOTH `java-library` and
+  # `org.graalvm.buildtools.native`, and `nativeCompile` still exits 0 — so the artifact type is
+  # the only thing that distinguishes a shipping binary from one nothing can execute, and `file`
+  # is the cheapest way to read it. This job would have failed at d456915f, when the breakage
+  # arrived, instead of surfacing 33 commits later.
+  #
+  # It intentionally asserts `:control-plane` only: that is the binary the release path and
+  # `scripts/native-java-image.sh` ship. `:sdks:java-lite` carries the same latent `.so` (it is a
+  # `java-library` declaring a `main` binary and sets no `sharedLibrary`), but nothing in the
+  # release path builds or consumes its native image, so asserting it here would mean either
+  # failing this job for an unused artifact or weakening the check; resolving which artefact kind
+  # that SDK's image should be is its own follow-up, recorded in §7.3. The script takes several
+  # paths, so adding it afterwards is one argument.
+  test-native-artifact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # For the Gradle cache and the wrapper only: the native compile itself must run on the
+      # repository's pinned GraalVM, installed below and put in JAVA_HOME.
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+          cache: 'gradle'
+      - name: Install the pinned GraalVM
+        run: |
+          arch=amd64
+          if [ "$(uname -m)" = "aarch64" ]; then arch=arm64; fi
+          sudo sh scripts/install-graalvm.sh community \
+            "$(sed -n 's/^graalvmVersion=//p' gradle.properties)" \
+            "$(sed -n 's/^graalvmJavaVersion=//p' gradle.properties)" "$arch"
+          echo "JAVA_HOME=/opt/graalvm" >> "$GITHUB_ENV"
+          echo "/opt/graalvm/bin" >> "$GITHUB_PATH"
+      - name: Compile the control plane natively
+        run: ./gradlew :control-plane:nativeCompile -PcontrolPlaneModules=all
+      - name: Assert the native artifact is an executable
+        run: scripts/assert-native-executable.sh platform/control-plane/build/native/nativeCompile/control-plane
+
   test-python:
     runs-on: ubuntu-latest
     timeout-minutes: 15
