@@ -9,12 +9,26 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * The {@code schedulerRuntimeConfigExtension} bean below is conditional on
+ * {@link SchedulerControl}, and a {@code @ConditionalOnBean} on a {@code @Bean} method is decided
+ * while its configuration class is being registered — so this auto-configuration must be processed
+ * after the one that contributes the engine. That ordering used to hold only by accident
+ * (auto-configurations otherwise sort by class name, and {@code …controlplane…} precedes
+ * {@code …modules…}); it is declared here by name rather than by class, because this module
+ * cannot depend on {@code :control-plane}, whose {@code SchedulerConfiguration} this names. Get
+ * it wrong and the artifact does not fail to build: it simply serves no {@code scheduler}
+ * namespace and 404s the whole admin switch API, which is what
+ * {@code SchedulerStrategyConfigurationTest} pins.
+ */
 @AutoConfiguration
+@AutoConfigureAfter(name = "it.unimib.datai.nanofaas.controlplane.service.SchedulerConfiguration")
 public class RuntimeConfigConfiguration {
 
     @Bean

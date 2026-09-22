@@ -74,9 +74,12 @@ paths:
                 $ref: '#/components/schemas/ValidationErrors'
         '503':
           description: >-
-            The change was refused before it committed (apply/prepare failure, or the
-            admin request queue was full) and was rolled back or never applied; no
-            partial state was activated. Retry is safe.
+            The change did not commit: it was refused at or before its commit point (a
+            prepare/apply failure, or the admin request queue was full) and no new revision
+            was published. For the `scheduler` namespace that is the whole story — a switch is
+            not a partial update, so a refused one simply leaves the previous strategy active
+            and there is nothing to roll back — while a namespace on the legacy restore
+            semantics attempts its own restore first. Retry is safe.
   /v1/admin/runtime-config/{namespace}/validate:
     parameters:
       - $ref: '#/components/parameters/RuntimeConfigNamespace'

@@ -21,7 +21,19 @@ public interface EngineDispatch {
 
     /**
      * Whether this ticket still describes live work: the execution exists, is not terminal, and
-     * is still at this attempt and generation. A {@code false} answer retires the ticket.
+     * is still at this attempt and generation. A {@code false} answer retires the ticket — the
+     * engine drops it from the store and the index, releases its reservation and reports it
+     * through {@link #removed}.
+     *
+     * <p>An implementation may conservatively answer {@code true} for every ticket, and the
+     * shipped one (the control plane's {@code EngineTransport}) does exactly that. Staleness is
+     * then owned by the dispatch path, not by this method: {@link #tryAcquire} acquires only
+     * against the ticket's own generation, which the capacity registry refuses as soon as it is
+     * retired, and the transport behind {@link #submit} fences on the execution's own attempt and
+     * generation. This method is a fast path for a lifecycle that already knows a ticket is dead,
+     * never the only thing standing between the engine and a stale dispatch: no caller may read it
+     * as a staleness filter, and an implementation that answers {@code true} unconditionally is
+     * conformant.
      */
     boolean isCurrent(SchedulingTicket ticket);
 

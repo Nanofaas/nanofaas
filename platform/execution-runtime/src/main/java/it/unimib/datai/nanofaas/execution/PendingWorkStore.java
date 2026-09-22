@@ -118,6 +118,19 @@ public final class PendingWorkStore {
                 .toList();
     }
 
+    /**
+     * The live reservation count: everything that is neither claimed nor submitting.
+     *
+     * <p>Like every read here this is unprotected, and unlike the others it has one caller that
+     * deliberately takes it OUTSIDE the engine's gate —
+     * {@code EngineSyncQueueGateway.doEnqueueOrThrow}'s admission estimate, which has to run
+     * before it can ask the engine to admit. A concurrent engine pass mutating the maps therefore
+     * makes this a momentary snapshot rather than a linearized one: it can be a few entries stale,
+     * and its three terms are not read atomically. That is tolerable because nothing is decided on
+     * it — it feeds an admission THRESHOLD, and the binding cap is {@link #offer}'s, which runs
+     * under the gate and is exact. Do not promote this read into an authority: reserve against
+     * {@link #offer}'s answer, never against this estimate.
+     */
     public int pendingCount() {
         return entries.size() - claimed.size() - submitting.size();
     }

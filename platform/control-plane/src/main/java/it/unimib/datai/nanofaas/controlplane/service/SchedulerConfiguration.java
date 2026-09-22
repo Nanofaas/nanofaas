@@ -79,6 +79,17 @@ public class SchedulerConfiguration {
      * which previously had only PER-FUNCTION caps — see {@link PerFunctionDepth}). When the
      * active profile is {@link AdmissionProfile#SYNC_QUEUE} this is overridden by the sync
      * module's own {@code sync-queue.max-depth}, preserving that cap exactly.
+     *
+     * <p>Under {@code FUNCTION_QUEUE} it is the only GLOBAL cap, and it is deliberately loose
+     * enough to be unreachable with the shipped defaults rather than tuned to them: the binding
+     * limit there is the per-function one, {@code nanofaas.defaults.queueSize}
+     * ({@code application.yml}: 100), applied by {@link PerFunctionDepth} per function. Reaching
+     * 10 000 pending entries therefore takes on the order of a hundred functions saturated at
+     * once — so this constant is a backstop against an unbounded store, not a policy knob, and
+     * nothing derives it from {@code queueSize} or from a configured function count. Two edits
+     * would make it bind: raising the default {@code queueSize} by two orders of magnitude, or
+     * the deployment's own function count reaching that order. Neither is a reason to change it;
+     * both are why it is this high and why it is named here.</p>
      */
     private static final int DEFAULT_MAX_PENDING = 10_000;
 

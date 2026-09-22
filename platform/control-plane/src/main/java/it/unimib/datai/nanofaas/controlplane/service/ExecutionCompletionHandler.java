@@ -9,6 +9,7 @@ import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.TimeSource;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
+import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.execution.AttemptCoordinator;
@@ -204,13 +205,15 @@ public class ExecutionCompletionHandler implements InvocationDispatch, AttemptOb
     }
 
     /**
-     * Wraps the injected {@link RetryScheduler} so republishing a retry keeps recording the
-     * same queue-level counters {@code ExecutionCompletionHandler.publishRetry} used to record
-     * via {@code InvocationEnqueueSupport.publishOrThrow(..., countAdmission=false)}: {@code
-     * enqueue}/{@code queueRejected}, but never {@code admitted}/{@code refused} — republishing
-     * an attempt is not a second user-facing admission (the execution was admitted once, at
-     * invoke). {@link AttemptCoordinator} only needs a plain {@link RetryScheduler}, so this
-     * wrapping is entirely transparent to it and confined to the facade.
+     * Wraps the injected {@link RetryScheduler} so republishing a retry keeps recording the same
+     * queue-level counters the pre-move {@code publishRetry} recorded via {@code
+     * InvocationEnqueueSupport.publishOrThrow(..., countAdmission=false)}: {@code
+     * enqueue}/{@code queueRejected}, but never {@code admitted}/{@code refused} — republishing an
+     * attempt is not a second user-facing admission (the execution was admitted once, at invoke).
+     * It routes through that same helper rather than re-implementing its two counter calls, so the
+     * retry path and the admission path cannot drift apart. {@link AttemptCoordinator} only needs
+     * a plain {@link RetryScheduler}, so this wrapping is entirely transparent to it and confined
+     * to the facade.
      */
     private final class MeteredRetryScheduler implements RetryScheduler {
         private final RetryScheduler delegate;
@@ -221,13 +224,15 @@ public class ExecutionCompletionHandler implements InvocationDispatch, AttemptOb
 
         @Override
         public boolean enqueue(InvocationTask task) {
-            boolean enqueued = delegate.enqueue(task);
-            if (enqueued) {
-                metrics.enqueue(task.functionName());
-            } else {
-                metrics.queueRejected(task.functionName());
+            try {
+                InvocationEnqueueSupport.publishOrThrow(delegate::enqueue, metrics, task, false);
+                return true;
+            } catch (QueueFullException refusal) {
+                // publishOrThrow's own signal that the enqueue refused the task, translated back
+                // into this method's boolean contract: AttemptCoordinator distinguishes a refusal
+                // from a failure and logs it separately, and that distinction is preserved here.
+                return false;
             }
-            return enqueued;
         }
     }
 }

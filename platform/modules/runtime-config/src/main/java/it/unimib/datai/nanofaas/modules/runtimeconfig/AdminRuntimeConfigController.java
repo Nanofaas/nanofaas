@@ -99,8 +99,13 @@ public class AdminRuntimeConfigController {
         } catch (RuntimeConfigValidationException e) {
             return ResponseEntity.unprocessableEntity().body(Map.of("errors", e.errors()));
         } catch (RuntimeConfigApplyException e) {
+            // "not committed", not "rolled back": the revision is published only after a
+            // successful commit in both apply paths, so it is the one thing this response can
+            // promise for every namespace. A rollback is not universal — the scheduler namespace
+            // commits through a switch that leaves the previous strategy active by construction,
+            // so nothing was applied for a failed one to undo.
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .body(Map.of(ERROR, "Apply failed, rolled back", "detail", e.getMessage()));
+                    .body(Map.of(ERROR, "Apply failed; not committed", "detail", e.getMessage()));
         }
     }
 

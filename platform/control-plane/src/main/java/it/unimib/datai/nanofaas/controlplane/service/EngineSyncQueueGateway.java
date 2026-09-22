@@ -190,6 +190,14 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
         // Valid as a sync-scoped depth only because enabled() now confines this gateway to the
         // SYNC_QUEUE profile: nothing else admits into the engine while it is active, so
         // store.pendingCount() answers exactly the question SyncQueueService.queuedItems() did.
+        //
+        // Deliberately read OUTSIDE the engine's gate, unlike every other use of the store: this
+        // is the admission estimate, and the gate is taken by the engine.enqueue below it. The
+        // read is therefore an unprotected snapshot of a store that the engine loop mutates
+        // concurrently — see PendingWorkStore.pendingCount()'s own note. Nothing is decided on
+        // it: it feeds a threshold, and the cap that binds is the store's own, applied under the
+        // gate inside enqueue() — which is also why the sync admission profile's max-depth
+        // (SchedulerConfiguration.pendingWorkStore) is the real limit here, not this number.
         int pendingDepth = store.pendingCount();
         SyncQueueRejectReason reason = admissionCheck.evaluate(task.functionName(), pendingDepth, now);
         if (reason != null) {
