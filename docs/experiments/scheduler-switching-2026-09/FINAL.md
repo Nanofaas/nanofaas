@@ -124,9 +124,11 @@ moves.
 **Not run:** no end-to-end run of the native release image (§7.2). The ≥60-minute soak has been run
 since, and failed on three of the P24 criteria its policy carries (§7.1).
 
-**One test in these counts is structurally racy and was not fixed** —
+**One test in these counts was structurally racy when they were taken, and has since been fixed** —
 `actuatorPrometheus_exposesFunctionCountersAndLatencyTimer`, in `:control-plane:test`. Its green
-here is a race won, not a check passed; the mechanism and the counts are in §7.8.
+here was a race won, not a check passed; the mechanism, the counts and the closing commit are in
+§7.8. The fix, `9f778e29`, was not on this branch at the time of this run and arrives only with the
+merge at HEAD.
 
 ## 3. Values against the frozen budgets
 
@@ -337,16 +339,17 @@ this operation twice, and both times it is the same rule: **strict where the hea
 loose where it cannot.**
 
 - `scenarios-v2/memory-soak-p24-serialgc-shrink-spike-container.yaml` is the case the strict bound
-  belongs to. Its control plane declares `-XX:MaxHeapFreeRatio=10 -XX:-ShrinkHeapInSteps` (`:41`) —
-  it *makes* the heap shrink — and its `control-plane.diagnostic-rss-return` is `0` / `0`,
-  "Preserve the strict natural-recovery observation during the spike" (`:89-99`). All three roles
+  belongs to. Its control plane's `runtime_options` (`:41`) is `-XX:NativeMemoryTracking=summary`,
+  `-XX:MinHeapFreeRatio=5`, `-XX:MaxHeapFreeRatio=10` and `-XX:-ShrinkHeapInSteps` — it *makes* the
+  heap shrink — and its `control-plane.diagnostic-rss-return` is `0` / `0`,
+  "Preserve the strict natural-recovery observation during the spike" (`:100`). All three roles
   there are `0` / `0`.
 - `scenarios-v2/memory-soak-p24-nmt-spike-container.yaml` declares **no heap-shrink option** on any
   role (`runtime_options: [-XX:NativeMemoryTracking=summary]` on the control plane, `:41`), and the
   same criterion on all three roles is `absolute_tolerance: 67108864` / `relative_tolerance: 0.25` —
   64 MiB — because, in its own words, "this spike declares no heap-shrink options, so the heap keeps
   its steady working set and RSS cannot return exactly to the reference; the exact return is what the
-  serialgc-shrink spike measures" (`:89-99`).
+  serialgc-shrink spike measures" (`:100`).
 
 **This scenario is the second kind carrying the first kind's tolerance.** Not one of its three roles
 declares a heap-shrink option: the control plane's `runtime_options` is `[]`
@@ -419,7 +422,7 @@ nanoFaaS's.**
    carries.
 2. **`--teardown` on an interrupted run releases nothing. This one is a reading of two call sites, not
    an executed reproduction** — nothing was run against the NanoLab checkout to demonstrate it. The
-   reading: `cli/product.py:886-901` calls `plans.soak.teardown_soak_run` and then `return`s, and
+   reading: `cli/product.py:886-903` calls `plans.soak.teardown_soak_run` and then `return`s, and
    `plans.soak.teardown_soak_run` (`:211-231`) returns `build_teardown_workflow`'s value — a
    `Workflow` object, from a function whose own docstring is "Construct cleanup without Docker calls,
    source builds or journal reads". Nothing executes it, and `_execute_workflow` is reached once in
@@ -665,7 +668,7 @@ census — and take the six `function_scheduler_*` recorders and the deny-list e
 them. Until that happens, a reader of `src/main` should read these nine as deletion candidates,
 not as a surviving code path.
 
-### 7.8 One test in the suite is structurally racy, and was left as it is
+### 7.8 One test in the suite was structurally racy; the merge closes it
 
 `PrometheusEndpointTest.actuatorPrometheus_exposesFunctionCountersAndLatencyTimer` POSTs an
 invocation and then asserts, on the next line,
@@ -673,20 +676,42 @@ invocation and then asserts, on the next line,
 serves the POST: it is recorded by the `AttemptObserver`'s `completed` callback through
 `bestEffort`, on whichever thread concludes the invocation
 (`ExecutionCompletionHandler.java:174` — the record call is inside a `bestEffort` lambda in
-`completed`). So the assertion can run before the sample it counts exists. The race is
+`completed`). So the assertion could run before the sample it counts existed. The race was
 **structural**, not a slow host.
 
 Observed, with the counts kept visible because they are small: red in **2 of 5** runs when a second
 HTTP request on the management port was added to the same class, against **0 of 4** with that
 addition absent and **0 of 5** with the registry-level version of the new pin. The agent who found it
 declines — correctly — to claim that the extra request *is* the cause; what is claimed is the
-mechanism above, and that the assertion has no wait in either version.
+mechanism above, and that the assertion had no wait in either version.
 
-**It was not fixed here**, and the honest consequence belongs in this file rather than in scratch:
-the test is in `:control-plane:test`, which the campaign's gate ran (§2). §2 records exactly two
-failures and neither is this test — but a green there is a race **won**, not a check shown to hold,
-and no one should read its presence in that suite as evidence that the assertion is sound. A fix is
-a wait or a poll on the meter, and it is a change to a test outside this campaign's own work.
+**The limit as declared no longer holds on this branch: `9f778e29` closes it.** That commit — "Await
+completion metrics in the Prometheus endpoint test", 2026-09-19 — landed on `origin/main` and was
+**not** on the campaign branch when the paragraphs above were written. HEAD `92ec636e` is the merge
+that brings it in: `git merge-base --is-ancestor 9f778e29 HEAD` succeeds, while the same check
+against HEAD's first parent does not, so the merge is what made it an ancestor. The commit wraps both
+assertions in `awaitility`:
+
+```java
+// The response is settled before completion metrics are recorded.
+await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> { ... });
+```
+
+which is precisely the "wait or a poll on the meter" this section named as the fix. Verified against
+`9f778e29` itself: the awaited assertions are the two this section describes —
+`function_dispatch_total ... count() >= 1.0` and `function_latency_ms ... count() >= 1` — in the same
+class and the same method, `actuatorPrometheus_exposesFunctionCountersAndLatencyTimer`. The class's
+sibling `theWiredExpositionCarriesTheSwitchDurationBucketsTheSoakReads` is untouched by that commit
+and needs no wait: it scrapes a histogram registered at composition and asserts on no
+per-invocation sample. The `awaitility` test dependency is already declared
+(`platform/control-plane/build.gradle:51`), so the fix compiles in this module rather than depending
+on an added one.
+
+**This section is kept, and kept as closed, rather than deleted.** The campaign declared this risk,
+and the record of a declared limit belongs in the report whether or not something later closes it;
+what changes is the status, from open to closed. Nothing else here moves: the two failures §2 records
+are still the two failures, this test was green in that run and no one re-runs it here, and the
+soak's verdict stays **FAIL** (§7.1).
 
 ## 8. Publication
 
