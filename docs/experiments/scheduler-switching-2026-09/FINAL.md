@@ -149,8 +149,12 @@ with the previous chart values. The one manifest value this change adds is
 `controlPlane.scheduler.strategy`, defaulting to `""`, and the empty string means "no explicit
 selection" — so an older chart rendering, or a values file that never sets it, is a supported
 configuration rather than a broken one. In Compose the same variable defaults to empty. The admin
-enabling flag is **not** exposed by either shipped manifest, so no rollback has to consider it, and
-no rollback can leave the switch API accidentally reachable.
+enabling flag is not a chart field this change added — it is reached through the chart's generic
+`controlPlane.extraEnv` (§7.4) — so a rollback that restores the previous chart and values removes
+nothing this change introduced, and a cluster that never set it is unaffected. What a chart-only
+rollback does **not** do is clear an `extraEnv` entry the operator added themselves: that entry lives
+in their values, so turning the switch API back off after a rollback is an explicit operator step
+rather than something the chart undoes.
 
 ## 6. What does not survive a restart
 
@@ -227,16 +231,68 @@ comment beside it. The gap remains, and the cheapest correction is small: a CI j
 which applies `java-library` (line 2) and `org.graalvm.buildtools.native` and sets no `sharedLibrary`
 either, so its `nanofaas-lite-runtime` binary is the same latent `.so`.
 
-### 7.4 The switch API is unreachable in both shipped manifests
+### 7.4 Enabling the switch API is a per-manifest operator action, and only Compose lacks one
 
-`deploy/compose/compose.yaml` forwards no variable that enables
-`nanofaas.admin.runtime-config.enabled`, and `deploy/helm/nanofaas/values.yaml` does not expose it
-either. So as shipped, an operator cannot reach the hot-switch endpoint without editing a manifest —
-and the compose file's own comment already describes the PATCH endpoint. The default staying off is
-correct and unchanged; the gap is that there is no supported way to turn it on. The one-line
-passthrough in each manifest is proposed in `NANOLAB.md` §4. This also means the procedure had to be
-executed with a local compose overlay, which is why `NANOLAB.md` records an execution rather than
-naming a supported entry point.
+`nanofaas.admin.runtime-config.enabled` defaults to **off**, deliberately and unchanged: the plan
+requires the admin enablement to stay explicit, and nothing here changes it. What this section
+records is what an operator must do in each shipped path, which is **not** the same in all three.
+(This section's first version claimed the flag was unreachable "in both shipped manifests" and
+attributed a PATCH-related comment to `deploy/compose/compose.yaml`; both were wrong and are
+corrected here. That compose file contains no `PATCH` and no `runtime-config` at all — the comment
+is the chart's, `deploy/helm/nanofaas/values.yaml:13-17`.)
+
+- **Helm: supported, with a values override.** `templates/control-plane-deployment.yaml:78` renders
+  `controlPlane.extraEnv` as a generic passthrough, and `values.yaml:13-17` — added by `28a460ae`,
+  Task 13a of this campaign — tells the operator to use exactly that for exactly this flag. Verified
+  by rendering the chart, not by reading it:
+
+  ```
+  $ helm template nanofaas deploy/helm/nanofaas \
+      --set controlPlane.extraEnv[0].name=NANOFAAS_ADMIN_RUNTIMECONFIG_ENABLED \
+      --set controlPlane.extraEnv[0].value=true --set controlPlane.scheduler.strategy=shared-queue
+            - name: "NANOFAAS_ADMIN_RUNTIMECONFIG_ENABLED"
+              value: "true"
+            - name: NANOFAAS_SCHEDULER_STRATEGY
+              value: "shared-queue"
+  ```
+
+  So the operator's action is two values: `controlPlane.extraEnv` to enable the API, and
+  `controlPlane.scheduler.strategy` to pin the startup selection. No manifest edit.
+- **Compose: no shipped path.** `deploy/compose/compose.yaml` lists the control plane's environment
+  explicitly and names no such variable, so nothing exported from outside reaches the container. The
+  operator must add the variable to the file or supply an override — which is what this task did, with
+  the one-file overlay in `NANOLAB.md` §4 — and even then the image must be built with a queue module.
+  That second condition is independent of the flag and was measured separately: an image built with
+  `container-deployment-provider,runtime-config` (no queue module) and started with the flag **on**
+  serves `/v1/admin/runtime-config` **200** — whose envelope's `namespaces` contains `control-plane`
+  and nothing else — while `/v1/admin/runtime-config/scheduler` answers **404**. No engine, no
+  `SchedulerControl`, no namespace, flag or no flag. The one-line passthrough proposed in `NANOLAB.md`
+  §4 is a proposal about **this file only**.
+- **Native: a build prerequisite, not a runtime setting.** In a native image the flag is evaluated
+  when the image is built (§4), so no values override and no runtime environment change reaches it:
+  the flag must be set before `nativeCompile`, and an image compiled without it has no admin route
+  however it is started.
+
+The published flag name is worth stating precisely, because two spellings circulate and a reader
+copying the wrong one would get a route that never appears. Both work — measured, not argued. Two
+containers from the same image, one spelling each, and three controls:
+
+| environment | `/v1/admin/runtime-config` | `…/scheduler` |
+|---|---|---|
+| `NANOFAAS_ADMIN_RUNTIMECONFIG_ENABLED=true` (dash removed) | **200** | **200** |
+| `NANOFAAS_ADMIN_RUNTIME_CONFIG_ENABLED=true` (chart's spelling) | **200** | **200** |
+| *(no flag)* | 404 | 404 |
+| `NANOFAAS_ADMIN_RUNTIMECONF_ENABLED=true` (wrong name) | 404 | 404 |
+| `NANOFAAS_ADMIN_RUNTIMECONFIG_ENABLED=false` | 404 | 404 |
+
+The controls are what make the two 200s mean something: the route is absent by default, absent under
+a name that differs by one letter, and absent when the same variable is `false`. So the chart's
+comment is correct as it stands and is left alone — it names a spelling that binds — and the compose
+proposal in `NANOLAB.md` §4 names the other, which binds too. The mechanism behind that (relaxed
+binding accepting both the dash-removed and the dash-as-underscore form of `runtime-config`) is an
+inference from two measurements rather than something this task read out of Spring; the observable an
+operator needs is the table, and it says either spelling turns the route on, and a misspelling does
+not.
 
 ### 7.5 Six always-empty series, and a deny-list that still binds
 
@@ -255,7 +311,10 @@ It was executed by hand against the container stack and recorded in `NANOLAB.md`
 is a NanoLab scenario — a task module, a workflow builder and a `scenarios-v2/scheduler-switch-*.yaml`
 — which does not exist yet and was not written, because the NanoLab checkout is a separate repository
 that this task was not authorised to modify. The same document carries the proposal that would make
-the container scenario able to serve it.
+the container scenario able to serve it. The work is smaller than it sounds: NanoLab already GETs,
+validates and PATCHes a `runtime-config` namespace (`runtime_config_tasks()`, wired into its `cli`
+plan), so the follow-on extends an existing shape to the `scheduler` namespace rather than building
+a runtime-config driver from nothing.
 
 ## 8. Publication
 

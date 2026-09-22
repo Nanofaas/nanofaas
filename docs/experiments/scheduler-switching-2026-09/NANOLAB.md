@@ -16,6 +16,15 @@ the NanoLab repository — a task module, a workflow builder, a `scenarios-v2/sc
 and NanoLab's own tests — and nothing of it was written here, because the NanoLab checkout is a
 different repository and was not modified by this task.
 
+**It is less work than "the capability does not exist" would suggest.** NanoLab already drives a
+`runtime-config` namespace of its own: `runtime_config_tasks()` in
+`packages/nanolab/src/nanolab/tasks/cli_function.py` GETs, validates (including a deliberately
+invalid patch) and PATCHes one, wired into `plans/cli.py` and exercised through the `nanofaas-cli`
+binary. It targets the `control-plane` namespace — the rate limiter — rather than `scheduler`, and it
+goes through the CLI rather than over HTTP, so it is the same shape aimed elsewhere and not this
+procedure. The follow-on is extending that shape to the `scheduler` namespace and wiring it as a
+workflow, not building a runtime-config driver from scratch.
+
 So: what follows is a record of an execution, not a supported entry point. When the NanoLab
 workflow exists, it supersedes this file.
 
@@ -131,15 +140,18 @@ $ curl -s -w '\nHTTP=%{http_code}\n' http://127.0.0.1:8080/v1/admin/runtime-conf
 HTTP=404
 ```
 
-Two different facts are behind those two `404`s and only one of them is visible from outside. The one
-that is measured: `nanofaas.admin.runtime-config.enabled` is `false` by default, so the whole admin
-surface is unmounted and **both** paths answer `404` regardless of what the artifact was built with
-— measured again on a four-module stack with the flag still off, where the same two paths answered
-`404` while `/v1/functions` answered `200` and `/actuator/health/readiness` answered `UP`. The one
-that is documented rather than measured here: the scenario's build carries no queue module, so no
-engine exposes `SchedulerControl`, and the `scheduler` namespace is absent (`404`) even with the
-admin API enabled — `docs/control-plane.md` states that case, and this task did not build a
-queue-module-less stack with the flag on to re-measure it.
+Two different facts are behind those two `404`s, and in this round both were measured. The first:
+`nanofaas.admin.runtime-config.enabled` is `false` by default, so the whole admin surface is unmounted
+and **both** paths answer `404` regardless of what the artifact was built with — measured again on a
+four-module stack with the flag still off, where the same two paths answered `404` while
+`/v1/functions` answered `200` and `/actuator/health/readiness` answered `UP`. The second: the
+scenario's build carries no queue module, so no engine exposes `SchedulerControl` and the `scheduler`
+namespace is absent **whatever the flag says**. Measured separately, with the flag on: an image built
+with `container-deployment-provider,runtime-config` and started with
+`NANOFAAS_ADMIN_RUNTIMECONFIG_ENABLED=true` serves `/v1/admin/runtime-config` **200**, its envelope
+listing `control-plane` and no `scheduler` namespace at all, and answers
+`/v1/admin/runtime-config/scheduler` **404**. The two causes are therefore independent, and the
+procedure needs both fixed — the module list *and* the flag.
 
 Both have to be supplied for the procedure to mean anything, and both are supplied the way the
 campaign's own profile works — the both-queue profile for the build, and the explicit admin
@@ -165,12 +177,18 @@ services:
 ```
 
 **Proposal, for NanoLab or nanoFaaS rather than for this task.** `deploy/compose/compose.yaml`
-already forwards `NANOFAAS_SCHEDULER_STRATEGY` with a comment about the PATCH endpoint; one
-identical passthrough for `NANOFAAS_ADMIN_RUNTIMECONFIG_ENABLED` (default empty, so the shipped
-default stays off) would make the switch reachable from the compose file's own vocabulary and
-remove the need for an overlay. The same gap exists in `deploy/helm/nanofaas/values.yaml`, which
-does not expose the flag either — so in **both** shipped manifests the hot-switch API is
-unreachable without editing the manifest. That is recorded as a residual limit in `FINAL.md`.
+already forwards `NANOFAAS_SCHEDULER_STRATEGY` (the comment describing the PATCH endpoint is the
+chart's, in `deploy/helm/nanofaas/values.yaml:13-17`, not this file's); one identical passthrough for
+`NANOFAAS_ADMIN_RUNTIMECONFIG_ENABLED` (default empty, so the shipped default stays off) would make
+the switch reachable from the compose file's own vocabulary and remove the need for an overlay.
+**Compose is the only one of the three paths that lacks a supported way in:** Helm reaches the flag
+through its generic `controlPlane.extraEnv` (`templates/control-plane-deployment.yaml:78`, with the
+chart's own comment naming that route), and a native image needs it as a build prerequisite instead.
+`FINAL.md` §7.4 states all three, with the rendered chart and the spelling measured.
+
+The spelling in the overlay above (`…RUNTIMECONFIG…`) is not load-bearing: both it and the chart's
+`NANOFAAS_ADMIN_RUNTIME_CONFIG_ENABLED` turn the route on, and the controls in `FINAL.md` §7.4 show
+the route absent with no flag, with a misspelled one, and with the same variable set to `false`.
 
 ### Holding the stack up
 
