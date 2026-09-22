@@ -47,9 +47,11 @@ sys	0m0.197s
 [exited with code 0]
 ```
 
-The first line is the control plane becoming ready; the three `real`/`user`/`sys` lines are the
-shell's `time` around the whole invocation and therefore include the ~100 s of startup before the
-200 s window began — they are not a measurement of the run.
+The first line is the control plane becoming ready, printed before the driver was timed. The three
+`real`/`user`/`sys` lines are the shell's `time` around the driver process: `real 3m19.996s` is
+199.996 s, which agrees with the driver's own `elapsed_s 199.9` to within the interpreter's startup
+and therefore does **not** include the control plane's own start at `10:21:20.994` — the arithmetic
+in this paragraph is what says so, not an assumption about how the script was invoked.
 
 `platform_committed 1000.0` is the engine's own `scheduler_switch_total`, read from the live
 exposition — so the count is not only the driver's tally. `restores 0` means the alternation had
@@ -72,10 +74,19 @@ driver's own `elapsed_s 199.9` is wall clock around the call, which is why the t
 ~0.1 s; both are stated in `FINAL.md`, the receipt's where the receipt is the source and 199.786 s
 where the log is.
 
-`drive.log` is 1 011 lines, of which those 1 000 are the switch lines; the other 11 are the control
-plane's own startup output (its banner, five JVM warnings, the Netty/actuator lines) and one blank
-line. There is no request or error line in it, and no shutdown line — the log ends at the last
-switch — so nothing in this file is other than a startup line or a measured switch.
+The 200 s window is not printed by the receipt, and this is what confirms it rather than assuming
+it: the driver paces itself at `window_s / switches_in_soak` per attempt, so 200/1000 = 0.2 s, and
+999 intervals between the first and last of 1 000 switches is 199.8 s — against the **199.786 s**
+the log shows. The two agree to 14 ms, which is the run closing on its window, and it puts
+`window_s` at 200 (999 × `window_s`/1000 = 199.786 gives 199.986) rather than at any other value.
+
+`drive.log` is 1 011 lines, of which those 1 000 are the switch lines. The other 11 split, by `grep
+-c` on the file itself, as **2 + 4 + 4 + 1**: two banner lines (`Starting ControlPlaneApplication`,
+`No active profile set`), then four `WARNING` lines (`grep -c '^WARNING' drive.log` = 4), then four
+lines after them (Netty on 18090, the endpoint-links line, Netty on 18091, `Started
+ControlPlaneApplication`), then one blank line (`grep -c '^$' drive.log` = 1). There is no request
+or error line in it, and no shutdown line — the log ends at the last switch — so nothing in this
+file is other than a startup line or a measured switch.
 
 ## What this is not
 
