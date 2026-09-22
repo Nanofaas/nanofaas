@@ -183,6 +183,15 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
         // Mirrors SyncQueueService.enqueueOrThrow's two isRemovalFenced checks: an early
         // rejection, and a second one immediately before the commit to narrow the window a
         // concurrent removal could otherwise slip through.
+        //
+        // Each check is pinned by its own probe, and it is worth knowing which — they are not
+        // interchangeable, and the in-window probe that drives both is not evidence for either one
+        // specifically: it raises the fence before its admission starts and leaves it raised, so
+        // EITHER check alone still refuses that admission, and only deleting both turns it red.
+        // SyncQueueRuntimeLifecycleTest.theFirstRemovalFenceCheckRefusesAnAdmissionThatStartsFenced
+        // goes red when this first check is removed, and
+        // .theSecondRemovalFenceCheckRejectsAFenceRaisedWhileTheAdmissionIsInFlight goes red when
+        // the second is. Removing one of the two is a red test, not a silent loosening.
         if (removalFences.contains(task.functionName())) {
             throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
         }

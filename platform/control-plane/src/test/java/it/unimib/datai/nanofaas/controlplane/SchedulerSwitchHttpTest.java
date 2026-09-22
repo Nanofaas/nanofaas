@@ -571,8 +571,20 @@ class LegacySyncProfileSchedulerSwitchHttpTest {
                 .bodyValue("{\"expectedRevision\":%d,\"values\":{\"strategy\":\"%s\"}}"
                         .formatted(revision, target))
                 .exchange()
-                .expectStatus().isOk()
-                .expectBody()
-                .jsonPath("$.effectiveConfig.namespaces.scheduler.strategy").isEqualTo(target);
+                .expectStatus().isOk();
+        // The committed switch, read back from the engine's OWN live selection rather than from
+        // the PATCH response's echo of the request: SchedulerRuntimeConfigExtension.prepare
+        // computes effectiveConfig from the requested target, so asserting on it would hold even
+        // if SchedulerEngine.switchTo had silently done nothing, and the 501 assertions around
+        // this call would then be pinning a switch that never happened. Same read-back as
+        // SchedulerSwitchHttpTest.activeStrategy().
+        assertThat(SchedulerSwitchHttpTest.field(SchedulerSwitchHttpTest.body(
+                client.get().uri("/v1/admin/runtime-config/scheduler")
+                        .exchange()
+                        .expectStatus().isOk()
+                        .expectBody()
+                        .returnResult()), "strategy"))
+                .as("the committed switch must be visible in the engine's own live selection")
+                .isEqualTo(target);
     }
 }

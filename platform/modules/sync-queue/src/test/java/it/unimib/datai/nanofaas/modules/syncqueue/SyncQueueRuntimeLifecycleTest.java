@@ -22,6 +22,9 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
 import it.unimib.datai.nanofaas.controlplane.service.Metrics;
 import it.unimib.datai.nanofaas.controlplane.service.SchedulerConfiguration;
 import it.unimib.datai.nanofaas.controlplane.service.SchedulerLifecycleAdapter;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
+import it.unimib.datai.nanofaas.execution.admission.SyncQueueAdmissionController;
+import it.unimib.datai.nanofaas.execution.admission.WaitEstimator;
 import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueItem;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueMetrics;
@@ -32,6 +35,7 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -47,6 +51,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -112,6 +117,60 @@ class SyncQueueRuntimeLifecycleTest {
             }).when(spy).remove(anyString());
             return spy;
         }
+
+        /**
+         * The same spy trick as the registry above, on the one collaborator the gateway calls
+         * strictly <em>between</em> its two {@code removalFences.contains} checks: the admission
+         * controller, reached from {@code doEnqueueOrThrow} after the first check and before the
+         * second. That makes it the one place a test can observe — or arrange — what the two checks
+         * see, and so attribute a refusal to one of them rather than to "a fence check".
+         * {@link AdmissionProbe} picks the mode; {@link #PROBE_IN_ADMISSION} arms it. Delegates to
+         * the real controller for every other test here.
+         *
+         * <p>{@code @Primary} under its own name rather than overriding the bean by name:
+         * {@code SyncQueueConfiguration}'s own {@code syncQueueAdmissionController} is not
+         * {@code @ConditionalOnMissingBean}, so a same-named definition is a
+         * {@code BeanDefinitionOverrideException}, while a second candidate the gateway's
+         * constructor prefers by {@code @Primary} is not.
+         */
+        @Bean
+        @Primary
+        SyncQueueAdmissionController spiedSyncQueueAdmissionController(SyncQueueConfigSource configSource,
+                SyncQueueProperties props, WaitEstimator estimator) {
+            SyncQueueAdmissionController real =
+                    new SyncQueueAdmissionController(configSource, props.maxDepth(), estimator);
+            SyncQueueAdmissionController spy = spy(real);
+            doAnswer(invocation -> {
+                EngineSyncQueueGateway gateway = PROBE_GATEWAY_IN_ADMISSION.getAndSet(null);
+                String functionName = PROBE_FUNCTION_IN_ADMISSION.getAndSet(null);
+                AdmissionProbe probe = PROBE_IN_ADMISSION.getAndSet(null);
+                if (gateway != null && functionName != null && probe != null) {
+                    PROBE_ADMISSION_REACHED.set(true);
+                    if (probe == AdmissionProbe.RAISE_FENCE) {
+                        gateway.raiseRemovalFence(functionName);
+                    }
+                }
+                return invocation.callRealMethod();
+            }).when(spy).evaluate(anyString(), anyInt(), any());
+            return spy;
+        }
+    }
+
+    /** What the admission-check probe does when an armed admission reaches the check. */
+    enum AdmissionProbe {
+        /**
+         * Record that the check was reached, and raise the fence. The fence was provably absent at
+         * the first {@code removalFences.contains} check, so only the second can refuse the
+         * admission.
+         */
+        RAISE_FENCE,
+        /**
+         * Record that the check was reached and touch nothing. A refusal that happens with this
+         * mode armed therefore happened <em>before</em> the admission check was consulted, which
+         * leaves the first {@code removalFences.contains} check as the only one that could have
+         * made it.
+         */
+        OBSERVE_ONLY
     }
 
     /** The probe's handshake with the registry spy above; set and cleared by the one test that
@@ -120,7 +179,11 @@ class SyncQueueRuntimeLifecycleTest {
     private static final AtomicReference<InvocationTask> PROBE_TASK = new AtomicReference<>();
     private static final AtomicReference<Throwable> PROBE_OUTCOME = new AtomicReference<>();
     private static final AtomicBoolean PROBE_GENERATION_WAS_LIVE = new AtomicBoolean();
-
+    /** The second probe's handshake with the admission-controller spy; see that bean's javadoc. */
+    private static final AtomicReference<EngineSyncQueueGateway> PROBE_GATEWAY_IN_ADMISSION = new AtomicReference<>();
+    private static final AtomicReference<String> PROBE_FUNCTION_IN_ADMISSION = new AtomicReference<>();
+    private static final AtomicReference<AdmissionProbe> PROBE_IN_ADMISSION = new AtomicReference<>();
+    private static final AtomicBoolean PROBE_ADMISSION_REACHED = new AtomicBoolean();
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withUserConfiguration(TestSupport.class)
             .withConfiguration(AutoConfigurations.of(SyncQueueConfiguration.class, SchedulerConfiguration.class))
@@ -259,8 +322,17 @@ class SyncQueueRuntimeLifecycleTest {
      *
      * <p>Non-vacuity: {@code PROBE_GENERATION_WAS_LIVE} is asserted alongside the rejection, so a
      * green run cannot be explained by the generation having already been retired. Drop
-     * {@code raiseRemovalFence} from {@code onRemove}, or either {@code removalFences.contains}
-     * check from {@code doEnqueueOrThrow}, and this test goes red with a null outcome.
+     * {@code raiseRemovalFence} from {@code onRemove} and this test goes red with a null outcome.
+     *
+     * <p>What it does <em>not</em> attribute, stated because the obvious reading is wrong: the
+     * fence is raised before this admission starts and stays raised, so as long as <em>either</em>
+     * {@code removalFences.contains} check is in place the admission is still refused. This test
+     * goes red only when both are removed, so it pins the removal fence as a whole and neither
+     * check specifically. Each check has its own probe:
+     * {@link #theFirstRemovalFenceCheckRefusesAnAdmissionThatStartsFenced} and
+     * {@link #theSecondRemovalFenceCheckRejectsAFenceRaisedWhileTheAdmissionIsInFlight}. Removing
+     * the first check alone, or the second alone, leaves this test green and turns exactly one of
+     * those two red — which is the pairing that makes each check separately falsifiable.
      */
     @Test
     void theRemovalFenceRejectsAnAdmissionThatRacesTheCapacityRemoval() {
@@ -297,6 +369,129 @@ class SyncQueueRuntimeLifecycleTest {
                     .as("an admission racing the removal must be refused by the removal fence")
                     .isInstanceOf(SyncQueueRejectedException.class);
         });
+    }
+
+    /**
+     * The <em>second</em> {@code removalFences.contains} check, which the probe above cannot
+     * separate from the first: that one admits after {@code raiseRemovalFence} has already run and
+     * the fence stays raised, so removing <em>either</em> check alone still leaves it refused — and
+     * so leaves it green.
+     *
+     * <p>This probe forces the other ordering. The fence is raised from inside
+     * {@code SyncQueueAdmissionController.evaluate}, which {@code doEnqueueOrThrow} calls strictly
+     * between its two checks — so the fence is provably absent when the first check runs, and the
+     * second check is the only one that can refuse this admission. Everything after it would have
+     * accepted: the name's generation is still active and the queue is below its cap, which the
+     * assertions below check rather than assume. Remove the second check and this admission is
+     * admitted, the rejection never happens, and the test goes red.
+     */
+    @Test
+    void theSecondRemovalFenceCheckRejectsAFenceRaisedWhileTheAdmissionIsInFlight() {
+        runner.run(context -> {
+            assertThat(context).hasNotFailed();
+            EngineSyncQueueGateway gateway = context.getBean(EngineSyncQueueGateway.class);
+            ExecutionStore store = context.getBean(ExecutionStore.class);
+            FunctionCapacityRegistry capacityRegistry = context.getBean(FunctionCapacityRegistry.class);
+            FunctionSpec spec = registerEcho(context);
+
+            InvocationTask task = task("admitted-while-the-fence-is-raised", spec);
+            store.put(new ExecutionRecord(task.executionId(), task));
+            armAdmissionProbe(gateway, spec.name(), AdmissionProbe.RAISE_FENCE);
+            try {
+                assertThatThrownBy(() -> gateway.enqueueOrThrow(task))
+                        .as("a fence raised while the admission is in flight must be refused")
+                        .isInstanceOf(SyncQueueRejectedException.class);
+            } finally {
+                clearAdmissionProbe();
+            }
+
+            assertThat(PROBE_ADMISSION_REACHED)
+                    .as("the fence must be raised from inside the admission check, i.e. after the "
+                            + "first removalFences check and before the second, otherwise this "
+                            + "test proves nothing about the second check")
+                    .isTrue();
+            assertThat(capacityRegistry.activeGeneration(spec.name()))
+                    .as("nothing was removed here — only the fence was raised — so the refusal "
+                            + "cannot have come from the generation check")
+                    .isNotNull();
+        });
+    }
+
+    /**
+     * The <em>first</em> {@code removalFences.contains} check, on the ordering that leaves it as
+     * the only guard: a fence raised before the admission starts, and still raised when the first
+     * check runs.
+     *
+     * <p>No probe can raise that fence from "between the checks" — the first check is the refusal
+     * point, so a refusal there never reaches any later collaborator. What the admission-check
+     * probe can do is prove <em>where</em> the refusal happened: it is armed in {@link
+     * AdmissionProbe#OBSERVE_ONLY}, so {@code PROBE_ADMISSION_REACHED} being false means the
+     * admission was refused before the controller was consulted, and the first check is the only
+     * check upstream of it. Non-vacuity comes from the rest of the admission being viable: the
+     * name's generation is active and the same function admits again once the fence is cleared.
+     *
+     * <p>Remove the first check and the flow reaches the controller — the probe fires and the
+     * admission is instead refused by the second check — so the assertion below goes red.
+     */
+    @Test
+    void theFirstRemovalFenceCheckRefusesAnAdmissionThatStartsFenced() {
+        runner.run(context -> {
+            assertThat(context).hasNotFailed();
+            EngineSyncQueueGateway gateway = context.getBean(EngineSyncQueueGateway.class);
+            ExecutionStore store = context.getBean(ExecutionStore.class);
+            FunctionCapacityRegistry capacityRegistry = context.getBean(FunctionCapacityRegistry.class);
+            FunctionSpec spec = registerEcho(context);
+            gateway.raiseRemovalFence(spec.name());
+
+            InvocationTask fenced = task("admitted-while-the-fence-is-raised", spec);
+            store.put(new ExecutionRecord(fenced.executionId(), fenced));
+            armAdmissionProbe(gateway, spec.name(), AdmissionProbe.OBSERVE_ONLY);
+            try {
+                assertThatThrownBy(() -> gateway.enqueueOrThrow(fenced))
+                        .as("an admission that starts under a raised fence must be refused")
+                        .isInstanceOf(SyncQueueRejectedException.class);
+            } finally {
+                clearAdmissionProbe();
+            }
+
+            assertThat(PROBE_ADMISSION_REACHED)
+                    .as("the refusal came before the admission check was consulted, so the first "
+                            + "removalFences check is the one that made it")
+                    .isFalse();
+            assertThat(capacityRegistry.activeGeneration(spec.name()))
+                    .as("the generation is active, so the refusal cannot have come from the "
+                            + "generation check that the first fence check precedes")
+                    .isNotNull();
+
+            // The fence really was the only obstacle: clear it and the same function admits.
+            gateway.clearRemovalFence(spec.name());
+            InvocationTask afterwards = task("admitted-after-the-fence-is-cleared", spec);
+            store.put(new ExecutionRecord(afterwards.executionId(), afterwards));
+            assertThatCode(() -> gateway.enqueueOrThrow(afterwards)).doesNotThrowAnyException();
+        });
+    }
+
+    private static FunctionSpec registerEcho(org.springframework.context.ApplicationContext context) {
+        FunctionRegistrationListener listener = context.getBean(
+                "schedulerCapacityGenerationListener", FunctionRegistrationListener.class);
+        FunctionSpec spec = new FunctionSpec("echo", "image", null, Map.of(), null,
+                1000, 1, 10, 3, null, ExecutionMode.LOCAL, null, null, null);
+        listener.onRegister(spec);
+        return spec;
+    }
+
+    private static void armAdmissionProbe(EngineSyncQueueGateway gateway, String functionName,
+            AdmissionProbe probe) {
+        PROBE_GATEWAY_IN_ADMISSION.set(gateway);
+        PROBE_FUNCTION_IN_ADMISSION.set(functionName);
+        PROBE_IN_ADMISSION.set(probe);
+        PROBE_ADMISSION_REACHED.set(false);
+    }
+
+    private static void clearAdmissionProbe() {
+        PROBE_GATEWAY_IN_ADMISSION.set(null);
+        PROBE_FUNCTION_IN_ADMISSION.set(null);
+        PROBE_IN_ADMISSION.set(null);
     }
 
     private static InvocationTask task(String executionId, FunctionSpec spec) {
