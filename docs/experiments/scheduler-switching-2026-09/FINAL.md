@@ -3,8 +3,11 @@
 Task 13c / issue #208. This is the campaign's consuntivo: what shipped, what was measured, what it
 does **not** claim, and what is still owed.
 
-**The campaign is not closed.** One criterion of the plan is not met and is not waived: the
-≥60-minute soak has **not yet been run and is pending** (§7.1).
+**The plan's last outstanding step is done, and it did not go green.** The ≥60-minute soak has been
+**run**, and it returns **FAIL** — on 3 of its 21 criteria, all three of them the inherited P24 memory
+contract rather than a criterion of this campaign (§7.1). Every criterion this campaign defined
+passed. The three failures stand as they are: the finding is that the inherited criterion is
+over-strict, and a finding does not turn a run green.
 
 ---
 
@@ -117,7 +120,8 @@ that scope, four more than the reconstruction, accounted for by this campaign's 
 failures and the 7 skips are identical in every one of these scopes, so nothing else in this section
 moves.
 
-**Not run:** the ≥60-minute soak (§7.1). No end-to-end run of the native release image (§7.2).
+**Not run:** no end-to-end run of the native release image (§7.2). The ≥60-minute soak has been run
+since, and failed on the inherited P24 contract (§7.1).
 
 **One test in these counts is structurally racy and was not fixed** —
 `actuatorPrometheus_exposesFunctionCountersAndLatencyTimer`, in `:control-plane:test`. Its green
@@ -132,10 +136,10 @@ figure below can have been compared against a different threshold. All eleven bu
 | budget | frozen | observed | verdict |
 |---|---|---|---|
 | `maxSwitchPauseMs` | 250 ms | **3.984 ms** (max over 1 140 measured switches) | PASS |
-| `maxSwitchPauseP99Ms` | 100 ms | **0.266 ms** (p99 over the 1 000-switch phase — the harness's own in-process figure, not the soak's; §5) | PASS |
+| `maxSwitchPauseP99Ms` | 100 ms | **0.266 ms** (p99 over the 1 000-switch phase, the harness's own in-process figure) and **0.00099 s**, the soak's reading of the platform's own timer, which cannot resolve below its finest 1 ms class (§5, §7.1) | PASS |
 | `maxSwitchPreparationMs` | 2 000 ms | 3.984 ms (total switch duration, an upper bound) | PASS |
 | `maxLiveStrategyIndexes` | 2 | 2 | PASS |
-| `switchesInSoak` | 1 000 | 1 000 committed, 0 refused — **the switch count, not the soak** (§7.1) | PASS |
+| `switchesInSoak` | 1 000 | 1 000 committed, 0 refused — the switch count, not a duration; the ≥60-minute soak has since carried the same 1 000 over its own 5 400 s (§7.1) | PASS |
 | `repetitions` | 5 | 5 per (workload, arm), all 48 pairs | PASS |
 | `switchBacklogSizes` | [0, 100, 1000, 10000] | all four swept, 5 repetitions each | PASS |
 | `maxSteadyP99RegressionPercent` | 5 % | worst +9.51 %; 4 of 22 comparisons over, **0 separable** | over budget — **no regression established; the test cannot resolve 5 %** |
@@ -187,7 +191,7 @@ budget, over 1 140 switches, with the pause recorded by the engine's own observe
 Two indexes exist at most during a transition, never a third.
 
 **What that does not cover.** The pause was measured in the harness, not in production under
-sustained multi-function churn; the ≥60-minute soak is where that belongs and has not run (§7.1).
+sustained multi-function churn; the ≥60-minute soak is where that belongs, and it has now run (§7.1).
 The preparation budget is a compiled constant with no configuration knob: an operator cannot shorten
 or lengthen it at runtime, and the harness figures are the only consumption figures that exist.
 
@@ -209,11 +213,10 @@ over a saved run's own `_bucket` family — `function_latency_ms_seconds_bucket`
 `control-plane`, a 900 s steady window with 89 000 observations per label set — and agreed with an
 independent re-derivation to the digit: p99 = **0.00203613 s** for `word-stats-java` and
 **0.000994436 s** for `word-stats-javascript` (the level-based reading, for contrast, would have
-been 0.00209497 / 0.0009951). Two limits on that: the family is the *function latency* timer's, not
-the switch timer's — the image this host can start predates `117e8303`, so the switch timer's own
-buckets have never been scraped by this campaign — and the **budget itself remains unmeasured by a
-soak**, which is the whole of §7.1. What `117e8303` buys is that the platform's own series now
-exists, so a soak can read the p99 independently of the harness's observer.
+been 0.00209497 / 0.0009951). One limit on that: the family replayed is the *function latency*
+timer's, not the switch timer's. Both open ends have since closed — the soak of §7.1 scraped the
+switch timer's own buckets and read the budget from them, and what that reading is worth, namely that
+it is blind below the finest 1 ms class, is recorded there.
 
 **The budget was never without a measurement.** `RESULTS.md:146` carries a harness figure of
 **0.266 ms** p99 over the 1 000-switch phase, computed in-process by the benchmark from the same
@@ -255,32 +258,143 @@ promising it.
 
 ## 7. Residual limits
 
-### 7.1 The ≥60-minute soak has not yet been run, and is pending
+### 7.1 The ≥60-minute soak has been run: FAIL on the inherited P24 contract, and the limits it leaves open
 
 The plan's acceptance criteria require a soak of **at least 60 minutes with 1 000 manual switches**
 sent by the harness, two duration classes and function churn, observing through drain to the maximum
 configured retention: live records, physical input, leases, waiters, timers, indexes and meters,
 with cache-inside-TTL distinguished from a leak and heap distinguished from RSS.
 
-**It was not executed.** By operator decision it is deferred to when the machine can be dedicated to
-it. It is not "skipped", it is not "accepted as a limit", and it is not satisfied by any other
-figure in this report. Specifically:
+**It was executed on 2026-09-22**, and it is the only run of it that completed: four earlier attempts
+at the same scenario, all on that day, ended **INCONCLUSIVE** inside two minutes (limit 1 below is two
+of them). Every phase ran to its declared length:
 
-- `budgets.json`'s `switchesInSoak: 1000` **PASS** above is Task 12c's harness driving 1 000
-  switches inside a short measurement window. It is the switch *count* and the return-to-baseline
-  check. It is **not** the soak and must not be read as one.
-- **A second 1 000-switch run happened after this file was written, and it is not the soak either.**
-  NanoLab's switch step was run against a live control plane for 200 s, and it satisfies
-  `switchesInSoak: 1000` as well (§7.6). That is the point rather than an aside: the budget is a
-  *count*, it carries no duration, and **`switchesInSoak` alone is therefore never soak evidence**.
-  Nothing in this report may quote those 1 000 switches without their window.
-- Nothing else in this campaign ran for 60 minutes.
+| phase | declared | measured |
+|---|---|---|
+| prerequisites (3 profiles) | — | 1 018.4 s |
+| warmup | 120 s | 121.7 s |
+| baseline drain | 2 100 s | 2 100.0 s |
+| baseline window | 120 s | 120.0 s |
+| **steady** | **5 400 s** | **5 400.2 s** |
+| drain | 2 100 s | 2 100.0 s |
 
-Until it runs, the campaign is open. Its precondition, recorded so the next session does not have
-to rediscover it: **the host must be quiet** — no Gradle daemon, no JVM, no other sampling run —
-because a soak that measures a host measuring something else measures the wrong thing. State of that
-precondition **re-measured at `2026-09-22T12:12+02:00`**, and this is the list to act on: four `java`
-processes are alive, so stopping one and declaring the host silent would leave three behind.
+The soak step as a whole took **10 910.9 s**.
+
+**Every criterion this campaign defined passed, and the switch receipt is inside the manifest.** The
+run is `packages/nanolab/runs/soak-ec5c73442e29415ca2dfa3a3cdb37ab0` in the NanoLab checkout, and it
+measured nanoFaaS at **`64c72c12`** with a clean tree (`evidence/source/snapshot.json`). The receipt
+is `evidence/scheduler-switch.json`, referenced by `evidence/acceptance-manifest.json` under
+`scheduler_switch` and digest-matched to it
+(`abe4cf6301544b07070d8dead968f0ca06fa61942b472e10788fa131de73ebff`):
+
+```
+committed 1000 · refused 0 · stale 0 · restores 0 · platform_committed 1000.0
+live_indexes 2 · pause_max_ms 0.087167 · elapsed_s 5394.60 · window_s 5400
+initial per-function · final per-function · strategies [per-function, shared-queue]
+```
+
+**1 000 switches committed** over the declared 5 400 s window, **none refused, none stale**, two live
+indexes at most, and the alternation landed back on the strategy it started on, so no restoring PATCH
+was needed. `platform_committed` is the engine's own `scheduler_switch_total`, so the 1 000 is not
+the driver's tally alone. `control-plane.scheduler-switch-pause` and
+`control-plane.scheduler-switch-pause-p99` are both **PASS**.
+
+**The verdict is FAIL on 3 of 21 criteria**, from
+`evidence/evaluations/evaluation-e81fd228668d42628b09b22d74fd86c0/report.json` (18 PASS, 3 FAIL). The
+three are one criterion on each role:
+
+| criterion | baseline median | natural maximum | over |
+|---|---|---|---|
+| `control-plane.p24-rss-return` | 229 065 000 | 232 706 000 | **+1.6 %** (3.64 MB) |
+| `word-stats-java.p24-rss-return` | 225 452 000 | 254 427 000 | **+12.9 %** |
+| `word-stats-javascript.p24-rss-return` | 65 484 800 | 68 292 600 | **+4.3 %** |
+
+Those six numbers are the report's own reason strings, and they reproduce: re-deriving them from
+`evidence/samples.jsonl` over the criterion's actual window — `deadline_s` 2 100 s into the drain
+phase, less its own `window_s` of 120 s, so the drain's last two minutes — gives the same medians and
+the same maxima. The 18 that pass include `effective-preflight`, `prerequisite-coverage`,
+`frozen-policy`, `attribution-policy-binding`, `run-continuity`, `run-coverage`, `sample-integrity`,
+`workload-accounting`, `workload-correctness`, `artifact-integrity` and both switch criteria.
+
+**What the three failures are, and the judgement on them.** They are the **inherited P24 memory
+contract** the `memory-soak` family has carried since before this campaign — not a criterion this
+campaign wrote. It lives in `scenarios-v2/memory-soak-policy.yaml`, and this scenario's own
+`scenarios-v2/scheduler-switch-soak-policy.yaml` duplicates it verbatim: `operation:
+return_to_reference`, `absolute_tolerance: 0`, `relative_tolerance: 0`. So post-drain RSS must
+return **to the byte** to the baseline median. `evaluate.py` composes the two tolerances as
+`min(absolute, |median| × relative)`, so two zeros are not two chances — an absolute bound of zero
+annuls the relative one, the same form the sibling `lifecycle-memory-2026-09` campaign had already
+identified.
+
+**The operator's judgement, recorded as a finding and not as an action: this criterion is
+excessively strict.** Its support is that **no run has ever passed `p24-rss-return` on all three
+roles**: exactly two runs on this machine carry that criterion — this one, and
+`soak-50fc87df833f49cc917801aec2b72ebe` (2026-09-19) — and neither does. That second run fails
+control-plane at **+121 %** (224 526 000 → 496 435 000) and java at +1.0 %, and passes javascript
+only because its maximum falls **below** its median (61 325 300 against 67 272 700) — it passes when
+RSS *sheds*, not when it *returns*. And what fails an otherwise complete run here is a 1.6 %
+overshoot: 3.64 MB on the control plane.
+
+**What that judgement is worth, because it is easy to overstate: it does not make the soak pass.**
+The verdict stays **FAIL** until the policy changes, and the policy is not this campaign's to change
+— the tolerances stay at zero, `p24_qualified` stays `false`, and the report's own `next_action` says
+the same thing from the other side ("do not widen frozen limits"). What the finding changes is the
+**attribution**: to an inherited criterion assessed as over-strict, not to a regression this campaign
+introduced. That distinction is the whole of the paragraph. Relaxing a tolerance to turn this run
+green is the softening this campaign refused at every step, and it is not done here either.
+
+**The p99 budget is now readable, and it is blind below the millisecond.** This run is the first to
+scrape the switch timer's own buckets. `scheduler_switch_duration_seconds_bucket`'s finest class is
+`le="0.001"` — 1 ms — and the run's last reading carries **999 of its 1 000 observations** in it (at
+an intermediate reading inside the steady window, 266 of 267). So the criterion is now *expressible*,
+and on this timer it reports **0.00099 s**: a value inside the finest class, which is to say it says
+"under 1 ms" and can resolve nothing finer. The informative figure for the pause is the **maximum**,
+and there are two, because there are two instruments: the receipt's `pause_max_ms` of **0.087167 ms**,
+which is the driver's own observer and the figure quoted above, and the platform's own
+`scheduler_switch_duration_seconds_max`, whose largest value in the steady window is **0.002391358 s**
+(2.39 ms). Both are orders inside the frozen 250 ms. What remains a limit is the criterion: this
+timer cannot measure a p99 to better than 1 ms.
+
+**Two NanoLab defects the soak exposed. Neither is fixed here, and both are the tooling's, not
+nanoFaaS's.**
+
+1. **The helper builder is created unpinned.** `plans/soak.py` acquires the
+   `nanolab-heap-analysis` builder through `sonata_tasks.buildx.buildx_builder_resource`, which
+   **adopts an existing builder and creates one only when it is missing**. The creation path
+   (`buildx.py:_create_argv`) emits `--driver docker-container` and whatever `driver_options` its
+   caller passed, and **never an `image=`**; `plans/soak.py` passes only `network=host`. So on a host
+   where the builder does not already exist — a fresh clone, the CI, another machine — the run
+   creates one carrying whatever BuildKit is then current, and dies at `published BuildKit
+   provenance is missing or unsupported` (`tasks/soak/build_provenance.py:233`) at the first image
+   build.
+
+   **That is not a hypothesis read off the source: it is in this machine's own run history, twice,
+   minutes before the soak succeeded.** `soak-edbfbb779e9e474fa5d0dae5bbc4b3f1` (2026-09-22 13:29)
+   and `soak-ac429c41887a46f2a07fe8f4d9d45a2e` (13:32) — both this same scenario, both
+   **INCONCLUSIVE** on exactly that reason — had *created* a builder
+   (`002.acquire-nanolab-heap-analysis-buildx-builder`, 5.7 s and 1.5 s) and *removed* it on the way
+   out (`004.release-nanolab-heap-analysis-buildx-builder`, 0.7 s each, which is what the resource
+   does with a builder it made). The soak then succeeded because it adopted one instead: its acquire
+   took **0.085 s**, its release **0.0 s**, and the builder is still on the host —
+   `Driver Options: image="moby/buildkit:v0.27.1" network="host"`, BuildKit **v0.27.1**. **So the
+   soak has only ever passed where somebody had already left that pinned builder behind.** The fix
+   is to pin the image where the builder is created rather than depend on what the machine already
+   carries.
+2. **`--teardown` on an interrupted run does nothing.** `nanolab run … --teardown --run-dir` compiles
+   the teardown workflow and **discards it**: `cli/product.py` calls `plans.soak.teardown_soak_run`,
+   which returns `build_teardown_workflow`'s `Workflow` — a construct-only function — and the CLI
+   then returns without ever reaching `_execute_workflow`. The process exits 0 having run nothing, so
+   a soak that is killed leaves its compose project, its diagnostic containers and the port-5000
+   registry behind. A run that **completed** releases correctly, and this run is the demonstration:
+   its `cleanup.jsonl` records its three retained resources released, and its teardown log has the
+   compose project's containers stopped and removed. The defect is the interrupted path, not the
+   completed one.
+
+**For whoever re-runs this, the host precondition is unchanged**: **the host must be quiet** — no
+Gradle daemon, no JVM, no other sampling run — because a soak that measures a host measuring something
+else measures the wrong thing. It was **re-measured at `2026-09-22T12:12+02:00`**, hours before this
+run started at `13:40:10` UTC, and the list to act on was: four `java` processes alive, so stopping one
+and declaring the host silent would have left three behind.
 
 | PID | what | VmRSS | started |
 |---|---|---|---|
@@ -289,12 +403,14 @@ processes are alive, so stopping one and declaring the host silent would leave t
 | 419261 | Gradle worker daemon | 723 604 kB (≈ 0.72 GB) | 2026-09-22 08:19:51 |
 | 818677 | Gradle worker daemon | 748 936 kB (≈ 0.75 GB) | 2026-09-22 10:48:46 |
 
-**All four must be gone before the soak starts.** `./gradlew --stop` stops the daemon; re-run the
-`ps` afterwards and kill whatever is left, rather than assuming the command emptied the list — and
-re-measure at the moment of starting, because this list drifts and is a snapshot, not an inventory.
-For the record of what changed since this section was first written: the two inherited daemons
-(PIDs 2888262 and 2888753) are gone, and PID 252783 is still alive but is now one of four and holds
-≈ 3.17 GB rather than the ≈ 563 MB an earlier draft of this bullet named.
+`./gradlew --stop` stops the daemon; re-run the `ps` afterwards rather than assuming the command
+emptied the list, and re-measure at the moment of starting, because this list drifts and is a snapshot,
+not an inventory. That snapshot **is not evidence about the run above**: whether the precondition held
+when the soak actually started is **not verifiable from the run's own artifacts** — `evidence/preflight.json`
+asserts process identity, source, limits and images, and does not assert host quietness. What is
+readable is that every phase closed on its declared length to within a few tenths of a second, which
+is what a host running nothing else looks like, but that is an inference from the schedule and not a
+recorded precondition.
 
 ### 7.2 The native release path has never been executed end to end
 
@@ -436,8 +552,7 @@ dead series, not a no-op, and it is recorded here so it is not re-described as i
 ### 7.6 The soak driver now exists in NanoLab, and its 1 000-switch validation is not the soak
 
 The procedure was executed by hand against the container stack and recorded in `NANOLAB.md`. It now
-also has a durable home — in the **NanoLab repository**, on its own branch `feat/scheduler-switch-soak`
-(not in this repository, and not on NanoLab's default branch):
+also has a durable home — in the **NanoLab repository**, on its `main` (not in this repository):
 
 - scenario `scenarios-v2/memory-soak-scheduler-switch-container.yaml`: warmup 120 s, baseline drain
   2 100 s, **steady 5 400 s**, drain 2 100 s, with `function-name-churn` among its required coverage;
@@ -475,9 +590,9 @@ retention — 3 × 1800 = 5400 s for this scenario's own retention policy. So `s
 retention config and these declared windows jointly allow. The residual limit is the first half, and
 it is the one that bites: no *budget* ties the 1 000-switch count to any duration.
 
-**The ≥60-minute soak is still the pending step.** §7.1 is unchanged by any of the above: the driver
-exists, the criterion is expressible, and the run that would exercise them for an hour has not been
-made.
+**The ≥60-minute soak is no longer the pending step.** The run that exercises all of the above for an
+hour has been made, and §7.1 carries its verdict: the driver, the scenario, the policy and the
+receipt all worked, and the run failed only on the inherited P24 memory contract.
 
 ### 7.7 The retired queue facades are dead code that still ships
 
