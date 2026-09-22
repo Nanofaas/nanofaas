@@ -942,6 +942,14 @@ below.
   python3 old-vs-new.py                         # the tables, importing summarize.py's settlement rule
   python3 reconcile-12e.py --perturbations      # the reconciler and its own demonstrated bite
   ```
+  > **Tombstone (Task 13c, issue #208, 2026-09-22): the first command above no longer runs.**
+  > Task 13b deleted the old loop (`modules.asyncqueue.Scheduler` and
+  > `modules.syncqueue.scheduler.SyncScheduler`), so `OldLoopComparison.java`, which imports
+  > `Scheduler`, cannot compile at this commit or after it. `run-old.sh` now aborts at its `javac`
+  > step with a non-zero exit and writes no `raw/*.jsonl` — fail-closed, no half-artifact — and its
+  > header says so; `OLD-VS-NEW.md` §7.1 carries the same tombstone. The other two commands still
+  > run, because they read the committed `raw/old-vs-new.jsonl`. Re-measuring the old loop needs a
+  > revision before Task 13b; `25388b1a` is the last one that compiles the harness.
 - **Evidence** paired design — one arrival script per (workload, repetition), materialised before
   either arm runs and replayed to both. **60 runs, 60 of 60 conserving work**, zero driver failures,
   zero sample-cap overruns. The nulls and their resolutions: steady p99 **3.5 %** (median across
