@@ -88,8 +88,9 @@ same reason and with the same CI job.
 it, that row read "283 classes, 1640 tests". Those numbers cannot be reproduced from the JUnit XMLs
 the gate actually writes (`platform/*/build/test-results/test/TEST-*.xml` **and**
 `platform/modules/*/build/test-results/test/TEST-*.xml` — the second glob is where nine of the
-gate's module rows land, and a sum that names only the first silently drops 107 of the 277
-classes): they counted
+gate's module rows land, and a sum that names only the first lands on neither number, because it
+both omits and adds: it misses those nine projects' 114 classes and picks up `platform/gradle-plugin`'s
+7, which the gate does not run, for a net 107 below the 277 — 114 − 7): they counted
 in `platform/gradle-plugin`'s 7 classes / 46 tests, which the gate does **not** run — it is an
 included build with its own `settings.gradle`, and its own command is the "build plugin" row below —
 and left out `:nanofaas-cli`'s 24 classes / 192 tests, which the gate **does** run. The first
@@ -269,6 +270,31 @@ the comment beside it — and the CI half is fixed by this wave: the `test-nativ
 `.github/workflows/gitops.yml` compiles `:control-plane:nativeCompile` on the repository's pinned
 GraalVM and runs `scripts/assert-native-executable.sh` on the result, which is exactly the `file`
 assertion described above and **would have failed at `d456915f`**, the day the breakage arrived.
+
+**The limit on that half, stated here rather than left in scratch.** The job **could not have passed
+as first committed**: it called `scripts/install-graalvm.sh community <release> <java_version>
+<arch>`, but the script is positional — `<architecture> <release> <java_version> [distribution]` —
+so it built the case string `amd64:25.2.4:25.0.4:community`, matched no arm and exited 1 on the `*)`
+branch. That is repaired (arch first, `community` last), and the repair is verified by replaying the
+script's own parsing offline, not by a CI run:
+
+```
+$ sh scripts/install-graalvm.sh community 25.2.4 25.0.4 amd64      # as first committed
+Unsupported GraalVM: amd64/25.2.4/25.0.4/community
+exit=1
+$ sh scripts/install-graalvm.sh amd64 25.2.4 25.0.4 community      # as repaired
+<the script proceeds past the parse to fetch the distribution>
+```
+
+**And the `test-native-artifact` job has never executed** — not before the repair and not after it.
+No GraalVM is installed on this machine and a native compile is not something this campaign could
+run, so what is verified is the parse and the task graph, not a green job. Two things follow that a
+reader should not have to infer: the first thing CI does with this job is its first-ever run of it,
+and the `exit 0` half of the replay above is the one part offline replay cannot show — the corrected
+order is shown to select the `community:25.2.4:25.0.4:<arch>` arm and reach the fetch, and the fetch
+itself is unexercised. The risks that remain for that first run are named in §7.2's spirit rather
+than hidden here: the download and a cold native compile inside the 45-minute timeout, and the
+runner's toolchain satisfying `native-image`.
 
 What remains open is one artifact, deliberately: **`sdks/java-lite`** applies `java-library` (line 2)
 and `org.graalvm.buildtools.native` and sets no `sharedLibrary` either, so its `nanofaas-lite-runtime`
