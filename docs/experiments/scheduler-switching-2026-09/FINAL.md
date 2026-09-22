@@ -10,15 +10,18 @@ does **not** claim, and what is still owed.
 
 ## 1. What shipped, and at which revision
 
-Branch `feat/208-manual-scheduler-switching`, **54 commits** on top of the Task 0 baseline
-`05f49dcb`. The last commit that changes production code or behaviour is
+Branch `feat/208-manual-scheduler-switching`, **68 commits** on top of the Task 0 baseline
+`05f49dcb`. The revision every figure below was measured or verified at is
 
 ```
 6b09b21d Restore the native executable and tombstone the retired old-loop harness
 ```
 
-and that is the revision every figure below was measured or verified at. The two commits this file
-is part of change no code, manifest or test.
+— the branch's 54th commit. It is this file's **measurement anchor, not the branch's last code
+commit**, and the two were the same only until the fix wave: `79b55bad` (the retry path routed
+through the helper it claims to use) and `98e9d76d` (the live selection in the fourth switch helper,
+each removal fence pinned) change `src/main` after it, and so does the histogram pair `117e8303` /
+`6fa6d969` recorded in §5.
 
 The JVM-suite, `bootJar`, build-plugin and both chart rows were measured at `429df11f`, the parent of
 the fix commit; the native rows, the two E2E rows and the switch procedure are at `6b09b21d`.
@@ -114,6 +117,10 @@ moves.
 
 **Not run:** the ≥60-minute soak (§7.1). No end-to-end run of the native release image (§7.2).
 
+**One test in these counts is structurally racy and was not fixed** —
+`actuatorPrometheus_exposesFunctionCountersAndLatencyTimer`, in `:control-plane:test`. Its green
+here is a race won, not a check passed; the mechanism and the counts are in §7.8.
+
 ## 3. Values against the frozen budgets
 
 Budgets are frozen in `budgets.json`; the harness echoes them into every artifact header, so no
@@ -123,7 +130,7 @@ figure below can have been compared against a different threshold. All eleven bu
 | budget | frozen | observed | verdict |
 |---|---|---|---|
 | `maxSwitchPauseMs` | 250 ms | **3.984 ms** (max over 1 140 measured switches) | PASS |
-| `maxSwitchPauseP99Ms` | 100 ms | **0.266 ms** (p99 over the 1 000-switch phase) | PASS |
+| `maxSwitchPauseP99Ms` | 100 ms | **0.266 ms** (p99 over the 1 000-switch phase — the harness's own in-process figure, not the soak's; §5) | PASS |
 | `maxSwitchPreparationMs` | 2 000 ms | 3.984 ms (total switch duration, an upper bound) | PASS |
 | `maxLiveStrategyIndexes` | 2 | 2 | PASS |
 | `switchesInSoak` | 1 000 | 1 000 committed, 0 refused — **the switch count, not the soak** (§7.1) | PASS |
@@ -182,6 +189,37 @@ sustained multi-function churn; the ≥60-minute soak is where that belongs and 
 The preparation budget is a compiled constant with no configuration knob: an operator cannot shorten
 or lengthen it at runtime, and the harness figures are the only consumption figures that exist.
 
+**The p99 budget was unexpressible, not unobservable.** `maxSwitchPauseP99Ms` is frozen at 100 ms,
+and until `117e8303` the timer carrying the pause — `scheduler_switch_duration` — published no
+buckets under any profile, so no criterion could read a percentile from it and no soak could have
+bound the budget however long it ran. That commit put the timer into the set a non-basic profile
+gives percentile histograms to (`FUNCTION_TIMERS` → `HISTOGRAM_TIMERS`), and `6fa6d969` records what
+that costs: the default bucket set is **69 `le` classes**, so this timer goes from 3 series to
+**72 per non-basic process** — flat, because it is registered with no `function` tag and there is
+one engine per process. NanoLab then added a `percentile` operation that derives a p99 from such a
+family the way Prometheus' `histogram_quantile` does, reading the family's growth across the
+declared window rather than its level, and the switch policy now carries the budget as a criterion
+on `scheduler_switch_duration_seconds_bucket` (`quantile: 0.99`, threshold `0.1` s — the same frozen
+100 ms in the unit the meter serves).
+
+**The arithmetic was checked on real data, and what that is worth.** The new criterion was replayed
+over a saved run's own `_bucket` family — `function_latency_ms_seconds_bucket`, role
+`control-plane`, a 900 s steady window with 89 000 observations per label set — and agreed with an
+independent re-derivation to the digit: p99 = **0.00203613 s** for `word-stats-java` and
+**0.000994436 s** for `word-stats-javascript` (the level-based reading, for contrast, would have
+been 0.00209497 / 0.0009951). Two limits on that: the family is the *function latency* timer's, not
+the switch timer's — the image this host can start predates `117e8303`, so the switch timer's own
+buckets have never been scraped by this campaign — and the **budget itself remains unmeasured by a
+soak**, which is the whole of §7.1. What `117e8303` buys is that the platform's own series now
+exists, so a soak can read the p99 independently of the harness's observer.
+
+**The budget was never without a measurement.** `RESULTS.md:146` carries a harness figure of
+**0.266 ms** p99 over the 1 000-switch phase, computed in-process by the benchmark from the same
+`enginePauseNanos` its own switch observer took (`SchedulerSwitchBenchmark.java:232`), and it did
+not need Prometheus to exist. So the correct reading of the histogram work is *the platform now
+publishes what only the harness could measure* — a cross-check between two instruments, not the
+first number where there had been none.
+
 **Rolling a release back.** Nothing about this change persists scheduler state: the selection is
 memory-only, so the admin API can be ignored entirely by a rollback, and there is no stored
 migration to reverse. A release is an immutable image tag (`docs/operations/image-releases.md`;
@@ -229,6 +267,11 @@ figure in this report. Specifically:
 - `budgets.json`'s `switchesInSoak: 1000` **PASS** above is Task 12c's harness driving 1 000
   switches inside a short measurement window. It is the switch *count* and the return-to-baseline
   check. It is **not** the soak and must not be read as one.
+- **A second 1 000-switch run happened after this file was written, and it is not the soak either.**
+  NanoLab's switch step was run against a live control plane for 200 s, and it satisfies
+  `switchesInSoak: 1000` as well (§7.6). That is the point rather than an aside: the budget is a
+  *count*, it carries no duration, and **`switchesInSoak` alone is therefore never soak evidence**.
+  Nothing in this report may quote those 1 000 switches without their window.
 - Nothing else in this campaign ran for 60 minutes.
 
 Until it runs, the campaign is open. Its precondition, recorded so the next session does not have
@@ -290,9 +333,10 @@ $ sh scripts/install-graalvm.sh amd64 25.2.4 25.0.4 community      # as repaired
 No GraalVM is installed on this machine and a native compile is not something this campaign could
 run, so what is verified is the parse and the task graph, not a green job. Two things follow that a
 reader should not have to infer: the first thing CI does with this job is its first-ever run of it,
-and the `exit 0` half of the replay above is the one part offline replay cannot show — the corrected
+and the part the replay above cannot show is the one that comes *after* the parse: the corrected
 order is shown to select the `community:25.2.4:25.0.4:<arch>` arm and reach the fetch, and the fetch
-itself is unexercised. The risks that remain for that first run are named in §7.2's spirit rather
+itself is unexercised — which is why the replay block stops where it does rather than at a completed
+download. The risks that remain for that first run are named in §7.2's spirit rather
 than hidden here: the download and a cold native compile inside the 45-minute timeout, and the
 runner's toolchain satisfying `native-image`.
 
@@ -380,16 +424,49 @@ series as `advanced` and keeps them out of `basic`. Leaving them is harmless, an
 deferred cleanup for whoever next touches the metrics profile — but it is live classification of
 dead series, not a no-op, and it is recorded here so it is not re-described as inert.
 
-### 7.6 The switch procedure is not yet a NanoLab workflow
+### 7.6 The soak driver now exists in NanoLab, and its 1 000-switch validation is not the soak
 
-It was executed by hand against the container stack and recorded in `NANOLAB.md`. Its durable home
-is a NanoLab scenario — a task module, a workflow builder and a `scenarios-v2/scheduler-switch-*.yaml`
-— which does not exist yet and was not written, because the NanoLab checkout is a separate repository
-that this task was not authorised to modify. The same document carries the proposal that would make
-the container scenario able to serve it. The work is smaller than it sounds: NanoLab already GETs,
-validates and PATCHes a `runtime-config` namespace (`runtime_config_tasks()`, wired into its `cli`
-plan), so the follow-on extends an existing shape to the `scheduler` namespace rather than building
-a runtime-config driver from nothing.
+The procedure was executed by hand against the container stack and recorded in `NANOLAB.md`. It now
+also has a durable home — in the **NanoLab repository**, on its own branch `feat/scheduler-switch-soak`
+(not in this repository, and not on NanoLab's default branch):
+
+- scenario `scenarios-v2/memory-soak-scheduler-switch-container.yaml`: warmup 120 s, baseline drain
+  2 100 s, **steady 5 400 s**, drain 2 100 s, with `function-name-churn` among its required coverage;
+- policy `scenarios-v2/scheduler-switch-soak-policy.yaml`, which binds the budgets as criteria;
+- a step that reads the engine's own three meters — `scheduler_active`, `scheduler_switch_total`,
+  `scheduler_switch_duration_seconds_max` — and asserts them, rather than trusting the driver's own
+  tally;
+- the switch receipt reaching the run's manifest (`acceptance-manifest.json`, wired by `f410fa9`),
+  carrying **`window_s` and `elapsed_s` beside the count**.
+
+**What was actually run, and the one reading it forbids.** The step was executed against a live
+control plane for **200 s**: **1 000 switches committed, 0 stale, 0 refused**, over **199.786 s**
+from the first to the last switch line of that run's log, worst pause **0.3178 ms** against the
+frozen 250 ms, **2** live indexes, and the run ended on the strategy it started on
+(`initial` = `final` = `per-function`). That validates the **step** — that the harness can drive hot
+switches against a real control plane and assert what it drove. **It is not the soak, it is not an
+approximation of the soak, and no reading of it is acceptance evidence.** The trap is exact and it
+does not announce itself: the step's target count *is* `budgets.json`'s `switchesInSoak`, and so that
+run **satisfies `switchesInSoak: 1000`** while running for three minutes. A count with no duration
+cannot distinguish them, which is precisely why the receipt carries the window — so that "1 000
+switches" cannot be read without "over 200 s" beside it. Its evidence is also **scratch, not an
+artifact of record**: the log (`/tmp/cpcheck/drive.log`) and the driver's stdout receipt are not
+committed anywhere, on either side.
+
+**Correction to the "nothing floors the steady phase" claim, because the short version is false.**
+`budgets.json` floors nothing — the frozen budgets carry no duration at all, which is the half that
+matters and the reason for the receipt's window. But NanoLab's *configuration* does floor it, twice,
+for this scenario: the policy's steady criteria declare `window_s: 5400` and `config/soak.py:437`
+refuses any criterion whose window extends beyond its phase, while for `purpose: p24`
+`validate_schedule` (`config/soak.py:57`) refuses a `steady_s` below three times the longest
+retention — 3 × 1800 = 5400 s for this scenario's own retention policy. So `steady_s: 200` is
+**refused** here rather than silently passing, and the campaign's 5 400 s is the minimum its
+retention config and these declared windows jointly allow. The residual limit is the first half, and
+it is the one that bites: no *budget* ties the 1 000-switch count to any duration.
+
+**The ≥60-minute soak is still the pending step.** §7.1 is unchanged by any of the above: the driver
+exists, the criterion is expressible, and the run that would exercise them for an hour has not been
+made.
 
 ### 7.7 The retired queue facades are dead code that still ships
 
@@ -415,6 +492,29 @@ delete all nine in one dedicated pass** — `SyncQueueConfiguration`'s javadoc a
 census — and take the six `function_scheduler_*` recorders and the deny-list entries of §7.5 with
 them. Until that happens, a reader of `src/main` should read these nine as deletion candidates,
 not as a surviving code path.
+
+### 7.8 One test in the suite is structurally racy, and was left as it is
+
+`PrometheusEndpointTest.actuatorPrometheus_exposesFunctionCountersAndLatencyTimer` POSTs an
+invocation and then asserts, on the next line,
+`function_latency_ms{function="echo"}.count() >= 1`. That timer is not recorded on the thread that
+serves the POST: it is recorded by the `AttemptObserver`'s `completed` callback through
+`bestEffort`, on whichever thread concludes the invocation
+(`ExecutionCompletionHandler.java:174` — the record call is inside a `bestEffort` lambda in
+`completed`). So the assertion can run before the sample it counts exists. The race is
+**structural**, not a slow host.
+
+Observed, with the counts kept visible because they are small: red in **2 of 5** runs when a second
+HTTP request on the management port was added to the same class, against **0 of 4** with that
+addition absent and **0 of 5** with the registry-level version of the new pin. The agent who found it
+declines — correctly — to claim that the extra request *is* the cause; what is claimed is the
+mechanism above, and that the assertion has no wait in either version.
+
+**It was not fixed here**, and the honest consequence belongs in this file rather than in scratch:
+the test is in `:control-plane:test`, which the campaign's gate ran (§2). §2 records exactly two
+failures and neither is this test — but a green there is a race **won**, not a check shown to hold,
+and no one should read its presence in that suite as evidence that the assertion is sound. A fix is
+a wait or a poll on the meter, and it is a change to a test outside this campaign's own work.
 
 ## 8. Publication
 
