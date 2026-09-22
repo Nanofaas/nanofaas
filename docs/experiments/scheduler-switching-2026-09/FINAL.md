@@ -502,16 +502,52 @@ $ sh scripts/install-graalvm.sh amd64 25.2.4 25.0.4 community      # as repaired
 <the script proceeds past the parse to fetch the distribution>
 ```
 
-**And the `test-native-artifact` job has never executed** — not before the repair and not after it.
+**And the `test-native-artifact` job had never executed** — not before the repair and not after it.
 No GraalVM is installed on this machine and a native compile is not something this campaign could
-run, so what is verified is the parse and the task graph, not a green job. Two things follow that a
-reader should not have to infer: the first thing CI does with this job is its first-ever run of it,
-and the part the replay above cannot show is the one that comes *after* the parse: the corrected
-order is shown to select the `community:25.2.4:25.0.4:<arch>` arm and reach the fetch, and the fetch
-itself is unexercised — which is why the replay block stops where it does rather than at a completed
-download. The risks that remain for that first run are named in §7.2's spirit rather
-than hidden here: the download and a cold native compile inside the 45-minute timeout, and the
-runner's toolchain satisfying `native-image`.
+run, so what the replay above verified is the parse and the task graph, not a green job. Two things
+followed that a reader should not have had to infer: the first thing CI would do with this job is
+its first-ever run of it, and the part the replay could not show is the one that comes *after* the
+parse — the corrected order is shown to select the `community:25.2.4:25.0.4:<arch>` arm and reach
+the fetch, and the fetch itself was unexercised, which is why the replay block stops where it does
+rather than at a completed download.
+
+**That limit is now closed by an execution.** PR [#214](https://github.com/miciav/nanofaas/pull/214)
+— `feat/208-manual-scheduler-switching` against `main`, at `d6bad273`, still open — ran the job for
+the first time, and it passed. The whole run, from the API and not from an earlier version of this
+file:
+
+| job in PR #214's CI, at `d6bad273` | conclusion | duration |
+|---|---|---|
+| `test-native-artifact` ([job 106911299732](https://github.com/miciav/nanofaas/actions/runs/35776607610/job/106911299732)) | **success** | 15m 58s (19:52:48Z → 20:08:46Z) |
+| `analyze-java` | success | 8m 16s |
+| `test-python` | success | 20s |
+| `test-watchdog` | success | 1m 55s |
+| `test-java` ([job 106911300056](https://github.com/miciav/nanofaas/actions/runs/35776607610/job/106911300056)) | **failure** | 4m 32s |
+
+Nothing in the job was edited to make this happen; the first run is the job as repaired, and it
+shows what the replay could not. `scripts/install-graalvm.sh amd64 <release> <java_version>
+community` fetched the distribution (`/tmp/graalvm.tar.gz: OK`) and put GraalVM CE 25.2.4+7.1 on the
+runner, where `native-image` resolved to `/opt/graalvm/lib/svm/bin/native-image`;
+`:control-plane:nativeCompile` reported `BUILD SUCCESSFUL in 15m 26s`, `47 actionable tasks: 47
+executed`, and generated the artifact as an **executable** (174.13 MiB) rather than a shared library,
+which is the assertion this job exists for; and `scripts/assert-native-executable.sh` accepted the
+runner's own artifact:
+
+```
+control-plane: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, ...
+BuildID[sha1]=df304cda606f70e71dc8fc9921513abee816b20c, for GNU/Linux 3.2.0, stripped
+```
+
+The two risks §7.3 named for that first run are therefore resolved rather than left open: the
+download and a cold native compile took 15m 58s of a 45-minute timeout, and the runner's toolchain
+satisfied `native-image` with nothing added to the job for it.
+
+**The history is kept, not replaced.** The repair was verified by an offline replay of the script's
+parsing and is now *also* verified by an execution of the job. Both belong in the record: the replay
+is what made a first run interpretable — a job green on a repair argued but never replayed would
+have been attributed to nothing — and the execution is what makes it green. What changed is the
+status, from open to closed; the risk was not nothing, and §7.2's image build is untouched by this
+run, which compiles natively and asserts on the binary but never builds the Docker image.
 
 What remains open is one artifact, deliberately: **`sdks/java-lite`** applies `java-library` (line 2)
 and `org.graalvm.buildtools.native` and sets no `sharedLibrary` either, so its `nanofaas-lite-runtime`
@@ -712,6 +748,64 @@ and the record of a declared limit belongs in the report whether or not somethin
 what changes is the status, from open to closed. Nothing else here moves: the two failures §2 records
 are still the two failures, this test was green in that run and no one re-runs it here, and the
 soak's verdict stays **FAIL** (§7.1).
+
+### 7.9 PR #214's CI is red on one check, and it is not a check this campaign wrote
+
+The run that first executed `test-native-artifact` (§7.3) also returns **failure** for the run as a
+whole, because `test-java` failed — one test, in `:container-deployment-runtime:test`:
+
+```
+P13BoundedProxyTest > ordinaryOneKiBPayloadMeasurement() FAILED
+    org.opentest4j.AssertionFailedError at P13BoundedProxyTest.java:507
+32 tests completed, 1 failed
+```
+
+Line 507 is the single assertion inside that class's private `assertIdle()`, and it is exact rather
+than bounded:
+
+```java
+assertThat(proxy.snapshot()).isEqualTo(new RoundRobinFunctionProxy.Snapshot(0, 0));
+```
+
+so it requires the proxy's `inFlight` and `bufferedBytes` counters to be **exactly zero** the
+instant it runs. In that test it runs immediately after 20 warm-up and 200 measured synchronous 1 KiB
+round-trips, with no wait, and that is the most work any test in the class does. The release it is
+asserting on does not happen on the caller's thread: `inFlight.decrementAndGet()` sits in the
+`finally` of the handler that owns the exchange
+(`RoundRobinFunctionProxy.java:289`), on the server's thread, and `bufferedBytes` follows the
+`BufferReservation` closing further up. Nothing in the class's own vocabulary requires settling to
+have happened by then — it has an `awaitIdle()` for exactly this — but the class's norm is to assume
+it: each of its fourteen tests asserts idleness exactly once, three of them call `awaitIdle()`
+first, and the other eleven never wait on those counters at all.
+
+**It is not campaign code.** Nothing under `platform/container-deployment-runtime/` is touched by
+this branch at all — `git diff --stat origin/main...HEAD -- platform/container-deployment-runtime/`
+is empty — and `P13BoundedProxyTest.java` is byte-identical between `c10bbe85` and this branch's
+HEAD. The path arrived with `c10bbe85` ("Extract shared local deployment runtime"), which reaches
+`origin/main` through PR #212; `--follow` puts the class's content older still, renamed out of the
+control-plane.
+
+**Two readings, and this report commits to neither, because their remedies are opposite.** Read one:
+the assertion is fragile — it assumes settlement at 200 calls where the class only ever assumed it at
+a handful, and the fix is a wait, which the class already has. Read two: the proxy's bookkeeping has
+a real settlement race, and this assertion is a genuine (intermittent) detector of it, in which case
+the fix belongs in the proxy and adding a wait would **hide** it. Which reading holds is not decided
+by anything measured here, so **no wait is prescribed**: it is the correct remedy under the first
+and the cover-up under the second. What the record does carry, all of it on code that has not
+changed:
+
+| observation | result |
+|---|---|
+| six consecutive local runs of the class, `--tests ...P13BoundedProxyTest --rerun-tasks` | 6 of 6 pass, exit 0, 14 tests, 0 failures each |
+| PR #212's own CI at `b6916937` (its last run before merge) | `test-java` pass, module task executed |
+| `origin/main` CI at `62458088` (PR #213's merge) | `test-java` pass, and the module's own task executed rather than being taken up-to-date |
+| `origin/main` CI at `e3e38e9f` (PR #212's merge, 2026-09-20) | `test-java` **fail** — same test, same line 507, `32 tests completed, 1 failed` |
+| PR #214 CI at `d6bad273` (§7.3) | `test-java` **fail** — same test, same line 507 |
+
+So this class has failed in CI at least twice and passed in CI at least twice on unchanged code, and
+one of the failures is on `main` itself rather than on this branch — which is what makes the
+intermittent reading worth taking seriously and the fragile reading equally so. Neither is closed
+here. The soak's verdict stays **FAIL** (§7.1), and nothing else in this report moves.
 
 ## 8. Publication
 
