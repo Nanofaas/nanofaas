@@ -33,6 +33,13 @@ class MetricsProfileConfiguration {
      * pause budget the campaign freezes - maxSwitchPauseP99Ms, 100 ms - names a
      * p99, and a p99 has no series without buckets. Basic still keeps the timer
      * and its `_max`, which is what the pause is read against today.
+     *
+     * Its cost, since every other choice here states one: the default bucket set
+     * is 69 `le` classes - measured on 2026-09-22 by scraping a registry that
+     * carries this filter, not estimated - so the timer goes from 3 series to 72
+     * per non-basic process. Paid once, and paid flat: it is the same 72 whether
+     * the platform serves one function or a thousand, which is the whole reason
+     * this timer can afford what the four above cannot.
      */
     private static final Set<String> HISTOGRAM_TIMERS = Set.of(
             "function_latency_ms",
