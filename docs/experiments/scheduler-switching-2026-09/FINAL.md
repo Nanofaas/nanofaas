@@ -11,7 +11,9 @@ does **not** claim, and what is still owed.
 ## 1. What shipped, and at which revision
 
 Branch `feat/208-manual-scheduler-switching`, **68 commits** on top of the Task 0 baseline
-`05f49dcb`. The revision every figure below was measured or verified at is
+`05f49dcb` up to `6fa6d969` — reproducible with `git rev-list --count 05f49dcb..6fa6d969`, and the
+last commit that changes code, a manifest or a test. The documentation commits since, this file's own
+among them, change none of those. The revision every figure below was measured or verified at is
 
 ```
 6b09b21d Restore the native executable and tombstone the retired old-loop harness
@@ -277,15 +279,22 @@ figure in this report. Specifically:
 Until it runs, the campaign is open. Its precondition, recorded so the next session does not have
 to rediscover it: **the host must be quiet** — no Gradle daemon, no JVM, no other sampling run —
 because a soak that measures a host measuring something else measures the wrong thing. State of that
-precondition at the end of this task, measured rather than assumed:
+precondition **re-measured at `2026-09-22T12:12+02:00`**, and this is the list to act on: four `java`
+processes are alive, so stopping one and declaring the host silent would leave three behind.
 
-- The two idle Gradle daemons the campaign inherited (PIDs 2888262 and 2888753, started 21:19 by
-  another session) are **gone**: a full `ps` at the start of this task found no Gradle, JVM or
-  `java` process at all. Nothing in this task stopped them.
-- One Gradle daemon **is** running now — PID 252783, VmRSS ≈ 563 MB, started 07:24:38 by this task's
-  own re-run of the JVM gate (§2). It is idle and it is this session's, but stopping Gradle daemons
-  was not permitted in this part, so it was left alone and is named here instead. **It must be
-  stopped (`./gradlew --stop`) before the soak starts.**
+| PID | what | VmRSS | started |
+|---|---|---|---|
+| 252783 | Gradle daemon 9.7.1 | 3 172 276 kB (≈ 3.17 GB) | 2026-09-22 07:24:38 |
+| 346925 | Gradle worker daemon | 1 020 540 kB (≈ 1.02 GB) | 2026-09-22 08:04:23 |
+| 419261 | Gradle worker daemon | 723 604 kB (≈ 0.72 GB) | 2026-09-22 08:19:51 |
+| 818677 | Gradle worker daemon | 748 936 kB (≈ 0.75 GB) | 2026-09-22 10:48:46 |
+
+**All four must be gone before the soak starts.** `./gradlew --stop` stops the daemon; re-run the
+`ps` afterwards and kill whatever is left, rather than assuming the command emptied the list — and
+re-measure at the moment of starting, because this list drifts and is a snapshot, not an inventory.
+For the record of what changed since this section was first written: the two inherited daemons
+(PIDs 2888262 and 2888753) are gone, and PID 252783 is still alive but is now one of four and holds
+≈ 3.17 GB rather than the ≈ 563 MB an earlier draft of this bullet named.
 
 ### 7.2 The native release path has never been executed end to end
 
@@ -449,9 +458,11 @@ approximation of the soak, and no reading of it is acceptance evidence.** The tr
 does not announce itself: the step's target count *is* `budgets.json`'s `switchesInSoak`, and so that
 run **satisfies `switchesInSoak: 1000`** while running for three minutes. A count with no duration
 cannot distinguish them, which is precisely why the receipt carries the window — so that "1 000
-switches" cannot be read without "over 200 s" beside it. Its evidence is also **scratch, not an
-artifact of record**: the log (`/tmp/cpcheck/drive.log`) and the driver's stdout receipt are not
-committed anywhere, on either side.
+switches" cannot be read without "over 200 s" beside it. **Its evidence is committed**, not left in
+scratch: the driver's receipt, the log's first and last switch lines, the line count and the command
+behind each are in `raw/nanolab-switch-step-200s.txt` beside this report — the run's own files lived
+in `/tmp`, and these are the only figures in this document whose support a reboot would have taken
+with it.
 
 **Correction to the "nothing floors the steady phase" claim, because the short version is false.**
 `budgets.json` floors nothing — the frozen budgets carry no duration at all, which is the half that
