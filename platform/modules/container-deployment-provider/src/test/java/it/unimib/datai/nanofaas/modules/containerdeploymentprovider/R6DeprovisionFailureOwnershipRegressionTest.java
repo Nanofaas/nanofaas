@@ -1,5 +1,11 @@
 package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 
+import it.unimib.datai.nanofaas.containerdeployment.ContainerRuntimeAdapter;
+import it.unimib.datai.nanofaas.containerdeployment.ContainerInstanceSpec;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedContainer;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxy;
+import it.unimib.datai.nanofaas.containerdeployment.EndpointProbe;
+
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.RuntimeMode;
@@ -51,7 +57,8 @@ class R6DeprovisionFailureOwnershipRegressionTest {
         }
 
         @Override
-        public void runContainer(ContainerInstanceSpec spec) {
+        public ManagedContainer runContainer(ContainerInstanceSpec spec) {
+            return new ManagedContainer(spec.containerName(), 1, "http://127.0.0.1:19001", true);
         }
 
         @Override
@@ -91,7 +98,7 @@ class R6DeprovisionFailureOwnershipRegressionTest {
     }
 
     private static int trackedStates(ContainerLocalDeploymentProvider provider) throws Exception {
-        Field states = ContainerLocalDeploymentProvider.class.getDeclaredField("states");
+        Field states = it.unimib.datai.nanofaas.containerdeployment.LocalManagedDeploymentProvider.class.getDeclaredField("states");
         states.setAccessible(true);
         return ((Map<?, ?>) states.get(provider)).size();
     }
@@ -114,7 +121,6 @@ class R6DeprovisionFailureOwnershipRegressionTest {
                         return true;
                     }
                 },
-                () -> 19001,
                 functionName -> proxy);
 
         provider.provision(spec("fn"));

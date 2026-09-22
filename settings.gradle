@@ -23,6 +23,7 @@ plugins {
 
 rootProject.name = 'nanofaas'
 
+include('container-deployment-runtime'); project(':container-deployment-runtime').projectDir = file('platform/container-deployment-runtime')
 include('common');            project(':common').projectDir = file('platform/common')
 include('workload-metrics');  project(':workload-metrics').projectDir = file('platform/workload-metrics')
 include(':sdks:java');        project(':sdks:java').projectDir = file('sdks/java')

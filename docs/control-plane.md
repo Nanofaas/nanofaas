@@ -1,7 +1,7 @@
 # Control-plane operation
 
-The Java control plane is built directly with Gradle and deployed to Kubernetes
-with Helm:
+The Java control plane is built directly with Gradle. Kubernetes deployments
+use Helm:
 
 ```bash
 ./gradlew :control-plane:bootJar
@@ -41,6 +41,8 @@ Select modules at build time with Gradle:
 ./gradlew :control-plane:bootJar -PcontrolPlaneModules=all
 ./gradlew :control-plane:bootJar -PcontrolPlaneModules=k8s-deployment-provider
 ./gradlew :control-plane:bootJar -PcontrolPlaneModules=container-deployment-provider
+./gradlew :control-plane:bootJar -PcontrolPlaneModules=containerd-deployment-provider \
+  -PcontainerdMavenLocal=true -Dmaven.repo.local="$PWD/.gradle/containerd-m2"
 # Invalid: the deployment providers are mutually exclusive.
 ./gradlew :control-plane:bootJar -PcontrolPlaneModules=k8s-deployment-provider,container-deployment-provider
 ```
@@ -93,11 +95,13 @@ build. Unknown names and other constraint violations also fail the build. The
 default selects only descriptors whose `defaultEnabled=true`; this keeps
 `async-queue` enabled and `sync-queue` disabled.
 
-`k8s-deployment-provider` and `container-deployment-provider` are mutually
-exclusive. Kubernetes is default-enabled, so `all` selects
-`k8s-deployment-provider` and excludes the local container provider. Select
-`container-deployment-provider` explicitly for local Docker workflows; selecting
-both providers explicitly fails the build.
+The three managed providers (`k8s-deployment-provider`,
+`container-deployment-provider`, `containerd-deployment-provider`) are pairwise
+exclusive. Kubernetes is default-enabled, so `all` selects it and excludes the
+two local providers. Select the Docker or rootless containerd provider explicitly
+for that backend; selecting any pair explicitly fails the build. The containerd
+provider needs the pinned source snapshots described in
+[rootless containerd deployment](deployment-containerd.md).
 
 Each descriptor uses this format:
 
@@ -137,9 +141,11 @@ Current modules:
   contribute their editable parameters through the runtime-config extension SPI
 - `build-metadata` — `/modules/build-metadata` diagnostics endpoint
 - `k8s-deployment-provider` — default-enabled Kubernetes managed deployment
-  backend; mutually exclusive with `container-deployment-provider`
+  backend; mutually exclusive with both local providers
 - `container-deployment-provider` — local Docker-compatible deployment backend;
-  mutually exclusive with `k8s-deployment-provider`
+  mutually exclusive with the other managed providers
+- `containerd-deployment-provider` — rootless containerd/crun/CNI backend;
+  mutually exclusive with the other managed providers
 - `offload` — conditional transparent proxy of sync invocations to a remote
   instance
 
@@ -179,7 +185,8 @@ outside its own correctness transaction: a throwing observer can never turn a
 committed switch into a reported failure or vice versa.
 
 Image validation is **not** a standalone module: each deployment provider owns
-its validator (`KubernetesImageValidator`, `DockerImageValidator`) and
+its validator (`KubernetesImageValidator`, `DockerImageValidator`, or
+`ContainerdImageValidator`) and
 activates it when selected as the deployment backend.
 
 Each module owns its tests and explicit `@Bean` registrations; module packages

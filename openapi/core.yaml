@@ -543,7 +543,7 @@ components:
           description: Effective execution mode after provider selection or degradation
         deploymentBackend:
           type: string
-          description: Selected managed deployment backend when `effectiveExecutionMode=DEPLOYMENT`
+          description: Selected managed deployment backend (`k8s`, `container-local`, or `containerd`) when `effectiveExecutionMode=DEPLOYMENT`
           example: k8s
         degradationReason:
           type: string
@@ -566,8 +566,8 @@ components:
           additionalProperties:
             type: string
           description: >-
-            Names of the objects the deployment backend created for this function — on Kubernetes
-            the Deployment, Service and namespace. Absent for non-managed functions.
+            Names of the objects the deployment backend created for this function. On Kubernetes
+            these include the Deployment, Service and namespace. Absent for non-managed functions.
     OffloadPolicy:
       type: object
       description: >-

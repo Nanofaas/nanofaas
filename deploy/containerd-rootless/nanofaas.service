@@ -1,0 +1,14 @@
+[Unit]
+Description=NanoFaaS control plane in rootless containerd
+After=containerd.service
+
+[Service]
+Type=exec
+EnvironmentFile=@NANOLAB_ENV_FILE@
+WorkingDirectory=@NANOFAAS_ROOT@
+ExecStart=@NANOFAAS_ROOT@/deploy/containerd-rootless/start-control-plane.sh
+Restart=on-failure
+RestartSec=2s
+
+[Install]
+WantedBy=default.target

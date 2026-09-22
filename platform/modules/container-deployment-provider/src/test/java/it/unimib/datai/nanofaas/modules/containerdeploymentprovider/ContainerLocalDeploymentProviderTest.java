@@ -1,5 +1,12 @@
 package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 
+import it.unimib.datai.nanofaas.containerdeployment.ContainerRuntimeAdapter;
+import it.unimib.datai.nanofaas.containerdeployment.ContainerInstanceSpec;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedContainer;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxy;
+import it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxyFactory;
+import it.unimib.datai.nanofaas.containerdeployment.EndpointProbe;
+
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.ResourceQuantity;
@@ -35,7 +42,7 @@ class ContainerLocalDeploymentProviderTest {
     void provision_startsMinReplicasAndReturnsStableProxyEndpoint() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new ReadyEndpointProbe(),
@@ -58,7 +65,7 @@ class ContainerLocalDeploymentProviderTest {
     void provision_pushesFunctionTimeoutAndAdmissionBoundToProxy() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new ReadyEndpointProbe(),
@@ -78,7 +85,7 @@ class ContainerLocalDeploymentProviderTest {
     void updateSpec_pushesTheNewTimeoutAndConcurrencyToTheProxy() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new ReadyEndpointProbe(),
@@ -101,7 +108,7 @@ class ContainerLocalDeploymentProviderTest {
     void updateSpec_ofAnUnknownFunctionIsIgnored() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new ReadyEndpointProbe(),
@@ -116,7 +123,7 @@ class ContainerLocalDeploymentProviderTest {
     void setReplicas_refreshesAdmissionBoundAndKeepsFunctionTimeout() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new ReadyEndpointProbe(),
@@ -138,7 +145,7 @@ class ContainerLocalDeploymentProviderTest {
     void provision_onDockerNetworkUsesContainerDnsWithoutAllocatingHostPorts() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 adapter,
                 new ContainerLocalProperties(
                         "docker-java",
@@ -168,7 +175,7 @@ class ContainerLocalDeploymentProviderTest {
     void provision_reportsThePrefixTheReplicaContainersAreActuallyNamedWith() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new ReadyEndpointProbe(),
@@ -191,7 +198,7 @@ class ContainerLocalDeploymentProviderTest {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         MutableEndpointProbe probe = new MutableEndpointProbe();
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 probe,
@@ -223,7 +230,7 @@ class ContainerLocalDeploymentProviderTest {
     @Test
     void replicaStatus_distinguishesDesiredFromReadyReplicas() {
         MutableEndpointProbe probe = new MutableEndpointProbe();
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 new RecordingContainerRuntimeAdapter(),
                 new ContainerLocalProperties(
                         "docker",
@@ -248,7 +255,7 @@ class ContainerLocalDeploymentProviderTest {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         MutableEndpointProbe probe = new MutableEndpointProbe();
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 probe,
@@ -274,7 +281,7 @@ class ContainerLocalDeploymentProviderTest {
     @Test
     void provision_passesResourcesToEveryReplica() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new ReadyEndpointProbe(),
@@ -294,7 +301,7 @@ class ContainerLocalDeploymentProviderTest {
 
     @Test
     void supports_rejectsImagePullSecretsInFirstMilestone() {
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 new RecordingContainerRuntimeAdapter(),
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new ReadyEndpointProbe(),
@@ -329,7 +336,7 @@ class ContainerLocalDeploymentProviderTest {
         RecordingProxy firstProxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
         RecordingProxy secondProxy = new RecordingProxy("http://127.0.0.1:19091/invoke");
         AtomicInteger proxyCreations = new AtomicInteger();
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new ReadyEndpointProbe(),
@@ -351,7 +358,7 @@ class ContainerLocalDeploymentProviderTest {
     void provision_startFailureAfterCreation_removesContainer() {
         FailAfterStartContainerRuntimeAdapter adapter = new FailAfterStartContainerRuntimeAdapter();
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new ReadyEndpointProbe(),
@@ -372,7 +379,7 @@ class ContainerLocalDeploymentProviderTest {
     void provision_readinessFailure_removesContainerAndClosesProxy() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new FailingEndpointProbe("probe timeout"),
@@ -395,7 +402,7 @@ class ContainerLocalDeploymentProviderTest {
         RecordingProxy firstProxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
         RecordingProxy secondProxy = new RecordingProxy("http://127.0.0.1:19091/invoke");
         AtomicInteger proxyCreations = new AtomicInteger();
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new FailSecondOnceEndpointProbe(),
@@ -419,7 +426,7 @@ class ContainerLocalDeploymentProviderTest {
     @Test
     void provision_failedReplicaCleanup_preservesProvisioningFailure() {
         FailingRemoveContainerRuntimeAdapter adapter = new FailingRemoveContainerRuntimeAdapter();
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new FailSecondOnceEndpointProbe(),
@@ -440,7 +447,7 @@ class ContainerLocalDeploymentProviderTest {
     @Test
     void provision_injectsConfiguredCallbackUrl() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 adapter,
                 new ContainerLocalProperties(
                         "docker",
@@ -466,10 +473,10 @@ class ContainerLocalDeploymentProviderTest {
     void reconcile_adoptsHealthyOwnedContainersAndCreatesOnlyMissingReplicas() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         adapter.managedContainers(List.of(
-                new ManagedContainer("nanofaas-echo-r1", 1, 31001, true),
-                new ManagedContainer("nanofaas-echo-r2", 2, 31002, true)));
+                new ManagedContainer("nanofaas-echo-r1", 1, "http://127.0.0.1:31001", true),
+                new ManagedContainer("nanofaas-echo-r2", 2, "http://127.0.0.1:31002", true)));
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new ReadyEndpointProbe(),
@@ -494,10 +501,10 @@ class ContainerLocalDeploymentProviderTest {
     void reconcile_replacesOnlyUnhealthyOrMissingReplicas() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         adapter.managedContainers(List.of(
-                new ManagedContainer("nanofaas-echo-r1", 1, 31001, true),
+                new ManagedContainer("nanofaas-echo-r1", 1, "http://127.0.0.1:31001", true),
                 new ManagedContainer("nanofaas-echo-r2", 2, null, false)));
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new ReadyEndpointProbe(),
@@ -523,11 +530,11 @@ class ContainerLocalDeploymentProviderTest {
     void reconcile_removesOnlyReplicasAboveThePersistedTarget() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         adapter.managedContainers(List.of(
-                new ManagedContainer("nanofaas-echo-r1", 1, 31001, true),
-                new ManagedContainer("nanofaas-echo-r2", 2, 31002, true),
-                new ManagedContainer("nanofaas-echo-r3", 3, 31003, true)));
+                new ManagedContainer("nanofaas-echo-r1", 1, "http://127.0.0.1:31001", true),
+                new ManagedContainer("nanofaas-echo-r2", 2, "http://127.0.0.1:31002", true),
+                new ManagedContainer("nanofaas-echo-r3", 3, "http://127.0.0.1:31003", true)));
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new ReadyEndpointProbe(),
@@ -548,9 +555,9 @@ class ContainerLocalDeploymentProviderTest {
     void deprovision_removesDiscoveredOwnedContainersWhenRestoreDidNotBuildState() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         adapter.managedContainers(List.of(
-                new ManagedContainer("nanofaas-echo-r1", 1, 31001, true),
-                new ManagedContainer("nanofaas-echo-r2", 2, 31002, true)));
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+                new ManagedContainer("nanofaas-echo-r1", 1, "http://127.0.0.1:31001", true),
+                new ManagedContainer("nanofaas-echo-r2", 2, "http://127.0.0.1:31002", true)));
+        ContainerLocalDeploymentProvider provider = provider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new ReadyEndpointProbe(),
@@ -567,9 +574,9 @@ class ContainerLocalDeploymentProviderTest {
     void reconcile_creationFailure_removesOnlyContainersCreatedDuringReconcile() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         adapter.managedContainers(List.of(
-                new ManagedContainer("nanofaas-echo-r1", 1, 31001, true)));
+                new ManagedContainer("nanofaas-echo-r1", 1, "http://127.0.0.1:31001", true)));
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new FailNthOnceEndpointProbe(3, "third replica failed"),
@@ -591,9 +598,9 @@ class ContainerLocalDeploymentProviderTest {
     void reconcile_wrongPersistedPrefix_failsWithoutRemovingAdoptedContainers() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         adapter.managedContainers(List.of(
-                new ManagedContainer("nanofaas-echo-r1", 1, 31001, true)));
+                new ManagedContainer("nanofaas-echo-r1", 1, "http://127.0.0.1:31001", true)));
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new ReadyEndpointProbe(),
@@ -615,10 +622,10 @@ class ContainerLocalDeploymentProviderTest {
     void reconcile_duplicateReplicaIndex_failsWithoutRemovingAdoptedContainers() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         adapter.managedContainers(List.of(
-                new ManagedContainer("nanofaas-echo-r1", 1, 31001, true),
-                new ManagedContainer("nanofaas-echo-r1", 1, 31002, true)));
+                new ManagedContainer("nanofaas-echo-r1", 1, "http://127.0.0.1:31001", true),
+                new ManagedContainer("nanofaas-echo-r1", 1, "http://127.0.0.1:31002", true)));
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new ReadyEndpointProbe(),
@@ -634,6 +641,14 @@ class ContainerLocalDeploymentProviderTest {
         assertThat(adapter.removedContainers()).isEmpty();
         assertThat(adapter.startedSpecs()).isEmpty();
         assertThat(proxy.isClosed()).isFalse();
+    }
+
+    private static ContainerLocalDeploymentProvider provider(RecordingContainerRuntimeAdapter adapter,
+            ContainerLocalProperties properties, EndpointProbe probe, PortAllocator ports,
+            ManagedFunctionProxyFactory factory) {
+        adapter.ports = ports;
+        adapter.properties = properties;
+        return new ContainerLocalDeploymentProvider(adapter, properties, probe, factory);
     }
 
     private static FunctionSpec spec(String name, int minReplicas) {
@@ -671,7 +686,7 @@ class ContainerLocalDeploymentProviderTest {
         BlockingEndpointProbe probe = new BlockingEndpointProbe(provisionStarted, provisionBlocker);
         RecordingProxy slowProxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
 
-        ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
+        ContainerLocalDeploymentProvider provider = provider(
                 new RecordingContainerRuntimeAdapter(),
                 new ContainerLocalProperties("docker", "127.0.0.1",
                         Duration.ofSeconds(10), Duration.ofMillis(10), null),
@@ -718,6 +733,9 @@ class ContainerLocalDeploymentProviderTest {
 
     private static class RecordingContainerRuntimeAdapter implements ContainerRuntimeAdapter {
         private final List<ContainerInstanceSpec> started = new ArrayList<>();
+        private final List<Integer> startedPorts = new ArrayList<>();
+        private PortAllocator ports;
+        private ContainerLocalProperties properties;
         private final List<String> removed = new ArrayList<>();
         private List<ManagedContainer> managedContainers = List.of();
 
@@ -732,8 +750,14 @@ class ContainerLocalDeploymentProviderTest {
         }
 
         @Override
-        public void runContainer(ContainerInstanceSpec spec) {
+        public ManagedContainer runContainer(ContainerInstanceSpec spec) {
             started.add(spec);
+            Integer hostPort = properties.networkName() == null ? ports.nextPort() : null;
+            startedPorts.add(hostPort);
+            String url = hostPort == null ? "http://" + spec.containerName() + ":8080"
+                    : "http://" + properties.bindHost() + ":" + hostPort;
+            return new ManagedContainer(spec.containerName(),
+                    ContainerLocalDeploymentProvider.replicaIndex(spec.containerName()), url, true);
         }
 
         @Override
@@ -751,7 +775,7 @@ class ContainerLocalDeploymentProviderTest {
         }
 
         List<Integer> startedPorts() {
-            return started.stream().map(ContainerInstanceSpec::hostPort).toList();
+            return startedPorts;
         }
 
         List<ContainerInstanceSpec> startedSpecs() {
@@ -767,12 +791,12 @@ class ContainerLocalDeploymentProviderTest {
         private boolean failNext = true;
 
         @Override
-        public void runContainer(ContainerInstanceSpec spec) {
+        public ManagedContainer runContainer(ContainerInstanceSpec spec) {
             if (failNext) {
                 failNext = false;
                 throw new IllegalStateException("boom");
             }
-            super.runContainer(spec);
+            return super.runContainer(spec);
         }
     }
 
@@ -788,7 +812,7 @@ class ContainerLocalDeploymentProviderTest {
 
     private static final class FailAfterStartContainerRuntimeAdapter extends RecordingContainerRuntimeAdapter {
         @Override
-        public void runContainer(ContainerInstanceSpec spec) {
+        public ManagedContainer runContainer(ContainerInstanceSpec spec) {
             super.runContainer(spec);
             throw new IllegalStateException("start result lost");
         }

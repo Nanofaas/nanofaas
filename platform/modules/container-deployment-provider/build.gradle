@@ -12,6 +12,7 @@ dependencyManagement {
 dependencies {
     // P21: the module compiles against the contract library only. The core implementation is
     // available to tests, where module integration tests legitimately run against the consumer.
+    api project(':container-deployment-runtime')
     implementation project(':common')
     implementation project(':control-plane-spi')
 

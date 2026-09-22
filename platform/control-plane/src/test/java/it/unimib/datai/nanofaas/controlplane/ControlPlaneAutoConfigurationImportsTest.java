@@ -17,6 +17,7 @@ class ControlPlaneAutoConfigurationImportsTest {
             Map.entry("build-metadata", "it.unimib.datai.nanofaas.modules.buildmetadata.BuildMetadataConfiguration"),
             Map.entry("concurrency-control", "it.unimib.datai.nanofaas.modules.concurrencycontrol.ConcurrencyControlConfiguration"),
             Map.entry("container-deployment-provider", "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerDeploymentProviderConfiguration"),
+            Map.entry("containerd-deployment-provider", "it.unimib.datai.nanofaas.modules.containerddeploymentprovider.ContainerdDeploymentProviderConfiguration"),
             Map.entry("k8s-deployment-provider", "it.unimib.datai.nanofaas.modules.k8s.KubernetesDeploymentProviderConfiguration"),
             Map.entry("offload", "it.unimib.datai.nanofaas.modules.offload.OffloadConfiguration"),
             Map.entry("runtime-config", "it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigConfiguration"),
