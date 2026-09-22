@@ -53,6 +53,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -142,16 +143,15 @@ class SyncQueueRuntimeLifecycleTest {
             SyncQueueAdmissionController spy = spy(real);
             doAnswer(invocation -> {
                 EngineSyncQueueGateway gateway = PROBE_GATEWAY_IN_ADMISSION.getAndSet(null);
-                String functionName = PROBE_FUNCTION_IN_ADMISSION.getAndSet(null);
                 AdmissionProbe probe = PROBE_IN_ADMISSION.getAndSet(null);
-                if (gateway != null && functionName != null && probe != null) {
+                if (gateway != null && probe != null) {
                     PROBE_ADMISSION_REACHED.set(true);
                     if (probe == AdmissionProbe.RAISE_FENCE) {
-                        gateway.raiseRemovalFence(functionName);
+                        gateway.raiseRemovalFence(PROBE_FUNCTION);
                     }
                 }
                 return invocation.callRealMethod();
-            }).when(spy).evaluate(anyString(), anyInt(), any());
+            }).when(spy).evaluate(eq(PROBE_FUNCTION), anyInt(), any());
             return spy;
         }
     }
@@ -181,9 +181,16 @@ class SyncQueueRuntimeLifecycleTest {
     private static final AtomicBoolean PROBE_GENERATION_WAS_LIVE = new AtomicBoolean();
     /** The second probe's handshake with the admission-controller spy; see that bean's javadoc. */
     private static final AtomicReference<EngineSyncQueueGateway> PROBE_GATEWAY_IN_ADMISSION = new AtomicReference<>();
-    private static final AtomicReference<String> PROBE_FUNCTION_IN_ADMISSION = new AtomicReference<>();
     private static final AtomicReference<AdmissionProbe> PROBE_IN_ADMISSION = new AtomicReference<>();
     private static final AtomicBoolean PROBE_ADMISSION_REACHED = new AtomicBoolean();
+    /**
+     * The one function the admission probe is armed for, and the only name its stubbed
+     * {@code evaluate} matches: a probe that matched {@code anyString()} would be consumed by the
+     * first admission to any function that reached the check, so the second test to admit for a
+     * different name would silently probe nothing — a false green, or worse, a false red against
+     * the other name's fence. Every test here registers this name through {@link #registerEcho}.
+     */
+    private static final String PROBE_FUNCTION = "echo";
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withUserConfiguration(TestSupport.class)
             .withConfiguration(AutoConfigurations.of(SyncQueueConfiguration.class, SchedulerConfiguration.class))
@@ -396,7 +403,7 @@ class SyncQueueRuntimeLifecycleTest {
 
             InvocationTask task = task("admitted-while-the-fence-is-raised", spec);
             store.put(new ExecutionRecord(task.executionId(), task));
-            armAdmissionProbe(gateway, spec.name(), AdmissionProbe.RAISE_FENCE);
+            armAdmissionProbe(gateway, AdmissionProbe.RAISE_FENCE);
             try {
                 assertThatThrownBy(() -> gateway.enqueueOrThrow(task))
                         .as("a fence raised while the admission is in flight must be refused")
@@ -445,7 +452,7 @@ class SyncQueueRuntimeLifecycleTest {
 
             InvocationTask fenced = task("admitted-while-the-fence-is-raised", spec);
             store.put(new ExecutionRecord(fenced.executionId(), fenced));
-            armAdmissionProbe(gateway, spec.name(), AdmissionProbe.OBSERVE_ONLY);
+            armAdmissionProbe(gateway, AdmissionProbe.OBSERVE_ONLY);
             try {
                 assertThatThrownBy(() -> gateway.enqueueOrThrow(fenced))
                         .as("an admission that starts under a raised fence must be refused")
@@ -474,23 +481,20 @@ class SyncQueueRuntimeLifecycleTest {
     private static FunctionSpec registerEcho(org.springframework.context.ApplicationContext context) {
         FunctionRegistrationListener listener = context.getBean(
                 "schedulerCapacityGenerationListener", FunctionRegistrationListener.class);
-        FunctionSpec spec = new FunctionSpec("echo", "image", null, Map.of(), null,
+        FunctionSpec spec = new FunctionSpec(PROBE_FUNCTION, "image", null, Map.of(), null,
                 1000, 1, 10, 3, null, ExecutionMode.LOCAL, null, null, null);
         listener.onRegister(spec);
         return spec;
     }
 
-    private static void armAdmissionProbe(EngineSyncQueueGateway gateway, String functionName,
-            AdmissionProbe probe) {
+    private static void armAdmissionProbe(EngineSyncQueueGateway gateway, AdmissionProbe probe) {
         PROBE_GATEWAY_IN_ADMISSION.set(gateway);
-        PROBE_FUNCTION_IN_ADMISSION.set(functionName);
         PROBE_IN_ADMISSION.set(probe);
         PROBE_ADMISSION_REACHED.set(false);
     }
 
     private static void clearAdmissionProbe() {
         PROBE_GATEWAY_IN_ADMISSION.set(null);
-        PROBE_FUNCTION_IN_ADMISSION.set(null);
         PROBE_IN_ADMISSION.set(null);
     }
 
