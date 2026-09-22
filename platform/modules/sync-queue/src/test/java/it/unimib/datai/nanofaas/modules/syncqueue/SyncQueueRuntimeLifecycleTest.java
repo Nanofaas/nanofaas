@@ -16,6 +16,7 @@ import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListen
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.service.EngineSyncQueueGateway;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
 import it.unimib.datai.nanofaas.controlplane.service.ExecutionCompletionHandler;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
 import it.unimib.datai.nanofaas.controlplane.service.Metrics;
@@ -38,12 +39,18 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 /**
@@ -76,11 +83,43 @@ class SyncQueueRuntimeLifecycleTest {
             return mock(InvocationDispatch.class);
         }
 
+        /**
+         * A spy over the real registry, so {@link #theRemovalFenceRejectsAnAdmissionThatRacesTheCapacityRemoval}
+         * can enter the one interval in which a concurrent admission is fenced by the removal
+         * fence alone: the inside of {@code capacityRegistry.remove}, which
+         * {@code SchedulerConfiguration.onRemove} calls after raising the fence and before the
+         * name's generation stops being active. A spy (rather than a hand-written
+         * {@code DispatchCapacity} decorator) because the registry's {@code remove} is a
+         * pass-through for every other test here: an unstubbed call delegates to the real object.
+         */
         @Bean
         FunctionCapacityRegistry functionCapacityRegistry() {
-            return new FunctionCapacityRegistry();
+            FunctionCapacityRegistry real = new FunctionCapacityRegistry();
+            FunctionCapacityRegistry spy = spy(real);
+            doAnswer(invocation -> {
+                EngineSyncQueueGateway gateway = PROBE_GATEWAY.getAndSet(null);
+                InvocationTask task = PROBE_TASK.getAndSet(null);
+                if (gateway != null && task != null) {
+                    PROBE_GENERATION_WAS_LIVE.set(real.activeGeneration(task.functionName()) != null);
+                    try {
+                        gateway.enqueueOrThrow(task);
+                        PROBE_OUTCOME.set(null);
+                    } catch (SyncQueueRejectedException rejected) {
+                        PROBE_OUTCOME.set(rejected);
+                    }
+                }
+                return invocation.callRealMethod();
+            }).when(spy).remove(anyString());
+            return spy;
         }
     }
+
+    /** The probe's handshake with the registry spy above; set and cleared by the one test that
+     * uses it, so every other test in this class drives an unstubbed pass-through registry. */
+    private static final AtomicReference<EngineSyncQueueGateway> PROBE_GATEWAY = new AtomicReference<>();
+    private static final AtomicReference<InvocationTask> PROBE_TASK = new AtomicReference<>();
+    private static final AtomicReference<Throwable> PROBE_OUTCOME = new AtomicReference<>();
+    private static final AtomicBoolean PROBE_GENERATION_WAS_LIVE = new AtomicBoolean();
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withUserConfiguration(TestSupport.class)
@@ -163,6 +202,100 @@ class SyncQueueRuntimeLifecycleTest {
             Awaitility.await("reactivated queue dispatches new work")
                     .atMost(Duration.ofSeconds(5))
                     .untilAsserted(() -> assertThat(dispatched).contains(reactivated.executionId()));
+        });
+    }
+
+    /**
+     * A1 of issue #208's final review: the live removal fence. Before this test the two
+     * {@code removalFences.contains} checks in {@code EngineSyncQueueGateway.doEnqueueOrThrow}
+     * and the {@code raise}/{@code clear} pair called from
+     * {@code SchedulerConfiguration.schedulerCapacityGenerationListener} executed on no test path
+     * at all — the two classes that build the real listener stub the gateway out — and the only
+     * test of "reject while a removal is in flight" ran against the retired
+     * {@code SyncQueueService}, which has no production caller.
+     *
+     * <p>What this pins is the observable contract of the listener: a removed function admits
+     * nothing, and a re-registered one admits again. It is deliberately NOT presented as proof
+     * that the fence is what refuses the concurrent admission: after {@code onRemove} returns,
+     * {@code capacityRegistry} no longer has an active generation for the name either, so that
+     * refusal has two possible causes. The test below is the one that isolates the fence.
+     */
+    @Test
+    void aRemovalRejectsSyncAdmissionAndReRegistrationAcceptsItAgain() {
+        runner.run(context -> {
+            assertThat(context).hasNotFailed();
+            FunctionRegistrationListener listener = context.getBean(
+                    "schedulerCapacityGenerationListener", FunctionRegistrationListener.class);
+            EngineSyncQueueGateway gateway = context.getBean(EngineSyncQueueGateway.class);
+            ExecutionStore store = context.getBean(ExecutionStore.class);
+            FunctionSpec spec = new FunctionSpec("echo", "image", null, Map.of(), null,
+                    1000, 1, 10, 3, null, ExecutionMode.LOCAL, null, null, null);
+
+            listener.onRegister(spec);
+            InvocationTask admitted = task("admitted-before-removal", spec);
+            store.put(new ExecutionRecord(admitted.executionId(), admitted));
+            assertThatCode(() -> gateway.enqueueOrThrow(admitted)).doesNotThrowAnyException();
+
+            listener.onRemove(spec.name());
+            InvocationTask duringRemoval = task("admitted-during-removal", spec);
+            store.put(new ExecutionRecord(duringRemoval.executionId(), duringRemoval));
+            assertThatThrownBy(() -> gateway.enqueueOrThrow(duringRemoval))
+                    .isInstanceOf(SyncQueueRejectedException.class);
+
+            listener.onRegister(spec);
+            InvocationTask afterReRegistration = task("admitted-after-reregistration", spec);
+            store.put(new ExecutionRecord(afterReRegistration.executionId(), afterReRegistration));
+            assertThatCode(() -> gateway.enqueueOrThrow(afterReRegistration))
+                    .doesNotThrowAnyException();
+        });
+    }
+
+    /**
+     * The removal fence itself, on the live listener path and with the rejection attributable to
+     * it. The registry spy runs an admission from inside {@code capacityRegistry.remove} — the
+     * one instant {@code SchedulerConfiguration.onRemove} reaches AFTER raising the fence and
+     * BEFORE the name's generation stops being active — and asserts that this admission, which no
+     * other check can refuse, is refused.
+     *
+     * <p>Non-vacuity: {@code PROBE_GENERATION_WAS_LIVE} is asserted alongside the rejection, so a
+     * green run cannot be explained by the generation having already been retired. Drop
+     * {@code raiseRemovalFence} from {@code onRemove}, or either {@code removalFences.contains}
+     * check from {@code doEnqueueOrThrow}, and this test goes red with a null outcome.
+     */
+    @Test
+    void theRemovalFenceRejectsAnAdmissionThatRacesTheCapacityRemoval() {
+        runner.run(context -> {
+            assertThat(context).hasNotFailed();
+            FunctionRegistrationListener listener = context.getBean(
+                    "schedulerCapacityGenerationListener", FunctionRegistrationListener.class);
+            EngineSyncQueueGateway gateway = context.getBean(EngineSyncQueueGateway.class);
+            ExecutionStore store = context.getBean(ExecutionStore.class);
+            FunctionCapacityRegistry capacityRegistry = context.getBean(FunctionCapacityRegistry.class);
+            FunctionSpec spec = new FunctionSpec("echo", "image", null, Map.of(), null,
+                    1000, 1, 10, 3, null, ExecutionMode.LOCAL, null, null, null);
+            listener.onRegister(spec);
+
+            InvocationTask racing = task("admitted-in-the-removal-window", spec);
+            store.put(new ExecutionRecord(racing.executionId(), racing));
+            PROBE_TASK.set(racing);
+            PROBE_GATEWAY.set(gateway);
+            PROBE_OUTCOME.set(null);
+            PROBE_GENERATION_WAS_LIVE.set(false);
+            try {
+                listener.onRemove(spec.name());
+            } finally {
+                PROBE_GATEWAY.set(null);
+                PROBE_TASK.set(null);
+            }
+
+            assertThat(PROBE_GENERATION_WAS_LIVE)
+                    .as("the probe must run while the name's generation is still active, "
+                            + "otherwise the rejection proves nothing about the fence")
+                    .isTrue();
+            assertThat(capacityRegistry.activeGeneration(spec.name())).isNull();
+            assertThat(PROBE_OUTCOME.get())
+                    .as("an admission racing the removal must be refused by the removal fence")
+                    .isInstanceOf(SyncQueueRejectedException.class);
         });
     }
 

@@ -17,12 +17,18 @@ import static org.assertj.core.api.Assertions.assertThat;
  * queue provider was on the test classpath, so the one thing that decides
  * whether this module starts - a WorkloadMetricsSource bean - was never present.
  *
- * <p>Held {@code @Disabled} since Task 8's fix round (issue #208): the engine composition
- * retired the per-module {@code WorkloadMetricsSource} beans (async-queue's and sync-queue's
- * own) with no replacement, which genuinely turned this guard red — the correct, loud signal
- * that autoscaler stopped starting. Task 11 restores the bean as {@code EngineWorkloadMetricsSource}
- * and re-enables this test. Do not delete it: it documents the real production incident it
- * exists to catch.
+ * <p>This test was held {@code @Disabled} from Task 8's fix round to Task 11 of issue #208: the
+ * engine composition retired the per-module {@code WorkloadMetricsSource} beans (async-queue's
+ * and sync-queue's own) with no replacement, which genuinely turned this guard red — the correct,
+ * loud signal that autoscaler stopped starting. Task 11 restored the bean as
+ * {@code EngineWorkloadMetricsSource} and the annotation is gone: the test runs again.
+ *
+ * <p>It still fails under the gate's module selection, for an unrelated and pre-existing reason.
+ * The gate runs {@code -PcontrolPlaneModules=async-queue,sync-queue,runtime-config}, which selects
+ * no deployment provider, so no {@code DeploymentWakeUpControl} bean exists and the context fails
+ * at {@code autoscalerLifecycleListener} before any assertion here is reached ("No qualifying bean
+ * of type 'DeploymentWakeUpControl' available"). That is a property of the selection, not of this
+ * test. Do not delete it: it documents the real production incident it exists to catch.
  */
 @SpringBootTest(classes = ControlPlaneApplication.class)
 class AutoscalerConfigurationTest {

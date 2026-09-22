@@ -51,10 +51,13 @@ class SyncConcurrencyControlE2eTest {
     }
 
     /**
-     * Held {@code @Disabled} since Task 8's fix round (issue #208): the engine composition
-     * retired the per-module {@code WorkloadMetricsSource} beans with no replacement, so the
-     * second assertion below was genuinely red. Task 11 restores the bean as
-     * {@code EngineWorkloadMetricsSource} and re-enables this test.
+     * This test was held {@code @Disabled} from Task 8's fix round to Task 11 of issue #208: the
+     * engine composition retired the per-module {@code WorkloadMetricsSource} beans with no
+     * replacement, so the second assertion below was genuinely red. Task 11 restored the bean as
+     * {@code EngineWorkloadMetricsSource} and the annotation is gone, so the test runs again —
+     * under the profile that supplies the sync queue, which is the only one where its gate
+     * ({@code nanofaas.queue.provider=sync-queue}) opens; CI gives it that profile as its own
+     * invocation.
      */
     @Test
     void governorUpdatesTheSharedSyncCapacityState() {

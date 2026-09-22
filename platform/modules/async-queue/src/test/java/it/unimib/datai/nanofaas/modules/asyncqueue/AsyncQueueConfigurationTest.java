@@ -224,8 +224,12 @@ class AsyncQueueConfigurationTest {
         });
         admitter.start();
         try {
-            // Let a burst of admissions land before racing the removal against them.
-            Thread.sleep(20);
+            // Wait for the pre-state instead of sleeping for it: at least one admission must have
+            // landed before the removal is raced against it, and a bounded await says that rather
+            // than hoping 20 ms was long enough on this machine.
+            Awaitility.await("a burst of admissions lands before the removal is raced against it")
+                    .atMost(Duration.ofSeconds(2))
+                    .until(() -> store.pendingCount() > 0);
             listener.onRemove("echo"); // must not throw: NEW-CRITICAL
             // Fix round 3, Item 1/2: EngineInvocationEnqueuer.admitDirect now re-checks
             // capacityRegistry.activeGeneration after a successful engine.enqueue and

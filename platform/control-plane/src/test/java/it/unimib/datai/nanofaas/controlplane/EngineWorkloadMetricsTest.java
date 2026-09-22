@@ -54,6 +54,7 @@ class EngineWorkloadMetricsTest {
             return; // Both strategies must be present for a real switch to be exercised.
         }
         SchedulerEngine engine = context.getBean(SchedulerEngine.class);
+        String started = engine.snapshot().strategy();
         String other = engine.snapshot().available().stream()
                 .filter(id -> !id.equals(engine.snapshot().strategy()))
                 .findFirst().orElseThrow();
@@ -69,5 +70,12 @@ class EngineWorkloadMetricsTest {
         assertThat(switchesAfter).isEqualTo(switchesBefore + 1);
         assertThat(registry.find("scheduler_active").tag("strategy", other).gauge().value())
                 .isEqualTo(1.0);
+
+        // Put the selection back: this application context is cached and shared with every other
+        // test in the class, so leaving the engine switched to `other` makes whatever runs next
+        // depend on whether this test ran first. Asserted rather than merely done, so a failed
+        // restore cannot pass unnoticed.
+        engine.switchTo(started);
+        assertThat(engine.snapshot().strategy()).isEqualTo(started);
     }
 }

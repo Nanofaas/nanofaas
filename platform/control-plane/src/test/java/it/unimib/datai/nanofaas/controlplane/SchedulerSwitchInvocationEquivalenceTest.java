@@ -123,6 +123,14 @@ class SchedulerSwitchInvocationEquivalenceTest {
                 .header("Content-Type", "application/json")
                 .exchange()
                 .expectStatus().isOk();
+        // Read the selection back from the engine's own live selection (SchedulerControl.snapshot,
+        // which this namespace body serves), not from the PATCH response's echo of the request:
+        // the equivalence asserted around this call is only meaningful if the switch happened.
+        webTestClient.get().uri("/v1/admin/runtime-config/scheduler")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.strategy").isEqualTo(strategy);
     }
 
     private long currentRevision() {

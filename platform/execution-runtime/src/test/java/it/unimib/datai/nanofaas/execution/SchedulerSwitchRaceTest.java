@@ -176,9 +176,9 @@ class SchedulerSwitchRaceTest {
         CapacityBackedDispatch dispatch = new CapacityBackedDispatch(capacity, () -> engineRef.get().signal());
         PendingWorkStore store = new PendingWorkStore(64);
         CountDownLatch buildStarted = new CountDownLatch(1);
-        CountDownLatch enqueueAttempted = new CountDownLatch(1);
+        CountDownLatch racerReachedTheGate = new CountDownLatch(1);
         SchedulingStrategy sharedQueue = pausingStrategy(new SharedQueueSchedulingStrategy(),
-                buildStarted, enqueueAttempted);
+                buildStarted, racerReachedTheGate);
         SchedulerEngine engine = new SchedulerEngine(store,
                 new StrategyRegistry(List.of(new PerFunctionSchedulingStrategy(), sharedQueue)),
                 "per-function", dispatch, alwaysRunnable(), CLOCK, () -> 0L);
@@ -192,12 +192,17 @@ class SchedulerSwitchRaceTest {
         Thread switcher = new Thread(() -> engine.switchTo(sharedQueue.id()));
         switcher.start();
         await(buildStarted);
-        Thread enqueuer = new Thread(() -> engine.enqueue(new PendingEntry(lateTicket, lateTask)));
+        Thread enqueuer = new Thread(() -> {
+            // Counted down from INSIDE the racer, immediately before it calls the gate: the
+            // rebuild below is released by this thread's own arrival, so "the enqueue raced the
+            // rebuild" is established rather than hoped for. A latch counted down by the test
+            // thread right after start() says nothing about where the racer actually got to.
+            racerReachedTheGate.countDown();
+            engine.enqueue(new PendingEntry(lateTicket, lateTask));
+        });
         enqueuer.start();
-        // The gate is held for the whole rebuild: this enqueue cannot possibly land while the
-        // rebuild is in progress. Releasing the build's pause now is what actually lets the
-        // enqueuer's attempt to take the gate resolve one way or the other.
-        enqueueAttempted.countDown();
+        // The gate is held for the whole rebuild, and the rebuild resumes only now — with the
+        // enqueuer already at the gate — so this admission cannot possibly land mid-rebuild.
         switcher.join(TimeUnit.SECONDS.toMillis(5));
         enqueuer.join(TimeUnit.SECONDS.toMillis(5));
 
@@ -222,9 +227,9 @@ class SchedulerSwitchRaceTest {
         CapacityBackedDispatch dispatch = new CapacityBackedDispatch(capacity, () -> engineRef.get().signal());
         PendingWorkStore store = new PendingWorkStore(64);
         CountDownLatch buildStarted = new CountDownLatch(1);
-        CountDownLatch tickAttempted = new CountDownLatch(1);
+        CountDownLatch racerReachedTheGate = new CountDownLatch(1);
         SchedulingStrategy sharedQueue = pausingStrategy(new SharedQueueSchedulingStrategy(),
-                buildStarted, tickAttempted);
+                buildStarted, racerReachedTheGate);
         SchedulerEngine engine = new SchedulerEngine(store,
                 new StrategyRegistry(List.of(new PerFunctionSchedulingStrategy(), sharedQueue)),
                 "per-function", dispatch, alwaysRunnable(), CLOCK, () -> 0L);
@@ -236,20 +241,26 @@ class SchedulerSwitchRaceTest {
         Thread switcher = new Thread(() -> engine.switchTo(sharedQueue.id()));
         switcher.start();
         await(buildStarted);
-        Thread ticker = new Thread(engine::tick);
+        Thread ticker = new Thread(() -> {
+            // Same shape as the enqueue race above: the ticker itself releases the rebuild, from
+            // immediately before it calls the gate, so it is at the gate when the rebuild resumes.
+            racerReachedTheGate.countDown();
+            engine.tick();
+        });
         ticker.start();
         // The gate serializes them: the reap cannot interleave with the rebuild, only precede or
-        // follow it. Releasing now lets whichever comes second actually run.
-        tickAttempted.countDown();
+        // follow it — and it follows it here, having reached the gate while the rebuild was paused.
         switcher.join(TimeUnit.SECONDS.toMillis(5));
         ticker.join(TimeUnit.SECONDS.toMillis(5));
 
         assertThat(switcher.isAlive()).isFalse();
         assertThat(ticker.isAlive()).isFalse();
-        // Regardless of who won the gate race, the due ticket is expired exactly once — never
-        // lost (silently absent from every list) and never double-reported. A single pass reaps
-        // due deadlines AND carries one selection to a decision, so the same tick() that reaped
-        // "due" also dispatched "fresh": both are already settled here, not after another tick.
+        // With the racer's own arrival releasing the rebuild, the order this test exercises is
+        // fixed: the reap observes a completed switch, not a mid-rebuild index. The due ticket is
+        // still expired exactly once — never lost (silently absent from every list) and never
+        // double-reported. A single pass reaps due deadlines AND carries one selection to a
+        // decision, so the same tick() that reaped "due" also dispatched "fresh": both are already
+        // settled here, not after another tick.
         assertThat(dispatch.expired).containsExactly("due");
         assertThat(dispatch.submitted).containsExactly("fresh");
         assertThat(store.pendingCount()).isZero();
@@ -434,6 +445,16 @@ class SchedulerSwitchRaceTest {
     // 8. client disconnect -> commit -> GET
     // ------------------------------------------------------------------
 
+    /**
+     * Row 8 of the plan's switch-interleaving list, and the one row that exercises no switch at
+     * all: no {@link SchedulerEngine}, no {@code switchTo}. It pins the attempt-record contract
+     * the switch inherits — a client that stops waiting does not change what the server records —
+     * over {@link ExecutionStore}/{@link ExecutionRecord} alone, and it would pass unchanged with
+     * the whole switching feature reverted. Read it as a pinned premise of the rows around it,
+     * not as evidence about the switch; the {@code isCancelled} check inside the committer is what
+     * keeps even that reading honest, since without it the test cannot tell whether the client's
+     * abandonment ever took effect.
+     */
     @Test
     void clientDisconnectThenCommitThenGet_getReflectsTheRealOutcomeRegardlessOfTheDisconnect()
             throws Exception {
@@ -453,28 +474,42 @@ class SchedulerSwitchRaceTest {
             order.add("disconnect");
             disconnected.countDown();
         });
-        // The barrier: the disconnect is serialised strictly ahead of the commit, so the
-        // interleaving the brief names is the one that actually runs rather than whichever order
-        // the two threads happened to reach the record in. No sleep is involved — the committer
-        // thread is not started until the disconnect has completed.
+        // The barrier pins THIS test's own serialization — the disconnect thread finishes before
+        // the committer thread is started — so the interleaving the brief names is the one that
+        // runs rather than whichever order the two threads happened to reach the record in. No
+        // sleep is involved. It is a harness fact, not a production one: what this test claims
+        // about the product is asserted below, inside the committer and on the archived outcome.
         disconnecter.start();
         await(disconnected);
 
+        AtomicReference<Throwable> committerFailure = new AtomicReference<>();
         Thread committer = new Thread(() -> {
-            synchronized (record) {
-                record.markSuccess("ok", 200, java.util.Map.of(), null);
+            try {
+                synchronized (record) {
+                    // The premise, checked rather than assumed: the commit really does land on an
+                    // execution whose shared future the client has already abandoned. Without this
+                    // the test would still pass if cancel(false) had never taken effect.
+                    assertThat(record.completion().isCancelled())
+                            .as("the commit must land after the client's own wait was cancelled")
+                            .isTrue();
+                    record.markSuccess("ok", 200, java.util.Map.of(), null);
+                }
+                store.settle(record);
+                order.add("commit");
+            } catch (Throwable failure) {
+                committerFailure.compareAndSet(null, failure);
             }
-            store.settle(record);
-            order.add("commit");
         });
         committer.start();
         committer.join(TimeUnit.SECONDS.toMillis(5));
         disconnecter.join(TimeUnit.SECONDS.toMillis(5));
 
+        assertThat(committerFailure.get()).isNull();
         assertThat(committer.isAlive()).isFalse();
         assertThat(disconnecter.isAlive()).isFalse();
-        // Forced, not incidental: the latch is what puts the disconnect first, and this is the
-        // observable that says so — the two effects on the record landed in the mandated order.
+        // The test's own barrier, made explicit: with the committer started only after the
+        // disconnect, this list can hold nothing else — so it documents the harness ordering and
+        // is not evidence of a race. The checked premise inside the committer is.
         assertThat(order).containsExactly("disconnect", "commit");
 
         // GET, after both: the live record is gone (terminal + settled), but the archived

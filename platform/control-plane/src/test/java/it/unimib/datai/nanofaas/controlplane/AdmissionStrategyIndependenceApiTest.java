@@ -101,6 +101,16 @@ class AdmissionStrategyIndependenceApiTest {
                 .header("Content-Type", "application/json")
                 .exchange()
                 .expectStatus().isOk();
+        // Read the selection back from the engine's own live selection (SchedulerControl.snapshot,
+        // which this namespace body serves), not from the PATCH response's echo of the request:
+        // without this, a switchTo that silently did nothing would leave every "the switch changed
+        // nothing" assertion below green — the test would prove the invariance of a configuration
+        // that was never switched.
+        webTestClient.get().uri("/v1/admin/runtime-config/scheduler")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.strategy").isEqualTo(strategy);
     }
 
     /** {@code GET /v1/admin/runtime-config} returns the {@code RuntimeConfigSnapshot} envelope

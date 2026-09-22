@@ -21,6 +21,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.function.Predicate;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
@@ -135,6 +136,10 @@ class SchedulerEngineDeadlineGuardRegressionTest {
         index.add(targetTicket);
 
         assertThatCode(engine::tick).doesNotThrowAnyException();
+        // Not throwing is not the whole claim: the branch must have RUN, i.e. the orphan must have
+        // left the index. setUp's "kept" ticket is still there — its generation is never runnable,
+        // so no pass selects it — which is why the surviving size is one and not zero.
+        assertThat(index.size()).isEqualTo(1);
     }
 
     /**
