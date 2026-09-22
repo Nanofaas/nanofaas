@@ -25,13 +25,21 @@ the fix commit; the native rows, the two E2E rows and the switch procedure are a
 `6b09b21d` touches exactly four files — `platform/control-plane/build.gradle`,
 `docs/control-plane.md`, `docs/experiments/scheduler-switching-2026-09/run-old.sh` and `OLD-VS-NEW.md`
 — and the only production line among them is a Gradle setting that reaches `nativeCompile` and
-nothing else. The gate was re-run at `6b09b21d` anyway, and it says exactly that: `BUILD FAILED in
-14s`, `193 actionable tasks: 3 executed, 190 up-to-date`, with the two pre-existing failures and
-their per-task counts reproduced unchanged (`AutoscalerConfigurationTest`: `73 tests completed, 1
-failed`; `GeneratedBuildMetadataTest`: `22 tests completed, 1 failed`) and **every other test task
-UP-TO-DATE** — including `:control-plane:test`, whose inputs the fix never touched. So the table's
-figures are current at the final revision rather than carried by assumption; they were not re-executed
-because Gradle determined there was nothing new to execute.
+nothing else. The gate was re-run at `6b09b21d` anyway. **Be precise about what that re-run is**:
+it says `BUILD FAILED in 14s`, `193 actionable tasks: 3 executed, 190 up-to-date`, with the two
+pre-existing failures and their per-task counts reproduced unchanged
+(`AutoscalerConfigurationTest`: `73 tests completed, 1 failed`; `GeneratedBuildMetadataTest`: `22
+tests completed, 1 failed`) and **every other test task UP-TO-DATE** — including
+`:control-plane:test`, whose inputs the fix never touched. It is therefore **not a second
+execution of the whole gate**: Gradle re-ran the tasks it considered out of date (the two that had
+failed, which Gradle never leaves up-to-date) and took its own up-to-date verdict for the other
+190, so the totals in §2 come from the earlier run at `429df11f` and are carried by that verdict
+rather than re-measured. The independent reason the verdict is sound is mechanical and is stated
+here instead of being inferred from the numbers: `6b09b21d` changes no JVM source, no JVM test, and
+no build input of any JVM test task — its only production line is a Gradle setting that reaches
+`nativeCompile` and nothing else, so no JVM test task's inputs changed and Gradle's UP-TO-DATE is
+the correct answer for every one of them. The fix wave did run the gate with `--rerun-tasks` at its
+own revision; those re-executed totals are in §2.
 
 The change itself: one mandatory `execution-runtime` owns the pending work, and a single engine loop
 selects through one of the two preserved algorithms (`per-function`, `shared-queue`). The strategy
@@ -43,12 +51,15 @@ draining the queue. The superseded per-module loops (`asyncqueue.Scheduler`,
 
 ## 2. Tests: what ran, and what was skipped
 
-Run; the paragraph after the table gives the revision each group of rows was measured at.
+The two JVM-suite rows below are **re-executed, not carried**: the gate was run again at the
+fix-wave revision `2dad4e9e` with `--rerun-tasks`, so no UP-TO-DATE verdict was accepted and all
+193 tasks executed (`193 actionable tasks: 193 executed`, `BUILD FAILED in 4m 39s` — the two
+pre-existing failures are what fails it). Every other row keeps the revision §1 records for it.
 
 | what | command | result |
 |---|---|---|
-| JVM suite, both queue modules | `./gradlew test -PcontrolPlaneModules=async-queue,sync-queue,runtime-config --no-parallel --console=plain --continue` | **283 classes, 1640 tests, 2 failures** |
-| of which `control-plane` | (same run) | 119 classes, 712 tests, 0 failures, **4 skipped** |
+| JVM suite, both queue modules (re-executed at the fix-wave revision, `--rerun-tasks`) | `./gradlew test -PcontrolPlaneModules=async-queue,sync-queue,runtime-config --no-parallel --console=plain --continue --rerun-tasks` | **277 classes, 1598 tests, 2 failures, 7 skipped** over the modules of this Gradle build; **301 classes, 1790 tests** counting `:nanofaas-cli` (`clients/cli`), which the command runs — see the scope note below row 1 of the table |
+| of which `control-plane` | (same run) | 120 classes, 714 tests, 0 failures, **4 skipped** |
 | journal + OpenAPI artifact | `./gradlew :control-plane:bootJar :control-plane:composeControlPlaneOpenApi -PcontrolPlaneModules=async-queue,sync-queue,runtime-config --rerun-tasks` | BUILD SUCCESSFUL; `app.jar` sha256 `7f1553edee29b45ab80c79eafc06fe56ba11e0e78f2a5d38b1fc72d288bd89d1` (31,879,592 bytes) |
 | build plugin | `./gradlew -p platform/gradle-plugin test` | BUILD SUCCESSFUL, 7 classes / 46 tests |
 | chart | `helm lint deploy/helm/nanofaas` | 1 chart linted, 0 failed |
@@ -70,6 +81,19 @@ modules"), `OpenApiRouteCoverageTest` (1, build-metadata + runtime-config),
 profile-gated assumption rather than a disabled check, and CI runs the core-only and sync-queue
 selections as their own jobs (`:control-plane:test -PcontrolPlaneModules=none`,
 `…concurrency-control:test :…sync-queue:test -PcontrolPlaneModules=sync-queue,concurrency-control,runtime-config`).
+The gate's other 3 skips are `concurrency-control`'s, gated on `nanofaas.queue.provider`, for the
+same reason and with the same CI job.
+
+**The scope of row 1 is corrected here, and the earlier figure did not trace.** As Task 13c wrote
+it, that row read "283 classes, 1640 tests". Those numbers cannot be reproduced from the JUnit XMLs
+the gate actually writes (`platform/*/build/test-results/test/TEST-*.xml`): they counted in
+`platform/gradle-plugin`'s 7 classes / 46 tests, which the gate does **not** run — it is an included
+build with its own `settings.gradle`, and its own command is the "build plugin" row below — and left
+out `:nanofaas-cli`'s 24 classes / 192 tests, which the gate **does** run. The corrected figure for
+the same scope as today is 1594 tests at `429df11f` (1640 − 46), and this run's 1598 is that plus the
+four tests this campaign's fix wave adds (2 in `SchedulerSwitchContractGateTest`, 2 removal-fence
+tests in `SyncQueueRuntimeLifecycleTest`). The 2 failures and the 4 control-plane skips are
+identical in both scopes, so nothing else in this section moves.
 
 **Not run:** the ≥60-minute soak (§7.1). No end-to-end run of the native release image (§7.2).
 
@@ -210,7 +234,7 @@ precondition at the end of this task, measured rather than assumed:
 (§2), and the black-box contract against it. The image build that wraps it, and the release
 workflow that publishes it, are unverified by this campaign. Anyone closing this out should run it.
 
-### 7.3 Nothing in CI verifies that a native artifact is an executable
+### 7.3 The native artifact type: closed for `:control-plane`, still open for `sdks/java-lite`
 
 `native-build-tools`' `NativeImagePlugin` turns `java-library` into
 `options.getSharedLibrary().convention(true)`: a module that applies both `java-library` and the
@@ -218,18 +242,27 @@ GraalVM plugin produces a **shared library**, silently, and `nativeCompile` stil
 what broke this repository's release path when `d456915f` (Task 10 of this campaign) added
 `java-library` to `:control-plane`, and it stayed broken until `6b09b21d` fixed it — **33 commits and
 a day later**, with no commit in between touching `.github/` or either native script, because **no job
-anywhere compiles a native image**: `.github/workflows/gitops.yml` runs `./gradlew test` in several module
+anywhere compiled a native image**: `.github/workflows/gitops.yml` runs `./gradlew test` in several module
 selections, the SDK/example tests and the watchdog tests, and the only other workflow is the CodeQL
-security scan — neither builds an image with the GraalVM plugin, so neither can notice what the
-artifact is. The failure surfaced only because this campaign compiled natively by hand and looked at
+security scan — neither built an image with the GraalVM plugin, so neither could notice what the
+artifact was. The failure surfaced only because this campaign compiled natively by hand and looked at
 the file.
 
-Fixed here by `sharedLibrary.set(false)` on the `main` binary, with the chain written into the
-comment beside it. The gap remains, and the cheapest correction is small: a CI job that runs
-`scripts/native-build.sh` (or `:control-plane:nativeCompile`) and asserts the artifact's type with
-`file` — a check that would have failed at `d456915f` and would fail today on **`sdks/java-lite`**,
-which applies `java-library` (line 2) and `org.graalvm.buildtools.native` and sets no `sharedLibrary`
-either, so its `nanofaas-lite-runtime` binary is the same latent `.so`.
+Fixed in `6b09b21d` by `sharedLibrary.set(false)` on the `main` binary, with the chain written into
+the comment beside it — and the CI half is fixed by this wave: the `test-native-artifact` job in
+`.github/workflows/gitops.yml` compiles `:control-plane:nativeCompile` on the repository's pinned
+GraalVM and runs `scripts/assert-native-executable.sh` on the result, which is exactly the `file`
+assertion described above and **would have failed at `d456915f`**, the day the breakage arrived.
+
+What remains open is one artifact, deliberately: **`sdks/java-lite`** applies `java-library` (line 2)
+and `org.graalvm.buildtools.native` and sets no `sharedLibrary` either, so its `nanofaas-lite-runtime`
+binary is the same latent `.so` — and the assertion would fail on it today. The job is scoped to
+`:control-plane`, the binary the release path and `scripts/native-java-image.sh` ship, because
+nothing in the release path builds or consumes java-lite's image and what kind of artifact that SDK
+should produce (a library for consumers, or an executable of its own) is unresolved; deciding it is
+a change to a published SDK's build semantics rather than a fix at a release gate. It is named here
+as the follow-up it is, and `scripts/assert-native-executable.sh` takes any number of paths, so
+adding it once decided is one argument.
 
 ### 7.4 Enabling the switch API is a per-manifest operator action, and only Compose lacks one
 
@@ -315,6 +348,30 @@ the container scenario able to serve it. The work is smaller than it sounds: Nan
 validates and PATCHes a `runtime-config` namespace (`runtime_config_tasks()`, wired into its `cli`
 plan), so the follow-on extends an existing shape to the `scheduler` namespace rather than building
 a runtime-config driver from nothing.
+
+### 7.7 The retired queue facades are dead code that still ships
+
+Eight classes the old per-module loops drove are still in `src/main` and run nothing:
+`QueueManager`, `FunctionQueueState`, `QueueBackedEnqueuer`, `WorkSignaler`,
+`AsyncQueueWorkloadMetricsSource` (all `async-queue`), `SyncQueueService`,
+`SyncQueueInvocationEnqueuer` and the `QueuedDispatchCapacity` SPI they implement (`sync-queue`
+and `control-plane-spi`). **None of them is referenced by any live bean or constructor in
+`src/main`** — verified by grepping each name over `platform/*/src/main` and
+`platform/modules/*/src/main` and reading the non-comment hits, which all land inside the eight
+themselves: no `@Bean` produces one, no `new` of any of them exists outside the cluster, and no
+live bean takes one as a constructor parameter or field. `SyncQueueWorkloadMetricsSource`, which
+wraps `SyncQueueService`, is constructed by nobody at all. ADR 0002 §1 carries the same statement
+with the same inventory.
+
+**Why this is stated rather than done.** The plan allowed keeping facades that are *still
+consumed*; none of these is, so the allowance does not cover them and the honest description is
+"dead code still shipped" rather than "facades retained on purpose". They are not deleted here
+because the fix wave sits at the release gate and an eight-class deletion with its tests and its
+benchmark seam is a change of its own, with its own impact census and review. **Named follow-up:
+delete all eight in one dedicated pass** — `SyncQueueConfiguration`'s javadoc already asks for the
+census — and take the six `function_scheduler_*` recorders and the deny-list entries of §7.5 with
+them. Until that happens, a reader of `src/main` should read these eight as deletion candidates,
+not as a surviving code path.
 
 ## 8. Publication
 

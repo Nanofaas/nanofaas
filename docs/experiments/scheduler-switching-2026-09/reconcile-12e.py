@@ -1613,7 +1613,7 @@ def self_test():
     """Apply each perturbation and require the reconciler to fail. Returns 0 when all fail.
 
     The unperturbed run is asserted to pass first. Without it a broken environment reports its
-    eleven `caught`s out of a document that was already failing, which is a self-test reporting the
+    twelve `caught`s out of a document that was already failing, which is a self-test reporting the
     opposite of what it measured.
     """
     global DOC_TEXT, PROBLEMS, COVERAGE

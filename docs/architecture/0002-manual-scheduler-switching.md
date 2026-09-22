@@ -26,9 +26,27 @@ kept in this list because this section is the baseline Task 0 froze, not a descr
 tree it was later read against. Tasks 1–12 composed one `SchedulerEngine`, and 13a made its
 strategy selectable at startup and switchable at runtime over HTTP; each module now contributes
 only a `SchedulingStrategy` (`PerFunctionSchedulingStrategy`, `SharedQueueSchedulingStrategy`),
-so the loops had no remaining consumer. The queue facades they drove (`QueueManager`,
-`QueueState`, `QueueBackedEnqueuer`, `SyncQueueService`, `SyncQueueInvocationEnqueuer`) are still
-present and are a separate, later removal.
+so the loops had no remaining consumer.
+
+**The queue facades those loops drove are now unreferenced dead code, and the old path does not
+run.** `QueueManager`, `FunctionQueueState`, `QueueBackedEnqueuer`, `WorkSignaler`,
+`AsyncQueueWorkloadMetricsSource`, `SyncQueueService`, `SyncQueueInvocationEnqueuer` and
+`QueuedDispatchCapacity` are all still present in `src/main`, and none of them is constructed,
+called or injected by anything live: there is no `new` of any of the eight outside the eight
+themselves, no `@Bean` producing one, and no live bean whose constructor or field takes one — each
+name was grepped over `platform/*/src/main` and `platform/modules/*/src/main` and its non-comment
+references all land inside this cluster (`AsyncQueueWorkloadMetricsSource` is built only by
+`QueueManager`; `SyncQueueWorkloadMetricsSource`, which wraps `SyncQueueService`, is built by
+nobody). Read this paragraph as an inventory of deletion candidates, **not** as a description of a
+surviving code path: the plan permitted keeping facades that are still consumed, and none of these
+is.
+
+**Follow-up, named and deliberately not taken here (issue #208's final fix wave):** delete these
+eight classes in one dedicated pass, together with their tests and the benchmark seam that reaches
+`QueueManager`'s package-private constructor by reflection — after the full impact census
+`SyncQueueConfiguration`'s javadoc already asks for. The final fix wave left them in place on
+purpose: a deletion of this size is a change of its own, not a fix to a branch that is at its
+release gate.
 
 This campaign's goal is to make the *scheduling strategy* a **startup-selectable, then
 hot-switchable** choice behind one engine, without changing the execution lifecycle contract ADR
