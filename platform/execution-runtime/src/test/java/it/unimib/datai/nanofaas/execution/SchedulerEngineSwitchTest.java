@@ -32,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -341,6 +342,44 @@ class SchedulerEngineSwitchTest {
 
         engine.tick();
 
+        assertThat(submitted).containsExactly("e1");
+    }
+
+    @Test
+    void failedLeaseAfterSwitchReturnsClaimToNewIndex() {
+        SchedulingTicket claimed = admit("e1", 0);
+        doAnswer(invocation -> {
+            engine.switchTo("shared-queue");
+            return null;
+        }).when(dispatch).tryAcquire(any());
+
+        engine.tick();
+
+        assertThat(store.claimedCount()).isZero();
+        assertThat(store.pendingCount()).isEqualTo(1);
+        assertThat(activeIndex().ids()).containsExactly(claimed.id());
+        doReturn(lease).when(dispatch).tryAcquire(any());
+        engine.signal();
+        engine.tick();
+        assertThat(submitted).containsExactly("e1");
+    }
+
+    @Test
+    void throwingLeaseAcquisitionAfterSwitchReturnsClaimToNewIndex() {
+        SchedulingTicket claimed = admit("e1", 0);
+        doAnswer(invocation -> {
+            engine.switchTo("shared-queue");
+            throw new IllegalStateException("lease failed");
+        }).when(dispatch).tryAcquire(any());
+
+        assertThatThrownBy(engine::tick).isInstanceOf(IllegalStateException.class)
+                .hasMessage("lease failed");
+
+        assertThat(store.claimedCount()).isZero();
+        assertThat(store.pendingCount()).isEqualTo(1);
+        assertThat(activeIndex().ids()).containsExactly(claimed.id());
+        doReturn(lease).when(dispatch).tryAcquire(any());
+        engine.tick();
         assertThat(submitted).containsExactly("e1");
     }
 

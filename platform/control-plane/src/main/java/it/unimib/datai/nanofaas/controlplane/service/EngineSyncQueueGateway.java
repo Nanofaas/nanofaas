@@ -16,6 +16,7 @@ import org.springframework.beans.factory.ObjectProvider;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -59,11 +60,8 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
      * compile-time dependency on the sync-queue module. */
     private final Consumer<String> onAdmitted;
     private final Consumer<String> onRejected;
-    /** Fix round 1 (issue #208): paired with {@link #onAdmitted} exactly once per ticket, at
-     * {@link #settleIfSyncOrigin} — the single choke point every terminal engine event (submit,
-     * expired, removed) already funnels through. Without this pairing {@code sync_queue_depth}
-     * only ever counted up: a gauge named "depth" that was actually a permanent admission
-     * counter, never clearing on any dashboard or alert. */
+    /** Paired with {@link #onAdmitted} exactly once per ticket. An immediate terminal event
+     * defers this callback until the admission metric has been recorded. */
     private final Consumer<String> onDequeued;
     // A provider, not a direct reference: see EngineInvocationEnqueuer for why this must be
     // lazy — the engine's own dispatch calls back into a RetryScheduler, and a direct
@@ -90,12 +88,18 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
     private final Set<String> removalFences = ConcurrentHashMap.newKeySet();
 
     /**
-     * Ticket ids this gateway has admitted and the engine has not yet settled, so
+     * Ticket ids registered before engine admission and removed on rejection or settlement, so
      * {@code EngineTransport} can tell a sync-origin dispatch from a function-queue-origin one
      * without threading ticket metadata through the {@link it.unimib.datai.nanofaas.execution.EngineDispatch}
      * contract: the wait estimator must be fed sync-origin dispatches only.
      */
-    private final Set<TicketId> pendingSyncTicketIds = ConcurrentHashMap.newKeySet();
+    private final Map<TicketId, TrackedTicket> pendingSyncTickets = new ConcurrentHashMap<>();
+
+    /** Per-ticket ordering between admission metrics and a terminal event on the worker. */
+    private static final class TrackedTicket {
+        private boolean admitted;
+        private boolean settled;
+    }
 
     public EngineSyncQueueGateway(SyncQueueConfigSource configSource,
                                   AdmissionCheck admissionCheck,
@@ -170,16 +174,25 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
 
     @Override
     public void enqueueOrThrow(InvocationTask task) {
+        TrackedTicket tracked;
         try {
-            doEnqueueOrThrow(task);
+            tracked = doEnqueueOrThrow(task);
         } catch (SyncQueueRejectedException rejected) {
             onRejected.accept(task.functionName());
             throw rejected;
         }
         onAdmitted.accept(task.functionName());
+        boolean settled;
+        synchronized (tracked) {
+            tracked.admitted = true;
+            settled = tracked.settled;
+        }
+        if (settled) {
+            onDequeued.accept(task.functionName());
+        }
     }
 
-    private void doEnqueueOrThrow(InvocationTask task) {
+    private TrackedTicket doEnqueueOrThrow(InvocationTask task) {
         // Mirrors SyncQueueService.enqueueOrThrow's two isRemovalFenced checks: an early
         // rejection, and a second one immediately before the commit to narrow the window a
         // concurrent removal could otherwise slip through.
@@ -228,10 +241,22 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
         // profile is active (SchedulerConfiguration.pendingWorkStore), and store.offer() runs
         // under the engine's own gate, so this admission and every other one are serialized
         // against the same atomic cap.
-        if (!engine.getObject().enqueue(new PendingEntry(ticket, task))) {
+        TrackedTicket tracked = new TrackedTicket();
+        if (pendingSyncTickets.putIfAbsent(id, tracked) != null) {
             throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
         }
-        pendingSyncTicketIds.add(id);
+        boolean enqueued = false;
+        try {
+            enqueued = engine.getObject().enqueue(new PendingEntry(ticket, task));
+        } finally {
+            if (!enqueued) {
+                pendingSyncTickets.remove(id, tracked);
+            }
+        }
+        if (!enqueued) {
+            throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
+        }
+        return tracked;
     }
 
     /** Raised by the generation-removal listener before it drains this function's pending work. */
@@ -249,20 +274,27 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
      * {@code true}, and settles this gateway's own bookkeeping, only when {@code id} was
      * admitted through this gateway. Called by {@code EngineTransport} on every terminal engine
      * event (submit, expired, removed) so the estimator is fed sync-origin dispatches only and
-     * this set never leaks an id whose ticket left the engine without reaching submit.
+     * this map never leaks an id whose ticket left the engine without reaching submit.
      *
-     * <p>Fix round 1: this is also the single choke point for {@link #onDequeued}, paired with
-     * {@link #onAdmitted} in {@link #enqueueOrThrow} — every ticket this gateway admits leaves
-     * through exactly one of submit/expired/removed, and each of those three paths already calls
-     * this method, so pairing the decrement here (rather than in each of the three callers
-     * separately) cannot double-decrement or miss a path.
+     * <p>Each terminal path calls this method. When settlement precedes the admission metric,
+     * the decrement waits until {@link #enqueueOrThrow} records that metric.
      */
     public boolean settleIfSyncOrigin(String functionName, TicketId id) {
-        boolean settled = pendingSyncTicketIds.remove(id);
-        if (settled) {
+        TrackedTicket tracked = pendingSyncTickets.remove(id);
+        if (tracked == null) {
+            return false;
+        }
+        boolean admitted;
+        synchronized (tracked) {
+            admitted = tracked.admitted;
+            if (!admitted) {
+                tracked.settled = true;
+            }
+        }
+        if (admitted) {
             onDequeued.accept(functionName);
         }
-        return settled;
+        return true;
     }
 
     /**

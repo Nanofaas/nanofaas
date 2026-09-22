@@ -728,8 +728,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             DispatchOwnership lease = dispatch.tryAcquire(ticket);
             if (lease == null) {
                 synchronized (gate) {
-                    store.abort(ticket.id());
-                    active.index().defer(ticket.id());
+                    abortClaim(claim);
                     blocked.add(ticket.generation());
                 }
                 claimSettled = true;
@@ -747,8 +746,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
                     // committed dispatch, so this attempt goes back to the index that is active now
                     // and gets re-selected by the new policy. The rebuild excluded it — it was
                     // claimed — so this add cannot collide with a copy of itself.
-                    store.abort(ticket.id());
-                    active.index().add(ticket);
+                    abortClaim(claim);
                     task = null;
                 } else {
                     store.commit(ticket.id());
@@ -768,12 +766,23 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         } finally {
             if (!claimSettled) {
                 synchronized (gate) {
-                    store.abort(ticket.id());
-                    // defer of an id the (possibly newly built) index does not hold is a no-op
-                    // in both policies; the ticket returns through the index-swap branch above.
-                    active.index().defer(ticket.id());
+                    abortClaim(claim);
                 }
             }
+        }
+    }
+
+    /** Under the gate: a switched index never saw the provisional claim during its rebuild. */
+    private void abortClaim(Claim claim) {
+        SchedulingTicket ticket = claim.ticket();
+        if (store.get(ticket.id()) == null) {
+            return; // Removed while lifecycle code ran outside the gate.
+        }
+        store.abort(ticket.id());
+        if (claim.epoch() != active.epoch()) {
+            active.index().add(ticket);
+        } else {
+            active.index().defer(ticket.id());
         }
     }
 
