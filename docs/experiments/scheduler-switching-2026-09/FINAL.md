@@ -4,10 +4,11 @@ Task 13c / issue #208. This is the campaign's consuntivo: what shipped, what was
 does **not** claim, and what is still owed.
 
 **The plan's last outstanding step is done, and it did not go green.** The ≥60-minute soak has been
-**run**, and it returns **FAIL** — on 3 of its 21 criteria, all three of them the inherited P24 memory
-contract rather than a criterion of this campaign (§7.1). Every criterion this campaign defined
-passed. The three failures stand as they are: the finding is that the inherited criterion is
-over-strict, and a finding does not turn a run green.
+**run**, and it returns **FAIL** — on 3 of its 21 criteria. All three are the P24 memory contract that
+this scenario's own policy carries unchanged from the shared `memory-soak-policy.yaml`; none is a
+criterion this campaign wrote, and none of the criteria it *did* write failed. The three failures
+stand as they are: the finding is that the carried criterion is over-strict, and a finding does not
+turn a run green.
 
 ---
 
@@ -121,7 +122,7 @@ failures and the 7 skips are identical in every one of these scopes, so nothing 
 moves.
 
 **Not run:** no end-to-end run of the native release image (§7.2). The ≥60-minute soak has been run
-since, and failed on the inherited P24 contract (§7.1).
+since, and failed on three of the P24 criteria its policy carries (§7.1).
 
 **One test in these counts is structurally racy and was not fixed** —
 `actuatorPrometheus_exposesFunctionCountersAndLatencyTimer`, in `:control-plane:test`. Its green
@@ -139,7 +140,7 @@ figure below can have been compared against a different threshold. All eleven bu
 | `maxSwitchPauseP99Ms` | 100 ms | **0.266 ms** (p99 over the 1 000-switch phase, the harness's own in-process figure) and **0.00099 s**, the soak's reading of the platform's own timer, which cannot resolve below its finest 1 ms class (§5, §7.1) | PASS |
 | `maxSwitchPreparationMs` | 2 000 ms | 3.984 ms (total switch duration, an upper bound) | PASS |
 | `maxLiveStrategyIndexes` | 2 | 2 | PASS |
-| `switchesInSoak` | 1 000 | 1 000 committed, 0 refused — the switch count, not a duration; the ≥60-minute soak has since carried the same 1 000 over its own 5 400 s (§7.1) | PASS |
+| `switchesInSoak` | 1 000 | 1 000 committed, 0 refused — the switch count, not a duration; the ≥60-minute soak has since carried the same 1 000 (`window_s` 5 400 declared, `elapsed_s` 5 394.60 measured; §7.1) | PASS |
 | `repetitions` | 5 | 5 per (workload, arm), all 48 pairs | PASS |
 | `switchBacklogSizes` | [0, 100, 1000, 10000] | all four swept, 5 repetitions each | PASS |
 | `maxSteadyP99RegressionPercent` | 5 % | worst +9.51 %; 4 of 22 comparisons over, **0 separable** | over budget — **no regression established; the test cannot resolve 5 %** |
@@ -258,7 +259,7 @@ promising it.
 
 ## 7. Residual limits
 
-### 7.1 The ≥60-minute soak has been run: FAIL on the inherited P24 contract, and the limits it leaves open
+### 7.1 The ≥60-minute soak has been run: FAIL on three carried P24 criteria, and the limits it leaves open
 
 The plan's acceptance criteria require a soak of **at least 60 minutes with 1 000 manual switches**
 sent by the harness, two duration classes and function churn, observing through drain to the maximum
@@ -280,7 +281,7 @@ of them). Every phase ran to its declared length:
 
 The soak step as a whole took **10 910.9 s**.
 
-**Every criterion this campaign defined passed, and the switch receipt is inside the manifest.** The
+**Both criteria this campaign wrote pass, and the switch receipt is inside the manifest.** The
 run is `packages/nanolab/runs/soak-ec5c73442e29415ca2dfa3a3cdb37ab0` in the NanoLab checkout, and it
 measured nanoFaaS at **`64c72c12`** with a clean tree (`evidence/source/snapshot.json`). The receipt
 is `evidence/scheduler-switch.json`, referenced by `evidence/acceptance-manifest.json` under
@@ -300,8 +301,10 @@ the driver's tally alone. `control-plane.scheduler-switch-pause` and
 `control-plane.scheduler-switch-pause-p99` are both **PASS**.
 
 **The verdict is FAIL on 3 of 21 criteria**, from
-`evidence/evaluations/evaluation-e81fd228668d42628b09b22d74fd86c0/report.json` (18 PASS, 3 FAIL). The
-three are one criterion on each role:
+`evidence/evaluations/evaluation-e81fd228668d42628b09b22d74fd86c0/report.json` (18 PASS, 3 FAIL).
+Eight of the 21 are the criteria this scenario's own policy declares — the six P24 memory criteria
+and the two switch criteria above — and five of those eight pass. The three failures are one carried
+criterion on each role:
 
 | criterion | baseline median | natural maximum | over |
 |---|---|---|---|
@@ -314,34 +317,68 @@ Those six numbers are the report's own reason strings, and they reproduce: re-de
 phase, less its own `window_s` of 120 s, so the drain's last two minutes — gives the same medians and
 the same maxima. The 18 that pass include `effective-preflight`, `prerequisite-coverage`,
 `frozen-policy`, `attribution-policy-binding`, `run-continuity`, `run-coverage`, `sample-integrity`,
-`workload-accounting`, `workload-correctness`, `artifact-integrity` and both switch criteria.
+`workload-accounting`, `workload-correctness`, `artifact-integrity`, the three `*.p24-cgroup-budget`
+criteria and both switch criteria.
 
-**What the three failures are, and the judgement on them.** They are the **inherited P24 memory
-contract** the `memory-soak` family has carried since before this campaign — not a criterion this
-campaign wrote. It lives in `scenarios-v2/memory-soak-policy.yaml`, and this scenario's own
-`scenarios-v2/scheduler-switch-soak-policy.yaml` duplicates it verbatim: `operation:
-return_to_reference`, `absolute_tolerance: 0`, `relative_tolerance: 0`. So post-drain RSS must
+**What the three failures are.** They are three of the six criteria of the **P24 memory contract**,
+which this campaign did not write: it lives in `scenarios-v2/memory-soak-policy.yaml`, and this
+scenario's own `scenarios-v2/scheduler-switch-soak-policy.yaml` duplicates it verbatim — its header
+says the duplication is deliberate, because a scenario cannot attach one more criterion to a shared
+contract, and that a test asserts the two cannot drift. The duplicated form is `operation:
+return_to_reference`, `absolute_tolerance: 0`, `relative_tolerance: 0`, so post-drain RSS must
 return **to the byte** to the baseline median. `evaluate.py` composes the two tolerances as
 `min(absolute, |median| × relative)`, so two zeros are not two chances — an absolute bound of zero
 annuls the relative one, the same form the sibling `lifecycle-memory-2026-09` campaign had already
 identified.
 
 **The operator's judgement, recorded as a finding and not as an action: this criterion is
-excessively strict.** Its support is that **no run has ever passed `p24-rss-return` on all three
-roles**: exactly two runs on this machine carry that criterion — this one, and
-`soak-50fc87df833f49cc917801aec2b72ebe` (2026-09-19) — and neither does. That second run fails
-control-plane at **+121 %** (224 526 000 → 496 435 000) and java at +1.0 %, and passes javascript
-only because its maximum falls **below** its median (61 325 300 against 67 272 700) — it passes when
-RSS *sheds*, not when it *returns*. And what fails an otherwise complete run here is a 1.6 %
-overshoot: 3.64 MB on the control plane.
+excessively strict here, and the project's own rule says so.** NanoLab's scenarios state the rule for
+this operation twice, and both times it is the same rule: **strict where the heap is made to shrink,
+loose where it cannot.**
+
+- `scenarios-v2/memory-soak-p24-serialgc-shrink-spike-container.yaml` is the case the strict bound
+  belongs to. Its control plane declares `-XX:MaxHeapFreeRatio=10 -XX:-ShrinkHeapInSteps` (`:41`) —
+  it *makes* the heap shrink — and its `control-plane.diagnostic-rss-return` is `0` / `0`,
+  "Preserve the strict natural-recovery observation during the spike" (`:89-99`). All three roles
+  there are `0` / `0`.
+- `scenarios-v2/memory-soak-p24-nmt-spike-container.yaml` declares **no heap-shrink option** on any
+  role (`runtime_options: [-XX:NativeMemoryTracking=summary]` on the control plane, `:41`), and the
+  same criterion on all three roles is `absolute_tolerance: 67108864` / `relative_tolerance: 0.25` —
+  64 MiB — because, in its own words, "this spike declares no heap-shrink options, so the heap keeps
+  its steady working set and RSS cannot return exactly to the reference; the exact return is what the
+  serialgc-shrink spike measures" (`:89-99`).
+
+**This scenario is the second kind carrying the first kind's tolerance.** Not one of its three roles
+declares a heap-shrink option: the control plane's `runtime_options` is `[]`
+(`memory-soak-scheduler-switch-container.yaml:102`), so is `word-stats-java`'s (`:110`), and
+`word-stats-javascript`'s carries only the node diagnostic preload (`:121`). By the sibling's own
+stated rationale the exact return therefore **cannot** happen here — after the load stops, nothing
+asks the heap to give its working set back — and this run's own three maxima are what that looks
+like: 1.6 %, 12.9 % and 4.3 % above their medians, not returns to the byte. So the `0`/`0` has been
+carried out of a scenario that deliberately shrinks the heap into one that does not. **That is the
+finding: a mis-carried tolerance, not a number that merely looks high.**
+
+**The magnitude is the second half of it.** What fails an otherwise complete run is a 1.6 % overshoot
+— 3.64 MB on the control plane — against a bound that admits no overshoot whatever.
+
+**What the run history does and does not add.** Exactly two runs on this machine carry
+`p24-rss-return`, and neither passes it on all three roles: this one, and
+`soak-50fc87df833f49cc917801aec2b72ebe` (2026-09-19, scenario
+`memory-soak-sync-candidate-diagnostic-container.yaml`), which is itself **INCONCLUSIVE** as a run for
+an unrelated reason — an individual evidence record exceeded its size limit — and in which the
+control plane reads **+121 %** (224 526 000 → 496 435 000). That second failure is a large and correct
+detection, not a near miss. So it is cited here for exactly one thing: **no run has ever passed all
+three.** It is *not* evidence that the bound is too tight and must not be read as any; the argument
+for the finding is the mis-carried tolerance above and the 1.6 % here, not the size of the sample.
 
 **What that judgement is worth, because it is easy to overstate: it does not make the soak pass.**
 The verdict stays **FAIL** until the policy changes, and the policy is not this campaign's to change
 — the tolerances stay at zero, `p24_qualified` stays `false`, and the report's own `next_action` says
 the same thing from the other side ("do not widen frozen limits"). What the finding changes is the
-**attribution**: to an inherited criterion assessed as over-strict, not to a regression this campaign
-introduced. That distinction is the whole of the paragraph. Relaxing a tolerance to turn this run
-green is the softening this campaign refused at every step, and it is not done here either.
+**attribution**: to a carried bound that does not belong in a scenario which never asks its heap to
+shrink, not to a regression this campaign introduced. That distinction is the whole of the paragraph.
+Relaxing a tolerance to turn this run green is the softening this campaign refused at every step, and
+it is not done here either.
 
 **The p99 budget is now readable, and it is blind below the millisecond.** This run is the first to
 scrape the switch timer's own buckets. `scheduler_switch_duration_seconds_bucket`'s finest class is
@@ -380,15 +417,23 @@ nanoFaaS's.**
    soak has only ever passed where somebody had already left that pinned builder behind.** The fix
    is to pin the image where the builder is created rather than depend on what the machine already
    carries.
-2. **`--teardown` on an interrupted run does nothing.** `nanolab run … --teardown --run-dir` compiles
-   the teardown workflow and **discards it**: `cli/product.py` calls `plans.soak.teardown_soak_run`,
-   which returns `build_teardown_workflow`'s `Workflow` — a construct-only function — and the CLI
-   then returns without ever reaching `_execute_workflow`. The process exits 0 having run nothing, so
-   a soak that is killed leaves its compose project, its diagnostic containers and the port-5000
-   registry behind. A run that **completed** releases correctly, and this run is the demonstration:
-   its `cleanup.jsonl` records its three retained resources released, and its teardown log has the
-   compose project's containers stopped and removed. The defect is the interrupted path, not the
-   completed one.
+2. **`--teardown` on an interrupted run releases nothing. This one is a reading of two call sites, not
+   an executed reproduction** — nothing was run against the NanoLab checkout to demonstrate it. The
+   reading: `cli/product.py:886-901` calls `plans.soak.teardown_soak_run` and then `return`s, and
+   `plans.soak.teardown_soak_run` (`:211-231`) returns `build_teardown_workflow`'s value — a
+   `Workflow` object, from a function whose own docstring is "Construct cleanup without Docker calls,
+   source builds or journal reads". Nothing executes it, and `_execute_workflow` is reached once in
+   the whole CLI, at `:1020`, on the non-teardown path. Two things corroborate the reading. The
+   flag's own help text — "Release what a `--keep` run held on to, then exit. Runs no workflow."
+   (`:824-828`) — promises a release and records that no workflow runs; what the code does is the
+   second half of that sentence and not the first. And the sibling `--teardown` path for *release*
+   scenarios needs no compiled workflow at all: `_teardown_release` (`:260-320`) releases in process
+   by calling `release_retained` directly, which is why that path works. The soak path is the one
+   that builds a workflow and then drops it. The consequence is that a soak killed before it finishes
+   leaves its compose project, its diagnostic containers and the port-5000 registry behind. A run that
+   **completed** releases correctly, and this run is the demonstration: its `cleanup.jsonl` records
+   its three retained resources released, and its teardown log has the compose project's containers
+   stopped and removed. The defect is the interrupted path, not the completed one.
 
 **For whoever re-runs this, the host precondition is unchanged**: **the host must be quiet** — no
 Gradle daemon, no JVM, no other sampling run — because a soak that measures a host measuring something
@@ -592,7 +637,8 @@ it is the one that bites: no *budget* ties the 1 000-switch count to any duratio
 
 **The ≥60-minute soak is no longer the pending step.** The run that exercises all of the above for an
 hour has been made, and §7.1 carries its verdict: the driver, the scenario, the policy and the
-receipt all worked, and the run failed only on the inherited P24 memory contract.
+receipt all worked, and the run failed only on three criteria of the P24 memory contract its policy
+carries unchanged from the shared file.
 
 ### 7.7 The retired queue facades are dead code that still ships
 
