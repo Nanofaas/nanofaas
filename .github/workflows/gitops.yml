@@ -81,9 +81,13 @@ jobs:
         run: |
           arch=amd64
           if [ "$(uname -m)" = "aarch64" ]; then arch=arm64; fi
-          sudo sh scripts/install-graalvm.sh community \
+          # Positional, in the script's own order: <architecture> <release> <java_version>
+          # [distribution]. The distribution is last; passing it first builds the case string
+          # $distribution:$release:$java_version:$architecture against the wrong field and lands
+          # on the *) arm.
+          sudo sh scripts/install-graalvm.sh "$arch" \
             "$(sed -n 's/^graalvmVersion=//p' gradle.properties)" \
-            "$(sed -n 's/^graalvmJavaVersion=//p' gradle.properties)" "$arch"
+            "$(sed -n 's/^graalvmJavaVersion=//p' gradle.properties)" community
           echo "JAVA_HOME=/opt/graalvm" >> "$GITHUB_ENV"
           echo "/opt/graalvm/bin" >> "$GITHUB_PATH"
       - name: Compile the control plane natively
