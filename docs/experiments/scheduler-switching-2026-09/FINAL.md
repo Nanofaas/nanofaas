@@ -58,7 +58,7 @@ pre-existing failures are what fails it). Every other row keeps the revision §1
 
 | what | command | result |
 |---|---|---|
-| JVM suite, both queue modules (re-executed at the fix-wave revision, `--rerun-tasks`) | `./gradlew test -PcontrolPlaneModules=async-queue,sync-queue,runtime-config --no-parallel --console=plain --continue --rerun-tasks` | **277 classes, 1598 tests, 2 failures, 7 skipped** over the modules of this Gradle build; **301 classes, 1790 tests** counting `:nanofaas-cli` (`clients/cli`), which the command runs — see the scope note below row 1 of the table |
+| JVM suite, both queue modules (re-executed at the fix-wave revision, `--rerun-tasks`) | `./gradlew test -PcontrolPlaneModules=async-queue,sync-queue,runtime-config --no-parallel --console=plain --continue --rerun-tasks` | **375 classes, 2070 tests, 2 failures, 7 skipped** over the modules of this Gradle build — every project of the root `settings.gradle` except the included build `platform/gradle-plugin`, which the "build plugin" row below covers instead — of which the `platform/*` and `platform/modules/*` projects this campaign's code lives in are **277 classes, 1598 tests**, and row 2 breaks the largest of them out; see the scope note below row 1 of the table |
 | of which `control-plane` | (same run) | 120 classes, 714 tests, 0 failures, **4 skipped** |
 | journal + OpenAPI artifact | `./gradlew :control-plane:bootJar :control-plane:composeControlPlaneOpenApi -PcontrolPlaneModules=async-queue,sync-queue,runtime-config --rerun-tasks` | BUILD SUCCESSFUL; `app.jar` sha256 `7f1553edee29b45ab80c79eafc06fe56ba11e0e78f2a5d38b1fc72d288bd89d1` (31,879,592 bytes) |
 | build plugin | `./gradlew -p platform/gradle-plugin test` | BUILD SUCCESSFUL, 7 classes / 46 tests |
@@ -86,14 +86,30 @@ same reason and with the same CI job.
 
 **The scope of row 1 is corrected here, and the earlier figure did not trace.** As Task 13c wrote
 it, that row read "283 classes, 1640 tests". Those numbers cannot be reproduced from the JUnit XMLs
-the gate actually writes (`platform/*/build/test-results/test/TEST-*.xml`): they counted in
-`platform/gradle-plugin`'s 7 classes / 46 tests, which the gate does **not** run — it is an included
-build with its own `settings.gradle`, and its own command is the "build plugin" row below — and left
-out `:nanofaas-cli`'s 24 classes / 192 tests, which the gate **does** run. The corrected figure for
-the same scope as today is 1594 tests at `429df11f` (1640 − 46), and this run's 1598 is that plus the
-four tests this campaign's fix wave adds (2 in `SchedulerSwitchContractGateTest`, 2 removal-fence
-tests in `SyncQueueRuntimeLifecycleTest`). The 2 failures and the 4 control-plane skips are
-identical in both scopes, so nothing else in this section moves.
+the gate actually writes (`platform/*/build/test-results/test/TEST-*.xml` **and**
+`platform/modules/*/build/test-results/test/TEST-*.xml` — the second glob is where nine of the
+gate's module rows land, and a sum that names only the first silently drops 107 of the 277
+classes): they counted
+in `platform/gradle-plugin`'s 7 classes / 46 tests, which the gate does **not** run — it is an
+included build with its own `settings.gradle`, and its own command is the "build plugin" row below —
+and left out `:nanofaas-cli`'s 24 classes / 192 tests, which the gate **does** run. The first
+correction of that figure then repeated the defect one module-set further out: it labelled
+277 / 1598 "over the modules of this Gradle build" when the same invocation also executed
+`:sdks:java` (37 / 145), `:sdks:java-lite` (23 / 81), `:services:java:warm-echo` (4 / 13) and the ten
+`functions:java:*` modules (10 / 41) — every one of them a project of the same root `settings.gradle`,
+in the same contiguous window of that one run. Row 1 now carries that build's own total, **375 classes
+/ 2070 tests**, and states the 277 / 1598 subset it is a total of; 351 / 1878 is the same total
+without `:nanofaas-cli`. Every figure here is re-summed from the XMLs of the one `--rerun-tasks`
+invocation, module by module, rather than carried from a prior list.
+
+**The one figure in this section that is a hypothesis, and is labelled as one.** Reconstructing the
+Task 13c number for the 277 / 1598 scope at `429df11f` gives 1594 tests (1640 − 46) — but that is an
+*explanation* of the old figure's scope, not a measurement: the XMLs of that run have been
+overwritten by later ones, so nothing on disk can confirm it. What is measured is this run's 1598 in
+that scope, four more than the reconstruction, accounted for by this campaign's fix wave (2 in
+`SchedulerSwitchContractGateTest`, 2 removal-fence tests in `SyncQueueRuntimeLifecycleTest`). The 2
+failures and the 7 skips are identical in every one of these scopes, so nothing else in this section
+moves.
 
 **Not run:** the ≥60-minute soak (§7.1). No end-to-end run of the native release image (§7.2).
 
@@ -351,26 +367,27 @@ a runtime-config driver from nothing.
 
 ### 7.7 The retired queue facades are dead code that still ships
 
-Eight classes the old per-module loops drove are still in `src/main` and run nothing:
+Nine classes the old per-module loops drove are still in `src/main` and run nothing:
 `QueueManager`, `FunctionQueueState`, `QueueBackedEnqueuer`, `WorkSignaler`,
 `AsyncQueueWorkloadMetricsSource` (all `async-queue`), `SyncQueueService`,
-`SyncQueueInvocationEnqueuer` and the `QueuedDispatchCapacity` SPI they implement (`sync-queue`
-and `control-plane-spi`). **None of them is referenced by any live bean or constructor in
-`src/main`** — verified by grepping each name over `platform/*/src/main` and
-`platform/modules/*/src/main` and reading the non-comment hits, which all land inside the eight
-themselves: no `@Bean` produces one, no `new` of any of them exists outside the cluster, and no
-live bean takes one as a constructor parameter or field. `SyncQueueWorkloadMetricsSource`, which
-wraps `SyncQueueService`, is constructed by nobody at all. ADR 0002 §1 carries the same statement
-with the same inventory.
+`SyncQueueInvocationEnqueuer`, `SyncQueueWorkloadMetricsSource` (all `sync-queue`) and the
+`QueuedDispatchCapacity` SPI they implement (`control-plane-spi`). **None of them is referenced by
+any live bean or constructor in `src/main`** — verified by grepping each name over
+`platform/*/src/main` and `platform/modules/*/src/main` and reading the non-comment hits, which all
+land inside the nine themselves: no `@Bean` produces one, no `new` of any of them exists outside the
+cluster, and no live bean takes one as a constructor parameter or field. `SyncQueueWorkloadMetricsSource`,
+which wraps `SyncQueueService`, is constructed by nobody in `src/main` at all — its only constructor
+calls are in `SyncQueueWorkloadMetricsTest`. ADR 0002 §1 carries the same statement with the same
+inventory.
 
 **Why this is stated rather than done.** The plan allowed keeping facades that are *still
 consumed*; none of these is, so the allowance does not cover them and the honest description is
 "dead code still shipped" rather than "facades retained on purpose". They are not deleted here
-because the fix wave sits at the release gate and an eight-class deletion with its tests and its
+because the fix wave sits at the release gate and a nine-class deletion with its tests and its
 benchmark seam is a change of its own, with its own impact census and review. **Named follow-up:
-delete all eight in one dedicated pass** — `SyncQueueConfiguration`'s javadoc already asks for the
+delete all nine in one dedicated pass** — `SyncQueueConfiguration`'s javadoc already asks for the
 census — and take the six `function_scheduler_*` recorders and the deny-list entries of §7.5 with
-them. Until that happens, a reader of `src/main` should read these eight as deletion candidates,
+them. Until that happens, a reader of `src/main` should read these nine as deletion candidates,
 not as a surviving code path.
 
 ## 8. Publication

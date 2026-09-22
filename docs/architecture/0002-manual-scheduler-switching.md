@@ -30,19 +30,20 @@ so the loops had no remaining consumer.
 
 **The queue facades those loops drove are now unreferenced dead code, and the old path does not
 run.** `QueueManager`, `FunctionQueueState`, `QueueBackedEnqueuer`, `WorkSignaler`,
-`AsyncQueueWorkloadMetricsSource`, `SyncQueueService`, `SyncQueueInvocationEnqueuer` and
-`QueuedDispatchCapacity` are all still present in `src/main`, and none of them is constructed,
-called or injected by anything live: there is no `new` of any of the eight outside the eight
-themselves, no `@Bean` producing one, and no live bean whose constructor or field takes one — each
-name was grepped over `platform/*/src/main` and `platform/modules/*/src/main` and its non-comment
-references all land inside this cluster (`AsyncQueueWorkloadMetricsSource` is built only by
-`QueueManager`; `SyncQueueWorkloadMetricsSource`, which wraps `SyncQueueService`, is built by
-nobody). Read this paragraph as an inventory of deletion candidates, **not** as a description of a
-surviving code path: the plan permitted keeping facades that are still consumed, and none of these
-is.
+`AsyncQueueWorkloadMetricsSource`, `SyncQueueService`, `SyncQueueInvocationEnqueuer`,
+`SyncQueueWorkloadMetricsSource` and `QueuedDispatchCapacity` are all still present in `src/main`,
+and none of them is constructed, called or injected by anything live: there is no `new` of any of
+the nine outside the nine themselves, no `@Bean` producing one, and no live bean whose constructor
+or field takes one — each name was grepped over `platform/*/src/main` and
+`platform/modules/*/src/main` and its non-comment references all land inside this cluster
+(`AsyncQueueWorkloadMetricsSource` is built only by `QueueManager`; `SyncQueueWorkloadMetricsSource`,
+which wraps `SyncQueueService`, is built by nobody in `src/main` — its only constructor calls are in
+`SyncQueueWorkloadMetricsTest`). Read this paragraph as an inventory of deletion candidates, **not**
+as a description of a surviving code path: the plan permitted keeping facades that are still
+consumed, and none of these is.
 
 **Follow-up, named and deliberately not taken here (issue #208's final fix wave):** delete these
-eight classes in one dedicated pass, together with their tests and the benchmark seam that reaches
+nine classes in one dedicated pass, together with their tests and the benchmark seam that reaches
 `QueueManager`'s package-private constructor by reflection — after the full impact census
 `SyncQueueConfiguration`'s javadoc already asks for. The final fix wave left them in place on
 purpose: a deletion of this size is a change of its own, not a fix to a branch that is at its
