@@ -12,7 +12,6 @@ import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.execution.PendingWorkStore;
 import it.unimib.datai.nanofaas.execution.SchedulerEngine;
 import it.unimib.datai.nanofaas.execution.admission.SyncQueueAdmissionController;
-import it.unimib.datai.nanofaas.execution.admission.SyncQueueAdmissionResult;
 import it.unimib.datai.nanofaas.execution.admission.WaitEstimator;
 import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueMetrics;
@@ -139,13 +138,7 @@ public class SyncQueueConfiguration {
             PendingWorkStore store, DispatchCapacity capacityRegistry,
             LongSupplier schedulerTicketSequence, AdmissionProfile admissionProfile,
             SyncQueueMetrics metrics) {
-        return new EngineSyncQueueGateway(configSource,
-                (functionName, depth, now) -> {
-                    SyncQueueAdmissionResult result = admissionController.evaluate(functionName, depth, now);
-                    return result.accepted() ? null : result.reason();
-                },
-                estimator::recordDispatch,
-                estimator::removeFunctionState,
+        return new EngineSyncQueueGateway(configSource, admissionController, estimator,
                 engine, store, capacityRegistry, schedulerTicketSequence, admissionProfile,
                 metrics::admitted, metrics::rejected);
     }
