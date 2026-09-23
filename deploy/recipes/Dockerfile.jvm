@@ -1,0 +1,41 @@
+# Packages a Java component that assembleRecipe already compiled and staged. The build context
+# is the staged directory build/recipes/<recipe>/<component>/ (the repository .dockerignore hides
+# build/), holding either app.jar (Spring Boot) or lib/ (java-lite), plus jvm.options,
+# launch.args and, for the control plane, config/recipe.yaml. Base images, jdeps/jlink and the
+# runtime layout follow platform/control-plane/Dockerfile.
+ARG BUILDER_IMAGE=eclipse-temurin:25-jdk
+ARG RUNTIME_IMAGE=gcr.io/distroless/base-debian13:nonroot
+
+FROM ${BUILDER_IMAGE} AS jre-builder
+WORKDIR /tmp/build
+COPY . .
+# jdk.unsupported, jdk.crypto.ec and jdk.httpserver are loaded reflectively, invisible to jdeps.
+RUN if [ -f app.jar ]; then \
+      jar xf app.jar BOOT-INF/lib BOOT-INF/classes && \
+      jdeps --ignore-missing-deps --multi-release 25 --recursive \
+        --print-module-deps --class-path 'BOOT-INF/lib/*' \
+        BOOT-INF/classes app.jar > modules.txt; \
+    else \
+      jdeps --ignore-missing-deps --multi-release 25 \
+        --print-module-deps lib/*.jar > modules.txt; \
+    fi && \
+    jlink --add-modules "$(cat modules.txt),jdk.unsupported,jdk.crypto.ec,jdk.httpserver" \
+      --strip-debug --no-header-files --no-man-pages --compress=zip-9 \
+      --output /jre
+RUN mkdir -p /var/lib/nanofaas && touch /var/lib/nanofaas/.keep
+
+FROM ${RUNTIME_IMAGE}
+ARG BUILDER_IMAGE
+ARG RUNTIME_IMAGE
+ENV NANOFAAS_BUILD_BASE_IMAGE=${BUILDER_IMAGE}
+ENV NANOFAAS_RUNTIME_BASE_IMAGE=${RUNTIME_IMAGE}
+ENV NANOFAAS_REGISTRY_PATH=/var/lib/nanofaas/functions.json
+# optional: components without config/recipe.yaml start normally; environment variables still override it.
+ENV SPRING_CONFIG_ADDITIONALLOCATION=optional:file:/app/config/recipe.yaml
+WORKDIR /app
+COPY --from=jre-builder --chown=nonroot:nonroot /jre /opt/jre
+COPY --from=jre-builder --chown=nonroot:nonroot /var/lib/nanofaas /var/lib/nanofaas
+COPY . /app/
+EXPOSE 8080 8081
+# jvm.options: recipe jvm.args, or the default tuning. launch.args: the component's fixed flags and entry point.
+ENTRYPOINT ["/opt/jre/bin/java", "@/app/jvm.options", "@/app/launch.args"]

@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.gradle;
 
 import org.gradle.testkit.runner.BuildResult;
 import org.gradle.testkit.runner.GradleRunner;
+import org.gradle.testkit.runner.TaskOutcome;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -9,6 +10,11 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.HexFormat;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -35,22 +41,54 @@ class RecipePluginTest {
                 tasks.register('printNative') { doLast { println "native=${gradle.ext.nanofaasNativeBuildRequested}" } }
                 tasks.register('printSelection') { doLast { println "modules=${gradle.ext.nanofaasSelectedControlPlaneModules}" } }
                 """);
-        // Each fake build task leaves a marker, so tests can prove what did (not) run.
+        // Fake build tasks produce real outputs and leave a marker, so tests can prove what did (not) run.
         write("marker.gradle", """
-                ext.marker = { String name -> tasks.register(name) { doLast {
+                ext.mark = { String name ->
                     def file = rootProject.file("markers/${project.name}-${name}")
                     file.parentFile.mkdirs(); file.text = 'ran'
-                } } }
+                }
+                ext.fakeBootJar = { String fileName -> tasks.register('bootJar', Jar) {
+                    archiveFileName = fileName
+                    destinationDirectory = layout.buildDirectory.dir('libs')
+                    from(rootProject.file('marker.gradle'))
+                    doLast { mark('bootJar') }
+                } }
+                ext.fakeNative = { String binary -> tasks.register('nativeCompile') {
+                    ext.outputFile = layout.buildDirectory.file("native/nativeCompile/${binary}")
+                    outputs.dir(layout.buildDirectory.dir('native/nativeCompile'))
+                    doLast {
+                        def file = outputFile.get().asFile
+                        file.parentFile.mkdirs(); file.text = '#!/bin/sh\\n'; file.setExecutable(true)
+                        new File(file.parentFile, 'unrelated.txt').text = 'not staged'
+                        mark('nativeCompile')
+                    }
+                } }
                 """);
         write("platform/control-plane/build.gradle", """
+                plugins { id 'java' }
                 apply from: rootProject.file('marker.gradle')
-                marker('bootJar'); marker('nativeCompile')
+                fakeBootJar('app.jar'); fakeNative('control-plane')
                 """);
+        write("deploy/recipes/Dockerfile.jvm", "FROM scratch\n");
+        write("deploy/recipes/Dockerfile.native", "FROM scratch\n");
+        write("bin/docker", """
+                #!/bin/sh
+                log=%s
+                { printf '%%s\\n' "$@"; echo '--'; } >> "$log/docker.log"
+                if [ -f "$log/fail-$1" ]; then echo "fake docker $1 failed" >&2; exit 1; fi
+                """.formatted(projectDir));
+        projectDir.resolve("bin/docker").toFile().setExecutable(true);
         write("sdks/java/build.gradle", "plugins { id 'java' }\n");
         write("sdks/java-lite/build.gradle", "plugins { id 'java' }\n");
-        writeJavaFunction("word-stats", ":sdks:java", "bootJar", "nativeCompile");
-        writeJavaFunction("word-stats-lite", ":sdks:java-lite", "installDist", "nativeCompile");
-        writeJavaFunction("jvm-only", ":sdks:java", "bootJar");
+        writeJavaFunction("word-stats", ":sdks:java", "fakeBootJar('word-stats.jar'); fakeNative('word-stats')");
+        write("functions/java/word-stats-lite/build.gradle", """
+                plugins { id 'java'; id 'application' }
+                apply from: rootProject.file('marker.gradle')
+                dependencies { implementation project(':sdks:java-lite') }
+                application { mainClass = 'demo.WordStatsLite' }
+                fakeNative('word-stats-lite')
+                """);
+        writeJavaFunction("jvm-only", ":sdks:java", "fakeBootJar('jvm-only.jar')");
         write("functions/python/word-stats/Dockerfile", "FROM scratch\n");
         write("functions/go/qr-code/Dockerfile", "FROM scratch\n");
         Files.createDirectories(projectDir.resolve("functions/javascript/no-dockerfile"));
@@ -101,6 +139,8 @@ class RecipePluginTest {
                 .containsSubsequence("word-stats", "python", "container", "functions/python/word-stats/Dockerfile",
                         "registry.example:5000/team/ws-python:1.0.1");
         assertThat(projectDir.resolve("markers")).doesNotExist();
+        assertThat(projectDir.resolve("build/recipes")).doesNotExist();
+        assertThat(projectDir.resolve("docker.log")).doesNotExist();
     }
 
     @Test
@@ -229,18 +269,158 @@ class RecipePluginTest {
         assertThat(run("printNative").getOutput()).contains("native=false");
     }
 
+    private static final String FULL_RECIPE = HEADER + """
+            registry: {repository: registry.example:5000/team, tag: "1.0.0"}
+            controlPlane:
+              modules: []
+              build: {mode: jvm}
+              jvm: {args: ['-Xmx128m', '-Dgreeting=hello world', '-Dquote="x"', 'C:\\tmp']}
+              container: {image: control-plane}
+              config: {nanofaas: {metrics: {profile: basic}}}
+            functions:
+              - {name: word-stats, sdk: java-lite, build: {mode: native}, container: {image: ws-lite}}
+              - {name: word-stats, sdk: java, build: {mode: jvm}}
+              - {name: word-stats, sdk: python, container: {image: ws-python}}
+            """;
+
+    @Test
+    void assembleBuildsOnlySelectedArtifactsAndImagesWithoutPushing() throws IOException {
+        recipe(FULL_RECIPE);
+
+        BuildResult result = run("assembleRecipe", "-Precipe=recipe.yaml", "-PrecipeTag=2.0.0", docker());
+
+        assertThat(result.task(":control-plane:bootJar").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+        assertThat(result.task(":functions:java:word-stats-lite:nativeCompile").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+        assertThat(result.task(":functions:java:word-stats:bootJar").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+        assertThat(result.task(":control-plane:nativeCompile")).isNull();
+        assertThat(result.task(":functions:java:word-stats-lite:installDist")).isNull();
+        assertThat(result.task(":functions:java:word-stats:nativeCompile")).isNull();
+
+        Path out = projectDir.resolve("build/recipes/demo");
+        assertThat(out.resolve("control-plane/app.jar")).isRegularFile();
+        assertThat(Files.readString(out.resolve("control-plane/jvm.options")))
+                .isEqualTo("\"-Xmx128m\"\n\"-Dgreeting=hello world\"\n\"-Dquote=\\\"x\\\"\"\n\"C:\\\\tmp\"\n");
+        assertThat(Files.readString(out.resolve("control-plane/launch.args"))).endsWith("\"-jar\"\n\"app.jar\"\n");
+        assertThat(Files.readString(out.resolve("control-plane/config/recipe.yaml"))).contains("profile: basic");
+        assertThat(out.resolve("functions/java-lite/word-stats/application")).isExecutable();
+        assertThat(out.resolve("functions/java-lite/word-stats/unrelated.txt")).doesNotExist();
+        assertThat(out.resolve("functions/java/word-stats/app.jar")).isRegularFile();
+        assertThat(Files.readString(out.resolve("functions/java/word-stats/jvm.options"))).isEmpty();
+        assertThat(out.resolve("functions/python")).doesNotExist();
+
+        Path root = projectDir.toRealPath();
+        assertThat(dockerCalls()).containsExactlyInAnyOrder(
+                List.of("build", "-f", root.resolve("deploy/recipes/Dockerfile.jvm").toString(),
+                        "-t", "registry.example:5000/team/control-plane:2.0.0", root.resolve("build/recipes/demo/control-plane").toString()),
+                List.of("build", "-f", root.resolve("deploy/recipes/Dockerfile.native").toString(),
+                        "-t", "registry.example:5000/team/ws-lite:2.0.0",
+                        root.resolve("build/recipes/demo/functions/java-lite/word-stats").toString()),
+                List.of("build", "-f", root.resolve("functions/python/word-stats/Dockerfile").toString(),
+                        "-t", "registry.example:5000/team/ws-python:2.0.0", root.toString()));
+
+        String report = Files.readString(out.resolve("distribution.json"));
+        assertThat(report)
+                .contains("\"schemaVersion\" : 1", "\"tag\" : \"2.0.0\"", "\"source\" : null", "\"modules\" : [ ]")
+                .contains("\"sha256\" : \"" + sha256(projectDir.resolve("recipe.yaml")) + "\"")
+                .contains("\"reference\" : \"registry.example:5000/team/ws-python:2.0.0\"", "\"status\" : \"built\"")
+                .contains("\"artifact\" : \"functions/java-lite/word-stats/\"")
+                .doesNotContain("profile", "digest");
+    }
+
+    @Test
+    void controlPlaneKeepsDefaultTuningWithoutJvmArgs() throws IOException {
+        recipe(HEADER + CP_JVM);
+
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker());
+
+        Path controlPlane = projectDir.resolve("build/recipes/demo/control-plane");
+        assertThat(Files.readString(controlPlane.resolve("jvm.options"))).isEqualTo("\"-XX:+UseSerialGC\"\n");
+        assertThat(controlPlane.resolve("config")).doesNotExist();
+        assertThat(dockerCalls()).isEmpty();
+    }
+
+    @Test
+    void liteJvmStagesClasspathAndMainClass() throws IOException {
+        recipe(HEADER + CP_JVM + "functions: [{name: word-stats, sdk: java-lite, build: {mode: jvm}}]\n");
+
+        BuildResult result = run("assembleRecipe", "-Precipe=recipe.yaml", docker());
+
+        Path function = projectDir.resolve("build/recipes/demo/functions/java-lite/word-stats");
+        assertThat(result.task(":functions:java:word-stats-lite:installDist").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+        assertThat(function.resolve("lib/word-stats-lite.jar")).isRegularFile();
+        assertThat(function.resolve("bin")).doesNotExist();
+        assertThat(Files.readString(function.resolve("launch.args")))
+                .isEqualTo("\"-cp\"\n\"lib/*\"\n\"demo.WordStatsLite\"\n");
+    }
+
+    @Test
+    void builderFailureFailsAssemblyWithoutReport() throws IOException {
+        recipe(FULL_RECIPE);
+        Files.writeString(projectDir.resolve("fail-build"), "");
+
+        assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker())).contains("fake docker build failed");
+        assertThat(projectDir.resolve("build/recipes/demo/distribution.json")).doesNotExist();
+    }
+
+    @Test
+    void reassemblyDropsRemovedFunctionsAndStaleReport() throws IOException {
+        recipe(FULL_RECIPE);
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker());
+        Path report = projectDir.resolve("build/recipes/demo/distribution.json");
+        Files.writeString(report, Files.readString(report).replace("\"built\"", "\"published\", \"digest\" : \"sha256:old\""));
+
+        recipe(HEADER + CP_JVM + "functions: [{name: word-stats, sdk: python, container: {image: ws-python}}]\n");
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker());
+
+        assertThat(projectDir.resolve("build/recipes/demo/functions/java-lite")).doesNotExist();
+        assertThat(projectDir.resolve("build/recipes/demo/control-plane/config")).doesNotExist();
+        assertThat(Files.readString(report)).doesNotContain("sha256:old", "java-lite", "published");
+    }
+
+    @Test
+    void assembleRequiresRecipe() {
+        assertThat(fails("assembleRecipe")).contains("assembleRecipe requires -Precipe=<file>");
+    }
+
+    private String docker() {
+        return "-PrecipeDocker=" + projectDir.resolve("bin/docker");
+    }
+
+    private List<List<String>> dockerCalls() throws IOException {
+        Path log = projectDir.resolve("docker.log");
+        List<List<String>> calls = new ArrayList<>();
+        if (!Files.exists(log)) {
+            return calls;
+        }
+        List<String> current = new ArrayList<>();
+        for (String line : Files.readAllLines(log)) {
+            if (line.equals("--")) {
+                calls.add(current);
+                current = new ArrayList<>();
+            } else {
+                current.add(line);
+            }
+        }
+        return calls;
+    }
+
+    private static String sha256(Path file) throws IOException {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException(exception);
+        }
+    }
+
     private static final String CP_JVM = "controlPlane: {modules: [], build: {mode: jvm}}\n";
 
-    private void writeJavaFunction(String name, String sdk, String... tasks) throws IOException {
-        StringBuilder build = new StringBuilder("""
+    private void writeJavaFunction(String name, String sdk, String fakes) throws IOException {
+        write("functions/java/" + name + "/build.gradle", """
                 plugins { id 'java' }
                 apply from: rootProject.file('marker.gradle')
                 dependencies { implementation project('%s') }
-                """.formatted(sdk));
-        for (String task : tasks) {
-            build.append("marker('").append(task).append("')\n");
-        }
-        write("functions/java/" + name + "/build.gradle", build.toString());
+                %s
+                """.formatted(sdk, fakes));
     }
 
     private void writeModule(String id, String conflicts) throws IOException {

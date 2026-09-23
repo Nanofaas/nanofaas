@@ -5,6 +5,7 @@ import org.gradle.api.GradleException;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.ProjectDependency;
+import org.gradle.api.plugins.JavaApplication;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -35,9 +36,14 @@ final class RecipeTasks {
     /**
      * One component of the resolved recipe. {@code task} is the Gradle task producing a Java artifact, else null;
      * {@code dockerfile} is set for Dockerfile SDKs; {@code image} is null when the component has no container.
+     * {@code jvmArgs} is null when the recipe sets none; {@code mainClass} is set only for java-lite on the JVM.
      */
     record Target(String field, String name, String sdk, String mode, String task, Path dockerfile,
-                  String stagingDir, String image) {
+                  String stagingDir, String image, List<String> jvmArgs, String mainClass) {
+
+        boolean controlPlane() {
+            return field.equals("controlPlane");
+        }
     }
 
     private final Project root;
@@ -64,8 +70,16 @@ final class RecipeTasks {
             task.setDescription("Validates -Precipe and previews modules, build tasks, artifacts and images.");
             task.doLast(ignored -> recipeTasks.printPreview());
         });
+        root.getTasks().register("assembleRecipe", task -> {
+            task.setGroup(GROUP);
+            task.setDescription("Builds the -Precipe artifacts and images into build/recipes/<name>/; never pushes.");
+            task.doFirst(ignored -> requireRecipe(recipe, "assembleRecipe"));
+        });
         if (recipe != null) {
-            root.getGradle().projectsEvaluated(ignored -> recipeTasks.targets = recipeTasks.resolve());
+            root.getGradle().projectsEvaluated(ignored -> {
+                recipeTasks.targets = recipeTasks.resolve();
+                RecipeArtifacts.register(root, recipe, recipeTasks.targets, recipeTasks.modules());
+            });
         }
     }
 
@@ -108,11 +122,6 @@ final class RecipeTasks {
         return implementations;
     }
 
-    /** The resolved recipe; resolution already ran when all projects were evaluated. */
-    List<Target> targets() {
-        return targets;
-    }
-
     private List<Target> resolve() {
         JsonNode data = recipe.data();
         List<Target> resolved = new ArrayList<>();
@@ -128,7 +137,7 @@ final class RecipeTasks {
         }
         resolved.add(new Target("controlPlane", "control-plane", "java", controlPlaneMode,
                 controlPlane.getPath() + ":" + taskName("java", controlPlaneMode), null, "control-plane/",
-                image(data.path("controlPlane"), "controlPlane", images)));
+                image(data.path("controlPlane"), "controlPlane", images), jvmArgs(data.path("controlPlane")), null));
 
         Map<List<String>, Implementation> available = new HashMap<>();
         catalog().forEach(implementation -> available.put(List.of(implementation.name(), implementation.sdk()), implementation));
@@ -155,9 +164,29 @@ final class RecipeTasks {
                     java ? implementation.projectPath() + ":" + taskName(sdk, mode) : null,
                     java ? null : implementation.directory().resolve("Dockerfile"),
                     java ? "functions/" + sdk + "/" + name + "/" : null,
-                    image(function, field, images)));
+                    image(function, field, images), jvmArgs(function),
+                    sdk.equals("java-lite") && mode.equals("jvm") ? mainClass(field, implementation) : null));
         }
         return List.copyOf(resolved);
+    }
+
+    private static List<String> jvmArgs(JsonNode component) {
+        JsonNode args = component.path("jvm").path("args");
+        if (args.isMissingNode()) {
+            return null;
+        }
+        List<String> values = new ArrayList<>();
+        args.forEach(arg -> values.add(arg.asText()));
+        return List.copyOf(values);
+    }
+
+    private String mainClass(String field, Implementation implementation) {
+        JavaApplication application = root.project(implementation.projectPath()).getExtensions()
+                .findByType(JavaApplication.class);
+        if (application == null || !application.getMainClass().isPresent()) {
+            throw fail(field + ": " + implementation.projectPath() + " declares no application mainClass");
+        }
+        return application.getMainClass().get();
     }
 
     private String image(JsonNode component, String field, Set<String> images) {
@@ -175,13 +204,21 @@ final class RecipeTasks {
         return reference;
     }
 
-    private void printPreview() {
-        if (recipe == null) {
-            throw new GradleException("validateRecipe requires -Precipe=<file>");
-        }
-        @SuppressWarnings("unchecked")
-        List<String> modules = (List<String>) root.getGradle().getExtensions().getExtraProperties()
+    @SuppressWarnings("unchecked")
+    private List<String> modules() {
+        return (List<String>) root.getGradle().getExtensions().getExtraProperties()
                 .get(ControlPlaneModulesPlugin.SELECTED_EXTRA_PROPERTY);
+    }
+
+    static void requireRecipe(RecipeReader.Document recipe, String taskName) {
+        if (recipe == null) {
+            throw new GradleException(taskName + " requires -Precipe=<file>");
+        }
+    }
+
+    private void printPreview() {
+        requireRecipe(recipe, "validateRecipe");
+        List<String> modules = modules();
         System.out.println("Recipe " + recipe.data().get("name").asText() + ": " + recipe.source()
                 + " (sha256 " + recipe.sourceSha256() + ")");
         System.out.println("Tag: " + recipe.effectiveTag());
