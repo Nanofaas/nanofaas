@@ -271,12 +271,10 @@ class AsyncQueueConfigurationTest {
      * registration in {@code SchedulerConfiguration.schedulerCapacityGenerationListener} (calling
      * {@code metricsBinder.removeFunction} directly from {@code onRemove} instead of via
      * {@code engine.markDraining}/{@code addDrainListener}) makes the "still active" assertion
-     * below fail — the meters would already be gone. (2) reverting
-     * {@code SchedulerEngine.checkDrained}'s new {@code reservedByFunction.remove(name)} does NOT
-     * fail this test (the Minor fix has no externally observable effect through
-     * {@code WorkloadMetricsBinder} — its own gauges are removed identically either way), which is
-     * exactly why the Minor is verified separately, by asserting {@code engine.reservedCount}
-     * directly rather than only meter counts.
+     * below fail — the meters would already be gone. (2) {@code PendingWorkStore} prunes a
+     * function's reservation entry when it reaches zero; that has no externally observable effect
+     * through {@code WorkloadMetricsBinder}, so it is verified by asserting
+     * {@code engine.reservedCount} directly (and by {@code PendingWorkStoreTest}'s churn check).
      *
      * <p>Correction after this test's first draft (still fix round 1, caught by actually running
      * it rather than by inspection): the "still physically active" ticket cannot be represented

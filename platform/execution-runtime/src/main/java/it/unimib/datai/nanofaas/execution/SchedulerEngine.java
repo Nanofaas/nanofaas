@@ -24,9 +24,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
@@ -108,16 +106,6 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     private long wakeSequence;
     private boolean running;
     private Thread worker;
-
-    /**
-     * Total reservations (pending + claimed + submitting) held per function, maintained
-     * incrementally at every point one is opened or closed — see {@link #adjustReserved} — so a
-     * {@code WorkloadMetricsSource} can read a function's depth without ever scanning
-     * {@link #store}. A {@code ConcurrentHashMap} because
-     * {@link #reservedCount(String)} is read from a Micrometer gauge callback, which may run on
-     * any thread and must never contend with the engine's own gate.
-     */
-    private final Map<String, AtomicInteger> reservedByFunction = new ConcurrentHashMap<>();
 
     /** Function names whose removal drained the pending index but may still hold a physically
      * active lease; reconciled at the end of every {@link #pass()}. Guarded by {@link #gate}. */
@@ -362,7 +350,6 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             if (!store.offer(entry)) {
                 return false;
             }
-            adjustReserved(entry.ticket().generation().functionName(), 1);
             active.index().add(entry.ticket());
             track(entry.ticket());
             wake();
@@ -384,7 +371,6 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             removed = store.remove(id);
             if (removed != null) {
                 retire(removed.ticket());
-                adjustReserved(removed.ticket().generation().functionName(), -1);
             } else if (store.get(id) != null) {
                 cancelRequests.add(id);
             }
@@ -419,7 +405,6 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
                     PendingEntry taken = store.remove(entry.ticket().id());
                     if (taken != null) {
                         retire(taken.ticket());
-                        adjustReserved(taken.ticket().generation().functionName(), -1);
                         removed.add(taken);
                     } else {
                         cancelRequests.add(entry.ticket().id());
@@ -617,7 +602,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     }
 
     /**
-     * Reconciles {@link #draining} against {@link #reservedByFunction}, bounded by the (normally
+     * Reconciles {@link #draining} against the store's reservation counts, bounded by the (normally
      * empty, at most a handful of entries) set of functions actually awaiting drain — never a
      * scan of the backlog itself. Listener callbacks run outside {@link #gate}, mirroring every
      * other lifecycle notification in this class.
@@ -635,14 +620,6 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             draining.removeIf(name -> {
                 if (reservedCount(name) == 0) {
                     drained.add(name);
-                    // A drain, unlike an ordinary zero-crossing between bursts (see
-                    // adjustReserved's own javadoc), IS evidence the function is gone: this is
-                    // the removal listener's own signal, not traffic ebbing. Pruning here keeps
-                    // this map from retaining an entry forever for every function ever removed —
-                    // every sibling per-function map in this composition (WorkloadMetricsBinder,
-                    // SyncQueueMetrics, PerFunctionDepth, WaitEstimator) has an equivalent
-                    // removal hook; this one had none until fix round 1.
-                    reservedByFunction.remove(name);
                     return true;
                 }
                 return false;
@@ -660,19 +637,9 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     }
 
     /** Total reservations (pending + claimed + submitting) held for {@code functionName}; never
-     * scans {@link #store}. Safe from any thread — see {@link #reservedByFunction}. */
+     * scans the store. Safe from any thread: see {@link PendingWorkStore#reservedCount(String)}. */
     public int reservedCount(String functionName) {
-        AtomicInteger count = reservedByFunction.get(functionName);
-        return count == null ? 0 : count.get();
-    }
-
-    /** Under the gate, at every point a reservation opens ({@code delta > 0}) or closes
-     * ({@code delta < 0}). Never removes the map entry itself: a zero count reached this way is
-     * a legitimate steady state for an active function between bursts, not evidence it is gone.
-     * {@link #checkDrained} is the one place that DOES prune an entry — there, unlike here, a
-     * zero count is coupled with the removal listener's own {@link #markDraining} signal. */
-    private void adjustReserved(String functionName, int delta) {
-        reservedByFunction.computeIfAbsent(functionName, ignored -> new AtomicInteger()).addAndGet(delta);
+        return store.reservedCount(functionName);
     }
 
     private long idleBudgetMs() {
@@ -719,7 +686,6 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
                     dropped = store.remove(ticket.id());
                     if (dropped != null) {
                         retire(ticket);
-                        adjustReserved(ticket.generation().functionName(), -1);
                     }
                 }
                 claimSettled = true;
@@ -828,9 +794,6 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             store.requeueSubmit(ticket.id());
             if (cancelRequests.remove(ticket.id())) {
                 cancelled = store.remove(ticket.id());
-                if (cancelled != null) {
-                    adjustReserved(ticket.generation().functionName(), -1);
-                }
                 if (ticket.queueDeadline() != null) {
                     deadlines.remove(ticket);
                 }
@@ -850,7 +813,6 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     private void finishSubmit(SchedulingTicket ticket) {
         synchronized (gate) {
             store.finishSubmit(ticket.id());
-            adjustReserved(ticket.generation().functionName(), -1);
             cancelRequests.remove(ticket.id());
             if (ticket.queueDeadline() != null) {
                 deadlines.remove(ticket);
@@ -875,7 +837,6 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
                 // Out-of-band removal: the per-function index treats this exactly as it treats a
                 // dispatch of that function's turn (see remove()).
                 active.index().remove(head.id());
-                adjustReserved(head.generation().functionName(), -1);
                 expired.add(entry);
             }
             // A null entry is a ticket already gone or already submitting: its dispatch is

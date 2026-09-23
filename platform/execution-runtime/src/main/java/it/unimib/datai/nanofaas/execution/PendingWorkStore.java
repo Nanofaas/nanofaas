@@ -8,6 +8,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The engine's authoritative store of pending work and its queue reservations. A
@@ -19,7 +20,9 @@ import java.util.Set;
  * <p>This store does not call listeners, does not close leases and does not impose a second
  * payload cap: {@code InvocationCapacity} and {@code queuedInputLease} remain authoritative for
  * those budgets. The engine serializes all operations on this store; it does not lock
- * internally.
+ * internally. The reservation counts are the one exception to "read under the gate": gauges read
+ * them concurrently, so they live in a concurrent map and a volatile total written only by the
+ * engine's serialized mutations.
  */
 public final class PendingWorkStore {
 
@@ -27,6 +30,8 @@ public final class PendingWorkStore {
     private final Map<TicketId, PendingEntry> entries = new LinkedHashMap<>();
     private final Set<TicketId> claimed = new LinkedHashSet<>();
     private final Set<TicketId> submitting = new LinkedHashSet<>();
+    private final ConcurrentHashMap<String, Integer> reservedByFunction = new ConcurrentHashMap<>();
+    private volatile int reserved;
 
     public PendingWorkStore(int maxPending) {
         if (maxPending <= 0) {
@@ -49,6 +54,8 @@ public final class PendingWorkStore {
             return false;
         }
         entries.put(id, entry);
+        reservedByFunction.merge(entry.ticket().generation().functionName(), 1, Integer::sum);
+        reserved++;
         return true;
     }
 
@@ -87,7 +94,7 @@ public final class PendingWorkStore {
     /** Drops the entry and its reservation once its dispatch has been submitted. */
     public void finishSubmit(TicketId id) {
         submitting.remove(id);
-        entries.remove(id);
+        releaseReservation(entries.remove(id));
     }
 
     /** Clears the submitting state, leaving the entry pending for another submit attempt. */
@@ -106,7 +113,30 @@ public final class PendingWorkStore {
             return null;
         }
         claimed.remove(id);
-        return entries.remove(id);
+        PendingEntry entry = entries.remove(id);
+        releaseReservation(entry);
+        return entry;
+    }
+
+    /** Outstanding reservations: pending, claimed and submitting. Safe to read without the gate. */
+    public int reservedCount() {
+        return reserved;
+    }
+
+    /** Outstanding reservations of one function name; zero when it has none. Safe to read
+     * without the gate. */
+    public int reservedCount(String functionName) {
+        return reservedByFunction.getOrDefault(functionName, 0);
+    }
+
+    /** A function's entry is pruned at zero, so idle and removed names are not retained. */
+    private void releaseReservation(PendingEntry entry) {
+        if (entry == null) {
+            return;
+        }
+        reservedByFunction.compute(entry.ticket().generation().functionName(),
+                (name, count) -> count == 1 ? null : count - 1);
+        reserved--;
     }
 
     /** All reservations, including provisional claims and submits that may requeue. */

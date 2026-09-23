@@ -199,4 +199,59 @@ class PendingWorkStoreTest {
         assertThat(store.pendingCount()).isEqualTo(1);
         assertThat(store.snapshotPending()).extracting(PendingEntry::ticket).containsExactly(t);
     }
+
+    @Test
+    void reservationsFollowEntriesAcrossBackpressureAndRepeatedSettlement() {
+        var store = new PendingWorkStore(1);
+        var t = ticket("e1", 0);
+        var entry = new PendingEntry(t, mock(InvocationTask.class));
+        assertThat(store.offer(entry)).isTrue();
+        assertThat(store.offer(entry)).isFalse();
+        assertThat(store.reservedCount()).isEqualTo(1);
+        assertThat(store.reservedCount("echo")).isEqualTo(1);
+        store.claim(t.id());
+        store.commit(t.id());
+        assertThat(store.remove(t.id())).isNull();
+        assertThat(store.reservedCount("echo")).isEqualTo(1);
+        store.requeueSubmit(t.id());
+        store.claim(t.id());
+        store.commit(t.id());
+        store.finishSubmit(t.id());
+        store.finishSubmit(t.id());
+        assertThat(store.remove(t.id())).isNull();
+        assertThat(store.reservedCount()).isZero();
+        assertThat(store.reservedCount("echo")).isZero();
+    }
+
+    @Test
+    void removingAClaimReleasesOnlyItsOwnFunction() {
+        var store = new PendingWorkStore(2);
+        var a = ticket("a", 0);
+        var b = new SchedulingTicket(new TicketId("b", 1),
+                new FunctionGeneration("other", 1), 1, NOW, NOW, null);
+        store.offer(new PendingEntry(a, mock(InvocationTask.class)));
+        store.offer(new PendingEntry(b, mock(InvocationTask.class)));
+        store.claim(a.id());
+        store.remove(a.id());
+        store.abort(a.id());
+        store.remove(a.id());
+        assertThat(store.reservedCount()).isEqualTo(1);
+        assertThat(store.reservedCount("echo")).isZero();
+        assertThat(store.reservedCount("other")).isEqualTo(1);
+    }
+
+    @Test
+    void completedFunctionNamesDoNotAccumulate() throws Exception {
+        var store = new PendingWorkStore(1);
+        for (int i = 0; i < 1000; i++) {
+            var t = new SchedulingTicket(new TicketId("e" + i, 1),
+                    new FunctionGeneration("fn" + i, i + 1), i, NOW, NOW, null);
+            store.offer(new PendingEntry(t, mock(InvocationTask.class)));
+            store.remove(t.id());
+        }
+        var field = PendingWorkStore.class.getDeclaredField("reservedByFunction");
+        field.setAccessible(true);
+        assertThat((java.util.Map<?, ?>) field.get(store)).isEmpty();
+        assertThat(store.reservedCount()).isZero();
+    }
 }
