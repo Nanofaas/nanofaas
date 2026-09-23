@@ -270,6 +270,9 @@ RUNTIME_CALLBACK_DELIVERY_FAILURES_TOTAL = _collector(
 )
 
 
+CALLBACK_SATURATED = "callback saturated"
+
+
 class HandlerAdmissionError(RuntimeError):
     """Raised when handler capacity is full or the runtime is stopping."""
 
@@ -362,7 +365,7 @@ class HandlerExecution:
         self.work = work
         self.async_task = async_task
 
-    async def wait(self, timeout: float):
+    async def wait(self, timeout: float):  # NOSONAR (python:S7483): the budget spans several phases
         awaitable = (
             asyncio.shield(self.work)
             if self.async_task
@@ -379,6 +382,16 @@ class HandlerExecution:
     def request_cancel(self) -> None:
         if self.async_task:
             self.work.cancel()
+
+
+def _cancel_tasks(tasks) -> None:
+    """Cancel asyncio tasks from any thread, on the loop that owns each of them."""
+    for task in tasks:
+        task_loop = task.get_loop()
+        if task_loop.is_running():
+            task_loop.call_soon_threadsafe(task.cancel)
+        else:
+            task.cancel()
 
 
 class RuntimeWorkManager:
@@ -456,7 +469,7 @@ class RuntimeWorkManager:
                 or self._pending_callbacks >= self._max_pending_callbacks
                 or retained_bytes > self._max_pending_callback_bytes - self._pending_callback_bytes
             ):
-                raise HandlerAdmissionError("callback saturated")
+                raise HandlerAdmissionError(CALLBACK_SATURATED)
             reservation = CallbackReservation(
                 self, retained_bytes, preserve_on_stop=preserve_on_stop
             )
@@ -473,7 +486,7 @@ class RuntimeWorkManager:
                 return
             difference = retained_bytes - reservation.retained_bytes
             if retained_bytes < 0 or difference > self._max_pending_callback_bytes - self._pending_callback_bytes:
-                raise HandlerAdmissionError("callback saturated")
+                raise HandlerAdmissionError(CALLBACK_SATURATED)
             reservation.retained_bytes = retained_bytes
             self._pending_callback_bytes += difference
         RUNTIME_PENDING_CALLBACK_BYTES.labels(function=FUNCTION_NAME).inc(difference)
@@ -518,7 +531,7 @@ class RuntimeWorkManager:
         self, callback, *args, callback_reservation: CallbackReservation | None = None, **kwargs
     ):
         if not self._callback_submit_slots.acquire(blocking=False):
-            raise HandlerAdmissionError("callback saturated")
+            raise HandlerAdmissionError(CALLBACK_SATURATED)
         held_reservation = None
         try:
             with self._lock:
@@ -574,7 +587,7 @@ class RuntimeWorkManager:
                 active_callback_workers=self._active_callback_workers,
             )
 
-    async def shutdown(self, timeout: float) -> RuntimeShutdownReport:
+    async def shutdown(self, timeout: float) -> RuntimeShutdownReport:  # NOSONAR (python:S7483): the budget spans several phases
         """Stop admission and await physical drain up to ``timeout`` seconds.
 
         Cooperative async tasks can finish cancellation while this coroutine is
@@ -595,44 +608,16 @@ class RuntimeWorkManager:
             self._drain_waiters.add((loop, drain_event))
         for reservation in orphaned_reservations:
             reservation.release()
-        for task in async_tasks:
-            task_loop = task.get_loop()
-            if task_loop.is_running():
-                task_loop.call_soon_threadsafe(task.cancel)
-            else:
-                task.cancel()
+        _cancel_tasks(async_tasks)
         self._handler_executor.shutdown(wait=False, cancel_futures=True)
 
         try:
-            while True:
-                with self._lock:
-                    if not (
-                        self._handler_work
-                        or self._callback_work
-                        or self._callback_tasks
-                        or self._pending_callbacks
-                    ):
-                        break
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    break
-                try:
-                    await asyncio.wait_for(drain_event.wait(), timeout=remaining)
-                except asyncio.TimeoutError:
-                    break
-                drain_event.clear()
+            await self._await_drain(deadline, drain_event)
         finally:
             with self._lock:
                 self._drain_waiters.discard((loop, drain_event))
                 callback_tasks = list(self._callback_tasks)
-            for task in callback_tasks:
-                task_loop = task.get_loop()
-                if task_loop.is_closed():
-                    continue
-                if task_loop.is_running():
-                    task_loop.call_soon_threadsafe(task.cancel)
-                else:
-                    task.cancel()
+            _cancel_tasks(task for task in callback_tasks if not task.get_loop().is_closed())
             self._callback_executor.shutdown(wait=False, cancel_futures=True)
         snapshot = self.snapshot()
         return RuntimeShutdownReport(
@@ -646,6 +631,25 @@ class RuntimeWorkManager:
             pending_callback_bytes=snapshot.pending_callback_bytes,
             active_callback_workers=snapshot.active_callback_workers,
         )
+
+    def _has_live_work(self) -> bool:
+        with self._lock:
+            return bool(
+                self._handler_work
+                or self._callback_work
+                or self._callback_tasks
+                or self._pending_callbacks
+            )
+
+    async def _await_drain(self, deadline: float, drain_event: asyncio.Event) -> None:
+        remaining = deadline - time.monotonic()
+        while self._has_live_work() and remaining > 0:
+            try:
+                await asyncio.wait_for(drain_event.wait(), timeout=remaining)
+            except asyncio.TimeoutError:
+                return
+            drain_event.clear()
+            remaining = deadline - time.monotonic()
 
     def _handler_completed(self, work) -> None:
         with self._lock:
@@ -746,27 +750,31 @@ _cold_start_lock = threading.Lock()
 def _preflight_json_scalars(value, limit: int, active_containers: set[int] | None = None) -> None:
     """Reject any scalar that alone cannot fit before JSON creates its escaped copy."""
     if isinstance(value, str):
-        encoded_size = 2
-        for character in value:
-            codepoint = ord(character)
-            if character in ('"', "\\") or character in "\b\f\n\r\t":
-                encoded_size += 2
-            elif codepoint < 0x20:
-                encoded_size += 6
-            else:
-                encoded_size += len(character.encode("utf-8"))
-            if encoded_size > limit:
-                raise PayloadTooLargeError
+        _preflight_json_string(value, limit)
         return
     if isinstance(value, int) and not isinstance(value, bool):
         if value.bit_length() > limit * 4:
             raise PayloadTooLargeError
         return
-    if not isinstance(value, (dict, list, tuple)):
-        return
+    if isinstance(value, (dict, list, tuple)):
+        _preflight_json_container(value, limit, set() if active_containers is None else active_containers)
 
-    if active_containers is None:
-        active_containers = set()
+
+def _preflight_json_string(value: str, limit: int) -> None:
+    encoded_size = 2
+    for character in value:
+        codepoint = ord(character)
+        if character in ('"', "\\") or character in "\b\f\n\r\t":
+            encoded_size += 2
+        elif codepoint < 0x20:
+            encoded_size += 6
+        else:
+            encoded_size += len(character.encode("utf-8"))
+        if encoded_size > limit:
+            raise PayloadTooLargeError
+
+
+def _preflight_json_container(value, limit: int, active_containers: set[int]) -> None:
     identity = id(value)
     if identity in active_containers:
         return
@@ -796,16 +804,21 @@ def _encode_json_bounded(value, limit: int) -> bytes:
     return bytes(encoded)
 
 
-async def _read_bounded_json(request: Request):
+def _reject_oversized_declared_length(request: Request) -> None:
     headers = getattr(request, "headers", {})
     content_length = headers.get("content-length") if headers is not None else None
-    if content_length is not None:
-        try:
-            declared_length = int(content_length)
-        except ValueError:
-            declared_length = None
-        if declared_length is not None and declared_length > MAX_INPUT_BYTES:
-            raise PayloadTooLargeError
+    if content_length is None:
+        return
+    try:
+        declared_length = int(content_length)
+    except ValueError:
+        return
+    if declared_length > MAX_INPUT_BYTES:
+        raise PayloadTooLargeError
+
+
+async def _read_bounded_json(request: Request):
+    _reject_oversized_declared_length(request)
 
     async def read():
         stream = getattr(request, "stream", None)
@@ -862,20 +875,11 @@ async def send_callback(
         return
 
     url = f"{callback_url.rstrip('/')}/{execution_id}:complete"
-    headers = {"Content-Type": "application/json"}
-    if trace_id:
-        headers["X-Trace-Id"] = trace_id
-    if dispatch_attempt:
-        headers["X-Dispatch-Attempt"] = dispatch_attempt
+    headers = _callback_headers(trace_id, dispatch_attempt)
 
     reservation = callback_reservation
     try:
-        if isinstance(result, bytes):
-            if len(result) > MAX_CALLBACK_BYTES:
-                raise PayloadTooLargeError
-            serialized_result = result
-        else:
-            serialized_result = _encode_json_bounded(result, MAX_CALLBACK_BYTES)
+        serialized_result = _serialize_callback_result(result)
         if reservation is None:
             reservation = _runtime_work.reserve_callback(len(serialized_result))
         else:
@@ -884,36 +888,60 @@ async def send_callback(
             return
 
         logger.info(f"Sending callback to {url}")
-        delays = [0.1, 0.5, 2.0]
-        for attempt in range(CALLBACK_MAX_ATTEMPTS):
-            try:
-                resp = await _runtime_work.run_callback_call(
-                    requests.post,
-                    url,
-                    data=serialized_result,
-                    headers=headers,
-                    timeout=CALLBACK_ATTEMPT_TIMEOUT_SECONDS,
-                    callback_reservation=reservation,
-                )
-                if resp.status_code < 400:
-                    logger.info("Callback sent successfully")
-                    return
-                if 400 <= resp.status_code < 500 and resp.status_code not in (408, 429):
-                    logger.warning(f"Permanent callback failure with status {resp.status_code}")
-                    return
-                logger.warning(
-                    f"Callback failed with status {resp.status_code} (attempt {attempt + 1})"
-                )
-            except Exception as e:
-                logger.warning(f"Callback error: {e} (attempt {attempt + 1})")
-            if attempt + 1 < CALLBACK_MAX_ATTEMPTS:
-                await asyncio.sleep(delays[min(attempt, len(delays) - 1)])
-
-        logger.error("Callback failed after all retries")
-        RUNTIME_CALLBACK_DELIVERY_FAILURES_TOTAL.labels(function=FUNCTION_NAME).inc()
+        if not await _post_callback_with_retries(url, serialized_result, headers, reservation):
+            logger.error("Callback failed after all retries")
+            RUNTIME_CALLBACK_DELIVERY_FAILURES_TOTAL.labels(function=FUNCTION_NAME).inc()
     finally:
         if reservation is not None:
             reservation.release()
+
+
+def _callback_headers(trace_id: str | None, dispatch_attempt: str | None) -> dict[str, str]:
+    headers = {"Content-Type": "application/json"}
+    if trace_id:
+        headers["X-Trace-Id"] = trace_id
+    if dispatch_attempt:
+        headers["X-Dispatch-Attempt"] = dispatch_attempt
+    return headers
+
+
+def _serialize_callback_result(result: dict | bytes) -> bytes:
+    if not isinstance(result, bytes):
+        return _encode_json_bounded(result, MAX_CALLBACK_BYTES)
+    if len(result) > MAX_CALLBACK_BYTES:
+        raise PayloadTooLargeError
+    return result
+
+
+async def _post_callback_with_retries(
+    url: str, serialized_result: bytes, headers: dict[str, str], reservation: CallbackReservation
+) -> bool:
+    """Deliver the callback; False only when every attempt was retryable and failed."""
+    delays = [0.1, 0.5, 2.0]
+    for attempt in range(CALLBACK_MAX_ATTEMPTS):
+        try:
+            resp = await _runtime_work.run_callback_call(
+                requests.post,
+                url,
+                data=serialized_result,
+                headers=headers,
+                timeout=CALLBACK_ATTEMPT_TIMEOUT_SECONDS,
+                callback_reservation=reservation,
+            )
+            if resp.status_code < 400:
+                logger.info("Callback sent successfully")
+                return True
+            if 400 <= resp.status_code < 500 and resp.status_code not in (408, 429):
+                logger.warning(f"Permanent callback failure with status {resp.status_code}")
+                return True
+            logger.warning(
+                f"Callback failed with status {resp.status_code} (attempt {attempt + 1})"
+            )
+        except Exception as e:
+            logger.warning(f"Callback error: {e} (attempt {attempt + 1})")
+        if attempt + 1 < CALLBACK_MAX_ATTEMPTS:
+            await asyncio.sleep(delays[min(attempt, len(delays) - 1)])
+    return False
 
 
 async def _send_callback_with_reservation(reservation: CallbackReservation, *args):
@@ -971,7 +999,7 @@ def _fail_response(
 
 
 def _schedule_callback(
-    background_tasks: BackgroundTasks,
+    background_tasks: BackgroundTasks,  # NOSONAR (python:S1172): kept so tests prove callbacks never use it
     callback_url: str,
     execution_id: str,
     trace_id: str | None,
@@ -1088,56 +1116,15 @@ async def invoke(
                     MAX_CALLBACK_BYTES, preserve_on_stop=True
                 )
             except HandlerAdmissionError as error:
-                if str(error) == "stopping":
-                    return JSONResponse(
-                        status_code=503,
-                        content={
-                            "error": {
-                                "code": "RUNTIME_STOPPING",
-                                "message": "Runtime is stopping",
-                            }
-                        },
-                        headers={"Retry-After": "1"},
-                    )
-                return JSONResponse(
-                    status_code=429,
-                    content={
-                        "error": {
-                            "code": "RUNTIME_CALLBACK_SATURATED",
-                            "message": "Runtime callback capacity exhausted",
-                        }
-                    },
-                    headers={"Retry-After": "1"},
-                )
+                return _callback_admission_rejection(error)
 
         try:
             payload = await _read_bounded_json(request)
-        except BodyReadTimeoutError:
+        except (BodyReadTimeoutError, PayloadTooLargeError) as error:
             if callback_reservation is not None:
                 callback_reservation.release()
             callback_reservation = None
-            return JSONResponse(
-                status_code=408,
-                content={
-                    "error": {
-                        "code": "RUNTIME_BODY_READ_TIMEOUT",
-                        "message": "Runtime request body read timed out",
-                    }
-                },
-            )
-        except PayloadTooLargeError:
-            if callback_reservation is not None:
-                callback_reservation.release()
-            callback_reservation = None
-            return JSONResponse(
-                status_code=413,
-                content={
-                    "error": {
-                        "code": "RUNTIME_INPUT_TOO_LARGE",
-                        "message": "Runtime input exceeds configured byte limit",
-                    }
-                },
-            )
+            return _body_rejection(error)
         except json.JSONDecodeError:
             reservation = callback_reservation
             callback_reservation = None
@@ -1159,23 +1146,7 @@ async def invoke(
         try:
             handler_execution = _runtime_work.start_handler(handler, input_data)
         except HandlerAdmissionError as error:
-            if str(error) == "stopping":
-                return JSONResponse(
-                    status_code=503,
-                    content={"error": {"code": "RUNTIME_STOPPING", "message": "Runtime is stopping"}},
-                    headers={"Retry-After": "1"},
-                )
-            RUNTIME_HANDLER_SATURATION_TOTAL.labels(function=FUNCTION_NAME).inc()
-            return JSONResponse(
-                status_code=429,
-                content={
-                    "error": {
-                        "code": "RUNTIME_HANDLER_SATURATED",
-                        "message": "Runtime handler capacity exhausted",
-                    }
-                },
-                headers={"Retry-After": "1"},
-            )
+            return _handler_admission_rejection(error)
         output = await handler_execution.wait(HANDLER_TIMEOUT_SECONDS)
 
         reservation = callback_reservation
@@ -1198,31 +1169,9 @@ async def invoke(
         if handler_execution is not None:
             handler_execution.request_cancel()
         if callback_reservation is not None:
-            cancellation_result = {
-                "success": False,
-                "output": None,
-                "error": {
-                    "code": "INVOCATION_CANCELLED",
-                    "message": "Invocation cancelled",
-                },
-            }
-            try:
-                serialized_result = _encode_json_bounded(
-                    cancellation_result, MAX_CALLBACK_BYTES
-                )
-                callback_reservation.resize(len(serialized_result))
-                _runtime_work.start_reserved_callback_task(
-                    callback_reservation,
-                    _send_callback_with_reservation,
-                    callback_reservation,
-                    callback_url,
-                    execution_id,
-                    trace_id,
-                    serialized_result,
-                    x_dispatch_attempt,
-                )
-            except (PayloadTooLargeError, HandlerAdmissionError):
-                callback_reservation.release()
+            _start_cancellation_callback(
+                callback_reservation, callback_url, execution_id, trace_id, x_dispatch_attempt
+            )
             callback_reservation = None
         raise
     except Exception:
@@ -1242,6 +1191,67 @@ async def invoke(
         elapsed = time.perf_counter() - start
         RUNTIME_INVOCATION_DURATION_SECONDS.labels(function=FUNCTION_NAME).observe(elapsed)
         RUNTIME_IN_FLIGHT.labels(function=FUNCTION_NAME).dec()
+
+
+def _error_response(status_code: int, code: str, message: str, *, retryable: bool = False) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content={"error": {"code": code, "message": message}},
+        headers={"Retry-After": "1"} if retryable else None,
+    )
+
+
+def _callback_admission_rejection(error: HandlerAdmissionError) -> JSONResponse:
+    if str(error) == "stopping":
+        return _error_response(503, "RUNTIME_STOPPING", "Runtime is stopping", retryable=True)
+    return _error_response(
+        429, "RUNTIME_CALLBACK_SATURATED", "Runtime callback capacity exhausted", retryable=True
+    )
+
+
+def _handler_admission_rejection(error: HandlerAdmissionError) -> JSONResponse:
+    if str(error) == "stopping":
+        return _error_response(503, "RUNTIME_STOPPING", "Runtime is stopping", retryable=True)
+    RUNTIME_HANDLER_SATURATION_TOTAL.labels(function=FUNCTION_NAME).inc()
+    return _error_response(
+        429, "RUNTIME_HANDLER_SATURATED", "Runtime handler capacity exhausted", retryable=True
+    )
+
+
+def _body_rejection(error: Exception) -> JSONResponse:
+    if isinstance(error, BodyReadTimeoutError):
+        return _error_response(408, "RUNTIME_BODY_READ_TIMEOUT", "Runtime request body read timed out")
+    return _error_response(413, "RUNTIME_INPUT_TOO_LARGE", "Runtime input exceeds configured byte limit")
+
+
+def _start_cancellation_callback(
+    callback_reservation: CallbackReservation,
+    callback_url: str,
+    execution_id: str,
+    trace_id: str | None,
+    dispatch_attempt: str | None,
+) -> None:
+    """Hand the reserved callback an INVOCATION_CANCELLED result, or release it."""
+    cancellation_result = {
+        "success": False,
+        "output": None,
+        "error": {"code": "INVOCATION_CANCELLED", "message": "Invocation cancelled"},
+    }
+    try:
+        serialized_result = _encode_json_bounded(cancellation_result, MAX_CALLBACK_BYTES)
+        callback_reservation.resize(len(serialized_result))
+        _runtime_work.start_reserved_callback_task(
+            callback_reservation,
+            _send_callback_with_reservation,
+            callback_reservation,
+            callback_url,
+            execution_id,
+            trace_id,
+            serialized_result,
+            dispatch_attempt,
+        )
+    except (PayloadTooLargeError, HandlerAdmissionError):
+        callback_reservation.release()
 
 
 def _build_success_response(
@@ -1274,7 +1284,7 @@ def _build_success_response(
 
     try:
         _encode_json_bounded(response_body, MAX_OUTPUT_BYTES)
-    except (PayloadTooLargeError, TypeError, ValueError):
+    except (TypeError, ValueError):  # PayloadTooLargeError is a ValueError
         error = {
             "code": "RUNTIME_OUTPUT_TOO_LARGE",
             "message": "Runtime output exceeds configured byte limit",
