@@ -169,7 +169,7 @@ public final class CallbackClient implements AutoCloseable {
             log.warn("Callback failed for execution {} (attempt {}) with status {}",
                     executionId, attempt + 1, status);
             return SendStatus.RETRYABLE;
-        } catch (InterruptedException ex) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
             log.warn("Callback interrupted for execution {} (attempt {})", executionId, attempt + 1);
             return SendStatus.INTERRUPTED;

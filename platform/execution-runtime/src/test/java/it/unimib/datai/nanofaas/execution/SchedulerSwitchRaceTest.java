@@ -423,7 +423,7 @@ class SchedulerSwitchRaceTest {
         Thread switcher = new Thread(() -> {
             try {
                 engine.switchTo(failing.id());
-            } catch (SchedulerSwitchException expected) {
+            } catch (SchedulerSwitchException _) {
                 // Expected: the injected failure refuses the switch.
             }
         });

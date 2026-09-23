@@ -27,11 +27,11 @@ class HandlerExecutorLimitsTest {
             try {
                 executor.execute(_ -> {
                     entered.countDown();
-                    try { release.await(); } catch (InterruptedException ex) { Thread.currentThread().interrupt(); }
+                    try { release.await(); } catch (InterruptedException _) { Thread.currentThread().interrupt(); }
                     return "ok";
                 },
                         new InvocationRequest(null, null));
-            } catch (Exception ignored) { }
+            } catch (Exception _) { }
         });
         assertTrue(entered.await(1, TimeUnit.SECONDS));
 

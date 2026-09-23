@@ -573,7 +573,7 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
     private ReplicaStatus awaitWithinDeadline(Entry entry, Refresh refresh, ManagedDeploymentTarget target) {
         try {
             return refresh.result().get(freshnessDeadline.toNanos(), TimeUnit.NANOSECONDS);
-        } catch (TimeoutException timedOut) {
+        } catch (TimeoutException _) {
             ReplicaStatusUnavailableException failure = new ReplicaStatusUnavailableException(
                     "Replica status for " + target.functionName() + " was not available within the "
                             + freshnessDeadline + " freshness deadline");
@@ -585,7 +585,7 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
             throw failure;
         } catch (ExecutionException failure) {
             throw rethrow(failure.getCause());
-        } catch (InterruptedException interrupted) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
             throw new ReplicaStatusUnavailableException(
                     "Interrupted while reading the replica status of " + target.functionName());

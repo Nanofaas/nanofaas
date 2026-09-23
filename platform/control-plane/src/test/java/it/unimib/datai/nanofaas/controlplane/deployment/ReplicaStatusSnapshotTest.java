@@ -713,7 +713,7 @@ class ReplicaStatusSnapshotTest {
                 if (latch.await(50, TimeUnit.MILLISECONDS)) {
                     return;
                 }
-            } catch (InterruptedException ignored) {
+            } catch (InterruptedException _) {
                 // deliberately swallowed: that is the behaviour under test
             }
         }

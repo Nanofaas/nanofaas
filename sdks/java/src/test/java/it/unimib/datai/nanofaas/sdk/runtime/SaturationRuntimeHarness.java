@@ -220,7 +220,7 @@ final class SaturationRuntimeHarness implements AutoCloseable {
                 boolean released = false;
                 while (!released) {
                     try { fixtureRelease.await(); released = true; }
-                    catch (InterruptedException ignored) { /* physical fixture deliberately outlives its waiter */ }
+                    catch (InterruptedException _) { /* physical fixture deliberately outlives its waiter */ }
                 }
                 return Map.of("result", "ok");
             } finally { retainedInput.addAndGet(-bytes.length); }
@@ -241,7 +241,7 @@ final class SaturationRuntimeHarness implements AutoCloseable {
                 }
                 case "block-until-cancelled" -> {
                     try { new CountDownLatch(1).await(); }
-                    catch (InterruptedException ex) {
+                    catch (InterruptedException _) {
                         call.cancelled.set(true);
                         observations.add("handler-cancel");
                         Thread.currentThread().interrupt();
@@ -285,7 +285,7 @@ final class SaturationRuntimeHarness implements AutoCloseable {
         if (reserveCallback) fixtureReservation = runtime.reserveCallback();
         fixtureThread = Thread.ofPlatform().start(() -> {
             try { runtime.executeFixtureHandler(); }
-            catch (TimeoutException ignored) { /* waiter ends; fixture retains the real permit */ }
+            catch (TimeoutException _) { /* waiter ends; fixture retains the real permit */ }
             catch (Throwable ex) { failures.add(ex); }
         });
         await(fixtureStarted);

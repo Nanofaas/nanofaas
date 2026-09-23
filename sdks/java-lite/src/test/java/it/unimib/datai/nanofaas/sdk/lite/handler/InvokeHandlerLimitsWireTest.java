@@ -59,7 +59,7 @@ class InvokeHandlerLimitsWireTest {
             try {
                 releaseCallback.await();
                 exchange.sendResponseHeaders(204, -1);
-            } catch (InterruptedException ex) {
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
             } finally {
                 exchange.close();
@@ -184,7 +184,7 @@ class InvokeHandlerLimitsWireTest {
         CountDownLatch release = new CountDownLatch(1);
         try (Harness harness = new Harness(_ -> {
             entered.countDown();
-            try { release.await(); } catch (InterruptedException ex) { Thread.currentThread().interrupt(); }
+            try { release.await(); } catch (InterruptedException _) { Thread.currentThread().interrupt(); }
             return Map.of("ok", true);
         }, limits)) {
             Future<HttpResponse<String>> first = harness.requests.submit(() -> harness.invoke("{\"input\":{}}"));

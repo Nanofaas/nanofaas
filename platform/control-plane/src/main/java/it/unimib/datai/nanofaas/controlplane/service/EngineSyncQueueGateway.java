@@ -166,7 +166,7 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
         try {
             enqueueOrThrow(task);
             return true;
-        } catch (SyncQueueRejectedException rejected) {
+        } catch (SyncQueueRejectedException _) {
             return false;
         }
     }

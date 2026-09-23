@@ -75,7 +75,7 @@ class ReviewAccountingRegressionTest {
             ForkJoinPool.commonPool().execute(() -> {
                 started.countDown();
                 try { release.await(10, TimeUnit.SECONDS); }
-                catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                catch (InterruptedException _) { Thread.currentThread().interrupt(); }
             });
         }
         try {

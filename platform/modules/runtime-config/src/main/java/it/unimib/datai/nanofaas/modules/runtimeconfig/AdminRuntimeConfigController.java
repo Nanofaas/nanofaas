@@ -79,7 +79,7 @@ public class AdminRuntimeConfigController {
         CompletableFuture<ResponseEntity<Object>> future;
         try {
             future = CompletableFuture.supplyAsync(() -> applyPatch(namespace, request), adminExecutor);
-        } catch (RejectedExecutionException e) {
+        } catch (RejectedExecutionException _) {
             return Mono.just(ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                     .body(Map.of(ERROR, "Admin runtime-config is busy processing another change; retry shortly")));
         }

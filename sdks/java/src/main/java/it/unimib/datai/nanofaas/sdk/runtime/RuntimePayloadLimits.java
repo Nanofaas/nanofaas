@@ -23,7 +23,7 @@ final class RuntimePayloadLimits {
         try {
             normalize(output);
             return false;
-        } catch (BoundedJson.PayloadTooLargeException ex) {
+        } catch (BoundedJson.PayloadTooLargeException _) {
             return true;
         }
     }

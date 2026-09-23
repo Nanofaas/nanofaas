@@ -71,7 +71,7 @@ class CallbackDispatcherLimitsTest {
             entered.countDown();
             try {
                 new java.util.concurrent.CountDownLatch(1).await();
-            } catch (InterruptedException ex) {
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
             }
             return false;

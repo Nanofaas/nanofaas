@@ -223,7 +223,7 @@ public final class InvokeHandler implements HttpHandler {
             callbackReservation = null;
             sendJson(exchange, 504, Map.of(
                     ERROR_KEY, Map.of("code", "HANDLER_TIMEOUT", "message", "Handler exceeded configured timeout")));
-        } catch (InterruptedException ex) {
+        } catch (InterruptedException _) {
             metrics.recordInvocation(functionName);
             metrics.recordError(functionName);
             dispatchCallback(callbackReservation, effectiveExecutionId,
@@ -364,7 +364,7 @@ public final class InvokeHandler implements HttpHandler {
         try {
             callbackBody = boundedJson.serialize(
                     it.unimib.datai.nanofaas.sdk.lite.callback.CallbackPayload.from(result), limits.maxCallbackBytes);
-        } catch (BoundedJson.PayloadTooLargeException ex) {
+        } catch (BoundedJson.PayloadTooLargeException _) {
             reservation.close();
             log.warn("Rejecting oversized callback for execution {}", executionId);
             return CallbackHandoff.PAYLOAD_TOO_LARGE;

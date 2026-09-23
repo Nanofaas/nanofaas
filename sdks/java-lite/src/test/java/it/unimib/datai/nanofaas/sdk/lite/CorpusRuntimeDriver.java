@@ -91,7 +91,7 @@ final class CorpusRuntimeDriver implements AutoCloseable {
     void fillCallback() throws Exception {
         callbacks.execute(() -> {
             callbackBlocked.countDown();
-            try { callbackRelease.await(); } catch (InterruptedException ex) { Thread.currentThread().interrupt(); }
+            try { callbackRelease.await(); } catch (InterruptedException _) { Thread.currentThread().interrupt(); }
         });
         SaturationRuntimeHarness.await(callbackBlocked);
         int bytes = 512;

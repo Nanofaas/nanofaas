@@ -165,7 +165,7 @@ class InvocationCapacityTest {
                         InvocationCapacity.Admission admission = capacity.reserve("fn", "e" + id, 1);
                         admission.publish();
                         return admission;
-                    } catch (InvocationQuotaExceededException ignored) {
+                    } catch (InvocationQuotaExceededException _) {
                         return null;
                     }
                 }));

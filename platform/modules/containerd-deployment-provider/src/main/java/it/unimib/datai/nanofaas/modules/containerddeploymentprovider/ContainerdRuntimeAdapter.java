@@ -73,10 +73,10 @@ public final class ContainerdRuntimeAdapter implements ContainerRuntimeAdapter {
         try {
             check.get(availabilityTimeout.toNanos(), TimeUnit.NANOSECONDS);
             return true;
-        } catch (InterruptedException interrupted) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
             return false;
-        } catch (ExecutionException | TimeoutException failure) {
+        } catch (ExecutionException | TimeoutException _) {
             return false;
         } finally {
             check.cancel(true);

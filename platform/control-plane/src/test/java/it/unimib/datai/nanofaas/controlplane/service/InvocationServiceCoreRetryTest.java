@@ -237,7 +237,7 @@ class InvocationServiceCoreRetryTest {
             workerStarted.countDown();
             try {
                 releaseWorker.await(5, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
             }
         });

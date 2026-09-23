@@ -225,7 +225,7 @@ public class ExecutionCompletionHandler implements InvocationDispatch, AttemptOb
             try {
                 InvocationEnqueueSupport.publishOrThrow(delegate::enqueue, metrics, task, false);
                 return true;
-            } catch (QueueFullException refusal) {
+            } catch (QueueFullException _) {
                 // publishOrThrow's own signal that the enqueue refused the task, translated back
                 // into this method's boolean contract: AttemptCoordinator distinguishes a refusal
                 // from a failure and logs it separately, and that distinction is preserved here.

@@ -131,7 +131,7 @@ class P13BoundedProxyTest {
                     output.write(chunk);
                     output.flush();
                 }
-            } catch (IOException expectedCancellation) {
+            } catch (IOException _) {
                 backendCancelled.countDown();
             }
         });
@@ -533,7 +533,7 @@ class P13BoundedProxyTest {
     private static void close(Socket socket) {
         try {
             socket.close();
-        } catch (IOException ignored) {
+        } catch (IOException _) {
         }
     }
 

@@ -25,7 +25,7 @@ class CallbackClientDeadlineTest {
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
         server.createContext("/", exchange -> {
             attempts.incrementAndGet();
-            try { release.await(); } catch (InterruptedException ex) { Thread.currentThread().interrupt(); }
+            try { release.await(); } catch (InterruptedException _) { Thread.currentThread().interrupt(); }
             exchange.close();
         });
         server.start();

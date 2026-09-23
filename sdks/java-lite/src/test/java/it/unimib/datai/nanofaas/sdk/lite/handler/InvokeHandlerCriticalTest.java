@@ -127,7 +127,7 @@ class InvokeHandlerCriticalTest {
                     try {
                         releaseCallback.await();
                         exchange.sendResponseHeaders(204, -1);
-                    } catch (InterruptedException ex) {
+                    } catch (InterruptedException _) {
                         Thread.currentThread().interrupt();
                     } finally {
                         exchange.close();

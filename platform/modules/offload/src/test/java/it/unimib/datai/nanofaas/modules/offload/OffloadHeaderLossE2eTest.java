@@ -312,7 +312,7 @@ class OffloadHeaderLossE2eTest {
             int size;
             try {
                 size = Integer.parseInt(sizeLine.split(";")[0].trim(), 16);
-            } catch (NumberFormatException ex) {
+            } catch (NumberFormatException _) {
                 throw new IOException("malformed chunk size: " + sizeLine);
             }
             if (size == 0) {

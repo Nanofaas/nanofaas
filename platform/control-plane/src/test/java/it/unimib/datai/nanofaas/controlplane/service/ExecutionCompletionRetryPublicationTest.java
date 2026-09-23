@@ -75,7 +75,7 @@ class ExecutionCompletionRetryPublicationTest {
             publishing.countDown();
             try {
                 recordExercised.await(5, TimeUnit.SECONDS);
-            } catch (InterruptedException interrupted) {
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
             }
             return true;

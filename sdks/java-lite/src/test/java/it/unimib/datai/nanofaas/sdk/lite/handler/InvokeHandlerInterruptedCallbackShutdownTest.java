@@ -33,7 +33,7 @@ class InvokeHandlerInterruptedCallbackShutdownTest {
             callbackEntered.countDown();
             try {
                 Thread.sleep(10_000); // NOSONAR (java:S2925): simulates a slow backend
-            } catch (InterruptedException ex) {
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
             } finally {
                 exchange.close();

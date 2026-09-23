@@ -208,7 +208,7 @@ public class CallbackDispatcher {
                 recordRejection(executionId);
                 return SubmitResult.SATURATED;
             }
-        } catch (BoundedJson.PayloadTooLargeException ex) {
+        } catch (BoundedJson.PayloadTooLargeException _) {
             reservation.close();
             recordRejection(executionId);
             return SubmitResult.PAYLOAD_TOO_LARGE;

@@ -466,7 +466,7 @@ public class WaitEstimator {
     private Instant cutoff(Instant now) {
         try {
             return now.minus(window);
-        } catch (DateTimeException | ArithmeticException ignored) {
+        } catch (DateTimeException | ArithmeticException _) {
             return Instant.MIN;
         }
     }

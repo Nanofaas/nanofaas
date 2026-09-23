@@ -523,7 +523,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         toStop.interrupt();
         try {
             toStop.join(TimeUnit.SECONDS.toMillis(5));
-        } catch (InterruptedException interrupted) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
         }
     }
@@ -616,7 +616,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
                 }
                 try {
                     gate.wait(TimeUnit.NANOSECONDS.toMillis(remainingNanos) + 1);
-                } catch (InterruptedException interrupted) {
+                } catch (InterruptedException _) {
                     Thread.currentThread().interrupt();
                     break;
                 }
@@ -798,7 +798,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         try {
             dispatch.submit(task);
             return false;
-        } catch (InvocationQuotaExceededException ex) {
+        } catch (InvocationQuotaExceededException _) {
             lease.release();
             log.debug("Input capacity blocked dispatch for execution {}", task.executionId());
             return true;

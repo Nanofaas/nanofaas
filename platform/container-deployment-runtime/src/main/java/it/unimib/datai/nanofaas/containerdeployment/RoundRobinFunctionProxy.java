@@ -267,21 +267,21 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
             }
             try {
                 forward(exchange, selectBackend(currentBackends));
-            } catch (InboundReadTimeoutException e) {
+            } catch (InboundReadTimeoutException _) {
                 send(exchange, 408, REQUEST_TIMEOUT);
             } catch (BodyLimitExceededException e) {
                 send(exchange, e.responseBody ? 502 : 413,
                         e.responseBody ? RESPONSE_TOO_LARGE : REQUEST_TOO_LARGE);
-            } catch (BufferCapacityExceededException e) {
+            } catch (BufferCapacityExceededException _) {
                 send(exchange, 503, BUFFER_CAPACITY_EXHAUSTED);
-            } catch (ResponseWriteTimeoutException e) {
+            } catch (ResponseWriteTimeoutException _) {
                 exchange.close();
-            } catch (InterruptedException e) {
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
                 send(exchange, 500, INTERRUPTED);
             } catch (HttpConnectTimeoutException e) {
                 send(exchange, 502, proxyError(e));
-            } catch (HttpTimeoutException e) {
+            } catch (HttpTimeoutException _) {
                 send(exchange, 504, PROXY_TIMEOUT);
             } catch (IOException | RuntimeException e) {
                 send(exchange, 502, proxyError(e));
