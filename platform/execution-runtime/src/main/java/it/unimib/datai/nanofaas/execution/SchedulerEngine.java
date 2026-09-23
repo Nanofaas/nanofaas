@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
@@ -110,9 +111,10 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     private boolean running;
     private Thread worker;
 
-    /** Per-function queue caps supplied by the most recent admission attempt; guarded by
-     * {@link #gate}, cleared by {@link #removeAllFor}. */
-    private final Map<String, Integer> queueCaps = new HashMap<>();
+    /** Per-function queue caps supplied by the most recent admission attempt. Written only under
+     * {@link #gate} (set by {@link #enqueue(PendingEntry, int)}, cleared by {@link #removeAllFor});
+     * concurrent so the advisory {@link #isQueueFull} can read it without the gate. */
+    private final Map<String, Integer> queueCaps = new ConcurrentHashMap<>();
 
     /** Function names whose removal drained the pending index but may still hold a physically
      * active lease; reconciled at the end of every {@link #pass()}. Guarded by {@link #gate}. */
@@ -391,12 +393,12 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     }
 
     /** Advisory: whether {@code functionName} is at the cap its last admission attempt supplied.
-     * {@code false} for a name never admitted, or removed since. */
+     * {@code false} for a name never admitted, or removed since. Runs on every invocation's
+     * precheck, so it never takes the gate: both reads are concurrent-safe, and a momentarily
+     * stale answer is fine because {@link #enqueue(PendingEntry, int)} stays authoritative. */
     public boolean isQueueFull(String functionName) {
-        synchronized (gate) {
-            Integer cap = queueCaps.get(functionName);
-            return cap != null && store.reservedCount(functionName) >= cap;
-        }
+        Integer cap = queueCaps.get(functionName);
+        return cap != null && store.reservedCount(functionName) >= cap;
     }
 
     /**

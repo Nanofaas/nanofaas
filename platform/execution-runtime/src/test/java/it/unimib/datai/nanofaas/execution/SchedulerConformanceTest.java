@@ -459,6 +459,31 @@ class SchedulerConformanceTest {
         assertThat(f.engine.enqueue(candidate("c", f.echo, 2), 1)).isTrue();
     }
 
+    @ParameterizedTest
+    @MethodSource("strategies")
+    void advisoryQueueFullCheckDoesNotWaitForTheEngineGate(SchedulingStrategy strategy) throws Exception {
+        Fixture f = new Fixture(strategy);
+        var insideGate = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        // readiness runs under the gate during selection: parking it there holds the gate.
+        when(f.readiness.runnable(f.echo)).thenAnswer(invocation -> {
+            insideGate.countDown();
+            release.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            return false;
+        });
+        assertThat(f.engine.enqueue(candidate("a", f.echo, 0), 1)).isTrue();
+        Thread worker = new Thread(f.engine::tick);
+        worker.start();
+        try {
+            assertThat(insideGate.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            var check = java.util.concurrent.CompletableFuture.supplyAsync(() -> f.engine.isQueueFull("echo"));
+            assertThat(check.get(1, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        } finally {
+            release.countDown();
+            worker.join(5_000);
+        }
+    }
+
     // ------------------------------------------------------------------
     // Generation validation during admission
     // ------------------------------------------------------------------
