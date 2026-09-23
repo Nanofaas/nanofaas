@@ -415,10 +415,10 @@ class SchedulerModelTest {
             assertThat(expiredIds).as("op %d: %s live and expired", op, id).doesNotContain(id);
             assertThat(completedStateById).as("op %d: %s live and completed", op, id)
                     .doesNotContainKey(id);
-            ExecutionRecord record = executions.getOrNull(id);
-            assertThat(record).as("op %d: %s is live but its execution record was settled", op, id)
+            ExecutionRecord executionRecord = executions.getOrNull(id);
+            assertThat(executionRecord).as("op %d: %s is live but its execution record was settled", op, id)
                     .isNotNull();
-            assertThat(record.task().attempt())
+            assertThat(executionRecord.task().attempt())
                     .as("op %d: %s is live on a different attempt than the model's attempts map "
                             + "says", op, id)
                     .isEqualTo(attemptById.get(id));

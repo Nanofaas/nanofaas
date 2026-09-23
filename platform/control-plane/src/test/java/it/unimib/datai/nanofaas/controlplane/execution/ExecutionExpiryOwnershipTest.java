@@ -44,10 +44,10 @@ class ExecutionExpiryOwnershipTest {
         try (var context = context()) {
             var store = context.getBean(ExecutionStore.class);
             var gauge = context.getBean(MeterRegistry.class).get("execution_store_size").gauge();
-            var record = record("completed");
-            store.put(record);
-            record.markSuccess("ok");
-            store.settle(record);
+            var executionRecord = newRecord("completed");
+            store.put(executionRecord);
+            executionRecord.markSuccess("ok");
+            store.settle(executionRecord);
             // Reading the gauge does not run cleanUp(), unlike store.size().
             await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(gauge.value()).isZero());
         }
@@ -79,12 +79,12 @@ class ExecutionExpiryOwnershipTest {
             var store = context.getBean(ExecutionStore.class);
             var expired = new ConcurrentLinkedQueue<ExecutionRecord>();
             store.onAdministrativeExpiry(expired::add);
-            store.put(record("abandoned"));
+            store.put(newRecord("abandoned"));
             await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(expired).hasSize(1));
         }
     }
 
-    private ExecutionRecord record(String id) {
+    private ExecutionRecord newRecord(String id) {
         var spec = new FunctionSpec("fn", "img", List.of(), Map.of(), null, 1000, 1, 10, 0,
                 null, ExecutionMode.LOCAL, RuntimeMode.HTTP, null, null, null);
         var task = new InvocationTask(id, "fn", spec, new InvocationRequest("payload", Map.of()),

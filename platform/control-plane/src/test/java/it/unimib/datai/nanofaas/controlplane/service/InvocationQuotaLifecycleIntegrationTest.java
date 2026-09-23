@@ -46,20 +46,20 @@ class InvocationQuotaLifecycleIntegrationTest {
 
         var lookup = fixture.factory.createOrReuseExecution(
                 "fn", spec(), new InvocationRequest(source, Map.of()), null, "trace", InvocationKind.SYNC);
-        ExecutionRecord record = lookup.executionRecord();
+        ExecutionRecord executionRecord = lookup.executionRecord();
         long canonicalBytes = fixture.capacity.inputReservedGlobally();
 
         assertThat(fixture.capacity.executionReservedGlobally()).isOne();
         assertThat(canonicalBytes).isPositive();
-        assertThat(record.task().request().input()).isInstanceOf(Object[].class).isNotSameAs(source);
+        assertThat(executionRecord.task().request().input()).isInstanceOf(Object[].class).isNotSameAs(source);
 
-        ExecutionRecord.PhysicalInput physical = record.openPhysicalInput(record.task());
+        ExecutionRecord.PhysicalInput physical = executionRecord.openPhysicalInput(executionRecord.task());
         assertThat(physical.task().request().input()).isInstanceOf(Map.class).isNotSameAs(source);
         assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
         assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
 
-        record.markSuccess("ok");
-        fixture.store.settle(record);
+        executionRecord.markSuccess("ok");
+        fixture.store.settle(executionRecord);
         assertThat(fixture.capacity.executionReservedGlobally()).isZero();
         assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
         assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
@@ -85,18 +85,18 @@ class InvocationQuotaLifecycleIntegrationTest {
         assertThat(fixture.capacity.executionReservedGlobally()).isOne();
         assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(retained);
 
-        ExecutionRecord record = first.executionRecord();
-        var firstAttempt = record.openPhysicalInput(record.task());
+        ExecutionRecord executionRecord = first.executionRecord();
+        var firstAttempt = executionRecord.openPhysicalInput(executionRecord.task());
         firstAttempt.close();
-        var retryAttempt = record.openPhysicalInput(record.task());
+        var retryAttempt = executionRecord.openPhysicalInput(executionRecord.task());
         assertThat(fixture.capacity.executionReservedGlobally()).isOne();
         assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(retained);
         assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(retained);
         retryAttempt.close();
         assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isZero();
 
-        record.markSuccess("ok");
-        fixture.store.settle(record);
+        executionRecord.markSuccess("ok");
+        fixture.store.settle(executionRecord);
         assertThat(fixture.capacity.inputReservedGlobally()).isZero();
     }
 
@@ -156,15 +156,15 @@ class InvocationQuotaLifecycleIntegrationTest {
         var lookup = fixture.factory.createOrReuseExecution(
                 "fn", spec(), new InvocationRequest(new ArrayList<>(java.util.List.of("x")), Map.of()),
                 null, null, InvocationKind.SYNC);
-        ExecutionRecord record = lookup.executionRecord();
+        ExecutionRecord executionRecord = lookup.executionRecord();
         long canonicalBytes = fixture.capacity.inputReservedGlobally();
 
-        handler.dispatchDirect(record.task());
+        handler.dispatchDirect(executionRecord.task());
         assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
         assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
 
-        record.markTimeout();
-        fixture.store.settle(record);
+        executionRecord.markTimeout();
+        fixture.store.settle(executionRecord);
         assertThat(fixture.capacity.executionReservedGlobally()).isZero();
         assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
         assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
@@ -193,15 +193,15 @@ class InvocationQuotaLifecycleIntegrationTest {
         var lookup = fixture.factory.createOrReuseExecution(
                 "fn", spec(), new InvocationRequest(new ArrayList<>(java.util.List.of("x")), Map.of()),
                 null, null, InvocationKind.SYNC);
-        ExecutionRecord record = lookup.executionRecord();
+        ExecutionRecord executionRecord = lookup.executionRecord();
         long canonicalBytes = fixture.capacity.inputReservedGlobally();
 
         coordinator.invoke(lookup, spec(), 10_000, OffloadContext.none());
         assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
         assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
 
-        record.markTimeout();
-        fixture.store.settle(record);
+        executionRecord.markTimeout();
+        fixture.store.settle(executionRecord);
         assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
         assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
 
@@ -305,13 +305,13 @@ class InvocationQuotaLifecycleIntegrationTest {
         var lookup = fixture.factory.createOrReuseExecution(
                 "fn", spec(), new InvocationRequest(new ArrayList<>(java.util.List.of("queued")), Map.of()),
                 null, null, InvocationKind.SYNC);
-        ExecutionRecord record = lookup.executionRecord();
-        var queuedTask = record.prepareForQueue();
+        ExecutionRecord executionRecord = lookup.executionRecord();
+        var queuedTask = executionRecord.prepareForQueue();
         long retained = fixture.capacity.inputReservedGlobally();
 
-        record.markTimeout();
-        fixture.store.settle(record);
-        assertThat(fixture.store.getOrNull(record.executionId())).isNull();
+        executionRecord.markTimeout();
+        fixture.store.settle(executionRecord);
+        assertThat(fixture.store.getOrNull(executionRecord.executionId())).isNull();
         assertThat(fixture.capacity.executionReservedGlobally()).isZero();
         assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(retained);
 

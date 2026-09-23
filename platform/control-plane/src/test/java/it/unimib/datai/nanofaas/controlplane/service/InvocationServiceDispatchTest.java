@@ -351,10 +351,10 @@ class InvocationServiceDispatchTest {
         org.mockito.Mockito.lenient().when(enqueuer.queueStrategy()).thenReturn(InvocationEnqueuer.QueueStrategy.FUNCTION_QUEUE);
         doAnswer(invocation -> {
             InvocationTask task = invocation.getArgument(0);
-            ExecutionRecord record = executionStore.getOrNull(task.executionId());
-            if (record != null) {
-                ownership.attach(record);
-        record.markRunning();
+            ExecutionRecord executionRecord = executionStore.getOrNull(task.executionId());
+            if (executionRecord != null) {
+                ownership.attach(executionRecord);
+        executionRecord.markRunning();
             }
             completionHandler.completeExecution(
                     task.executionId(),
@@ -407,10 +407,10 @@ class InvocationServiceDispatchTest {
         when(syncQueueGateway.enabled()).thenReturn(true);
         doAnswer(invocation -> {
             InvocationTask task = invocation.getArgument(0);
-            ExecutionRecord record = executionStore.getOrNull(task.executionId());
-            if (record != null) {
-                ownership.attach(record);
-        record.markRunning();
+            ExecutionRecord executionRecord = executionStore.getOrNull(task.executionId());
+            if (executionRecord != null) {
+                ownership.attach(executionRecord);
+        executionRecord.markRunning();
             }
             completionHandler.completeExecution(
                     task.executionId(),

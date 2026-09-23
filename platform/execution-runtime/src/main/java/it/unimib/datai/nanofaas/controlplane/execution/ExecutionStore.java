@@ -208,7 +208,7 @@ public class ExecutionStore implements QueueLifecycle {
      */
     public Set<String> inFlightExecutionIds(String functionName) {
         return inFlight.asMap().values().stream()
-                .filter(record -> functionName.equals(record.task().functionName()))
+                .filter(executionRecord -> functionName.equals(executionRecord.task().functionName()))
                 .map(ExecutionRecord::executionId)
                 .collect(Collectors.toUnmodifiableSet());
     }
@@ -255,25 +255,25 @@ public class ExecutionStore implements QueueLifecycle {
     private void concludeQueued(InvocationTask task,
                                 ErrorInfo error) {
         task.releaseQueuedInput();
-        ExecutionRecord record = getOrNull(task.executionId());
-        if (record == null) return;
-        synchronized (record) {
-            if (record.task().attempt() != task.attempt()) return;
-            if (!record.isTerminal()) {
-                if (error == null) record.markTimeout(new ErrorInfo(
+        ExecutionRecord executionRecord = getOrNull(task.executionId());
+        if (executionRecord == null) return;
+        synchronized (executionRecord) {
+            if (executionRecord.task().attempt() != task.attempt()) return;
+            if (!executionRecord.isTerminal()) {
+                if (error == null) executionRecord.markTimeout(new ErrorInfo(
                         "QUEUE_TIMEOUT", "Queue wait exceeded"));
-                else record.markError(error);
+                else executionRecord.markError(error);
             }
         }
         // The attached lifecycle protects the key, publishes the canonical answer,
         // archives, releases logical resources and notifies observers exactly once.
-        settle(record);
+        settle(executionRecord);
     }
 
     @Override
     public void onExecutionGone(java.util.function.BiConsumer<String, String> listener) {
         java.util.function.Consumer<ExecutionRecord> notification =
-                record -> listener.accept(record.task().functionName(), record.executionId());
+                executionRecord -> listener.accept(executionRecord.task().functionName(), executionRecord.executionId());
         onTerminal(notification);
         onAdministrativeExpiry(notification);
     }

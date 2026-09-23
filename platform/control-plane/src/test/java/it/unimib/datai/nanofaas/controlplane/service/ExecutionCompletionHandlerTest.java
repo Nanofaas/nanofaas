@@ -442,11 +442,11 @@ class ExecutionCompletionHandlerTest {
             var task = new InvocationTask("direct-unowned", "testFunc", testSpec,
                     new InvocationRequest("payload", Map.of()), null, null, Instant.now(), 1,
                     InvocationKind.SYNC);
-            var record = new ExecutionRecord(task.executionId(), task);
-            executionStore.put(record);
+            var executionRecord = new ExecutionRecord(task.executionId(), task);
+            executionStore.put(executionRecord);
             completionHandler.completeExecution(task.executionId(),
                     DispatchResult.warm(InvocationResult.success("ok")));
-            assertThat(record.completion().join().success()).isTrue();
+            assertThat(executionRecord.completion().join().success()).isTrue();
             assertThat(capacity.inFlight("testFunc")).isEqualTo(1);
         } finally {
             held.release();

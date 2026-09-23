@@ -76,12 +76,12 @@ public final class ReactiveInvocationCoordinator {
     private WaiterCapacity.Waiter reserveWaiter(
             InvocationExecutionFactory.ExecutionLookup lookup, FunctionSpec spec) {
         try {
-            ExecutionRecord record = lookup.executionRecord();
-            if (record != null) {
-                if (record.currentGeneration() != null) {
-                    return waiterCapacity.reserve(record.currentGeneration(), record.executionId());
+            ExecutionRecord executionRecord = lookup.executionRecord();
+            if (executionRecord != null) {
+                if (executionRecord.currentGeneration() != null) {
+                    return waiterCapacity.reserve(executionRecord.currentGeneration(), executionRecord.executionId());
                 }
-                return waiterCapacity.reserve(spec.name(), record.executionId());
+                return waiterCapacity.reserve(spec.name(), executionRecord.executionId());
             }
             return waiterCapacity.reserve(spec.name(), lookup.settledExecutionId());
         } catch (RuntimeException | Error failure) {

@@ -119,9 +119,9 @@ class OutcomeWeightBudgetTest {
         InvocationTask task = new InvocationTask(id, "fn", spec,
                 new InvocationRequest("p", Map.of()), null, null, Instant.now(), 1,
                 InvocationKind.ASYNC);
-        ExecutionRecord record = new ExecutionRecord(id, task);
-        store.put(record);
-        record.markSuccess(output);
-        store.settle(record);
+        ExecutionRecord executionRecord = new ExecutionRecord(id, task);
+        store.put(executionRecord);
+        executionRecord.markSuccess(output);
+        store.settle(executionRecord);
     }
 }

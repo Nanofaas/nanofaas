@@ -105,38 +105,38 @@ class SojournRetryTimeoutMixTest {
     private void recordFast(ExecutionStore store, ExecutionCompletionHandler handler,
                             SteppedClock clock, FunctionSpec fn, int count, long serviceMs, long waitMs) {
         for (int i = 0; i < count; i++) {
-            ExecutionRecord record = newRecord(store, fn, clock);
+            ExecutionRecord executionRecord = newRecord(store, fn, clock);
             clock.advanceMillis(waitMs);
-            record.markRunning();
+            executionRecord.markRunning();
             clock.advanceMillis(serviceMs);
-            handler.completeExecution(record.executionId(), InvocationResult.success("ok"));
+            handler.completeExecution(executionRecord.executionId(), InvocationResult.success("ok"));
         }
     }
 
     private void recordRetried(ExecutionStore store, ExecutionCompletionHandler handler,
                                SteppedClock clock, FunctionSpec fn, int count, long serviceMs, long waitMs) {
         for (int i = 0; i < count; i++) {
-            ExecutionRecord record = newRecord(store, fn, clock);
+            ExecutionRecord executionRecord = newRecord(store, fn, clock);
             clock.advanceMillis(waitMs);
-            record.markRunning();
+            executionRecord.markRunning();
             clock.advanceMillis(serviceMs);
-            handler.completeExecution(record.executionId(), InvocationResult.error("E", "attempt 1"));
+            handler.completeExecution(executionRecord.executionId(), InvocationResult.error("E", "attempt 1"));
             clock.advanceMillis(waitMs);
-            record.markRunning();
+            executionRecord.markRunning();
             clock.advanceMillis(serviceMs);
-            handler.completeExecution(record.executionId(), InvocationResult.success("ok"));
+            handler.completeExecution(executionRecord.executionId(), InvocationResult.success("ok"));
         }
     }
 
     private void recordTimeout(ExecutionStore store, ExecutionCompletionHandler handler,
                                SteppedClock clock, FunctionSpec fn, int count, long totalMs) {
         for (int i = 0; i < count; i++) {
-            ExecutionRecord record = newRecord(store, fn, clock);
-            record.markRunning();
+            ExecutionRecord executionRecord = newRecord(store, fn, clock);
+            executionRecord.markRunning();
             clock.advanceMillis(totalMs);
-            record.markTimeout();
+            executionRecord.markTimeout();
             // The real dispatch shows up late; the total is recorded once, the service never.
-            handler.completeExecution(record.executionId(), InvocationResult.success("late"));
+            handler.completeExecution(executionRecord.executionId(), InvocationResult.success("late"));
         }
     }
 
@@ -148,9 +148,9 @@ class SojournRetryTimeoutMixTest {
                 id, fn.name(), fn,
                 new InvocationRequest("payload", null),
                 null, null, clock.instant(), 1, InvocationKind.SYNC);
-        ExecutionRecord record = new ExecutionRecord(id, task, clock.source());
-        store.put(record);
-        return record;
+        ExecutionRecord executionRecord = new ExecutionRecord(id, task, clock.source());
+        store.put(executionRecord);
+        return executionRecord;
     }
 
     private void assertMode(String functionName, ConcurrencyControlMode mode) {

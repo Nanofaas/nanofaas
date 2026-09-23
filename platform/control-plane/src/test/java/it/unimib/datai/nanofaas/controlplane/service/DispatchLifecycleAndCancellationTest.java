@@ -113,11 +113,11 @@ class DispatchLifecycleAndCancellationTest {
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, null, router, metrics);
 
         InvocationTask task = task("e1", spec("fn", 1));
-        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
-        store.put(record);
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        store.put(executionRecord);
         handler.dispatchDirect(task);
-        assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
-        assertThat(record.completion()).isDone();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
+        assertThat(executionRecord.completion()).isDone();
     }
 
     @Test
@@ -153,19 +153,19 @@ class DispatchLifecycleAndCancellationTest {
         InvocationTask task = new InvocationTask("e1", "fn", spec,
                 new InvocationRequest("payload", Map.of()), null, null, Instant.now(), 1,
                 InvocationKind.SYNC);
-        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
-        store.put(record);
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        store.put(executionRecord);
 
         try {
             handler.dispatchDirect(task);
-            assertThat(record.state()).isEqualTo(ExecutionState.RUNNING);
+            assertThat(executionRecord.state()).isEqualTo(ExecutionState.RUNNING);
             assertThat(dispatches.get()).isEqualTo(1);
 
             // The attempt deadline fires and the retry policy runs, but the retry must not run
             // a second handler while the first is still going: the lease is held, so the retry
             // cannot acquire a fresh slot (acceptance "no path bypasses the cap").
             await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
-                    assertThat(record.completion()).isDone());
+                    assertThat(executionRecord.completion()).isDone());
             assertThat(dispatches.get())
                     .as("a retry must not run a second handler while the first still runs")
                     .isEqualTo(1);
@@ -193,20 +193,20 @@ class DispatchLifecycleAndCancellationTest {
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, null, router, metrics);
 
         InvocationTask task = task("exec-stuck", externalSpec("fn", "http://unused/invoke", 10_000));
-        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
-        store.put(record);
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        store.put(executionRecord);
         handler.dispatchDirect(task);
-        assertThat(record.state()).isEqualTo(ExecutionState.RUNNING);
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.RUNNING);
 
         // The administrative expiry must cancel the real transport handle (the raw future)
         // and conclude the waiter. Disposing local HTTP resources does not promise
         // that the remote function has stopped.
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
             assertThat(store.outcomeOf("exec-stuck")).isNotNull();
-            assertThat(record.completion()).isDone();
+            assertThat(executionRecord.completion()).isDone();
         });
         assertThat(neverCompletes).isCancelled();
-        assertThat(record.completion().join().success()).isFalse();
+        assertThat(executionRecord.completion().join().success()).isFalse();
     }
 
     @Test
@@ -247,8 +247,8 @@ class DispatchLifecycleAndCancellationTest {
                     new DispatcherRouter(new LocalDispatcher(), external), metrics);
 
             InvocationTask task = task("exec-http", externalSpec("fn", endpoint, 10_000));
-            ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
-            store.put(record);
+            ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+            store.put(executionRecord);
             handler.dispatchDirect(task);
 
             await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
@@ -275,14 +275,14 @@ class DispatchLifecycleAndCancellationTest {
                 new DispatcherRouter(local, null), metrics);
 
         InvocationTask task = task("exec-double", spec("fn", 1));
-        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
-        store.put(record);
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        store.put(executionRecord);
         handler.dispatchDirect(task);
         backend.complete(DispatchResult.warm(InvocationResult.success("ok")));
         handler.completeExecution("exec-double", DispatchResult.warm(InvocationResult.success("late")));
         handler.completeExecution("exec-double", DispatchResult.warm(InvocationResult.success("later")));
-        assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
-        assertThat(record.completion().join().success()).isTrue();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
+        assertThat(executionRecord.completion().join().success()).isTrue();
     }
 
     @Test

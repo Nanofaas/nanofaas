@@ -65,10 +65,10 @@ class CompletionMetricsGenerationFenceRegressionTest {
         metrics.registerFunction("fn");
 
         InvocationTask task = task("exec-old", spec);
-        ExecutionRecord record = new ExecutionRecord("exec-old", task);
-        store.put(record);
+        ExecutionRecord executionRecord = new ExecutionRecord("exec-old", task);
+        store.put(executionRecord);
         handler.dispatchDirect(task);
-        assertThat(record.state()).isEqualTo(ExecutionState.RUNNING);
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.RUNNING);
 
         // Remove and re-register the same name while the old attempt's dispatch is still
         // pending: same public tag, a new internal generation.
@@ -81,7 +81,7 @@ class CompletionMetricsGenerationFenceRegressionTest {
         backend.complete(DispatchResult.warm(InvocationResult.success("late")));
 
         // The execution itself still concludes normally...
-        assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
         // ...but the stale completion must not attribute to the new generation's counters.
         assertThat(meterRegistry.get("function_success_total").tag("function", "fn")
                         .counter().count())

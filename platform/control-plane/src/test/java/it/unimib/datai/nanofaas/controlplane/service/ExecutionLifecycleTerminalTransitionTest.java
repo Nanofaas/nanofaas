@@ -199,7 +199,7 @@ class ExecutionLifecycleTerminalTransitionTest {
         // here must not re-claim the key.
         CountDownLatch observerPaused = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
-        store.onTerminal(record -> {
+        store.onTerminal(executionRecord -> {
             observerPaused.countDown();
             try {
                 if (!release.await(5, TimeUnit.SECONDS)) {
@@ -255,10 +255,10 @@ class ExecutionLifecycleTerminalTransitionTest {
     void aThrowingTerminalListenerDoesNotInterruptTheTransitionOrCleanup() {
         rebuild(ExecutionStoreProperties.of(Duration.ofMinutes(5), Duration.ofMinutes(30), Duration.ofSeconds(30)));
         AtomicBoolean secondObserverRan = new AtomicBoolean();
-        store.onTerminal(record -> {
+        store.onTerminal(executionRecord -> {
             throw new RuntimeException("metric boom");
         });
-        store.onTerminal(record -> secondObserverRan.set(true));
+        store.onTerminal(executionRecord -> secondObserverRan.set(true));
 
         InvocationExecutionFactory.ExecutionLookup first = admitAndDispatch("boom");
         String executionId = first.executionRecord().executionId();
@@ -279,19 +279,19 @@ class ExecutionLifecycleTerminalTransitionTest {
 
         InvocationExecutionFactory.ExecutionLookup first = admitAndDispatch("twice");
         String executionId = first.executionRecord().executionId();
-        ExecutionRecord record = first.executionRecord();
+        ExecutionRecord executionRecord = first.executionRecord();
         inFlight.get(executionId).complete(DispatchResult.warm(InvocationResult.success("first")));
 
         // A duplicate completion - a late callback, a second delivery, a retry - must not
         // overwrite the settled result or start a second backend.
         completionHandler.completeExecution(executionId, DispatchResult.warm(InvocationResult.success("second")));
 
-        assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
         assertThat(store.outcomeOf(executionId).output()).isEqualTo("first");
         assertThat(keys.acquireOrGet("fn", "twice").terminal()).isTrue();
         assertThat(dispatches.get()).isEqualTo(1);
-        assertThat(record.completion().isDone()).isTrue();
-        assertThat(record.completion().join().output()).isEqualTo("first");
+        assertThat(executionRecord.completion().isDone()).isTrue();
+        assertThat(executionRecord.completion().join().output()).isEqualTo("first");
     }
 
     @Test
@@ -319,13 +319,13 @@ class ExecutionLifecycleTerminalTransitionTest {
 
         InvocationExecutionFactory.ExecutionLookup first = admitAndDispatch("expire");
         String executionId = first.executionRecord().executionId();
-        ExecutionRecord record = first.executionRecord();
+        ExecutionRecord executionRecord = first.executionRecord();
 
         // The administrative expiry concludes the record (the published key co-expires with
         // it, as designed - key and execution die together when the dispatch never returns).
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
-            assertThat(record.isTerminal()).isTrue();
-            assertThat(record.completion().isDone()).isTrue();
+            assertThat(executionRecord.isTerminal()).isTrue();
+            assertThat(executionRecord.completion().isDone()).isTrue();
             assertThat(store.getOrNull(executionId)).isNull();
         });
 

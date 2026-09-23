@@ -85,9 +85,9 @@ class InvocationServiceCoreRetryTest {
 
     private ExecutionRecord seedRecord(FunctionSpec spec, String executionId) {
         InvocationTask task = task(executionId, spec);
-        ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
-        store.put(record);
-        return record;
+        ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+        store.put(executionRecord);
+        return executionRecord;
     }
 
     /** A dispatcher whose dispatchLocal fails {@code failuresBeforeSuccess} times, then succeeds. */
@@ -119,13 +119,13 @@ class InvocationServiceCoreRetryTest {
         AtomicInteger attempts = new AtomicInteger();
         ExecutionCompletionHandler handler = newHandlerWithRealRetryEnqueuer(dispatcherFailingThenSucceeding(0, attempts));
         FunctionSpec spec = spec(0);
-        ExecutionRecord record = seedRecord(spec, "exec-0-retry-success");
+        ExecutionRecord executionRecord = seedRecord(spec, "exec-0-retry-success");
 
-        handler.dispatch(record.task());
+        handler.dispatch(executionRecord.task());
 
-        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> assertThat(record.completion().isDone()).isTrue());
-        assertThat(record.completion().join().success()).isTrue();
-        assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> assertThat(executionRecord.completion().isDone()).isTrue());
+        assertThat(executionRecord.completion().join().success()).isTrue();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
         assertThat(attempts.get()).isEqualTo(1);
     }
 
@@ -134,13 +134,13 @@ class InvocationServiceCoreRetryTest {
         AtomicInteger attempts = new AtomicInteger();
         ExecutionCompletionHandler handler = newHandlerWithRealRetryEnqueuer(alwaysFailingDispatcher(attempts));
         FunctionSpec spec = spec(0);
-        ExecutionRecord record = seedRecord(spec, "exec-0-retry-failure");
+        ExecutionRecord executionRecord = seedRecord(spec, "exec-0-retry-failure");
 
-        handler.dispatch(record.task());
+        handler.dispatch(executionRecord.task());
 
-        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> assertThat(record.completion().isDone()).isTrue());
-        assertThat(record.completion().join().success()).isFalse();
-        assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> assertThat(executionRecord.completion().isDone()).isTrue());
+        assertThat(executionRecord.completion().join().success()).isFalse();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
         assertThat(attempts.get()).isEqualTo(1);
     }
 
@@ -149,13 +149,13 @@ class InvocationServiceCoreRetryTest {
         AtomicInteger attempts = new AtomicInteger();
         ExecutionCompletionHandler handler = newHandlerWithRealRetryEnqueuer(dispatcherFailingThenSucceeding(1, attempts));
         FunctionSpec spec = spec(1);
-        ExecutionRecord record = seedRecord(spec, "exec-1-retry-success");
+        ExecutionRecord executionRecord = seedRecord(spec, "exec-1-retry-success");
 
-        handler.dispatch(record.task());
+        handler.dispatch(executionRecord.task());
 
-        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> assertThat(record.completion().isDone()).isTrue());
-        assertThat(record.completion().join().success()).isTrue();
-        assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> assertThat(executionRecord.completion().isDone()).isTrue());
+        assertThat(executionRecord.completion().join().success()).isTrue();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
         assertThat(attempts.get()).isEqualTo(2); // 1 initial + 1 retry
     }
 
@@ -164,13 +164,13 @@ class InvocationServiceCoreRetryTest {
         AtomicInteger attempts = new AtomicInteger();
         ExecutionCompletionHandler handler = newHandlerWithRealRetryEnqueuer(alwaysFailingDispatcher(attempts));
         FunctionSpec spec = spec(1);
-        ExecutionRecord record = seedRecord(spec, "exec-1-retry-failure");
+        ExecutionRecord executionRecord = seedRecord(spec, "exec-1-retry-failure");
 
-        handler.dispatch(record.task());
+        handler.dispatch(executionRecord.task());
 
-        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> assertThat(record.completion().isDone()).isTrue());
-        assertThat(record.completion().join().success()).isFalse();
-        assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> assertThat(executionRecord.completion().isDone()).isTrue());
+        assertThat(executionRecord.completion().join().success()).isFalse();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
         assertThat(attempts.get()).isEqualTo(2); // 1 initial + 1 retry, then exhausted
     }
 
@@ -179,13 +179,13 @@ class InvocationServiceCoreRetryTest {
         AtomicInteger attempts = new AtomicInteger();
         ExecutionCompletionHandler handler = newHandlerWithRealRetryEnqueuer(dispatcherFailingThenSucceeding(3, attempts));
         FunctionSpec spec = spec(3);
-        ExecutionRecord record = seedRecord(spec, "exec-3-retry-success");
+        ExecutionRecord executionRecord = seedRecord(spec, "exec-3-retry-success");
 
-        handler.dispatch(record.task());
+        handler.dispatch(executionRecord.task());
 
-        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> assertThat(record.completion().isDone()).isTrue());
-        assertThat(record.completion().join().success()).isTrue();
-        assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> assertThat(executionRecord.completion().isDone()).isTrue());
+        assertThat(executionRecord.completion().join().success()).isTrue();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
         assertThat(attempts.get()).isEqualTo(4); // 1 initial + 3 retries
     }
 
@@ -194,13 +194,13 @@ class InvocationServiceCoreRetryTest {
         AtomicInteger attempts = new AtomicInteger();
         ExecutionCompletionHandler handler = newHandlerWithRealRetryEnqueuer(alwaysFailingDispatcher(attempts));
         FunctionSpec spec = spec(3);
-        ExecutionRecord record = seedRecord(spec, "exec-3-retry-failure");
+        ExecutionRecord executionRecord = seedRecord(spec, "exec-3-retry-failure");
 
-        handler.dispatch(record.task());
+        handler.dispatch(executionRecord.task());
 
-        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> assertThat(record.completion().isDone()).isTrue());
-        assertThat(record.completion().join().success()).isFalse();
-        assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> assertThat(executionRecord.completion().isDone()).isTrue());
+        assertThat(executionRecord.completion().join().success()).isFalse();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
         // Give any wrongly-scheduled extra attempt a chance to show up before asserting the bound.
         await().pollDelay(200, TimeUnit.MILLISECONDS).atMost(1, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertThat(attempts.get()).isEqualTo(4)); // 1 initial + 3 retries, never more
@@ -211,16 +211,16 @@ class InvocationServiceCoreRetryTest {
         AtomicInteger attempts = new AtomicInteger();
         ExecutionCompletionHandler handler = newHandlerWithRealRetryEnqueuer(alwaysFailingDispatcher(attempts));
         FunctionSpec spec = spec(3);
-        ExecutionRecord record = seedRecord(spec, "exec-executor-shutdown");
+        ExecutionRecord executionRecord = seedRecord(spec, "exec-executor-shutdown");
 
         retryExecutor.shutdown(); // simulate the pool being unavailable before the first failure
 
-        handler.dispatch(record.task());
+        handler.dispatch(executionRecord.task());
 
-        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> assertThat(record.completion().isDone()).isTrue());
-        assertThat(record.completion().join().success()).isFalse();
-        assertThat(record.state()).isNotEqualTo(ExecutionState.QUEUED);
-        assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> assertThat(executionRecord.completion().isDone()).isTrue());
+        assertThat(executionRecord.completion().join().success()).isFalse();
+        assertThat(executionRecord.state()).isNotEqualTo(ExecutionState.QUEUED);
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
         assertThat(attempts.get()).isEqualTo(1); // only the initial attempt ran; the retry never got scheduled
     }
 
@@ -249,14 +249,14 @@ class InvocationServiceCoreRetryTest {
         ExecutionCompletionHandler handler = handlerBackedBy(store, router, retryExecutor);
 
         FunctionSpec spec = spec(3);
-        ExecutionRecord record = seedRecord(spec, "exec-pool-saturated");
+        ExecutionRecord executionRecord = seedRecord(spec, "exec-pool-saturated");
 
-        handler.dispatch(record.task());
+        handler.dispatch(executionRecord.task());
 
-        assertThat(record.completion().isDone()).isTrue();
-        assertThat(record.completion().join().success()).isFalse();
-        assertThat(record.state()).isNotEqualTo(ExecutionState.QUEUED);
-        assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
+        assertThat(executionRecord.completion().isDone()).isTrue();
+        assertThat(executionRecord.completion().join().success()).isFalse();
+        assertThat(executionRecord.state()).isNotEqualTo(ExecutionState.QUEUED);
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
         assertThat(attempts.get()).isEqualTo(1);
 
         releaseWorker.countDown();
@@ -271,12 +271,12 @@ class InvocationServiceCoreRetryTest {
         AtomicInteger attempts = new AtomicInteger();
         ExecutionCompletionHandler handler = newHandlerWithRealRetryEnqueuer(alwaysFailingDispatcher(attempts));
         FunctionSpec spec = spec(maxRetries);
-        ExecutionRecord record = seedRecord(spec, "exec-many-retries");
+        ExecutionRecord executionRecord = seedRecord(spec, "exec-many-retries");
 
-        handler.dispatch(record.task());
+        handler.dispatch(executionRecord.task());
 
-        await().atMost(30, TimeUnit.SECONDS).untilAsserted(() -> assertThat(record.completion().isDone()).isTrue());
-        assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
+        await().atMost(30, TimeUnit.SECONDS).untilAsserted(() -> assertThat(executionRecord.completion().isDone()).isTrue());
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
         assertThat(attempts.get()).isEqualTo(maxRetries + 1);
     }
 }
