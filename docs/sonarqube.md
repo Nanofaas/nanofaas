@@ -22,6 +22,9 @@ persistent server — deliberately out of scope here.
   Linux hosts raise `vm.max_map_count`).
 - `sonar-scanner` on PATH: `brew install sonar-scanner`.
 - `python3` on PATH (used to parse the SonarQube API responses).
+- For Java analysis: the containerd Maven repository produced by
+  `scripts/bootstrap-containerd-dependencies.sh` (default `.gradle/containerd-m2`,
+  override with `CONTAINERD_MAVEN_REPO`); `./gradlew test` builds the containerd module too.
 - For Rust analysis only: `cargo` + `cargo clippy` (`rustup component add clippy`) —
   the Sonar Rust analyzer runs Clippy itself on the host, not in a container.
 
