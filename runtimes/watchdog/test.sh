@@ -94,10 +94,16 @@ run_tests() {
 
     log_info "Running tests..."
 
+    # Allocate a TTY only when there is one, so the suite also runs non-interactively (CI).
+    local tty_flags=(-i)
+    if [ -t 0 ] && [ -t 1 ]; then
+        tty_flags+=(-t)
+    fi
+
     if [ "$runtime" = "container" ]; then
-        container run --rm -it "$IMAGE_NAME:$IMAGE_TAG" $test_cmd
+        container run --rm "${tty_flags[@]}" "$IMAGE_NAME:$IMAGE_TAG" $test_cmd
     else
-        docker run --rm -it "$IMAGE_NAME:$IMAGE_TAG" $test_cmd
+        docker run --rm "${tty_flags[@]}" "$IMAGE_NAME:$IMAGE_TAG" $test_cmd
     fi
 }
 
