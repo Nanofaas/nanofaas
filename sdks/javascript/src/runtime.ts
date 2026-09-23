@@ -425,23 +425,23 @@ function serializeJsonBounded(value: JsonValue, maxBytes: number): string {
     const appendString = (text: string): void => {
         append('"');
         for (let index = 0; index < text.length; index += 1) {
-            const code = text.charCodeAt(index);
-            if (code === 0x22) append('\\"');
-            else if (code === 0x5c) append("\\\\");
-            else if (code === 0x08) append("\\b");
-            else if (code === 0x0c) append("\\f");
-            else if (code === 0x0a) append("\\n");
-            else if (code === 0x0d) append("\\r");
-            else if (code === 0x09) append("\\t");
+            const code = text.charCodeAt(index); // NOSONAR (typescript:S7758): escaping walks UTF-16 code units
+            if (code === 0x22) append(String.raw`\"`);
+            else if (code === 0x5c) append(String.raw`\\`);
+            else if (code === 0x08) append(String.raw`\b`);
+            else if (code === 0x0c) append(String.raw`\f`);
+            else if (code === 0x0a) append(String.raw`\n`);
+            else if (code === 0x0d) append(String.raw`\r`);
+            else if (code === 0x09) append(String.raw`\t`);
             else if (
                 code < 0x20
                 || (code >= 0xd800 && code <= 0xdfff && !(
                     code <= 0xdbff
                     && index + 1 < text.length
-                    && text.charCodeAt(index + 1) >= 0xdc00
-                    && text.charCodeAt(index + 1) <= 0xdfff
+                    && text.charCodeAt(index + 1) >= 0xdc00 // NOSONAR (typescript:S7758): UTF-16 code units
+                    && text.charCodeAt(index + 1) <= 0xdfff // NOSONAR (typescript:S7758): UTF-16 code units
                 ))
-            ) append(`\\u${code.toString(16).padStart(4, "0")}`);
+            ) append(String.raw`\u${code.toString(16).padStart(4, "0")}`);
             else if (code >= 0xd800 && code <= 0xdbff) {
                 append(text.slice(index, index + 2));
                 index += 1;
@@ -744,14 +744,23 @@ function failurePayload(error: ErrorInfo): CallbackPayload {
     return { success: false, output: null, error };
 }
 
-async function handleInvoke(
+type Admission = {
+    handler: Handler;
+    target: CallbackTarget;
+    callbackReservation: CallbackReservation | undefined;
+};
+
+/** Tracks whether the callback reservation was handed off, as soon as it happens. */
+type InvocationProgress = { callbackDispatched: boolean };
+
+function admitInvocation(
     state: RuntimeState,
     req: IncomingMessage,
     res: ServerResponse,
-): Promise<void> {
+): Admission | undefined {
     if (state.stopping) {
         writeEarlyRejection(req, res, 503, { error: RUNTIME_STOPPING }, { "retry-after": "1" });
-        return;
+        return undefined;
     }
     const handler = selectHandler(state);
     const executionId = resolveRequestHeader(req.headers["x-execution-id"])
@@ -762,27 +771,42 @@ async function handleInvoke(
         writeEarlyRejection(req, res, 400, {
             error: { code: "EXECUTION_ID_REQUIRED", message: "Execution ID required" },
         });
-        return;
+        return undefined;
     }
     if (!reserveHandler(state)) {
         writeEarlyRejection(req, res, 429, { error: HANDLER_SATURATED }, { "retry-after": "1" });
-        return;
+        return undefined;
     }
     const callbackUrl = callbackUrlForRequest(state, req);
     const callbackReservation = reserveCallback(state, callbackUrl);
     if (callbackReservation === false) {
         releaseHandler(state);
         writeEarlyRejection(req, res, 429, { error: CALLBACK_SATURATED }, { "retry-after": "1" });
-        return;
+        return undefined;
     }
+    return {
+        handler,
+        target: { callbackUrl, executionId, traceId, dispatchAttempt },
+        callbackReservation,
+    };
+}
 
-    const target: CallbackTarget = { callbackUrl, executionId, traceId, dispatchAttempt };
+async function handleInvoke(
+    state: RuntimeState,
+    req: IncomingMessage,
+    res: ServerResponse,
+): Promise<void> {
+    const admission = admitInvocation(state, req, res);
+    if (!admission) return;
+    const { handler, target, callbackReservation } = admission;
+    const { executionId, traceId } = target;
+
     const coldStart = state.firstInvocation;
     state.firstInvocation = false;
     if (coldStart) state.metrics.coldStarts.inc();
     const inputReservation: InputReservation = { bytes: 0 };
     let handlerStarted = false;
-    let callbackDispatched = false;
+    const progress: InvocationProgress = { callbackDispatched: false };
     const requestController = new AbortController();
     state.requestControllers.add(requestController);
     state.metrics.inFlight.inc();
@@ -809,69 +833,9 @@ async function handleInvoke(
         const running = startHandler(state, handler, context, payload, inputReservation.bytes);
         handlerStarted = running.started;
         const outcome = await running.wait;
-        if (outcome.kind === "cancelled") {
-            state.metrics.invocations.inc({ success: "false" });
-            if (state.stopping) {
-                writeEarlyRejection(
-                    req, res, 503, { error: RUNTIME_STOPPING }, { "retry-after": "1" },
-                );
-                return;
-            }
-            callbackDispatched = dispatchCallback(
-                state, callbackReservation, target, failurePayload(INVOCATION_CANCELLED),
-            );
-            return;
-        }
-        if (outcome.kind === "timeout") {
-            state.metrics.invocations.inc({ success: "false" });
-            callbackDispatched = dispatchCallback(
-                state, callbackReservation, target, failurePayload(HANDLER_TIMEOUT),
-            );
-            writeJson(res, 504, { error: HANDLER_TIMEOUT });
-            return;
-        }
-        if (outcome.kind === "failure") {
-            const converted = toErrorInfo(outcome.error);
-            let info = outcome.error instanceof NanofaasError ? converted : HANDLER_ERROR;
-            try {
-                serializeJsonBounded({ error: info }, state.options.maxOutputBytes);
-            } catch {
-                info = HANDLER_ERROR;
-            }
-            state.metrics.invocations.inc({ success: "false" });
-            callbackDispatched = dispatchCallback(
-                state, callbackReservation, target, failurePayload(info),
-            );
-            if (!callbackDispatched && target.callbackUrl) {
-                info = HANDLER_ERROR;
-                callbackDispatched = dispatchCallback(
-                    state, callbackReservation, target, failurePayload(info),
-                );
-            }
-            writeJson(res, statusCodeForError(info), { error: info });
-            return;
-        }
-        callbackDispatched = writeInvokeResult(
-            state, res, outcome.value, target, callbackReservation, coldStart,
-        );
+        writeOutcome(state, req, res, outcome, target, callbackReservation, coldStart, progress);
     } catch (error) {
-        const info = toErrorInfo(error);
-        state.metrics.invocations.inc({ success: "false" });
-        if (
-            info.code !== INPUT_TOO_LARGE.code
-            && info.code !== BODY_TIMEOUT.code
-            && info.code !== INVOCATION_CANCELLED.code
-            && info.code !== RUNTIME_STOPPING.code
-        ) {
-            callbackDispatched = dispatchCallback(
-                state, callbackReservation, target, failurePayload(info),
-            );
-        }
-        if (info.code === RUNTIME_STOPPING.code) {
-            writeEarlyRejection(req, res, 503, { error: info }, { "retry-after": "1" });
-        } else {
-            writeJson(res, statusCodeForError(info), { error: info });
-        }
+        writeInvocationError(state, req, res, error, target, callbackReservation, progress);
     } finally {
         req.off("aborted", cancelRequest);
         res.off("close", cancelRequest);
@@ -881,10 +845,145 @@ async function handleInvoke(
             state.metrics.inputBytes.dec(inputReservation.bytes);
             releaseHandler(state);
         }
-        if (!callbackDispatched) releaseCallback(state, callbackReservation);
+        if (!progress.callbackDispatched) releaseCallback(state, callbackReservation);
         durationTimer();
         state.metrics.inFlight.dec();
     }
+}
+
+function writeOutcome(
+    state: RuntimeState,
+    req: IncomingMessage,
+    res: ServerResponse,
+    outcome: WaitOutcome,
+    target: CallbackTarget,
+    callbackReservation: CallbackReservation | undefined,
+    coldStart: boolean,
+    progress: InvocationProgress,
+): void {
+    switch (outcome.kind) {
+        case "cancelled":
+            state.metrics.invocations.inc({ success: "false" });
+            if (state.stopping) {
+                writeEarlyRejection(req, res, 503, { error: RUNTIME_STOPPING }, { "retry-after": "1" });
+                return;
+            }
+            progress.callbackDispatched = dispatchCallback(
+                state, callbackReservation, target, failurePayload(INVOCATION_CANCELLED),
+            );
+            return;
+        case "timeout":
+            state.metrics.invocations.inc({ success: "false" });
+            progress.callbackDispatched = dispatchCallback(
+                state, callbackReservation, target, failurePayload(HANDLER_TIMEOUT),
+            );
+            writeJson(res, 504, { error: HANDLER_TIMEOUT });
+            return;
+        case "failure":
+            writeHandlerFailure(state, res, outcome.error, target, callbackReservation, progress);
+            return;
+        default:
+            progress.callbackDispatched = writeInvokeResult(
+                state, res, outcome.value, target, callbackReservation, coldStart,
+            );
+    }
+}
+
+function writeHandlerFailure(
+    state: RuntimeState,
+    res: ServerResponse,
+    error: unknown,
+    target: CallbackTarget,
+    callbackReservation: CallbackReservation | undefined,
+    progress: InvocationProgress,
+): void {
+    const converted = toErrorInfo(error);
+    let info = error instanceof NanofaasError ? converted : HANDLER_ERROR;
+    try {
+        serializeJsonBounded({ error: info }, state.options.maxOutputBytes);
+    } catch {
+        info = HANDLER_ERROR;
+    }
+    state.metrics.invocations.inc({ success: "false" });
+    progress.callbackDispatched = dispatchCallback(
+        state, callbackReservation, target, failurePayload(info),
+    );
+    if (!progress.callbackDispatched && target.callbackUrl) {
+        info = HANDLER_ERROR;
+        progress.callbackDispatched = dispatchCallback(
+            state, callbackReservation, target, failurePayload(info),
+        );
+    }
+    writeJson(res, statusCodeForError(info), { error: info });
+}
+
+/** Errors the runtime reports itself rather than as a handler callback. */
+const LOCAL_ONLY_ERROR_CODES = new Set([
+    INPUT_TOO_LARGE.code, BODY_TIMEOUT.code, INVOCATION_CANCELLED.code, RUNTIME_STOPPING.code,
+]);
+
+function writeInvocationError(
+    state: RuntimeState,
+    req: IncomingMessage,
+    res: ServerResponse,
+    error: unknown,
+    target: CallbackTarget,
+    callbackReservation: CallbackReservation | undefined,
+    progress: InvocationProgress,
+): void {
+    const info = toErrorInfo(error);
+    state.metrics.invocations.inc({ success: "false" });
+    if (!LOCAL_ONLY_ERROR_CODES.has(info.code)) {
+        progress.callbackDispatched = dispatchCallback(
+            state, callbackReservation, target, failurePayload(info),
+        );
+    }
+    if (info.code === RUNTIME_STOPPING.code) {
+        writeEarlyRejection(req, res, 503, { error: info }, { "retry-after": "1" });
+    } else {
+        writeJson(res, statusCodeForError(info), { error: info });
+    }
+}
+
+function coldStartHeaders(state: RuntimeState, coldStart: boolean): Record<string, string> {
+    if (!coldStart) return {};
+    return {
+        "x-cold-start": "true",
+        "x-init-duration-ms": String(Date.now() - state.startedAt),
+    };
+}
+
+/** Adds an envelope's allowed headers to the response and returns its status and callback. */
+function applyEnvelope(
+    state: RuntimeState,
+    result: HandlerResponse,
+    target: CallbackTarget,
+    responseHeaders: Record<string, string>,
+): { statusCode: number; callbackPayload: CallbackPayload } {
+    const allowed = filterAllowedHeaders(result.headers);
+    const dropped = Object.keys(result.headers).filter((key) => !(key in allowed));
+    if (dropped.length > 0) {
+        state.logger.warn("dropped response header(s)", {
+            executionId: target.executionId,
+            dropped: dropped.join(", "),
+        });
+    }
+    Object.assign(responseHeaders, allowed);
+    responseHeaders["x-nanofaas-function-status"] = "true";
+    if (result.encoding !== undefined) {
+        responseHeaders["x-nanofaas-encoding"] = result.encoding;
+    }
+    return {
+        statusCode: result.statusCode,
+        callbackPayload: {
+            success: true,
+            output: result.output,
+            error: null,
+            statusCode: result.statusCode,
+            headers: allowed,
+            ...(result.encoding === undefined ? {} : { encoding: result.encoding }),
+        },
+    };
 }
 
 function writeInvokeResult(
@@ -923,40 +1022,10 @@ function writeInvokeResult(
     const outputBytes = Buffer.byteLength(serializedOutput, "utf8");
     state.outputBytes += outputBytes;
     state.metrics.outputBytes.inc(outputBytes);
-    const responseHeaders: Record<string, string> = {};
-    if (coldStart) {
-        responseHeaders["x-cold-start"] = "true";
-        responseHeaders["x-init-duration-ms"] = String(Date.now() - state.startedAt);
-    }
-
-    let statusCode = 200;
-    let callbackPayload: CallbackPayload;
-    if (isEnvelope) {
-        const allowed = filterAllowedHeaders(result.headers);
-        const dropped = Object.keys(result.headers).filter((key) => !(key in allowed));
-        if (dropped.length > 0) {
-            state.logger.warn("dropped response header(s)", {
-                executionId: target.executionId,
-                dropped: dropped.join(", "),
-            });
-        }
-        Object.assign(responseHeaders, allowed);
-        responseHeaders["x-nanofaas-function-status"] = "true";
-        if (result.encoding !== undefined) {
-            responseHeaders["x-nanofaas-encoding"] = result.encoding;
-        }
-        statusCode = result.statusCode;
-        callbackPayload = {
-            success: true,
-            output: result.output,
-            error: null,
-            statusCode: result.statusCode,
-            headers: allowed,
-            ...(result.encoding === undefined ? {} : { encoding: result.encoding }),
-        };
-    } else {
-        callbackPayload = { success: true, output: result, error: null };
-    }
+    const responseHeaders = coldStartHeaders(state, coldStart);
+    const { statusCode, callbackPayload }: { statusCode: number; callbackPayload: CallbackPayload } = isEnvelope
+        ? applyEnvelope(state, result, target, responseHeaders)
+        : { statusCode: 200, callbackPayload: { success: true, output: result, error: null } };
 
     if (!responseHeadersAreValid(responseHeaders)) {
         state.outputBytes -= outputBytes;
@@ -1026,10 +1095,56 @@ async function routeRequest(
     );
 }
 
+function createRuntimeServer(state: RuntimeState): Server {
+    const server = createServer((req, res) => {
+        void routeRequest(state, req, res).catch((error) => reportRequestFailure(state, res, error));
+    });
+    server.on("connection", (socket) => trackConnection(state, socket));
+    return server;
+}
+
+function reportRequestFailure(state: RuntimeState, res: ServerResponse, error: unknown): void {
+    state.logger.error("request handling failed", { error: toErrorInfo(error).message });
+    if (!res.headersSent) {
+        writeJson(res, 500, { error: { code: "UNHANDLED_ERROR", message: "Internal server error" } });
+    } else {
+        res.destroy(error instanceof Error ? error : undefined);
+    }
+}
+
+function trackConnection(state: RuntimeState, socket: Socket): void {
+    state.serverConnections.add(socket);
+    socket.once("close", () => state.serverConnections.delete(socket));
+}
+
+function listen(server: Server, port: number): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(port, "0.0.0.0", () => {
+            server.off("error", reject);
+            resolve();
+        });
+    });
+}
+
+function socketClosed(socket: Socket): Promise<void> {
+    return socket.destroyed
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => socket.once("close", resolve));
+}
+
+function closeServer(server: Server | undefined): Promise<void> {
+    if (!server) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+        server.close(() => resolve());
+        server.closeIdleConnections();
+    });
+}
+
 async function settleWithin(promises: Iterable<Promise<unknown>>, timeoutMs: number): Promise<void> {
     let timer: NodeJS.Timeout | undefined;
     await Promise.race([
-        Promise.allSettled([...promises]).then(() => undefined),
+        Promise.allSettled(promises).then(() => undefined),
         new Promise<void>((resolve) => { timer = setTimeout(resolve, timeoutMs); }),
     ]);
     if (timer) clearTimeout(timer);
@@ -1076,33 +1191,10 @@ export function createRuntime(options: RuntimeOptions = {}): Runtime {
                 if (state.callbackController.signal.aborted) {
                     state.callbackController = new AbortController();
                 }
-                const server = createServer((req, res) => {
-                    void routeRequest(state, req, res).catch((error) => {
-                        state.logger.error("request handling failed", {
-                            error: toErrorInfo(error).message,
-                        });
-                        if (!res.headersSent) {
-                            writeJson(res, 500, {
-                                error: { code: "UNHANDLED_ERROR", message: "Internal server error" },
-                            });
-                        } else {
-                            res.destroy(error instanceof Error ? error : undefined);
-                        }
-                    });
-                });
-                server.on("connection", (socket) => {
-                    state.serverConnections.add(socket);
-                    socket.once("close", () => state.serverConnections.delete(socket));
-                });
+                const server = createRuntimeServer(state);
                 state.server = server;
                 try {
-                    await new Promise<void>((resolve, reject) => {
-                        server.once("error", reject);
-                        server.listen(resolvePort(options.port), "0.0.0.0", () => {
-                            server.off("error", reject);
-                            resolve();
-                        });
-                    });
+                    await listen(server, resolvePort(options.port));
                     const address = server.address();
                     if (!address || typeof address === "string") {
                         throw new Error("Runtime did not bind to a TCP port");
@@ -1135,16 +1227,9 @@ export function createRuntime(options: RuntimeOptions = {}): Runtime {
                 await new Promise<void>((resolve) => setImmediate(resolve));
                 const server = state.server;
                 const connections = [...state.serverConnections];
-                const connectionsClosed = connections.map((socket) => socket.destroyed
-                    ? Promise.resolve()
-                    : new Promise<void>((resolve) => socket.once("close", resolve)));
+                const connectionsClosed = connections.map(socketClosed);
                 state.server = undefined;
-                const closePromise = server
-                    ? new Promise<void>((resolve) => {
-                        server.close(() => resolve());
-                        server.closeIdleConnections();
-                    })
-                    : Promise.resolve();
+                const closePromise = closeServer(server);
                 await settleWithin(
                     [closePromise, ...state.callbacks, ...state.handlerTasks],
                     Math.max(0, shutdownDeadline - Date.now()),
