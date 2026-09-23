@@ -4,7 +4,7 @@ import it.unimib.datai.nanofaas.containerdeployment.ContainerRuntimeAdapter;
 import it.unimib.datai.nanofaas.containerdeployment.ContainerInstanceSpec;
 import it.unimib.datai.nanofaas.containerdeployment.ManagedContainer;
 import it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxy;
-import it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxyFactory;
+import it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxyFactory;
 import it.unimib.datai.nanofaas.containerdeployment.EndpointProbe;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
@@ -31,10 +31,14 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class ContainerLocalDeploymentProviderTest {
 
@@ -645,9 +649,11 @@ class ContainerLocalDeploymentProviderTest {
 
     private static ContainerLocalDeploymentProvider provider(RecordingContainerRuntimeAdapter adapter,
             ContainerLocalProperties properties, EndpointProbe probe, PortAllocator ports,
-            ManagedFunctionProxyFactory factory) {
+            Function<String, ManagedFunctionProxy> proxies) {
         adapter.ports = ports;
         adapter.properties = properties;
+        RoundRobinFunctionProxyFactory factory = mock(RoundRobinFunctionProxyFactory.class);
+        when(factory.create(anyString())).thenAnswer(invocation -> proxies.apply(invocation.getArgument(0)));
         return new ContainerLocalDeploymentProvider(adapter, properties, probe, factory);
     }
 

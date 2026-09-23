@@ -49,13 +49,13 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
     private final String backendId;
     private final LocalDeploymentSettings settings;
     private final EndpointProbe endpointProbe;
-    private final ManagedFunctionProxyFactory proxyFactory;
+    private final RoundRobinFunctionProxyFactory proxyFactory;
     private final Map<String, FunctionState> states = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, ReentrantLock> locks = new ConcurrentHashMap<>();
 
     public LocalManagedDeploymentProvider(String backendId, LocalDeploymentSettings settings,
                                           ContainerRuntimeAdapter adapter, EndpointProbe endpointProbe,
-                                          ManagedFunctionProxyFactory proxyFactory) {
+                                          RoundRobinFunctionProxyFactory proxyFactory) {
         this.backendId = backendId;
         this.settings = settings;
         this.adapter = adapter;

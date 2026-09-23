@@ -5,6 +5,7 @@ import it.unimib.datai.nanofaas.containerdeployment.ContainerInstanceSpec;
 import it.unimib.datai.nanofaas.containerdeployment.ManagedContainer;
 import it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxy;
 import it.unimib.datai.nanofaas.containerdeployment.EndpointProbe;
+import it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxyFactory;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -27,6 +28,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Recoverability of a partial deprovision (plan task P08, review finding R6, invariant I10).
@@ -252,12 +256,15 @@ class ContainerLocalDeprovisionRecoveryTest {
     private static ContainerLocalDeploymentProvider provider(ContainerRuntimeAdapter adapter,
                                                              ManagedFunctionProxy... proxies) {
         AtomicInteger created = new AtomicInteger();
+        RoundRobinFunctionProxyFactory proxyFactory = mock(RoundRobinFunctionProxyFactory.class);
+        when(proxyFactory.create(anyString())).thenAnswer(
+                invocation -> proxies[Math.min(created.getAndIncrement(), proxies.length - 1)]);
         return new ContainerLocalDeploymentProvider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1",
                         Duration.ofSeconds(5), Duration.ofMillis(10), null),
                 new AlwaysReadyProbe(),
-                functionName -> proxies[Math.min(created.getAndIncrement(), proxies.length - 1)]);
+                proxyFactory);
     }
 
     private static FunctionSpec spec(String name, int minReplicas) {

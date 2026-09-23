@@ -5,6 +5,7 @@ import it.unimib.datai.nanofaas.containerdeployment.ContainerInstanceSpec;
 import it.unimib.datai.nanofaas.containerdeployment.ManagedContainer;
 import it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxy;
 import it.unimib.datai.nanofaas.containerdeployment.EndpointProbe;
+import it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxyFactory;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -20,6 +21,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Regression test for finding R6 of the 2026-09-08 pre-soak review.
@@ -107,6 +111,8 @@ class R6DeprovisionFailureOwnershipRegressionTest {
     void failedDeprovisionDoesNotLeakAnUntrackedProxy() throws Exception {
         FailingRemovalAdapter adapter = new FailingRemovalAdapter();
         RecordingProxy proxy = new RecordingProxy();
+        RoundRobinFunctionProxyFactory proxyFactory = mock(RoundRobinFunctionProxyFactory.class);
+        when(proxyFactory.create(anyString())).thenReturn(proxy);
         ContainerLocalDeploymentProvider provider = new ContainerLocalDeploymentProvider(
                 adapter,
                 new ContainerLocalProperties("docker", "127.0.0.1",
@@ -121,7 +127,7 @@ class R6DeprovisionFailureOwnershipRegressionTest {
                         return true;
                     }
                 },
-                functionName -> proxy);
+                proxyFactory);
 
         provider.provision(spec("fn"));
 

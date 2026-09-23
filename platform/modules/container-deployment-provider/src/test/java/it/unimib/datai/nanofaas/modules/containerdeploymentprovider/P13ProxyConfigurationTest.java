@@ -1,7 +1,7 @@
 package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 
 import it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxy;
-import it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxyFactory;
+import it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxyFactory;
 import it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxy;
 
 import com.sun.net.httpserver.HttpServer;
@@ -49,7 +49,7 @@ class P13ProxyConfigurationTest {
                 }
             });
             backend.start();
-            try (ManagedFunctionProxy managed = context.getBean(ManagedFunctionProxyFactory.class).create("configured")) {
+            try (ManagedFunctionProxy managed = context.getBean(RoundRobinFunctionProxyFactory.class).create("configured")) {
                 RoundRobinFunctionProxy proxy = (RoundRobinFunctionProxy) managed;
                 proxy.updateBackends(List.of("http://127.0.0.1:" + backend.getAddress().getPort()));
                 HttpResponse<String> response = HttpClient.newHttpClient().send(
