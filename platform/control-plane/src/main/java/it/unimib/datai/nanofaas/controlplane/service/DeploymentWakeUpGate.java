@@ -112,23 +112,30 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
         ManagedDeploymentTarget target = new ManagedDeploymentTarget(function.name(), backend);
         ReplicaObservation observation = coordinator.observeReplicaStatus(target);
         if (isReadyWithinPolicy(observation, clock.instant())) {
-            if (closed.get()) {
-                return failed(WAKE_UP_CLOSED);
-            }
-            if (!isActive(generation)) {
-                return failed(WAKE_UP_REMOVED);
-            }
-            return CompletableFuture.completedFuture(null);
+            return readyOutcome(generation);
         }
-        if (closed.get() || !isActive(generation)) {
-            return failed(closed.get() ? WAKE_UP_CLOSED : WAKE_UP_REMOVED);
-        }
+        return joinOrStartWakeUp(generation, target);
+    }
 
+    private CompletableFuture<Void> readyOutcome(FunctionGeneration generation) {
+        if (closed.get()) {
+            return failed(WAKE_UP_CLOSED);
+        }
+        if (!isActive(generation)) {
+            return failed(WAKE_UP_REMOVED);
+        }
+        return CompletableFuture.completedFuture(null);
+    }
+
+    private CompletableFuture<Void> joinOrStartWakeUp(FunctionGeneration generation, ManagedDeploymentTarget target) {
+        if (closed.get() || !isActive(generation)) {
+            return closedOrRemoved();
+        }
         WakeUp owner;
         boolean startOwner = false;
         synchronized (ownerLifecycle) {
             if (closed.get() || !isActive(generation)) {
-                return failed(closed.get() ? WAKE_UP_CLOSED : WAKE_UP_REMOVED);
+                return closedOrRemoved();
             }
             WakeUp candidate = new WakeUp(generation, target);
             owner = inFlight.putIfAbsent(generation, candidate);
@@ -141,6 +148,10 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
             owner.start();
         }
         return owner.callerView();
+    }
+
+    private CompletableFuture<Void> closedOrRemoved() {
+        return failed(closed.get() ? WAKE_UP_CLOSED : WAKE_UP_REMOVED);
     }
 
     @Override

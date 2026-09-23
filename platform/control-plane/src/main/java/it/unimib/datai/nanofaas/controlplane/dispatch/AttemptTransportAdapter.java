@@ -58,38 +58,44 @@ public final class AttemptTransportAdapter implements AttemptTransport {
             }
             var result = new CancellableDispatchFuture();
             var drained = new CompletableFuture<Void>();
-            readiness.ensureReady(task).whenComplete((ignored, error) -> {
-                if (result.isCancelled()) {
-                    drained.complete(null);
-                    return;
-                }
-                if (error != null) {
-                    result.completeExceptionally(new AttemptCoordinator.DeploymentWakeUpException(error));
-                    drained.complete(null);
-                    return;
-                }
-                try {
-                    CompletableFuture<DispatchResult> transport = dispatcherRouter.dispatchExternal(task);
-                    result.attach(transport);
-                    transport.whenComplete((value, failure) -> {
-                        try {
-                            if (!result.cancellationRequested()) {
-                                if (failure != null) result.completeExceptionally(failure);
-                                else result.complete(value);
-                            }
-                        } finally {
-                            drained.complete(null);
-                        }
-                    });
-                } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
-                    result.completeExceptionally(failure);
-                    drained.complete(null);
-                }
-            });
+            readiness.ensureReady(task).whenComplete((ignored, error) -> afterWakeUp(task, result, drained, error));
             return new PhysicalDispatch(result, drained);
         } catch (RuntimeException | Error error) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             return PhysicalDispatch.raw(
                     CompletableFuture.failedFuture(new AttemptCoordinator.DeploymentWakeUpException(error)));
+        }
+    }
+
+    private void afterWakeUp(InvocationTask task, CancellableDispatchFuture result,
+                             CompletableFuture<Void> drained, Throwable error) {
+        if (result.isCancelled()) {
+            drained.complete(null);
+            return;
+        }
+        if (error != null) {
+            result.completeExceptionally(new AttemptCoordinator.DeploymentWakeUpException(error));
+            drained.complete(null);
+            return;
+        }
+        try {
+            CompletableFuture<DispatchResult> transport = dispatcherRouter.dispatchExternal(task);
+            result.attach(transport);
+            transport.whenComplete((value, failure) -> forwardOutcome(result, drained, value, failure));
+        } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
+            result.completeExceptionally(failure);
+            drained.complete(null);
+        }
+    }
+
+    private static void forwardOutcome(CancellableDispatchFuture result, CompletableFuture<Void> drained,
+                                       DispatchResult value, Throwable failure) {
+        try {
+            if (!result.cancellationRequested()) {
+                if (failure != null) result.completeExceptionally(failure);
+                else result.complete(value);
+            }
+        } finally {
+            drained.complete(null);
         }
     }
 

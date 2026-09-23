@@ -97,31 +97,9 @@ public final class InvocationExecutionFactory {
             }
 
             String existingExecutionId = acquire.executionIdOrToken();
-            ExecutionRecord existing = executionStore.getOrNull(existingExecutionId);
-            if (existing != null) {
-                // The key did its job: a second arrival found the first execution and will
-                // wait on its result instead of running the function again.
-                metrics.replayed(functionName, kind);
-                return ExecutionLookup.existing(existing);
-            }
-
-            // Finished and archived. Looking only among the living would make this pass
-            // for a stale claim, and the function would run a second time in silence:
-            // exactly the failure the key exists to prevent.
-            Outcome settledOutcome = executionStore.outcomeOf(existingExecutionId);
-            if (settledOutcome != null) {
-                metrics.replayed(functionName, kind);
-                return ExecutionLookup.settled(existingExecutionId, settledOutcome);
-            }
-
-            // A TERMINAL binding pointing at an execution that is neither alive nor
-            // archived: the execution concluded and its outcome payload was evicted for
-            // capacity before the end of the window. The deduplication guarantee still
-            // holds - the tombstone is the key itself - so the replay does NOT re-run the
-            // function: it gets an explicit "no longer available" outcome (HTTP 410).
-            if (acquire.terminal()) {
-                metrics.replayed(functionName, kind);
-                return ExecutionLookup.gone(existingExecutionId);
+            ExecutionLookup replay = replayOf(functionName, kind, existingExecutionId, acquire.terminal());
+            if (replay != null) {
+                return replay;
             }
 
             // A binding pointing at an execution that is neither alive nor archived. It is
@@ -142,6 +120,38 @@ public final class InvocationExecutionFactory {
             // second execution on the strength of an absent record/outcome.
             parkPendingClaim();
         }
+    }
+
+    /** The outcome a replay of an already-bound key gets, or null when the binding may be re-claimed. */
+    private ExecutionLookup replayOf(String functionName, InvocationKind kind, String existingExecutionId,
+                                     boolean terminal) {
+        ExecutionRecord existing = executionStore.getOrNull(existingExecutionId);
+        if (existing != null) {
+            // The key did its job: a second arrival found the first execution and will
+            // wait on its result instead of running the function again.
+            metrics.replayed(functionName, kind);
+            return ExecutionLookup.existing(existing);
+        }
+
+        // Finished and archived. Looking only among the living would make this pass
+        // for a stale claim, and the function would run a second time in silence:
+        // exactly the failure the key exists to prevent.
+        Outcome settledOutcome = executionStore.outcomeOf(existingExecutionId);
+        if (settledOutcome != null) {
+            metrics.replayed(functionName, kind);
+            return ExecutionLookup.settled(existingExecutionId, settledOutcome);
+        }
+
+        // A TERMINAL binding pointing at an execution that is neither alive nor
+        // archived: the execution concluded and its outcome payload was evicted for
+        // capacity before the end of the window. The deduplication guarantee still
+        // holds - the tombstone is the key itself - so the replay does NOT re-run the
+        // function: it gets an explicit "no longer available" outcome (HTTP 410).
+        if (terminal) {
+            metrics.replayed(functionName, kind);
+            return ExecutionLookup.gone(existingExecutionId);
+        }
+        return null;
     }
 
     private ExecutionLookup createClaimedRecord(String functionName,

@@ -60,40 +60,23 @@ public record HttpClientProperties(
     private static final int DEFAULT_POOL_INACTIVITY_MS = 30_000;
 
     public HttpClientProperties {
-        if (connectTimeoutMs == null || connectTimeoutMs <= 0) {
-            connectTimeoutMs = DEFAULT_CONNECT_TIMEOUT_MS;
-        }
-        if (readTimeoutMs == null || readTimeoutMs <= 0) {
-            readTimeoutMs = DEFAULT_READ_TIMEOUT_MS;
-        }
-        if (maxInMemorySizeMb == null || maxInMemorySizeMb <= 0) {
-            maxInMemorySizeMb = DEFAULT_MAX_IN_MEMORY_MB;
-        }
-        if (maxConnections == null || maxConnections <= 0) {
-            maxConnections = DEFAULT_MAX_CONNECTIONS;
-        }
-        if (pendingAcquireMaxCount == null || pendingAcquireMaxCount <= 0) {
-            // Twice the connections, mirroring Reactor Netty: raising only maxConnections
-            // should widen the queue with it, not leave it at an unrelated constant.
-            pendingAcquireMaxCount = maxConnections * 2;
-        }
-        if (pendingAcquireTimeoutMs == null || pendingAcquireTimeoutMs <= 0) {
-            pendingAcquireTimeoutMs = DEFAULT_PENDING_ACQUIRE_TIMEOUT_MS;
-        }
-        if (maxIdleTimeMs == null || maxIdleTimeMs <= 0) {
-            maxIdleTimeMs = DEFAULT_MAX_IDLE_TIME_MS;
-        }
-        if (maxLifeTimeMs == null || maxLifeTimeMs < 0) {
-            maxLifeTimeMs = DEFAULT_MAX_LIFE_TIME_MS;
-        }
-        if (evictionIntervalMs == null || evictionIntervalMs <= 0) {
-            evictionIntervalMs = DEFAULT_EVICTION_INTERVAL_MS;
-        }
-        if (inactivePoolDisposeIntervalMs == null || inactivePoolDisposeIntervalMs <= 0) {
-            inactivePoolDisposeIntervalMs = DEFAULT_INACTIVE_POOL_DISPOSE_INTERVAL_MS;
-        }
-        if (poolInactivityMs == null || poolInactivityMs <= 0) {
-            poolInactivityMs = DEFAULT_POOL_INACTIVITY_MS;
-        }
+        connectTimeoutMs = positiveOr(connectTimeoutMs, DEFAULT_CONNECT_TIMEOUT_MS);
+        readTimeoutMs = positiveOr(readTimeoutMs, DEFAULT_READ_TIMEOUT_MS);
+        maxInMemorySizeMb = positiveOr(maxInMemorySizeMb, DEFAULT_MAX_IN_MEMORY_MB);
+        maxConnections = positiveOr(maxConnections, DEFAULT_MAX_CONNECTIONS);
+        // Twice the connections, mirroring Reactor Netty: raising only maxConnections
+        // should widen the queue with it, not leave it at an unrelated constant.
+        pendingAcquireMaxCount = positiveOr(pendingAcquireMaxCount, maxConnections * 2);
+        pendingAcquireTimeoutMs = positiveOr(pendingAcquireTimeoutMs, DEFAULT_PENDING_ACQUIRE_TIMEOUT_MS);
+        maxIdleTimeMs = positiveOr(maxIdleTimeMs, DEFAULT_MAX_IDLE_TIME_MS);
+        maxLifeTimeMs = maxLifeTimeMs == null || maxLifeTimeMs < 0 ? DEFAULT_MAX_LIFE_TIME_MS : maxLifeTimeMs;
+        evictionIntervalMs = positiveOr(evictionIntervalMs, DEFAULT_EVICTION_INTERVAL_MS);
+        inactivePoolDisposeIntervalMs = positiveOr(inactivePoolDisposeIntervalMs,
+                DEFAULT_INACTIVE_POOL_DISPOSE_INTERVAL_MS);
+        poolInactivityMs = positiveOr(poolInactivityMs, DEFAULT_POOL_INACTIVITY_MS);
+    }
+
+    private static int positiveOr(Integer value, int fallback) {
+        return value == null || value <= 0 ? fallback : value;
     }
 }

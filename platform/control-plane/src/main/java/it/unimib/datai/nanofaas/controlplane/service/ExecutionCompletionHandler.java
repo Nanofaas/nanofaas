@@ -159,25 +159,30 @@ public class ExecutionCompletionHandler implements InvocationDispatch, AttemptOb
         String functionName = task.functionName();
         bestEffort(() -> {
             if (queueWaitNanos != AttemptObserver.NO_ATTEMPT || serviceNanos != AttemptObserver.NO_ATTEMPT) {
-                Metrics.FunctionTimers timers = metrics.timers(functionName);
-                if (result.coldStart()) {
-                    metrics.coldStart(functionName);
-                    if (result.initDurationMs() != null) {
-                        timers.initDuration().record(result.initDurationMs(), TimeUnit.MILLISECONDS);
-                    }
-                } else {
-                    metrics.warmStart(functionName);
-                }
-                if (serviceNanos >= 0) {
-                    timers.latency().record(serviceNanos, TimeUnit.NANOSECONDS);
-                }
-                if (queueWaitNanos >= 0) {
-                    timers.queueWait().record(queueWaitNanos, TimeUnit.NANOSECONDS);
-                }
+                recordAttemptTimers(functionName, result, queueWaitNanos, serviceNanos);
             }
             if (result.result().success()) metrics.success(functionName);
             else metrics.error(functionName);
         });
+    }
+
+    private void recordAttemptTimers(String functionName, DispatchResult result,
+                                     long queueWaitNanos, long serviceNanos) {
+        Metrics.FunctionTimers timers = metrics.timers(functionName);
+        if (result.coldStart()) {
+            metrics.coldStart(functionName);
+            if (result.initDurationMs() != null) {
+                timers.initDuration().record(result.initDurationMs(), TimeUnit.MILLISECONDS);
+            }
+        } else {
+            metrics.warmStart(functionName);
+        }
+        if (serviceNanos >= 0) {
+            timers.latency().record(serviceNanos, TimeUnit.NANOSECONDS);
+        }
+        if (queueWaitNanos >= 0) {
+            timers.queueWait().record(queueWaitNanos, TimeUnit.NANOSECONDS);
+        }
     }
 
     /**
