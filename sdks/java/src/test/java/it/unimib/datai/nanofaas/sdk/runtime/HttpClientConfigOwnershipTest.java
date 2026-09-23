@@ -26,8 +26,7 @@ class HttpClientConfigOwnershipTest {
 
     @Test
     void configurationDoesNotCloseAnUnrelatedHttpClient() {
-        HttpClient injected = HttpClient.newHttpClient();
-        try {
+        try (HttpClient injected = HttpClient.newHttpClient()) {
             var context = new AnnotationConfigApplicationContext();
             context.registerBean("externalHttpClient", HttpClient.class, () -> injected,
                     definition -> definition.setDestroyMethodName(""));
@@ -37,16 +36,13 @@ class HttpClientConfigOwnershipTest {
             context.close();
 
             assertFalse(injected.isTerminated(), "the external bean retains ownership");
-        } finally {
-            injected.close();
         }
     }
 
     @Test
     void unrelatedHttpClientsDoNotMakeCallbackClientResolutionAmbiguous() {
-        HttpClient first = HttpClient.newHttpClient();
-        HttpClient second = HttpClient.newHttpClient();
-        try {
+        try (HttpClient first = HttpClient.newHttpClient();
+             HttpClient second = HttpClient.newHttpClient()) {
             var context = new AnnotationConfigApplicationContext();
             context.registerBean("firstApplicationHttpClient", HttpClient.class, () -> first,
                     definition -> definition.setDestroyMethodName(""));
@@ -59,17 +55,13 @@ class HttpClientConfigOwnershipTest {
             context.close();
             assertFalse(first.isTerminated());
             assertFalse(second.isTerminated());
-        } finally {
-            first.close();
-            second.close();
         }
     }
 
     @Test
     void namedCallbackClientOverrideWinsAlongsideUnrelatedClient() {
-        HttpClient callback = HttpClient.newHttpClient();
-        HttpClient unrelated = HttpClient.newHttpClient();
-        try {
+        try (HttpClient callback = HttpClient.newHttpClient();
+             HttpClient unrelated = HttpClient.newHttpClient()) {
             var context = new AnnotationConfigApplicationContext();
             context.registerBean(HttpClientConfig.CALLBACK_HTTP_CLIENT_BEAN, HttpClient.class,
                     () -> callback, definition -> definition.setDestroyMethodName(""));
@@ -83,9 +75,6 @@ class HttpClientConfigOwnershipTest {
             context.close();
             assertFalse(callback.isTerminated());
             assertFalse(unrelated.isTerminated());
-        } finally {
-            callback.close();
-            unrelated.close();
         }
     }
 }

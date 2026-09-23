@@ -61,7 +61,7 @@ public class ExecutionLifecycle {
         // 1. Dedup protection before the last live reference can disappear. The record
         // monitor is the same one publishAdmission uses, so a terminal record can never
         // be published under a reclaimable key.
-        synchronized (executionRecord) {
+        synchronized (executionRecord) { // NOSONAR (java:S2445): this object is its own monitor by design; every path locks the same instance
             protectKey(executionRecord);
             if (!executionRecord.beginSettlement()) return;
         }

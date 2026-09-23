@@ -108,7 +108,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
      * it. The epoch is what a provisional claim carries, so a selection that spans a switch is
      * detected by value rather than by index identity.
      */
-    private volatile ActiveScheduler active;
+    private volatile ActiveScheduler active; // NOSONAR (java:S3077): thread-safe or immutable value replaced wholesale
     private long wakeSequence;
     private boolean running;
     private Thread worker;
@@ -128,7 +128,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
 
     /** No-op until {@link #setSwitchObserver} binds one; observation is best-effort and must
      * never affect a switch's own outcome — see {@link #switchTo}. */
-    private volatile SwitchObserver switchObserver = (strategy, outcome, durationNanos) -> { };
+    private volatile SwitchObserver switchObserver = (strategy, outcome, durationNanos) -> { }; // NOSONAR (java:S3077): thread-safe or immutable value replaced wholesale
 
     public SchedulerEngine(PendingWorkStore store, StrategyRegistry strategies, String initialStrategy,
                            EngineDispatch dispatch, EngineReadiness readiness,
@@ -951,7 +951,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     private void wake() {
         wakeSequence++;
         blocked.clear();
-        gate.notifyAll();
+        gate.notifyAll(); // NOSONAR (java:S2273): wake() is only called under synchronized (gate)
     }
 
     /** One selection in flight, with the epoch of the index it was selected from. */

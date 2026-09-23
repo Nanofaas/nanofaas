@@ -13,6 +13,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Executors;
@@ -48,14 +49,14 @@ class InvokeHandlerCallbackFailureMetricTest {
         invoke.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
         invoke.createContext("/invoke", handler);
         invoke.start();
-        try {
+        try { // NOSONAR (java:S2093): HttpServer is not AutoCloseable; teardown order matters
             HttpResponse<String> response = HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI.create(
                             "http://127.0.0.1:" + invoke.getAddress().getPort() + "/invoke"))
                     .header("X-Execution-Id", "execution").POST(HttpRequest.BodyPublishers.ofString("{\"input\":{}}"))
                     .build(), HttpResponse.BodyHandlers.ofString());
             assertEquals(200, response.statusCode());
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
-            while (limits.pendingCallbacks() != 0 && System.nanoTime() < deadline) Thread.sleep(5);
+            org.awaitility.Awaitility.await().pollDelay(Duration.ZERO).pollInterval(Duration.ofMillis(5))
+                    .atMost(Duration.ofSeconds(3)).until(() -> limits.pendingCallbacks() == 0);
 
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             new PrometheusTextFormatWriter(true).write(output, metrics.getRegistry().scrape());

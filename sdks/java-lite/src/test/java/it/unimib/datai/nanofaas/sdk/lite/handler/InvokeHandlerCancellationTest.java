@@ -18,6 +18,7 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -74,9 +75,8 @@ class InvokeHandlerCancellationTest {
 
             releaseHandler.countDown();
             request.join(1_000);
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
-            while (limits.activeHandlers() != 0 && System.nanoTime() < deadline) Thread.sleep(5);
-            assertEquals(0, limits.activeHandlers());
+            org.awaitility.Awaitility.await().pollDelay(Duration.ZERO).pollInterval(Duration.ofMillis(5))
+                    .atMost(Duration.ofSeconds(1)).until(() -> limits.activeHandlers() == 0);
         } finally {
             releaseHandler.countDown();
             handler.shutdown(java.time.Duration.ofMillis(100));

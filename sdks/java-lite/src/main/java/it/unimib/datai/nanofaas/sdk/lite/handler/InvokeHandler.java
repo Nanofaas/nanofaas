@@ -278,7 +278,7 @@ public final class InvokeHandler implements HttpHandler {
                 Thread.currentThread().interrupt();
             }
         });
-        try {
+        try { // NOSONAR (java:S2093): readValue closes the source stream
             return new ReadRequestResult(objectMapper.readValue(
                     new LimitedInputStream(requestBody, limits.maxInputBytes), InvocationRequest.class), false);
         } catch (PayloadTooLargeException _) {

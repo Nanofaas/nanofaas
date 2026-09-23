@@ -577,7 +577,7 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
     private static final class FunctionState {
         // Replaced on a spec update: the proxy's timeout and admission bound are derived from it,
         // so a snapshot frozen at provisioning time would outlive every later PATCH.
-        private volatile FunctionSpec spec;
+        private volatile FunctionSpec spec; // NOSONAR (java:S3077): thread-safe or immutable value replaced wholesale
         private final ManagedFunctionProxy proxy;
         private final LinkedHashMap<Integer, ReplicaState> replicas = new LinkedHashMap<>();
         /**

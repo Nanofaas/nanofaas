@@ -339,10 +339,10 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
                     pollTask = scheduled;
                     if (previous != null) previous.cancel(false);
                     runDeferred = pollRanWhileScheduling;
-                    if (runDeferred) pollTask = null;
-                    if (retired) scheduled.cancel(false);
+                    if (runDeferred) pollTask = null; // NOSONAR (java:S2583): true only when the scheduler runs the poll inline and re-enters this monitor
+                    if (retired) scheduled.cancel(false); // NOSONAR (java:S2583): true only when the scheduler runs the poll inline and re-enters this monitor
                 }
-                if (runDeferred) submit(() -> poll(deadline), this);
+                if (runDeferred) submit(() -> poll(deadline), this); // NOSONAR (java:S2583): true only when the scheduler runs the poll inline and re-enters this monitor
             } catch (RuntimeException | Error failure) {
                 completeExceptionally(failure);
             }

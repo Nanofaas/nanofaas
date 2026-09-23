@@ -376,7 +376,7 @@ class DeploymentWakeUpGateTest {
         when(coordinator.observeReplicaStatus(target))
                 .thenReturn(ReplicaObservation.unavailable(Instant.EPOCH, "missing"));
         ScheduledThreadPoolExecutor scheduler = scheduler();
-        try {
+        try { // NOSONAR (java:S2093): teardown is shutdownNow(), not a blocking close()
             DeploymentWakeUpCoordinator wakeUpCoordinator =
                     new DeploymentWakeUpCoordinator(generations, scheduler);
             DeploymentWakeUpGate rejectedGate = new DeploymentWakeUpGate(
@@ -448,7 +448,7 @@ class DeploymentWakeUpGateTest {
                 .thenReturn(Optional.of(deployment("echo", "k8s", ScalingStrategy.INTERNAL, 0)));
         when(coordinator.getFreshReplicaStatus(target)).thenReturn(new ReplicaStatus(1, 1));
         ScheduledThreadPoolExecutor scheduler = scheduler();
-        try {
+        try { // NOSONAR (java:S2093): teardown is shutdownNow(), not a blocking close()
             DeploymentWakeUpGate gate = new DeploymentWakeUpGate(
                     registry, coordinator, generations,
                     new DeploymentWakeUpProperties(Duration.ofSeconds(30), Duration.ofSeconds(1),
@@ -492,7 +492,7 @@ class DeploymentWakeUpGateTest {
         when(coordinator.observeReplicaStatus(target))
                 .thenReturn(ReplicaObservation.fresh(new ReplicaStatus(1, 1), Instant.now()));
         ScheduledThreadPoolExecutor scheduler = scheduler();
-        try {
+        try { // NOSONAR (java:S2093): teardown is shutdownNow(), not a blocking close()
             DeploymentWakeUpGate gate = new DeploymentWakeUpGate(
                     registry, coordinator, generations, new DeploymentWakeUpProperties(), Runnable::run,
                     scheduler, new DeploymentWakeUpCoordinator(generations, scheduler),
@@ -541,7 +541,7 @@ class DeploymentWakeUpGateTest {
                 callbacksDrained.countDown();
             }
         });
-        try {
+        try { // NOSONAR (java:S2093): teardown is shutdownNow(), not a blocking close()
             DeploymentWakeUpGate gate = new DeploymentWakeUpGate(
                     registry, coordinator, generations, new DeploymentWakeUpProperties(), trackingExecutor,
                     scheduler, new DeploymentWakeUpCoordinator(generations, scheduler),
@@ -580,7 +580,7 @@ class DeploymentWakeUpGateTest {
         when(coordinator.observeReplicaStatus(target))
                 .thenReturn(ReplicaObservation.unavailable(Instant.EPOCH, "missing"));
         ScheduledThreadPoolExecutor scheduler = scheduler();
-        try {
+        try { // NOSONAR (java:S2093): teardown is shutdownNow(), not a blocking close()
             DeploymentWakeUpGate gate = new DeploymentWakeUpGate(
                     registry, coordinator, generations, new DeploymentWakeUpProperties(), submitted::set,
                     scheduler, new DeploymentWakeUpCoordinator(generations, scheduler),
@@ -902,7 +902,7 @@ class DeploymentWakeUpGateTest {
         FunctionCapacityRegistry generations = new FunctionCapacityRegistry();
         generations.register("echo", 1);
         ScheduledThreadPoolExecutor scheduler = scheduler();
-        try {
+        try { // NOSONAR (java:S2093): teardown is shutdownNow(), not a blocking close()
             DeploymentWakeUpCoordinator wakeUpCoordinator =
                     new DeploymentWakeUpCoordinator(generations, scheduler);
             DeploymentWakeUpGate gate = new DeploymentWakeUpGate(

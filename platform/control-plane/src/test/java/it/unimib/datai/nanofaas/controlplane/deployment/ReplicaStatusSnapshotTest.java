@@ -193,7 +193,7 @@ class ReplicaStatusSnapshotTest {
         // One worker, one queue slot: the third distinct function has nowhere to go.
         ReplicaStatusSnapshot snapshot = new ReplicaStatusSnapshot(clock.instantSource(), TTL,
                 new RefreshLimits(1, 1, 1, 1, Duration.ofMillis(200)));
-        try {
+        try { // NOSONAR (java:S2093): release must run before close()
             ReplicaStatusSnapshot.Fetcher fetcher = t -> {
                 fetchThreads.put(t.functionName(), Thread.currentThread());
                 firstEntered.countDown();
@@ -288,7 +288,7 @@ class ReplicaStatusSnapshotTest {
         CountDownLatch release = new CountDownLatch(1);
         ReplicaStatusSnapshot snapshot = new ReplicaStatusSnapshot(clock.instantSource(), TTL,
                 new RefreshLimits(1, 2, 1, 1, Duration.ofMillis(200)));
-        try {
+        try { // NOSONAR (java:S2093): release must run before close()
             // Uninterruptible on purpose: a provider adapter that ignores interrupts is exactly the
             // case where invalidation must not be allowed to pile up new work behind it.
             ReplicaStatusSnapshot.Fetcher fetcher = t -> {
@@ -495,7 +495,7 @@ class ReplicaStatusSnapshotTest {
         ConcurrentHashMap<String, Thread> fetchThreads = new ConcurrentHashMap<>();
         ReplicaStatusSnapshot snapshot = new ReplicaStatusSnapshot(clock.instantSource(), TTL,
                 new RefreshLimits(1, 1, 1, 1, Duration.ofSeconds(5)));
-        try {
+        try { // NOSONAR (java:S2093): release must run before close()
             ReplicaStatusSnapshot.Fetcher blocking = t -> {
                 fetchThreads.put(t.functionName(), Thread.currentThread());
                 entered.countDown();

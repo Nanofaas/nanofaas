@@ -27,7 +27,7 @@ public final class MutableSyncQueueConfigSource implements SyncQueueConfigSource
     public static final String KEY_MAX_QUEUE_WAIT = "maxQueueWait";
     public static final String KEY_RETRY_AFTER_SECONDS = "retryAfterSeconds";
 
-    private volatile SyncQueueRuntimeDefaults settings;
+    private volatile SyncQueueRuntimeDefaults settings; // NOSONAR (java:S3077): thread-safe or immutable value replaced wholesale
 
     public MutableSyncQueueConfigSource(SyncQueueProperties props) {
         this.settings = props.runtimeDefaults();

@@ -261,7 +261,7 @@ public class WaitEstimator {
     }
 
     private ThroughputSnapshot snapshot(Deque<Instant> events, Instant now) {
-        synchronized (events) {
+        synchronized (events) { // NOSONAR (java:S2445): this object is its own monitor by design; every path locks the same instance
             retainedGlobalSamples.addAndGet(-prune(events, now));
             return throughputSnapshot(retainedGlobalSamples.get());
         }

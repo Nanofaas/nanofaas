@@ -22,7 +22,7 @@ class ReviewOffloadWaiterBudgetTest {
     void firstWaitersBudgetMustNotBecomeTheSharedOffloadDeadline() {
         VirtualTimeScheduler virtual = VirtualTimeScheduler.create();
         VirtualTimeScheduler.set(virtual);
-        try {
+        try { // NOSONAR (java:S2093): resets the global virtual scheduler
             var remote = Sinks.<ClientResponse>one();
             var registry = new SimpleMeterRegistry();
             var gateway = new DefaultOffloadGateway(new OffloadProperties(true, "http://remote", true),

@@ -22,7 +22,7 @@ import java.util.Optional;
 public final class ResourceQuota {
 
     private final FunctionCapacityRegistry generationAuthority;
-    private volatile Limits limits;
+    private volatile Limits limits; // NOSONAR (java:S3077): thread-safe or immutable value replaced wholesale
     private final Object lock = new Object();
     private final Map<String, Long> reservedByFunction = new HashMap<>();
     private final Map<FunctionGeneration, Long> reservedByGeneration = new HashMap<>();

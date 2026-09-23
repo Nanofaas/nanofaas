@@ -612,7 +612,7 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
     /** Detaches this refresh from the entry, but only while the entry still owns it. */
     @SuppressWarnings("ReferenceEquality") // Identity is the ownership token for an in-flight refresh.
     private void forget(Entry entry, Refresh refresh) {
-        synchronized (entry) {
+        synchronized (entry) { // NOSONAR (java:S2445): this object is its own monitor by design; every path locks the same instance
             if (entry.inFlight == refresh.result()) {
                 entry.inFlight = null;
             }
@@ -641,7 +641,7 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
                 return;
             }
             boolean applied;
-            synchronized (entry) {
+            synchronized (entry) { // NOSONAR (java:S2445): this object is its own monitor by design; every path locks the same instance
                 applied = entry.generation == capturedGeneration && target.backendId().equals(entry.backendId);
                 if (applied) {
                     // A late completion still lands here: it is a real reading for the generation
@@ -672,7 +672,7 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
     }
 
     private void recordFailure(Entry entry, long capturedGeneration, ManagedDeploymentTarget target, String reason) {
-        synchronized (entry) {
+        synchronized (entry) { // NOSONAR (java:S2445): this object is its own monitor by design; every path locks the same instance
             if (entry.generation == capturedGeneration && target.backendId().equals(entry.backendId)) {
                 entry.failureReason = reason;
             }
@@ -728,10 +728,10 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
     private static final class Entry {
         volatile long generation;
         volatile String backendId;
-        volatile ReplicaStatus status;
+        volatile ReplicaStatus status; // NOSONAR (java:S3077): thread-safe or immutable value replaced wholesale
         volatile Instant fetchedAt;
-        volatile CompletableFuture<ReplicaStatus> inFlight;
-        volatile RefreshTask task;
+        volatile CompletableFuture<ReplicaStatus> inFlight; // NOSONAR (java:S3077): thread-safe or immutable value replaced wholesale
+        volatile RefreshTask task; // NOSONAR (java:S3077): thread-safe or immutable value replaced wholesale
         /** Short summary of the last failed fetch; a string, so no stack trace is retained. */
         volatile String failureReason;
 

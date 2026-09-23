@@ -363,7 +363,7 @@ public class SchedulerConfiguration {
 
     /** Mutable indirection so {@link EngineDispatch} can be built before the engine exists. */
     static final class WakeHandle implements Runnable {
-        private volatile Runnable delegate = () -> { };
+        private volatile Runnable delegate = () -> { }; // NOSONAR (java:S3077): thread-safe or immutable value replaced wholesale
 
         void bind(Runnable delegate) {
             this.delegate = Objects.requireNonNull(delegate, "delegate must not be null");

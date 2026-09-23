@@ -85,7 +85,7 @@ public class DeploymentWakeUpCoordinator implements DeploymentWakeUpControl, Aut
                 state.expiryTask = scheduleExpiry(generation, state, leaseId, deadlineNanos);
                 state.runningCallbacks++;
             }
-            try {
+            try { // NOSONAR (java:S2093): the lease is returned to the caller, which closes it
                 scaleUp.run();
                 return new WakeUpLease(generation, state, leaseId);
             } finally {
@@ -227,7 +227,7 @@ public class DeploymentWakeUpCoordinator implements DeploymentWakeUpControl, Aut
                         FunctionState state,
                         long leaseId,
                         long deadlineNanos) {
-        synchronized (state) {
+        synchronized (state) { // NOSONAR (java:S2445): this object is its own monitor by design; every path locks the same instance
             if (functions.get(generation) != state
                     || state.retired
                     || state.leaseId != leaseId
@@ -260,7 +260,7 @@ public class DeploymentWakeUpCoordinator implements DeploymentWakeUpControl, Aut
     }
 
     private void release(FunctionGeneration generation, FunctionState state, long leaseId) {
-        synchronized (state) {
+        synchronized (state) { // NOSONAR (java:S2445): this object is its own monitor by design; every path locks the same instance
             if (state.leaseId != leaseId) {
                 return;
             }
@@ -274,7 +274,7 @@ public class DeploymentWakeUpCoordinator implements DeploymentWakeUpControl, Aut
     }
 
     private void retire(FunctionGeneration generation, FunctionState state) {
-        synchronized (state) {
+        synchronized (state) { // NOSONAR (java:S2445): this object is its own monitor by design; every path locks the same instance
             state.retired = true;
             state.leaseId = 0;
             state.deadlineNanos = 0;
@@ -286,7 +286,7 @@ public class DeploymentWakeUpCoordinator implements DeploymentWakeUpControl, Aut
     }
 
     private void callbackFinished(FunctionGeneration generation, FunctionState state) {
-        synchronized (state) {
+        synchronized (state) { // NOSONAR (java:S2445): this object is its own monitor by design; every path locks the same instance
             state.runningCallbacks--;
             drainIfRetired(generation, state);
         }

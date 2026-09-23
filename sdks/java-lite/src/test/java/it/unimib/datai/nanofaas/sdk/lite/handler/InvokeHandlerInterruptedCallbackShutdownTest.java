@@ -32,7 +32,7 @@ class InvokeHandlerInterruptedCallbackShutdownTest {
         callbackServer.createContext("/", exchange -> {
             callbackEntered.countDown();
             try {
-                Thread.sleep(10_000);
+                Thread.sleep(10_000); // NOSONAR (java:S2925): simulates a slow backend
             } catch (InterruptedException ex) {
                 Thread.currentThread().interrupt();
             } finally {
@@ -53,7 +53,7 @@ class InvokeHandlerInterruptedCallbackShutdownTest {
         HttpServer runtime = HttpServer.create(new InetSocketAddress(0), 0);
         runtime.createContext("/invoke", handler);
         runtime.start();
-        try {
+        try { // NOSONAR (java:S2093): HttpServer is not AutoCloseable; teardown order matters
             HttpResponse<String> response = HttpClient.newHttpClient().send(HttpRequest.newBuilder(
                             URI.create("http://127.0.0.1:" + runtime.getAddress().getPort() + "/invoke"))
                     .header("Content-Type", "application/json")

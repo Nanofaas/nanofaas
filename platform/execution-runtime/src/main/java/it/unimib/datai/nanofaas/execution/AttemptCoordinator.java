@@ -418,7 +418,7 @@ public final class AttemptCoordinator {
     }
 
     private FinalCompletion concludeExhaustedRetry(ExecutionRecord executionRecord, PendingRetry pending) {
-        synchronized (executionRecord) {
+        synchronized (executionRecord) { // NOSONAR (java:S2445): this object is its own monitor by design; every path locks the same instance
             if (executionRecord.task().attempt() != pending.attempt()
                     || executionRecord.isTerminal()) {
                 return null;
@@ -595,7 +595,7 @@ public final class AttemptCoordinator {
         Future<?> handle;
         ErrorInfo error = new ErrorInfo(EXECUTION_EXPIRED_CODE,
                 "Execution exceeded its maximum lifetime before a dispatch outcome arrived");
-        synchronized (executionRecord) {
+        synchronized (executionRecord) { // NOSONAR (java:S2445): this object is its own monitor by design; every path locks the same instance
             wasNonTerminal = !executionRecord.isTerminal();
             if (wasNonTerminal) {
                 executionRecord.markError(error);

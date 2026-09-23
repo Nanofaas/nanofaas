@@ -136,7 +136,9 @@ public final class NanofaasRuntime {
 
     private void awaitStopped() {
         try {
-            stopped.await(shutdownTimeout.toNanos(), TimeUnit.NANOSECONDS);
+            if (!stopped.await(shutdownTimeout.toNanos(), TimeUnit.NANOSECONDS)) {
+                log.warn("Timed out waiting for the concurrent shutdown of function '{}'", functionName);
+            }
         } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
         }

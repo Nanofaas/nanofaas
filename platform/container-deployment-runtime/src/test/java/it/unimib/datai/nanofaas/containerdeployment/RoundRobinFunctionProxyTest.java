@@ -379,7 +379,7 @@ class RoundRobinFunctionProxyTest {
         server.setExecutor(executor);
         server.createContext("/invoke", exchange -> {
             try {
-                Thread.sleep(delay.toMillis());
+                Thread.sleep(delay.toMillis()); // NOSONAR (java:S2925): simulates a slow backend
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }

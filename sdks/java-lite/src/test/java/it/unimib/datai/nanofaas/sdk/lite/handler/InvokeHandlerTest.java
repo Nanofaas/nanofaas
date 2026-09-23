@@ -96,7 +96,7 @@ class InvokeHandlerTest {
             exchange.close();
         });
         callbackServer.start();
-        try {
+        try { // NOSONAR (java:S2093): HttpServer is not AutoCloseable; teardown order matters
             String callbackUrl = "http://localhost:" + callbackServer.getAddress().getPort();
             startServer(req -> Map.of("ok", true), new CallbackClient(objectMapper, callbackUrl));
 
@@ -264,7 +264,7 @@ class InvokeHandlerTest {
         });
         callbackServer.setExecutor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor());
         callbackServer.start();
-        try {
+        try { // NOSONAR (java:S2093): HttpServer is not AutoCloseable; teardown order matters
             startServer(
                     req -> Map.of("ok", true),
                     new CallbackClient(objectMapper, "http://localhost:" + callbackServer.getAddress().getPort()));

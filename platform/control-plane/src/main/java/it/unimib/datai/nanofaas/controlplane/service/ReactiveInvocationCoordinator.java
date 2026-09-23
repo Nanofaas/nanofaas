@@ -236,7 +236,7 @@ public final class ReactiveInvocationCoordinator {
         // Bypasses the local queue entirely: no local concurrency slots are consumed,
         // so completion goes through the offload-specific path (no slot release, no retry).
         ExecutionRecord.PhysicalInput physicalInput;
-        synchronized (executionRecord) {
+        synchronized (executionRecord) { // NOSONAR (java:S2445): this object is its own monitor by design; every path locks the same instance
             if (executionRecord.isTerminal()) return;
             // Not try-with-resources (java:S2095): the remote call owns the input until its
             // terminal signal; it is closed on a failed invokeRemote or in whenComplete below.

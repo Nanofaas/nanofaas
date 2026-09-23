@@ -58,7 +58,7 @@ public final class PendingWorkStore {
         }
         entries.put(id, entry);
         reservedByFunction.merge(entry.ticket().generation().functionName(), 1, Integer::sum);
-        reserved++;
+        reserved++; // NOSONAR (java:S3078): single writer under the engine gate; volatile only publishes to gauges
         return true;
     }
 
@@ -139,7 +139,7 @@ public final class PendingWorkStore {
         }
         reservedByFunction.compute(entry.ticket().generation().functionName(),
                 (name, count) -> count == 1 ? null : count - 1);
-        reserved--;
+        reserved--; // NOSONAR (java:S3078): single writer under the engine gate; volatile only publishes to gauges
     }
 
     /** All reservations, including provisional claims and submits that may requeue. */
