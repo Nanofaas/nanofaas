@@ -19,10 +19,8 @@ import java.util.function.Predicate;
  * one FIFO of tickets per function, visited round-robin, with a bounded number of
  * consecutive dispatches per function turn before moving on to the next active function.
  *
- * <p>This mirrors the retired loop exactly: it took function names off
- * a work-signal queue (coalesced while pending) and drained up to
- * {@value #DEFAULT_MAX_BATCH_PER_FUNCTION} tasks from that function's own FIFO
- * ({@link FunctionQueueState}) before moving to the next signalled function. Here the
+ * <p>Each function with pending work takes up to {@value #DEFAULT_MAX_BATCH_PER_FUNCTION}
+ * consecutive tickets from its own FIFO before the next active function gets a turn. The
  * function-name queue is {@code activeOrder} and the per-function FIFO is a
  * {@link SchedulingTicket} deque; the turn advances in {@code remove}, since {@code select}
  * must not mutate anything (see the {@link SchedulingIndex} contract).

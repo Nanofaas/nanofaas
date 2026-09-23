@@ -5,7 +5,7 @@ package it.unimib.datai.nanofaas.controlplane.scheduler;
  *
  * With sync-queue off and async-queue on — the configuration every comparison runs —
  * ReactiveInvocationCoordinator.admitLocally and InvocationService.invokeAsync make the
- * identical enqueue call, so both kinds land in one FunctionQueueState: one bounded
+ * identical enqueue call, so both kinds land in the same per-function engine reservations: one bounded
  * queue, one inFlight counter, one set of concurrency slots. Every per-function meter
  * therefore reports a mixture, and the question "did async work displace a caller that
  * was waiting" has no answer in the data.

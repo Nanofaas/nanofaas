@@ -17,13 +17,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * log line, no failure. The unit tests here build every collaborator with {@code new}, so none
  * of them would notice this configuration going missing.
  *
- * <p>Task 8 (issue #208) retired this module's own {@code QueueManager}-backed worker and
- * {@code WorkloadMetricsSource}: real scheduling now goes through the shared engine
- * ({@code SchedulerConfiguration}). The {@code WorkloadMetricsSource} assertion below was held
- * {@code @Disabled} from Task 8 through Task 10 rather than deleted — this javadoc, and the
- * assertion, document the real production incident ({@code AutoscalerConfigurationTest}'s B3
- * campaign) this guards against. Task 11 restores the bean as
- * {@code EngineWorkloadMetricsSource} and re-enables this test.
+ * <p>Real scheduling goes through the shared engine ({@code SchedulerConfiguration}), and the
+ * {@code WorkloadMetricsSource} bean is {@code EngineWorkloadMetricsSource}. The assertion below
+ * documents the real production incident ({@code AutoscalerConfigurationTest}'s B3 campaign)
+ * this guards against.
  */
 @SpringBootTest(classes = ControlPlaneApplication.class)
 class AsyncQueueContextTest {

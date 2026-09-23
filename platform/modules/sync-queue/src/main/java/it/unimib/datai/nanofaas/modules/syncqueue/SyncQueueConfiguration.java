@@ -31,11 +31,9 @@ import java.util.function.LongSupplier;
  * Registers this module's strategy factory plus the legacy config adapters genuinely still
  * needed (Task 8, issue #208): the runtime-mutable {@link SyncQueueConfigSource}, the module's
  * runtime defaults record, and the admission collaborators ({@link WaitEstimator},
- * {@link SyncQueueAdmissionController}) composed into {@link EngineSyncQueueGateway}. The old
- * {@code SyncQueueService}/{@code SyncScheduler} worker and its own queue are retired as beans
- * ({@code SyncScheduler} itself was deleted in Task 13b, issue #208) —
- * {@code SchedulerConfiguration} now owns the single engine they used to duplicate — but the
- * class itself is untouched (Task 13 removes it, after a full impact pass).
+ * {@link SyncQueueAdmissionController}) composed into {@link EngineSyncQueueGateway}. Queued
+ * work lives in the single engine {@code SchedulerConfiguration} owns ({@code PendingWorkStore}
+ * and {@code SchedulerEngine}).
  */
 @AutoConfiguration
 @EnableConfigurationProperties(SyncQueueProperties.class)
@@ -96,10 +94,9 @@ public class SyncQueueConfiguration {
     }
 
     /**
-     * Reclaims {@code SyncQueueMetrics}' {@code sync_queue_admitted_total}/
-     * {@code sync_queue_rejected_total}/{@code sync_queue_depth} meters (Task 11, issue #208): the
-     * retired {@code SyncQueueService} recorded these on its own queue; {@link EngineSyncQueueGateway}
-     * previously recorded neither. A dedicated bean, not shared with the engine-backed
+     * Owns {@code SyncQueueMetrics}' {@code sync_queue_admitted_total}/
+     * {@code sync_queue_rejected_total}/{@code sync_queue_depth} meters, fed by
+     * {@link EngineSyncQueueGateway}. A dedicated bean, not shared with the engine-backed
      * {@code WorkloadMetricsBinder} in {@code SchedulerConfiguration}: those are the composed
      * engine's own reservation-based gauges; this is this module's own admission counter/gauge,
      * exactly as it was before Task 8.

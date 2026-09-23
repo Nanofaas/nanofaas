@@ -11,15 +11,9 @@ path. Without this module `POST /v1/functions/{name}:enqueue` returns
   round-robin, with a bounded number of consecutive dispatches per function turn.
   The composed `SchedulerConfiguration` builds ONE `SchedulerEngine` around it and
   the sync-queue module's strategy; this module registers no worker of its own.
-  The selection logic and the turn bound were ported from the `Scheduler` loop
-  this module used to provide, which Task 13b (issue #208) deleted once the engine
-  owned selection — the per-function FIFO (`FunctionQueueState`), the queue
-  (`QueueManager`) and `QueueBackedEnqueuer` remain, and are removed by whoever
-  retires the facade.
-- `WorkloadMetricsSource` (`AsyncQueueWorkloadMetricsSource`) — exposes queue
-  depth, in-flight, effective concurrency, and dispatchable backlog. The
-  autoscaler currently consumes queue depth and in-flight; RPS is derived by
-  `ScalingMetricsReader` from the `function_dispatch_total` counter.
+  Queued work lives in the engine's `PendingWorkStore`; admission goes through
+  the core's `EngineInvocationEnqueuer`. Queue depth, in-flight and backlog
+  readings come from the core's `EngineWorkloadMetricsSource`.
 
 ## Configuration
 

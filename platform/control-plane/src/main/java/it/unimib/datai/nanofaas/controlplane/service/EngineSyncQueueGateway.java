@@ -26,16 +26,14 @@ import java.util.function.LongSupplier;
 
 /**
  * Keeps the sync admission contract ({@link SyncQueueGateway}) and delegates the actual
- * scheduling to the shared {@link SchedulerEngine} instead of {@code SyncQueueService}'s own
- * queue (Task 8, issue #208).
+ * scheduling to the shared {@link SchedulerEngine}.
  *
  * <p>This class deliberately has no compile-time knowledge of {@code SyncQueueAdmissionController}
  * or {@code WaitEstimator} — those live in {@code :execution-runtime}'s {@code
  * it.unimib.datai.nanofaas.execution.admission} package as of Task 10 (issue #208), and this
  * class is deliberately not the one that references them; {@code SyncQueueConfiguration} (in the
- * sync-queue module) builds this bean and hands it the SAME admission controller and estimator
- * instances the module's own retired {@code SyncQueueService} constructs (via
- * {@link AdmissionCheck}, {@code onDispatched} and {@code onFunctionRemoved}), so admission
+ * sync-queue module) builds this bean and hands it the module's admission controller and
+ * estimator (via {@link AdmissionCheck}, {@code onDispatched} and {@code onFunctionRemoved}), so admission
  * thresholds and wait estimation are reused byte-for-byte rather than re-derived: there is no
  * second implementation of sync admission to drift from the one the depth cap and wait estimate
  * were validated against.
@@ -53,9 +51,7 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
     private final AdmissionCheck admissionCheck;
     private final BiConsumer<String, Instant> onDispatched;
     private final Consumer<String> onFunctionRemoved;
-    /** Reclaims {@code SyncQueueMetrics}' admitted/rejected counters (Task 11, issue #208): the
-     * retired {@code SyncQueueService} recorded these itself, and this gateway recorded neither
-     * until now. A plain {@link Consumer} rather than the concrete metrics type, matching
+    /** Feeds {@code SyncQueueMetrics}' admitted/rejected counters. A plain {@link Consumer} rather than the concrete metrics type, matching
      * {@link #onDispatched}/{@link #onFunctionRemoved} above, so this class stays free of a
      * compile-time dependency on the sync-queue module. */
     private final Consumer<String> onAdmitted;
@@ -75,15 +71,10 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
     private final Clock clock;
 
     /**
-     * Functions currently being removed: mirrors {@code SyncQueueService}'s {@code RemovalFence}
-     * for the admission-side half only (a function-name-level flag, raised before the
+     * Functions currently being removed: a function-name-level flag, raised before the
      * generation-removal listener drains this function's pending work and cleared before it
-     * grants capacity again). This narrows, but does not close to zero, the race between a
-     * concurrent admission and a removal in flight — the same level of protection the original
-     * had for that half; the original's other half (fencing specific in-flight execution ids
-     * against re-enqueue) is not replicated here, since it would need this class to also listen
-     * for execution completion, which is a bigger scope change than restoring the admission-side
-     * check the fix round asked for.
+     * grants capacity again. This narrows, but does not close to zero, the race between a
+     * concurrent admission and a removal in flight.
      */
     private final Set<String> removalFences = ConcurrentHashMap.newKeySet();
 
@@ -180,8 +171,7 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
     }
 
     private TrackedTicket doEnqueueOrThrow(InvocationTask task) {
-        // Mirrors SyncQueueService.enqueueOrThrow's two isRemovalFenced checks: an early
-        // rejection, and a second one immediately before the commit to narrow the window a
+        // Two removal-fence checks: an early rejection, and a second one immediately before the commit to narrow the window a
         // concurrent removal could otherwise slip through.
         //
         // Each check is pinned by its own probe, and it is worth knowing which — they are not
@@ -198,7 +188,7 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
         Instant now = clock.instant();
         // Valid as a sync-scoped depth only because enabled() now confines this gateway to the
         // SYNC_QUEUE profile: nothing else admits into the engine while it is active, so
-        // store.pendingCount() answers exactly the question SyncQueueService.queuedItems() did.
+        // store.pendingCount() is the sync queue's depth.
         //
         // Deliberately read OUTSIDE the engine's gate, unlike every other use of the store: this
         // is the admission estimate, and the gate is taken by the engine.enqueue below it. The
@@ -222,9 +212,7 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
         TicketId id = new TicketId(task.executionId(), task.attempt());
         Instant deadline = now.plus(configSource.syncQueueMaxQueueWait());
         SchedulingTicket ticket = new SchedulingTicket(id, generation, sequence.getAsLong(), now, now, deadline);
-        // PendingWorkStore's own cap enforces the hard re-check SyncQueueService.enqueueOrThrow
-        // did under `synchronized (queue)` (queue.size() + dispatchReservations.size() >=
-        // maxDepth): the store's maxPending is set to sync-queue.max-depth exactly whenever this
+        // PendingWorkStore's own cap is the hard depth limit: the store's maxPending is set to sync-queue.max-depth exactly whenever this
         // profile is active (SchedulerConfiguration.pendingWorkStore), and store.offer() runs
         // under the engine's own gate, so this admission and every other one are serialized
         // against the same atomic cap.
@@ -261,8 +249,7 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
         removalFences.add(functionName);
     }
 
-    /** Cleared by the generation-registration listener before it grants capacity, mirroring
-     * {@code SyncQueueService.registerFunction}'s own ordering. */
+    /** Cleared by the generation-registration listener before it grants capacity. */
     public void clearRemovalFence(String functionName) {
         removalFences.remove(functionName);
     }
@@ -297,8 +284,7 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
     /**
      * Not a {@link RetryScheduler} override: only {@link EngineInvocationEnqueuer} is registered
      * as the (single) {@code RetryScheduler} bean, and it calls this by plain object reference
-     * when the sync admission profile is active, exactly the shape the retired
-     * {@code SyncQueueInvocationEnqueuer.enqueue} had.
+     * when the sync admission profile is active.
      */
     public boolean enqueue(InvocationTask task) {
         try {

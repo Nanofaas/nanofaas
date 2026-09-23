@@ -22,7 +22,6 @@ classpath = classpath_file.read_text().strip()
 sources = []
 for module in ["platform/common", "platform/workload-metrics", "platform/control-plane"]:
     sources.extend(str(p) for p in (root / module / "src/main/java").rglob("*.java"))
-sources.append(str(next((root / "platform/modules/sync-queue/src/main/java").rglob("SyncQueueInvocationEnqueuer.java"))))
 for name in ["ContainerLocalDeploymentProvider", "ContainerLocalProperties", "ContainerRuntimeAdapter",
              "ContainerInstanceSpec", "ManagedContainer", "ManagedFunctionProxy", "ManagedFunctionProxyFactory",
              "EndpointProbe", "PortAllocator"]:

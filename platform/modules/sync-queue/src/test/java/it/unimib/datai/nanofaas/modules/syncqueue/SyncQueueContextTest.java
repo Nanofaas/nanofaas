@@ -26,10 +26,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code nanofaas.admission.profile=sync-queue} explicitly to exercise this module's own gateway
  * being the active one, rather than asserting a profile default this module does not control.
  *
- * <p>The {@code WorkloadMetricsSource} assertion below was held {@code @Disabled} through Task 8
- * and Task 10: the old {@code SyncQueueWorkloadMetricsSource} was backed by
- * {@code SyncQueueService}'s own (now retired) queue, and Task 11 restores it as
- * {@code EngineWorkloadMetricsSource}, backed by the composed engine instead.
+ * <p>The {@code WorkloadMetricsSource} bean is {@code EngineWorkloadMetricsSource}, backed by
+ * the composed engine.
  */
 @SpringBootTest(classes = ControlPlaneApplication.class,
         properties = {"sync-queue.enabled=true", "nanofaas.admission.profile=sync-queue"})

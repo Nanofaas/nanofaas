@@ -31,7 +31,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * With sync-queue off and async-queue on - the configuration every comparison runs -
- * both doors call the same enqueue, so one FunctionQueueState holds both kinds of work
+ * both doors call the same enqueue, so one function's engine reservations hold both kinds of work
  * and every per-function meter reports a mixture. These are the three series that do
  * not, and the run that asks whether async displaced a waiting caller reads them.
  *

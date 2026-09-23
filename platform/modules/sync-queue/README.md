@@ -7,8 +7,9 @@ into fast, explicit `429`s rather than pile-ups.
 
 ## Provides
 
-- `SyncQueueGateway` (`SyncQueueService`) — core SPI implementation; the
-  coordinator enqueues sync tasks here when the module is active.
+- `SyncQueueGateway` (`EngineSyncQueueGateway`, built by this module's
+  configuration) — the coordinator enqueues sync tasks here when the module is
+  active; queued work lives in the engine's `PendingWorkStore`.
 - `SyncQueueAdmissionController` — rejects with reason `DEPTH` (queue at
   `max-depth`) or `EST_WAIT` (estimated wait above threshold, computed by
   `WaitEstimator` from a sliding throughput window).

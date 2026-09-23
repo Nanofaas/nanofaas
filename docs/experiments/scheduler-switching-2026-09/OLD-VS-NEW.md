@@ -273,20 +273,12 @@ submitting + in flight). Zero driver failures, zero sample-cap overruns.
 ### 7.1 The artifact, and how every figure below was produced
 
 ```bash
-docs/experiments/scheduler-switching-2026-09/run-old.sh --label=old-vs-new --repetitions=5
 docs/experiments/scheduler-switching-2026-09/old-vs-new.py raw/old-vs-new.jsonl
 ```
 
-> **Tombstone (Task 13b, issue #208, 2026-09-21): the first command above can no longer run.**
-> Task 13b deleted `modules.asyncqueue.Scheduler` and `modules.syncqueue.scheduler.SyncScheduler`
-> — the old arm's subject — so `OldLoopComparison.java`, which imports `Scheduler`, no longer
-> compiles at this commit or after it: `run-old.sh` aborts at its `javac` step with a non-zero exit
-> and writes no `raw/*.jsonl`. The second command still runs, because it reads the committed
-> `raw/old-vs-new.jsonl`, so every figure in this section stays re-derivable from the artifact.
-> The run these numbers came from was a real one at revision `c64da071`, when the harness compiled.
-> To re-measure the old loop, check out a revision before Task 13b — `25388b1a` is the last that
-> compiles the harness — and run it there. `OldLoopComparison.java` is deliberately left unedited,
-> because its bytes are one of the digests recorded in the header below.
+This retired-queue experiment is historical. Its harness and execution instructions are available in the recorded experiment revision; the current branch no longer contains the retired queues. The run these numbers came from was made at revision `c64da071`; `25388b1a` is the last
+revision that compiles the harness. The command above still runs, because it reads the committed
+`raw/old-vs-new.jsonl`.
 
 - `raw/old-vs-new.jsonl` — 61 JSONL lines: one `header`, 60 `sample`. Revision
   `c64da071` (the commit that added the arm), harness
@@ -705,29 +697,12 @@ And one more, added by this task rather than inherited:
 
 ## 11. Reproducing it
 
+This retired-queue experiment is historical. Its harness and execution instructions are available in the recorded experiment revision; the current branch no longer contains the retired queues. The harness (`OldLoopComparison.java`, `run-old.sh`) is at revision `c64da071`; `25388b1a` is
+the last revision that compiles it. The committed artifact can still be re-analysed at HEAD:
+
 ```bash
-# the smoke run this task was committed with
-docs/experiments/scheduler-switching-2026-09/run-old.sh \
-    --label=smoke-old --profiles=low-load --repetitions=1
-
-# the campaign
-docs/experiments/scheduler-switching-2026-09/run-old.sh --label=old-vs-new --repetitions=5
-
-# the tables, verbatim into raw/old-vs-new-analysis.txt
 docs/experiments/scheduler-switching-2026-09/old-vs-new.py raw/old-vs-new.jsonl
-
-# the committed harness's own view of the same artifact (reuse, not a reimplementation)
-python3 -c "import summarize, sys; sys.path.insert(0, '.'); \
-  summarize.workload_table(summarize.load('raw/old-vs-new.jsonl')[0])"
 ```
-
-`run-old.sh` rebuilds the queue modules' jars first (a stale jar would drive a different revision of
-the old loop than the one reported), resolves `:control-plane-modules:async-queue`'s test classpath
-into `.classpath-async-queue` if the cache is missing or invalid, compiles `OldLoopComparison.java`
-together with `SchedulerSwitchBenchmark.java`, stops the Gradle daemon, and runs on a fixed
-pre-touched 1 GiB heap. The classpath is that module's test classpath, not `:execution-runtime`'s,
-because `Scheduler` implements `SmartLifecycle` and its type does not resolve without Spring; the
-async-queue test classpath carries both queue modules, the engine and Spring.
 
 ## 12. The sweep this revision ran
 

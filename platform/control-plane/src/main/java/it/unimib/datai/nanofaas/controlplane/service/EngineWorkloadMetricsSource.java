@@ -8,10 +8,7 @@ import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 import java.util.Objects;
 
 /**
- * The single {@link WorkloadMetricsSource} for the composed engine (Task 11, issue #208),
- * replacing the two per-module sources ({@code AsyncQueueWorkloadMetricsSource},
- * {@code SyncQueueWorkloadMetricsSource}) that Task 8 retired along with the schedulers that
- * backed them. Both the autoscaler and the concurrency governor gate their own startup on a
+ * The single {@link WorkloadMetricsSource} for the composed engine. Both the autoscaler and the concurrency governor gate their own startup on a
  * bean of this type ({@code @ConditionalOnBean(WorkloadMetricsSource.class)}); its absence since
  * Task 8 silently disabled both, which is the incident {@code AutoscalerConfigurationTest}
  * documents.
@@ -73,8 +70,7 @@ public final class EngineWorkloadMetricsSource implements WorkloadMetricsSource 
         return capacityRegistry.effectiveConcurrency(functionName);
     }
 
-    /** Mirrors the retired {@code SyncQueueWorkloadMetricsSource.dispatchableBacklog}: the
-     * function's reservations when its generation can currently dispatch, zero otherwise. */
+    /** The function's reservations when its generation can currently dispatch, zero otherwise. */
     @Override
     public int dispatchableBacklog(String functionName) {
         CapacityView state = capacityRegistry.state(functionName);

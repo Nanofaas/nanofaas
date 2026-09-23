@@ -160,21 +160,6 @@ public class Audit {
         require(privateSize(metrics,"removedFunctions")==1000 && privateSize(snapshot,"entries")==1000,"churn reproduction");
         System.out.printf("CHURN: removedMetricNames=%d invalidatedReplicaEntries=%d%n", privateSize(metrics,"removedFunctions"),privateSize(snapshot,"entries"));
     }
-    static void disabledSyncSlot() {
-        var capacity = new it.unimib.datai.nanofaas.workloadmetrics.FunctionCapacityRegistry();
-        capacity.register("fn", 1);
-        require(capacity.tryAcquireSlot("fn"), "old queue dispatch acquired a slot");
-        var enqueuer = new it.unimib.datai.nanofaas.modules.syncqueue.SyncQueueInvocationEnqueuer(capacity);
-        var store = new ExecutionStore();
-        var metrics = new Metrics(new SimpleMeterRegistry());
-        var handler = new ExecutionCompletionHandler(store, enqueuer, new DispatcherRouter(new LocalDispatcher(), null), metrics);
-        // A disabled sync gateway sends new arrivals down the direct path, while old queued work is still draining.
-        var coordinator = new ReactiveInvocationCoordinator(enqueuer, metrics, null, null, handler, new InvocationResponseMapper());
-        var factory = new InvocationExecutionFactory(store, new IdempotencyStore(), metrics);
-        var result = coordinator.invoke(lookup(factory, null), spec("fn"), 1000).block();
-        require(capacity.inFlight("fn") == 0, "unowned slot release reproduction");
-        System.out.printf("SYNC-DISABLED: oldDispatchStillRunning=true slotsBefore=1 slotsAfter=%d newResult=%s%n",capacity.inFlight("fn"),result.response().status());
-    }
     static void coreAdmission() {
         var f = new Fixture();
         var coordinator = f.coordinator(null);
@@ -215,7 +200,7 @@ public class Audit {
     }
     public static void main(String[] args) throws Exception {
         waiterReplay(); offloadRetention(); weights(); keyBudget(); archiveRace(); churn();
-        disabledSyncSlot(); coreAdmission(); deprovisionFailure();
-        System.out.println("All nine diagnostic reproductions observed.");
+        coreAdmission(); deprovisionFailure();
+        System.out.println("All eight diagnostic reproductions observed.");
     }
 }

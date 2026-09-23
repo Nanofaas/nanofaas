@@ -29,9 +29,7 @@ import it.unimib.datai.nanofaas.execution.SchedulerEngine;
 import it.unimib.datai.nanofaas.execution.admission.SyncQueueAdmissionController;
 import it.unimib.datai.nanofaas.execution.admission.WaitEstimator;
 import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
-import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueItem;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueMetrics;
-import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -286,9 +284,7 @@ class SyncQueueRuntimeLifecycleTest {
      * {@code removalFences.contains} checks in {@code EngineSyncQueueGateway.doEnqueueOrThrow}
      * and the {@code raise}/{@code clear} pair called from
      * {@code SchedulerConfiguration.schedulerCapacityGenerationListener} executed on no test path
-     * at all — the two classes that build the real listener stub the gateway out — and the only
-     * test of "reject while a removal is in flight" ran against the retired
-     * {@code SyncQueueService}, which has no production caller.
+     * at all — the two classes that build the real listener stub the gateway out.
      *
      * <p>What this pins is the observable contract of the listener: a removed function admits
      * nothing, and a re-registered one admits again. It is deliberately NOT presented as proof
@@ -567,67 +563,56 @@ class SyncQueueRuntimeLifecycleTest {
 
     /**
      * A4: a retry of work that was admitted while the queue was enabled must keep being
-     * drained after a runtime deactivation, not be abandoned. Manual-pump style (like the
-     * A3 retry integration tests): the scheduler thread is not started, each attempt is
-     * popped from the real queue and dispatched, so the test is deterministic.
+     * drained after a runtime deactivation, not be abandoned. Runs on the real engine: the
+     * first attempt disables admission before the real completion handler queues its retry.
      */
     @Test
     void retryOfAdmittedWorkIsNotAbandonedAfterRuntimeDeactivation() {
-        ExecutionStore store = new ExecutionStore();
-        FunctionCapacityRegistry capacityRegistry = new FunctionCapacityRegistry();
-        SyncQueueProperties props = new SyncQueueProperties(
-                true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(30), 2, Duration.ofSeconds(30), 3);
-        MutableSyncQueueConfigSource configSource = new MutableSyncQueueConfigSource(props);
-        SyncQueueMetrics metrics = new SyncQueueMetrics(new SimpleMeterRegistry());
-        SyncQueueService queue = new SyncQueueService(props, store, metrics, configSource, capacityRegistry, null);
-        queue.registerFunction("fn", 1);
-        SyncQueueInvocationEnqueuer enqueuer = new SyncQueueInvocationEnqueuer(capacityRegistry, null, ignored -> { }, queue);
-
-        AtomicInteger attempts = new AtomicInteger();
-        DispatcherRouter router = mock(DispatcherRouter.class);
-        when(router.dispatchLocal(any())).thenAnswer(invocation -> {
-            if (attempts.incrementAndGet() == 1) {
-                return CompletableFuture.completedFuture(
-                        DispatchResult.warm(InvocationResult.error("ERROR", "attempt 1 failed")));
+        runner.withPropertyValues("nanofaas.admission.profile=SYNC_QUEUE").run(context -> {
+            context.getBean(SchedulerLifecycleAdapter.class).stop();
+            FunctionSpec spec = spec(1);
+            context.getBean("schedulerCapacityGenerationListener", FunctionRegistrationListener.class)
+                    .onRegister(spec);
+            context.getBean("syncQueueMetricsLifecycleListener", FunctionRegistrationListener.class)
+                    .onRegister(spec);
+            var engine = context.getBean(SchedulerEngine.class);
+            var enqueuer = context.getBean(
+                    it.unimib.datai.nanofaas.controlplane.service.EngineInvocationEnqueuer.class);
+            var config = context.getBean(MutableSyncQueueConfigSource.class);
+            var store = context.getBean(ExecutionStore.class);
+            var attempts = new AtomicInteger();
+            DispatcherRouter router = mock(DispatcherRouter.class);
+            when(router.dispatchLocal(any())).thenAnswer(invocation -> {
+                if (attempts.incrementAndGet() == 1) {
+                    config.apply(Map.of(MutableSyncQueueConfigSource.KEY_ENABLED, false));
+                    return CompletableFuture.completedFuture(
+                            DispatchResult.warm(InvocationResult.error("ERROR", "attempt 1 failed")));
+                }
+                return CompletableFuture.completedFuture(DispatchResult.warm(InvocationResult.success("ok")));
+            });
+            var handler = new ExecutionCompletionHandler(store, enqueuer, router,
+                    new Metrics(context.getBean(MeterRegistry.class)));
+            doAnswer(invocation -> {
+                handler.dispatch(invocation.getArgument(0));
+                return null;
+            }).when(context.getBean(InvocationDispatch.class)).dispatch(any(InvocationTask.class));
+            InvocationTask admitted = task("retry-after-disable", spec);
+            ExecutionRecord record = new ExecutionRecord(admitted.executionId(), admitted);
+            store.put(record);
+            assertThat(enqueuer.enqueue(admitted)).isTrue();
+            for (int i = 0; i < 3 && !record.completion().isDone(); i++) {
+                engine.tick();
             }
-            return CompletableFuture.completedFuture(DispatchResult.warm(InvocationResult.success("ok")));
+            assertThat(record.completion().isDone()).isTrue();
+            assertThat(record.completion().join().success()).isTrue();
+            assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
+            assertThat(attempts.get()).isEqualTo(2);
+            assertThat(engine.reservedCount(spec.name())).isZero();
         });
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
-                store, enqueuer, router, new Metrics(new SimpleMeterRegistry()));
-
-        FunctionSpec spec = spec(1);
-        InvocationTask admitted = task("exec-admitted-before-disable", spec);
-        ExecutionRecord record = new ExecutionRecord(admitted.executionId(), admitted);
-        store.put(record);
-        assertThat(enqueuer.enqueue(admitted)).isTrue();
-
-        pollAndDispatch(queue, enqueuer, handler, "fn"); // attempt 1 fails; retry re-queued
-        assertThat(record.completion().isDone()).isFalse();
-        assertThat(record.state()).isEqualTo(ExecutionState.QUEUED);
-
-        // Deactivate the queue while the retry is queued: the admitted work still drains.
-        configSource.apply(Map.of(MutableSyncQueueConfigSource.KEY_ENABLED, false));
-        assertThat(queue.enabled()).isFalse();
-
-        pollAndDispatch(queue, enqueuer, handler, "fn"); // attempt 2 succeeds after deactivation
-
-        assertThat(record.completion().isDone()).isTrue();
-        assertThat(record.completion().join().success()).isTrue();
-        assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
-        assertThat(attempts.get()).isEqualTo(2);
     }
 
     private static FunctionSpec spec(int maxRetries) {
         return new FunctionSpec("fn", "image", null, Map.of(), null,
                 1000, 1, 10, maxRetries, null, ExecutionMode.LOCAL, null, null, null);
-    }
-
-    private static void pollAndDispatch(SyncQueueService queue, SyncQueueInvocationEnqueuer enqueuer,
-                                        ExecutionCompletionHandler handler, String functionName) {
-        SyncQueueItem item = queue.pollReady(Instant.now());
-        assertThat(item).isNotNull();
-        var lease = enqueuer.tryAcquireLease(item.task());
-        assertThat(lease).isNotNull();
-        handler.dispatch(item.task().withDispatchLease(lease));
     }
 }

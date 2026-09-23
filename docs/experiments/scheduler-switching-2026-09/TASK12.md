@@ -112,6 +112,8 @@ is shifted rather than only the tail, and the difference decays to +0.6 % with o
 
 ## 3. Question B — what does the refactor itself cost?
 
+> This retired-queue experiment is historical. Its harness and execution instructions are available in the recorded experiment revision; the current branch no longer contains the retired queues. (`OldLoopComparison.java` and `run-old.sh` are at `c64da071`.)
+
 **Answered by Task 12e, with a paired design that fixes exactly the weakness of Question A's
 measurement.** `OldLoopComparison.java` drives the pre-refactor async loop (`Scheduler` over
 `QueueManager`/`FunctionQueueState`) as one arm and the new engine with `PerFunctionSchedulingStrategy`

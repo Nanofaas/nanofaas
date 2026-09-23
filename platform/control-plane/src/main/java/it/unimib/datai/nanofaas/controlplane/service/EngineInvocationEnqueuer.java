@@ -20,18 +20,16 @@ import java.util.function.LongSupplier;
  * of how many {@code SchedulingStrategy} beans are on the classpath (Task 8, issue #208).
  *
  * <p>{@link InvocationEnqueuer#enqueue} and {@link RetryScheduler#enqueue} share one method, as
- * the interfaces already declare it identically and {@code QueueBackedEnqueuer} did the same for
- * the async-only profile: a fresh admission and a retry both become one ticket. Which admission
+ * the interfaces already declare it identically: a fresh admission and a retry both become one
+ * ticket. Which admission
  * profile is active decides where that ticket goes:
  * <ul>
- *   <li>{@link AdmissionProfile#FUNCTION_QUEUE} — admits straight into the engine, exactly like
- *       the retired {@code QueueBackedEnqueuer}: no depth/wait-time gate beyond a soft
- *       per-function cap (see {@link PerFunctionDepth}).</li>
+ *   <li>{@link AdmissionProfile#FUNCTION_QUEUE} — admits straight into the engine: no
+ *       depth/wait-time gate beyond a soft per-function cap (see {@link PerFunctionDepth}).</li>
  *   <li>{@link AdmissionProfile#SYNC_QUEUE} — this bean's {@code enqueue} is only ever reached
  *       for a <em>retry</em> here (a fresh sync admission goes through
  *       {@link EngineSyncQueueGateway#enqueueOrThrow} directly, never through this class), and it
- *       delegates to the same gate a fresh admission would have used, exactly like the retired
- *       {@code SyncQueueInvocationEnqueuer}.</li>
+ *       delegates to the same gate a fresh admission would have used.</li>
  *   <li>{@link AdmissionProfile#DIRECT} — no queue module resolved for admission; refuses.</li>
  * </ul>
  */
@@ -114,9 +112,7 @@ public final class EngineInvocationEnqueuer implements InvocationEnqueuer, Retry
     @Override
     public boolean isQueueFull(String functionName) {
         // Advisory only (enqueue remains authoritative). Answerable only once this function has
-        // been admitted at least once (PerFunctionDepth then knows its cap) — the retired
-        // QueueManager.isQueueFull had the same limit, since it too could only report on a
-        // function it already tracked a FunctionQueueState for.
+        // been admitted at least once (PerFunctionDepth then knows its cap).
         return profile == AdmissionProfile.FUNCTION_QUEUE && perFunctionDepth.isFull(functionName);
     }
 
@@ -142,10 +138,8 @@ public final class EngineInvocationEnqueuer implements InvocationEnqueuer, Retry
             return false;
         }
         // Fix round 3: closes the residual admission window between resolving `generation` above
-        // and this enqueue committing. The retired QueueManager admitted under its own capacity
-        // lock, so a concurrent removal could never observe a still-active generation and let a
-        // ticket through; this class has no such lock, so a removal racing exactly here can slip
-        // a ticket in after the generation it was built against has already been retired. Left
+        // and this enqueue committing. This class holds no lock across the two, so a removal
+        // racing exactly here can slip a ticket in after the generation it was built against has already been retired. Left
         // alone that ticket strands permanently in this profile: its queueDeadline is null (no
         // reaper ever collects it) and its generation is no longer active (engineReadiness never
         // selects it) — the same class of stranding C2 exists to prevent, under the same

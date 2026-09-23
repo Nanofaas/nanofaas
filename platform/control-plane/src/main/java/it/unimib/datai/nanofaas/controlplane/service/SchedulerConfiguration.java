@@ -319,8 +319,7 @@ public class SchedulerConfiguration {
      * resolve an active {@link FunctionGeneration} at admission time.
      *
      * <p>Fix round C2: {@code onRemove} now also drains this function's pending, undispatched
-     * engine tickets — the old per-module schedulers each did this on their own queue
-     * ({@code QueueManager.remove}, {@code SyncQueueService.removeFunctionState}), terminating a
+     * engine tickets through {@link SchedulerEngine#removeAllFor}, terminating a
      * queued caller as {@code ExecutionState.ERROR}/{@code FUNCTION_REMOVED} rather than leaving
      * it to hang to its own timeout.
      *
@@ -334,10 +333,8 @@ public class SchedulerConfiguration {
      * whole scan-and-remove under the engine's own gate, the same requirement every other access
      * to that store already observes.
      *
-     * <p>Fix round 2 correction: capacity is retired <em>before</em> the drain, not after. The
-     * retired async path ({@code QueueManager.remove}) detached its state first and only then
-     * drained the detached, closed state, so a concurrent admission found no state and refused.
-     * Draining first would leave {@code capacityRegistry.activeGeneration} resolvable for the
+     * <p>Fix round 2 correction: capacity is retired <em>before</em> the drain, not after, so a
+     * concurrent admission finds no active generation and refuses. Draining first would leave {@code capacityRegistry.activeGeneration} resolvable for the
      * whole drain window, letting a concurrent {@link EngineInvocationEnqueuer#admitDirect} admit
      * a ticket the scan has already passed — stranded forever in the {@code FUNCTION_QUEUE}
      * profile, since that ticket's {@code queueDeadline} is null and the sync removal fence below
@@ -372,8 +369,7 @@ public class SchedulerConfiguration {
         return new FunctionRegistrationListener() {
             @Override
             public void onRegister(FunctionSpec spec) {
-                // Mirror SyncQueueService.registerFunction: clear the fence before granting
-                // capacity, so a task admitted in the gap simply waits for a slot instead of
+                // Clear the fence before granting capacity, so a task admitted in the gap simply waits for a slot instead of
                 // racing a stale removal fence.
                 EngineSyncQueueGateway gateway = syncGateway.getIfAvailable();
                 if (gateway != null) {
@@ -402,9 +398,7 @@ public class SchedulerConfiguration {
                     gateway.functionRemoved(functionName);
                     // Redundant once capacityRegistry.remove has run above (enqueueOrThrow then
                     // rejects on generation == null anyway) — cleared here so a function removed
-                    // and never re-registered does not sit in this set forever. SyncQueueService
-                    // carried the same caution: "retaining the name would turn a lifecycle fence
-                    // into an unbounded history cache."
+                    // and never re-registered does not sit in this set forever.
                     gateway.clearRemovalFence(functionName);
                 }
             }
