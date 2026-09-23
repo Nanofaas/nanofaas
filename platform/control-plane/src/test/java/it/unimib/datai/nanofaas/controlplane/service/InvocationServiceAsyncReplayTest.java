@@ -259,8 +259,8 @@ class InvocationServiceAsyncReplayTest {
         assertThat(executionStore.size()).isZero();
         assertThat(executionStore.outcomeOf(first.executionId())).isNull();
 
-        assertThatThrownBy(() -> invocationService.invokeAsync(
-                "testFunc", new InvocationRequest("payload", null), "idem-gone", null))
+        var request = new InvocationRequest("payload", null);
+        assertThatThrownBy(() -> invocationService.invokeAsync("testFunc", request, "idem-gone", null))
                 .isInstanceOf(OutcomeGoneException.class)
                 .hasMessageContaining(first.executionId());
 

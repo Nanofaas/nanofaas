@@ -75,7 +75,10 @@ class ContainerdRecoveryTest {
         state.seed(1, true);
         state.daemon.put(id(2), container(id(2), labels("echo", 1)));
         try (var restarted = state.open()) {
-            assertThatThrownBy(() -> restarted.provider().reconcile(spec(), 1, metadata()))
+            var provider = restarted.provider();
+            var spec = spec();
+            var metadata = metadata();
+            assertThatThrownBy(() -> provider.reconcile(spec, 1, metadata))
                     .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("replica");
             assertThat(state.events).isEmpty();
         }
@@ -87,7 +90,10 @@ class ContainerdRecoveryTest {
         state.seed(1, true);
         state.daemon.put("another-r1", container("another-r1", labels("echo", 1)));
         try (var restarted = state.open()) {
-            assertThatThrownBy(() -> restarted.provider().reconcile(spec(), 0, metadata()))
+            var provider = restarted.provider();
+            var spec = spec();
+            var metadata = metadata();
+            assertThatThrownBy(() -> provider.reconcile(spec, 0, metadata))
                     .isInstanceOf(IllegalArgumentException.class);
             assertThat(state.events).isEmpty();
         }
@@ -104,7 +110,10 @@ class ContainerdRecoveryTest {
         conflicting.put(key, "foreign");
         state.daemon.put(id(1), container(id(1), conflicting));
         try (var restarted = state.open()) {
-            assertThatThrownBy(() -> restarted.provider().reconcile(spec(), 0, metadata()))
+            var provider = restarted.provider();
+            var spec = spec();
+            var metadata = metadata();
+            assertThatThrownBy(() -> provider.reconcile(spec, 0, metadata))
                     .isInstanceOf(IllegalStateException.class).hasMessageContaining("ownership");
             assertThat(state.events).isEmpty();
         }
@@ -115,7 +124,10 @@ class ContainerdRecoveryTest {
         RecoveryFixture state = new RecoveryFixture();
         state.daemon.put(id(1), container(id(1), labels("other", 1)));
         try (var restarted = state.open()) {
-            assertThatThrownBy(() -> restarted.provider().reconcile(spec(), 1, metadata()))
+            var provider = restarted.provider();
+            var spec = spec();
+            var metadata = metadata();
+            assertThatThrownBy(() -> provider.reconcile(spec, 1, metadata))
                     .isInstanceOf(IllegalStateException.class);
             assertThat(state.events).isEmpty();
             assertThat(state.daemon).containsKey(id(1));
@@ -127,8 +139,11 @@ class ContainerdRecoveryTest {
         RecoveryFixture state = new RecoveryFixture();
         state.seed(1, true);
         try (var restarted = state.open()) {
-            assertThatThrownBy(() -> restarted.provider().reconcile(spec(), 0,
-                    Map.of("containerNamePrefix", "foreign"))).isInstanceOf(IllegalArgumentException.class);
+            var provider = restarted.provider();
+            var spec = spec();
+            var metadata = Map.of("containerNamePrefix", "foreign");
+            assertThatThrownBy(() -> provider.reconcile(spec, 0,
+                    metadata)).isInstanceOf(IllegalArgumentException.class);
             assertThat(state.events).isEmpty();
         }
     }

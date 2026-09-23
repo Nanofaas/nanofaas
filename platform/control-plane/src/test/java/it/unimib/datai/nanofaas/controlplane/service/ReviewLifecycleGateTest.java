@@ -118,7 +118,8 @@ class ReviewLifecycleGateTest {
         var a = newRecord("new-a", spec(ExecutionMode.LOCAL, 1)); store.put(a);
         var b = newRecord("new-b", spec(ExecutionMode.LOCAL, 1)); store.put(b);
         handler.dispatchDirect(a.task());
-        assertThatThrownBy(() -> handler.dispatchDirect(b.task()))
+        var taskB = b.task();
+        assertThatThrownBy(() -> handler.dispatchDirect(taskB))
                 .isInstanceOf(QueueFullException.class);
         System.out.println("DIRECT_RECONFIG requested=1 inFlight=" + capacity.inFlight("fn"));
         try { assertThat(capacity.inFlight("fn")).isEqualTo(1); }

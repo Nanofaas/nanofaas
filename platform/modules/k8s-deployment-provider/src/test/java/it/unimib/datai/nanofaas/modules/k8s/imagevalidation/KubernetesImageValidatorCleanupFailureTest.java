@@ -54,7 +54,8 @@ class KubernetesImageValidatorCleanupFailureTest {
                 Duration.ofSeconds(1),
                 Duration.ofMillis(1));
 
-        assertThatThrownBy(() -> validator.validate(deploymentSpec()))
+        var spec = deploymentSpec();
+        assertThatThrownBy(() -> validator.validate(spec))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("create failed");
         assertThat(output)

@@ -143,7 +143,8 @@ class ContainerdRuntimeAdapterTest {
     @Test
     void missingAddressFailsAndRemovesOwnedContainer() {
         when(containers.networkAttachment("nanofaas-echo-092c79e8f8-r1")).thenReturn(NetworkAttachment.EMPTY);
-        assertThatThrownBy(() -> adapter.runContainer(instance(List.of())))
+        var emptyInstance = instance(List.of());
+        assertThatThrownBy(() -> adapter.runContainer(emptyInstance))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("IP address");
         verify(containers).remove(eq("nanofaas-echo-092c79e8f8-r1"), any());
     }

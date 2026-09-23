@@ -115,9 +115,10 @@ class InvocationQuotaLifecycleIntegrationTest {
                 failingStore, new IdempotencyStore(), new Metrics(new SimpleMeterRegistry()),
                 capacity, INPUT_LIMITS);
 
+        var spec = spec();
+        var request = new InvocationRequest(new ArrayList<>(java.util.List.of("x")), Map.of());
         assertThatThrownBy(() -> factory.createOrReuseExecution(
-                "fn", spec(), new InvocationRequest(new ArrayList<>(java.util.List.of("x")), Map.of()),
-                null, null, InvocationKind.SYNC))
+                "fn", spec, request, null, null, InvocationKind.SYNC))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("publication failed");
         assertThat(capacity.executionReservedGlobally()).isZero();
@@ -221,9 +222,10 @@ class InvocationQuotaLifecycleIntegrationTest {
         var admitted = fixture.factory.createOrReuseExecution(
                 "fn", spec(), request, null, null, InvocationKind.SYNC);
 
+        var spec = spec();
         for (int attempt = 0; attempt < 1_000; attempt++) {
             assertThatThrownBy(() -> fixture.factory.createOrReuseExecution(
-                    "fn", spec(), request, null, null, InvocationKind.SYNC))
+                    "fn", spec, request, null, null, InvocationKind.SYNC))
                     .isInstanceOf(InvocationQuotaExceededException.class)
                     .extracting("resource")
                     .isEqualTo(InvocationQuotaExceededException.Resource.INPUT);
@@ -290,8 +292,8 @@ class InvocationQuotaLifecycleIntegrationTest {
                 "fn", spec(), new InvocationRequest(new ArrayList<>(java.util.List.of("x")), Map.of()),
                 null, null, InvocationKind.SYNC);
 
-        assertThatThrownBy(() -> coordinator.invoke(
-                lookup, spec(), 10_000, OffloadContext.none()).block())
+        var response = coordinator.invoke(lookup, spec(), 10_000, OffloadContext.none());
+        assertThatThrownBy(response::block)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("submit failed");
         assertThat(fixture.capacity.executionReservedGlobally()).isZero();

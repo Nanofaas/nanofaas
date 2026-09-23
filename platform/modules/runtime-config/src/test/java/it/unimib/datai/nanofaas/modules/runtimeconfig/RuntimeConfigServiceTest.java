@@ -170,7 +170,8 @@ class RuntimeConfigServiceTest {
                 .thenReturn(Map.of());
         var service = new RuntimeConfigService(new RuntimeConfigRegistry(List.of(extension, other)),
                 new SimpleMeterRegistry());
-        assertThatThrownBy(() -> service.update(0, "scheduler", Map.of("strategy", "shared-queue")))
+        Map<String, Object> patch = Map.of("strategy", "shared-queue");
+        assertThatThrownBy(() -> service.update(0, "scheduler", patch))
                 .isInstanceOf(RuntimeConfigApplyException.class);
         verify(change, never()).commit();
         verify(change).close();
@@ -211,7 +212,8 @@ class RuntimeConfigServiceTest {
         var service = new RuntimeConfigService(new RuntimeConfigRegistry(List.of(extension)),
                 new SimpleMeterRegistry());
 
-        assertThatThrownBy(() -> service.update(1, "scheduler", Map.of("strategy", "shared-queue")))
+        Map<String, Object> patch = Map.of("strategy", "shared-queue");
+        assertThatThrownBy(() -> service.update(1, "scheduler", patch))
                 .isInstanceOf(RevisionMismatchException.class);
 
         verify(extension, never()).validate(any());
@@ -226,7 +228,8 @@ class RuntimeConfigServiceTest {
         var service = new RuntimeConfigService(new RuntimeConfigRegistry(List.of(extension)),
                 new SimpleMeterRegistry());
 
-        assertThatThrownBy(() -> service.update(0, "scheduler", Map.of("strategy", "unknown")))
+        Map<String, Object> patch = Map.of("strategy", "unknown");
+        assertThatThrownBy(() -> service.update(0, "scheduler", patch))
                 .isInstanceOf(RuntimeConfigValidationException.class);
 
         verify(extension, never()).prepare(any());
@@ -273,7 +276,8 @@ class RuntimeConfigServiceTest {
         var service = new RuntimeConfigService(
                 new RuntimeConfigRegistry(List.of(extension, ok1, failing, ok2)), new SimpleMeterRegistry());
 
-        assertThatThrownBy(() -> service.update(0, "scheduler", Map.of("strategy", "shared-queue")))
+        Map<String, Object> patch = Map.of("strategy", "shared-queue");
+        assertThatThrownBy(() -> service.update(0, "scheduler", patch))
                 .isInstanceOf(RuntimeConfigApplyException.class);
 
         verify(change, never()).commit();

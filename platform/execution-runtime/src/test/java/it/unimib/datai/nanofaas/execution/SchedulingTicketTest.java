@@ -36,21 +36,24 @@ class SchedulingTicketTest {
     @Test void ticketAcceptsNullQueueDeadlineButNotNullNotBefore() {
         var ticket = new SchedulingTicket(new TicketId("e1", 1), GENERATION, 0, NOW, NOW, null);
         assertThat(ticket.queueDeadline()).isNull();
-        assertThatThrownBy(() -> new SchedulingTicket(new TicketId("e1", 1), GENERATION, 0, NOW, null, NOW))
+        TicketId id = ticket.id();
+        assertThatThrownBy(() -> new SchedulingTicket(id, GENERATION, 0, NOW, null, NOW))
                 .isInstanceOf(NullPointerException.class);
     }
 
     @Test void ticketRejectsNullIdGenerationOrEnqueuedAt() {
+        TicketId id = new TicketId("e1", 1);
         assertThatThrownBy(() -> new SchedulingTicket(null, GENERATION, 0, NOW, NOW, NOW))
                 .isInstanceOf(NullPointerException.class);
-        assertThatThrownBy(() -> new SchedulingTicket(new TicketId("e1", 1), null, 0, NOW, NOW, NOW))
+        assertThatThrownBy(() -> new SchedulingTicket(id, null, 0, NOW, NOW, NOW))
                 .isInstanceOf(NullPointerException.class);
-        assertThatThrownBy(() -> new SchedulingTicket(new TicketId("e1", 1), GENERATION, 0, null, NOW, NOW))
+        assertThatThrownBy(() -> new SchedulingTicket(id, GENERATION, 0, null, NOW, NOW))
                 .isInstanceOf(NullPointerException.class);
     }
 
     @Test void ticketRejectsNegativeSequence() {
-        assertThatThrownBy(() -> new SchedulingTicket(new TicketId("e1", 1), GENERATION, -1, NOW, NOW, NOW))
+        TicketId id = new TicketId("e1", 1);
+        assertThatThrownBy(() -> new SchedulingTicket(id, GENERATION, -1, NOW, NOW, NOW))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -67,13 +70,15 @@ class SchedulingTicketTest {
                 "per-function", mutable);
         mutable.add("mutated-after");
         assertThat(selection.available()).containsExactly("per-function", "shared-queue");
-        assertThatThrownBy(() -> selection.available().add("x"))
+        var available = selection.available();
+        assertThatThrownBy(() -> available.add("x"))
                 .isInstanceOf(UnsupportedOperationException.class);
     }
 
     @Test void schedulerSelectionRejectsNulls() {
+        var available = List.of("per-function");
         assertThatThrownBy(() -> new it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerSelection(
-                null, List.of("per-function"))).isInstanceOf(NullPointerException.class);
+                null, available)).isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> new it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerSelection(
                 "per-function", null)).isInstanceOf(NullPointerException.class);
     }

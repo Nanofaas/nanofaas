@@ -70,9 +70,10 @@ class P12CrossHostAdmissionTest {
             firstBackend.awaitRequest();
 
             FunctionSpec second = spec("host-b", secondHost.url("/invoke").toString());
+            String secondName = second.name();
+            var request = new InvocationRequest("payload", Map.of());
             assertThatThrownBy(() -> factory.createOrReuseExecution(
-                    second.name(), second, new InvocationRequest("payload", Map.of()),
-                    null, null, InvocationKind.SYNC))
+                    secondName, second, request, null, null, InvocationKind.SYNC))
                     .isInstanceOf(InvocationQuotaExceededException.class)
                     .extracting("resource")
                     .isEqualTo(InvocationQuotaExceededException.Resource.EXECUTION);

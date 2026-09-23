@@ -42,8 +42,9 @@ class HandlerExecutorCancellationTest {
             assertTrue(interrupted.await(1, TimeUnit.SECONDS), "handler must receive cancellation");
             assertEquals(1, executor.activeHandlerCount(),
                     "timed-out physical work must retain handler ownership");
+            var secondRequest = new InvocationRequest(null, null);
             assertThrows(HandlerSaturatedException.class, () ->
-                    executor.execute(_ -> "second", new InvocationRequest(null, null)));
+                    executor.execute(_ -> "second", secondRequest));
             assertTrue(requestCaughtCancellation.await(1, TimeUnit.SECONDS),
                     "request thread must reach its terminal cancellation transition");
             assertTrue(requestInterrupted.get());

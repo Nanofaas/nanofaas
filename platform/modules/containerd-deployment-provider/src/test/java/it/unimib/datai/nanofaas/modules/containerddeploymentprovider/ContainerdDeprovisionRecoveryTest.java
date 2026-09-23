@@ -18,7 +18,8 @@ class ContainerdDeprovisionRecoveryTest {
         try (var first = state.open()) {
             first.provider().provision(spec());
             state.removalFailures.put(id(1), 1);
-            assertThatThrownBy(() -> first.provider().deprovision("echo"))
+            var provider = first.provider();
+            assertThatThrownBy(() -> provider.deprovision("echo"))
                     .isInstanceOf(PartialDeprovisionException.class);
         }
         assertThat(state.daemon).isEmpty();
@@ -125,7 +126,9 @@ class ContainerdDeprovisionRecoveryTest {
         state.pending.put(id(1), state.daemon.get(id(1)));
         state.daemon.put(id(1), container(id(1), labels("other", 1)));
         try (var restarted = state.open()) {
-            assertThatThrownBy(() -> restarted.adapter().removeContainer(id(1)))
+            var adapter = restarted.adapter();
+            var containerId = id(1);
+            assertThatThrownBy(() -> adapter.removeContainer(containerId))
                     .isInstanceOf(IllegalStateException.class).hasMessageContaining("ownership");
             assertThat(state.events).isEmpty();
         }
@@ -136,7 +139,8 @@ class ContainerdDeprovisionRecoveryTest {
         RecoveryFixture state = new RecoveryFixture();
         state.listFailure = new IllegalStateException("daemon timeout");
         try (var restarted = state.open()) {
-            assertThatThrownBy(() -> restarted.provider().deprovision("echo"))
+            var provider = restarted.provider();
+            assertThatThrownBy(() -> provider.deprovision("echo"))
                     .isInstanceOf(PartialDeprovisionException.class).hasCause(state.listFailure);
         }
     }

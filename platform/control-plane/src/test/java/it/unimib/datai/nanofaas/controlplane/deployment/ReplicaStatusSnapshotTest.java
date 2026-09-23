@@ -231,19 +231,22 @@ class ReplicaStatusSnapshotTest {
     @Test
     void rejectsInvalidLimitsAndTtl() {
         MutableInstantSource clock = new MutableInstantSource(0);
-        assertThatThrownBy(() -> new RefreshLimits(0, 1, 1, 1, Duration.ofSeconds(1)))
+        var instants = clock.instantSource();
+        Duration oneSecond = Duration.ofSeconds(1);
+        Duration negative = Duration.ofMillis(-1);
+        assertThatThrownBy(() -> new RefreshLimits(0, 1, 1, 1, oneSecond))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new RefreshLimits(1, 0, 1, 1, Duration.ofSeconds(1)))
+        assertThatThrownBy(() -> new RefreshLimits(1, 0, 1, 1, oneSecond))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new RefreshLimits(1, 1, -1, 1, Duration.ofSeconds(1)))
+        assertThatThrownBy(() -> new RefreshLimits(1, 1, -1, 1, oneSecond))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new RefreshLimits(1, 1, 1, 0, Duration.ofSeconds(1)))
+        assertThatThrownBy(() -> new RefreshLimits(1, 1, 1, 0, oneSecond))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new RefreshLimits(1, 1, 1, 1, Duration.ZERO))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new ReplicaStatusSnapshot(clock.instantSource(), Duration.ZERO, Runnable::run))
+        assertThatThrownBy(() -> new ReplicaStatusSnapshot(instants, Duration.ZERO, Runnable::run))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new ReplicaStatusSnapshot(clock.instantSource(), Duration.ofMillis(-1), Runnable::run))
+        assertThatThrownBy(() -> new ReplicaStatusSnapshot(instants, negative, Runnable::run))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

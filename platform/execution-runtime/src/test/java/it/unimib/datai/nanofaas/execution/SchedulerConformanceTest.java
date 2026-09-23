@@ -92,8 +92,8 @@ class SchedulerConformanceTest {
                 new FunctionGeneration("echo", 1), 1, NOW, NOW, null);
         index.add(ticket);
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> index.add(
-                        new SchedulingTicket(ticket.id(), ticket.generation(), 2, NOW, NOW, null)))
+        var duplicate = new SchedulingTicket(ticket.id(), ticket.generation(), 2, NOW, NOW, null);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> index.add(duplicate))
                 .isInstanceOf(RuntimeException.class);
 
         assertThat(index.size()).isEqualTo(1);

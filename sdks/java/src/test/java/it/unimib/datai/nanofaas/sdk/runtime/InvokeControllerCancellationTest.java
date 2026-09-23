@@ -24,8 +24,9 @@ class InvokeControllerCancellationTest {
         InvokeController controller = new InvokeController(callbacks, handlers, contexts,
                 mock(ColdStartTracker.class), executor, new JsonOutputNormalizer(new tools.jackson.databind.ObjectMapper()));
 
+        var request = new InvocationRequest(null, null);
         assertThrows(InvocationCancelledException.class, () ->
-                controller.invoke(new InvocationRequest(null, null), "execution", "trace", "1"));
+                controller.invoke(request, "execution", "trace", "1"));
         verify(callbacks).submit(eq(reservation), eq("execution"),
                 argThat(payload -> !payload.success()
                         && "INVOCATION_CANCELLED".equals(payload.error().code())

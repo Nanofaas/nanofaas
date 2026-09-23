@@ -221,7 +221,10 @@ class IdempotentRetentionContractTest {
                 factory.createOrReuseExecution("fn", spec(), request(), "k1", "trace-1", InvocationKind.SYNC);
         first.publishAdmission();
 
-        assertThatThrownBy(() -> factory.createOrReuseExecution("fn", spec(), request(), "k2", "trace-2", InvocationKind.SYNC))
+        var secondSpec = spec();
+        var secondRequest = request();
+        assertThatThrownBy(() -> factory.createOrReuseExecution(
+                "fn", secondSpec, secondRequest, "k2", "trace-2", InvocationKind.SYNC))
                 .isInstanceOf(IdempotencyBudgetExhaustedException.class);
 
         // The existing key still serves its replay.

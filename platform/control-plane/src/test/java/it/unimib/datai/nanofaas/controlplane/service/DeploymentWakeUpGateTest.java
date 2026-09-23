@@ -909,7 +909,8 @@ class DeploymentWakeUpGateTest {
                     registry, coordinator, generations, new DeploymentWakeUpProperties(), Runnable::run,
                     scheduler, wakeUpCoordinator, InstantSource.system(), System::nanoTime);
 
-            assertThatThrownBy(() -> gate.ensureReady(task).join())
+            var ready = gate.ensureReady(task);
+            assertThatThrownBy(ready::join)
                     .isInstanceOf(CompletionException.class)
                     .hasRootCauseMessage("provider unavailable");
             assertThat(gate.ownedWakeUpCount()).isZero();

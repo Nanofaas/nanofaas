@@ -13,8 +13,9 @@ class HandlerExecutorLimitsTest {
     void rejectsAdmissionAfterStopWithLifecycleSpecificSignal() {
         HandlerExecutor executor = new HandlerExecutor(1_000, 1);
         executor.shutdown();
+        var request = new InvocationRequest(null, null);
         assertThrows(RuntimeStoppingException.class, () ->
-                executor.execute(_ -> "bad", new InvocationRequest(null, null)));
+                executor.execute(_ -> "bad", request));
     }
 
     @Test
@@ -34,8 +35,9 @@ class HandlerExecutorLimitsTest {
         });
         assertTrue(entered.await(1, TimeUnit.SECONDS));
 
+        var request = new InvocationRequest(null, null);
         assertThrows(HandlerSaturatedException.class, () ->
-                executor.execute(_ -> "second", new InvocationRequest(null, null)));
+                executor.execute(_ -> "second", request));
         release.countDown();
         first.join(1_000);
         assertEquals("again", executor.execute(_ -> "again", new InvocationRequest(null, null)));

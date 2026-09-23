@@ -163,8 +163,8 @@ class P07cReviewFixTest {
         FunctionSpec spec = localSpec();
         InvocationExecutionFactory.ExecutionLookup lookup = fixture.newLookup(spec);
 
-        assertThatThrownBy(() -> coordinator.invoke(
-                lookup, spec, 10_000, OffloadContext.none()).block())
+        var response = coordinator.invoke(lookup, spec, 10_000, OffloadContext.none());
+        assertThatThrownBy(response::block)
                 .isInstanceOf(InvocationQuotaExceededException.class)
                 .extracting("resource")
                 .isEqualTo(InvocationQuotaExceededException.Resource.INPUT_COPY);
@@ -190,7 +190,7 @@ class P07cReviewFixTest {
         FunctionSpec spec = localSpec();
         InvocationExecutionFactory.ExecutionLookup lookup = fixture.newLookup(spec);
 
-        assertThatThrownBy(() -> coordinator.invoke(
+        assertThatThrownBy(() -> coordinator.invoke( // NOSONAR (java:S5778): invoke() itself throws synchronously on this path
                 lookup, spec, 10_000, OffloadContext.none()).block())
                 .isInstanceOf(AssertionError.class)
                 .hasMessage("dispatcher failed");

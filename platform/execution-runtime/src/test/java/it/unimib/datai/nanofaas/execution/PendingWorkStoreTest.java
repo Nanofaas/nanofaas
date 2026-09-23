@@ -78,7 +78,8 @@ class PendingWorkStoreTest {
         var t = ticket("e1", 0);
         store.offer(new PendingEntry(t, mock(InvocationTask.class)));
 
-        assertThatThrownBy(() -> store.commit(t.id())).isInstanceOf(IllegalStateException.class);
+        var id = t.id();
+        assertThatThrownBy(() -> store.commit(id)).isInstanceOf(IllegalStateException.class);
     }
 
     @Test void removeOfOldGenerationEntryDropsItRegardlessOfState() {
