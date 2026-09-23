@@ -740,7 +740,6 @@ class SchedulerSwitchRaceTest {
             return lease;
         }
 
-
         @Override
         public void submit(InvocationTask task) {
             submitted.add(task.executionId());

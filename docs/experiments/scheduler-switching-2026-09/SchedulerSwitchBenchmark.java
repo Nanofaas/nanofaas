@@ -1008,7 +1008,6 @@ public final class SchedulerSwitchBenchmark {
             return lease;
         }
 
-
         @Override
         public void submit(InvocationTask task) {
             TicketId id = new TicketId(task.executionId(), task.attempt());

@@ -818,7 +818,8 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             // A throwing cleanup still settles the reservation; only confirmed input
             // backpressure requeues the ticket and retains its reservation. A ticket left in
             // `submitting` would hold its reservation forever: no index holds it, and the
-            // deadline reap cannot remove it.
+            // deadline reap cannot remove it. When the settlement is unknown the reservation is
+            // released; concluding that execution is the lifecycle's job, not the queue's.
             if (inputBackpressured) {
                 requeue(ticket);
             } else {

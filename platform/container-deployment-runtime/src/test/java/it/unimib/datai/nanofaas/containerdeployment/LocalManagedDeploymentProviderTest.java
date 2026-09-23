@@ -81,7 +81,6 @@ class LocalManagedDeploymentProviderTest {
                         List.of(new ScalingMetric("queue_depth", "5", null))));
     }
 
-
     private static RoundRobinFunctionProxyFactory factoryReturning(ManagedFunctionProxy proxy) {
         RoundRobinFunctionProxyFactory factory = mock(RoundRobinFunctionProxyFactory.class);
         when(factory.create(anyString())).thenReturn(proxy);

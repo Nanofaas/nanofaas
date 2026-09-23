@@ -112,7 +112,6 @@ class P07cInputBackpressureTest {
                 return generations.tryAcquireLease(ticket.generation(), ignored -> { });
             }
 
-
             @Override
             public void submit(InvocationTask task) {
                 handler.dispatch(task);

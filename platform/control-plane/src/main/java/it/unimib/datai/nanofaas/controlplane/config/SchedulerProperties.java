@@ -20,9 +20,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * <p>The thresholds a switch is verified against live where they are <em>enforced</em>: the frozen
  * values in {@code docs/experiments/scheduler-switching-2026-09/budgets.json} (the switching
- * benchmark harness fails a run that exceeds them) and the engine's own compiled bound at runtime. Wiring a frozen
- * measurement threshold into runtime configuration would make it settable, which is the opposite
- * of what a threshold is for, and a second home for the same number is how the two drift apart.
+ * benchmark harness fails a run that exceeds them) and the engine's own compiled bound at
+ * runtime. Wiring a frozen measurement threshold into runtime configuration would make it
+ * settable, which is the opposite of what a threshold is for, and a second home for the same
+ * number is how the two drift apart.
  *
  * <p>So: the switch pause is bounded by the engine and verified at the frozen threshold. It is not
  * settable at runtime, and this record does not pretend otherwise.
