@@ -753,6 +753,15 @@ type Admission = {
 /** Tracks whether the callback reservation was handed off, as soon as it happens. */
 type InvocationProgress = { callbackDispatched: boolean };
 
+/** What the outcome writers need about one admitted invocation. */
+type InvocationScope = {
+    req: IncomingMessage;
+    res: ServerResponse;
+    target: CallbackTarget;
+    callbackReservation: CallbackReservation | undefined;
+    progress: InvocationProgress;
+};
+
 function admitInvocation(
     state: RuntimeState,
     req: IncomingMessage,
@@ -807,6 +816,7 @@ async function handleInvoke(
     const inputReservation: InputReservation = { bytes: 0 };
     let handlerStarted = false;
     const progress: InvocationProgress = { callbackDispatched: false };
+    const scope: InvocationScope = { req, res, target, callbackReservation, progress };
     const requestController = new AbortController();
     state.requestControllers.add(requestController);
     state.metrics.inFlight.inc();
@@ -833,9 +843,9 @@ async function handleInvoke(
         const running = startHandler(state, handler, context, payload, inputReservation.bytes);
         handlerStarted = running.started;
         const outcome = await running.wait;
-        writeOutcome(state, req, res, outcome, target, callbackReservation, coldStart, progress);
+        writeOutcome(state, scope, outcome, coldStart);
     } catch (error) {
-        writeInvocationError(state, req, res, error, target, callbackReservation, progress);
+        writeInvocationError(state, scope, error);
     } finally {
         req.off("aborted", cancelRequest);
         res.off("close", cancelRequest);
@@ -853,14 +863,11 @@ async function handleInvoke(
 
 function writeOutcome(
     state: RuntimeState,
-    req: IncomingMessage,
-    res: ServerResponse,
+    scope: InvocationScope,
     outcome: WaitOutcome,
-    target: CallbackTarget,
-    callbackReservation: CallbackReservation | undefined,
     coldStart: boolean,
-    progress: InvocationProgress,
 ): void {
+    const { req, res, target, callbackReservation, progress } = scope;
     switch (outcome.kind) {
         case "cancelled":
             state.metrics.invocations.inc({ success: "false" });
@@ -880,7 +887,7 @@ function writeOutcome(
             writeJson(res, 504, { error: HANDLER_TIMEOUT });
             return;
         case "failure":
-            writeHandlerFailure(state, res, outcome.error, target, callbackReservation, progress);
+            writeHandlerFailure(state, scope, outcome.error);
             return;
         default:
             progress.callbackDispatched = writeInvokeResult(
@@ -889,14 +896,8 @@ function writeOutcome(
     }
 }
 
-function writeHandlerFailure(
-    state: RuntimeState,
-    res: ServerResponse,
-    error: unknown,
-    target: CallbackTarget,
-    callbackReservation: CallbackReservation | undefined,
-    progress: InvocationProgress,
-): void {
+function writeHandlerFailure(state: RuntimeState, scope: InvocationScope, error: unknown): void {
+    const { res, target, callbackReservation, progress } = scope;
     const converted = toErrorInfo(error);
     let info = error instanceof NanofaasError ? converted : HANDLER_ERROR;
     try {
@@ -922,15 +923,8 @@ const LOCAL_ONLY_ERROR_CODES = new Set([
     INPUT_TOO_LARGE.code, BODY_TIMEOUT.code, INVOCATION_CANCELLED.code, RUNTIME_STOPPING.code,
 ]);
 
-function writeInvocationError(
-    state: RuntimeState,
-    req: IncomingMessage,
-    res: ServerResponse,
-    error: unknown,
-    target: CallbackTarget,
-    callbackReservation: CallbackReservation | undefined,
-    progress: InvocationProgress,
-): void {
+function writeInvocationError(state: RuntimeState, scope: InvocationScope, error: unknown): void {
+    const { req, res, target, callbackReservation, progress } = scope;
     const info = toErrorInfo(error);
     state.metrics.invocations.inc({ success: "false" });
     if (!LOCAL_ONLY_ERROR_CODES.has(info.code)) {

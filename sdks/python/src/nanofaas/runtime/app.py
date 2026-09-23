@@ -1089,20 +1089,8 @@ async def invoke(
     :raises HTTPException: 400 if no execution ID is available; 500 if no
         handler is registered.
     """
-    execution_id = x_execution_id or DEFAULT_EXECUTION_ID
-    trace_id = x_trace_id or DEFAULT_TRACE_ID or None
+    execution_id, trace_id, handler = _resolve_invocation(x_execution_id, x_trace_id)
     callback_url = x_callback_url or CALLBACK_URL
-    
-    if not execution_id:
-        raise HTTPException(status_code=400, detail="Execution ID required")
-        
-    context.set_context(execution_id, trace_id)
-    handler = decorator.get_registered_handler()
-    
-    if not handler:
-        logger.error("No handler registered")
-        raise HTTPException(status_code=500, detail="No function registered with @nanofaas_function")
-
     is_cold_start = _consume_cold_start()
 
     start = time.perf_counter()
@@ -1110,13 +1098,10 @@ async def invoke(
     handler_execution = None
     callback_reservation = None
     try:
-        if callback_url:
-            try:
-                callback_reservation = _runtime_work.reserve_callback(
-                    MAX_CALLBACK_BYTES, preserve_on_stop=True
-                )
-            except HandlerAdmissionError as error:
-                return _callback_admission_rejection(error)
+        try:
+            callback_reservation = _reserve_invocation_callback(callback_url)
+        except HandlerAdmissionError as error:
+            return _callback_admission_rejection(error)
 
         try:
             payload = await _read_bounded_json(request)
@@ -1134,12 +1119,7 @@ async def invoke(
                 status_code=400, count_failure=False,
                 error={"code": "INVALID_JSON", "message": "Request body must be valid JSON"},
             )
-        # Keep the Python runtime aligned with the Java InvocationRequest contract.
-        # Handlers receive the input field rather than the transport envelope.
-        input_data = payload.get("input") if isinstance(payload, dict) else payload
-        # Request headers are captured and filtered by the control plane and ride in the
-        # body; this runtime's own HTTP headers belong to the control-plane hop.
-        context.set_headers(payload.get("headers") if isinstance(payload, dict) else None)
+        input_data = _handler_input(payload)
 
         logger.info(f"Invoking handler for execution {execution_id}")
 
@@ -1166,13 +1146,11 @@ async def invoke(
             error={"code": "HANDLER_TIMEOUT", "message": "Handler exceeded configured timeout"},
         )
     except asyncio.CancelledError:
-        if handler_execution is not None:
-            handler_execution.request_cancel()
-        if callback_reservation is not None:
-            _start_cancellation_callback(
-                callback_reservation, callback_url, execution_id, trace_id, x_dispatch_attempt
-            )
-            callback_reservation = None
+        _cancel_invocation(
+            handler_execution, callback_reservation, callback_url, execution_id, trace_id,
+            x_dispatch_attempt,
+        )
+        callback_reservation = None
         raise
     except Exception:
         logger.error("Handler failed in execution %s", execution_id)
@@ -1191,6 +1169,55 @@ async def invoke(
         elapsed = time.perf_counter() - start
         RUNTIME_INVOCATION_DURATION_SECONDS.labels(function=FUNCTION_NAME).observe(elapsed)
         RUNTIME_IN_FLIGHT.labels(function=FUNCTION_NAME).dec()
+
+
+def _resolve_invocation(x_execution_id: str | None, x_trace_id: str | None):
+    """Return the execution id, trace id and handler of a request, or raise its HTTP error."""
+    execution_id = x_execution_id or DEFAULT_EXECUTION_ID
+    trace_id = x_trace_id or DEFAULT_TRACE_ID or None
+    if not execution_id:
+        raise HTTPException(status_code=400, detail="Execution ID required")
+    context.set_context(execution_id, trace_id)
+    handler = decorator.get_registered_handler()
+    if not handler:
+        logger.error("No handler registered")
+        raise HTTPException(status_code=500, detail="No function registered with @nanofaas_function")
+    return execution_id, trace_id, handler
+
+
+def _reserve_invocation_callback(callback_url: str | None) -> CallbackReservation | None:
+    if not callback_url:
+        return None
+    return _runtime_work.reserve_callback(MAX_CALLBACK_BYTES, preserve_on_stop=True)
+
+
+def _handler_input(payload):
+    """Return the handler input and publish the forwarded request headers to the context."""
+    # Keep the Python runtime aligned with the Java InvocationRequest contract.
+    # Handlers receive the input field rather than the transport envelope.
+    if not isinstance(payload, dict):
+        context.set_headers(None)
+        return payload
+    # Request headers are captured and filtered by the control plane and ride in the
+    # body; this runtime's own HTTP headers belong to the control-plane hop.
+    context.set_headers(payload.get("headers"))
+    return payload.get("input")
+
+
+def _cancel_invocation(
+    handler_execution,
+    callback_reservation: CallbackReservation | None,
+    callback_url: str,
+    execution_id: str,
+    trace_id: str | None,
+    dispatch_attempt: str | None,
+) -> None:
+    if handler_execution is not None:
+        handler_execution.request_cancel()
+    if callback_reservation is not None:
+        _start_cancellation_callback(
+            callback_reservation, callback_url, execution_id, trace_id, dispatch_attempt
+        )
 
 
 def _error_response(status_code: int, code: str, message: str, *, retryable: bool = False) -> JSONResponse:
