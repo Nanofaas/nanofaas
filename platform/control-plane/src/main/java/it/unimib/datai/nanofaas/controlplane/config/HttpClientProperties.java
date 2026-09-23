@@ -69,7 +69,7 @@ public record HttpClientProperties(
         pendingAcquireMaxCount = positiveOr(pendingAcquireMaxCount, maxConnections * 2);
         pendingAcquireTimeoutMs = positiveOr(pendingAcquireTimeoutMs, DEFAULT_PENDING_ACQUIRE_TIMEOUT_MS);
         maxIdleTimeMs = positiveOr(maxIdleTimeMs, DEFAULT_MAX_IDLE_TIME_MS);
-        maxLifeTimeMs = maxLifeTimeMs == null || maxLifeTimeMs < 0 ? DEFAULT_MAX_LIFE_TIME_MS : maxLifeTimeMs;
+        maxLifeTimeMs = nonNegativeOr(maxLifeTimeMs, DEFAULT_MAX_LIFE_TIME_MS);
         evictionIntervalMs = positiveOr(evictionIntervalMs, DEFAULT_EVICTION_INTERVAL_MS);
         inactivePoolDisposeIntervalMs = positiveOr(inactivePoolDisposeIntervalMs,
                 DEFAULT_INACTIVE_POOL_DISPOSE_INTERVAL_MS);
@@ -78,5 +78,9 @@ public record HttpClientProperties(
 
     private static int positiveOr(Integer value, int fallback) {
         return value == null || value <= 0 ? fallback : value;
+    }
+
+    private static int nonNegativeOr(Integer value, int fallback) {
+        return value == null || value < 0 ? fallback : value;
     }
 }
