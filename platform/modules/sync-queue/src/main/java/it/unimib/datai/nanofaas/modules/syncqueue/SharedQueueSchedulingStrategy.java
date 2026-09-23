@@ -18,7 +18,7 @@ import java.util.function.Predicate;
  * {@link SchedulingIndex} contract: a single FIFO of tickets shared by every function,
  * scanned up to {@value #SCAN_LIMIT} entries per selection so a blocked head does not hide
  * ready work further back, with a bounded rotation of the same window applied in
- * {@code defer} rather than during the scan itself.
+ * {@code defer} or {@code advanceScanWindow} rather than during the scan itself.
  *
  * <p>This mirrors {@code SyncQueueService#peekReady}/{@code findReadyMatching}, which do not
  * mutate the queue, and {@code rotateReadyScanWindow}/{@code rotateReadyItem}, which apply
@@ -77,6 +77,11 @@ public class SharedQueueSchedulingStrategy implements SchedulingStrategy {
 
         @Override
         public void defer(TicketId id) {
+            advanceScanWindow();
+        }
+
+        @Override
+        public void advanceScanWindow() {
             // Bounded scan-window rotation: move at most SCAN_LIMIT nodes from the front to
             // the back, one at a time, exactly as SyncQueueService#rotateReadyScanWindow does.
             // This is a policy-level rotation, not a lookup for `id`: the failed selection that

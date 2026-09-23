@@ -395,7 +395,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     }
 
     /**
-     * Withdraws every pending ticket whose generation belongs to {@code functionName} — e.g. on
+     * Withdraws every pending or claimed ticket whose generation belongs to {@code functionName} — e.g. on
      * function removal, so queued callers are terminated rather than stranded — and reports each
      * through {@link EngineDispatch#removed}, exactly as a single {@link #remove(TicketId)}
      * would for each.
@@ -407,20 +407,22 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
      * since that runs concurrently with the worker's own {@code offer}/{@code finishSubmit}
      * mutations of the same {@code LinkedHashMap} and can both throw
      * ({@code ConcurrentModificationException} out of the snapshot's stream) and silently miss
-     * entries. A ticket already claimed or submitting is left untouched here too — its attempt is
-     * already committed and belongs to the lifecycle.
+     * entries. A submitting ticket belongs to the lifecycle; its cancellation is remembered in
+     * case input backpressure returns it to the queue.
      */
     public void removeAllFor(String functionName) {
         Objects.requireNonNull(functionName, "functionName must not be null");
         List<PendingEntry> removed = new ArrayList<>();
         synchronized (gate) {
-            for (PendingEntry entry : store.snapshotPending()) {
+            for (PendingEntry entry : store.snapshotAll()) {
                 if (entry.ticket().generation().functionName().equals(functionName)) {
                     PendingEntry taken = store.remove(entry.ticket().id());
                     if (taken != null) {
                         retire(taken.ticket());
                         adjustReserved(taken.ticket().generation().functionName(), -1);
                         removed.add(taken);
+                    } else {
+                        cancelRequests.add(entry.ticket().id());
                     }
                 }
             }
@@ -686,6 +688,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         ActiveScheduler scheduler = active;
         SchedulingTicket ticket = scheduler.index().select(now, runnable);
         if (ticket == null) {
+            scheduler.index().advanceScanWindow();
             return null;
         }
         PendingEntry entry = store.claim(ticket.id());

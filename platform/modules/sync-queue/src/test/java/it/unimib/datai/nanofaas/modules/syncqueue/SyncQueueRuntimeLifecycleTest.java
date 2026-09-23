@@ -7,6 +7,7 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
@@ -15,6 +16,7 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.controlplane.scheduler.TicketId;
 import it.unimib.datai.nanofaas.controlplane.service.EngineSyncQueueGateway;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
 import it.unimib.datai.nanofaas.controlplane.service.ExecutionCompletionHandler;
@@ -23,6 +25,7 @@ import it.unimib.datai.nanofaas.controlplane.service.Metrics;
 import it.unimib.datai.nanofaas.controlplane.service.SchedulerConfiguration;
 import it.unimib.datai.nanofaas.controlplane.service.SchedulerLifecycleAdapter;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
+import it.unimib.datai.nanofaas.execution.SchedulerEngine;
 import it.unimib.datai.nanofaas.execution.admission.SyncQueueAdmissionController;
 import it.unimib.datai.nanofaas.execution.admission.WaitEstimator;
 import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
@@ -31,6 +34,8 @@ import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueMetrics;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
@@ -50,6 +55,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -475,6 +481,62 @@ class SyncQueueRuntimeLifecycleTest {
             InvocationTask afterwards = task("admitted-after-the-fence-is-cleared", spec);
             store.put(new ExecutionRecord(afterwards.executionId(), afterwards));
             assertThatCode(() -> gateway.enqueueOrThrow(afterwards)).doesNotThrowAnyException();
+        });
+    }
+
+    @ParameterizedTest(name = "removal during generation read = {0}")
+    @ValueSource(booleans = {false, true})
+    void removalSettlesSyncAdmissionEvenAfterTheGatewayReadsTheGeneration(boolean duringGenerationRead) {
+        runner.run(context -> {
+            assertThat(context).hasNotFailed();
+            // Hold dispatch and expiry while arranging the admission/removal ordering.
+            context.getBean(SchedulerLifecycleAdapter.class).stop();
+            FunctionRegistrationListener listener = context.getBean(
+                    "schedulerCapacityGenerationListener", FunctionRegistrationListener.class);
+            EngineSyncQueueGateway gateway = context.getBean(EngineSyncQueueGateway.class);
+            FunctionCapacityRegistry capacity = context.getBean(FunctionCapacityRegistry.class);
+            SchedulerEngine engine = context.getBean(SchedulerEngine.class);
+            ExecutionStore store = context.getBean(ExecutionStore.class);
+            FunctionSpec spec = registerEcho(context);
+            FunctionRegistrationListener metricsListener = context.getBean(
+                    "syncQueueMetricsLifecycleListener", FunctionRegistrationListener.class);
+            metricsListener.onRegister(spec);
+            InvocationTask task = task("admission-racing-removal", spec);
+            ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
+            store.put(record);
+
+            AtomicBoolean armed = new AtomicBoolean(duringGenerationRead);
+            AtomicBoolean removalCompleted = new AtomicBoolean();
+            doAnswer(invocation -> {
+                FunctionGeneration observed = (FunctionGeneration) invocation.callRealMethod();
+                if (armed.compareAndSet(true, false)) {
+                    assertThat(observed).isNotNull();
+                    // Finish the real removal drain, then return the generation captured before it.
+                    listener.onRemove(spec.name());
+                    metricsListener.onRemove(spec.name());
+                    removalCompleted.set(true);
+                }
+                return observed;
+            }).when(capacity).activeGeneration(spec.name());
+
+            assertThat(gateway.enqueue(task)).isEqualTo(!duringGenerationRead);
+            if (!duringGenerationRead) {
+                // Control: the same lifecycle must settle a ticket admitted before removal.
+                listener.onRemove(spec.name());
+                metricsListener.onRemove(spec.name());
+                removalCompleted.set(true);
+            }
+
+            assertThat(removalCompleted).isTrue();
+            assertThat(capacity.activeGeneration(spec.name())).isNull();
+            assertAll(
+                    () -> assertThat(engine.reservedCount(spec.name())).isZero(),
+                    () -> assertThat(record.state()).isEqualTo(ExecutionState.ERROR),
+                    () -> assertThat(record.completion().isDone()).isTrue(),
+                    () -> assertThat(gateway.settleIfSyncOrigin(spec.name(),
+                            new TicketId(task.executionId(), task.attempt()))).isFalse(),
+                    () -> assertThat(context.getBean(MeterRegistry.class).get("sync_queue_depth")
+                            .tag("function", "").gauge().value()).isZero());
         });
     }
 

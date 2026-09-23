@@ -109,6 +109,11 @@ public final class PendingWorkStore {
         return entries.remove(id);
     }
 
+    /** All reservations, including provisional claims and submits that may requeue. */
+    public List<PendingEntry> snapshotAll() {
+        return List.copyOf(entries.values());
+    }
+
     /** Pending entries only — excludes claimed and submitting — ordered by ticket sequence. */
     public List<PendingEntry> snapshotPending() {
         return entries.values().stream()

@@ -256,6 +256,12 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
         if (!enqueued) {
             throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
         }
+        // Removal can finish after the generation read but before enqueue, missing this ticket
+        // in its drain. Withdraw it through the engine so lifecycle cleanup runs exactly once.
+        if (!generation.equals(capacityRegistry.activeGeneration(task.functionName()))) {
+            engine.getObject().remove(id);
+            throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
+        }
         return tracked;
     }
 

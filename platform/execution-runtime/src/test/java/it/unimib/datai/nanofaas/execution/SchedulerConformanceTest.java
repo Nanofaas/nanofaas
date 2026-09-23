@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.execution;
 
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
+import it.unimib.datai.nanofaas.controlplane.capacity.InvocationQuotaExceededException;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingIndex;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -275,6 +277,80 @@ class SchedulerConformanceTest {
 
         assertThat(f.submitted).containsExactly("ok-1");
         assertThat(f.store.pendingCount()).isEqualTo(1);
+    }
+
+    static java.util.stream.Stream<Arguments> scanWindowCases() {
+        return java.util.stream.Stream.of(
+                Arguments.of(new PerFunctionSchedulingStrategy(), 63),
+                Arguments.of(new PerFunctionSchedulingStrategy(), 64),
+                Arguments.of(new SharedQueueSchedulingStrategy(), 63),
+                Arguments.of(new SharedQueueSchedulingStrategy(), 64));
+    }
+
+    @ParameterizedTest(name = "{0}, blocked tickets = {1}")
+    @MethodSource("scanWindowCases")
+    void runnableWorkBeyondBlockedTicketsEventuallyDispatches(SchedulingStrategy strategy, int blockedCount) {
+        Fixture f = new Fixture(strategy);
+        FunctionGeneration blocked = new FunctionGeneration("blocked", 1);
+        when(f.readiness.runnable(blocked)).thenReturn(false);
+        for (int i = 0; i < blockedCount; i++) {
+            f.admitFor(blocked, "blocked-" + i, InvocationKind.ASYNC, i);
+        }
+        f.admit("ready", InvocationKind.ASYNC, f.echo, blockedCount);
+
+        // Time and capacity stay fixed: progress must come from advancing the scan window.
+        for (int i = 0; i < 100; i++) {
+            f.engine.signal();
+            f.engine.tick();
+        }
+
+        assertAll(
+                () -> assertThat(f.submitted).containsExactly("ready"),
+                () -> assertThat(f.engine.reservedCount("echo")).isZero(),
+                () -> assertThat(f.engine.reservedCount("blocked")).isEqualTo(blockedCount));
+    }
+
+    @ParameterizedTest
+    @MethodSource("strategies")
+    void functionRemovalWhileAcquiringLeaseSettlesTheClaim(SchedulingStrategy strategy) {
+        Fixture f = new Fixture(strategy);
+        SchedulingTicket ticket = f.admit("claimed", InvocationKind.ASYNC, f.echo, 0);
+        doAnswer(invocation -> {
+            assertThat(f.store.claimedCount()).isEqualTo(1);
+            when(f.readiness.runnable(f.echo)).thenReturn(false);
+            f.engine.removeAllFor("echo");
+            return null; // Capacity retired before this acquisition could finish.
+        }).when(f.dispatch).tryAcquire(any());
+
+        f.engine.tick();
+
+        assertAll(
+                () -> assertThat(f.removed).containsExactly("claimed"),
+                () -> assertThat(f.store.get(ticket.id())).isNull(),
+                () -> assertThat(f.engine.reservedCount("echo")).isZero(),
+                () -> assertThat(f.store.claimedCount()).isZero(),
+                () -> assertThat(f.submitted).isEmpty());
+    }
+
+    @ParameterizedTest
+    @MethodSource("strategies")
+    void functionRemovalDuringSubmitCancelsAnInputBackpressureRequeue(SchedulingStrategy strategy) {
+        Fixture f = new Fixture(strategy);
+        SchedulingTicket ticket = f.admit("submitting", InvocationKind.ASYNC, f.echo, 0);
+        doAnswer(invocation -> {
+            assertThat(f.store.submittingCount()).isEqualTo(1);
+            when(f.readiness.runnable(f.echo)).thenReturn(false);
+            f.engine.removeAllFor("echo");
+            throw new InvocationQuotaExceededException(InvocationQuotaExceededException.Resource.INPUT);
+        }).when(f.dispatch).submit(any());
+
+        f.engine.tick();
+
+        assertAll(
+                () -> assertThat(f.removed).containsExactly("submitting"),
+                () -> assertThat(f.store.get(ticket.id())).isNull(),
+                () -> assertThat(f.engine.reservedCount("echo")).isZero(),
+                () -> assertThat(f.store.submittingCount()).isZero());
     }
 
     @ParameterizedTest

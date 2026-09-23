@@ -257,6 +257,13 @@ The switch is manual, effective immediately in both directions without draining 
 or restarting, and does **not** persist across a restart (`persistence: "restart"` in the GET
 response) — the strategy configured at startup wins again on the next boot.
 
+The shared queue examines up to 64 tickets per selection. When that window contains no
+runnable ticket, it rotates before the next scan so blocked functions cannot indefinitely
+hide ready work further back. Function removal withdraws pending tickets and provisional
+claims, and cancels any submitting ticket that returns to the queue under input backpressure.
+Sync admission rechecks the function generation after insertion and withdraws tickets whose
+generation was removed during admission.
+
 The strategy an instance **starts** on is configuration, not a PATCH: set the environment
 variable `NANOFAAS_SCHEDULER_STRATEGY` to one of the artifact's ids (Helm:
 `controlPlane.scheduler.strategy`; Compose passes the same variable through, where it has an

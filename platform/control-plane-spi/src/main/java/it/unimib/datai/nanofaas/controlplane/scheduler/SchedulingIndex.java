@@ -18,8 +18,8 @@ import java.util.function.Predicate;
  * {@code queue.peekReady(now)}, which does not mutate, and rotates only on the failure
  * paths via {@code queue.rotateReadyScanWindow(now)} / {@code queue.rotateReadyItem(item, now)}.
  *
- * <p>{@link #defer} is the only method that applies a policy's rotation (round-robin turn
- * advance, scan-window rotation, etc.). The engine calls {@code defer} when a selected
+ * <p>The engine calls {@link #advanceScanWindow} after a scan finds no candidate, and
+ * {@link #defer} when a selected
  * ticket could not be dispatched (no capacity, lease unavailable, ...) so the policy gets a
  * chance to make progress on the next scan without re-selecting the same blocked ticket.
  *
@@ -50,9 +50,16 @@ public interface SchedulingIndex {
 
     /**
      * Applies the policy's rotation for the given ticket, e.g. because it was selected but
-     * could not be dispatched. This is the only method that changes selection order.
+     * could not be dispatched.
      */
     void defer(TicketId id);
+
+    /**
+     * Advances a bounded scan after no runnable candidate was found. Indexes that scan all
+     * eligible heads need no rotation and can keep this default.
+     */
+    default void advanceScanWindow() {
+    }
 
     /**
      * Number of tickets currently held by the index.
