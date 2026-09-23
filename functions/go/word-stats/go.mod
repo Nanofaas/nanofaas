@@ -1,6 +1,6 @@
 module github.com/miciav/nanofaas/functions/go/word-stats
 
-go 1.24
+go 1.24.0
 
 require github.com/miciav/nanofaas/function-sdk-go v0.0.0
 
