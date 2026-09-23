@@ -166,7 +166,7 @@ class MetricsProfileConfiguration {
             return false;
         }
         String function = id.getTag("function");
-        return name.equals("sync_queue_wait_seconds") || (function != null && !function.isEmpty());
+        return function != null && !function.isEmpty();
     }
 
     enum MetricsProfile {

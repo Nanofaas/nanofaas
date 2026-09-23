@@ -363,6 +363,11 @@ class SyncQueueRuntimeLifecycleTest {
             assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
             assertThat(attempts.get()).isEqualTo(2);
             assertThat(engine.reservedCount(spec.name())).isZero();
+            // Both dispatches fed the estimator, including the retry queued after deactivation:
+            // attribution follows the immutable SYNC_QUEUE profile, not the runtime flag.
+            assertThat(context.getBean(
+                    it.unimib.datai.nanofaas.execution.admission.WaitEstimator.class)
+                    .retentionSnapshot().globalSamples()).isEqualTo(2);
         });
     }
 

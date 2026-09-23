@@ -30,12 +30,9 @@ class SyncQueueMetricsTest {
         PrometheusMeterRegistry registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
         SyncQueueMetrics metrics = new SyncQueueMetrics(registry, () -> 0, name -> 0);
         metrics.registerFunction("echo");
-        metrics.recordWait("echo", 10);
 
         assertThat(registry.find("sync_queue_depth").tag("function", "").gauge()).isNotNull();
         assertThat(registry.find("sync_queue_depth").tag("function", "echo").gauge()).isNotNull();
-        assertThat(registry.find("sync_queue_wait_seconds").tag("function", "").timer()).isNotNull();
-        assertThat(registry.find("sync_queue_wait_seconds").tag("function", "echo").timer()).isNotNull();
     }
 
     @Test
@@ -46,24 +43,17 @@ class SyncQueueMetricsTest {
 
         metrics.admitted("echo");
         metrics.rejected("echo");
-        metrics.timedOut("echo");
-        metrics.recordWait("echo", 10);
 
         assertThat(registry.find("sync_queue_depth").tag("function", "echo").gauge()).isNotNull();
         assertThat(registry.find("sync_queue_admitted_total").tag("function", "echo").counter()).isNotNull();
         assertThat(registry.find("sync_queue_rejected_total").tag("function", "echo").counter()).isNotNull();
-        assertThat(registry.find("sync_queue_timedout_total").tag("function", "echo").counter()).isNotNull();
-        assertThat(registry.find("sync_queue_wait_seconds").tag("function", "echo").timer()).isNotNull();
 
         metrics.removeFunctionState("echo");
 
         assertThat(registry.find("sync_queue_depth").tag("function", "echo").gauge()).isNull();
         assertThat(registry.find("sync_queue_admitted_total").tag("function", "echo").counter()).isNull();
         assertThat(registry.find("sync_queue_rejected_total").tag("function", "echo").counter()).isNull();
-        assertThat(registry.find("sync_queue_timedout_total").tag("function", "echo").counter()).isNull();
-        assertThat(registry.find("sync_queue_wait_seconds").tag("function", "echo").timer()).isNull();
         assertThat(registry.find("sync_queue_depth").gauge()).isNotNull();
-        assertThat(registry.find("sync_queue_wait_seconds").timer()).isNotNull();
     }
 
     @Test
@@ -76,12 +66,8 @@ class SyncQueueMetricsTest {
         metrics.removeFunctionState("echo");
 
         metrics.rejected("echo");
-        metrics.timedOut("echo");
-        metrics.recordWait("echo", 10);
 
         assertThat(registry.find("sync_queue_rejected_total").tag("function", "echo").counter()).isNull();
-        assertThat(registry.find("sync_queue_timedout_total").tag("function", "echo").counter()).isNull();
-        assertThat(registry.find("sync_queue_wait_seconds").tag("function", "echo").timer()).isNull();
 
         metrics.registerFunction("echo");
         metrics.admitted("echo");

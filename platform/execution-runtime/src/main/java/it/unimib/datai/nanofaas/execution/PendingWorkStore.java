@@ -20,9 +20,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>This store does not call listeners, does not close leases and does not impose a second
  * payload cap: {@code InvocationCapacity} and {@code queuedInputLease} remain authoritative for
  * those budgets. The engine serializes all operations on this store; it does not lock
- * internally. The reservation counts are the one exception to "read under the gate": gauges read
- * them concurrently, so they live in a concurrent map and a volatile total written only by the
- * engine's serialized mutations.
+ * internally. Two reads are taken outside the gate: {@link #reservedCount()} and
+ * {@link #reservedCount(String)}, which gauges read concurrently and which therefore live in a
+ * concurrent map and a volatile total written only by the engine's serialized mutations; and the
+ * admission estimate {@link #pendingCount()}, which is a momentary snapshot (see its note).
  */
 public final class PendingWorkStore {
 
@@ -31,6 +32,8 @@ public final class PendingWorkStore {
     private final Set<TicketId> claimed = new LinkedHashSet<>();
     private final Set<TicketId> submitting = new LinkedHashSet<>();
     private final ConcurrentHashMap<String, Integer> reservedByFunction = new ConcurrentHashMap<>();
+    // Non-atomic ++/-- on a volatile is safe here: there is exactly one writer at a time (every
+    // mutation runs under the engine's gate); volatile only publishes the value to gauge readers.
     private volatile int reserved;
 
     public PendingWorkStore(int maxPending) {
@@ -154,7 +157,8 @@ public final class PendingWorkStore {
     }
 
     /**
-     * The live reservation count: everything that is neither claimed nor submitting.
+     * The pending count: entries that are neither claimed nor submitting. Not the reservation
+     * count — {@link #reservedCount()} also includes claims and submits.
      *
      * <p>Like every read here this is unprotected, and unlike the others it has one caller that
      * deliberately takes it OUTSIDE the engine's gate —

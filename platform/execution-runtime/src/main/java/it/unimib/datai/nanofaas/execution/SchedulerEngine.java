@@ -38,13 +38,17 @@ import java.util.function.Predicate;
  * index operation is serialized without the index knowing about threads at all.
  *
  * <h2>Lock order</h2>
- * The engine's gate is a <strong>leaf</strong>: no code path holds it while acquiring another
- * lock. Selection, claim, commit, insertion and removal happen under it; capacity acquisition,
- * record inspection, submit and every lifecycle notification happen outside it. That is what
- * makes a {@code record -> gate} order (a retry publishing into the engine after releasing the
- * execution record) safe: the reverse edge {@code gate -> record} does not exist, so no cycle
- * can form. Anything may call {@link #signal()}, {@link #enqueue} or {@link #remove} while
- * holding its own lock, for the same reason.
+ * The only lock ever taken while holding the engine's gate is a capacity-registry entry lock:
+ * {@link EngineReadiness} and the generation check in {@link #enqueue(PendingEntry, int)} read
+ * the registry under the gate. The registry fires its callbacks (which can reach the engine)
+ * only after releasing that entry lock, so {@code gate -> registry entry} is the one outward
+ * edge and it cannot close a cycle. Lease acquisition, provider calls, record inspection, submit
+ * and every lifecycle notification happen outside the gate. That is what makes a
+ * {@code record -> gate} order (a retry publishing into the engine after releasing the execution
+ * record) safe: the reverse edge {@code gate -> record} does not exist. Anything may call
+ * {@link #signal()}, {@link #enqueue} or {@link #remove} while holding its own lock, <em>except
+ * a capacity-registry entry lock</em>, which would invert the one permitted edge. See ADR 0002
+ * §3.
  *
  * <h2>One selection per pass</h2>
  * A pass reaps due queue deadlines, then makes at most one selection and carries it to a
@@ -351,9 +355,11 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     }
 
     /**
-     * Admits work: one reservation in the store and one ticket in the active index, or nothing
-     * at all when the store is full. Safe to call from any thread, including one holding an
-     * execution record's monitor.
+     * Admits work with no per-function cap: one reservation in the store and one ticket in the
+     * active index, or nothing at all when the store is full or the ticket's generation is no
+     * longer the function's active one (see {@link #enqueue(PendingEntry, int)}). Safe to call from
+     * any thread, including one holding an execution record's monitor, but not while holding a
+     * capacity-registry entry lock.
      */
     public boolean enqueue(PendingEntry entry) {
         return enqueue(entry, Integer.MAX_VALUE);

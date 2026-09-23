@@ -234,14 +234,13 @@ class AsyncQueueConfigurationTest {
                     .until(() -> store.pendingCount() > 0);
             listener.onRemove("echo"); // must not throw: NEW-CRITICAL
             // The engine refuses a ticket whose generation is no longer active under its gate,
-            // and the removal drained everything admitted before it: the count settles to zero
-            // and stays there while the admitter keeps hammering a now-retired function.
-            Awaitility.await()
-                    .atMost(Duration.ofSeconds(2))
-                    .untilAsserted(() -> assertThat(store.pendingCount())
-                            .as("tickets pending for 'echo' after onRemove — must settle to "
-                                    + "zero and stay there, not persist as a permanent strand")
-                            .isZero());
+            // and the removal drained everything admitted before it, so the count is zero the
+            // moment onRemove returns — not after some compensating removal catches up — and
+            // stays there while the admitter keeps hammering a now-retired function.
+            assertThat(engine.reservedCount("echo"))
+                    .as("reservations for 'echo' immediately after onRemove")
+                    .isZero();
+            assertThat(store.pendingCount()).isZero();
         } finally {
             running.set(false);
             admitter.join(5_000);
