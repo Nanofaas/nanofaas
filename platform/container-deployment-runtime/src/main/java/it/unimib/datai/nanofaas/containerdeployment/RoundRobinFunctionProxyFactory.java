@@ -14,7 +14,7 @@ public final class RoundRobinFunctionProxyFactory {
         this.properties = properties;
     }
 
-    public ManagedFunctionProxy create(String functionName) {
+    public ManagedFunctionProxy create(String functionName) { // NOSONAR (java:S1172): providers name the function they proxy
         return new RoundRobinFunctionProxy(bindHost, properties);
     }
 }

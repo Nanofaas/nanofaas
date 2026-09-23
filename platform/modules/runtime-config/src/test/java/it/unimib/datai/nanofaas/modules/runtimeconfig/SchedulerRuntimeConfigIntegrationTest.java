@@ -127,7 +127,7 @@ class SchedulerRuntimeConfigIntegrationTest {
                     // requires the engine unconditionally (by design: this module always
                     // contributes a SchedulingStrategy, so in production SchedulerConfiguration
                     // is always present too). Excluding both queue modules' auto-configurations
-                    // keeps FakeSchedulerControl (imported below) the only SchedulerControl;
+                    // keeps FakeSchedulerControl (imported below) the only SchedulerControl, and
                     // SyncQueueRuntimeConfigAutoConfiguration (the sync-queue admin namespace,
                     // unrelated to what this class tests) is excluded alongside it rather than
                     // supplying its MutableSyncQueueConfigSource dependency by hand.

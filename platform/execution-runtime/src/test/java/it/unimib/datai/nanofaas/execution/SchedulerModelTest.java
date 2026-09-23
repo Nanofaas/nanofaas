@@ -203,15 +203,15 @@ class SchedulerModelTest {
             assertThat(retryCount)
                     .as("a real completion must actually have driven retry re-queues")
                     .isGreaterThan(0);
-            assertThat(completedStateById.values())
+            assertThat(completedStateById)
                     .as("the retry budget must actually have been exhausted at least once, so the "
                             + "ERROR terminal branch is exercised and not merely reachable")
-                    .contains(ExecutionState.ERROR);
-            assertThat(completedStateById.values())
+                    .containsValue(ExecutionState.ERROR);
+            assertThat(completedStateById)
                     .as("a successful completion must actually have been concluded through the "
                             + "engine, so the SUCCESS terminal branch — the dominant one — is "
                             + "exercised and not merely reachable")
-                    .contains(ExecutionState.SUCCESS);
+                    .containsValue(ExecutionState.SUCCESS);
         } catch (AssertionError | RuntimeException failure) {
             throw new AssertionError("Model test failed with seed " + SEED
                     + " after operation log:\n" + opLog, failure);

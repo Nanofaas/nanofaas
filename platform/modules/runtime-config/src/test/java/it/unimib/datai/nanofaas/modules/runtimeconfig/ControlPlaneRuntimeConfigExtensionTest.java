@@ -1,6 +1,5 @@
 package it.unimib.datai.nanofaas.modules.runtimeconfig;
 
-import it.unimib.datai.nanofaas.controlplane.config.RuntimeConfigExtension;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.service.HotAdmissionLimits;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;

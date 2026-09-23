@@ -341,10 +341,7 @@ public final class InvokeHandler implements HttpHandler {
         thread.start();
         try {
             return task.get(handlerTimeoutMs, TimeUnit.MILLISECONDS);
-        } catch (TimeoutException ex) {
-            task.cancel(true);
-            throw ex;
-        } catch (InterruptedException ex) {
+        } catch (TimeoutException | InterruptedException ex) {
             task.cancel(true);
             throw ex;
         } catch (ExecutionException ex) {
@@ -562,7 +559,10 @@ public final class InvokeHandler implements HttpHandler {
         }
         @Override public int read(byte[] bytes, int offset, int length) throws IOException {
             int count = super.read(bytes, offset, (int) Math.min(length, limit - read + 1));
-            if (count > 0 && (read += count) > limit) throw new PayloadTooLargeException();
+            if (count > 0) {
+                read += count;
+                if (read > limit) throw new PayloadTooLargeException();
+            }
             return count;
         }
     }

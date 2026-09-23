@@ -198,16 +198,14 @@ public class InternalScaler implements SmartLifecycle {
             scaleUp(generation, target, functionName, decision, requestedReplicas, now);
         } else if (recommended < requestedReplicas) {
             // The load needs fewer replicas than already requested.
-            if (decision.downscaleSignal()) {
-                // Explicit downscale: the serving (ready) replicas already exceed what the
-                // load needs. This never waits for the rollout to complete, so replicas that
-                // never became ready cannot block it.
-                scaleDown(generation, target, functionName, decision, requestedReplicas, now);
-            } else if (progressTracker.isStuck(functionName, requestedReplicas, readyReplicas, now)) {
-                // Mid-rollout recommendation (ready <= recommended < requested) but the
-                // rollout has made no progress for a full window: reconcile the requested
-                // target down so a stuck rollout cannot hold a phantom target (or block a
-                // real downscale) forever.
+            // Scale down on an explicit downscale signal: the serving (ready) replicas already
+            // exceed what the load needs, and this never waits for the rollout to complete, so
+            // replicas that never became ready cannot block it. Otherwise, a mid-rollout
+            // recommendation (ready <= recommended < requested) whose rollout has made no
+            // progress for a full window also reconciles the requested target down, so a stuck
+            // rollout cannot hold a phantom target (or block a real downscale) forever.
+            if (decision.downscaleSignal()
+                    || progressTracker.isStuck(functionName, requestedReplicas, readyReplicas, now)) {
                 scaleDown(generation, target, functionName, decision, requestedReplicas, now);
             }
             // Otherwise the rollout is still catching up and progressing: keep the

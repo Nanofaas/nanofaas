@@ -63,4 +63,14 @@ class ContainerdDeploymentProviderTest {
         return new FunctionSpec("echo", "echo:1", null, null, null, null, null,
                 null, null, null, mode, null, null, null, secrets);
     }
+
+    @Test
+    void namePrefixTrimsSeparatorsIncludingATruncatedTail() {
+        assertThat(ContainerdDeploymentProvider.namePrefix("--Hello.World--"))
+                .matches("nanofaas-hello-world-[0-9a-f]{10}");
+        assertThat(ContainerdDeploymentProvider.namePrefix("a".repeat(43) + ".b"))
+                .matches("nanofaas-a{43}-[0-9a-f]{10}");
+        assertThat(ContainerdDeploymentProvider.namePrefix("..."))
+                .matches("nanofaas-fn-[0-9a-f]{10}");
+    }
 }

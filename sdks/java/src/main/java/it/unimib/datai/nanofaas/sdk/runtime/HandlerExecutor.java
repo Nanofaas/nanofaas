@@ -86,10 +86,7 @@ public class HandlerExecutor {
         }
         try {
             return future.get(timeoutMs, TimeUnit.MILLISECONDS);
-        } catch (TimeoutException ex) {
-            future.cancel(true);
-            throw ex;
-        } catch (InterruptedException ex) {
+        } catch (TimeoutException | InterruptedException ex) {
             future.cancel(true);
             throw ex;
         } catch (ExecutionException ex) {

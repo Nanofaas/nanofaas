@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.controlplane.registry;
 
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import org.junit.jupiter.api.Test;
+import org.springframework.aot.hint.MemberHint;
 import org.springframework.aot.hint.RuntimeHints;
 import org.springframework.aot.hint.TypeHint;
 
@@ -29,7 +30,7 @@ class FunctionCatalogRuntimeHintsTest {
     private static Set<String> registeredMethods(RuntimeHints hints, Class<?> type) {
         TypeHint hint = hints.reflection().getTypeHint(type);
         assertThat(hint).as("%s is not registered for reflection at all", type.getSimpleName()).isNotNull();
-        return hint.methods().map(method -> method.getName()).collect(Collectors.toSet());
+        return hint.methods().map(MemberHint::getName).collect(Collectors.toSet());
     }
 
     @Test

@@ -17,9 +17,9 @@ import java.util.Objects;
  */
 public final class CanonicalInvocationInput {
     @SuppressWarnings("codeql[java/inefficient-string-constructor]") // Private identity sentinel, not a value string.
-    private static final String LIST = new String("nanofaas:list");
+    private static final String LIST = new String("nanofaas:list"); // NOSONAR (java:S2129): identity sentinel
     @SuppressWarnings("codeql[java/inefficient-string-constructor]") // Private identity sentinel, not a value string.
-    private static final String MAP = new String("nanofaas:map");
+    private static final String MAP = new String("nanofaas:map"); // NOSONAR (java:S2129): identity sentinel
 
     private CanonicalInvocationInput() {
     }
@@ -30,8 +30,8 @@ public final class CanonicalInvocationInput {
         Objects.requireNonNull(limits, "limits");
         RetainedInputEstimator estimator = new RetainedInputEstimator(limits);
         RetainedInputEstimator.Result direct = estimator.estimate(request.input());
-        if (direct instanceof RetainedInputEstimator.Measured measured) {
-            return new Accepted(request, measured.retainedBytes(), false);
+        if (direct instanceof RetainedInputEstimator.Measured(var retainedBytes)) {
+            return new Accepted(request, retainedBytes, false);
         }
 
         Builder builder = new Builder(limits);
@@ -40,8 +40,8 @@ public final class CanonicalInvocationInput {
             return new Rejected(built.rejection);
         }
         RetainedInputEstimator.Result estimate = estimator.estimate(built.value);
-        if (estimate instanceof RetainedInputEstimator.Rejected rejected) {
-            return new Rejected(rejected.reason());
+        if (estimate instanceof RetainedInputEstimator.Rejected(var reason)) {
+            return new Rejected(reason);
         }
         long retainedBytes = ((RetainedInputEstimator.Measured) estimate).retainedBytes();
         InvocationRequest canonical = new InvocationRequest(

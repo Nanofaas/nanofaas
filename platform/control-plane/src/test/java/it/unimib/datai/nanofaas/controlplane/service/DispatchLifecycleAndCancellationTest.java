@@ -35,6 +35,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
+import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.mock;
 
 /**
  * P06: attempt-scoped capacity leases and local cancellation. These tests exercise the
@@ -142,7 +144,7 @@ class DispatchLifecycleAndCancellationTest {
         // dispatches the immutable task with its ownership handle, so a retry must re-acquire a slot.
         ExecutionCompletionHandler[] holder = new ExecutionCompletionHandler[1];
         ExecutorBackedInvocationEnqueuer enqueuer = new ExecutorBackedInvocationEnqueuer(
-                task -> holder[0].dispatch(task), capacity, retryExecutor);
+                task -> holder[0].dispatch(task), capacity, retryExecutor); // NOSONAR (java:S1612): holder[0]::dispatch would capture null
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, enqueuer,
                 new DispatcherRouter(local, null), metrics, null, capacity);
         holder[0] = handler;
@@ -187,8 +189,8 @@ class DispatchLifecycleAndCancellationTest {
         ExecutionStore store = shortLivedStore();
         Metrics metrics = new Metrics(new SimpleMeterRegistry());
         CompletableFuture<DispatchResult> neverCompletes = new CompletableFuture<>();
-        DispatcherRouter router = org.mockito.Mockito.mock(DispatcherRouter.class);
-        org.mockito.Mockito.when(router.dispatchExternal(org.mockito.ArgumentMatchers.any()))
+        DispatcherRouter router = mock(DispatcherRouter.class);
+        when(router.dispatchExternal(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(neverCompletes);
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, null, router, metrics);
 

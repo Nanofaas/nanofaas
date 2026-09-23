@@ -75,9 +75,9 @@ class ExecutionCompletionHandlerTimingTest {
         completionHandler.completeExecution("exec", InvocationResult.success("ok"));
 
         // Three separate measures, one sample each:
-        //  - total = 5 + 10 + 8 + 12 = 35ms, from the ORIGINAL admission;
-        //  - service = 12ms, the final attempt's dispatch-to-completion;
-        //  - wait = 8ms, the final attempt's enqueue-to-dispatch.
+        //  - total: 5 + 10 + 8 + 12 ms, i.e. 35ms from the ORIGINAL admission,
+        //  - service: 12ms, the final attempt's dispatch-to-completion,
+        //  - wait: 8ms, the final attempt's enqueue-to-dispatch.
         assertThat(metrics.e2eLatency("fn").totalTime(TimeUnit.MILLISECONDS)).isEqualTo(35.0);
         assertThat(metrics.latency("fn").totalTime(TimeUnit.MILLISECONDS)).isEqualTo(12.0);
         assertThat(metrics.queueWait("fn").totalTime(TimeUnit.MILLISECONDS)).isEqualTo(8.0);

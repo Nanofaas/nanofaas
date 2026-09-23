@@ -283,7 +283,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
                 send(exchange, 502, proxyError(e));
             } catch (HttpTimeoutException _) {
                 send(exchange, 504, PROXY_TIMEOUT);
-            } catch (IOException | RuntimeException e) {
+            } catch (IOException | RuntimeException e) { // NOSONAR (java:S2147): the connect-timeout catch must precede HttpTimeoutException
                 send(exchange, 502, proxyError(e));
             } finally {
                 inFlight.decrementAndGet();
@@ -329,7 +329,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
             // the body into allocated ByteBuffers. HttpResponse retains its initial HttpRequest.
             // Keep both physical-byte leases until the helper's whole request/response graph can
             // become unreachable; publisher content is the request array, not a third byte owner.
-            try (BufferReservation publisherCopy = bufferBudget.reserve(requestBody.length())) {
+            try (BufferReservation _ = bufferBudget.reserve(requestBody.length())) {
                 forwardRetainingRequestGraph(exchange, target, requestBody);
             }
         } finally {

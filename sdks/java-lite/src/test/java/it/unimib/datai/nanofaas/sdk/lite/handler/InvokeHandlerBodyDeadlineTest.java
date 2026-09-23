@@ -5,6 +5,7 @@ import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpContext;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpPrincipal;
+import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.sdk.lite.callback.CallbackClient;
 import it.unimib.datai.nanofaas.sdk.lite.metrics.RuntimeMetrics;
 import org.junit.jupiter.api.Test;
@@ -32,7 +33,7 @@ class InvokeHandlerBodyDeadlineTest {
                 40, 40, 3, 100);
         ThreadPoolExecutor callbacks = new ThreadPoolExecutor(
                 1, 1, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(1));
-        InvokeHandler handler = new InvokeHandler(request -> request.input(), new CallbackClient(mapper, null),
+        InvokeHandler handler = new InvokeHandler(InvocationRequest::input, new CallbackClient(mapper, null),
                 new RuntimeMetrics("body-deadline"), mapper, "body-deadline", callbacks, 1_000, limits);
         BlockingExchange exchange = new BlockingExchange();
         long started = System.nanoTime();

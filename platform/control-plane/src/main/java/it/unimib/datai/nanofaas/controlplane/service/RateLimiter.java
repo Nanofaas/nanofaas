@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.controlplane.service;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
@@ -49,6 +50,7 @@ public class RateLimiter {
     private final AtomicLong windowAndCount;
     private final LongSupplier epochSecondSource;
 
+    @Autowired
     public RateLimiter() {
         this(() -> Instant.now().getEpochSecond());
     }

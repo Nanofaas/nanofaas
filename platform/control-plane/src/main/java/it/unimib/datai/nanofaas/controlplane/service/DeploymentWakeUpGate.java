@@ -182,10 +182,10 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
     }
 
     private boolean isReadyWithinPolicy(ReplicaObservation observation, Instant now) {
-        return observation instanceof ReplicaObservation.Available available
-                && available.state() == ReplicaObservation.State.FRESH
-                && available.status().readyReplicas() > 0
-                && !available.observedAt().isBefore(now.minus(readyObservationMaxAge));
+        return observation instanceof ReplicaObservation.Available(var status, var state, var observedAt)
+                && state == ReplicaObservation.State.FRESH
+                && status.readyReplicas() > 0
+                && !observedAt.isBefore(now.minus(readyObservationMaxAge));
     }
 
     private boolean isCurrent(FunctionGeneration generation) {

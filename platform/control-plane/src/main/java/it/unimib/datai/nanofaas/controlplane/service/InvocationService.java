@@ -13,7 +13,6 @@ import it.unimib.datai.nanofaas.controlplane.execution.Outcome;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionNotFoundException;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadContext;
-import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;

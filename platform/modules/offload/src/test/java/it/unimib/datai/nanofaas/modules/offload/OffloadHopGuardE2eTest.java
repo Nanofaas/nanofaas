@@ -175,18 +175,18 @@ class OffloadHopGuardE2eTest {
 
         assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
         Map<String, Object> body = MAPPER.readValue(response.body(), Map.class);
-        assertThat(body.get("status")).isEqualTo("success");
+        assertThat(body).containsEntry("status", "success");
 
         // Re-offload prevention: cloud received the hop marker and executed against its
         // EXTERNAL backend (hopBackend); it did not bounce the request to rogue.
-        assertThat(rogueRequests.size())
+        assertThat(rogueRequests)
                 .as("the second control plane must not re-offload a request that arrived "
                         + "with the X-NanoFaaS-Offload-Hop marker")
-                .isEqualTo(rogueBefore);
-        assertThat(hopBackendRequests.size())
+                .hasSize(rogueBefore);
+        assertThat(hopBackendRequests)
                 .as("the second control plane should have executed the function against "
                         + "its real EXTERNAL backend")
-                .isEqualTo(hopBackendBefore + 1);
+                .hasSize(hopBackendBefore + 1);
 
         // Tracing preservation across the offload hop: the trace id the local caller set is
         // the one cloud forwarded to the real backend on the third leg.
@@ -223,11 +223,11 @@ class OffloadHopGuardE2eTest {
                 .build());
 
         assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
-        assertThat(rogueRequests.size())
+        assertThat(rogueRequests)
                 .as("a direct call to a cloud function with an eager offload policy must "
                         + "reach the offload target")
-                .isEqualTo(rogueBefore + 1);
-        assertThat(hopBackendRequests.size()).isEqualTo(hopBackendBefore);
+                .hasSize(rogueBefore + 1);
+        assertThat(hopBackendRequests).hasSize(hopBackendBefore);
     }
 
     private static String baseUrl(MockWebServer server) {

@@ -25,9 +25,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 /**
  * Regression for the NPE precondition Task 8 makes reachable: {@code SchedulerEngine.deadlines}
@@ -105,7 +105,7 @@ class SchedulerEngineDeadlineGuardRegressionTest {
         // handed to submit(), which settles through finishSubmit() — the third unguarded site.
         assertThatCode(engine::tick).doesNotThrowAnyException();
 
-        assertThatCode(() -> org.mockito.Mockito.verify(dispatch).submit(leasedTargetTask))
+        assertThatCode(() -> verify(dispatch).submit(leasedTargetTask))
                 .doesNotThrowAnyException();
     }
 
@@ -123,7 +123,7 @@ class SchedulerEngineDeadlineGuardRegressionTest {
         }).when(dispatch).submit(leasedTargetTask);
 
         assertThatCode(engine::tick).doesNotThrowAnyException();
-        assertThatCode(() -> org.mockito.Mockito.verify(dispatch).removed(targetTask))
+        assertThatCode(() -> verify(dispatch).removed(targetTask))
                 .doesNotThrowAnyException();
     }
 

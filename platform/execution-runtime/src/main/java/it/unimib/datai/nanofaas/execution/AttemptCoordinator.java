@@ -133,9 +133,7 @@ public final class AttemptCoordinator {
                     executionRecord.transportOwnsCapacity();
                     executionRecord.markRunning();
                     executionRecord.markDispatchedAt();
-                } catch (RuntimeException failure) {
-                    inputFailure = failure;
-                } catch (Error failure) {
+                } catch (RuntimeException | Error failure) {
                     inputFailure = failure;
                 }
             }

@@ -75,7 +75,7 @@ final class RuntimeLimits {
     synchronized Reservation tryReserveHandler() {
         if (!accepting || activeHandlers >= maxHandlers) return null;
         activeHandlers++;
-        return new Reservation(() -> releaseHandler());
+        return new Reservation(this::releaseHandler);
     }
 
     synchronized Reservation tryReserveCallback() {
@@ -83,7 +83,7 @@ final class RuntimeLimits {
                 || maxCallbackBytes > maxPendingCallbackBytes - pendingCallbackBytes) return null;
         pendingCallbacks++;
         pendingCallbackBytes += maxCallbackBytes;
-        return new Reservation(() -> releaseCallback());
+        return new Reservation(this::releaseCallback);
     }
 
     synchronized void stopAdmission() { accepting = false; }

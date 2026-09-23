@@ -59,15 +59,15 @@ class ManagedDeploymentCoordinatorTest {
 
     @Test
     void delegatesOperationsUsingTheTargetBackend() {
-        ManagedDeploymentCoordinator coordinator = coordinatorWithSnapshot();
+        ManagedDeploymentCoordinator snapshotCoordinator = coordinatorWithSnapshot();
         registry.put(managedFunction("fn", 1));
         when(provider.getReadyReplicas("fn")).thenReturn(2);
         when(provider.getReplicaStatus("fn")).thenReturn(new ReplicaStatus(3, 2));
 
-        coordinator.setReplicas(target, 3);
+        snapshotCoordinator.setReplicas(target, 3);
 
-        assertThat(observedStatus(coordinator, target)).isEqualTo(new ReplicaStatus(3, 2));
-        coordinator.deprovision(target);
+        assertThat(observedStatus(snapshotCoordinator, target)).isEqualTo(new ReplicaStatus(3, 2));
+        snapshotCoordinator.deprovision(target);
 
         verify(provider).setReplicas("fn", 3);
         verify(provider).deprovision("fn");

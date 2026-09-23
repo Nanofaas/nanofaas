@@ -131,8 +131,7 @@ public final class FunctionCapacityRegistry implements DispatchCapacity {
         }
         entry.lock.lock();
         try {
-            FunctionCapacityState state = activeState(functionName, entry);
-            return state;
+            return activeState(functionName, entry);
         } finally {
             entry.lock.unlock();
         }

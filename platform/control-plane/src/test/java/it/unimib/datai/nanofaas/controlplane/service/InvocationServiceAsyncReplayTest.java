@@ -32,6 +32,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
 
 /**
  * Regression coverage for A1: {@code invokeAsync} must handle a settled/archived
@@ -203,7 +204,7 @@ class InvocationServiceAsyncReplayTest {
         // Admission (metrics.admitted) fires only for the original enqueue, never for the replay.
         verify(metrics, times(1)).admitted(anyString(), any());
         verify(enqueuer, times(1)).enqueue(any());
-        verify(dispatcherRouter, org.mockito.Mockito.never()).dispatchLocal(any());
+        verify(dispatcherRouter, never()).dispatchLocal(any());
     }
 
     @Test

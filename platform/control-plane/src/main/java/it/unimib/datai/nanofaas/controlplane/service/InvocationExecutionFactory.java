@@ -181,8 +181,8 @@ public final class InvocationExecutionFactory {
                                                       InvocationKind kind) {
         String executionId = newExecutionId();
         CanonicalInvocationInput.Result result = CanonicalInvocationInput.canonicalize(request, inputLimits);
-        if (result instanceof CanonicalInvocationInput.Rejected rejected) {
-            throw new InvocationInputRejectedException(rejected.reason());
+        if (result instanceof CanonicalInvocationInput.Rejected(var reason)) {
+            throw new InvocationInputRejectedException(reason);
         }
         CanonicalInvocationInput.Accepted canonical = (CanonicalInvocationInput.Accepted) result;
         if (standaloneCapacity) {

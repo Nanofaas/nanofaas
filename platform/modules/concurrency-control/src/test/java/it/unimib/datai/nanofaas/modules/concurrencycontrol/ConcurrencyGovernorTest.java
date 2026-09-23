@@ -31,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.spy;
 
 class ConcurrencyGovernorTest {
 
@@ -260,7 +261,7 @@ class ConcurrencyGovernorTest {
         var sampled = new java.util.concurrent.CountDownLatch(1);
         var finishSample = new java.util.concurrent.CountDownLatch(1);
         var removalStarted = new java.util.concurrent.CountDownLatch(1);
-        coordinator = org.mockito.Mockito.spy(coordinator);
+        coordinator = spy(coordinator);
         var governor = new ConcurrencyGovernor(registry, name -> {
             var snapshot = metrics.snapshot(name);
             sampled.countDown();

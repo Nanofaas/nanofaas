@@ -578,12 +578,6 @@ public class ExecutionRecord {
     }
 
     /**
-     * Records that the end-to-end conclusion for this invocation has been emitted.
-     *
-     * @return true the first time this is called, false on duplicates — the guard that keeps a
-     *     late dispatch callback racing a sync timeout from double-sampling the duration.
-     */
-    /**
      * Wall-clock now from this record's own {@link TimeSource}. Collaborators that stamp
      * something onto the record (a retry task's enqueue instant) read the clock here rather than
      * calling {@code Instant.now()}, so a steered clock stays consistent across the whole record.

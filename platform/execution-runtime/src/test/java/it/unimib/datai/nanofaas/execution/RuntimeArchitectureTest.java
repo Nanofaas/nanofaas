@@ -33,10 +33,10 @@ class RuntimeArchitectureTest {
     void executionRuntimeDoesNotDependOnSpringFabric8OrQueueModules() {
         JavaClasses importedClasses = new ClassFileImporter().importPackages(EXECUTION_PACKAGES);
 
-        assertThat(importedClasses.size())
+        assertThat(importedClasses)
                 .as("the execution-runtime packages must actually be on the analyzed classpath; "
                         + "an empty import makes this rule vacuously true")
-                .isGreaterThan(50);
+                .hasSizeGreaterThan(50);
         assertThat(importedClasses.stream().anyMatch(c -> c.getSimpleName().equals("ExecutionRecord")))
                 .as("ExecutionRecord must be among the imported classes")
                 .isTrue();

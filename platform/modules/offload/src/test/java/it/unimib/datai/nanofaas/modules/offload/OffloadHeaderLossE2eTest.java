@@ -173,7 +173,7 @@ class OffloadHeaderLossE2eTest {
 
         assertThat(response.status()).as(response.body()).isEqualTo(200);
         Map<String, Object> body = MAPPER.readValue(response.body(), Map.class);
-        assertThat(body.get("status")).isEqualTo("success");
+        assertThat(body).containsEntry("status", "success");
         Object output = body.get("output");
         assertThat(output).as("function output envelope").isInstanceOf(Map.class);
         Map<String, Object> receivedHeaders = (Map<String, Object>) ((Map<String, Object>) output)
@@ -195,7 +195,7 @@ class OffloadHeaderLossE2eTest {
 
         assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
         Map<String, Object> body = MAPPER.readValue(response.body(), Map.class);
-        assertThat(body.get("status")).isEqualTo("success");
+        assertThat(body).containsEntry("status", "success");
         Object output = body.get("output");
         assertThat(output).as("function output envelope").isInstanceOf(Map.class);
         Object receivedHeaders = ((Map<String, Object>) output).get("receivedHeaders");
@@ -299,7 +299,7 @@ class OffloadHeaderLossE2eTest {
         while ((c = in.read()) != -1 && c != '\n') {
             sb.append((char) c);
         }
-        if (sb.length() > 0 && sb.charAt(sb.length() - 1) == '\r') {
+        if (!sb.isEmpty() && sb.charAt(sb.length() - 1) == '\r') {
             sb.setLength(sb.length() - 1);
         }
         return sb.toString();
