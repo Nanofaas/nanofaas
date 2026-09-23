@@ -415,15 +415,6 @@ public class SchedulerConfiguration {
             return capacityRegistry.tryAcquireLease(ticket.generation(), held -> wake.run());
         }
 
-        @Override
-        public boolean isCurrent(SchedulingTicket ticket) {
-            // ponytail: no separate staleness pre-check here. Neither retired scheduler
-            // (Scheduler, SyncScheduler) pre-checked either; dispatch() already fences by
-            // execution/attempt/generation internally. Revisit only if a real staleness leak
-            // shows up in practice.
-            return true;
-        }
-
         /**
          * Settled exactly at the engine's own {@code finishSubmit}/{@code requeue} boundary.
          * {@code SchedulerEngine.submit} takes the requeue branch precisely when this call throws

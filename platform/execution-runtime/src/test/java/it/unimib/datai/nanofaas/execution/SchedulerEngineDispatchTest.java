@@ -60,7 +60,6 @@ class SchedulerEngineDispatchTest {
         dispatch = mock(EngineDispatch.class);
         readiness = mock(EngineReadiness.class);
         when(readiness.runnable(any())).thenReturn(true);
-        when(dispatch.isCurrent(any())).thenReturn(true);
         ticket = new SchedulingTicket(new TicketId("e1", 1), GENERATION, 0, NOW, NOW, null);
         task = mock(InvocationTask.class);
         leasedTask = mock(InvocationTask.class);
@@ -154,7 +153,7 @@ class SchedulerEngineDispatchTest {
     @Test
     void aThrowingLifecycleCalloutNeitherKillsTheWorkerNorStrandsTheClaim() throws Exception {
         CountDownLatch attempts = new CountDownLatch(3);
-        when(dispatch.isCurrent(ticket)).thenAnswer(invocation -> {
+        when(dispatch.tryAcquire(ticket)).thenAnswer(invocation -> {
             attempts.countDown();
             throw new IllegalStateException("lifecycle is unhappy");
         });
@@ -176,7 +175,7 @@ class SchedulerEngineDispatchTest {
     @Test
     void aWorkerKilledByAnErrorLeavesTheEngineRestartable() throws Exception {
         CountDownLatch attempts = new CountDownLatch(2);
-        when(dispatch.isCurrent(ticket)).thenAnswer(invocation -> {
+        when(dispatch.tryAcquire(ticket)).thenAnswer(invocation -> {
             attempts.countDown();
             throw new StackOverflowError("the JVM is in trouble");
         });
@@ -314,16 +313,17 @@ class SchedulerEngineDispatchTest {
     }
 
     @Test
-    void aStaleTicketIsDroppedWithoutAcquiringCapacity() {
-        when(dispatch.isCurrent(ticket)).thenReturn(false);
-
+    void aThrowingLeaseReleaseDuringBackpressureStillSettlesReservation() {
+        doThrow(new InvocationQuotaExceededException(InvocationQuotaExceededException.Resource.INPUT))
+                .when(dispatch).submit(leasedTask);
+        doThrow(new IllegalStateException("lease cleanup failed")).when(lease).release();
         engine.enqueue(new PendingEntry(ticket, task));
-        engine.tick();
 
-        verify(dispatch, never()).tryAcquire(any());
-        verify(dispatch).removed(task);
-        verify(index).remove(ticket.id());
+        assertThatThrownBy(() -> engine.tick()).isInstanceOf(IllegalStateException.class);
+
+        assertThat(store.submittingCount()).isZero();
         assertThat(store.get(ticket.id())).isNull();
+        assertThat(engine.enqueue(new PendingEntry(ticket, task))).isTrue();
     }
 
     @Test

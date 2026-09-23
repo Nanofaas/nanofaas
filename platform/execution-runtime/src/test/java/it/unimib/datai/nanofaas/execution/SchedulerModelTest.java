@@ -152,7 +152,6 @@ class SchedulerModelTest {
                 transport, mock(AttemptObserver.class));
 
         EngineDispatch dispatch = mock(EngineDispatch.class);
-        when(dispatch.isCurrent(any())).thenReturn(true);
         when(dispatch.tryAcquire(any())).thenAnswer(inv -> {
             SchedulingTicket ticket = inv.getArgument(0);
             return capacity.tryAcquireLease(ticket.generation(), ignored -> engineRef.get().signal());

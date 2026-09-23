@@ -51,7 +51,6 @@ class SchedulerEngineQueueSnapshotTest {
         readiness = mock(EngineReadiness.class);
         when(readiness.runnable(any())).thenReturn(true);
         dispatch = mock(EngineDispatch.class);
-        when(dispatch.isCurrent(any())).thenReturn(true);
         when(dispatch.tryAcquire(any())).thenReturn(lease);
         store = new PendingWorkStore(64);
         SchedulingStrategy fifo = fifoStrategy("per-function");

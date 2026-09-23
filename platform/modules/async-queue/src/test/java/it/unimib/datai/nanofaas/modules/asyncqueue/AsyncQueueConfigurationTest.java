@@ -72,10 +72,6 @@ class AsyncQueueConfigurationTest {
                 throw new AssertionError("never selected: readiness always refuses");
             }
 
-            @Override
-            public boolean isCurrent(SchedulingTicket ticket) {
-                return true;
-            }
 
             @Override
             public void submit(InvocationTask task) {
@@ -159,10 +155,6 @@ class AsyncQueueConfigurationTest {
                 throw new AssertionError("never selected: readiness always refuses");
             }
 
-            @Override
-            public boolean isCurrent(SchedulingTicket ticket) {
-                return true;
-            }
 
             @Override
             public void submit(InvocationTask task) {
@@ -325,10 +317,6 @@ class AsyncQueueConfigurationTest {
                 };
             }
 
-            @Override
-            public boolean isCurrent(SchedulingTicket ticket) {
-                return true;
-            }
 
             @Override
             public void submit(InvocationTask task) {
@@ -337,7 +325,7 @@ class AsyncQueueConfigurationTest {
                     awaitUninterruptibly(releaseSubmit);
                     return;
                 }
-                // No-op success: SchedulerDispatchSupport treats this as DISPATCHED and the
+                // No-op success: the engine treats this as dispatched and the
                 // engine settles the reservation (finishSubmit) synchronously within the same
                 // tick — see SchedulerEngineQueueSnapshotTest for the same observation.
             }
@@ -466,10 +454,6 @@ class AsyncQueueConfigurationTest {
                 return capacityRegistry.tryAcquireLease(ticket.generation(), ignored -> { });
             }
 
-            @Override
-            public boolean isCurrent(SchedulingTicket ticket) {
-                return true;
-            }
 
             @Override
             public void submit(InvocationTask task) {

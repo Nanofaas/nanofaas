@@ -77,7 +77,6 @@ class SchedulerEngineDeadlineGuardRegressionTest {
         // stays pending and keeps the deadline set non-empty for the whole test.
         when(readiness.runnable(keptGeneration)).thenReturn(false);
         when(readiness.runnable(targetGeneration)).thenReturn(true);
-        when(dispatch.isCurrent(any())).thenReturn(true);
 
         targetTask = mock(InvocationTask.class);
         when(targetTask.functionName()).thenReturn(targetGeneration.functionName());

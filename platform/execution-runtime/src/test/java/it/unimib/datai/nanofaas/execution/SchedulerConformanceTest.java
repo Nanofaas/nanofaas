@@ -552,7 +552,6 @@ class SchedulerConformanceTest {
             this.store = store;
             when(readiness.runnable(any())).thenReturn(true);
             when(generationActive.test(any())).thenReturn(true);
-            when(dispatch.isCurrent(any())).thenReturn(true);
             when(dispatch.tryAcquire(any())).thenReturn(lease);
             doAnswer(inv -> submitted.add(((InvocationTask) inv.getArgument(0)).executionId()))
                     .when(dispatch).submit(any());

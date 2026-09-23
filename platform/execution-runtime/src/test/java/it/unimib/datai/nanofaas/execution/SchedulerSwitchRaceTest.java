@@ -740,10 +740,6 @@ class SchedulerSwitchRaceTest {
             return lease;
         }
 
-        @Override
-        public boolean isCurrent(SchedulingTicket ticket) {
-            return true;
-        }
 
         @Override
         public void submit(InvocationTask task) {

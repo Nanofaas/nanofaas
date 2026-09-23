@@ -112,10 +112,6 @@ class P07cInputBackpressureTest {
                 return generations.tryAcquireLease(ticket.generation(), ignored -> { });
             }
 
-            @Override
-            public boolean isCurrent(SchedulingTicket ticket) {
-                return true;
-            }
 
             @Override
             public void submit(InvocationTask task) {

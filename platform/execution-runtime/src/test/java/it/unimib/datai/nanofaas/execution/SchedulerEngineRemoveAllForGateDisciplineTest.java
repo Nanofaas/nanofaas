@@ -61,7 +61,6 @@ class SchedulerEngineRemoveAllForGateDisciplineTest {
         PendingWorkStore store = new PendingWorkStore(50_000);
         EngineReadiness readiness = generation -> false; // nothing is ever selected/claimed
         EngineDispatch dispatch = mock(EngineDispatch.class);
-        when(dispatch.isCurrent(any())).thenReturn(true);
         SchedulingStrategy strategy = mock(SchedulingStrategy.class);
         RecordingIndex index = new RecordingIndex();
         when(strategy.id()).thenReturn("test");

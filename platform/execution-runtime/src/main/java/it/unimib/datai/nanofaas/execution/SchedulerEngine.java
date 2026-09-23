@@ -2,9 +2,9 @@ package it.unimib.datai.nanofaas.execution;
 
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
+import it.unimib.datai.nanofaas.controlplane.capacity.InvocationQuotaExceededException;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerControl;
-import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerDispatchSupport;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerSelection;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingIndex;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingStrategy;
@@ -725,26 +725,12 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     /** Outside the gate, except where noted: record check, lease acquisition, commit, submit. */
     private long carry(Claim claim) {
         SchedulingTicket ticket = claim.ticket();
-        // A claim is provisional and lives only inside this method. isCurrent, tryAcquire and
-        // release are all pluggable lifecycle code: if one of them throws, the loop's barrier
+        // A claim is provisional and lives only inside this method. tryAcquire and release are
+        // both pluggable lifecycle code: if either of them throws, the loop's barrier
         // catches it, and without this guard the claim would stay in the store forever —
         // reserved, unselectable and invisible to the deadline reap.
         boolean claimSettled = false;
         try {
-            if (!dispatch.isCurrent(ticket)) {
-                PendingEntry dropped;
-                synchronized (gate) {
-                    dropped = store.remove(ticket.id());
-                    if (dropped != null) {
-                        retire(ticket);
-                    }
-                }
-                claimSettled = true;
-                if (dropped != null) {
-                    dispatch.removed(dropped.task());
-                }
-                return 0L;
-            }
             DispatchOwnership lease = dispatch.tryAcquire(ticket);
             if (lease == null) {
                 synchronized (gate) {
@@ -808,25 +794,36 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         }
     }
 
-    private void submit(SchedulingTicket ticket, InvocationTask leased, DispatchOwnership lease) {
-        SchedulerDispatchSupport.Result result = null;
+    /** Returns true only for input backpressure whose lease was released. */
+    private boolean dispatchWithFailureCleanup(InvocationTask task, DispatchOwnership lease) {
         try {
-            result = SchedulerDispatchSupport.dispatchWithFailureCleanup(
-                    leased,
-                    () -> dispatch.submit(leased),
-                    lease::release,
-                    failure -> dispatch.rejected(leased, failure),
-                    log);
+            dispatch.submit(task);
+            return false;
+        } catch (InvocationQuotaExceededException ex) {
+            lease.release();
+            log.debug("Input capacity blocked dispatch for execution {}", task.executionId());
+            return true;
+        } catch (RuntimeException | Error ex) {
+            try {
+                lease.release();
+            } finally {
+                dispatch.rejected(task, ex);
+            }
+            log.error("Dispatch failed for execution {}: {}", task.executionId(), ex.getMessage(), ex);
+            return false;
+        }
+    }
+
+    private void submit(SchedulingTicket ticket, InvocationTask leased, DispatchOwnership lease) {
+        boolean inputBackpressured = false;
+        try {
+            inputBackpressured = dispatchWithFailureCleanup(leased, lease);
         } finally {
-            // Both predecessors settled the reservation in a finally (the retired SyncScheduler,
-            // Scheduler), and for good reason: dispatchWithFailureCleanup can itself throw — a
-            // throwing rejected() escapes its FAILED branch, a throwing lease.release() escapes
-            // the backpressure branch. A ticket left in `submitting` holds its reservation
-            // forever: no index holds it so nothing can select it, and the deadline reap cannot
-            // remove a submitting ticket either. When the settlement is unknown the reservation
-            // is released, as the predecessors did; concluding that execution is the lifecycle's
-            // job, not the queue's.
-            if (result == SchedulerDispatchSupport.Result.INPUT_BACKPRESSURED) {
+            // A throwing cleanup still settles the reservation; only confirmed input
+            // backpressure requeues the ticket and retains its reservation. A ticket left in
+            // `submitting` would hold its reservation forever: no index holds it, and the
+            // deadline reap cannot remove it.
+            if (inputBackpressured) {
                 requeue(ticket);
             } else {
                 finishSubmit(ticket);
