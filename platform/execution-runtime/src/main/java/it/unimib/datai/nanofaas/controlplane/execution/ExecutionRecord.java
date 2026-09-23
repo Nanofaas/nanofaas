@@ -370,15 +370,6 @@ public class ExecutionRecord {
     }
 
     /**
-     * Whether the current attempt was dispatched (its slot or lease was acquired). Marked by
-     * {@link #markRunning()}, which is what a dispatch does; a record still sitting in a queue
-     * (or a completion of work that never dispatched) has never run, so it acquired nothing.
-     */
-    public synchronized boolean wasDispatched() {
-        return startedAt != null;
-    }
-
-    /**
      * Records the lease the current attempt acquired at dispatch. Called under the record
      * monitor, before the dispatch future is kicked off.
      */
