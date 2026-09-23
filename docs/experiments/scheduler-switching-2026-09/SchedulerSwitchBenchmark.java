@@ -394,7 +394,9 @@ public final class SchedulerSwitchBenchmark {
                     accounting.wrap(new PerFunctionSchedulingStrategy()),
                     accounting.wrap(new SharedQueueSchedulingStrategy()));
             this.engine = new SchedulerEngine(store, new StrategyRegistry(strategies), arm.initial,
-                    dispatch, readiness(), Clock.systemUTC(), System::nanoTime);
+                    dispatch, readiness(),
+                    generation -> generation.equals(capacity.activeGeneration(generation.functionName())),
+                    Clock.systemUTC(), System::nanoTime);
             engine.setSwitchObserver(this::recordSwitch);
         }
 

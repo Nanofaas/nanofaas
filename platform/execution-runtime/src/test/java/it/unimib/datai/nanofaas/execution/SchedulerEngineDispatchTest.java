@@ -93,7 +93,7 @@ class SchedulerEngineDispatchTest {
         when(strategy.id()).thenReturn("test");
         when(strategy.newIndex()).thenReturn(index);
         return new SchedulerEngine(pendingWorkStore, new StrategyRegistry(List.of(strategy)), "test",
-                dispatch, readiness, Clock.fixed(NOW, ZoneOffset.UTC), nanoTime);
+                dispatch, readiness, generation -> true, Clock.fixed(NOW, ZoneOffset.UTC), nanoTime);
     }
 
     @Test

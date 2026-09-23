@@ -122,25 +122,8 @@ public final class EngineInvocationEnqueuer implements InvocationEnqueuer, Retry
         Instant now = clock.instant();
         TicketId id = new TicketId(task.executionId(), task.attempt());
         SchedulingTicket ticket = new SchedulingTicket(id, generation, sequence.getAsLong(), now, now, null);
-        SchedulerEngine schedulerEngine = engine.getObject();
-        boolean admitted = schedulerEngine.enqueue(new PendingEntry(ticket, task), cap);
-        if (!admitted) {
-            return false;
-        }
-        // Fix round 3: closes the residual admission window between resolving `generation` above
-        // and this enqueue committing. This class holds no lock across the two, so a removal
-        // racing exactly here can slip a ticket in after the generation it was built against has already been retired. Left
-        // alone that ticket strands permanently in this profile: its queueDeadline is null (no
-        // reaper ever collects it) and its generation is no longer active (engineReadiness never
-        // selects it) — the same class of stranding C2 exists to prevent, under the same
-        // redeploy-churn traffic. Re-checking here cannot close the window to zero (the check
-        // itself is still non-atomic with a concurrent removal), but it turns an unbounded,
-        // permanent strand into a bounded compensating removal: worst case, one ticket briefly
-        // occupies a reservation before this catches it on the very next line.
-        if (!generation.equals(capacityRegistry.activeGeneration(task.functionName()))) {
-            schedulerEngine.remove(id);
-            return false;
-        }
-        return true;
+        // The engine re-checks the generation under its gate, so a removal that completed after
+        // the lookup above refuses this ticket instead of stranding it.
+        return engine.getObject().enqueue(new PendingEntry(ticket, task), cap);
     }
 }

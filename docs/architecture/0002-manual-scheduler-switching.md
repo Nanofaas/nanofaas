@@ -95,6 +95,13 @@ deadlock or to violate I1–I4:
    (Task 4's `EngineDispatch.submit` contract); a ticket whose dispatch fails synchronously returns
    the lease and requeues, all outside the gate.
 
+**Clarification (2026-09-23, admission ownership).** Admission may observe the active generation
+while holding the engine gate. The permitted lock order is engine gate → capacity-registry entry
+lock. Registry callbacks that can reach the engine run only after releasing that entry lock. No
+lease acquisition, provider call, execution-record monitor or lifecycle callback runs under the
+engine gate. Removal retires the capacity generation before draining the engine. Claim/epoch
+revalidation across strategy switches is unchanged.
+
 **Why this order, not the reverse.** ADR 0001 already establishes that the execution record's
 terminal transition (`settle`, §6) and its resource release (§8) are owned by
 `ExecutionCompletionHandler`/`ExecutionStore`, and that a retry's re-admission

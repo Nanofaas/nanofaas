@@ -91,7 +91,7 @@ class SchedulerEngineDeadlineGuardRegressionTest {
         when(strategy.newIndex()).thenReturn(index);
         store = new PendingWorkStore(8);
         engine = new SchedulerEngine(store, new StrategyRegistry(List.of(strategy)), "test",
-                dispatch, readiness, Clock.fixed(NOW, ZoneOffset.UTC), () -> 0L);
+                dispatch, readiness, generation -> true, Clock.fixed(NOW, ZoneOffset.UTC), () -> 0L);
 
         // Keeps `deadlines` non-empty for the whole test: a real, distinct deadline, never
         // selected because its generation is never runnable.

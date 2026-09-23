@@ -280,6 +280,7 @@ public class SchedulerConfiguration {
             EngineDispatch dispatch, EngineReadiness readiness, WakeHandle wakeHandle) {
         String initial = resolveInitialStrategy(props, strategies);
         SchedulerEngine engine = new SchedulerEngine(store, strategies, initial, dispatch, readiness,
+                generation -> generation.equals(capacityRegistry.activeGeneration(generation.functionName())),
                 Clock.systemUTC(), System::nanoTime);
         wakeHandle.bind(engine::signal);
         // signal() path 2/2: a released or raised capacity ceiling wakes the engine so a
@@ -321,17 +322,17 @@ public class SchedulerConfiguration {
      * documents that it does not lock internally — the engine serializes every operation on it —
      * and this listener runs on the request thread serving the removal HTTP call while the
      * engine's own worker mutates the same store concurrently; reading it directly here could
-     * throw a {@code ConcurrentModificationException} out of the snapshot (leaving the fence
-     * raised and capacity never retired) or silently miss entries. {@code removeAllFor} does the
+     * throw a {@code ConcurrentModificationException} out of the snapshot or silently miss
+     * entries. {@code removeAllFor} does the
      * whole scan-and-remove under the engine's own gate, the same requirement every other access
      * to that store already observes.
      *
-     * <p>Fix round 2 correction: capacity is retired <em>before</em> the drain, not after, so a
-     * concurrent admission finds no active generation and refuses. Draining first would leave {@code capacityRegistry.activeGeneration} resolvable for the
-     * whole drain window, letting a concurrent {@link EngineInvocationEnqueuer#admitDirect} admit
-     * a ticket the scan has already passed — stranded forever in the {@code FUNCTION_QUEUE}
-     * profile, since that ticket's {@code queueDeadline} is null and the sync removal fence below
-     * does not cover that admission front at all.
+     * <p>Capacity is retired <em>before</em> the drain, not after. The engine checks a ticket's
+     * generation against {@code capacityRegistry.activeGeneration} under its gate at admission,
+     * and the drain takes that same gate, so an admission ordered before the drain is drained and
+     * one ordered after it is refused. Draining first would leave the generation active for the
+     * whole drain window, letting a concurrent admission insert a ticket the scan has already
+     * passed.
      *
      * <p>Task 11 addition: also owns the per-function {@link WorkloadMetricsBinder} meter
      * lifecycle, and is the sole place that registers the engine's drain listener — once, here,
@@ -362,12 +363,6 @@ public class SchedulerConfiguration {
         return new FunctionRegistrationListener() {
             @Override
             public void onRegister(FunctionSpec spec) {
-                // Clear the fence before granting capacity, so a task admitted in the gap simply waits for a slot instead of
-                // racing a stale removal fence.
-                EngineSyncQueueGateway gateway = syncGateway.getIfAvailable();
-                if (gateway != null) {
-                    gateway.clearRemovalFence(spec.name());
-                }
                 engine.clearDraining(spec.name());
                 capacityRegistry.register(spec.name(), spec.concurrency());
                 metricsBinder.registerFunction(spec.name());
@@ -375,10 +370,6 @@ public class SchedulerConfiguration {
 
             @Override
             public void onRemove(String functionName) {
-                EngineSyncQueueGateway gateway = syncGateway.getIfAvailable();
-                if (gateway != null) {
-                    gateway.raiseRemovalFence(functionName);
-                }
                 // Retire capacity BEFORE draining — see the javadoc above for why the reverse
                 // order reopens the exact race C2 exists to close.
                 capacityRegistry.remove(functionName);
@@ -386,12 +377,9 @@ public class SchedulerConfiguration {
                 // Meters come down once every reservation this function holds has settled, not
                 // here — see this method's own javadoc.
                 engine.markDraining(functionName);
+                EngineSyncQueueGateway gateway = syncGateway.getIfAvailable();
                 if (gateway != null) {
                     gateway.functionRemoved(functionName);
-                    // Redundant once capacityRegistry.remove has run above (enqueueOrThrow then
-                    // rejects on generation == null anyway) — cleared here so a function removed
-                    // and never re-registered does not sit in this set forever.
-                    gateway.clearRemovalFence(functionName);
                 }
             }
         };

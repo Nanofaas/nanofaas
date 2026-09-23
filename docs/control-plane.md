@@ -261,8 +261,10 @@ The shared queue examines up to 64 tickets per selection. When that window conta
 runnable ticket, it rotates before the next scan so blocked functions cannot indefinitely
 hide ready work further back. Function removal withdraws pending tickets and provisional
 claims, and cancels any submitting ticket that returns to the queue under input backpressure.
-Sync admission rechecks the function generation after insertion and withdraws tickets whose
-generation was removed during admission.
+Admission checks the function generation under the engine's gate before inserting a ticket:
+removal retires the generation before it drains the engine, so an admission that overlaps a
+removal is either drained by it (and reported as `FUNCTION_REMOVED`) or refused before it
+becomes a reservation. A refused ticket is rejected to its caller, never reported as removed.
 
 Per-function queue limits are checked atomically with admission. A queue reservation remains
 occupied through selection and submit, including input backpressure. Reservations still

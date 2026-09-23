@@ -18,7 +18,6 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -69,14 +68,6 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
     private final LongSupplier sequence;
     private final EngineInvocationEnqueuer.AdmissionProfile profile;
     private final Clock clock;
-
-    /**
-     * Functions currently being removed: a function-name-level flag, raised before the
-     * generation-removal listener drains this function's pending work and cleared before it
-     * grants capacity again. This narrows, but does not close to zero, the race between a
-     * concurrent admission and a removal in flight.
-     */
-    private final Set<String> removalFences = ConcurrentHashMap.newKeySet();
 
     /**
      * Ticket ids registered before engine admission and removed on rejection or settlement, so
@@ -171,20 +162,6 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
     }
 
     private TrackedTicket doEnqueueOrThrow(InvocationTask task) {
-        // Two removal-fence checks: an early rejection, and a second one immediately before the commit to narrow the window a
-        // concurrent removal could otherwise slip through.
-        //
-        // Each check is pinned by its own probe, and it is worth knowing which — they are not
-        // interchangeable, and the in-window probe that drives both is not evidence for either one
-        // specifically: it raises the fence before its admission starts and leaves it raised, so
-        // EITHER check alone still refuses that admission, and only deleting both turns it red.
-        // SyncQueueRuntimeLifecycleTest.theFirstRemovalFenceCheckRefusesAnAdmissionThatStartsFenced
-        // goes red when this first check is removed, and
-        // .theSecondRemovalFenceCheckRejectsAFenceRaisedWhileTheAdmissionIsInFlight goes red when
-        // the second is. Removing one of the two is a red test, not a silent loosening.
-        if (removalFences.contains(task.functionName())) {
-            throw depthRejected();
-        }
         Instant now = clock.instant();
         // Valid as a sync-scoped depth only because enabled() now confines this gateway to the
         // SYNC_QUEUE profile: nothing else admits into the engine while it is active, so
@@ -201,9 +178,6 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
         SyncQueueRejectReason reason = admissionCheck.evaluate(task.functionName(), pendingDepth, now);
         if (reason != null) {
             throw new SyncQueueRejectedException(reason, configSource.syncQueueRetryAfterSeconds());
-        }
-        if (removalFences.contains(task.functionName())) {
-            throw depthRejected();
         }
         FunctionGeneration generation = capacityRegistry.activeGeneration(task.functionName());
         if (generation == null) {
@@ -229,12 +203,8 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
             }
         }
         if (!enqueued) {
-            throw depthRejected();
-        }
-        // Removal can finish after the generation read but before enqueue, missing this ticket
-        // in its drain. Withdraw it through the engine so lifecycle cleanup runs exactly once.
-        if (!generation.equals(capacityRegistry.activeGeneration(task.functionName()))) {
-            engine.getObject().remove(id);
+            // Includes a generation removed after the lookup above: the engine re-checks it under
+            // its gate and refuses the ticket before inserting it.
             throw depthRejected();
         }
         return tracked;
@@ -242,16 +212,6 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
 
     private SyncQueueRejectedException depthRejected() {
         return new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
-    }
-
-    /** Raised by the generation-removal listener before it drains this function's pending work. */
-    public void raiseRemovalFence(String functionName) {
-        removalFences.add(functionName);
-    }
-
-    /** Cleared by the generation-registration listener before it grants capacity. */
-    public void clearRemovalFence(String functionName) {
-        removalFences.remove(functionName);
     }
 
     /**

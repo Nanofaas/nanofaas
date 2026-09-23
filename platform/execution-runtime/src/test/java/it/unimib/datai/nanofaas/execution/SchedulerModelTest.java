@@ -184,8 +184,9 @@ class SchedulerModelTest {
             return null;
         }).when(dispatch).removed(any());
 
-        engine = new SchedulerEngine(store, registry, "per-function", dispatch, readiness, clock,
-                () -> 0L);
+        engine = new SchedulerEngine(store, registry, "per-function", dispatch, readiness,
+                generation -> generation.equals(capacity.activeGeneration(generation.functionName())),
+                clock, () -> 0L);
         engineRef.set(engine);
 
         try {

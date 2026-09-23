@@ -140,7 +140,9 @@ class P07cInputBackpressureTest {
         SchedulingStrategy strategy = new SharedQueueSchedulingStrategy();
         PendingWorkStore pending = new PendingWorkStore(16);
         SchedulerEngine engine = new SchedulerEngine(pending, new StrategyRegistry(List.of(strategy)),
-                strategy.id(), dispatch, generation -> true, Clock.systemUTC(), System::nanoTime);
+                strategy.id(), dispatch, generation -> true,
+                generation -> generation.equals(generations.activeGeneration(generation.functionName())),
+                Clock.systemUTC(), System::nanoTime);
 
         SchedulingTicket ticket = new SchedulingTicket(
                 new it.unimib.datai.nanofaas.controlplane.scheduler.TicketId(

@@ -57,7 +57,7 @@ class SchedulerEngineQueueSnapshotTest {
         SchedulingStrategy fifo = fifoStrategy("per-function");
         SchedulingStrategy other = fifoStrategy("shared-queue");
         engine = new SchedulerEngine(store, new StrategyRegistry(List.of(fifo, other)), "per-function",
-                dispatch, readiness, Clock.fixed(NOW, ZoneOffset.UTC), () -> 0L);
+                dispatch, readiness, generation -> true, Clock.fixed(NOW, ZoneOffset.UTC), () -> 0L);
     }
 
     private static SchedulingStrategy fifoStrategy(String id) {

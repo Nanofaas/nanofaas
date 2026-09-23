@@ -78,6 +78,9 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     private final StrategyRegistry strategies;
     private final EngineDispatch dispatch;
     private final EngineReadiness readiness;
+    /** Identity check against the generation authority: is this ticket's generation still the
+     * function's active one? Never a capacity check. Evaluated under {@link #gate}. */
+    private final Predicate<FunctionGeneration> generationActive;
     private final Clock clock;
     private final LongSupplier nanoTime;
 
@@ -125,11 +128,13 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
 
     public SchedulerEngine(PendingWorkStore store, StrategyRegistry strategies, String initialStrategy,
                            EngineDispatch dispatch, EngineReadiness readiness,
+                           Predicate<FunctionGeneration> generationActive,
                            Clock clock, LongSupplier nanoTime) {
         this.store = Objects.requireNonNull(store, "store must not be null");
         this.strategies = Objects.requireNonNull(strategies, "strategies must not be null");
         this.dispatch = Objects.requireNonNull(dispatch, "dispatch must not be null");
         this.readiness = Objects.requireNonNull(readiness, "readiness must not be null");
+        this.generationActive = Objects.requireNonNull(generationActive, "generationActive must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
         this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime must not be null");
         Objects.requireNonNull(initialStrategy, "initialStrategy must not be null");
@@ -357,7 +362,9 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
      * reservations (pending, claimed or submitting, including an older generation's). The cap
      * check and the insertion are one step under {@link #gate}, so two admissions can never both
      * take the last slot. The most recent admission attempt supplies the cap that
-     * {@link #isQueueFull} reports.
+     * {@link #isQueueFull} reports. A ticket whose generation is no longer active is refused
+     * before anything is recorded, and receives no {@link EngineDispatch#removed} event: the
+     * caller keeps its own rejection cleanup.
      */
     public boolean enqueue(PendingEntry entry, int perFunctionCap) {
         Objects.requireNonNull(entry, "entry must not be null");
@@ -365,6 +372,12 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             throw new IllegalArgumentException("perFunctionCap must be positive");
         }
         synchronized (gate) {
+            // Before any state changes: a stale generation never becomes a reservation, and never
+            // recreates cap metadata a removal just cleared. Removal retires the generation before
+            // it drains under this gate, so a concurrent admission is either drained or refused.
+            if (!generationActive.test(entry.ticket().generation())) {
+                return false;
+            }
             String name = entry.ticket().generation().functionName();
             queueCaps.put(name, perFunctionCap);
             if (store.reservedCount(name) >= perFunctionCap || !store.offer(entry)) {

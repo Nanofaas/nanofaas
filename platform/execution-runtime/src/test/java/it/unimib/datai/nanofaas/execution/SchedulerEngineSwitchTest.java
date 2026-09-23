@@ -94,7 +94,7 @@ class SchedulerEngineSwitchTest {
     private SchedulerEngine engineOver(PendingWorkStore pendingWorkStore, LongSupplier nanoTime) {
         return new SchedulerEngine(pendingWorkStore,
                 new StrategyRegistry(List.of(perFunction, sharedQueue)), "per-function",
-                dispatch, readiness, Clock.fixed(NOW, ZoneOffset.UTC), nanoTime);
+                dispatch, readiness, generation -> true, Clock.fixed(NOW, ZoneOffset.UTC), nanoTime);
     }
 
     private SchedulingStrategy strategy(String id, boolean newestFirst) {

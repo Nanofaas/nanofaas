@@ -99,7 +99,9 @@ class AsyncQueueConfigurationTest {
         };
         SchedulingStrategy strategy = new PerFunctionSchedulingStrategy();
         SchedulerEngine engine = new SchedulerEngine(store, new StrategyRegistry(List.of(strategy)),
-                strategy.id(), dispatch, readiness, Clock.systemUTC(), System::nanoTime);
+                strategy.id(), dispatch, readiness,
+                generation -> generation.equals(capacityRegistry.activeGeneration(generation.functionName())),
+                Clock.systemUTC(), System::nanoTime);
 
         ObjectProvider<EngineSyncQueueGateway> noSyncGateway = noSyncGateway();
         FunctionRegistrationListener listener = new SchedulerConfiguration()
@@ -184,7 +186,9 @@ class AsyncQueueConfigurationTest {
         };
         SchedulingStrategy strategy = new PerFunctionSchedulingStrategy();
         SchedulerEngine engine = new SchedulerEngine(store, new StrategyRegistry(List.of(strategy)),
-                strategy.id(), dispatch, readiness, Clock.systemUTC(), System::nanoTime);
+                strategy.id(), dispatch, readiness,
+                generation -> generation.equals(capacityRegistry.activeGeneration(generation.functionName())),
+                Clock.systemUTC(), System::nanoTime);
         ObjectProvider<SchedulerEngine> engineProvider = new ObjectProvider<>() {
             @Override
             public SchedulerEngine getObject() {
@@ -229,17 +233,9 @@ class AsyncQueueConfigurationTest {
                     .atMost(Duration.ofSeconds(2))
                     .until(() -> store.pendingCount() > 0);
             listener.onRemove("echo"); // must not throw: NEW-CRITICAL
-            // Fix round 3, Item 1/2: EngineInvocationEnqueuer.admitDirect now re-checks
-            // capacityRegistry.activeGeneration after a successful engine.enqueue and
-            // compensates (engine.remove) if the generation was retired in the
-            // instant between the two — but that compensating action runs on the ADMITTING
-            // thread, a few instructions after the enqueue it is undoing, so it is not
-            // necessarily visible the very instant onRemove returns on THIS thread. Asserting an
-            // instantaneous zero here was the round-2 test's flake: real, if rare, exactly
-            // because that window is narrowed rather than eliminated. What must hold — and what
-            // the pre-round-3 code (permanent strand) and the pre-round-2 order (large,
-            // non-self-healing backlog) both fail — is that the count SETTLES to zero quickly and
-            // stays there, even while the admitter keeps hammering a now-retired function.
+            // The engine refuses a ticket whose generation is no longer active under its gate,
+            // and the removal drained everything admitted before it: the count settles to zero
+            // and stays there while the admitter keeps hammering a now-retired function.
             Awaitility.await()
                     .atMost(Duration.ofSeconds(2))
                     .untilAsserted(() -> assertThat(store.pendingCount())
@@ -254,6 +250,7 @@ class AsyncQueueConfigurationTest {
         assertThat(admitterFailure.get()).isNull();
         // Firm check once the admitter has fully stopped: nothing reappears afterward either.
         assertThat(store.pendingCount()).isZero();
+        assertThat(engine.reservedCount("echo")).isZero();
     }
 
     /**
@@ -363,7 +360,9 @@ class AsyncQueueConfigurationTest {
         };
         SchedulingStrategy strategy = new PerFunctionSchedulingStrategy();
         SchedulerEngine engine = new SchedulerEngine(store, new StrategyRegistry(List.of(strategy)),
-                strategy.id(), dispatch, readiness, Clock.systemUTC(), System::nanoTime);
+                strategy.id(), dispatch, readiness,
+                generation -> generation.equals(capacityRegistry.activeGeneration(generation.functionName())),
+                Clock.systemUTC(), System::nanoTime);
 
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         WorkloadMetricsBinder binder = new WorkloadMetricsBinder(
@@ -495,7 +494,9 @@ class AsyncQueueConfigurationTest {
         };
         SchedulingStrategy strategy = new PerFunctionSchedulingStrategy();
         SchedulerEngine engine = new SchedulerEngine(store, new StrategyRegistry(List.of(strategy)),
-                strategy.id(), dispatch, generation -> true, Clock.systemUTC(), System::nanoTime);
+                strategy.id(), dispatch, generation -> true,
+                generation -> generation.equals(capacityRegistry.activeGeneration(generation.functionName())),
+                Clock.systemUTC(), System::nanoTime);
         FunctionRegistrationListener listener = new SchedulerConfiguration()
                 .schedulerCapacityGenerationListener(capacityRegistry, engine,
                         noSyncGateway(), testMetricsBinder());

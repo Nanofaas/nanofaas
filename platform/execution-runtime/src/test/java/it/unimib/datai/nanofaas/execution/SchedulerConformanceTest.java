@@ -459,6 +459,46 @@ class SchedulerConformanceTest {
         assertThat(f.engine.enqueue(candidate("c", f.echo, 2), 1)).isTrue();
     }
 
+    // ------------------------------------------------------------------
+    // Generation validation during admission
+    // ------------------------------------------------------------------
+
+    @ParameterizedTest
+    @MethodSource("strategies")
+    void staleAdmissionNeverBecomesAnEngineReservation(SchedulingStrategy strategy) {
+        Fixture f = new Fixture(strategy);
+        when(f.generationActive.test(f.echo)).thenReturn(false);
+        assertThat(f.engine.enqueue(candidate("stale", f.echo, 0), 1)).isFalse();
+        assertThat(f.store.reservedCount()).isZero();
+        assertThat(f.store.get(new TicketId("stale", 1))).isNull();
+        assertThat(f.engine.isQueueFull("echo")).isFalse();
+        assertThat(f.removed).isEmpty();
+        assertThat(f.submitted).isEmpty();
+    }
+
+    @ParameterizedTest
+    @MethodSource("strategies")
+    void capacityBlockedButLiveGenerationCanQueue(SchedulingStrategy strategy) {
+        Fixture f = new Fixture(strategy);
+        when(f.readiness.runnable(f.echo)).thenReturn(false);
+        assertThat(f.engine.enqueue(candidate("waiting", f.echo, 0), 1)).isTrue();
+        f.engine.tick();
+        assertThat(f.engine.reservedCount("echo")).isEqualTo(1);
+        assertThat(f.submitted).isEmpty();
+    }
+
+    @ParameterizedTest
+    @MethodSource("strategies")
+    void anOldGenerationCannotEnterAfterTheNewOneIsRegistered(SchedulingStrategy strategy) {
+        Fixture f = new Fixture(strategy);
+        var current = new FunctionGeneration("echo", 2);
+        when(f.generationActive.test(f.echo)).thenReturn(false);
+        when(f.generationActive.test(current)).thenReturn(true);
+        assertThat(f.engine.enqueue(candidate("old", f.echo, 0), 1)).isFalse();
+        assertThat(f.engine.enqueue(candidate("new", current, 1), 1)).isTrue();
+        assertThat(f.store.reservedCount()).isEqualTo(1);
+    }
+
     /**
      * Shared fixture: a real {@link SchedulerEngine} over one real strategy, a mocked
      * {@link EngineDispatch}/{@link EngineReadiness} and a frozen clock — same shape as {@code
@@ -469,6 +509,9 @@ class SchedulerConformanceTest {
         final FunctionGeneration echo = new FunctionGeneration("echo", 1);
         final EngineDispatch dispatch = mock(EngineDispatch.class);
         final EngineReadiness readiness = mock(EngineReadiness.class);
+        @SuppressWarnings("unchecked")
+        final java.util.function.Predicate<FunctionGeneration> generationActive =
+                mock(java.util.function.Predicate.class);
         final DispatchOwnership lease = mock(DispatchOwnership.class);
         final PendingWorkStore store;
         final SchedulerEngine engine;
@@ -483,6 +526,7 @@ class SchedulerConformanceTest {
         Fixture(SchedulingStrategy strategy, PendingWorkStore store) {
             this.store = store;
             when(readiness.runnable(any())).thenReturn(true);
+            when(generationActive.test(any())).thenReturn(true);
             when(dispatch.isCurrent(any())).thenReturn(true);
             when(dispatch.tryAcquire(any())).thenReturn(lease);
             doAnswer(inv -> submitted.add(((InvocationTask) inv.getArgument(0)).executionId()))
@@ -492,7 +536,8 @@ class SchedulerConformanceTest {
             doAnswer(inv -> removed.add(((InvocationTask) inv.getArgument(0)).executionId()))
                     .when(dispatch).removed(any());
             this.engine = new SchedulerEngine(store, new StrategyRegistry(List.of(strategy)),
-                    strategy.id(), dispatch, readiness, Clock.fixed(NOW, ZoneOffset.UTC), () -> 0L);
+                    strategy.id(), dispatch, readiness, generationActive,
+                    Clock.fixed(NOW, ZoneOffset.UTC), () -> 0L);
         }
 
         SchedulingTicket admit(String id, InvocationKind kind, FunctionGeneration generation, long seq) {

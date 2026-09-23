@@ -137,7 +137,7 @@ class SchedulerSwitchRaceTest {
         SchedulingStrategy sharedQueue = new SharedQueueSchedulingStrategy();
         SchedulerEngine engine = new SchedulerEngine(store,
                 new StrategyRegistry(List.of(perFunction, sharedQueue)), perFunction.id(),
-                dispatch, alwaysRunnable(), CLOCK, () -> 0L);
+                dispatch, alwaysRunnable(), generation -> true, CLOCK, () -> 0L);
         engineRef.set(engine);
         admit(engine, capacity, "e1", "echo", 1, NOW, null);
 
@@ -181,7 +181,7 @@ class SchedulerSwitchRaceTest {
                 buildStarted, racerReachedTheGate);
         SchedulerEngine engine = new SchedulerEngine(store,
                 new StrategyRegistry(List.of(new PerFunctionSchedulingStrategy(), sharedQueue)),
-                "per-function", dispatch, alwaysRunnable(), CLOCK, () -> 0L);
+                "per-function", dispatch, alwaysRunnable(), generation -> true, CLOCK, () -> 0L);
         engineRef.set(engine);
         admit(engine, capacity, "e1", "echo", 1, NOW, null);
         InvocationTask lateTask = new InvocationTask("late", "echo", null, null, null, null, NOW, 1,
@@ -232,7 +232,7 @@ class SchedulerSwitchRaceTest {
                 buildStarted, racerReachedTheGate);
         SchedulerEngine engine = new SchedulerEngine(store,
                 new StrategyRegistry(List.of(new PerFunctionSchedulingStrategy(), sharedQueue)),
-                "per-function", dispatch, alwaysRunnable(), CLOCK, () -> 0L);
+                "per-function", dispatch, alwaysRunnable(), generation -> true, CLOCK, () -> 0L);
         engineRef.set(engine);
         // Already past its queue deadline: due for expiry the moment any pass runs.
         admit(engine, capacity, "due", "echo", 1, NOW, NOW.minusSeconds(1));
@@ -287,7 +287,7 @@ class SchedulerSwitchRaceTest {
         SchedulingStrategy sharedQueue = new SharedQueueSchedulingStrategy();
         SchedulerEngine engine = new SchedulerEngine(store,
                 new StrategyRegistry(List.of(perFunction, sharedQueue)), perFunction.id(),
-                dispatch, alwaysRunnable(), CLOCK, () -> 0L);
+                dispatch, alwaysRunnable(), generation -> true, CLOCK, () -> 0L);
         engineRef.set(engine);
         CountDownLatch committed = new CountDownLatch(1);
         CountDownLatch retryPublished = new CountDownLatch(1);
@@ -415,7 +415,7 @@ class SchedulerSwitchRaceTest {
         };
         SchedulerEngine engine = new SchedulerEngine(store,
                 new StrategyRegistry(List.of(new PerFunctionSchedulingStrategy(), failing)),
-                "per-function", dispatch, alwaysRunnable(), CLOCK, () -> 0L);
+                "per-function", dispatch, alwaysRunnable(), generation -> true, CLOCK, () -> 0L);
         engineRef.set(engine);
         admit(engine, capacity, "e1", "echo", 1, NOW, null);
         List<String> observedDuringFailure = new CopyOnWriteArrayList<>();
@@ -606,7 +606,7 @@ class SchedulerSwitchRaceTest {
     private static SchedulerEngine newEngine(PendingWorkStore store, SchedulingStrategy strategy,
                                              EngineDispatch dispatch) {
         return new SchedulerEngine(store, new StrategyRegistry(List.of(strategy)), strategy.id(),
-                dispatch, alwaysRunnable(), CLOCK, () -> 0L);
+                dispatch, alwaysRunnable(), generation -> true, CLOCK, () -> 0L);
     }
 
     private static EngineReadiness alwaysRunnable() {

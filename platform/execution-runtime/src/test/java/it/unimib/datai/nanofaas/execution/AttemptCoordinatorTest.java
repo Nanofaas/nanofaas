@@ -114,7 +114,7 @@ class AttemptCoordinatorTest {
         var engine = new SchedulerEngine(new PendingWorkStore(64),
                 new StrategyRegistry(List.of(fakeStrategy("per-function"), fakeStrategy("shared-queue"))),
                 "per-function", mock(EngineDispatch.class), mock(EngineReadiness.class),
-                Clock.systemUTC(), System::nanoTime);
+                generation -> true, Clock.systemUTC(), System::nanoTime);
 
         outcome.complete(DispatchResult.warm(InvocationResult.success("ok")));
         engine.switchTo("shared-queue");

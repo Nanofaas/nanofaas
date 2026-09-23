@@ -67,7 +67,7 @@ class SchedulerEngineRemoveAllForGateDisciplineTest {
         when(strategy.id()).thenReturn("test");
         when(strategy.newIndex()).thenReturn(index);
         SchedulerEngine engine = new SchedulerEngine(store, new StrategyRegistry(List.of(strategy)),
-                "test", dispatch, readiness, Clock.fixed(NOW, java.time.ZoneOffset.UTC), () -> 0L);
+                "test", dispatch, readiness, generation -> true, Clock.fixed(NOW, java.time.ZoneOffset.UTC), () -> 0L);
 
         FunctionGeneration otherGeneration = new FunctionGeneration("other-fn", 1);
         for (int i = 0; i < PREPOPULATED_OTHER_FUNCTION_ENTRIES; i++) {
