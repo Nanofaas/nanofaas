@@ -68,6 +68,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class SchedulerConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(SchedulerConfiguration.class);
+    private static final String PER_FUNCTION_STRATEGY = "per-function";
 
     /**
      * A generous engine-wide safety net for profiles where no single global admission cap ever
@@ -102,7 +103,7 @@ public class SchedulerConfiguration {
                     explicit.trim().toUpperCase(Locale.ROOT).replace('-', '_'));
         }
         List<String> ids = strategies.ids();
-        if (ids.contains("per-function")) {
+        if (ids.contains(PER_FUNCTION_STRATEGY)) {
             return AdmissionProfile.FUNCTION_QUEUE;
         }
         if (ids.contains("shared-queue")) {
@@ -125,7 +126,7 @@ public class SchedulerConfiguration {
             return props.strategy();
         }
         List<String> ids = strategies.ids();
-        return ids.contains("per-function") ? "per-function" : ids.get(0);
+        return ids.contains(PER_FUNCTION_STRATEGY) ? PER_FUNCTION_STRATEGY : ids.get(0);
     }
 
     /** Shared ticket admission order across every strategy and both admission fronts. */

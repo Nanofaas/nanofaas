@@ -524,10 +524,12 @@ public class ExecutionRecord {
         synchronized (this) {
             if (!isTerminal()) return;
             failure = terminalFailure;
-            result = state == ExecutionState.SUCCESS
-                    ? InvocationResult.successWithEnvelope(output, statusCode, headers, encoding)
-                    : new InvocationResult(false, null, lastError != null ? lastError
-                            : new ErrorInfo("TIMEOUT", "Execution timed out"));
+            if (state == ExecutionState.SUCCESS) {
+                result = InvocationResult.successWithEnvelope(output, statusCode, headers, encoding);
+            } else {
+                ErrorInfo error = lastError != null ? lastError : new ErrorInfo("TIMEOUT", "Execution timed out");
+                result = new InvocationResult(false, null, error);
+            }
         }
         if (failure != null) completion.completeExceptionally(failure);
         else completion.complete(result);

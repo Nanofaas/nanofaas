@@ -36,7 +36,7 @@ final class RuntimeLimits {
                 DEFAULT_CALLBACK_MAX_ATTEMPTS, DEFAULT_SHUTDOWN_TIMEOUT_MS);
     }
 
-    RuntimeLimits(int maxHandlers, int maxCallbacks, long maxPendingCallbackBytes,
+    RuntimeLimits(int maxHandlers, int maxCallbacks, long maxPendingCallbackBytes, // NOSONAR (java:S107): composition constructor; each argument is an injected collaborator or limit
                   int maxInputBytes, int maxOutputBytes, int maxCallbackBytes,
                   int bodyReadTimeoutMs, int callbackAttemptTimeoutMs, int callbackMaxAttempts,
                   int shutdownTimeoutMs) {

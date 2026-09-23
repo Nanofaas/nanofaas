@@ -24,7 +24,7 @@ public final class InvocationCapacity {
                 maxInputReferences);
     }
 
-    public InvocationCapacity(
+    public InvocationCapacity( // NOSONAR (java:S107): composition constructor; each argument is an injected collaborator or limit
             FunctionCapacityRegistry generations,
             long globalExecutions, long perFunctionExecutions,
             long globalCanonicalInputBytes, long perFunctionCanonicalInputBytes,

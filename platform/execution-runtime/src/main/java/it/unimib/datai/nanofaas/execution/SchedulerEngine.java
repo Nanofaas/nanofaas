@@ -59,6 +59,7 @@ import java.util.function.Predicate;
 public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
 
     private static final Logger log = LoggerFactory.getLogger(SchedulerEngine.class);
+    private static final String FUNCTION_NAME_REQUIRED = "functionName must not be null";
 
     /** Safety bound for a park with nothing pending; work, capacity and removals wake earlier. */
     static final long EMPTY_QUEUE_AWAIT_MS = 500L;
@@ -130,7 +131,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
      * never affect a switch's own outcome — see {@link #switchTo}. */
     private volatile SwitchObserver switchObserver = (strategy, outcome, durationNanos) -> { }; // NOSONAR (java:S3077): thread-safe or immutable value replaced wholesale
 
-    public SchedulerEngine(PendingWorkStore store, StrategyRegistry strategies, String initialStrategy,
+    public SchedulerEngine(PendingWorkStore store, StrategyRegistry strategies, String initialStrategy, // NOSONAR (java:S107): composition constructor; each argument is an injected collaborator or limit
                            EngineDispatch dispatch, EngineReadiness readiness,
                            Predicate<FunctionGeneration> generationActive,
                            Clock clock, LongSupplier nanoTime) {
@@ -205,7 +206,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
      * drain listener fires once with its name.
      */
     public void markDraining(String functionName) {
-        Objects.requireNonNull(functionName, "functionName must not be null");
+        Objects.requireNonNull(functionName, FUNCTION_NAME_REQUIRED);
         synchronized (gate) {
             draining.add(functionName);
         }
@@ -218,7 +219,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
      * meters torn down when the old generation's last reservation happens to settle afterwards.
      */
     public void clearDraining(String functionName) {
-        Objects.requireNonNull(functionName, "functionName must not be null");
+        Objects.requireNonNull(functionName, FUNCTION_NAME_REQUIRED);
         synchronized (gate) {
             draining.remove(functionName);
         }
@@ -443,7 +444,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
      * case input backpressure returns it to the queue.
      */
     public void removeAllFor(String functionName) {
-        Objects.requireNonNull(functionName, "functionName must not be null");
+        Objects.requireNonNull(functionName, FUNCTION_NAME_REQUIRED);
         List<PendingEntry> removed = new ArrayList<>();
         synchronized (gate) {
             queueCaps.remove(functionName);
@@ -609,17 +610,15 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     private boolean await(long budgetMs, long observed) {
         long deadlineNanos = nanoTime.getAsLong() + TimeUnit.MILLISECONDS.toNanos(budgetMs);
         synchronized (gate) {
-            while (running && wakeSequence == observed) {
-                long remainingNanos = deadlineNanos - nanoTime.getAsLong();
-                if (remainingNanos <= 0) {
-                    break;
-                }
+            long remainingNanos = deadlineNanos - nanoTime.getAsLong();
+            while (running && wakeSequence == observed && remainingNanos > 0) {
                 try {
                     gate.wait(TimeUnit.NANOSECONDS.toMillis(remainingNanos) + 1);
                 } catch (InterruptedException _) {
                     Thread.currentThread().interrupt();
                     break;
                 }
+                remainingNanos = deadlineNanos - nanoTime.getAsLong();
             }
             return wakeSequence != observed;
         }

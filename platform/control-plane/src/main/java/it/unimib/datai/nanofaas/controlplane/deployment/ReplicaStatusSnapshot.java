@@ -66,6 +66,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
 
     private static final Logger log = LoggerFactory.getLogger(ReplicaStatusSnapshot.class);
+    private static final String REPLICA_STATUS_FOR = "Replica status for ";
 
     /** Default freshness window: one autoscaler/governor poll interval. */
     public static final Duration DEFAULT_TTL = Duration.ofSeconds(5);
@@ -369,7 +370,7 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
             // Release any waiter before cancelling, so a task cancelled before it ever ran cannot
             // leave a caller waiting for a completion that will never come.
             pending.completeExceptionally(new ReplicaStatusUnavailableException(
-                    "Replica status for " + functionName + " was invalidated while it was being fetched"));
+                    REPLICA_STATUS_FOR + functionName + " was invalidated while it was being fetched"));
         }
         if (task != null) {
             // Cancellation is best effort and is all the Fetcher contract supports: a queued task is
@@ -575,7 +576,7 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
             return refresh.result().get(freshnessDeadline.toNanos(), TimeUnit.NANOSECONDS);
         } catch (TimeoutException _) {
             ReplicaStatusUnavailableException failure = new ReplicaStatusUnavailableException(
-                    "Replica status for " + target.functionName() + " was not available within the "
+                    REPLICA_STATUS_FOR + target.functionName() + " was not available within the "
                             + freshnessDeadline + " freshness deadline");
             if (refresh.result().completeExceptionally(failure)) {
                 // Nobody can still be served by this fetch: every waiter shares the future that has
@@ -659,7 +660,7 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
                 // deprovision and re-registration must fail rather than answer for a function that no
                 // longer exists in that form; the caller's next read starts from the new generation.
                 result.completeExceptionally(new ReplicaStatusUnavailableException(
-                        "Replica status for " + target.functionName()
+                        REPLICA_STATUS_FOR + target.functionName()
                                 + " was superseded by a newer generation while it was being fetched"));
                 return;
             }

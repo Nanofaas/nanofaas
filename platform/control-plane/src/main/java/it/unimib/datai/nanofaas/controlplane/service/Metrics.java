@@ -266,12 +266,6 @@ public class Metrics implements InvocationObservations, OffloadMeters {
         owner.lifecycle().retire();
     }
 
-    private void closeOffloadOwner(OffloadMeterOwner owner) {
-        if (owner.lifecycle().release()) {
-            owner.removeMeters();
-        }
-    }
-
     /**
      * A function's meters, or {@code null} if it has been removed.
      *
@@ -431,8 +425,14 @@ public class Metrics implements InvocationObservations, OffloadMeters {
             synchronized (functionStateMonitor) {
                 if (owner != null && subscribed) {
                     subscribed = false;
-                    closeOffloadOwner(owner);
+                    closeOwner();
                 }
+            }
+        }
+
+        private void closeOwner() {
+            if (owner.lifecycle().release()) {
+                owner.removeMeters();
             }
         }
     }

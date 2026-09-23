@@ -12,6 +12,9 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class RuntimeConfigService {
+    private static final String UPDATES_METRIC = "controlplane_runtime_config_updates_total";
+    private static final String STATUS_TAG = "status";
+    private static final String NAMESPACE_TAG = "namespace";
     private final RuntimeConfigRegistry registry;
     private final MeterRegistry meterRegistry;
     private final AtomicLong revision = new AtomicLong();
@@ -111,7 +114,7 @@ public class RuntimeConfigService {
         try {
             extension.apply(Map.copyOf(patch));
             RuntimeConfigSnapshot updated = new RuntimeConfigSnapshot(currentRevision + 1, registry.snapshot());
-            meterRegistry.counter("controlplane_runtime_config_updates_total", "status", "success", "namespace", namespace).increment();
+            meterRegistry.counter(UPDATES_METRIC, STATUS_TAG, "success", NAMESPACE_TAG, namespace).increment();
             revision.set(currentRevision + 1);
             return updated;
         } catch (Exception applyFailure) {
@@ -121,7 +124,7 @@ public class RuntimeConfigService {
                 applyFailure.addSuppressed(restoreFailure);
             }
             try {
-                meterRegistry.counter("controlplane_runtime_config_updates_total", "status", "failure", "namespace", namespace).increment();
+                meterRegistry.counter(UPDATES_METRIC, STATUS_TAG, "failure", NAMESPACE_TAG, namespace).increment();
             } catch (Exception metricFailure) {
                 applyFailure.addSuppressed(metricFailure);
             }
@@ -133,8 +136,8 @@ public class RuntimeConfigService {
 
     private void recordOutcomeMetric(String namespace, boolean success, RuntimeConfigApplyException failure) {
         try {
-            meterRegistry.counter("controlplane_runtime_config_updates_total",
-                    "status", success ? "success" : "failure", "namespace", namespace).increment();
+            meterRegistry.counter(UPDATES_METRIC,
+                    STATUS_TAG, success ? "success" : "failure", NAMESPACE_TAG, namespace).increment();
         } catch (Exception metricFailure) {
             // Metrics must not change runtime-config transaction semantics: a successful
             // commit stays successful, and a pre-commit failure keeps its own cause.

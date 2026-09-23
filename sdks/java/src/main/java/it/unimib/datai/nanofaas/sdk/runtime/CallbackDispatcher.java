@@ -200,14 +200,7 @@ public class CallbackDispatcher {
             byte[] serialized = callbackClient.serializeBounded(payload, maxCallbackBytes);
             CallbackTask task = new CallbackTask(
                     reservation, executionId, serialized, traceId, dispatchAttempt);
-            try {
-                executor.execute(task);
-                return SubmitResult.ACCEPTED;
-            } catch (RejectedExecutionException _) {
-                task.release();
-                recordRejection(executionId);
-                return SubmitResult.SATURATED;
-            }
+            return execute(task, executionId);
         } catch (BoundedJson.PayloadTooLargeException _) {
             reservation.close();
             recordRejection(executionId);
@@ -217,6 +210,17 @@ public class CallbackDispatcher {
             recordRejection(executionId);
             log.warn("Rejecting unserializable callback for execution {}", singleLine(executionId), ex);
             return SubmitResult.SERIALIZATION_FAILED;
+        }
+    }
+
+    private SubmitResult execute(CallbackTask task, String executionId) {
+        try {
+            executor.execute(task);
+            return SubmitResult.ACCEPTED;
+        } catch (RejectedExecutionException _) {
+            task.release();
+            recordRejection(executionId);
+            return SubmitResult.SATURATED;
         }
     }
 

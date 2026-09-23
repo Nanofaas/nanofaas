@@ -659,10 +659,14 @@ public final class AttemptCoordinator {
         // statusCode/headers/encoding) a caller already received from the shared completion
         // future — output is deliberately omitted here, unlike ExecutionRecord.publishTerminal.
         ExecutionState state = executionRecord.state();
-        InvocationResult result = state == ExecutionState.SUCCESS
-                ? InvocationResult.success(null)
-                : new InvocationResult(false, null, executionRecord.lastError() != null
-                        ? executionRecord.lastError() : new ErrorInfo("TIMEOUT", "Execution timed out"));
+        InvocationResult result;
+        if (state == ExecutionState.SUCCESS) {
+            result = InvocationResult.success(null);
+        } else {
+            ErrorInfo error = executionRecord.lastError() != null
+                    ? executionRecord.lastError() : new ErrorInfo("TIMEOUT", "Execution timed out");
+            result = new InvocationResult(false, null, error);
+        }
         bestEffort(() -> observer.terminal(task, result, TimeUnit.MILLISECONDS.toNanos(e2eMs)));
     }
 

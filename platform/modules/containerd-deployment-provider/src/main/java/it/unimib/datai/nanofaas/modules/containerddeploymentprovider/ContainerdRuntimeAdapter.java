@@ -103,8 +103,8 @@ public final class ContainerdRuntimeAdapter implements ContainerRuntimeAdapter {
         if (cpuset != null && !cpuset.isBlank()) spec.cpuSetCpus(cpuset);
         if (cgroupScope != null) {
             String leaf = cgroupScope + "-" + instance.containerName();
-            spec.cgroupsPath(systemdCgroup ? cgroupsPath + ":nanofaas:" + leaf
-                    : cgroupsPath + (cgroupsPath.endsWith("/") ? "" : "/") + leaf);
+            String separator = cgroupsPath.endsWith("/") ? "" : "/";
+            spec.cgroupsPath(systemdCgroup ? cgroupsPath + ":nanofaas:" + leaf : cgroupsPath + separator + leaf);
         }
         applyResources(spec, instance.resources());
 
@@ -213,10 +213,10 @@ public final class ContainerdRuntimeAdapter implements ContainerRuntimeAdapter {
     private static String baseUrl(NetworkAttachment attachment) {
         if (attachment == null) return null;
         for (String cidr : attachment.addresses()) {
-            if (cidr == null || cidr.isBlank()) continue;
-            String address = cidr.split("/", 2)[0];
-            if (address.isBlank()) continue;
-            return "http://" + (address.contains(":") ? "[" + address + "]" : address) + ":8080";
+            String address = cidr == null ? "" : cidr.split("/", 2)[0];
+            if (!address.isBlank()) {
+                return "http://" + (address.contains(":") ? "[" + address + "]" : address) + ":8080";
+            }
         }
         return null;
     }

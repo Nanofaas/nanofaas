@@ -54,7 +54,7 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
     private final EngineInvocationEnqueuer.AdmissionProfile profile;
     private final Clock clock;
 
-    public EngineSyncQueueGateway(SyncQueueConfigSource configSource,
+    public EngineSyncQueueGateway(SyncQueueConfigSource configSource, // NOSONAR (java:S107): composition constructor; each argument is an injected collaborator or limit
                                   SyncQueueAdmissionController admissionController,
                                   WaitEstimator estimator,
                                   ObjectProvider<SchedulerEngine> engine,
@@ -68,7 +68,7 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
                 sequence, profile, onAdmitted, onRejected, Clock.systemUTC());
     }
 
-    EngineSyncQueueGateway(SyncQueueConfigSource configSource,
+    EngineSyncQueueGateway(SyncQueueConfigSource configSource, // NOSONAR (java:S107): composition constructor; each argument is an injected collaborator or limit
                           SyncQueueAdmissionController admissionController,
                           WaitEstimator estimator,
                           ObjectProvider<SchedulerEngine> engine,

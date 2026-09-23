@@ -22,6 +22,7 @@ import java.util.function.LongSupplier;
 
 /** Serializes generation-scoped deployment wake-ups with scale-downs for each function. */
 public class DeploymentWakeUpCoordinator implements DeploymentWakeUpControl, AutoCloseable {
+    private static final String GENERATION = "generation";
     private final FunctionCapacityRegistry generations;
     private final ScheduledExecutorService scheduler;
     private final LongSupplier nanoTime;
@@ -54,7 +55,7 @@ public class DeploymentWakeUpCoordinator implements DeploymentWakeUpControl, Aut
                                          ManagedDeploymentTarget target,
                                          long deadlineNanos,
                                          Runnable scaleUp) {
-        Objects.requireNonNull(generation, "generation");
+        Objects.requireNonNull(generation, GENERATION);
         Objects.requireNonNull(target, "target");
         Objects.requireNonNull(scaleUp, "scaleUp");
         if (!generation.functionName().equals(target.functionName())) {
@@ -104,7 +105,7 @@ public class DeploymentWakeUpCoordinator implements DeploymentWakeUpControl, Aut
     public boolean scaleDownIfUnprotected(FunctionGeneration generation,
                                            ManagedDeploymentTarget target,
                                            BooleanSupplier scaleDown) {
-        Objects.requireNonNull(generation, "generation");
+        Objects.requireNonNull(generation, GENERATION);
         Objects.requireNonNull(target, "target");
         Objects.requireNonNull(scaleDown, "scaleDown");
         FunctionState state;
@@ -177,7 +178,7 @@ public class DeploymentWakeUpCoordinator implements DeploymentWakeUpControl, Aut
 
     /** Reopens only the exact still-current generation after a failed removal is rolled back. */
     public void restoreFunctionState(FunctionGeneration generation) {
-        Objects.requireNonNull(generation, "generation");
+        Objects.requireNonNull(generation, GENERATION);
         synchronized (stateLifecycle) {
             pruneRemovalFences();
             if (isCurrent(generation)) {

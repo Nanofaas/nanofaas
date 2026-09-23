@@ -93,7 +93,7 @@ public class WaitEstimator {
                 DEFAULT_MAINTENANCE_SAMPLE_BUDGET);
     }
 
-    WaitEstimator(Duration window,
+    WaitEstimator(Duration window, // NOSONAR (java:S107): composition constructor; each argument is an injected collaborator or limit
                   int perFunctionMinSamples,
                   int maxGlobalSamples,
                   int maxPerFunctionSamples,
@@ -106,7 +106,7 @@ public class WaitEstimator {
                 maxTotalPerFunctionSamples, cleanupBudget, maintenanceSampleBudget);
     }
 
-    private WaitEstimator(Duration window,
+    private WaitEstimator(Duration window, // NOSONAR (java:S107): composition constructor; each argument is an injected collaborator or limit
                           int perFunctionMinSamples,
                           Deque<Instant> globalEvents,
                           Map<String, ? extends Deque<Instant>> perFunctionEvents,

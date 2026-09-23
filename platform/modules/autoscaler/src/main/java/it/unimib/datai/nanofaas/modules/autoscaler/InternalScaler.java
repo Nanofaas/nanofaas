@@ -59,7 +59,7 @@ public class InternalScaler implements SmartLifecycle {
                 wakeUpCoordinator, decisionMetrics, InstantSource.system());
     }
 
-    public InternalScaler(FunctionCatalogView registry,
+    public InternalScaler(FunctionCatalogView registry, // NOSONAR (java:S107): composition constructor; each argument is an injected collaborator or limit
                           ScalingMetricsReader metricsReader,
                           @Autowired(required = false) ManagedReplicaControl deploymentCoordinator,
                           ScalingProperties properties,

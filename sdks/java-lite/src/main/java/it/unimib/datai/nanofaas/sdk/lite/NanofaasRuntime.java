@@ -41,7 +41,7 @@ public final class NanofaasRuntime {
     private boolean shutdownHookRegistered;
     private final Thread shutdownHook;
 
-    private NanofaasRuntime(HttpServer server, int port, String functionName, InvokeHandler invokeHandler,
+    private NanofaasRuntime(HttpServer server, int port, String functionName, InvokeHandler invokeHandler, // NOSONAR (java:S107): composition constructor; each argument is an injected collaborator or limit
                             CallbackClient callbackClient, ExecutorService serverExecutor,
                             boolean ownsServerExecutor, Duration shutdownTimeout,
                             ShutdownHooks shutdownHooks) {

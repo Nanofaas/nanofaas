@@ -38,6 +38,9 @@ public final class InvokeHandler implements HttpHandler {
     private static final Logger log = LoggerFactory.getLogger(InvokeHandler.class);
     private static final String ERROR_KEY = "error";
     private static final AtomicInteger CALLBACK_THREAD_COUNTER = new AtomicInteger();
+    private static final String OUTPUT_TOO_LARGE_CODE = "RUNTIME_OUTPUT_TOO_LARGE";
+    private static final String MESSAGE_KEY = "message";
+    private static final String RETRY_AFTER = "Retry-After";
     private final FunctionHandler functionHandler;
     private final CallbackClient callbackClient;
     private final RuntimeMetrics metrics;
@@ -69,14 +72,14 @@ public final class InvokeHandler implements HttpHandler {
                 callbackExecutor, handlerTimeoutMs, false, RuntimeLimits.fromSettings());
     }
 
-    InvokeHandler(FunctionHandler functionHandler, CallbackClient callbackClient,
+    InvokeHandler(FunctionHandler functionHandler, CallbackClient callbackClient, // NOSONAR (java:S107): composition constructor; each argument is an injected collaborator or limit
                   RuntimeMetrics metrics, ObjectMapper objectMapper, String functionName,
                   ThreadPoolExecutor callbackExecutor, long handlerTimeoutMs, RuntimeLimits limits) {
         this(functionHandler, callbackClient, metrics, objectMapper, functionName,
                 callbackExecutor, handlerTimeoutMs, false, limits);
     }
 
-    InvokeHandler(FunctionHandler functionHandler, CallbackClient callbackClient,
+    InvokeHandler(FunctionHandler functionHandler, CallbackClient callbackClient, // NOSONAR (java:S107): composition constructor; each argument is an injected collaborator or limit
                   RuntimeMetrics metrics, ObjectMapper objectMapper, String functionName,
                   ThreadPoolExecutor callbackExecutor, long handlerTimeoutMs, RuntimeLimits limits,
                   boolean ownsCallbackExecutor) {
@@ -84,7 +87,7 @@ public final class InvokeHandler implements HttpHandler {
                 callbackExecutor, handlerTimeoutMs, ownsCallbackExecutor, limits);
     }
 
-    private InvokeHandler(FunctionHandler functionHandler, CallbackClient callbackClient,
+    private InvokeHandler(FunctionHandler functionHandler, CallbackClient callbackClient, // NOSONAR (java:S107): composition constructor; each argument is an injected collaborator or limit
                           RuntimeMetrics metrics, ObjectMapper objectMapper, String functionName,
                           ThreadPoolExecutor callbackExecutor, long handlerTimeoutMs,
                           boolean ownsCallbackExecutor, RuntimeLimits limits) {
@@ -187,12 +190,12 @@ public final class InvokeHandler implements HttpHandler {
                 metrics.recordInvocation(functionName);
                 metrics.recordError(functionName);
                 dispatchCallback(callbackReservation, effectiveExecutionId,
-                        InvocationResult.error("RUNTIME_OUTPUT_TOO_LARGE",
+                        InvocationResult.error(OUTPUT_TOO_LARGE_CODE,
                                 "Runtime output exceeds configured byte limit"), traceId, dispatchAttempt);
                 callbackReservation = null;
                 sendJson(exchange, 500, Map.of(ERROR_KEY, Map.of(
-                        "code", "RUNTIME_OUTPUT_TOO_LARGE",
-                        "message", "Runtime output exceeds configured byte limit")));
+                        "code", OUTPUT_TOO_LARGE_CODE,
+                        MESSAGE_KEY, "Runtime output exceeds configured byte limit")));
                 return;
             } catch (BoundedJson.SerializationException ex) {
                 throw ex;
@@ -222,7 +225,7 @@ public final class InvokeHandler implements HttpHandler {
                     traceId, dispatchAttempt);
             callbackReservation = null;
             sendJson(exchange, 504, Map.of(
-                    ERROR_KEY, Map.of("code", "HANDLER_TIMEOUT", "message", "Handler exceeded configured timeout")));
+                    ERROR_KEY, Map.of("code", "HANDLER_TIMEOUT", MESSAGE_KEY, "Handler exceeded configured timeout")));
         } catch (InterruptedException _) {
             metrics.recordInvocation(functionName);
             metrics.recordError(functionName);
@@ -259,7 +262,7 @@ public final class InvokeHandler implements HttpHandler {
                 InvocationResult.error("HANDLER_ERROR", ex.getMessage()), traceId, dispatchAttempt);
 
         sendJson(exchange, 500, Map.of(ERROR_KEY, Map.of("code", "HANDLER_ERROR",
-                "message", ex.getMessage() != null ? ex.getMessage() : "Internal error")));
+                MESSAGE_KEY, ex.getMessage() != null ? ex.getMessage() : "Internal error")));
     }
 
     private ReadRequestResult readRequest(HttpExchange exchange, RuntimeLimits.Reservation callbackReservation,
@@ -268,29 +271,21 @@ public final class InvokeHandler implements HttpHandler {
         InputStream requestBody = exchange.getRequestBody();
         CountDownLatch finished = new CountDownLatch(1);
         AtomicBoolean timedOut = new AtomicBoolean();
-        Thread deadline = Thread.ofVirtual().name("nanofaas-lite-body-deadline").start(() -> {
-            try {
-                if (!finished.await(limits.bodyReadTimeoutMs, TimeUnit.MILLISECONDS)) {
-                    timedOut.set(true);
-                    try { requestBody.close(); } catch (IOException _) { /* best effort: unblocks the reader */ }
-                }
-            } catch (InterruptedException _) {
-                Thread.currentThread().interrupt();
-            }
-        });
+        Thread deadline = Thread.ofVirtual().name("nanofaas-lite-body-deadline")
+                .start(() -> enforceBodyDeadline(finished, timedOut, requestBody));
         try { // NOSONAR (java:S2093): readValue closes the source stream
             return new ReadRequestResult(objectMapper.readValue(
                     new LimitedInputStream(requestBody, limits.maxInputBytes), InvocationRequest.class), false);
         } catch (PayloadTooLargeException _) {
             sendJson(exchange, 413, Map.of(ERROR_KEY, Map.of(
                     "code", "RUNTIME_INPUT_TOO_LARGE",
-                    "message", "Runtime input exceeds configured byte limit")));
+                    MESSAGE_KEY, "Runtime input exceeds configured byte limit")));
             return new ReadRequestResult(null, false);
         } catch (JsonProcessingException _) {
             if (timedOut.get()) {
                 sendJson(exchange, 408, Map.of(ERROR_KEY, Map.of(
                         "code", "RUNTIME_BODY_READ_TIMEOUT",
-                        "message", "Runtime request body read timed out")));
+                        MESSAGE_KEY, "Runtime request body read timed out")));
                 return new ReadRequestResult(null, false);
             }
             metrics.recordInvocation(functionName);
@@ -299,13 +294,13 @@ public final class InvokeHandler implements HttpHandler {
                     InvocationResult.error("INVALID_JSON", "Request body must be valid JSON"),
                     traceId, dispatchAttempt);
             sendJson(exchange, 400, Map.of(
-                    ERROR_KEY, Map.of("code", "INVALID_JSON", "message", "Request body must be valid JSON")));
+                    ERROR_KEY, Map.of("code", "INVALID_JSON", MESSAGE_KEY, "Request body must be valid JSON")));
             return new ReadRequestResult(null, true);
         } catch (IOException ex) {
             if (!timedOut.get()) throw ex;
             sendJson(exchange, 408, Map.of(ERROR_KEY, Map.of(
                     "code", "RUNTIME_BODY_READ_TIMEOUT",
-                    "message", "Runtime request body read timed out")));
+                    MESSAGE_KEY, "Runtime request body read timed out")));
             return new ReadRequestResult(null, false);
         } finally {
             finished.countDown();
@@ -390,17 +385,15 @@ public final class InvokeHandler implements HttpHandler {
         beginStop();
         synchronized (handlerLifecycle) {
             activeHandlers.forEach(HandlerWork::cancel);
-            while (!activeHandlers.isEmpty()) {
-                long remaining = deadline - System.nanoTime();
-                if (remaining <= 0) {
-                    break;
-                }
+            long remaining = deadline - System.nanoTime();
+            while (!activeHandlers.isEmpty() && remaining > 0) {
                 try {
                     TimeUnit.NANOSECONDS.timedWait(handlerLifecycle, remaining);
                 } catch (InterruptedException _) {
                     Thread.currentThread().interrupt();
                     break;
                 }
+                remaining = deadline - System.nanoTime();
             }
         }
 
@@ -432,14 +425,14 @@ public final class InvokeHandler implements HttpHandler {
     }
 
     private void sendStopping(HttpExchange exchange) throws IOException {
-        exchange.getResponseHeaders().set("Retry-After", "1");
+        exchange.getResponseHeaders().set(RETRY_AFTER, "1");
         sendJson(exchange, 503, Map.of(
-                ERROR_KEY, Map.of("code", "RUNTIME_STOPPING", "message", "Runtime is stopping")));
+                ERROR_KEY, Map.of("code", "RUNTIME_STOPPING", MESSAGE_KEY, "Runtime is stopping")));
     }
 
     private void sendRetryable(HttpExchange exchange, String code, String message) throws IOException {
-        exchange.getResponseHeaders().set("Retry-After", "1");
-        sendJson(exchange, 429, Map.of(ERROR_KEY, Map.of("code", code, "message", message)));
+        exchange.getResponseHeaders().set(RETRY_AFTER, "1");
+        sendJson(exchange, 429, Map.of(ERROR_KEY, Map.of("code", code, MESSAGE_KEY, message)));
     }
 
     private boolean awaitCallbacks(long deadline) {
@@ -494,22 +487,41 @@ public final class InvokeHandler implements HttpHandler {
 
     private void sendCallbackHandoffFailure(HttpExchange exchange, CallbackHandoff handoff) throws IOException {
         if (handoff == CallbackHandoff.SATURATED) {
-            exchange.getResponseHeaders().set("Retry-After", "1");
+            exchange.getResponseHeaders().set(RETRY_AFTER, "1");
             sendJson(exchange, 503, Map.of(ERROR_KEY, Map.of(
-                    "code", "RUNTIME_STOPPING", "message", "Runtime callback handoff failed")));
+                    "code", "RUNTIME_STOPPING", MESSAGE_KEY, "Runtime callback handoff failed")));
             return;
         }
         String code = handoff == CallbackHandoff.PAYLOAD_TOO_LARGE
-                ? "RUNTIME_OUTPUT_TOO_LARGE"
+                ? OUTPUT_TOO_LARGE_CODE
                 : "OUTPUT_SERIALIZATION_ERROR";
         sendJson(exchange, 500, Map.of(ERROR_KEY, Map.of(
-                "code", code, "message", "Runtime callback handoff failed")));
+                "code", code, MESSAGE_KEY, "Runtime callback handoff failed")));
     }
 
     private record HandlerWork(FutureTask<?> task, Thread thread) {
         private void cancel() {
             task.cancel(true);
             thread.interrupt();
+        }
+    }
+
+    private void enforceBodyDeadline(CountDownLatch finished, AtomicBoolean timedOut, InputStream requestBody) {
+        try {
+            if (!finished.await(limits.bodyReadTimeoutMs, TimeUnit.MILLISECONDS)) {
+                timedOut.set(true);
+                closeQuietly(requestBody);
+            }
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static void closeQuietly(InputStream stream) {
+        try {
+            stream.close();
+        } catch (IOException _) {
+            // Best effort: closing only unblocks a reader stuck past its deadline.
         }
     }
 

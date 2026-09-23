@@ -117,7 +117,7 @@ public final class ResourceQuota {
         }
     }
 
-    private void release(Claim claim, long version) {
+    private void release(Claim claim, long version) { // NOSONAR (java:S3398): quota bookkeeping under the outer lock; the reservation only delegates
         synchronized (lock) {
             if (!claim.active || claim.version != version) {
                 return;
@@ -126,7 +126,7 @@ public final class ResourceQuota {
         }
     }
 
-    private void rollback(Claim claim) {
+    private void rollback(Claim claim) { // NOSONAR (java:S3398): quota bookkeeping under the outer lock; the reservation only delegates
         synchronized (lock) {
             if (claim.active) {
                 releaseCurrent(claim);
@@ -141,7 +141,7 @@ public final class ResourceQuota {
         subtractOrRemove(reservedByGeneration, claim.generation, claim.units);
     }
 
-    private Reservation transfer(
+    private Reservation transfer( // NOSONAR (java:S3398): quota bookkeeping under the outer lock; the reservation only delegates
             Claim claim,
             long version,
             FunctionGeneration targetGeneration,
