@@ -98,21 +98,18 @@ public class SyncQueueConfiguration {
      * {@code sync_queue_rejected_total}/{@code sync_queue_depth} meters, fed by
      * {@link EngineSyncQueueGateway}. A dedicated bean, not shared with the engine-backed
      * {@code WorkloadMetricsBinder} in {@code SchedulerConfiguration}: those are the composed
-     * engine's own reservation-based gauges; this is this module's own admission counter/gauge,
-     * exactly as it was before Task 8.
+     * engine's own reservation-based gauges; this is this module's own admission counter/gauge.
      *
-     * <p>Fix round 1 correction: {@code sync_queue_depth} is a stateful gauge — {@code admitted}
-     * increments it, and only {@code dequeued} decrements it. The first pass wired
-     * {@code metrics::admitted} into {@link EngineSyncQueueGateway} but never wired a matching
-     * decrement, which made this gauge a permanent, ever-growing admission counter mislabelled as
-     * a depth. {@link EngineSyncQueueGateway#settleIfSyncOrigin} now calls {@code metrics::dequeued}
-     * exactly once per admitted ticket, at the same choke point every terminal engine event
-     * (submit, expired, removed) already funnels through — see
-     * {@code engineSyncQueueGateway} below.
+     * <p>{@code sync_queue_depth} reads the store's reservations directly, in the SYNC_QUEUE
+     * profile only (zero otherwise): a scrape never calls into the engine or waits on its gate,
+     * and the store bean is read rather than the engine so there is no engine/metrics bean cycle.
      */
     @Bean
-    SyncQueueMetrics syncQueueMetrics(MeterRegistry registry) {
-        return new SyncQueueMetrics(registry);
+    SyncQueueMetrics syncQueueMetrics(MeterRegistry registry, PendingWorkStore store,
+                                      AdmissionProfile profile) {
+        return new SyncQueueMetrics(registry,
+                () -> profile == AdmissionProfile.SYNC_QUEUE ? store.reservedCount() : 0,
+                name -> profile == AdmissionProfile.SYNC_QUEUE ? store.reservedCount(name) : 0);
     }
 
     /** Registers/retires this module's own admission counters alongside every other per-function
@@ -150,6 +147,6 @@ public class SyncQueueConfiguration {
                 estimator::recordDispatch,
                 estimator::removeFunctionState,
                 engine, store, capacityRegistry, schedulerTicketSequence, admissionProfile,
-                metrics::admitted, metrics::rejected, metrics::dequeued);
+                metrics::admitted, metrics::rejected);
     }
 }

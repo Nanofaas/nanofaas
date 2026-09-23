@@ -184,6 +184,12 @@ that count, never by execution/ticket/generation identity) and a
 outside its own correctness transaction: a throwing observer can never turn a
 committed switch into a reported failure or vice versa.
 
+In the SYNC_QUEUE admission profile, `sync_queue_depth` reads the engine's outstanding
+reservations, including a provisional claim or submit until settlement. Input backpressure keeps
+the reservation. Runtime deactivation stops fresh sync queue admission but does not change
+attribution or stop queued work and retries from draining. In other admission profiles, the sync
+queue depth is zero.
+
 Image validation is **not** a standalone module: each deployment provider owns
 its validator (`KubernetesImageValidator`, `DockerImageValidator`, or
 `ContainerdImageValidator`) and

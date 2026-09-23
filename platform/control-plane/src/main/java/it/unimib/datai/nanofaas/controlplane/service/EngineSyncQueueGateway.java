@@ -16,9 +16,7 @@ import org.springframework.beans.factory.ObjectProvider;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
@@ -55,9 +53,6 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
      * compile-time dependency on the sync-queue module. */
     private final Consumer<String> onAdmitted;
     private final Consumer<String> onRejected;
-    /** Paired with {@link #onAdmitted} exactly once per ticket. An immediate terminal event
-     * defers this callback until the admission metric has been recorded. */
-    private final Consumer<String> onDequeued;
     // A provider, not a direct reference: see EngineInvocationEnqueuer for why this must be
     // lazy — the engine's own dispatch calls back into a RetryScheduler, and a direct
     // constructor reference here would put this bean on that same cycle whenever it is the
@@ -69,20 +64,6 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
     private final EngineInvocationEnqueuer.AdmissionProfile profile;
     private final Clock clock;
 
-    /**
-     * Ticket ids registered before engine admission and removed on rejection or settlement, so
-     * {@code EngineTransport} can tell a sync-origin dispatch from a function-queue-origin one
-     * without threading ticket metadata through the {@link it.unimib.datai.nanofaas.execution.EngineDispatch}
-     * contract: the wait estimator must be fed sync-origin dispatches only.
-     */
-    private final Map<TicketId, TrackedTicket> pendingSyncTickets = new ConcurrentHashMap<>();
-
-    /** Per-ticket ordering between admission metrics and a terminal event on the worker. */
-    private static final class TrackedTicket {
-        private boolean admitted;
-        private boolean settled;
-    }
-
     public EngineSyncQueueGateway(SyncQueueConfigSource configSource,
                                   AdmissionCheck admissionCheck,
                                   BiConsumer<String, Instant> onDispatched,
@@ -93,10 +74,9 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
                                   LongSupplier sequence,
                                   EngineInvocationEnqueuer.AdmissionProfile profile,
                                   Consumer<String> onAdmitted,
-                                  Consumer<String> onRejected,
-                                  Consumer<String> onDequeued) {
+                                  Consumer<String> onRejected) {
         this(configSource, admissionCheck, onDispatched, onFunctionRemoved, engine, store, capacityRegistry,
-                sequence, profile, onAdmitted, onRejected, onDequeued, Clock.systemUTC());
+                sequence, profile, onAdmitted, onRejected, Clock.systemUTC());
     }
 
     EngineSyncQueueGateway(SyncQueueConfigSource configSource,
@@ -110,7 +90,6 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
                           EngineInvocationEnqueuer.AdmissionProfile profile,
                           Consumer<String> onAdmitted,
                           Consumer<String> onRejected,
-                          Consumer<String> onDequeued,
                           Clock clock) {
         this.configSource = Objects.requireNonNull(configSource, "configSource must not be null");
         this.admissionCheck = Objects.requireNonNull(admissionCheck, "admissionCheck must not be null");
@@ -123,7 +102,6 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
         this.profile = Objects.requireNonNull(profile, "profile must not be null");
         this.onAdmitted = Objects.requireNonNull(onAdmitted, "onAdmitted must not be null");
         this.onRejected = Objects.requireNonNull(onRejected, "onRejected must not be null");
-        this.onDequeued = Objects.requireNonNull(onDequeued, "onDequeued must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
     }
 
@@ -143,25 +121,16 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
 
     @Override
     public void enqueueOrThrow(InvocationTask task) {
-        TrackedTicket tracked;
         try {
-            tracked = doEnqueueOrThrow(task);
+            doEnqueueOrThrow(task);
         } catch (SyncQueueRejectedException rejected) {
             onRejected.accept(task.functionName());
             throw rejected;
         }
         onAdmitted.accept(task.functionName());
-        boolean settled;
-        synchronized (tracked) {
-            tracked.admitted = true;
-            settled = tracked.settled;
-        }
-        if (settled) {
-            onDequeued.accept(task.functionName());
-        }
     }
 
-    private TrackedTicket doEnqueueOrThrow(InvocationTask task) {
+    private void doEnqueueOrThrow(InvocationTask task) {
         Instant now = clock.instant();
         // Valid as a sync-scoped depth only because enabled() now confines this gateway to the
         // SYNC_QUEUE profile: nothing else admits into the engine while it is active, so
@@ -186,59 +155,19 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
         TicketId id = new TicketId(task.executionId(), task.attempt());
         Instant deadline = now.plus(configSource.syncQueueMaxQueueWait());
         SchedulingTicket ticket = new SchedulingTicket(id, generation, sequence.getAsLong(), now, now, deadline);
-        // PendingWorkStore's own cap is the hard depth limit: the store's maxPending is set to sync-queue.max-depth exactly whenever this
-        // profile is active (SchedulerConfiguration.pendingWorkStore), and store.offer() runs
-        // under the engine's own gate, so this admission and every other one are serialized
-        // against the same atomic cap.
-        TrackedTicket tracked = new TrackedTicket();
-        if (pendingSyncTickets.putIfAbsent(id, tracked) != null) {
-            throw depthRejected();
-        }
-        boolean enqueued = false;
-        try {
-            enqueued = engine.getObject().enqueue(new PendingEntry(ticket, task));
-        } finally {
-            if (!enqueued) {
-                pendingSyncTickets.remove(id, tracked);
-            }
-        }
-        if (!enqueued) {
+        // PendingWorkStore's own cap is the hard depth limit: its maxPending is sync-queue.max-depth
+        // whenever this profile is active (SchedulerConfiguration.pendingWorkStore), and
+        // store.offer() runs under the engine's gate, so every admission is serialized against
+        // the same atomic cap.
+        if (!engine.getObject().enqueue(new PendingEntry(ticket, task))) {
             // Includes a generation removed after the lookup above: the engine re-checks it under
             // its gate and refuses the ticket before inserting it.
             throw depthRejected();
         }
-        return tracked;
     }
 
     private SyncQueueRejectedException depthRejected() {
         return new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
-    }
-
-    /**
-     * {@code true}, and settles this gateway's own bookkeeping, only when {@code id} was
-     * admitted through this gateway. Called by {@code EngineTransport} on every terminal engine
-     * event (submit, expired, removed) so the estimator is fed sync-origin dispatches only and
-     * this map never leaks an id whose ticket left the engine without reaching submit.
-     *
-     * <p>Each terminal path calls this method. When settlement precedes the admission metric,
-     * the decrement waits until {@link #enqueueOrThrow} records that metric.
-     */
-    public boolean settleIfSyncOrigin(String functionName, TicketId id) {
-        TrackedTicket tracked = pendingSyncTickets.remove(id);
-        if (tracked == null) {
-            return false;
-        }
-        boolean admitted;
-        synchronized (tracked) {
-            admitted = tracked.admitted;
-            if (!admitted) {
-                tracked.settled = true;
-            }
-        }
-        if (admitted) {
-            onDequeued.accept(functionName);
-        }
-        return true;
     }
 
     /**
@@ -255,8 +184,8 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
         }
     }
 
-    /** Called by the engine's dispatch adapter only after {@link #settleIfSyncOrigin} confirms
-     * the dispatched ticket originated from this gateway. */
+    /** Called by the engine's dispatch adapter for every settled dispatch while the immutable
+     * admission profile is SYNC_QUEUE, the only profile in which this gateway admits. */
     public void recordDispatched(String functionName, Instant now) {
         onDispatched.accept(functionName, now);
     }

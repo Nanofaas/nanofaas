@@ -271,6 +271,37 @@ class SyncQueueRuntimeLifecycleTest {
         });
     }
 
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"FUNCTION_QUEUE", "SYNC_QUEUE"})
+    void onlyTheSyncAdmissionProfileFeedsTheEstimatorAfterRuntimeDisable(String profile) {
+        runner.withPropertyValues("nanofaas.admission.profile=" + profile).run(context -> {
+            context.getBean(SchedulerLifecycleAdapter.class).stop();
+            FunctionSpec spec = registerEcho(context);
+            context.getBean("syncQueueMetricsLifecycleListener", FunctionRegistrationListener.class)
+                    .onRegister(spec);
+            var enqueuer = context.getBean(
+                    it.unimib.datai.nanofaas.controlplane.service.EngineInvocationEnqueuer.class);
+            var estimator = context.getBean(
+                    it.unimib.datai.nanofaas.execution.admission.WaitEstimator.class);
+            InvocationTask queued = task("profile-dispatch", spec);
+            context.getBean(ExecutionStore.class).put(new ExecutionRecord(queued.executionId(), queued));
+            doAnswer(invocation -> {
+                InvocationTask dispatched = invocation.getArgument(0);
+                dispatched.dispatchLease().release();
+                return null;
+            }).when(context.getBean(InvocationDispatch.class)).dispatch(any(InvocationTask.class));
+            assertThat(enqueuer.enqueue(queued)).isTrue();
+            context.getBean(MutableSyncQueueConfigSource.class)
+                    .apply(Map.of(MutableSyncQueueConfigSource.KEY_ENABLED, false));
+            context.getBean(SchedulerEngine.class).tick();
+            assertThat(context.getBean(SchedulerEngine.class).reservedCount(spec.name())).isZero();
+            double wait = estimator.estimateWaitSeconds(spec.name(), 1, Instant.now());
+            assertThat(Double.isFinite(wait)).isEqualTo(profile.equals("SYNC_QUEUE"));
+            assertThat(context.getBean(MeterRegistry.class).get("sync_queue_depth")
+                    .tag("function", "").gauge().value()).isZero();
+        });
+    }
+
     private static FunctionSpec registerEcho(org.springframework.context.ApplicationContext context) {
         FunctionRegistrationListener listener = context.getBean(
                 "schedulerCapacityGenerationListener", FunctionRegistrationListener.class);

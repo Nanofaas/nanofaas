@@ -14,7 +14,6 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerControl;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingStrategy;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingTicket;
-import it.unimib.datai.nanofaas.controlplane.scheduler.TicketId;
 import it.unimib.datai.nanofaas.controlplane.service.EngineInvocationEnqueuer.AdmissionProfile;
 import it.unimib.datai.nanofaas.execution.EngineDispatch;
 import it.unimib.datai.nanofaas.execution.EngineReadiness;
@@ -447,8 +446,8 @@ public class SchedulerConfiguration {
             try {
                 invocationService.dispatch(task);
             } catch (InvocationQuotaExceededException requeue) {
-                // The engine requeues this ticket; it still occupies its reservation, so the
-                // sync-origin tracking is not released here.
+                // The engine requeues this ticket; it still occupies its reservation, so this
+                // attempt does not feed the wait estimator.
                 throw requeue;
             } catch (RuntimeException | Error other) {
                 settle(task);
@@ -457,32 +456,22 @@ public class SchedulerConfiguration {
             settle(task);
         }
 
+        /** Feeds the sync wait estimator. {@code syncGateway} is non-null only in the immutable
+         * SYNC_QUEUE profile, where every engine ticket is sync-origin; runtime deactivation does
+         * not change that, so queued work and retries keep feeding it while they drain. */
         private void settle(InvocationTask task) {
             if (syncGateway != null) {
-                // Fix round C1: feed the estimator sync-origin dispatches only.
-                // settleIfSyncOrigin also clears this gateway's own bookkeeping either way.
-                TicketId id = new TicketId(task.executionId(), task.attempt());
-                if (syncGateway.settleIfSyncOrigin(task.functionName(), id)) {
-                    syncGateway.recordDispatched(task.functionName(), Instant.now());
-                }
-            }
-        }
-
-        private void discardSyncOrigin(InvocationTask task) {
-            if (syncGateway != null) {
-                syncGateway.settleIfSyncOrigin(task.functionName(), new TicketId(task.executionId(), task.attempt()));
+                syncGateway.recordDispatched(task.functionName(), Instant.now());
             }
         }
 
         @Override
         public void expired(InvocationTask task) {
-            discardSyncOrigin(task);
             queueLifecycle.expired(task);
         }
 
         @Override
         public void removed(InvocationTask task) {
-            discardSyncOrigin(task);
             queueLifecycle.removed(task);
         }
 

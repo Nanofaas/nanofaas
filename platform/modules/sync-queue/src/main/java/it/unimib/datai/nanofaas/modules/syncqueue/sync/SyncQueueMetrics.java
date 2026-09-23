@@ -7,10 +7,12 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.IntSupplier;
+import java.util.function.ToIntFunction;
 
 public class SyncQueueMetrics {
     private static final String GLOBAL_FUNCTION_TAG = "";
@@ -21,17 +23,22 @@ public class SyncQueueMetrics {
     private final Map<String, Counter> timedOutCounters = new ConcurrentHashMap<>();
     private final Map<String, Counter> admittedCounters = new ConcurrentHashMap<>();
     private final Map<String, Timer> waitTimers = new ConcurrentHashMap<>();
-    private final Map<String, AtomicInteger> perFunctionDepth = new ConcurrentHashMap<>();
     private final Map<String, Meter.Id> perFunctionDepthGaugeIds = new ConcurrentHashMap<>();
     /** The currently registered functions, never a tombstone history of removals. */
     private final Set<String> registeredFunctions = ConcurrentHashMap.newKeySet();
     private final Object functionStateMonitor = new Object();
-    private final AtomicInteger globalDepth = new AtomicInteger();
     private final Timer globalWaitTimer;
+    /** Live depth readers: gauges call them directly, taking neither the engine gate nor
+     * {@link #functionStateMonitor}. */
+    private final IntSupplier totalDepthReader;
+    private final ToIntFunction<String> functionDepthReader;
 
-    public SyncQueueMetrics(MeterRegistry registry) {
-        this.registry = registry;
-        Gauge.builder("sync_queue_depth", globalDepth, AtomicInteger::get)
+    public SyncQueueMetrics(MeterRegistry registry, IntSupplier totalDepthReader,
+                            ToIntFunction<String> functionDepthReader) {
+        this.registry = Objects.requireNonNull(registry);
+        this.totalDepthReader = Objects.requireNonNull(totalDepthReader);
+        this.functionDepthReader = Objects.requireNonNull(functionDepthReader);
+        Gauge.builder("sync_queue_depth", this, metrics -> metrics.totalDepthReader.getAsInt())
                 .tag(FUNCTION_TAG, GLOBAL_FUNCTION_TAG)
                 .register(registry);
         this.globalWaitTimer = Timer.builder("sync_queue_wait_seconds")
@@ -41,46 +48,26 @@ public class SyncQueueMetrics {
 
     public void registerFunction(String functionName) {
         synchronized (functionStateMonitor) {
-            registeredFunctions.add(functionName);
-            getOrCreateDepth(functionName);
+            if (!registeredFunctions.add(functionName)) {
+                return;
+            }
+            Gauge gauge = Gauge.builder("sync_queue_depth", this,
+                            metrics -> metrics.functionDepthReader.applyAsInt(functionName))
+                    .tag(FUNCTION_TAG, functionName)
+                    .register(registry);
+            perFunctionDepthGaugeIds.put(functionName, gauge.getId());
         }
     }
 
     public void admitted(String functionName) {
         Counter admitted;
-        AtomicInteger depth;
         synchronized (functionStateMonitor) {
             if (!registeredFunctions.contains(functionName)) {
                 return;
             }
             admitted = counter(admittedCounters, "sync_queue_admitted_total", functionName);
-            depth = getOrCreateDepth(functionName);
         }
         admitted.increment();
-        globalDepth.incrementAndGet();
-        depth.incrementAndGet();
-    }
-
-    private AtomicInteger getOrCreateDepth(String functionName) {
-        return perFunctionDepth.computeIfAbsent(functionName, name -> {
-            AtomicInteger depth = new AtomicInteger();
-            Gauge gauge = Gauge.builder("sync_queue_depth", depth, AtomicInteger::get)
-                    .tag(FUNCTION_TAG, name)
-                    .register(registry);
-            perFunctionDepthGaugeIds.put(name, gauge.getId());
-            return depth;
-        });
-    }
-
-    public void dequeued(String functionName) {
-        globalDepth.decrementAndGet();
-        AtomicInteger depth;
-        synchronized (functionStateMonitor) {
-            depth = perFunctionDepth.get(functionName);
-        }
-        if (depth != null) {
-            depth.decrementAndGet();
-        }
     }
 
     public void rejected(String functionName) {
@@ -124,7 +111,6 @@ public class SyncQueueMetrics {
             Counter timedOut = timedOutCounters.remove(functionName);
             Counter admitted = admittedCounters.remove(functionName);
             Timer waitTimer = waitTimers.remove(functionName);
-            perFunctionDepth.remove(functionName);
             Meter.Id depthGaugeId = perFunctionDepthGaugeIds.remove(functionName);
             remove(rejected);
             remove(timedOut);
