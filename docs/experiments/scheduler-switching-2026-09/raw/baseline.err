@@ -1,0 +1,4 @@
+SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+[bench] return-to-baseline: committed=1000 refused=0 pending switched=398 vs plain=398 live switched=1 vs plain=1 maxLive=2 conserved switched=true plain=true

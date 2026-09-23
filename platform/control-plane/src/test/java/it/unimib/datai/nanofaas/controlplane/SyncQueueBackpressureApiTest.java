@@ -24,6 +24,12 @@ import java.util.stream.Stream;
                 "nanofaas.defaults.queueSize=10",
                 "nanofaas.defaults.maxRetries=3",
                 "nanofaas.registry.path=build/test-sync-queue-backpressure-api-functions.json",
+                // Task 8 fix round (issue #208), C1: EngineSyncQueueGateway.enabled() is now
+                // gated on the resolved admission profile, not sync-queue.enabled alone — with
+                // both queue modules on the classpath the default profile is FUNCTION_QUEUE (the
+                // brief's own table), so this test pins the sync profile explicitly to exercise
+                // sync backpressure regardless of which other modules are selected.
+                "nanofaas.admission.profile=sync-queue",
                 "sync-queue.enabled=true",
                 "sync-queue.admission-enabled=true",
                 "sync-queue.max-estimated-wait=0s",

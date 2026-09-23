@@ -2,7 +2,7 @@
 
 See [the review](../../control-plane-pre-soak-review-2026-09-08.md).
 
-`Audit.java` contains nine diagnostic reproductions. They intentionally assert
+`Audit.java` contains eight diagnostic reproductions. They intentionally assert
 the defective or insufficiently bounded behavior of revision `1d9e2f55`.
 A successful run confirms the findings; it does **not** certify correctness.
 After fixes, replace these checks with ordinary regression tests in the owning
@@ -44,7 +44,7 @@ the sum of retained Latin-1 payload lengths, **not** a heap/RSS measurement.
 Provider removal failure is injected through its runtime adapter; a recording
 proxy verifies the skipped close operation. No Docker failure was induced.
 
-The nine checks cover:
+The eight checks cover:
 
 1. A successful long waiter followed by a timeout replay of the same execution.
 2. An offloaded completion ignored after a shorter idempotent waiter times out.
@@ -52,6 +52,10 @@ The nine checks cover:
 4. Concurrent claims exceeding `maxKeys`.
 5. A replay becoming a new execution during archiving under outcome eviction.
 6. Historical names retained by metrics and the replica snapshot after removal/invalidation.
-7. Direct dispatch with the sync queue disabled releasing another dispatch's slot.
-8. Direct core admission exceeding the function's configured concurrency.
-9. Failed container deprovision dropping its state without closing its proxy.
+7. Direct core admission exceeding the function's configured concurrency.
+8. Failed container deprovision dropping its state without closing its proxy.
+
+The former seventh check (direct dispatch with the sync queue disabled releasing
+another dispatch's slot) needed the retired `SyncQueueInvocationEnqueuer`; it was
+removed with the retired queues. Its property is covered by
+`ExecutionCompletionHandlerTest.directCompletionDoesNotReleaseAnotherDispatchLease`.

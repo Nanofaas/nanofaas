@@ -19,16 +19,34 @@ class MetricsProfileConfiguration {
      * Timers that get percentile histograms when a run asks for advanced.
      *
      * Separate from what basic denies, because the two costs are different. The
-     * meter itself is 43ns per record; the histogram is buckets, one series per
-     * bucket per function, and that is what a production registry cannot afford.
-     * Keeping a timer in basic without its histogram still gives count and sum,
-     * which is a mean - enough for an SLI, and nearly free.
+     * meter itself is 43ns per record; the histogram is buckets, and for a timer
+     * tagged by function that is one series per bucket per function, which is
+     * what a production registry cannot afford. Keeping a timer in basic without
+     * its histogram still gives count and sum, which is a mean - enough for an
+     * SLI, and nearly free.
+     *
+     * `scheduler_switch_duration` is here for a reason the function timers do
+     * not share, and it does not pay their cost: it is registered with no
+     * function tag (SchedulerConfiguration's switch observer) and there is one
+     * engine per process, so its histogram is a fixed bucket set rather than one
+     * scaled by the number of functions. It was added on 2026-09-22 because the
+     * pause budget the campaign freezes - maxSwitchPauseP99Ms, 100 ms - names a
+     * p99, and a p99 has no series without buckets. Basic still keeps the timer
+     * and its `_max`, which is what the pause is read against today.
+     *
+     * Its cost, since every other choice here states one: the default bucket set
+     * is 69 `le` classes - measured on 2026-09-22 by scraping a registry that
+     * carries this filter, not estimated - so the timer goes from 3 series to 72
+     * per non-basic process. Paid once, and paid flat: it is the same 72 whether
+     * the platform serves one function or a thousand, which is the whole reason
+     * this timer can afford what the four above cannot.
      */
-    private static final Set<String> FUNCTION_TIMERS = Set.of(
+    private static final Set<String> HISTOGRAM_TIMERS = Set.of(
             "function_latency_ms",
             "function_init_duration_ms",
             "function_queue_wait_ms",
-            "function_e2e_latency_ms"
+            "function_e2e_latency_ms",
+            "scheduler_switch_duration"
     );
 
     /**
@@ -116,7 +134,7 @@ class MetricsProfileConfiguration {
             @Override
             public DistributionStatisticConfig configure(
                     Meter.Id id, DistributionStatisticConfig config) {
-                if (profile != MetricsProfile.BASIC && FUNCTION_TIMERS.contains(id.getName())) {
+                if (profile != MetricsProfile.BASIC && HISTOGRAM_TIMERS.contains(id.getName())) {
                     return DistributionStatisticConfig.builder()
                             .percentilesHistogram(true)
                             .build()
@@ -148,7 +166,7 @@ class MetricsProfileConfiguration {
             return false;
         }
         String function = id.getTag("function");
-        return name.equals("sync_queue_wait_seconds") || (function != null && !function.isEmpty());
+        return function != null && !function.isEmpty();
     }
 
     enum MetricsProfile {

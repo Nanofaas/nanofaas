@@ -4,10 +4,15 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.Tags;
+import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.config.MeterFilter;
 import io.micrometer.core.instrument.distribution.DistributionStatisticConfig;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.prometheusmetrics.PrometheusConfig;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import org.junit.jupiter.api.Test;
+
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
@@ -153,6 +158,42 @@ class MetricsProfileConfigurationTest {
     }
 
     @Test
+    void nonBasicPublishesTheSwitchDurationHistogramAndBasicDoesNot() {
+        // The campaign freezes maxSwitchPauseP99Ms - 100 ms - against
+        // scheduler_switch_duration, and a p99 has no series to be read from
+        // without buckets. The timer carries no function tag and there is one
+        // engine, so this histogram is a fixed bucket set rather than one scaled
+        // by the number of functions, which is why it can be on at all.
+        for (MetricsProfileConfiguration.MetricsProfile profile
+                : new MetricsProfileConfiguration.MetricsProfile[]{
+                        MetricsProfileConfiguration.MetricsProfile.ADVANCED,
+                        MetricsProfileConfiguration.MetricsProfile.SOAK}) {
+            PrometheusMeterRegistry registry = prometheusFor(profile);
+            Timer.builder("scheduler_switch_duration").register(registry)
+                    .record(1, TimeUnit.MILLISECONDS);
+
+            String scrape = registry.scrape();
+            assertThat(scrape)
+                    .describedAs("under %s the p99 budget has no series behind it", profile)
+                    .contains("scheduler_switch_duration_seconds_bucket{le=\"")
+                    .contains("scheduler_switch_duration_seconds_bucket{le=\"+Inf\"");
+        }
+
+        PrometheusMeterRegistry basic = prometheusFor(
+                MetricsProfileConfiguration.MetricsProfile.BASIC);
+        Timer.builder("scheduler_switch_duration").register(basic)
+                .record(1, TimeUnit.MILLISECONDS);
+
+        // Basic keeps the timer and the maximum the soak's pause budget reads
+        // today - what it does not get is the histogram, which is the narrowing.
+        assertThat(basic.scrape())
+                .describedAs("basic must not pay for buckets")
+                .doesNotContain("scheduler_switch_duration_seconds_bucket{le=\"");
+        assertThat(basic.find("scheduler_switch_duration").timer()).isNotNull();
+        assertThat(basic.scrape()).contains("scheduler_switch_duration_seconds_max");
+    }
+
+    @Test
     void soakParsesCaseInsensitivelyAndUsesAdvancedHistogramConfiguration() {
         assertThat(configuration.metricsProfile("soak"))
                 .isEqualTo(MetricsProfileConfiguration.MetricsProfile.SOAK);
@@ -199,6 +240,13 @@ class MetricsProfileConfigurationTest {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         MeterFilter filter = configuration.metricsProfileFilter(profile);
         registry.config().meterFilter(filter);
+        return registry;
+    }
+
+    private PrometheusMeterRegistry prometheusFor(
+            MetricsProfileConfiguration.MetricsProfile profile) {
+        PrometheusMeterRegistry registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+        registry.config().meterFilter(configuration.metricsProfileFilter(profile));
         return registry;
     }
 }

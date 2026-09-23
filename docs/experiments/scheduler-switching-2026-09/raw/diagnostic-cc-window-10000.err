@@ -1,0 +1,35 @@
+SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+[bench] capacity change to 8
+[bench] warm-up capacity-change per-function (no change)
+[bench] capacity change to 8
+[bench] warm-up capacity-change shared-queue (no change)
+[bench] capacity change to 8
+[bench] warm-up capacity-change per-function -> shared-queue
+[bench] capacity change to 8
+[bench] warm-up capacity-change shared-queue -> per-function
+[bench] capacity change to 8
+[bench] capacity-change per-function (no change) rep=1 useful=12770 p99=63.386ms backlogMax=56
+[bench] capacity change to 8
+[bench] capacity-change shared-queue (no change) rep=1 useful=11901 p99=146.785ms backlogMax=92
+[bench] capacity change to 8
+[bench] capacity-change per-function -> shared-queue rep=1 useful=11801 p99=146.810ms backlogMax=108
+[bench] capacity change to 8
+[bench] capacity-change shared-queue -> per-function rep=1 useful=12679 p99=53.553ms backlogMax=88
+[bench] capacity change to 8
+[bench] capacity-change shared-queue -> per-function rep=2 useful=12652 p99=58.475ms backlogMax=82
+[bench] capacity change to 8
+[bench] capacity-change per-function -> shared-queue rep=2 useful=11959 p99=147.895ms backlogMax=86
+[bench] capacity change to 8
+[bench] capacity-change shared-queue (no change) rep=2 useful=11604 p99=147.415ms backlogMax=99
+[bench] capacity change to 8
+[bench] capacity-change per-function (no change) rep=2 useful=12706 p99=49.770ms backlogMax=38
+[bench] capacity change to 8
+[bench] capacity-change per-function (no change) rep=3 useful=12821 p99=58.145ms backlogMax=60
+[bench] capacity change to 8
+[bench] capacity-change shared-queue (no change) rep=3 useful=11915 p99=146.291ms backlogMax=90
+[bench] capacity change to 8
+[bench] capacity-change per-function -> shared-queue rep=3 useful=12040 p99=147.239ms backlogMax=95
+[bench] capacity change to 8
+[bench] capacity-change shared-queue -> per-function rep=3 useful=12724 p99=59.416ms backlogMax=80

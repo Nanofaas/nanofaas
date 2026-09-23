@@ -12,12 +12,15 @@ import org.springframework.context.ApplicationContext;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * What this provider publishes is a contract two other modules are conditional on:
- * autoscaler and concurrency-control both refuse to start without a
- * {@code WorkloadMetricsSource}, and a @ConditionalOnBean that is not satisfied
- * disables a module in silence - no bean, no log line, no failure. The unit tests
- * here build every collaborator with {@code new}, so none of them would notice this
- * configuration going missing.
+ * What this provider publishes is a contract another module is conditional on: a
+ * {@code @ConditionalOnBean} that is not satisfied disables a module in silence - no bean, no
+ * log line, no failure. The unit tests here build every collaborator with {@code new}, so none
+ * of them would notice this configuration going missing.
+ *
+ * <p>Real scheduling goes through the shared engine ({@code SchedulerConfiguration}), and the
+ * {@code WorkloadMetricsSource} bean is {@code EngineWorkloadMetricsSource}. The assertion below
+ * documents the real production incident ({@code AutoscalerConfigurationTest}'s B3 campaign)
+ * this guards against.
  */
 @SpringBootTest(classes = ControlPlaneApplication.class)
 class AsyncQueueContextTest {
@@ -26,10 +29,13 @@ class AsyncQueueContextTest {
     private ApplicationContext context;
 
     @Test
-    void publishesTheWorkloadContractTheConsumingModulesConditionOn() {
+    void publishesAWorkloadMetricsSource() {
         assertThat(context.getBeansOfType(WorkloadMetricsSource.class)).hasSize(1);
+    }
+
+    @Test
+    void publishesTheWorkloadContractTheConsumingModulesConditionOn() {
         assertThat(context.getBeansOfType(WorkloadCapacityController.class)).hasSize(1);
-        assertThat(context.getBeansOfType(QueueManager.class)).hasSize(1);
         assertThat(context.getBean(InvocationEnqueuer.class).supportsAsync()).isTrue();
     }
 

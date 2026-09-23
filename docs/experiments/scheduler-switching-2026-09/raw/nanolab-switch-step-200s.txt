@@ -1,0 +1,107 @@
+# The NanoLab switch step, driven for 200 s against a live control plane
+
+This is the evidence for the figures §7.6 of `FINAL.md` adds: a **200-second** run of NanoLab's
+scheduler-switch step against a real control plane, which committed **1 000 switches**. It is the
+step's validation, not a soak, and nothing here is acceptance evidence — see the last section.
+
+Everything below is copied from files that lived only in scratch (`/tmp`). The commands that
+produced each figure are given so it can be re-derived rather than taken on trust, and the original
+files' own digests are recorded so it is visible whether this transcription is of the same bytes.
+
+## What produced it
+
+- Control plane: `/tmp/cpcheck/app.jar`, started `2026-09-22T10:21:20.994+02:00` as PID 754224, Java
+  25.0.4, `v0.22.0`, admin runtime-config enabled.
+- Driver: `/tmp/cpcheck/drive_switch.py` (sha256 `6856341f5a86cd1aab7004de9cbf99fb15ba46e69fa1d4b21400fb945ed97746`),
+  which imports the real `nanolab.tasks.soak.scheduler_switch.SchedulerSwitchDriver` with
+  `FROZEN_BUDGETS` and runs it for `window_s=200`. Nothing in it is a test double: the switches are
+  real `PATCH /v1/admin/runtime-config/scheduler` calls against the running control plane.
+- Server log: `/tmp/cpcheck/drive.log` (153 503 bytes, sha256
+  `6d20b54a3c6563593484a61d3eaf725c2e1f3d60db164d5d76372cccc9cdc231`, last written
+  `2026-09-22T10:24:53.923+02:00` — the instant of the final switch below). Driver stdout:
+  `/tmp/claude-1000/-home-michele-Documenti-nanolab/1dbcca75-05a6-49bc-ab14-8db223a31fa5/tasks/bpitvxcow.output`
+  (sha256 `6c4ac8fa1e6a8662f82384156b0da7f37b716202b58bf4bcc57ecc343d69aab2`).
+
+## The driver's receipt, verbatim
+
+The driver's stdout, complete and verbatim:
+
+```
+control plane READY after 1s
+elapsed_s          199.9
+initial            per-function
+final              per-function
+committed          1000
+refused            0
+stale              0
+restores           0
+live_indexes       2
+pause_max_ms       0.3178
+platform_committed 1000.0
+budgets            FrozenBudgets(switches_in_soak=1000, max_switch_pause_ms=250, max_switch_pause_p99_ms=100, max_live_strategy_indexes=2)
+
+real	3m19.996s
+user	0m1.704s
+sys	0m0.197s
+
+[exited with code 0]
+```
+
+The first line is the control plane becoming ready, printed before the driver was timed. The three
+`real`/`user`/`sys` lines are the shell's `time` around the driver process: `real 3m19.996s` is
+199.996 s, which agrees with the driver's own `elapsed_s 199.9` to within the interpreter's startup
+and therefore does **not** include the control plane's own start at `10:21:20.994` — the arithmetic
+in this paragraph is what says so, not an assumption about how the script was invoked.
+
+`platform_committed 1000.0` is the engine's own `scheduler_switch_total`, read from the live
+exposition — so the count is not only the driver's tally. `restores 0` means the alternation had
+already landed back on `initial`, so no corrective PATCH was needed (`_restore` returns 1 when one
+is); `initial` and `final` agree, which is what the count of 0 records.
+
+## The server log: the window, and the count
+
+```
+$ grep -c 'Scheduler strategy switched to' drive.log
+1000
+$ grep -m1 'Scheduler strategy switched to' drive.log
+2026-09-22T10:21:34.137+02:00  INFO 754224 --- [-admin-config-0] i.u.d.n.execution.SchedulerEngine        : Scheduler strategy switched to shared-queue
+$ grep 'Scheduler strategy switched to' drive.log | tail -1
+2026-09-22T10:24:53.923+02:00  INFO 754224 --- [-admin-config-0] i.u.d.n.execution.SchedulerEngine        : Scheduler strategy switched to per-function
+```
+
+`10:24:53.923 − 10:21:34.137` = **199.786 s** from the first committed switch to the last. The
+driver's own `elapsed_s 199.9` is wall clock around the call, which is why the two differ by
+~0.1 s; both are stated in `FINAL.md`, the receipt's where the receipt is the source and 199.786 s
+where the log is.
+
+The 200 s window is not printed by the receipt, and this is what confirms it rather than assuming
+it: the driver paces itself at `window_s / switches_in_soak` per attempt, so 200/1000 = 0.2 s, and
+999 intervals between the first and last of 1 000 switches is 199.8 s — against the **199.786 s**
+the log shows. The two agree to 14 ms, which is the run closing on its window, and it puts
+`window_s` at 200 (999 × `window_s`/1000 = 199.786 gives 199.986) rather than at any other value.
+
+`drive.log` is 1 011 lines, of which those 1 000 are the switch lines. The other 11 split, by `grep
+-c` on the file itself, as **2 + 4 + 4 + 1**: two banner lines (`Starting ControlPlaneApplication`,
+`No active profile set`), then four `WARNING` lines (`grep -c '^WARNING' drive.log` = 4), then four
+lines after them (Netty on 18090, the endpoint-links line, Netty on 18091, `Started
+ControlPlaneApplication`), then one blank line (`grep -c '^$' drive.log` = 1). There is no request
+or error line in it, and no shutdown line — the log ends at the last switch — so nothing in this
+file is other than a startup line or a measured switch.
+
+## What this is not
+
+**It is not the soak, and it is not an approximation of one.** The campaign's pending criterion is a
+≥60-minute soak with 1 000 switches, two duration classes, function churn and observation through
+drain to the maximum configured retention. This run is 200 s and offers **no workload at all**: the
+driver only PATCHes the scheduler namespace and reads it back, so there is no churn and no drain
+phase. It exercises the *step*, against a live platform, and nothing more.
+
+**It does satisfy `budgets.json`'s `switchesInSoak: 1000`**, because the step's target count *is*
+that frozen budget and the budget carries no duration. That is the reason the step's receipt carries
+`window_s` and `elapsed_s` beside the count: so that "1 000 switches" cannot be read without "over
+200 s" beside it. Recorded here rather than left to be inferred.
+
+**It was not taken under the soak's host precondition.** A Gradle daemon (PID 252783, started
+`07:24:38` that morning) was alive across the whole of it, which §7.1's precondition — no Gradle
+daemon, no JVM, no other sampling run — excludes. Recorded because it is the one thing about this
+run that a reader might otherwise assume the other way.

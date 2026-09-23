@@ -1,0 +1,100 @@
+plugins {
+    id 'java-library'
+    id 'io.spring.dependency-management'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.boot:spring-boot-dependencies:${springBootVersion}"
+    }
+}
+
+// The scheduling engine module. It compiles against the SPI's scheduling contracts only,
+// plus Caffeine/Micrometer for the execution/capacity components extracted from the
+// control plane (issue #208, Task 9): no Spring, no fabric8, no queue modules. The
+// RuntimeArchitectureTest ArchUnit check enforces this at build time.
+// ':control-plane-spi' brings ':common' transitively (InvocationRequest et al.).
+dependencies {
+    api project(':control-plane-spi')
+    // api, not implementation: ExecutionStore's and IdempotencyStore's public constructors
+    // expose Caffeine Scheduler/Ticker and Micrometer MeterRegistry, so both are part of this
+    // module's ABI and belong on a consumer's compile classpath (Task 10 carry-forward,
+    // issue #208). It compiled before only because :control-plane declared both itself.
+    api 'com.github.ben-manes.caffeine:caffeine'
+    api 'io.micrometer:micrometer-core'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:6.0.3'
+    testImplementation 'org.assertj:assertj-core'
+    testImplementation 'org.mockito:mockito-core'
+    testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.0'
+    testImplementation 'org.awaitility:awaitility:4.3.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    // Test-only, issue #208 Task 12: the conformance/race/model suite exercises the real
+    // strategy implementations (PerFunctionSchedulingStrategy, SharedQueueSchedulingStrategy)
+    // rather than test doubles. No production dependency is added — these land on
+    // testImplementation only — and verifyNoForbiddenDependencies (Task 9) still guards main's
+    // compile/runtime classpath.
+    //
+    // transitive = false: both strategy classes compile against control-plane-spi only (already
+    // on this module's classpath via `api project(':control-plane-spi')` above) and touch
+    // neither Spring nor :control-plane. Left transitive, these project dependencies would also
+    // drag in sync-queue's own `implementation project(':control-plane')` and both modules'
+    // Spring starters, which would put :control-plane's own Spring-annotated classes onto this
+    // module's TEST classpath — and RuntimeArchitectureTest's ClassFileImporter scans by package
+    // name, not by origin module, so it would see them too: :control-plane happens to reuse the
+    // "it.unimib.datai.nanofaas.controlplane.capacity"/".controlplane.execution" package names
+    // for its own Spring configuration classes. That is a real classpath leak, not a false
+    // positive, so it is excluded here rather than the check being narrowed.
+    testImplementation(project(':control-plane-modules:async-queue')) { transitive = false }
+    testImplementation(project(':control-plane-modules:sync-queue')) { transitive = false }
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+// Il classpath di test, per i banchi di misura fuori da Gradle
+// (docs/experiments/*/run.sh). Vedi i gemelli in platform/control-plane/build.gradle,
+// platform/modules/async-queue/build.gradle e platform/modules/sync-queue/build.gradle:
+// non e' un task di build, serve solo a evitare che un banco debba indovinare dove
+// stanno i jar. Include i due moduli strategia, dichiarati qui sopra come test-only.
+tasks.register('printTestClasspath') {
+    doLast {
+        println sourceSets.test.runtimeClasspath.asPath
+    }
+}
+
+// The Gradle-level companion to RuntimeArchitectureTest (issue #208, Task 9): ArchUnit checks
+// the compiled bytecode, this checks the dependency graph itself, so an accidental
+// `implementation project(':control-plane')` (or a provider/queue module) fails the build even
+// before anything gets a chance to import a forbidden class.
+def forbiddenDependencyProjectPaths = [
+        ':control-plane', ':control-plane-modules'
+]
+
+tasks.register('verifyNoForbiddenDependencies') {
+    group = 'verification'
+    description = 'Fails if :execution-runtime depends on :control-plane, a provider or a queue module.'
+    def runtimeClasspath = configurations.runtimeClasspath
+    def compileClasspath = configurations.compileClasspath
+    doLast {
+        [runtimeClasspath, compileClasspath].each { configuration ->
+            def offendingProjects = configuration.allDependencies
+                    .withType(ProjectDependency)
+                    .collect { it.path }
+                    .findAll { path ->
+                        forbiddenDependencyProjectPaths.any { forbidden -> path == forbidden || path.startsWith(forbidden + ':') }
+                    }
+            if (!offendingProjects.isEmpty()) {
+                throw new GradleException(
+                        "execution-runtime's ${configuration.name} must not depend on control-plane, "
+                                + "a provider or a queue module, but resolved: ${offendingProjects}")
+            }
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn 'verifyNoForbiddenDependencies'
+}

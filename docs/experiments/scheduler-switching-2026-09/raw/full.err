@@ -1,0 +1,720 @@
+SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+[bench] backlog=0 rep=1 pause=3.984ms pending=0 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=0 rep=2 pause=0.128ms pending=0 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=0 rep=3 pause=0.170ms pending=0 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=0 rep=4 pause=0.113ms pending=0 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=0 rep=5 pause=0.130ms pending=0 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=100 rep=1 pause=0.537ms pending=99 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=100 rep=2 pause=0.272ms pending=99 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=100 rep=3 pause=0.323ms pending=99 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=100 rep=4 pause=0.258ms pending=99 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=100 rep=5 pause=0.184ms pending=99 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=1000 rep=1 pause=0.448ms pending=999 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=1000 rep=2 pause=0.713ms pending=999 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=1000 rep=3 pause=0.522ms pending=999 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=1000 rep=4 pause=0.625ms pending=999 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=1000 rep=5 pause=0.583ms pending=999 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=10000 rep=1 pause=2.053ms pending=9999 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=10000 rep=2 pause=1.909ms pending=9999 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=10000 rep=3 pause=1.625ms pending=10000 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=10000 rep=4 pause=1.641ms pending=9999 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=10000 rep=5 pause=2.318ms pending=10000 liveIndexes=1 outcome=COMMITTED
+[bench] warm-up low-load per-function (no change)
+[bench] warm-up low-load shared-queue (no change)
+[bench] warm-up low-load per-function -> shared-queue
+[bench] warm-up low-load shared-queue -> per-function
+[bench] low-load per-function (no change) rep=1 useful=83 p99=2.891ms backlogMax=0
+[bench] low-load shared-queue (no change) rep=1 useful=83 p99=2.800ms backlogMax=0
+[bench] low-load per-function -> shared-queue rep=1 useful=83 p99=2.544ms backlogMax=0
+[bench] low-load shared-queue -> per-function rep=1 useful=83 p99=2.578ms backlogMax=0
+[bench] low-load shared-queue -> per-function rep=2 useful=84 p99=3.002ms backlogMax=0
+[bench] low-load per-function -> shared-queue rep=2 useful=84 p99=2.810ms backlogMax=0
+[bench] low-load shared-queue (no change) rep=2 useful=84 p99=2.832ms backlogMax=0
+[bench] low-load per-function (no change) rep=2 useful=84 p99=2.647ms backlogMax=0
+[bench] low-load per-function (no change) rep=3 useful=71 p99=2.785ms backlogMax=0
+[bench] low-load shared-queue (no change) rep=3 useful=71 p99=2.803ms backlogMax=0
+[bench] low-load per-function -> shared-queue rep=3 useful=71 p99=2.798ms backlogMax=0
+[bench] low-load shared-queue -> per-function rep=3 useful=71 p99=2.776ms backlogMax=0
+[bench] low-load shared-queue -> per-function rep=4 useful=98 p99=2.748ms backlogMax=0
+[bench] low-load per-function -> shared-queue rep=4 useful=98 p99=2.703ms backlogMax=0
+[bench] low-load shared-queue (no change) rep=4 useful=98 p99=2.761ms backlogMax=0
+[bench] low-load per-function (no change) rep=4 useful=98 p99=2.982ms backlogMax=0
+[bench] low-load per-function (no change) rep=5 useful=86 p99=2.539ms backlogMax=0
+[bench] low-load shared-queue (no change) rep=5 useful=86 p99=2.896ms backlogMax=0
+[bench] low-load per-function -> shared-queue rep=5 useful=86 p99=2.797ms backlogMax=0
+[bench] low-load shared-queue -> per-function rep=5 useful=86 p99=2.604ms backlogMax=0
+[bench] warm-up saturated per-function (no change)
+[bench] warm-up saturated shared-queue (no change)
+[bench] warm-up saturated per-function -> shared-queue
+[bench] warm-up saturated shared-queue -> per-function
+[bench] saturated per-function (no change) rep=1 useful=1621 p99=61.464ms backlogMax=121
+[bench] saturated shared-queue (no change) rep=1 useful=1745 p99=61.474ms backlogMax=111
+[bench] saturated per-function -> shared-queue rep=1 useful=1693 p99=61.378ms backlogMax=116
+[bench] saturated shared-queue -> per-function rep=1 useful=1633 p99=62.003ms backlogMax=121
+[bench] saturated shared-queue -> per-function rep=2 useful=1637 p99=61.962ms backlogMax=113
+[bench] saturated per-function -> shared-queue rep=2 useful=1698 p99=61.387ms backlogMax=106
+[bench] saturated shared-queue (no change) rep=2 useful=1795 p99=61.225ms backlogMax=106
+[bench] saturated per-function (no change) rep=2 useful=1635 p99=61.947ms backlogMax=113
+[bench] saturated per-function (no change) rep=3 useful=1589 p99=61.987ms backlogMax=119
+[bench] saturated shared-queue (no change) rep=3 useful=1811 p99=61.417ms backlogMax=109
+[bench] saturated per-function -> shared-queue rep=3 useful=1681 p99=61.555ms backlogMax=112
+[bench] saturated shared-queue -> per-function rep=3 useful=1611 p99=61.991ms backlogMax=117
+[bench] saturated shared-queue -> per-function rep=4 useful=1623 p99=62.000ms backlogMax=114
+[bench] saturated per-function -> shared-queue rep=4 useful=1733 p99=61.520ms backlogMax=117
+[bench] saturated shared-queue (no change) rep=4 useful=1808 p99=61.369ms backlogMax=121
+[bench] saturated per-function (no change) rep=4 useful=1586 p99=61.955ms backlogMax=125
+[bench] saturated per-function (no change) rep=5 useful=1576 p99=61.880ms backlogMax=123
+[bench] saturated shared-queue (no change) rep=5 useful=1775 p99=61.352ms backlogMax=117
+[bench] saturated per-function -> shared-queue rep=5 useful=1723 p99=61.472ms backlogMax=107
+[bench] saturated shared-queue -> per-function rep=5 useful=1643 p99=61.988ms backlogMax=123
+[bench] warm-up hot-plus-50-sporadic per-function (no change)
+[bench] warm-up hot-plus-50-sporadic shared-queue (no change)
+[bench] warm-up hot-plus-50-sporadic per-function -> shared-queue
+[bench] warm-up hot-plus-50-sporadic shared-queue -> per-function
+[bench] hot-plus-50-sporadic per-function (no change) rep=1 useful=5831 p99=5.947ms backlogMax=9
+[bench] hot-plus-50-sporadic shared-queue (no change) rep=1 useful=5821 p99=4.432ms backlogMax=8
+[bench] hot-plus-50-sporadic per-function -> shared-queue rep=1 useful=5826 p99=5.138ms backlogMax=10
+[bench] hot-plus-50-sporadic shared-queue -> per-function rep=1 useful=5836 p99=5.699ms backlogMax=8
+[bench] hot-plus-50-sporadic shared-queue -> per-function rep=2 useful=5999 p99=6.943ms backlogMax=10
+[bench] hot-plus-50-sporadic per-function -> shared-queue rep=2 useful=5999 p99=5.415ms backlogMax=10
+[bench] hot-plus-50-sporadic shared-queue (no change) rep=2 useful=5996 p99=8.066ms backlogMax=14
+[bench] hot-plus-50-sporadic per-function (no change) rep=2 useful=5995 p99=8.067ms backlogMax=10
+[bench] hot-plus-50-sporadic per-function (no change) rep=3 useful=5947 p99=7.500ms backlogMax=10
+[bench] hot-plus-50-sporadic shared-queue (no change) rep=3 useful=5937 p99=8.251ms backlogMax=17
+[bench] hot-plus-50-sporadic per-function -> shared-queue rep=3 useful=5946 p99=5.744ms backlogMax=10
+[bench] hot-plus-50-sporadic shared-queue -> per-function rep=3 useful=5942 p99=7.183ms backlogMax=9
+[bench] hot-plus-50-sporadic shared-queue -> per-function rep=4 useful=5917 p99=5.695ms backlogMax=8
+[bench] hot-plus-50-sporadic per-function -> shared-queue rep=4 useful=5914 p99=9.681ms backlogMax=17
+[bench] hot-plus-50-sporadic shared-queue (no change) rep=4 useful=5932 p99=6.608ms backlogMax=13
+[bench] hot-plus-50-sporadic per-function (no change) rep=4 useful=5913 p99=5.916ms backlogMax=10
+[bench] hot-plus-50-sporadic per-function (no change) rep=5 useful=5869 p99=7.527ms backlogMax=17
+[bench] hot-plus-50-sporadic shared-queue (no change) rep=5 useful=5872 p99=8.673ms backlogMax=19
+[bench] hot-plus-50-sporadic per-function -> shared-queue rep=5 useful=5872 p99=7.948ms backlogMax=18
+[bench] hot-plus-50-sporadic shared-queue -> per-function rep=5 useful=5873 p99=7.219ms backlogMax=17
+[bench] warm-up hot-plus-500-sporadic per-function (no change)
+[bench] warm-up hot-plus-500-sporadic shared-queue (no change)
+[bench] warm-up hot-plus-500-sporadic per-function -> shared-queue
+[bench] warm-up hot-plus-500-sporadic shared-queue -> per-function
+[bench] hot-plus-500-sporadic per-function (no change) rep=1 useful=8858 p99=4.130ms backlogMax=12
+[bench] hot-plus-500-sporadic shared-queue (no change) rep=1 useful=8847 p99=4.173ms backlogMax=13
+[bench] hot-plus-500-sporadic per-function -> shared-queue rep=1 useful=8855 p99=5.237ms backlogMax=15
+[bench] hot-plus-500-sporadic shared-queue -> per-function rep=1 useful=8873 p99=4.567ms backlogMax=17
+[bench] hot-plus-500-sporadic shared-queue -> per-function rep=2 useful=8903 p99=5.355ms backlogMax=15
+[bench] hot-plus-500-sporadic per-function -> shared-queue rep=2 useful=8885 p99=4.624ms backlogMax=14
+[bench] hot-plus-500-sporadic shared-queue (no change) rep=2 useful=8879 p99=5.557ms backlogMax=15
+[bench] hot-plus-500-sporadic per-function (no change) rep=2 useful=8858 p99=4.793ms backlogMax=14
+[bench] hot-plus-500-sporadic per-function (no change) rep=3 useful=8917 p99=5.965ms backlogMax=12
+[bench] hot-plus-500-sporadic shared-queue (no change) rep=3 useful=8897 p99=5.973ms backlogMax=15
+[bench] hot-plus-500-sporadic per-function -> shared-queue rep=3 useful=8938 p99=5.231ms backlogMax=13
+[bench] hot-plus-500-sporadic shared-queue -> per-function rep=3 useful=8913 p99=7.589ms backlogMax=17
+[bench] hot-plus-500-sporadic shared-queue -> per-function rep=4 useful=8792 p99=5.881ms backlogMax=17
+[bench] hot-plus-500-sporadic per-function -> shared-queue rep=4 useful=8801 p99=7.118ms backlogMax=17
+[bench] hot-plus-500-sporadic shared-queue (no change) rep=4 useful=8805 p99=6.485ms backlogMax=17
+[bench] hot-plus-500-sporadic per-function (no change) rep=4 useful=8772 p99=5.490ms backlogMax=13
+[bench] hot-plus-500-sporadic per-function (no change) rep=5 useful=8983 p99=6.205ms backlogMax=18
+[bench] hot-plus-500-sporadic shared-queue (no change) rep=5 useful=8977 p99=4.770ms backlogMax=19
+[bench] hot-plus-500-sporadic per-function -> shared-queue rep=5 useful=9006 p99=5.257ms backlogMax=19
+[bench] hot-plus-500-sporadic shared-queue -> per-function rep=5 useful=8979 p99=6.384ms backlogMax=19
+[bench] warm-up heterogeneous-burst per-function (no change)
+[bench] warm-up heterogeneous-burst shared-queue (no change)
+[bench] warm-up heterogeneous-burst per-function -> shared-queue
+[bench] warm-up heterogeneous-burst shared-queue -> per-function
+[bench] heterogeneous-burst per-function (no change) rep=1 useful=2626 p99=299.065ms backlogMax=1467
+[bench] heterogeneous-burst shared-queue (no change) rep=1 useful=2454 p99=301.135ms backlogMax=1467
+[bench] heterogeneous-burst per-function -> shared-queue rep=1 useful=2431 p99=300.735ms backlogMax=1467
+[bench] heterogeneous-burst shared-queue -> per-function rep=1 useful=2634 p99=299.411ms backlogMax=1466
+[bench] heterogeneous-burst shared-queue -> per-function rep=2 useful=2662 p99=299.355ms backlogMax=1468
+[bench] heterogeneous-burst per-function -> shared-queue rep=2 useful=2441 p99=297.612ms backlogMax=1464
+[bench] heterogeneous-burst shared-queue (no change) rep=2 useful=2370 p99=297.846ms backlogMax=1468
+[bench] heterogeneous-burst per-function (no change) rep=2 useful=2638 p99=299.434ms backlogMax=1460
+[bench] heterogeneous-burst per-function (no change) rep=3 useful=2684 p99=297.350ms backlogMax=1495
+[bench] heterogeneous-burst shared-queue (no change) rep=3 useful=2458 p99=298.539ms backlogMax=1491
+[bench] heterogeneous-burst per-function -> shared-queue rep=3 useful=2462 p99=299.718ms backlogMax=1490
+[bench] heterogeneous-burst shared-queue -> per-function rep=3 useful=2634 p99=298.415ms backlogMax=1493
+[bench] heterogeneous-burst shared-queue -> per-function rep=4 useful=2589 p99=300.292ms backlogMax=1456
+[bench] heterogeneous-burst per-function -> shared-queue rep=4 useful=2472 p99=295.690ms backlogMax=1456
+[bench] heterogeneous-burst shared-queue (no change) rep=4 useful=2436 p99=298.350ms backlogMax=1459
+[bench] heterogeneous-burst per-function (no change) rep=4 useful=2657 p99=296.763ms backlogMax=1456
+[bench] heterogeneous-burst per-function (no change) rep=5 useful=2697 p99=297.943ms backlogMax=1472
+[bench] heterogeneous-burst shared-queue (no change) rep=5 useful=2444 p99=294.952ms backlogMax=1474
+[bench] heterogeneous-burst per-function -> shared-queue rep=5 useful=2510 p99=297.743ms backlogMax=1472
+[bench] heterogeneous-burst shared-queue -> per-function rep=5 useful=2729 p99=296.916ms backlogMax=1469
+[bench] warm-up head-of-line-blocking per-function (no change)
+[bench] warm-up head-of-line-blocking shared-queue (no change)
+[bench] warm-up head-of-line-blocking per-function -> shared-queue
+[bench] warm-up head-of-line-blocking shared-queue -> per-function
+[bench] head-of-line-blocking per-function (no change) rep=1 useful=454 p99=2.615ms backlogMax=128
+[bench] head-of-line-blocking shared-queue (no change) rep=1 useful=437 p99=136.160ms backlogMax=133
+[bench] head-of-line-blocking per-function -> shared-queue rep=1 useful=437 p99=118.852ms backlogMax=123
+[bench] head-of-line-blocking shared-queue -> per-function rep=1 useful=452 p99=2.846ms backlogMax=133
+[bench] head-of-line-blocking shared-queue -> per-function rep=2 useful=425 p99=3.531ms backlogMax=135
+[bench] head-of-line-blocking per-function -> shared-queue rep=2 useful=406 p99=124.704ms backlogMax=134
+[bench] head-of-line-blocking shared-queue (no change) rep=2 useful=405 p99=141.158ms backlogMax=146
+[bench] head-of-line-blocking per-function (no change) rep=2 useful=424 p99=3.077ms backlogMax=135
+[bench] head-of-line-blocking per-function (no change) rep=3 useful=422 p99=3.115ms backlogMax=148
+[bench] head-of-line-blocking shared-queue (no change) rep=3 useful=415 p99=133.806ms backlogMax=135
+[bench] head-of-line-blocking per-function -> shared-queue rep=3 useful=415 p99=132.437ms backlogMax=134
+[bench] head-of-line-blocking shared-queue -> per-function rep=3 useful=422 p99=3.358ms backlogMax=150
+[bench] head-of-line-blocking shared-queue -> per-function rep=4 useful=488 p99=3.289ms backlogMax=135
+[bench] head-of-line-blocking per-function -> shared-queue rep=4 useful=479 p99=151.629ms backlogMax=133
+[bench] head-of-line-blocking shared-queue (no change) rep=4 useful=475 p99=124.755ms backlogMax=136
+[bench] head-of-line-blocking per-function (no change) rep=4 useful=489 p99=2.867ms backlogMax=129
+[bench] head-of-line-blocking per-function (no change) rep=5 useful=474 p99=2.919ms backlogMax=136
+[bench] head-of-line-blocking shared-queue (no change) rep=5 useful=459 p99=170.889ms backlogMax=138
+[bench] head-of-line-blocking per-function -> shared-queue rep=5 useful=459 p99=122.813ms backlogMax=138
+[bench] head-of-line-blocking shared-queue -> per-function rep=5 useful=475 p99=2.964ms backlogMax=134
+[bench] warm-up mixed-kind-retry per-function (no change)
+[bench] warm-up mixed-kind-retry shared-queue (no change)
+[bench] warm-up mixed-kind-retry per-function -> shared-queue
+[bench] warm-up mixed-kind-retry shared-queue -> per-function
+[bench] mixed-kind-retry per-function (no change) rep=1 useful=3794 p99=4.931ms backlogMax=10
+[bench] mixed-kind-retry shared-queue (no change) rep=1 useful=3818 p99=4.849ms backlogMax=9
+[bench] mixed-kind-retry per-function -> shared-queue rep=1 useful=3815 p99=4.925ms backlogMax=8
+[bench] mixed-kind-retry shared-queue -> per-function rep=1 useful=3816 p99=5.353ms backlogMax=10
+[bench] mixed-kind-retry shared-queue -> per-function rep=2 useful=3851 p99=4.816ms backlogMax=9
+[bench] mixed-kind-retry per-function -> shared-queue rep=2 useful=3833 p99=4.592ms backlogMax=8
+[bench] mixed-kind-retry shared-queue (no change) rep=2 useful=3822 p99=4.501ms backlogMax=12
+[bench] mixed-kind-retry per-function (no change) rep=2 useful=3830 p99=4.826ms backlogMax=8
+[bench] mixed-kind-retry per-function (no change) rep=3 useful=3730 p99=5.011ms backlogMax=6
+[bench] mixed-kind-retry shared-queue (no change) rep=3 useful=3742 p99=5.380ms backlogMax=7
+[bench] mixed-kind-retry per-function -> shared-queue rep=3 useful=3746 p99=4.925ms backlogMax=7
+[bench] mixed-kind-retry shared-queue -> per-function rep=3 useful=3766 p99=5.116ms backlogMax=7
+[bench] mixed-kind-retry shared-queue -> per-function rep=4 useful=3825 p99=4.970ms backlogMax=8
+[bench] mixed-kind-retry per-function -> shared-queue rep=4 useful=3811 p99=4.679ms backlogMax=10
+[bench] mixed-kind-retry shared-queue (no change) rep=4 useful=3826 p99=4.893ms backlogMax=9
+[bench] mixed-kind-retry per-function (no change) rep=4 useful=3795 p99=5.532ms backlogMax=12
+[bench] mixed-kind-retry per-function (no change) rep=5 useful=3760 p99=4.566ms backlogMax=8
+[bench] mixed-kind-retry shared-queue (no change) rep=5 useful=3771 p99=4.667ms backlogMax=8
+[bench] mixed-kind-retry per-function -> shared-queue rep=5 useful=3777 p99=4.864ms backlogMax=8
+[bench] mixed-kind-retry shared-queue -> per-function rep=5 useful=3766 p99=4.493ms backlogMax=8
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] warm-up churn-drain per-function (no change)
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] warm-up churn-drain shared-queue (no change)
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] warm-up churn-drain per-function -> shared-queue
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] warm-up churn-drain shared-queue -> per-function
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] churn-drain per-function (no change) rep=1 useful=2971 p99=2.847ms backlogMax=6
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] churn-drain shared-queue (no change) rep=1 useful=2979 p99=2.781ms backlogMax=5
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] churn-drain per-function -> shared-queue rep=1 useful=2971 p99=2.494ms backlogMax=5
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] churn-drain shared-queue -> per-function rep=1 useful=2970 p99=2.533ms backlogMax=5
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] churn-drain shared-queue -> per-function rep=2 useful=2955 p99=2.591ms backlogMax=9
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] churn-drain per-function -> shared-queue rep=2 useful=2951 p99=2.511ms backlogMax=9
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] churn-drain shared-queue (no change) rep=2 useful=2952 p99=2.419ms backlogMax=9
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] churn-drain per-function (no change) rep=2 useful=2952 p99=2.422ms backlogMax=8
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] churn-drain per-function (no change) rep=3 useful=2969 p99=2.519ms backlogMax=5
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] churn-drain shared-queue (no change) rep=3 useful=2977 p99=2.812ms backlogMax=5
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] churn-drain per-function -> shared-queue rep=3 useful=2977 p99=2.772ms backlogMax=5
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] churn-drain shared-queue -> per-function rep=3 useful=2971 p99=2.634ms backlogMax=5
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] churn-drain shared-queue -> per-function rep=4 useful=2894 p99=2.571ms backlogMax=6
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] churn-drain per-function -> shared-queue rep=4 useful=2896 p99=2.589ms backlogMax=6
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] churn-drain shared-queue (no change) rep=4 useful=2894 p99=2.484ms backlogMax=6
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] churn-drain per-function (no change) rep=4 useful=2894 p99=2.503ms backlogMax=6
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] churn-drain per-function (no change) rep=5 useful=2987 p99=2.746ms backlogMax=4
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] churn-drain shared-queue (no change) rep=5 useful=2977 p99=2.579ms backlogMax=5
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] churn-drain per-function -> shared-queue rep=5 useful=2988 p99=2.767ms backlogMax=5
+[bench] churned out sporadic-0
+[bench] churned out sporadic-1
+[bench] churned out sporadic-2
+[bench] churned out sporadic-3
+[bench] churned out sporadic-4
+[bench] churned out sporadic-5
+[bench] churned out sporadic-6
+[bench] churned out sporadic-7
+[bench] registered sporadic-r0
+[bench] registered sporadic-r1
+[bench] registered sporadic-r2
+[bench] registered sporadic-r3
+[bench] registered sporadic-r4
+[bench] registered sporadic-r5
+[bench] registered sporadic-r6
+[bench] registered sporadic-r7
+[bench] churn-drain shared-queue -> per-function rep=5 useful=2982 p99=2.601ms backlogMax=4
+[bench] capacity change to 8
+[bench] warm-up capacity-change per-function (no change)
+[bench] capacity change to 8
+[bench] warm-up capacity-change shared-queue (no change)
+[bench] capacity change to 8
+[bench] warm-up capacity-change per-function -> shared-queue
+[bench] capacity change to 8
+[bench] warm-up capacity-change shared-queue -> per-function
+[bench] capacity change to 8
+[bench] capacity-change per-function (no change) rep=1 useful=4508 p99=35.726ms backlogMax=29
+[bench] capacity change to 8
+[bench] capacity-change shared-queue (no change) rep=1 useful=4128 p99=145.629ms backlogMax=88
+[bench] capacity change to 8
+[bench] capacity-change per-function -> shared-queue rep=1 useful=4312 p99=145.380ms backlogMax=87
+[bench] capacity change to 8
+[bench] capacity-change shared-queue -> per-function rep=1 useful=4324 p99=97.171ms backlogMax=87
+[bench] capacity change to 8
+[bench] capacity-change shared-queue -> per-function rep=2 useful=4298 p99=71.083ms backlogMax=87
+[bench] capacity change to 8
+[bench] capacity-change per-function -> shared-queue rep=2 useful=4210 p99=147.152ms backlogMax=85
+[bench] capacity change to 8
+[bench] capacity-change shared-queue (no change) rep=2 useful=4044 p99=150.248ms backlogMax=93
+[bench] capacity change to 8
+[bench] capacity-change per-function (no change) rep=2 useful=4417 p99=53.799ms backlogMax=26
+[bench] capacity change to 8
+[bench] capacity-change per-function (no change) rep=3 useful=4439 p99=48.704ms backlogMax=31
+[bench] capacity change to 8
+[bench] capacity-change shared-queue (no change) rep=3 useful=4040 p99=144.530ms backlogMax=95
+[bench] capacity change to 8
+[bench] capacity-change per-function -> shared-queue rep=3 useful=4190 p99=148.275ms backlogMax=99
+[bench] capacity change to 8
+[bench] capacity-change shared-queue -> per-function rep=3 useful=4359 p99=85.784ms backlogMax=88
+[bench] capacity change to 8
+[bench] capacity-change shared-queue -> per-function rep=4 useful=4359 p99=63.788ms backlogMax=92
+[bench] capacity change to 8
+[bench] capacity-change per-function -> shared-queue rep=4 useful=4251 p99=144.900ms backlogMax=82
+[bench] capacity change to 8
+[bench] capacity-change shared-queue (no change) rep=4 useful=4136 p99=142.771ms backlogMax=100
+[bench] capacity change to 8
+[bench] capacity-change per-function (no change) rep=4 useful=4478 p99=53.536ms backlogMax=33
+[bench] capacity change to 8
+[bench] capacity-change per-function (no change) rep=5 useful=4527 p99=42.461ms backlogMax=28
+[bench] capacity change to 8
+[bench] capacity-change shared-queue (no change) rep=5 useful=4043 p99=148.316ms backlogMax=92
+[bench] capacity change to 8
+[bench] capacity-change per-function -> shared-queue rep=5 useful=4208 p99=144.728ms backlogMax=87
+[bench] capacity change to 8
+[bench] capacity-change shared-queue -> per-function rep=5 useful=4446 p99=90.823ms backlogMax=86
+[bench] warm-up switch-under-load per-function (no change)
+[bench] warm-up switch-under-load shared-queue (no change)
+[bench] warm-up switch-under-load per-function -> shared-queue
+[bench] warm-up switch-under-load shared-queue -> per-function
+[bench] switch-under-load per-function (no change) rep=1 useful=2421 p99=253.343ms backlogMax=1183
+[bench] switch-under-load shared-queue (no change) rep=1 useful=2351 p99=250.866ms backlogMax=1173
+[bench] switch-under-load per-function -> shared-queue rep=1 useful=2417 p99=251.324ms backlogMax=1148
+[bench] switch-under-load shared-queue -> per-function rep=1 useful=2486 p99=253.171ms backlogMax=1175
+[bench] switch-under-load shared-queue -> per-function rep=2 useful=2456 p99=251.441ms backlogMax=1125
+[bench] switch-under-load per-function -> shared-queue rep=2 useful=2373 p99=251.459ms backlogMax=1153
+[bench] switch-under-load shared-queue (no change) rep=2 useful=2405 p99=250.722ms backlogMax=1153
+[bench] switch-under-load per-function (no change) rep=2 useful=2446 p99=252.705ms backlogMax=1146
+[bench] switch-under-load per-function (no change) rep=3 useful=2453 p99=252.592ms backlogMax=1174
+[bench] switch-under-load shared-queue (no change) rep=3 useful=2339 p99=251.066ms backlogMax=1168
+[bench] switch-under-load per-function -> shared-queue rep=3 useful=2322 p99=250.068ms backlogMax=1195
+[bench] switch-under-load shared-queue -> per-function rep=3 useful=2518 p99=251.820ms backlogMax=1126
+[bench] switch-under-load shared-queue -> per-function rep=4 useful=2496 p99=251.597ms backlogMax=1139
+[bench] switch-under-load per-function -> shared-queue rep=4 useful=2385 p99=249.151ms backlogMax=1162
+[bench] switch-under-load shared-queue (no change) rep=4 useful=2371 p99=250.208ms backlogMax=1142
+[bench] switch-under-load per-function (no change) rep=4 useful=2449 p99=253.239ms backlogMax=1143
+[bench] switch-under-load per-function (no change) rep=5 useful=2441 p99=253.105ms backlogMax=1165
+[bench] switch-under-load shared-queue (no change) rep=5 useful=2340 p99=251.328ms backlogMax=1177
+[bench] switch-under-load per-function -> shared-queue rep=5 useful=2373 p99=251.231ms backlogMax=1165
+[bench] switch-under-load shared-queue -> per-function rep=5 useful=2468 p99=253.428ms backlogMax=1198
+[bench] warm-up unqueued per-function (no change)
+[bench] warm-up unqueued shared-queue (no change)
+[bench] warm-up unqueued per-function -> shared-queue
+[bench] warm-up unqueued shared-queue -> per-function
+[bench] unqueued per-function (no change) rep=1 useful=1172 p99=4.086ms backlogMax=2
+[bench] unqueued shared-queue (no change) rep=1 useful=1170 p99=4.285ms backlogMax=2
+[bench] unqueued per-function -> shared-queue rep=1 useful=1168 p99=3.826ms backlogMax=2
+[bench] unqueued shared-queue -> per-function rep=1 useful=1173 p99=4.521ms backlogMax=3
+[bench] unqueued shared-queue -> per-function rep=2 useful=1177 p99=4.214ms backlogMax=2
+[bench] unqueued per-function -> shared-queue rep=2 useful=1179 p99=3.822ms backlogMax=2
+[bench] unqueued shared-queue (no change) rep=2 useful=1178 p99=3.786ms backlogMax=2
+[bench] unqueued per-function (no change) rep=2 useful=1177 p99=4.026ms backlogMax=2
+[bench] unqueued per-function (no change) rep=3 useful=1166 p99=3.967ms backlogMax=3
+[bench] unqueued shared-queue (no change) rep=3 useful=1169 p99=4.241ms backlogMax=3
+[bench] unqueued per-function -> shared-queue rep=3 useful=1167 p99=3.932ms backlogMax=3
+[bench] unqueued shared-queue -> per-function rep=3 useful=1170 p99=3.976ms backlogMax=3
+[bench] unqueued shared-queue -> per-function rep=4 useful=1147 p99=3.887ms backlogMax=2
+[bench] unqueued per-function -> shared-queue rep=4 useful=1146 p99=3.943ms backlogMax=2
+[bench] unqueued shared-queue (no change) rep=4 useful=1149 p99=4.088ms backlogMax=2
+[bench] unqueued per-function (no change) rep=4 useful=1149 p99=4.226ms backlogMax=2
+[bench] unqueued per-function (no change) rep=5 useful=1129 p99=4.184ms backlogMax=2
+[bench] unqueued shared-queue (no change) rep=5 useful=1129 p99=3.932ms backlogMax=2
+[bench] unqueued per-function -> shared-queue rep=5 useful=1128 p99=3.991ms backlogMax=2
+[bench] unqueued shared-queue -> per-function rep=5 useful=1130 p99=4.677ms backlogMax=2
+[bench] warm-up queued per-function (no change)
+[bench] warm-up queued shared-queue (no change)
+[bench] warm-up queued per-function -> shared-queue
+[bench] warm-up queued shared-queue -> per-function
+[bench] queued per-function (no change) rep=1 useful=1195 p99=83.886ms backlogMax=15
+[bench] queued shared-queue (no change) rep=1 useful=1204 p99=58.107ms backlogMax=18
+[bench] queued per-function -> shared-queue rep=1 useful=1197 p99=59.203ms backlogMax=18
+[bench] queued shared-queue -> per-function rep=1 useful=1202 p99=89.914ms backlogMax=17
+[bench] queued shared-queue -> per-function rep=2 useful=1176 p99=82.448ms backlogMax=14
+[bench] queued per-function -> shared-queue rep=2 useful=1183 p99=58.151ms backlogMax=16
+[bench] queued shared-queue (no change) rep=2 useful=1183 p99=53.246ms backlogMax=16
+[bench] queued per-function (no change) rep=2 useful=1178 p99=83.430ms backlogMax=12
+[bench] queued per-function (no change) rep=3 useful=1138 p99=65.959ms backlogMax=14
+[bench] queued shared-queue (no change) rep=3 useful=1141 p99=44.741ms backlogMax=14
+[bench] queued per-function -> shared-queue rep=3 useful=1141 p99=32.186ms backlogMax=8
+[bench] queued shared-queue -> per-function rep=3 useful=1140 p99=62.886ms backlogMax=7
+[bench] queued shared-queue -> per-function rep=4 useful=1128 p99=100.023ms backlogMax=25
+[bench] queued per-function -> shared-queue rep=4 useful=1169 p99=67.107ms backlogMax=19
+[bench] queued shared-queue (no change) rep=4 useful=1149 p99=100.077ms backlogMax=32
+[bench] queued per-function (no change) rep=4 useful=1151 p99=78.889ms backlogMax=23
+[bench] queued per-function (no change) rep=5 useful=1145 p99=72.119ms backlogMax=9
+[bench] queued shared-queue (no change) rep=5 useful=1145 p99=47.164ms backlogMax=9
+[bench] queued per-function -> shared-queue rep=5 useful=1144 p99=93.841ms backlogMax=31
+[bench] queued shared-queue -> per-function rep=5 useful=1141 p99=82.678ms backlogMax=12
+[bench] return-to-baseline: committed=1000 refused=0 pending switched=399 vs plain=400 live switched=1 vs plain=1 maxLive=2 conserved switched=true plain=true

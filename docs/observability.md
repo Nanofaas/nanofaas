@@ -76,24 +76,31 @@ load, and the gap is not a bug — it is the censored population. Read
 `function_e2e_latency_ms` for what a caller experienced, and `function_latency_ms`
 only for how long the runtime took on the attempts it finished.
 
-`async-queue` and `sync-queue` are alternative providers of the four common
-per-function workload gauges above. Dashboards, HPA rules, and autoscaling
-should use those names independently of the selected queue module.
+The four common per-function workload gauges above have one provider,
+`EngineWorkloadMetricsSource`, whichever queue module or scheduling strategy is
+selected. Dashboards, HPA rules, and autoscaling should use those names
+independently of the selected queue module.
 
 ### Sync Queue Metrics
 
 - sync_queue_depth (`function=""` for the global series, function name otherwise)
-- sync_queue_wait_seconds (`function=""` for the global series, function name otherwise)
 - sync_queue_admitted_total
 - sync_queue_rejected_total
-- sync_queue_timedout_total
+
+In the `SYNC_QUEUE` admission profile, `sync_queue_depth` reads the engine's
+outstanding reservations: pending tickets plus a provisional claim or a submit
+until it settles, and input backpressure keeps the reservation. In other
+admission profiles it is zero. `sync_queue_wait_seconds` and
+`sync_queue_timedout_total` no longer exist: nothing had recorded them since the
+queue moved into the shared scheduler engine. A sync caller whose ticket passes
+its queue deadline gets a `429` with reject reason `TIMEOUT`.
 
 ### Queue Contention Reading Guide
 
 - Rising `sync_queue_depth{function}` together with flat `function_dispatch_total{function}` usually means admission is succeeding faster than dispatch slots reopen.
 - A high `sync_queue_rejected_total{function}` with low depth points to estimated-wait rejection, not raw queue-capacity exhaustion.
 - If `function_dispatch_total{function}` keeps growing but `function_success_total{function}` and `function_error_total{function}` lag, look at completion latency rather than scheduler fairness.
-- Compare queue depth against `function_inFlight{function}` and `function_effective_concurrency{function}` for either queue provider. Persistent depth with low in-flight implies the function is under-provisioned or slot-limited; persistent depth with high in-flight implies the runtime itself is slow.
+- Compare queue depth against `function_inFlight{function}` and `function_effective_concurrency{function}`. Persistent depth with low in-flight implies the function is under-provisioned or slot-limited; persistent depth with high in-flight implies the runtime itself is slow.
 - After the fairness changes, short bursts from colder functions should still show dispatch growth even while one hot function maintains backlog. If one function's dispatch counter starves completely while others are active, that is now a regression signal.
 
 ### Autoscaler Interpretation

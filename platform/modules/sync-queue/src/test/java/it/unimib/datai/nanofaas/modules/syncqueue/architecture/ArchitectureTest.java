@@ -36,27 +36,26 @@ class ArchitectureTest {
                     .as("module must not depend on other modules (SPI isolation)");
 
     /**
-     * P22: the module consumes contracts, never the core implementations behind them.
-     *
-     * <p>The build graph already makes this impossible — this module's compile classpath holds the
-     * contract library and not {@code :control-plane} — so the rule is a second line of defence
-     * that names what must stay out if that dependency is ever added back. It is expressed by type
-     * name rather than by package because the core and the contract library deliberately share
-     * package names: {@code controlplane.service} holds both the {@code InvocationEnqueuer}
-     * contract and the {@code Metrics} implementation.</p>
+     * The module consumes contracts; SyncQueueConfiguration is the composition point that binds
+     * admission collaborators to SchedulerEngine.
      */
     @ArchTest
     static final ArchRule does_not_depend_on_core_implementations =
             noClasses()
+                    .that(DescribedPredicate.not(
+                            com.tngtech.archunit.core.domain.JavaClass.Predicates.simpleName("SyncQueueConfiguration")))
                     .should().dependOnClassesThat()
-                    .haveNameMatching("it\\.unimib\\.datai\\.nanofaas\\.controlplane\\."
+                    .haveNameMatching("it\\.unimib\\.datai\\.nanofaas\\."
                             + "(execution\\..*"
-                            + "|service\\.(Metrics|InvocationService|ReactiveInvocationCoordinator"
-                            + "|ExecutionCompletionHandler|RateLimiter)"
-                            + "|capacity\\.(FunctionCapacityRegistry|FunctionCapacityState|DispatchLease"
+                            + "|controlplane\\.execution\\..*"
+                            + "|controlplane\\.service\\.(Metrics|InvocationService|ReactiveInvocationCoordinator"
+                            + "|ExecutionCompletionHandler|RateLimiter|EngineInvocationEnqueuer|SchedulerConfiguration"
+                            + "|SchedulerLifecycleAdapter)"
+                            + "|controlplane\\.capacity\\.(FunctionCapacityRegistry|FunctionCapacityState|DispatchLease"
                             + "|InvocationCapacity|WaiterCapacity|ResourceQuota)"
-                            + "|registry\\.(FunctionRegistry|FunctionService|FunctionCatalog"
+                            + "|controlplane\\.registry\\.(FunctionRegistry|FunctionService|FunctionCatalog"
                             + "|ManagedDeploymentCoordinator)"
-                            + "|deployment\\.(ReplicaStatusSnapshot|DeploymentWakeUpCoordinator))")
-                    .as("a module consumes contracts and ports, never core implementations");
+                            + "|controlplane\\.deployment\\.(ReplicaStatusSnapshot|DeploymentWakeUpCoordinator))")
+                    .as("a module consumes contracts and ports, never core implementations, "
+                            + "except SyncQueueConfiguration's EngineSyncQueueGateway factory");
 }

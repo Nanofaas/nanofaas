@@ -32,6 +32,12 @@ services:
       NANOFAAS_CONCURRENCY_CONTROL_TOTAL_BUDGET: ${NANOFAAS_CONCURRENCY_CONTROL_TOTAL_BUDGET:-}
       NANOFAAS_METRICS_PROFILE: advanced
       NANOFAAS_REGISTRY_PATH: /var/lib/nanofaas/functions.json
+      # Which strategy the composed engine starts on: per-function or shared-queue.
+      # Empty (the default) is the legacy mapping over the queue modules in the image,
+      # and takes effect only when the image carries one — the build's default
+      # NANOFAAS_CONTROL_PLANE_MODULES above has none, so the scheduler namespace
+      # exists only for an image built with async-queue and/or sync-queue.
+      NANOFAAS_SCHEDULER_STRATEGY: ${NANOFAAS_SCHEDULER_STRATEGY:-}
     ports:
       - "8080:8080"
       - "8081:8081"

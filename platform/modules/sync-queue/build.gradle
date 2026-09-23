@@ -9,35 +9,29 @@ dependencyManagement {
     }
 }
 
-// async-queue is defaultEnabled, so it lands on this module's test classpath and
-// both providers then publish a FunctionCapacityRegistry - an ambiguity the module
-// selector forbids (conflicts=async-queue) but a Gradle classpath does not know
-// about. The context test is gated on the selection for that reason.
-def syncQueueSelected = gradle.ext.nanofaasSelectedControlPlaneModules.contains('sync-queue')
-
 dependencies {
-    // P21: contract library only; the core implementation stays on the test classpath.
     implementation project(':common')
     implementation project(':control-plane-spi')
     implementation project(':workload-metrics')
+    // Task 8 (issue #208): EngineSyncQueueGateway composes this module's own admission
+    // collaborators (WaitEstimator, SyncQueueAdmissionController) onto the shared engine, so
+    // this module now depends on control-plane and execution-runtime directly instead of only
+    // on their test classpath. async-queue and sync-queue now share one classpath by design —
+    // the ambiguity this comment used to warn about (two schedulers, two WorkloadCapacityController
+    // beans) is exactly what SchedulerConfiguration's single-bean composition removes.
+    implementation project(':control-plane')
+    implementation project(':execution-runtime')
 
     implementation 'org.springframework.boot:spring-boot-starter'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-webflux'
-    // The runtime-config implementation supplies the concrete registry these tests drive;
-    // the core implementation backs the module's integration tests.
-    testImplementation project(':control-plane')
     testImplementation project(':control-plane-modules:runtime-config')
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.0'
     testImplementation 'org.awaitility:awaitility:4.3.0'
     testImplementation 'io.micrometer:micrometer-registry-prometheus'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-}
-
-tasks.named('test') {
-    systemProperty 'nanofaas.queue.provider', syncQueueSelected ? 'sync-queue' : 'async-queue'
 }
 
 // Vedi il gemello in platform/control-plane/build.gradle: classpath per i banchi

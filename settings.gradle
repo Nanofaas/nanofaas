@@ -28,6 +28,7 @@ include('common');            project(':common').projectDir = file('platform/com
 include('workload-metrics');  project(':workload-metrics').projectDir = file('platform/workload-metrics')
 include(':sdks:java');        project(':sdks:java').projectDir = file('sdks/java')
 include('control-plane-spi'); project(':control-plane-spi').projectDir = file('platform/control-plane-spi')
+include('execution-runtime'); project(':execution-runtime').projectDir = file('platform/execution-runtime')
 include('control-plane');     project(':control-plane').projectDir = file('platform/control-plane')
 include(':services:java:warm-echo'); project(':services:java:warm-echo').projectDir = file('services/java/warm-echo')
 include('nanofaas-cli');      project(':nanofaas-cli').projectDir = file('clients/cli')

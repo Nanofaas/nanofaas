@@ -1,0 +1,173 @@
+## Coverage
+
+- revision `c64da0717f9ec47f60c70108b019d2b91d02c9b1`, harness `761908913d93`, committed harness `353ee27881ef`
+- JVM OpenJDK 64-Bit Server VM 25.0.4+7-1-24.04-Ubuntu on Linux 6.17.0-1032-nvidia aarch64, 20 processors
+- profiles requested: `low-load,saturated,unqueued,queued,churn-drain,mixed-kind-retry`, repetitions: 5
+- admission: old per-function queueSize = floor(profile.maxPending / functions); the totals are equal, the rejection instants are not
+- expiry in the old arm: none: the old async loop has no deadline and the driver adds no reaper
+
+| workload | old reps | new reps | new expired | old expired | offered old/new | admitted old/new | policy-confounded |
+|---|---|---|---|---|---|---|---|
+| churn-drain | 5 | 5 | 0 | 0 | 6180/6180 | 6180/6180 | no |
+| low-load | 5 | 5 | 0 | 0 | 194/194 | 194/194 | no |
+| mixed-kind-retry | 5 | 5 | 0 | 0 | 9510/9510 | 9510/9510 | no |
+| queued | 5 | 5 | 41 | 0 | 2830/2830 | 2830/2830 | yes |
+| saturated | 5 | 5 | 14524 | 0 | 18926/18926 | 4780/18926 | yes |
+| unqueued | 5 | 5 | 0 | 0 | 2833/2834 | 2833/2834 | no |
+
+- runs that conserve work (admitted == completed + expired + removed + rejected + pending + claimed + submitting + in flight): **60 of 60**
+- runs with a driver failure: **0**
+- runs whose sample cap was reached: **0**
+- runs whose steady window holds no arrivals on one arm: **1** of 6 workloads
+- `offered` identical across the two arms in **27 of 30** (workload, repetition) pairs
+  - they differ by -1 on `mixed-kind-retry` repetition 1 (retries -1): the reactive retry draw
+  - they differ by -1 on `mixed-kind-retry` repetition 3 (retries +0): the window-close race, retry counts equal
+  - they differ by +1 on `unqueued` repetition 5 (retries +0): the window-close race, retry counts equal
+
+## Does the old loop settle? — the committed rule, read off its own depth trajectory
+
+`settledDepth` is the median of the final quarter of the trajectory, `settleMillis` the last point of it still outside that distribution's Tukey fence; both read the queue-depth series, so the segmentation cannot be steered by the latency it segments. The steady window is the trailing 2000 ms.
+
+| workload | arm | settled depth | settle ms (worst rep) | settled before the steady window | arrivals in the steady window |
+|---|---|---|---|---|---|
+| churn-drain | old-async (no change) | 0-0 | 5000 | yes | 0 |
+| churn-drain | per-function (no change) | 0-0 | 5000 | yes | 0 |
+| low-load | old-async (no change) | 0-0 | 0 | yes | 43 |
+| low-load | per-function (no change) | 0-0 | 0 | yes | 42 |
+| mixed-kind-retry | old-async (no change) | 3-4 | 50 | yes | 1966 |
+| mixed-kind-retry | per-function (no change) | 2-4 | 0 | yes | 1966 |
+| queued | old-async (no change) | 6-29 | 2400 | yes | 599 |
+| queued | per-function (no change) | 4-9 | 0 | yes | 589 |
+| saturated | old-async (no change) | 513-513 | 0 | yes | 348 |
+| saturated | per-function (no change) | 109-112 | 50 | yes | 894 |
+| unqueued | old-async (no change) | 0-1 | 0 | yes | 604 |
+| unqueued | per-function (no change) | 0-1 | 0 | yes | 603 |
+
+## Old loop against the new engine, repetition by repetition
+
+`paired` is the median of the five within-repetition differences `(new - old) / old`, which is what running both arms in one process on one arrival script buys: the host's common mode cancels. `unpaired` is the median-vs-median difference, for contrast. `separated` says whether all five paired differences agree in sign, which is the only thing that makes the median a measured effect rather than one draw of a noisy quantity. A `window` metric is marked NOT MEASURABLE where either arm had not settled before the trailing 2000 ms, that window holds fewer than 30 arrivals, or the control arm's own value there is zero. A `*` marks a profile whose arms differ by the expiry policy as well as by the loop.
+
+| workload | metric | session | old | new | unpaired delta % | paired delta % (5 reps) | paired range | separated | budget % | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|
+| churn-drain | whole-span p99 | whole | 2.729 | 2.641 | -3.24 | -4.10 | -7.06…+5.14 | no | 5 | PASS |
+| churn-drain | steady p99 | window | — | — | — | — | — | — | 5 | NOT MEASURABLE (fewer than 30 arrivals in the steady window) |
+| churn-drain | whole-span useful throughput | whole | 772.497 | 772.327 | -0.02 | -0.01 | -0.02…+0.02 | no | 5 | PASS |
+| churn-drain | steady useful throughput | window | — | — | — | — | — | — | 5 | NOT MEASURABLE (fewer than 30 arrivals in the steady window) |
+| churn-drain | thread cpu per useful completion | whole | 42134.000 | 46977.000 | +11.49 | +14.75 | -9.94…+72.54 | no | 10 | MISS |
+| churn-drain | post-GC heap | whole | 77449232.000 | 77255304.000 | -0.25 | -0.25 | -0.25…-0.25 | yes | 10 | PASS |
+| churn-drain | allocated bytes per useful completion | whole | 3885.000 | 4033.000 | +3.81 | +5.50 | +1.59…+5.93 | yes | — | no budget |
+| churn-drain | thread cpu per window | whole | 262918800.000 | 293149296.000 | +11.50 | +14.75 | -9.94…+72.54 | no | — | no budget |
+| low-load | whole-span p99 | whole | 2.778 | 2.814 | +1.29 | +1.29 | -9.48…+5.63 | no | 5 | PASS |
+| low-load | steady p99 | window | 2.570 | 2.793 | +8.67 | +5.40 | -19.52…+9.36 | no | 5 | MISS |
+| low-load | whole-span useful throughput | whole | 24.243 | 24.247 | +0.02 | +0.00 | -0.01…+0.02 | no | 5 | PASS |
+| low-load | steady useful throughput | window | 21.500 | 21.000 | -2.33 | +0.00 | -2.33…+0.00 | no | 5 | PASS |
+| low-load | thread cpu per useful completion | whole | 755178.000 | 768948.000 | +1.82 | +1.62 | +0.95…+11.25 | yes | 10 | PASS |
+| low-load | post-GC heap | whole | 77271168.000 | 77244288.000 | -0.03 | -0.03 | -0.04…+0.25 | no | 10 | PASS |
+| low-load | allocated bytes per useful completion | whole | 1654.000 | 1959.000 | +18.44 | +27.75 | +8.77…+45.92 | yes | — | no budget |
+| low-load | thread cpu per window | whole | 142493200.000 | 148739824.000 | +4.38 | +1.62 | +0.95…+11.25 | yes | — | no budget |
+| mixed-kind-retry | whole-span p99 | whole | 5.153 | 5.258 | +2.05 | +1.79 | +0.87…+6.98 | yes | 5 | PASS |
+| mixed-kind-retry | steady p99 | window | 5.283 | 5.186 | -1.83 | +3.41 | -3.49…+8.47 | no | 5 | PASS |
+| mixed-kind-retry | whole-span useful throughput | whole | 1188.449 | 1188.449 | +0.00 | +0.00 | -0.02…+0.03 | no | 5 | PASS |
+| mixed-kind-retry | steady useful throughput | window | 983.000 | 983.000 | +0.00 | +0.00 | -0.05…+0.15 | no | 5 | PASS |
+| mixed-kind-retry | thread cpu per useful completion | whole | 36995.000 | 47492.000 | +28.37 | +29.02 | +17.96…+47.92 | yes | 10 | MISS |
+| mixed-kind-retry | post-GC heap | whole | 77272840.000 | 77245336.000 | -0.04 | -0.04 | -0.04…-0.03 | yes | 10 | PASS |
+| mixed-kind-retry | allocated bytes per useful completion | whole | 1316.000 | 1517.000 | +15.27 | +14.69 | +11.79…+16.44 | yes | — | no budget |
+| mixed-kind-retry | thread cpu per window | whole | 353162976.000 | 448183568.000 | +26.91 | +29.02 | +17.96…+47.97 | yes | — | no budget |
+| queued * | whole-span p99 | whole | 124.134 | 87.116 | -29.82 | -25.53 | -40.65…+33.49 | no | 5 | PASS |
+| queued * | steady p99 | window | 99.280 | 87.532 | -11.83 | -6.57 | -43.48…+78.98 | no | 5 | PASS |
+| queued * | whole-span useful throughput | whole | 331.786 | 348.066 | +4.91 | +8.27 | -1.30…+18.26 | no | 5 | PASS |
+| queued * | steady useful throughput | window | 293.500 | 294.500 | +0.34 | -0.16 | -3.57…+74.26 | no | 5 | PASS |
+| queued * | thread cpu per useful completion | whole | 90045.000 | 110649.000 | +22.88 | +27.84 | -0.40…+55.95 | no | 10 | MISS |
+| queued * | post-GC heap | whole | 77273032.000 | 77247592.000 | -0.03 | -0.03 | -0.04…-0.03 | yes | 10 | PASS |
+| queued * | allocated bytes per useful completion | whole | 1259.000 | 1450.000 | +15.17 | +18.51 | +9.69…+35.51 | yes | — | no budget |
+| queued * | thread cpu per window | whole | 236216128.000 | 306609568.000 | +29.80 | +30.56 | +15.20…+56.64 | yes | — | no budget |
+| saturated * | whole-span p99 | whole | 1201.337 | 62.004 | -94.84 | -94.84 | -95.05…-94.74 | yes | 5 | PASS |
+| saturated * | steady p99 | window | 1206.798 | 61.935 | -94.87 | -94.87 | -95.09…-94.49 | yes | 5 | PASS |
+| saturated * | whole-span useful throughput | whole | 4.250 | 456.857 | +10649.95 | +10594.13 | +9271.79…+12746.66 | yes | 5 | PASS |
+| saturated | steady useful throughput | window | 0 | — | — | — | — | — | 5 | NOT MEASURABLE (the control arm's own value there is zero) |
+| saturated * | thread cpu per useful completion | whole | 7354219.000 | 169136.000 | -97.70 | -97.92 | -98.31…-97.68 | yes | 10 | PASS |
+| saturated * | post-GC heap | whole | 77466240.000 | 77310912.000 | -0.20 | -0.19 | -0.20…-0.16 | yes | 10 | PASS |
+| saturated * | allocated bytes per useful completion | whole | 449984.000 | 5867.000 | -98.70 | -98.71 | -98.76…-98.46 | yes | — | no budget |
+| saturated * | thread cpu per window | whole | 253997920.000 | 614980848.000 | +142.12 | +117.15 | +112.20…+145.95 | yes | — | no budget |
+| unqueued | whole-span p99 | whole | 4.295 | 4.295 | +0.00 | +2.04 | -11.41…+24.22 | no | 5 | PASS |
+| unqueued | steady p99 | window | 4.258 | 4.154 | -2.45 | +1.73 | -6.59…+3.06 | no | 5 | PASS |
+| unqueued | whole-span useful throughput | whole | 354.112 | 354.046 | -0.02 | +0.01 | -0.02…+0.01 | no | 5 | PASS |
+| unqueued | steady useful throughput | window | 302.000 | 301.500 | -0.17 | +0.00 | -0.17…+0.00 | no | 5 | PASS |
+| unqueued | thread cpu per useful completion | whole | 86299.000 | 95828.000 | +11.04 | +18.67 | -3.95…+77.75 | no | 10 | MISS |
+| unqueued | post-GC heap | whole | 77271552.000 | 77244752.000 | -0.03 | -0.03 | -0.03…-0.03 | yes | 10 | PASS |
+| unqueued | allocated bytes per useful completion | whole | 1100.000 | 1399.000 | +27.18 | +27.51 | +23.64…+30.46 | yes | — | no budget |
+| unqueued | thread cpu per window | whole | 245696080.000 | 269950144.000 | +9.87 | +18.67 | -3.95…+77.75 | no | — | no budget |
+
+A `MISS` with `separated: no` is a median that is not a measured effect: five repetitions put the difference on both sides of zero, so the row says the design did not resolve that metric on that profile, not that the engine regressed. On a `*` row a miss is a miss of the *profile*, not of the loop: the arms differ by the engine's reaper as well as by the loop, and the expiry figure in the coverage table is the size of that difference.
+
+## Resolving power: the smallest uniform difference this design would have detected
+
+Both operations are deterministic and read the arms, never the observed effect. **Unpaired** multiplies the old arm's own five values by `(1 + f)` — a perfectly uniform change with no added noise — and counts how often the shifted arm reads disjoint from the new arm's range; that is the operation a cross-run design can perform, and the count is its resolving power. **Paired** asks the smaller question this design can ask: how large `f` must be before all five within-repetition differences take the sign `f` implies, which is what makes a paired median an effect rather than one draw. A budget below the unpaired row's first detectable factor could not have been adjudicated without the pairing.
+
+**The median column of the first table is an aggregate across workloads and must never be read as any one workload's resolution.** A workload whose five differences already agree in sign contributes 0 by construction, and that is not a fine resolution: it means the arms were already separated there. The second table gives the number to quote when dismissing a specific workload's effect.
+
+| metric | budget % | eligible | +5 % | +10 % | +20 % | +30 % | +50 % | +100 % | median unpaired arm spread % | median paired spread % | median smallest paired same-signed effect % |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| whole-span p99 | 5 | 6 | 1 | 2 | 4 | 5 | 5 | 6 | 17.49 | 13.66 | 5.38 |
+| steady p99 | 5 | 5 | 1 | 1 | 2 | 2 | 4 | 5 | 22.10 | 11.96 | 3.49 |
+| whole-span useful throughput | 5 | 6 | 3 | 3 | 3 | 5 | 5 | 5 | 10.87 | 0.05 | 0.01 |
+| steady useful throughput | 5 | 4 | 1 | 1 | 2 | 2 | 2 | 4 | 24.12 | 1.26 | 0.03 |
+| thread cpu per useful completion | 10 | 6 | 1 | 1 | 1 | 1 | 2 | 5 | 33.31 | 43.15 | 0.20 |
+| post-GC heap | 10 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 0.01 | 0.01 | 0.00 |
+| allocated bytes per useful completion | — | 6 | 1 | 1 | 2 | 3 | 6 | 6 | 9.57 | 5.73 | 0.00 |
+| thread cpu per window | — | 6 | 0 | 0 | 0 | 0 | 1 | 4 | 28.44 | 37.60 | 0.00 |
+
+### The resolution each workload's own effect was measured at
+
+Percentage points of the old arm's value: the smallest uniform difference on that metric for that workload that would have made all five repetitions agree in sign. `n/a` is a metric the comparison table marks NOT MEASURABLE there, and `0.00` means the arms were already separated, which is a resolution no finer than the effect it found.
+
+| workload | metric | resolution of that (workload, metric) % |
+|---|---|---|
+| churn-drain | whole-span p99 | 5.14 |
+| churn-drain | whole-span useful throughput | 0.02 |
+| churn-drain | thread cpu per useful completion | 9.94 |
+| churn-drain | post-GC heap | 0.00 |
+| churn-drain | allocated bytes per useful completion | 0.00 |
+| churn-drain | thread cpu per window | 9.94 |
+| low-load | whole-span p99 | 5.63 |
+| low-load | steady p99 | 9.36 |
+| low-load | whole-span useful throughput | 0.01 |
+| low-load | steady useful throughput | 0.00 |
+| low-load | thread cpu per useful completion | 0.00 |
+| low-load | post-GC heap | 0.04 |
+| low-load | allocated bytes per useful completion | 0.00 |
+| low-load | thread cpu per window | 0.00 |
+| mixed-kind-retry | whole-span p99 | 0.00 |
+| mixed-kind-retry | steady p99 | 3.49 |
+| mixed-kind-retry | whole-span useful throughput | 0.02 |
+| mixed-kind-retry | steady useful throughput | 0.05 |
+| mixed-kind-retry | thread cpu per useful completion | 0.00 |
+| mixed-kind-retry | post-GC heap | 0.00 |
+| mixed-kind-retry | allocated bytes per useful completion | 0.00 |
+| mixed-kind-retry | thread cpu per window | 0.00 |
+| queued | whole-span p99 | 33.49 |
+| queued | steady p99 | 43.48 |
+| queued | whole-span useful throughput | 1.30 |
+| queued | steady useful throughput | 3.57 |
+| queued | thread cpu per useful completion | 0.40 |
+| queued | post-GC heap | 0.00 |
+| queued | allocated bytes per useful completion | 0.00 |
+| queued | thread cpu per window | 0.00 |
+| saturated | whole-span p99 | 0.00 |
+| saturated | steady p99 | 0.00 |
+| saturated | whole-span useful throughput | 0.00 |
+| saturated | thread cpu per useful completion | 0.00 |
+| saturated | post-GC heap | 0.00 |
+| saturated | allocated bytes per useful completion | 0.00 |
+| saturated | thread cpu per window | 0.00 |
+| unqueued | whole-span p99 | 11.41 |
+| unqueued | steady p99 | 3.06 |
+| unqueued | whole-span useful throughput | 0.01 |
+| unqueued | steady useful throughput | 0.00 |
+| unqueued | thread cpu per useful completion | 3.95 |
+| unqueued | post-GC heap | 0.00 |
+| unqueued | allocated bytes per useful completion | 0.00 |
+| unqueued | thread cpu per window | 3.95 |
+
+The arms' own spread is what the unpaired column pays: without the pairing a uniform 5 % effect on p99 or on useful throughput is invisible against arm-to-arm disagreement several times larger, which is the position Task 12c was left in. The paired column asks the same question of the quantity this design actually measures, and it is what makes a null here a statement about the effect rather than about the instrument.
+

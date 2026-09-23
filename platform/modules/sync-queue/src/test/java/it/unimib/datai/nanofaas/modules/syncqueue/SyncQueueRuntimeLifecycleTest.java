@@ -7,23 +7,28 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionState;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
+import it.unimib.datai.nanofaas.controlplane.registry.FunctionRegistrationListener;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.controlplane.service.EngineSyncQueueGateway;
+import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
 import it.unimib.datai.nanofaas.controlplane.service.ExecutionCompletionHandler;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
 import it.unimib.datai.nanofaas.controlplane.service.Metrics;
-import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
-import it.unimib.datai.nanofaas.modules.syncqueue.scheduler.SyncScheduler;
-import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueItem;
-import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueMetrics;
-import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueService;
+import it.unimib.datai.nanofaas.controlplane.service.SchedulerConfiguration;
+import it.unimib.datai.nanofaas.controlplane.service.SchedulerLifecycleAdapter;
+import it.unimib.datai.nanofaas.execution.SchedulerEngine;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -34,12 +39,16 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 /**
@@ -72,14 +81,23 @@ class SyncQueueRuntimeLifecycleTest {
             return mock(InvocationDispatch.class);
         }
 
+        /**
+         * A spy over the real registry, so
+         * {@link #removalSettlesSyncAdmissionEvenAfterTheGatewayReadsTheGeneration} can complete a
+         * real removal while the gateway is reading the generation. Unstubbed calls delegate to
+         * the real object.
+         */
         @Bean
         FunctionCapacityRegistry functionCapacityRegistry() {
-            return new FunctionCapacityRegistry();
+            return spy(new FunctionCapacityRegistry());
         }
     }
 
+    /** The function every lifecycle test here registers through {@link #registerEcho}. */
+    private static final String PROBE_FUNCTION = "echo";
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
-            .withUserConfiguration(TestSupport.class, SyncQueueConfiguration.class)
+            .withUserConfiguration(TestSupport.class)
+            .withConfiguration(AutoConfigurations.of(SyncQueueConfiguration.class, SchedulerConfiguration.class))
             .withPropertyValues(
                     "sync-queue.enabled=true",
                     "sync-queue.admission-enabled=false",
@@ -95,60 +113,202 @@ class SyncQueueRuntimeLifecycleTest {
         runner.run(context -> {
             assertThat(context).hasNotFailed();
 
-            SyncScheduler scheduler = context.getBean(SyncScheduler.class);
-        // A refreshed context auto-starts SmartLifecycle beans; asserting that is the point,
-        // a "start it if it isn't running" guard would make the next assertion unfalsifiable.
-        assertThat(scheduler.isRunning()).isTrue();
-            assertThat(scheduler.isRunning()).isTrue();
+            // A4's successor: the engine's lifecycle adapter, not a per-module scheduler, is
+            // what stays running regardless of sync-queue.enabled.
+            SchedulerLifecycleAdapter lifecycleAdapter = context.getBean(SchedulerLifecycleAdapter.class);
+            assertThat(lifecycleAdapter.isRunning()).isTrue();
 
             MutableSyncQueueConfigSource configSource = context.getBean(MutableSyncQueueConfigSource.class);
-            SyncQueueService queue = context.getBean(SyncQueueService.class);
-            SyncQueueInvocationEnqueuer enqueuer = context.getBean(SyncQueueInvocationEnqueuer.class);
+            EngineSyncQueueGateway gateway = context.getBean(EngineSyncQueueGateway.class);
             ExecutionStore store = context.getBean(ExecutionStore.class);
+            FunctionCapacityRegistry capacityRegistry = context.getBean(FunctionCapacityRegistry.class);
 
             Queue<String> dispatched = new ConcurrentLinkedQueue<>();
             InvocationDispatch invocationService = context.getBean(InvocationDispatch.class);
             doAnswer(invocation -> {
-                dispatched.add(((InvocationTask) invocation.getArgument(0)).executionId());
+                InvocationTask dispatchedTask = invocation.getArgument(0);
+                dispatched.add(dispatchedTask.executionId());
+                // The mock stands in for the whole execution lifecycle, which is what would
+                // normally release the dispatch lease on completion; releasing it here keeps
+                // the function's one slot usable for the next task in this test, exactly as a
+                // real (fast) completion would.
+                dispatchedTask.dispatchLease().release();
                 return null;
             }).when(invocationService).dispatch(any(InvocationTask.class));
 
             FunctionSpec spec = new FunctionSpec("fn", "image", null, Map.of(), null,
                     1000, 1, 2, 3, null, ExecutionMode.LOCAL, null, null, null);
+            // The function must be capacity-registered before it can be admitted at all (the
+            // engine's ticket carries a FunctionGeneration) — register it up front, then hold
+            // its one slot so the engine cannot dispatch the first task yet.
+            context.getBean("schedulerCapacityGenerationListener", FunctionRegistrationListener.class).onRegister(spec);
+            var heldLease = capacityRegistry.tryAcquireLease("fn", 1);
+            assertThat(heldLease).isNotNull();
 
-            // Task admitted while the queue is enabled, but the function has no capacity
-            // yet, so the scheduler cannot dispatch it: it stays queued across the flip.
+            // Task admitted while the queue is enabled, but the function's one slot is held,
+            // so the engine cannot dispatch it: it stays queued across the flip.
             InvocationTask admitted = task("admitted-while-enabled", spec);
             store.put(new ExecutionRecord(admitted.executionId(), admitted));
             assertThat(configSource.syncQueueEnabled()).isTrue();
-            assertThat(enqueuer.enqueue(admitted)).isTrue();
-            assertThat(queue.queuedItems()).isEqualTo(1);
+            assertThat(gateway.enqueue(admitted)).isTrue();
 
             // Deactivate the queue. NEW invocations now take the non-queue path (the core
             // coordinator reads this flag); the already-admitted task must keep draining.
             configSource.apply(Map.of(MutableSyncQueueConfigSource.KEY_ENABLED, false));
             assertThat(configSource.syncQueueEnabled()).isFalse();
 
-            // Release the queued work by giving the function capacity: it must be drained
-            // even though the queue was deactivated before it could be dispatched.
-            queue.registerFunction("fn", 2);
+            // Release the held slot: the engine must drain the admitted task even though the
+            // queue was deactivated before it could be dispatched.
+            heldLease.release();
             Awaitility.await("admitted work drains after deactivation")
                     .atMost(Duration.ofSeconds(5))
                     .untilAsserted(() -> assertThat(dispatched).contains(admitted.executionId()));
 
             // Re-activation: the flag routes NEW invocations back into the queue and the
-            // still-running scheduler dispatches them, again without a restart.
+            // still-running engine dispatches them, again without a restart.
             configSource.apply(Map.of(MutableSyncQueueConfigSource.KEY_ENABLED, true));
             assertThat(configSource.syncQueueEnabled()).isTrue();
 
             InvocationTask reactivated = task("admitted-after-reactivation", spec);
             store.put(new ExecutionRecord(reactivated.executionId(), reactivated));
-            assertThat(enqueuer.enqueue(reactivated)).isTrue();
+            assertThat(gateway.enqueue(reactivated)).isTrue();
 
             Awaitility.await("reactivated queue dispatches new work")
                     .atMost(Duration.ofSeconds(5))
                     .untilAsserted(() -> assertThat(dispatched).contains(reactivated.executionId()));
         });
+    }
+
+    /**
+     * The observable contract of the live listener: a removed function admits nothing, and a
+     * re-registered one admits again.
+     */
+    @Test
+    void aRemovalRejectsSyncAdmissionAndReRegistrationAcceptsItAgain() {
+        runner.run(context -> {
+            assertThat(context).hasNotFailed();
+            FunctionRegistrationListener listener = context.getBean(
+                    "schedulerCapacityGenerationListener", FunctionRegistrationListener.class);
+            EngineSyncQueueGateway gateway = context.getBean(EngineSyncQueueGateway.class);
+            ExecutionStore store = context.getBean(ExecutionStore.class);
+            FunctionSpec spec = new FunctionSpec("echo", "image", null, Map.of(), null,
+                    1000, 1, 10, 3, null, ExecutionMode.LOCAL, null, null, null);
+
+            listener.onRegister(spec);
+            InvocationTask admitted = task("admitted-before-removal", spec);
+            store.put(new ExecutionRecord(admitted.executionId(), admitted));
+            assertThatCode(() -> gateway.enqueueOrThrow(admitted)).doesNotThrowAnyException();
+
+            listener.onRemove(spec.name());
+            InvocationTask duringRemoval = task("admitted-during-removal", spec);
+            store.put(new ExecutionRecord(duringRemoval.executionId(), duringRemoval));
+            assertThatThrownBy(() -> gateway.enqueueOrThrow(duringRemoval))
+                    .isInstanceOf(SyncQueueRejectedException.class);
+
+            listener.onRegister(spec);
+            InvocationTask afterReRegistration = task("admitted-after-reregistration", spec);
+            store.put(new ExecutionRecord(afterReRegistration.executionId(), afterReRegistration));
+            assertThatCode(() -> gateway.enqueueOrThrow(afterReRegistration))
+                    .doesNotThrowAnyException();
+        });
+    }
+
+    @ParameterizedTest(name = "removal during generation read = {0}")
+    @ValueSource(booleans = {false, true})
+    void removalSettlesSyncAdmissionEvenAfterTheGatewayReadsTheGeneration(boolean duringGenerationRead) {
+        runner.run(context -> {
+            assertThat(context).hasNotFailed();
+            // Hold dispatch and expiry while arranging the admission/removal ordering.
+            context.getBean(SchedulerLifecycleAdapter.class).stop();
+            FunctionRegistrationListener listener = context.getBean(
+                    "schedulerCapacityGenerationListener", FunctionRegistrationListener.class);
+            EngineSyncQueueGateway gateway = context.getBean(EngineSyncQueueGateway.class);
+            FunctionCapacityRegistry capacity = context.getBean(FunctionCapacityRegistry.class);
+            SchedulerEngine engine = context.getBean(SchedulerEngine.class);
+            ExecutionStore store = context.getBean(ExecutionStore.class);
+            FunctionSpec spec = registerEcho(context);
+            FunctionRegistrationListener metricsListener = context.getBean(
+                    "syncQueueMetricsLifecycleListener", FunctionRegistrationListener.class);
+            metricsListener.onRegister(spec);
+            InvocationTask task = task("admission-racing-removal", spec);
+            ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
+            store.put(record);
+
+            AtomicBoolean armed = new AtomicBoolean(duringGenerationRead);
+            AtomicBoolean removalCompleted = new AtomicBoolean();
+            doAnswer(invocation -> {
+                FunctionGeneration observed = (FunctionGeneration) invocation.callRealMethod();
+                if (armed.compareAndSet(true, false)) {
+                    assertThat(observed).isNotNull();
+                    // Finish the real removal drain, then return the generation captured before it.
+                    listener.onRemove(spec.name());
+                    metricsListener.onRemove(spec.name());
+                    removalCompleted.set(true);
+                }
+                return observed;
+            }).when(capacity).activeGeneration(spec.name());
+
+            assertThat(gateway.enqueue(task)).isEqualTo(!duringGenerationRead);
+            if (!duringGenerationRead) {
+                // Control: the same lifecycle must settle a ticket admitted before removal.
+                listener.onRemove(spec.name());
+                metricsListener.onRemove(spec.name());
+                removalCompleted.set(true);
+            }
+
+            assertThat(removalCompleted).isTrue();
+            assertThat(capacity.activeGeneration(spec.name())).isNull();
+            assertThat(engine.reservedCount(spec.name())).isZero();
+            assertThat(context.getBean(MeterRegistry.class).get("sync_queue_depth")
+                    .tag("function", "").gauge().value()).isZero();
+            if (duringGenerationRead) {
+                // The bare gateway does not own completion of a ticket it refused.
+                assertThat(record.completion().isDone()).isFalse();
+            } else {
+                assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
+                assertThat(record.completion().isDone()).isTrue();
+            }
+        });
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"FUNCTION_QUEUE", "SYNC_QUEUE"})
+    void onlyTheSyncAdmissionProfileFeedsTheEstimatorAfterRuntimeDisable(String profile) {
+        runner.withPropertyValues("nanofaas.admission.profile=" + profile).run(context -> {
+            context.getBean(SchedulerLifecycleAdapter.class).stop();
+            FunctionSpec spec = registerEcho(context);
+            context.getBean("syncQueueMetricsLifecycleListener", FunctionRegistrationListener.class)
+                    .onRegister(spec);
+            var enqueuer = context.getBean(
+                    it.unimib.datai.nanofaas.controlplane.service.EngineInvocationEnqueuer.class);
+            var estimator = context.getBean(
+                    it.unimib.datai.nanofaas.execution.admission.WaitEstimator.class);
+            InvocationTask queued = task("profile-dispatch", spec);
+            context.getBean(ExecutionStore.class).put(new ExecutionRecord(queued.executionId(), queued));
+            doAnswer(invocation -> {
+                InvocationTask dispatched = invocation.getArgument(0);
+                dispatched.dispatchLease().release();
+                return null;
+            }).when(context.getBean(InvocationDispatch.class)).dispatch(any(InvocationTask.class));
+            assertThat(enqueuer.enqueue(queued)).isTrue();
+            context.getBean(MutableSyncQueueConfigSource.class)
+                    .apply(Map.of(MutableSyncQueueConfigSource.KEY_ENABLED, false));
+            context.getBean(SchedulerEngine.class).tick();
+            assertThat(context.getBean(SchedulerEngine.class).reservedCount(spec.name())).isZero();
+            double wait = estimator.estimateWaitSeconds(spec.name(), 1, Instant.now());
+            assertThat(Double.isFinite(wait)).isEqualTo(profile.equals("SYNC_QUEUE"));
+            assertThat(context.getBean(MeterRegistry.class).get("sync_queue_depth")
+                    .tag("function", "").gauge().value()).isZero();
+        });
+    }
+
+    private static FunctionSpec registerEcho(org.springframework.context.ApplicationContext context) {
+        FunctionRegistrationListener listener = context.getBean(
+                "schedulerCapacityGenerationListener", FunctionRegistrationListener.class);
+        FunctionSpec spec = new FunctionSpec(PROBE_FUNCTION, "image", null, Map.of(), null,
+                1000, 1, 10, 3, null, ExecutionMode.LOCAL, null, null, null);
+        listener.onRegister(spec);
+        return spec;
     }
 
     private static InvocationTask task(String executionId, FunctionSpec spec) {
@@ -158,67 +318,61 @@ class SyncQueueRuntimeLifecycleTest {
 
     /**
      * A4: a retry of work that was admitted while the queue was enabled must keep being
-     * drained after a runtime deactivation, not be abandoned. Manual-pump style (like the
-     * A3 retry integration tests): the scheduler thread is not started, each attempt is
-     * popped from the real queue and dispatched, so the test is deterministic.
+     * drained after a runtime deactivation, not be abandoned. Runs on the real engine: the
+     * first attempt disables admission before the real completion handler queues its retry.
      */
     @Test
     void retryOfAdmittedWorkIsNotAbandonedAfterRuntimeDeactivation() {
-        ExecutionStore store = new ExecutionStore();
-        FunctionCapacityRegistry capacityRegistry = new FunctionCapacityRegistry();
-        SyncQueueProperties props = new SyncQueueProperties(
-                true, false, 10, Duration.ofSeconds(2), Duration.ofSeconds(30), 2, Duration.ofSeconds(30), 3);
-        MutableSyncQueueConfigSource configSource = new MutableSyncQueueConfigSource(props);
-        SyncQueueMetrics metrics = new SyncQueueMetrics(new SimpleMeterRegistry());
-        SyncQueueService queue = new SyncQueueService(props, store, metrics, configSource, capacityRegistry, null);
-        queue.registerFunction("fn", 1);
-        SyncQueueInvocationEnqueuer enqueuer = new SyncQueueInvocationEnqueuer(capacityRegistry, null, ignored -> { }, queue);
-
-        AtomicInteger attempts = new AtomicInteger();
-        DispatcherRouter router = mock(DispatcherRouter.class);
-        when(router.dispatchLocal(any())).thenAnswer(invocation -> {
-            if (attempts.incrementAndGet() == 1) {
-                return CompletableFuture.completedFuture(
-                        DispatchResult.warm(InvocationResult.error("ERROR", "attempt 1 failed")));
+        runner.withPropertyValues("nanofaas.admission.profile=SYNC_QUEUE").run(context -> {
+            context.getBean(SchedulerLifecycleAdapter.class).stop();
+            FunctionSpec spec = spec(1);
+            context.getBean("schedulerCapacityGenerationListener", FunctionRegistrationListener.class)
+                    .onRegister(spec);
+            context.getBean("syncQueueMetricsLifecycleListener", FunctionRegistrationListener.class)
+                    .onRegister(spec);
+            var engine = context.getBean(SchedulerEngine.class);
+            var enqueuer = context.getBean(
+                    it.unimib.datai.nanofaas.controlplane.service.EngineInvocationEnqueuer.class);
+            var config = context.getBean(MutableSyncQueueConfigSource.class);
+            var store = context.getBean(ExecutionStore.class);
+            var attempts = new AtomicInteger();
+            DispatcherRouter router = mock(DispatcherRouter.class);
+            when(router.dispatchLocal(any())).thenAnswer(invocation -> {
+                if (attempts.incrementAndGet() == 1) {
+                    config.apply(Map.of(MutableSyncQueueConfigSource.KEY_ENABLED, false));
+                    return CompletableFuture.completedFuture(
+                            DispatchResult.warm(InvocationResult.error("ERROR", "attempt 1 failed")));
+                }
+                return CompletableFuture.completedFuture(DispatchResult.warm(InvocationResult.success("ok")));
+            });
+            var handler = new ExecutionCompletionHandler(store, enqueuer, router,
+                    new Metrics(context.getBean(MeterRegistry.class)));
+            doAnswer(invocation -> {
+                handler.dispatch(invocation.getArgument(0));
+                return null;
+            }).when(context.getBean(InvocationDispatch.class)).dispatch(any(InvocationTask.class));
+            InvocationTask admitted = task("retry-after-disable", spec);
+            ExecutionRecord record = new ExecutionRecord(admitted.executionId(), admitted);
+            store.put(record);
+            assertThat(enqueuer.enqueue(admitted)).isTrue();
+            for (int i = 0; i < 3 && !record.completion().isDone(); i++) {
+                engine.tick();
             }
-            return CompletableFuture.completedFuture(DispatchResult.warm(InvocationResult.success("ok")));
+            assertThat(record.completion().isDone()).isTrue();
+            assertThat(record.completion().join().success()).isTrue();
+            assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
+            assertThat(attempts.get()).isEqualTo(2);
+            assertThat(engine.reservedCount(spec.name())).isZero();
+            // Both dispatches fed the estimator, including the retry queued after deactivation:
+            // attribution follows the immutable SYNC_QUEUE profile, not the runtime flag.
+            assertThat(context.getBean(
+                    it.unimib.datai.nanofaas.execution.admission.WaitEstimator.class)
+                    .retentionSnapshot().globalSamples()).isEqualTo(2);
         });
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
-                store, enqueuer, router, new Metrics(new SimpleMeterRegistry()));
-
-        FunctionSpec spec = spec(1);
-        InvocationTask admitted = task("exec-admitted-before-disable", spec);
-        ExecutionRecord record = new ExecutionRecord(admitted.executionId(), admitted);
-        store.put(record);
-        assertThat(enqueuer.enqueue(admitted)).isTrue();
-
-        pollAndDispatch(queue, enqueuer, handler, "fn"); // attempt 1 fails; retry re-queued
-        assertThat(record.completion().isDone()).isFalse();
-        assertThat(record.state()).isEqualTo(ExecutionState.QUEUED);
-
-        // Deactivate the queue while the retry is queued: the admitted work still drains.
-        configSource.apply(Map.of(MutableSyncQueueConfigSource.KEY_ENABLED, false));
-        assertThat(queue.enabled()).isFalse();
-
-        pollAndDispatch(queue, enqueuer, handler, "fn"); // attempt 2 succeeds after deactivation
-
-        assertThat(record.completion().isDone()).isTrue();
-        assertThat(record.completion().join().success()).isTrue();
-        assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
-        assertThat(attempts.get()).isEqualTo(2);
     }
 
     private static FunctionSpec spec(int maxRetries) {
         return new FunctionSpec("fn", "image", null, Map.of(), null,
                 1000, 1, 10, maxRetries, null, ExecutionMode.LOCAL, null, null, null);
-    }
-
-    private static void pollAndDispatch(SyncQueueService queue, SyncQueueInvocationEnqueuer enqueuer,
-                                        ExecutionCompletionHandler handler, String functionName) {
-        SyncQueueItem item = queue.pollReady(Instant.now());
-        assertThat(item).isNotNull();
-        var lease = enqueuer.tryAcquireLease(item.task());
-        assertThat(lease).isNotNull();
-        handler.dispatch(item.task().withDispatchLease(lease));
     }
 }

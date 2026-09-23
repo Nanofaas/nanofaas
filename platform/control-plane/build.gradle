@@ -1,4 +1,5 @@
 plugins {
+    id 'java-library'
     id 'org.springframework.boot'
     id 'io.spring.dependency-management'
     id 'org.graalvm.buildtools.native'
@@ -20,6 +21,14 @@ if (selectedOptionalControlPlaneModuleNames.contains('containerd-deployment-prov
 dependencies {
     implementation project(':common')
     implementation project(':control-plane-spi')
+    // api, not implementation (Task 10 step 4, issue #208): control-plane's own PUBLIC types
+    // (ExecutionCompletionHandler, InvocationExecutionFactory, ...) reference ExecutionRecord,
+    // ExecutionStore and friends directly, so execution-runtime is part of this module's ABI.
+    // A downstream test-only consumer (testImplementation project(':control-plane'), as
+    // :offload and :concurrency-control do) needs these on its own compile classpath; the same
+    // shape as the Caffeine/Micrometer fix already applied in execution-runtime's own build.gradle.
+    api project(':execution-runtime')
+    implementation project(':workload-metrics')
     implementation 'com.github.ben-manes.caffeine:caffeine'
     selectedOptionalControlPlaneModuleProjects.each { moduleProject ->
         runtimeOnly project(moduleProject.path)
@@ -91,6 +100,20 @@ graalvmNative {
         main {
             // Kubernetes-oriented optional modules may still rely on SnakeYAML charsets.
             buildArgs.add('-H:+AddAllCharsets')
+            // An executable, explicitly. This module applies `java-library` (Task 10 step 4,
+            // d456915f, so `api project(':execution-runtime')` exists alongside the Boot plugin),
+            // and native-build-tools 1.1.6's NativeImagePlugin.configureJavaProject registers
+            // plugins.withId("java-library") -> options.getSharedLibrary().convention(true) --
+            // a shared library, where the otherwise-identical plain `java` project gets the false
+            // default. :control-plane applies no `application` plugin either, so no main class is
+            // derived and the `main` binary silently became control-plane.so: `nativeCompile`
+            // went green while producing nothing runnable, which is also what
+            // scripts/native-java-image.sh copies as its /app/application. Set it back to false
+            // here rather than by dropping `java-library`, which the module needs for its ABI.
+            // Verified by artifact, not by the build's exit code:
+            //   file platform/control-plane/build/native/nativeCompile/control-plane
+            // must say "ELF ... pie executable", never "shared object".
+            sharedLibrary.set(false)
         }
     }
 }
@@ -105,6 +128,11 @@ if (!nativeBuildRequested) {
     tasks.named('compileAotJava') { enabled = false }
     tasks.named('processAotResources') { enabled = false }
     tasks.named('aotClasses') { enabled = false }
+    // Disabled tasks keep their previous outputs, and bootJar still packages the aot source set:
+    // without this filter a JVM jar built after a native build carries stale AOT classes.
+    tasks.named('bootJar') {
+        classpath = classpath.filter { !sourceSets.aot.output.files.contains(it) }
+    }
 }
 // Test AOT - @MockBean is incompatible with AOT, always disable
 tasks.named('processTestAot') { enabled = false }

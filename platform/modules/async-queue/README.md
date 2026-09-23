@@ -1,25 +1,19 @@
 # async-queue
 
-Optional control-plane module: per-function in-memory queues plus the
-scheduler loop that drains them. It is the backbone of the async path —
-without this module `POST /v1/functions/{name}:enqueue` returns
+Optional control-plane module: the per-function selection policy of the async
+path. Without this module `POST /v1/functions/{name}:enqueue` returns
 `501 Not Implemented`.
 
 ## Provides
 
-- `InvocationEnqueuer` (`QueueBackedEnqueuer`) — core SPI implementation used
-  by both the async path and, when the sync-queue module is absent, the sync
-  path's queued dispatch.
-- `Scheduler` — background loop that pulls tasks from `QueueManager` and
-  dispatches them while respecting per-function concurrency
-  (`QueueManager.tryAcquireLease` → a generation-bound `DispatchCapacity`
-  lease, plus the bounded dispatch reservation, CAS-based). The capacity is the
-  core's single `FunctionCapacityRegistry`, injected through the `DispatchCapacity`
-  port; this module never names it and creates no capacity of its own.
-- `WorkloadMetricsSource` (`AsyncQueueWorkloadMetricsSource`) — exposes queue
-  depth, in-flight, effective concurrency, and dispatchable backlog. The
-  autoscaler currently consumes queue depth and in-flight; RPS is derived by
-  `ScalingMetricsReader` from the `function_dispatch_total` counter.
+- `SchedulingStrategy` (`PerFunctionSchedulingStrategy`) — this module's
+  contribution to the composed engine: one FIFO of tickets per function, visited
+  round-robin, with a bounded number of consecutive dispatches per function turn.
+  The composed `SchedulerConfiguration` builds ONE `SchedulerEngine` around it and
+  the sync-queue module's strategy; this module registers no worker of its own.
+  Queued work lives in the engine's `PendingWorkStore`; admission goes through
+  the core's `EngineInvocationEnqueuer`. Queue depth, in-flight and backlog
+  readings come from the core's `EngineWorkloadMetricsSource`.
 
 ## Configuration
 

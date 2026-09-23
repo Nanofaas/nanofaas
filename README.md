@@ -86,6 +86,11 @@ weak requirements are optional. See
 complete module list and examples. Rootless containerd has a separate
 [build and deployment guide](docs/deployment-containerd.md).
 
+To build a control plane and a set of functions together from one versioned YAML
+file, including images and an optional push, use a
+[distribution recipe](docs/recipes.md):
+`./gradlew assembleRecipe -Precipe=recipes/local-demo.yaml`.
+
 ## Test
 
 ```bash

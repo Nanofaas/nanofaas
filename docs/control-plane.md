@@ -94,6 +94,9 @@ between modules with equal `defaultEnabled` values are ambiguous and fail the
 build. Unknown names and other constraint violations also fail the build. The
 default selects only descriptors whose `defaultEnabled=true`; this keeps
 `async-queue` enabled and `sync-queue` disabled.
+With `-Precipe=<file>`, a [distribution recipe](recipes.md)'s
+`controlPlane.modules` is the only selection source: `-PcontrolPlaneModules` is
+rejected and the environment selector is ignored.
 
 The three managed providers (`k8s-deployment-provider`,
 `container-deployment-provider`, `containerd-deployment-provider`) are pairwise
@@ -125,9 +128,14 @@ within one build.
 
 Current modules:
 
-- `async-queue` — per-function queues + scheduler for the async path
-- `sync-queue` — sync admission/backpressure queue
-- `async-queue` conflicts with `sync-queue`; select only one of them
+- `async-queue` — per-function scheduling strategy for the composed engine
+- `sync-queue` — shared-queue scheduling strategy + sync admission/backpressure
+- `async-queue` and `sync-queue` may both be selected: each contributes a
+  `SchedulingStrategy` to one shared `SchedulerEngine` (issue #208's manual
+  scheduler switching), not a separate worker; with both present the active
+  strategy is chosen at startup (`nanofaas.scheduler.strategy`, defaulting to
+  `per-function`) and can be hot-switched afterwards through
+  `/v1/admin/runtime-config/scheduler` — see "Workload metrics" below
 - `autoscaler` — internal replica scaler and scaling metrics integration
 - `concurrency-control` — per-function concurrency governor (`FIXED`,
   `STATIC_PER_POD`, `ADAPTIVE_PER_POD`, `BUDGETED`, `SOJOURN`); **requires
@@ -146,16 +154,44 @@ Current modules:
 
 ### Modules that need other modules
 
-`concurrency-control` consumes two contracts from the selected queue provider:
-`WorkloadMetricsSource` for queue depth and in-flight observations, and
+`concurrency-control` consumes two contracts published once by the composed
+engine: `WorkloadMetricsSource` for queue depth and in-flight observations, and
 `WorkloadCapacityController` for publishing the computed limits that enforce
 concurrency. The module declares `requires.oneOf=async-queue,sync-queue`, so
-exactly one provider must be selected; it **refuses to start** when neither is
-present.
+at least one strategy module must be selected; it **refuses to start** when
+neither is present (silently — no bean satisfies its
+`@ConditionalOnBean(WorkloadMetricsSource.class)` — which is why the context
+tests for both queue modules assert this bean's presence directly).
 
 `autoscaler` requires one of `async-queue` or `sync-queue`; its workload metrics
-source is supplied by the selected provider. The Gradle module selector rejects
-an autoscaler selection without a queue provider.
+source is the same single, engine-backed bean. The Gradle module selector
+rejects an autoscaler selection without a queue provider.
+
+### Workload metrics
+
+Whichever strategy module(s) are selected, `SchedulerConfiguration` publishes
+exactly one `WorkloadMetricsSource` (`EngineWorkloadMetricsSource`, backed by
+the engine's own per-function reservation counters and `DispatchCapacity`'s
+per-function state — never a backlog scan) and binds it through
+`WorkloadMetricsBinder` to the per-function gauges `function_queue_depth`,
+`function_inFlight`, `function_effective_concurrency` and
+`function_dispatchable_backlog`. These gauges retire when a removed
+function's last physically active attempt finishes draining, not at the
+moment it is removed — see `SchedulerConfiguration.schedulerCapacityGenerationListener`.
+
+Two additional gauges, `scheduler_active{strategy=...}` (one per built-in
+strategy the artifact was actually assembled with — cardinality bounded by
+that count, never by execution/ticket/generation identity) and a
+`scheduler_switch_total{outcome=committed|noop|refused}` counter plus a
+`scheduler_switch_duration` timer, observe `SchedulerEngine.switchTo` from
+outside its own correctness transaction: a throwing observer can never turn a
+committed switch into a reported failure or vice versa.
+
+In the SYNC_QUEUE admission profile, `sync_queue_depth` reads the engine's outstanding
+reservations, including a provisional claim or submit until settlement. Input backpressure keeps
+the reservation. Runtime deactivation stops fresh sync queue admission but does not change
+attribution or stop queued work and retries from draining. In other admission profiles, the sync
+queue depth is zero.
 
 Image validation is **not** a standalone module: each deployment provider owns
 its validator (`KubernetesImageValidator`, `DockerImageValidator`, or
@@ -195,6 +231,78 @@ toggles of one running instance.
 `control-plane:test --tests '*OpenApiRouteCoverageTest'` asserts every
 registered route is present in the composed document for the module
 selection under test, so contract and routes cannot drift.
+
+## Manual scheduler switching
+
+When a build composes an engine that exposes `SchedulerControl` (task 8's job — plain
+`runtime-config` alone does not add one), the `runtime-config` module's admin API gains a
+`scheduler` namespace at `/v1/admin/runtime-config/scheduler`, gated the same as every other
+admin route by `nanofaas.admin.runtime-config.enabled=true`. It reuses the existing
+`{expectedRevision, values}` PATCH envelope; there is no separate execution endpoint.
+
+```bash
+curl -fsS http://localhost:8080/v1/admin/runtime-config
+curl -fsS -X PATCH http://localhost:8080/v1/admin/runtime-config/scheduler \
+  -H 'Content-Type: application/json' \
+  -d '{"expectedRevision":0,"values":{"strategy":"shared-queue"}}'
+curl -fsS http://localhost:8080/v1/admin/runtime-config/scheduler
+```
+
+The `0` above must be replaced with the revision the first `curl` just read — a stale
+revision answers `409`. `strategy` must be one of the namespace's own `available` ids
+(`per-function` or `shared-queue`, whichever the artifact was built with); anything else
+answers `422`. The namespace itself is absent (`404`, on both GET and PATCH) when the
+build has no engine exposing `SchedulerControl`.
+
+The PATCH does not return `200` until the switch has actually committed: the admin path
+runs off the Netty event loop on a small bounded worker (one in flight, one queued, anything
+past that answers `503` immediately rather than opening an unbounded queue), and a refusal
+before commit — the target strategy failed to prepare, or the admin queue is momentarily full
+— also answers `503` with nothing activated; the previous strategy stays in effect and the
+revision does not advance. A client that disconnects mid-request does not trigger a rollback
+either way; a follow-up GET always reflects what actually happened.
+
+The switch is manual, effective immediately in both directions without draining pending work
+or restarting, and does **not** persist across a restart (`persistence: "restart"` in the GET
+response) — the strategy configured at startup wins again on the next boot.
+
+The shared queue examines up to 64 tickets per selection. When that window contains no
+runnable ticket, it rotates before the next scan so blocked functions cannot indefinitely
+hide ready work further back. Function removal withdraws pending tickets and provisional
+claims, and cancels any submitting ticket that returns to the queue under input backpressure.
+Admission checks the function generation under the engine's gate before inserting a ticket:
+removal retires the generation before it drains the engine, so an admission that overlaps a
+removal is either drained by it (and reported as `FUNCTION_REMOVED`) or refused before it
+becomes a reservation. A refused ticket is rejected to its caller, never reported as removed.
+
+Per-function queue limits are checked atomically with admission. A queue reservation remains
+occupied through selection and submit, including input backpressure. Reservations still
+submitting for a removed generation count against the same function name until their submit
+finishes; registering a new generation does not reset that occupancy.
+
+The strategy an instance **starts** on is configuration, not a PATCH: set the environment
+variable `NANOFAAS_SCHEDULER_STRATEGY` to one of the artifact's ids (Helm:
+`controlPlane.scheduler.strategy`; Compose passes the same variable through, where it has an
+effect only on an image built with a queue module). Leaving it empty means "no explicit
+selection" — not a third strategy — and the engine then derives the legacy mapping from the
+strategies the artifact was built with: both queue modules or `async-queue` alone gives
+`per-function`, `sync-queue` alone gives `shared-queue`. An id that no built-in strategy
+provides **prevents startup** rather than falling back: `StrategyRegistry#require` refuses it
+with `unknown scheduling strategy: <id>, available [...]`, so a typo is a crash loop, not a
+silent downgrade to the default. Nothing else about switching is configurable at runtime: the
+preparation budget the engine measures against is a compiled constant, and the thresholds a
+switch is verified against are frozen in
+`docs/experiments/scheduler-switching-2026-09/budgets.json` — they are not keys under
+`nanofaas.scheduler.*` and cannot be set through the admin API.
+
+**In a native image, enabling the admin API is a build-time decision.** The admin routes are gated
+by `@ConditionalOnProperty(nanofaas.admin.runtime-config.enabled=true)`, which Spring AOT evaluates
+while the image is built, so a native artifact compiled without the flag answers `404` on
+`/v1/admin/runtime-config` and on this namespace however it is started — passing the property at run
+time changes nothing. Set it **before** `nativeCompile` to get a native artifact whose strategy can
+be switched over HTTP. The same flag also gates the rest of the admin surface, so "the switch works
+in native" and "the native image ships with its admin API off" describe two different builds of the
+same sources; the shipped default is off.
 
 ## Retries without a queue module
 

@@ -7,12 +7,16 @@ into fast, explicit `429`s rather than pile-ups.
 
 ## Provides
 
-- `SyncQueueGateway` (`SyncQueueService`) — core SPI implementation; the
-  coordinator enqueues sync tasks here when the module is active.
+- `SyncQueueGateway` (`EngineSyncQueueGateway`, built by this module's
+  configuration) — the coordinator enqueues sync tasks here when the module is
+  active; queued work lives in the engine's `PendingWorkStore`.
 - `SyncQueueAdmissionController` — rejects with reason `DEPTH` (queue at
   `max-depth`) or `EST_WAIT` (estimated wait above threshold, computed by
   `WaitEstimator` from a sliding throughput window).
-- `SyncScheduler` — drains the queue and dispatches.
+- `SchedulingStrategy` (`SharedQueueSchedulingStrategy`) — this module's
+  contribution to the composed engine: one FIFO shared across functions, with
+  rotation for head-of-line fairness. Task 13b (issue #208) deleted the module's
+  own `SyncScheduler` loop once the engine owned selection.
 
 Rejections surface as `429` with `Retry-After` and `X-Queue-Reject-Reason`
 headers; a task that waits longer than `max-queue-wait` completes with the
@@ -38,17 +42,17 @@ sync-queue:
 
 ## Runtime activation and the scheduler
 
-`sync-queue.enabled` gates **admission**, not the module. The scheduler exists
-from the moment the module is on the classpath and keeps draining whatever was
-already admitted, so flipping the flag at runtime (through `runtime-config`)
+`sync-queue.enabled` gates **admission**, not the module. The composed engine
+exists from the moment the module is on the classpath and keeps draining whatever
+was already admitted, so flipping the flag at runtime (through `runtime-config`)
 takes effect immediately in both directions:
 
 - `enabled: false` → new sync invocations bypass the queue; work already queued,
   and its retries, still drain to completion. Nothing is stranded.
 - `enabled: true` → new invocations start being admitted at once; there is no
-  restart needed to create a scheduler, which is what the flag used to require.
+  restart needed to start draining, which is what the flag used to require.
 
-The worker does not poll. It parks on a monitor and is woken by anything that can
+The engine does not poll. It parks on a monitor and is woken by anything that can
 make a queued item newly dispatchable — new work, a released dispatch slot, a
 raised concurrency limit, a (re)registration, a removal drain. A bounded timed
 wait remains as a safety bound so queue-wait expiry and head-of-line rotation

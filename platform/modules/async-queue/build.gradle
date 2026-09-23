@@ -19,6 +19,11 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
     testImplementation project(':control-plane')
+    // Task 8 fix round (issue #208): AsyncQueueConfigurationTest exercises the real composed
+    // engine (SchedulerEngine/PendingWorkStore) through SchedulerConfiguration's generation
+    // listener, so this module's tests need execution-runtime's types directly — :control-plane
+    // depends on it only in `implementation` scope, which does not propagate transitively.
+    testImplementation project(':execution-runtime')
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-webflux'
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.0'

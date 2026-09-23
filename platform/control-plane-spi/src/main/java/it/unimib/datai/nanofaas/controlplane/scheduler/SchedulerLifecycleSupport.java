@@ -4,7 +4,6 @@ import org.slf4j.Logger;
 
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -13,14 +12,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public final class SchedulerLifecycleSupport {
     private SchedulerLifecycleSupport() {
-    }
-
-    public static ExecutorService newSingleThreadExecutor(String threadName) {
-        return Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, threadName);
-            t.setDaemon(false);
-            return t;
-        });
     }
 
     /**
