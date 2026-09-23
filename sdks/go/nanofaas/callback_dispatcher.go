@@ -73,26 +73,31 @@ func newCallbackDispatcher(client *CallbackClient, workerCount, queueSize, maxPe
 	d.ctx, d.cancel = context.WithCancel(context.Background())
 	for range workerCount {
 		d.wg.Add(1)
-		go func() {
-			defer d.wg.Done()
-			for job := range d.jobs {
-				func() {
-					defer job.reservation.Release()
-					if job.body == nil {
-						job.body, _ = encodeJSONBounded(job.result, d.maxCallbackPayloadBytes)
-					}
-					ok := d.client.SendSerializedWithDispatchAttempt(d.ctx, job.executionID, job.body, job.traceID, job.dispatchAttempt)
-					if !ok {
-						slog.Warn("callback delivery exhausted", "execution_id", job.executionID)
-						if d.onFailure != nil {
-							d.onFailure()
-						}
-					}
-				}()
-			}
-		}()
+		go d.work()
 	}
 	return d
+}
+
+func (d *CallbackDispatcher) work() {
+	defer d.wg.Done()
+	for job := range d.jobs {
+		d.deliver(job)
+	}
+}
+
+// deliver sends one callback and always returns its reservation.
+func (d *CallbackDispatcher) deliver(job callbackJob) {
+	defer job.reservation.Release()
+	if job.body == nil {
+		job.body, _ = encodeJSONBounded(job.result, d.maxCallbackPayloadBytes)
+	}
+	if d.client.SendSerializedWithDispatchAttempt(d.ctx, job.executionID, job.body, job.traceID, job.dispatchAttempt) {
+		return
+	}
+	slog.Warn("callback delivery exhausted", "execution_id", job.executionID)
+	if d.onFailure != nil {
+		d.onFailure()
+	}
 }
 
 type CallbackReservation struct {

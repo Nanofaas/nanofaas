@@ -14,12 +14,7 @@ import (
 const contentTypeHeader = "Content-Type"
 
 func (r *Runtime) handleInvoke(w http.ResponseWriter, req *http.Request) {
-	if req.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-	if !r.limits.snapshot().accepting {
-		writeRetryableRuntimeError(w, http.StatusServiceUnavailable, "RUNTIME_STOPPING", "Runtime is stopping")
+	if r.rejectBeforeAdmission(w, req) {
 		return
 	}
 
@@ -34,17 +29,7 @@ func (r *Runtime) handleInvoke(w http.ResponseWriter, req *http.Request) {
 		writeErrorJSON(w, http.StatusInternalServerError, "Handler not configured")
 		return
 	}
-	// Report occupied handler capacity even when its terminal callback reserve
-	// also fills the callback budget. This read-only rejection takes no permit:
-	// accepted work still reserves callbacks before atomically reserving a handler.
-	if r.limits.snapshot().activeHandlers >= r.settings.MaxConcurrentHandlers {
-		writeRetryableRuntimeError(w, http.StatusTooManyRequests,
-			"RUNTIME_HANDLER_SATURATED", "Runtime handler capacity exhausted")
-		return
-	}
-	if r.settings.MaxCallbackPayloadBytes < minimumTerminalCallbackPayloadBytes {
-		writeRetryableRuntimeError(w, http.StatusTooManyRequests,
-			"RUNTIME_CALLBACK_SATURATED", "Runtime callback capacity exhausted")
+	if r.rejectSaturated(w) {
 		return
 	}
 	callbackReservation := r.callbackDispatcher.TryReserve()
@@ -62,30 +47,14 @@ func (r *Runtime) handleInvoke(w http.ResponseWriter, req *http.Request) {
 
 	handlerReservation := r.limits.tryReserveHandler()
 	if handlerReservation == nil {
-		if !r.limits.snapshot().accepting {
-			writeRetryableRuntimeError(w, http.StatusServiceUnavailable, "RUNTIME_STOPPING", "Runtime is stopping")
-		} else {
-			writeRetryableRuntimeError(w, http.StatusTooManyRequests,
-				"RUNTIME_HANDLER_SATURATED", "Runtime handler capacity exhausted")
-		}
+		r.writeHandlerUnavailable(w)
 		return
 	}
 
 	request, inputBytes, readErr := r.readInvocationRequest(req)
 	if readErr != nil {
 		handlerReservation.release()
-		switch {
-		case errors.Is(readErr, errPayloadTooLarge):
-			writeRuntimeError(w, http.StatusRequestEntityTooLarge,
-				"RUNTIME_INPUT_TOO_LARGE", "Runtime input exceeds configured byte limit")
-		case errors.Is(readErr, context.DeadlineExceeded):
-			writeRuntimeError(w, http.StatusRequestTimeout,
-				"RUNTIME_BODY_READ_TIMEOUT", "Runtime request body read timed out")
-		case errors.Is(readErr, context.Canceled):
-			return
-		default:
-			writeErrorJSON(w, http.StatusBadRequest, "Malformed request body")
-		}
+		writeReadError(w, readErr)
 		return
 	}
 	handlerReservation.retainInput(inputBytes)
@@ -99,29 +68,11 @@ func (r *Runtime) handleInvoke(w http.ResponseWriter, req *http.Request) {
 	ctx, cancel := context.WithTimeout(ctx, r.settings.HandlerTimeout)
 	defer cancel()
 
-	type resultEnvelope struct {
-		output any
-		err    error
-	}
-	resultCh := make(chan resultEnvelope)
+	resultCh := make(chan handlerOutcome)
 	start := time.Now()
-	go func() {
-		defer handlerReservation.release()
-		var result resultEnvelope
-		func() {
-			defer func() {
-				if recovered := recover(); recovered != nil {
-					result.err = fmt.Errorf("handler panic: %v", recovered)
-				}
-			}()
-			result.output, result.err = handler(ctx, request)
-		}()
-		request = InvocationRequest{}
-		select {
-		case resultCh <- result:
-		case <-ctx.Done():
-		}
-	}()
+	go runHandler(ctx, handler, request, handlerReservation, resultCh)
+	// Only the handler goroutine keeps the input; it drops it once the handler returns.
+	request = InvocationRequest{}
 
 	select {
 	case result := <-resultCh:
@@ -132,6 +83,91 @@ func (r *Runtime) handleInvoke(w http.ResponseWriter, req *http.Request) {
 		r.markHandlerDuration(time.Since(start).Seconds())
 		callbackOwned = !r.handleInvokeTimeout(w, ctx, runtimeContext, dispatchAttempt, callbackReservation)
 	}
+}
+
+type handlerOutcome struct {
+	output any
+	err    error
+}
+
+// runHandler runs one invocation, turning a panic into an error, and returns its handler
+// permit when the handler really ends; the result is dropped if the caller stopped waiting.
+func runHandler(ctx context.Context, handler Handler, request InvocationRequest,
+	reservation *handlerReservation, resultCh chan<- handlerOutcome) {
+	defer reservation.release()
+	result := callHandler(ctx, handler, request)
+	request = InvocationRequest{} // release the input before waiting for the caller
+	select {
+	case resultCh <- result:
+	case <-ctx.Done():
+	}
+}
+
+func callHandler(ctx context.Context, handler Handler, request InvocationRequest) (result handlerOutcome) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			result.err = fmt.Errorf("handler panic: %v", recovered)
+		}
+	}()
+	result.output, result.err = handler(ctx, request)
+	return result
+}
+
+func (r *Runtime) rejectBeforeAdmission(w http.ResponseWriter, req *http.Request) bool {
+	if req.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return true
+	}
+	if !r.limits.snapshot().accepting {
+		writeStopping(w)
+		return true
+	}
+	return false
+}
+
+// rejectSaturated reports occupied handler capacity even when its terminal callback reserve
+// also fills the callback budget. This read-only rejection takes no permit: accepted work
+// still reserves callbacks before atomically reserving a handler.
+func (r *Runtime) rejectSaturated(w http.ResponseWriter) bool {
+	if r.limits.snapshot().activeHandlers >= r.settings.MaxConcurrentHandlers {
+		writeRetryableRuntimeError(w, http.StatusTooManyRequests,
+			"RUNTIME_HANDLER_SATURATED", "Runtime handler capacity exhausted")
+		return true
+	}
+	if r.settings.MaxCallbackPayloadBytes < minimumTerminalCallbackPayloadBytes {
+		writeRetryableRuntimeError(w, http.StatusTooManyRequests,
+			"RUNTIME_CALLBACK_SATURATED", "Runtime callback capacity exhausted")
+		return true
+	}
+	return false
+}
+
+func (r *Runtime) writeHandlerUnavailable(w http.ResponseWriter) {
+	if !r.limits.snapshot().accepting {
+		writeStopping(w)
+		return
+	}
+	writeRetryableRuntimeError(w, http.StatusTooManyRequests,
+		"RUNTIME_HANDLER_SATURATED", "Runtime handler capacity exhausted")
+}
+
+func writeReadError(w http.ResponseWriter, readErr error) {
+	switch {
+	case errors.Is(readErr, errPayloadTooLarge):
+		writeRuntimeError(w, http.StatusRequestEntityTooLarge,
+			"RUNTIME_INPUT_TOO_LARGE", "Runtime input exceeds configured byte limit")
+	case errors.Is(readErr, context.DeadlineExceeded):
+		writeRuntimeError(w, http.StatusRequestTimeout,
+			"RUNTIME_BODY_READ_TIMEOUT", "Runtime request body read timed out")
+	case errors.Is(readErr, context.Canceled):
+		// The client is gone: there is nobody to answer.
+	default:
+		writeErrorJSON(w, http.StatusBadRequest, "Malformed request body")
+	}
+}
+
+func writeStopping(w http.ResponseWriter) {
+	writeRetryableRuntimeError(w, http.StatusServiceUnavailable, "RUNTIME_STOPPING", "Runtime is stopping")
 }
 
 func (r *Runtime) readInvocationRequest(req *http.Request) (InvocationRequest, int64, error) {
@@ -184,17 +220,7 @@ func (r *Runtime) handleInvokeResult(w http.ResponseWriter, output any, handlerE
 	callbackResult := Success(output)
 	status := http.StatusOK
 	if isEnvelope {
-		outputForWire = envelope.Output
-		status = envelope.StatusCode
-		allowed := FilterAllowedHeaders(envelope.Headers)
-		for key, value := range allowed {
-			w.Header().Set(key, value)
-		}
-		w.Header().Set("X-NanoFaaS-Function-Status", "true")
-		if envelope.Encoding != "" {
-			w.Header().Set("X-NanoFaaS-Encoding", envelope.Encoding)
-		}
-		callbackResult = SuccessWithEnvelope(envelope.Output, envelope.StatusCode, allowed, envelope.Encoding)
+		outputForWire, status, callbackResult = applyEnvelope(w, envelope)
 	}
 
 	body, err := encodeJSONBounded(outputForWire, r.settings.MaxOutputBytes)
@@ -208,20 +234,51 @@ func (r *Runtime) handleInvokeResult(w http.ResponseWriter, output any, handlerE
 	}
 	if err := r.callbackDispatcher.SubmitReserved(context.Background(), callbackReservation,
 		runtimeContext.ExecutionID, callbackResult, runtimeContext.TraceID, dispatchAttempt); err != nil {
-		if errors.Is(err, errPayloadTooLarge) {
-			r.handleOversizedOutput(w, callbackReservation, runtimeContext, dispatchAttempt)
-			return true
-		}
-		if errors.Is(err, errJSONSerialization) {
-			r.handleOutputSerializationError(w, callbackReservation, runtimeContext, dispatchAttempt)
-			return true
-		}
-		r.markCallbackDrop()
-		writeRetryableRuntimeError(w, http.StatusServiceUnavailable, "RUNTIME_STOPPING", "Runtime is stopping")
-		return false
+		return r.handleCallbackSubmitFailure(w, err, callbackReservation, runtimeContext, dispatchAttempt)
 	}
 
 	r.markInvocation("success")
+	r.setSuccessHeaders(w, isColdStart)
+	w.WriteHeader(status)
+	releaseOutput := r.limits.retainOutput(int64(len(body)))
+	defer releaseOutput()
+	_, _ = w.Write(body)
+	return true
+}
+
+// applyEnvelope writes a HandlerResponse's allowed headers and returns its wire output,
+// status and callback result.
+func applyEnvelope(w http.ResponseWriter, envelope HandlerResponse) (any, int, InvocationResult) {
+	allowed := FilterAllowedHeaders(envelope.Headers)
+	for key, value := range allowed {
+		w.Header().Set(key, value)
+	}
+	w.Header().Set("X-NanoFaaS-Function-Status", "true")
+	if envelope.Encoding != "" {
+		w.Header().Set("X-NanoFaaS-Encoding", envelope.Encoding)
+	}
+	return envelope.Output, envelope.StatusCode,
+		SuccessWithEnvelope(envelope.Output, envelope.StatusCode, allowed, envelope.Encoding)
+}
+
+// handleCallbackSubmitFailure answers a failed callback hand-off; it reports whether the
+// reservation was consumed.
+func (r *Runtime) handleCallbackSubmitFailure(w http.ResponseWriter, err error, callbackReservation *CallbackReservation,
+	runtimeContext InvocationContext, dispatchAttempt string) bool {
+	if errors.Is(err, errPayloadTooLarge) {
+		r.handleOversizedOutput(w, callbackReservation, runtimeContext, dispatchAttempt)
+		return true
+	}
+	if errors.Is(err, errJSONSerialization) {
+		r.handleOutputSerializationError(w, callbackReservation, runtimeContext, dispatchAttempt)
+		return true
+	}
+	r.markCallbackDrop()
+	writeStopping(w)
+	return false
+}
+
+func (r *Runtime) setSuccessHeaders(w http.ResponseWriter, isColdStart bool) {
 	if isColdStart {
 		w.Header().Set("X-Cold-Start", "true")
 		w.Header().Set("X-Init-Duration-Ms", formatInitDurationHeader(r.coldStart.InitDurationMs()))
@@ -229,11 +286,6 @@ func (r *Runtime) handleInvokeResult(w http.ResponseWriter, output any, handlerE
 	if w.Header().Get(contentTypeHeader) == "" {
 		w.Header().Set(contentTypeHeader, "application/json")
 	}
-	w.WriteHeader(status)
-	releaseOutput := r.limits.retainOutput(int64(len(body)))
-	defer releaseOutput()
-	_, _ = w.Write(body)
-	return true
 }
 
 func (r *Runtime) handleOutputSerializationError(w http.ResponseWriter, reservation *CallbackReservation,
