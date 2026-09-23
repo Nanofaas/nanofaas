@@ -123,7 +123,9 @@ public final class AttemptCoordinator {
                     // protected by the record monitor. Administrative settlement may release
                     // the logical/base owners afterwards, but this reader then keeps the input
                     // charged until the raw transport or LOCAL worker really drains.
-                    physicalInput = executionRecord.openPhysicalInput(task);
+                    // Not try-with-resources (java:S2095): ownership moves to the attempt, which
+                    // closes it on a failed submit or once the transport drains.
+                    physicalInput = executionRecord.openPhysicalInput(task); // NOSONAR
                     task.releaseQueuedInput();
                     if (directLease != null) {
                         executionRecord.attachDispatchLease(directLease);

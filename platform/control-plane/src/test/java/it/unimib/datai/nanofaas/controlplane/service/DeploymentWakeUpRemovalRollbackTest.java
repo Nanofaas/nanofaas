@@ -77,6 +77,7 @@ class DeploymentWakeUpRemovalRollbackTest {
         FunctionRegistrationListener failingListener = new FunctionRegistrationListener() {
             @Override
             public void onRegister(FunctionSpec ignored) {
+                // no-op: this test double ignores the call
             }
 
             @Override

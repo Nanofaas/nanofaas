@@ -58,6 +58,7 @@ class R6DeprovisionFailureOwnershipRegressionTest {
 
         @Override
         public void pullImage(String image) {
+            // no-op: this test double ignores the call
         }
 
         @Override
@@ -88,6 +89,7 @@ class R6DeprovisionFailureOwnershipRegressionTest {
 
         @Override
         public void updateBackends(List<String> backendBaseUrls) {
+            // no-op: this test double ignores the call
         }
 
         @Override
@@ -120,6 +122,7 @@ class R6DeprovisionFailureOwnershipRegressionTest {
                 new EndpointProbe() {
                     @Override
                     public void awaitReady(String baseUrl, Duration timeout, Duration pollInterval) {
+                        // no-op: this test double ignores the call
                     }
 
                     @Override

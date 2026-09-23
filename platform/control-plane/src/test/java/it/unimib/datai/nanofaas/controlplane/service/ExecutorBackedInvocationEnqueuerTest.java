@@ -110,7 +110,7 @@ class ExecutorBackedInvocationEnqueuerTest {
             @Override public void execute(Runnable command) {
                 throw new IllegalStateException("boom");
             }
-            @Override public void shutdown() { }
+            @Override public void shutdown() { /* no-op: this test double ignores the call */ }
             @Override public List<Runnable> shutdownNow() { return List.of(); }
             @Override public boolean isShutdown() { return false; }
             @Override public boolean isTerminated() { return false; }
@@ -127,7 +127,7 @@ class ExecutorBackedInvocationEnqueuerTest {
             @Override public void execute(Runnable command) {
                 throw new AssertionError("executor failed");
             }
-            @Override public void shutdown() { }
+            @Override public void shutdown() { /* no-op: this test double ignores the call */ }
             @Override public List<Runnable> shutdownNow() { return List.of(); }
             @Override public boolean isShutdown() { return false; }
             @Override public boolean isTerminated() { return false; }

@@ -641,9 +641,13 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         for (PendingEntry entry : expired) {
             dispatch.expired(entry.task());
         }
-        long budgetMs = claim == null
-                ? (expired.isEmpty() ? idleBudgetMs() : 0L)
-                : carry(claim);
+        long budgetMs;
+        if (claim == null) {
+            budgetMs = expired.isEmpty() ? idleBudgetMs() : 0L;
+        } else {
+            carry(claim);
+            budgetMs = 0L;
+        }
         checkDrained();
         return budgetMs;
     }
@@ -719,7 +723,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     }
 
     /** Outside the gate, except where noted: record check, lease acquisition, commit, submit. */
-    private long carry(Claim claim) {
+    private void carry(Claim claim) {
         SchedulingTicket ticket = claim.ticket();
         // A claim is provisional and lives only inside this method. tryAcquire and release are
         // both pluggable lifecycle code: if either of them throws, the loop's barrier
@@ -736,7 +740,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
                 claimSettled = true;
                 // Pass again at once: the next selection skips this blocked generation, so other
                 // runnable work goes out now, and idleBudgetMs parks if nothing else can run.
-                return 0L;
+                return;
             }
 
             InvocationTask task;
@@ -763,10 +767,9 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             claimSettled = true;
             if (task == null) {
                 lease.release();
-                return 0L;
+                return;
             }
             submit(ticket, task.withDispatchLease(lease), lease);
-            return 0L;
         } finally {
             if (!claimSettled) {
                 synchronized (gate) {

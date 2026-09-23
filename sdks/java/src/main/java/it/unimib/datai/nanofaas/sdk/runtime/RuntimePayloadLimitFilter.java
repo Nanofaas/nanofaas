@@ -96,7 +96,15 @@ final class RuntimePayloadLimitFilter extends OncePerRequestFilter {
             return new ServletInputStream() {
                 @Override public boolean isFinished() { return input.available() == 0; }
                 @Override public boolean isReady() { return true; }
-                @Override public void setReadListener(ReadListener listener) { }
+                // The body is already buffered, so a non-blocking reader can read it all at once.
+                @Override public void setReadListener(ReadListener listener) {
+                    try {
+                        listener.onDataAvailable();
+                        listener.onAllDataRead();
+                    } catch (IOException failure) {
+                        listener.onError(failure);
+                    }
+                }
                 @Override public int read() { return input.read(); }
                 @Override public int read(byte[] bytes, int off, int len) { return input.read(bytes, off, len); }
             };

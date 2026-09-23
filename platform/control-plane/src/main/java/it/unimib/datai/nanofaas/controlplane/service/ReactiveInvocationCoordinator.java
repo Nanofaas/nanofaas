@@ -238,7 +238,9 @@ public final class ReactiveInvocationCoordinator {
         ExecutionRecord.PhysicalInput physicalInput;
         synchronized (executionRecord) {
             if (executionRecord.isTerminal()) return;
-            physicalInput = executionRecord.openPhysicalInput(executionRecord.task());
+            // Not try-with-resources (java:S2095): the remote call owns the input until its
+            // terminal signal; it is closed on a failed invokeRemote or in whenComplete below.
+            physicalInput = executionRecord.openPhysicalInput(executionRecord.task()); // NOSONAR
         }
         java.util.concurrent.CompletableFuture<InvocationResult> remote;
         try {

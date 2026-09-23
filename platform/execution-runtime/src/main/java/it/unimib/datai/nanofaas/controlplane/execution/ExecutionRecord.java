@@ -426,7 +426,8 @@ public class ExecutionRecord {
     }
 
     /** Remember the request even when the dispatcher has not returned its handle yet. */
-    public synchronized Future<?> takeDispatchHandle() {
+    // The wildcard is deliberate (java:S1452): handles have unrelated result types, callers only cancel.
+    public synchronized Future<?> takeDispatchHandle() { // NOSONAR
         dispatchCancellationRequested = true;
         Future<?> handle = dispatchHandle;
         dispatchHandle = null;

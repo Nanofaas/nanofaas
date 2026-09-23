@@ -300,7 +300,7 @@ class P07dWaiterAdmissionTest {
     private static Harness queuedHarness(boolean sync) {
         FunctionCapacityRegistry generations = generations("fn", "other", "third");
         SyncQueueGateway gateway = sync ? new SyncQueueGateway() {
-            @Override public void enqueueOrThrow(InvocationTask task) { }
+            @Override public void enqueueOrThrow(InvocationTask task) { /* no-op: this test double ignores the call */ }
             @Override public boolean enabled() { return true; }
             @Override public int retryAfterSeconds() { return 1; }
         } : null;

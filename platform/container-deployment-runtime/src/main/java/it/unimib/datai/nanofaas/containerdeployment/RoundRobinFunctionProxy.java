@@ -60,7 +60,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
 
     private static final byte[] NO_BACKENDS = "No ready container backends".getBytes(StandardCharsets.UTF_8);
     private static final byte[] BUSY = "Too many concurrent invocations".getBytes(StandardCharsets.UTF_8);
-    private static final byte[] CLOSED = "Proxy is shutting down".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] SHUTTING_DOWN_BODY = "Proxy is shutting down".getBytes(StandardCharsets.UTF_8);
     private static final byte[] UP = "UP".getBytes(StandardCharsets.UTF_8);
     private static final byte[] DOWN = "DOWN".getBytes(StandardCharsets.UTF_8);
     private static final byte[] INTERRUPTED = "Interrupted while proxying request".getBytes(StandardCharsets.UTF_8);
@@ -253,7 +253,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
         activeExchanges.add(exchange);
         try {
             if (closed.get()) {
-                send(exchange, 503, CLOSED);
+                send(exchange, 503, SHUTTING_DOWN_BODY);
                 return;
             }
             List<String> currentBackends = backends.get();
