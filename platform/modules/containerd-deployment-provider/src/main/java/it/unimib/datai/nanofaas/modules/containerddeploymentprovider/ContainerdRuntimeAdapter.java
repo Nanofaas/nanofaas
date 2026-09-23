@@ -90,6 +90,24 @@ public final class ContainerdRuntimeAdapter implements ContainerRuntimeAdapter {
 
     @Override
     public ManagedContainer runContainer(ContainerInstanceSpec instance) {
+        ContainerSpec containerSpec = containerSpec(instance);
+        boolean created = false;
+        try {
+            containers.create(containerSpec);
+            created = true;
+            containers.start(instance.containerName());
+            String baseUrl = baseUrl(containers.networkAttachment(instance.containerName()));
+            if (baseUrl == null) throw new IllegalStateException("containerd container '"
+                    + instance.containerName() + "' has no CNI IP address");
+            return new ManagedContainer(instance.containerName(),
+                    LocalManagedDeploymentProvider.replicaIndex(instance.containerName()), baseUrl, true);
+        } catch (RuntimeException failure) {
+            if (created) removeAfterFailure(instance.containerName(), failure);
+            throw failure;
+        }
+    }
+
+    private ContainerSpec containerSpec(ContainerInstanceSpec instance) {
         Map<String, String> labels = new HashMap<>(instance.labels());
         labels.put(BACKEND_LABEL, "containerd");
         ContainerSpec.Builder spec = ContainerSpec.builder()
@@ -107,26 +125,14 @@ public final class ContainerdRuntimeAdapter implements ContainerRuntimeAdapter {
             spec.cgroupsPath(systemdCgroup ? cgroupsPath + ":nanofaas:" + leaf : cgroupsPath + separator + leaf);
         }
         applyResources(spec, instance.resources());
+        return spec.build();
+    }
 
-        boolean created = false;
+    private void removeAfterFailure(String containerName, RuntimeException failure) {
         try {
-            containers.create(spec.build());
-            created = true;
-            containers.start(instance.containerName());
-            String baseUrl = baseUrl(containers.networkAttachment(instance.containerName()));
-            if (baseUrl == null) throw new IllegalStateException("containerd container '"
-                    + instance.containerName() + "' has no CNI IP address");
-            return new ManagedContainer(instance.containerName(),
-                    LocalManagedDeploymentProvider.replicaIndex(instance.containerName()), baseUrl, true);
-        } catch (RuntimeException failure) {
-            if (created) {
-                try {
-                    containers.remove(instance.containerName(), REMOVE);
-                } catch (RuntimeException cleanup) {
-                    failure.addSuppressed(cleanup);
-                }
-            }
-            throw failure;
+            containers.remove(containerName, REMOVE);
+        } catch (RuntimeException cleanup) {
+            failure.addSuppressed(cleanup);
         }
     }
 

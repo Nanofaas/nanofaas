@@ -183,22 +183,15 @@ public final class InvokeHandler implements HttpHandler {
             }
             Object output = invokeWithTimeout(readResult.request());
 
-            final byte[] outputBody;
-            try {
-                outputBody = boundedJson.serialize(output, limits.maxOutputBytes);
-            } catch (BoundedJson.PayloadTooLargeException _) {
-                metrics.recordInvocation(functionName);
-                metrics.recordError(functionName);
-                dispatchCallback(callbackReservation, effectiveExecutionId,
-                        InvocationResult.error(OUTPUT_TOO_LARGE_CODE,
-                                "Runtime output exceeds configured byte limit"), traceId, dispatchAttempt);
+            byte[] outputBody = serializeOutput(output);
+            if (outputBody == null) {
+                failInvocation(callbackReservation, effectiveExecutionId, InvocationResult.error(
+                        OUTPUT_TOO_LARGE_CODE, "Runtime output exceeds configured byte limit"), traceId, dispatchAttempt);
                 callbackReservation = null;
                 sendJson(exchange, 500, Map.of(ERROR_KEY, Map.of(
                         "code", OUTPUT_TOO_LARGE_CODE,
                         MESSAGE_KEY, "Runtime output exceeds configured byte limit")));
                 return;
-            } catch (BoundedJson.SerializationException ex) {
-                throw ex;
             }
 
             metrics.recordInvocation(functionName);
@@ -211,25 +204,17 @@ public final class InvokeHandler implements HttpHandler {
                 return;
             }
 
-            if (isColdStart) {
-                exchange.getResponseHeaders().set("X-Cold-Start", "true");
-                exchange.getResponseHeaders().set("X-Init-Duration-Ms", String.valueOf(initDurationMs));
-            }
-
+            if (isColdStart) markColdStart(exchange, initDurationMs);
             sendJsonBytes(exchange, 200, outputBody);
         } catch (TimeoutException _) {
-            metrics.recordInvocation(functionName);
-            metrics.recordError(functionName);
-            dispatchCallback(callbackReservation, effectiveExecutionId,
+            failInvocation(callbackReservation, effectiveExecutionId,
                     InvocationResult.error("HANDLER_TIMEOUT", "Handler exceeded configured timeout"),
                     traceId, dispatchAttempt);
             callbackReservation = null;
             sendJson(exchange, 504, Map.of(
                     ERROR_KEY, Map.of("code", "HANDLER_TIMEOUT", MESSAGE_KEY, "Handler exceeded configured timeout")));
         } catch (InterruptedException _) {
-            metrics.recordInvocation(functionName);
-            metrics.recordError(functionName);
-            dispatchCallback(callbackReservation, effectiveExecutionId,
+            failInvocation(callbackReservation, effectiveExecutionId,
                     InvocationResult.error("INVOCATION_CANCELLED", "Invocation cancelled"),
                     traceId, dispatchAttempt);
             callbackReservation = null;
@@ -504,6 +489,27 @@ public final class InvokeHandler implements HttpHandler {
             task.cancel(true);
             thread.interrupt();
         }
+    }
+
+    /** The serialized output, or null when it exceeds the configured output limit. */
+    private byte[] serializeOutput(Object output) {
+        try {
+            return boundedJson.serialize(output, limits.maxOutputBytes);
+        } catch (BoundedJson.PayloadTooLargeException _) {
+            return null;
+        }
+    }
+
+    private void failInvocation(RuntimeLimits.Reservation callbackReservation, String executionId,
+                                InvocationResult error, String traceId, String dispatchAttempt) {
+        metrics.recordInvocation(functionName);
+        metrics.recordError(functionName);
+        dispatchCallback(callbackReservation, executionId, error, traceId, dispatchAttempt);
+    }
+
+    private static void markColdStart(HttpExchange exchange, long initDurationMs) {
+        exchange.getResponseHeaders().set("X-Cold-Start", "true");
+        exchange.getResponseHeaders().set("X-Init-Duration-Ms", String.valueOf(initDurationMs));
     }
 
     private void enforceBodyDeadline(CountDownLatch finished, AtomicBoolean timedOut, InputStream requestBody) {

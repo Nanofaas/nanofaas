@@ -306,34 +306,40 @@ public class WaitEstimator {
             if (first == null) {
                 first = state;
             }
-            if (state.functionName.equals(excludedFunction)) {
-                queueForCleanup(state);
-                continue;
-            }
-            boolean empty;
-            synchronized (state.events) {
-                int removed = prune(state.events, now, perStateSampleBudget);
-                removeSamples(state, removed);
-                empty = state.samples == 0;
-            }
-            if (!empty) {
-                queueForCleanup(state);
-                continue;
-            }
-            perFunctionEvents.computeIfPresent(state.functionName, (name, current) -> {
-                if (current != state) {
-                    return current;
-                }
-                synchronized (state.events) {
-                    if (state.samples == 0) {
-                        functionStates.decrementAndGet();
-                        return null;
-                    }
-                }
-                queueForCleanup(state);
-                return state;
-            });
+            cleanOne(state, now, excludedFunction, perStateSampleBudget);
         }
+    }
+
+    private void cleanOne(FunctionEvents state, Instant now, String excludedFunction, int perStateSampleBudget) {
+        if (state.functionName.equals(excludedFunction)) {
+            queueForCleanup(state);
+            return;
+        }
+        boolean empty;
+        synchronized (state.events) {
+            int removed = prune(state.events, now, perStateSampleBudget);
+            removeSamples(state, removed);
+            empty = state.samples == 0;
+        }
+        if (!empty) {
+            queueForCleanup(state);
+            return;
+        }
+        perFunctionEvents.computeIfPresent(state.functionName, (name, current) -> retainOrDrop(state, current));
+    }
+
+    private FunctionEvents retainOrDrop(FunctionEvents state, FunctionEvents current) {
+        if (current != state) {
+            return current;
+        }
+        synchronized (state.events) {
+            if (state.samples == 0) {
+                functionStates.decrementAndGet();
+                return null;
+            }
+        }
+        queueForCleanup(state);
+        return state;
     }
 
     private boolean makeRoomForFunction(Instant now) {

@@ -15,6 +15,7 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadMeters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
@@ -170,45 +171,11 @@ public class DefaultOffloadGateway implements OffloadGateway {
                 ? null : legacyMeters.lease(task.functionName(), trigger);
 
         WebClient.RequestBodySpec request = webClient.get().post().uri(uri);
-        request.header("X-NanoFaaS-Offload-Hop", "1");
-        if (task.traceId() != null) {
-            request.header("X-Trace-Id", task.traceId());
-        }
-        if (context.traceparent() != null) {
-            request.header("traceparent", context.traceparent());
-        }
-        if (context.tracestate() != null) {
-            request.header("tracestate", context.tracestate());
-        }
-
+        applyHopHeaders(request, task, context);
         forwardApplicationHeaders(request, task.request().headers());
 
         return request.bodyValue(task.request())
-                .exchangeToMono(response -> {
-                    boolean functionDecided = "true".equalsIgnoreCase(
-                            response.headers().asHttpHeaders().getFirst("X-NanoFaaS-Function-Status"));
-
-                    // A marked response is the function's own answer, whatever its status —
-                    // read it down the same body-parsing path as a plain 2xx, before any
-                    // status-based branching (a marker-bearing 404 is a function decision,
-                    // not "unregistered function").
-                    if (functionDecided || response.statusCode().is2xxSuccessful()) {
-                        return response.bodyToMono(InvocationResponse.class)
-                                .map(this::toResult)
-                                .switchIfEmpty(Mono.error(new OffloadFailedException(target, false,
-                                        "empty response body from remote " + target)));
-                    }
-                    if (response.statusCode().value() == 404) {
-                        return response.releaseBody().then(Mono.error(new OffloadFailedException(target, false,
-                                "function '" + task.functionName() + "' not registered on remote " + target)));
-                    }
-                    int status = response.statusCode().value();
-                    return response.bodyToMono(String.class)
-                            .defaultIfEmpty("")
-                            .flatMap(body -> Mono.error(new OffloadFailedException(target, false,
-                                    REMOTE_PREFIX + target + " returned " + status
-                                            + (body.isBlank() ? "" : ": " + body))));
-                })
+                .exchangeToMono(response -> readRemoteResponse(response, target, task.functionName()))
                 .timeout(Duration.ofMillis(timeoutMs))
                 .onErrorMap(TimeoutException.class, ex ->
                         new OffloadFailedException(target, true,
@@ -219,27 +186,72 @@ public class DefaultOffloadGateway implements OffloadGateway {
                     return new OffloadFailedException(target, false,
                             REMOTE_PREFIX + target + " unreachable: " + message);
                 })
-                .doOnSubscribe(s -> {
-                    if (meterLease != null) {
-                        meterLease.subscribed();
-                    } else {
-                        legacyLease.subscribed();
-                    }
-                })
-                .doOnError(OffloadFailedException.class, ex -> {
-                    if (meterLease != null) {
-                        meterLease.failed();
-                    } else {
-                        legacyLease.failed();
-                    }
-                })
-                .doFinally(_ -> {
-                    if (meterLease != null) {
-                        meterLease.close();
-                    } else {
-                        legacyLease.close();
-                    }
-                });
+                .doOnSubscribe(_ -> subscribed(meterLease, legacyLease))
+                .doOnError(OffloadFailedException.class, _ -> failed(meterLease, legacyLease))
+                .doFinally(_ -> close(meterLease, legacyLease));
+    }
+
+    private static void applyHopHeaders(WebClient.RequestBodySpec request, InvocationTask task, OffloadContext context) {
+        request.header("X-NanoFaaS-Offload-Hop", "1");
+        if (task.traceId() != null) {
+            request.header("X-Trace-Id", task.traceId());
+        }
+        if (context.traceparent() != null) {
+            request.header("traceparent", context.traceparent());
+        }
+        if (context.tracestate() != null) {
+            request.header("tracestate", context.tracestate());
+        }
+    }
+
+    private Mono<InvocationResult> readRemoteResponse(ClientResponse response, String target, String functionName) {
+        boolean functionDecided = "true".equalsIgnoreCase(
+                response.headers().asHttpHeaders().getFirst("X-NanoFaaS-Function-Status"));
+
+        // A marked response is the function's own answer, whatever its status —
+        // read it down the same body-parsing path as a plain 2xx, before any
+        // status-based branching (a marker-bearing 404 is a function decision,
+        // not "unregistered function").
+        if (functionDecided || response.statusCode().is2xxSuccessful()) {
+            return response.bodyToMono(InvocationResponse.class)
+                    .map(this::toResult)
+                    .switchIfEmpty(Mono.error(new OffloadFailedException(target, false,
+                            "empty response body from remote " + target)));
+        }
+        if (response.statusCode().value() == 404) {
+            return response.releaseBody().then(Mono.error(new OffloadFailedException(target, false,
+                    "function '" + functionName + "' not registered on remote " + target)));
+        }
+        int status = response.statusCode().value();
+        return response.bodyToMono(String.class)
+                .defaultIfEmpty("")
+                .flatMap(body -> Mono.error(new OffloadFailedException(target, false,
+                        REMOTE_PREFIX + target + " returned " + status
+                                + (body.isBlank() ? "" : ": " + body))));
+    }
+
+    private static void subscribed(OffloadMeters.OffloadMeterLease meterLease, LegacyMeterLease legacyLease) {
+        if (meterLease != null) {
+            meterLease.subscribed();
+        } else {
+            legacyLease.subscribed();
+        }
+    }
+
+    private static void failed(OffloadMeters.OffloadMeterLease meterLease, LegacyMeterLease legacyLease) {
+        if (meterLease != null) {
+            meterLease.failed();
+        } else {
+            legacyLease.failed();
+        }
+    }
+
+    private static void close(OffloadMeters.OffloadMeterLease meterLease, LegacyMeterLease legacyLease) {
+        if (meterLease != null) {
+            meterLease.close();
+        } else {
+            legacyLease.close();
+        }
     }
 
     int legacyOwnerCount() {
