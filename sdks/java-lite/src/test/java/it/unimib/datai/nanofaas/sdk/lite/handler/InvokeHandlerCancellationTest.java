@@ -55,13 +55,13 @@ class InvokeHandlerCancellationTest {
             boolean released = false;
             while (!released) {
                 try { released = releaseHandler.await(20, TimeUnit.MILLISECONDS); }
-                catch (InterruptedException _) { }
+                catch (InterruptedException _) { /* this handler deliberately ignores cancellation */ }
             }
             return java.util.Map.of("result", "late");
         }, client, new RuntimeMetrics("cancel"), mapper, "cancel", callbacks, 2_000, limits);
         MemoryExchange exchange = new MemoryExchange();
         Thread request = Thread.ofPlatform().start(() -> {
-            try { handler.handle(exchange); } catch (Exception _) { }
+            try { handler.handle(exchange); } catch (Exception _) { /* asserted through the exchange */ }
         });
         try {
             assertTrue(handlerEntered.await(1, TimeUnit.SECONDS));

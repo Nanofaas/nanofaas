@@ -269,7 +269,7 @@ class RoundRobinFunctionProxyTest {
     }
 
     @Test
-    void close_shutsDownServerAndHttpClient_andIsIdempotent() throws Exception {
+    void close_shutsDownServerAndHttpClient_andIsIdempotent() {
         HttpClient injectedClient = HttpClient.newHttpClient();
         proxy = new RoundRobinFunctionProxy("127.0.0.1", 4, Duration.ofSeconds(5), injectedClient);
         int port = portOf(proxy);
@@ -311,7 +311,7 @@ class RoundRobinFunctionProxyTest {
     }
 
     @Test
-    void close_stageFailure_stillReleasesTheOtherStages_andStaysRetryable() throws Exception {
+    void close_stageFailure_stillReleasesTheOtherStages_andStaysRetryable() {
         HttpClient failingClient = mock(HttpClient.class);
         doThrow(new IllegalStateException("client close failed")).doNothing().when(failingClient).close();
         proxy = new RoundRobinFunctionProxy("127.0.0.1", 4, Duration.ofSeconds(5), failingClient);

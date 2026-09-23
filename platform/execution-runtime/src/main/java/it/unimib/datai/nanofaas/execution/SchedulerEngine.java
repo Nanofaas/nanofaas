@@ -273,7 +273,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
                 }
                 discard(superseded);
             }
-            log.info("Scheduler strategy switched to {}", target.id());
+            log.info("Scheduler strategy switched to {}", target.id()); // NOSONAR (java:S2629): cheap accessors
         } finally {
             // Observation is not part of the correctness transaction above:
             // it runs after every possible outcome, including a thrown SchedulerSwitchException,

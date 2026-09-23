@@ -262,7 +262,7 @@ class SchedulerEngineDispatchTest {
     }
 
     @Test
-    void aConcurrentEnqueueCannotTakeTheSlotReservedByAnInFlightSubmit() throws Exception {
+    void aConcurrentEnqueueCannotTakeTheSlotReservedByAnInFlightSubmit() {
         PendingWorkStore singleSlot = new PendingWorkStore(1);
         SchedulerEngine singleSlotEngine = engineOver(singleSlot);
         SchedulingTicket other = new SchedulingTicket(new TicketId("e2", 1), GENERATION, 1, NOW, NOW, null);

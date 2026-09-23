@@ -364,7 +364,7 @@ class DeploymentWakeUpGateTest {
     }
 
     @Test
-    void synchronousSubmissionFailureAndContextCloseDrainOwnersBeforeLateWork() throws Exception {
+    void synchronousSubmissionFailureAndContextCloseDrainOwnersBeforeLateWork() {
         InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 0);
         ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
         FunctionCapacityRegistry generations = new FunctionCapacityRegistry();

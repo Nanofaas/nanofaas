@@ -149,7 +149,7 @@ class P05WaiterTimeoutSharedOutcomeTest {
     }
 
     @Test
-    void whenEveryWaiterTimesOut_theSharedExecutionStillConcludesForTheReplay() throws Exception {
+    void whenEveryWaiterTimesOut_theSharedExecutionStillConcludesForTheReplay() {
         CompletableFuture<DispatchResult> backend = new CompletableFuture<>();
         CoordinatorHarness h = harnessWithBackend(backend);
 
@@ -296,7 +296,7 @@ class P05WaiterTimeoutSharedOutcomeTest {
     }
 
     @Test
-    void anExecutionLevelDeadline_concludesEveryObserverWithTheSameTerminal() throws Exception {
+    void anExecutionLevelDeadline_concludesEveryObserverWithTheSameTerminal() {
         CompletableFuture<DispatchResult> backend = new CompletableFuture<>();
         CoordinatorHarness h = harnessWithBackend(backend);
 

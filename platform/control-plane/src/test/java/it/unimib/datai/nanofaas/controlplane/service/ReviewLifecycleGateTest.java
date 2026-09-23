@@ -223,7 +223,7 @@ class ReviewLifecycleGateTest {
         var work = CompletableFuture.supplyAsync(() -> {
             actualRunning.incrementAndGet(); started.countDown();
             while (stop.getCount() > 0) {
-                try { stop.await(); } catch (InterruptedException _) { }
+                try { stop.await(); } catch (InterruptedException _) { /* keep running until stop opens */ }
             }
             actualRunning.decrementAndGet();
             return DispatchResult.warm(InvocationResult.success("done"));

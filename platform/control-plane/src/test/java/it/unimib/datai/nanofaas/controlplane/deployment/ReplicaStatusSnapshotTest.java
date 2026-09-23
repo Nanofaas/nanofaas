@@ -127,7 +127,7 @@ class ReplicaStatusSnapshotTest {
     }
 
     @Test
-    void observe_keepsLastKnownGoodWhenTheRefreshFails_neverZero() throws Exception {
+    void observe_keepsLastKnownGoodWhenTheRefreshFails_neverZero() {
         MutableInstantSource clock = new MutableInstantSource(0);
         CountDownLatch failedRefreshDone = new CountDownLatch(1);
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
@@ -150,7 +150,7 @@ class ReplicaStatusSnapshotTest {
     // ------------------------------------------------- item 1/acceptance: one slow backend, others move
 
     @Test
-    void observe_neverBlocksTheLoopOnAProviderThatDoesNotRespondWhileOthersDo() throws Exception {
+    void observe_neverBlocksTheLoopOnAProviderThatDoesNotRespondWhileOthersDo() {
         MutableInstantSource clock = new MutableInstantSource(0);
         CountDownLatch slowEntered = new CountDownLatch(1);
         CountDownLatch releaseSlow = new CountDownLatch(1);
@@ -185,7 +185,7 @@ class ReplicaStatusSnapshotTest {
     // ------------------------------------------------------------------ item 1: bounded queue
 
     @Test
-    void observe_rejectsRefreshesPastTheQueueBoundInsteadOfQueueingThemOrRunningThemOnTheCaller() throws Exception {
+    void observe_rejectsRefreshesPastTheQueueBoundInsteadOfQueueingThemOrRunningThemOnTheCaller() {
         MutableInstantSource clock = new MutableInstantSource(0);
         CountDownLatch firstEntered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
@@ -253,7 +253,7 @@ class ReplicaStatusSnapshotTest {
     // ------------------------------------------------------------------ item 2: single flight
 
     @Test
-    void observe_sharesOneRefreshPerFunctionGeneration() throws Exception {
+    void observe_sharesOneRefreshPerFunctionGeneration() {
         MutableInstantSource clock = new MutableInstantSource(0);
         AtomicInteger fetches = new AtomicInteger();
         CountDownLatch refreshEntered = new CountDownLatch(1);
@@ -285,7 +285,7 @@ class ReplicaStatusSnapshotTest {
     }
 
     @Test
-    void repeatedInvalidateWhileAFetchIsBlockedCannotQueueUnboundedNewRefreshes() throws Exception {
+    void repeatedInvalidateWhileAFetchIsBlockedCannotQueueUnboundedNewRefreshes() {
         MutableInstantSource clock = new MutableInstantSource(0);
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
@@ -349,7 +349,7 @@ class ReplicaStatusSnapshotTest {
     // ------------------------------------------------- item 5: removal during a GET, late completion
 
     @Test
-    void aRemovalDuringAGetDiscardsTheAnswerAndDoesNotReinsertTheEntry() throws Exception {
+    void aRemovalDuringAGetDiscardsTheAnswerAndDoesNotReinsertTheEntry() {
         MutableInstantSource clock = new MutableInstantSource(0);
         CountDownLatch fetchEntered = new CountDownLatch(1);
         CountDownLatch releaseFetch = new CountDownLatch(1);
@@ -384,7 +384,7 @@ class ReplicaStatusSnapshotTest {
     }
 
     @Test
-    void aReRegistrationUnderAnotherBackendDuringAGetDiscardsTheOldBackendsAnswer() throws Exception {
+    void aReRegistrationUnderAnotherBackendDuringAGetDiscardsTheOldBackendsAnswer() {
         MutableInstantSource clock = new MutableInstantSource(0);
         CountDownLatch fetchEntered = new CountDownLatch(1);
         CountDownLatch releaseFetch = new CountDownLatch(1);
@@ -410,7 +410,7 @@ class ReplicaStatusSnapshotTest {
     }
 
     @Test
-    void aCompletionThatLandsAfterTheFreshnessDeadlineStillPopulatesTheCache() throws Exception {
+    void aCompletionThatLandsAfterTheFreshnessDeadlineStillPopulatesTheCache() {
         MutableInstantSource clock = new MutableInstantSource(0);
         CountDownLatch release = new CountDownLatch(1);
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
@@ -446,7 +446,7 @@ class ReplicaStatusSnapshotTest {
     }
 
     @Test
-    void refresh_releasesTheCallerAtItsDeadlineWhenTheProviderNeverAnswers() throws Exception {
+    void refresh_releasesTheCallerAtItsDeadlineWhenTheProviderNeverAnswers() {
         // RED before P10: refresh() joined the fetch with no bound at all, so a hung provider held
         // the wake-up worker forever (the 3s preemptive bound below never returned).
         MutableInstantSource clock = new MutableInstantSource(0);
@@ -465,7 +465,7 @@ class ReplicaStatusSnapshotTest {
     }
 
     @Test
-    void refresh_doesNotQueueBehindTheSlowPeriodicRefreshPool() throws Exception {
+    void refresh_doesNotQueueBehindTheSlowPeriodicRefreshPool() {
         // Wake-up and lifecycle reads are latency-critical: they run on their own bounded pool so a
         // saturated periodic pool cannot delay them.
         MutableInstantSource clock = new MutableInstantSource(0);
@@ -534,7 +534,7 @@ class ReplicaStatusSnapshotTest {
     }
 
     @Test
-    void refresh_doesNotHandBackAValueTheGenerationGuardRejected() throws Exception {
+    void refresh_doesNotHandBackAValueTheGenerationGuardRejected() {
         // The guard keeps a superseded fetch out of the CACHE, but a caller blocked on that same
         // fetch was still handed the old incarnation's replica count. A forced-fresh read spanning
         // a deprovision and re-registration must fail rather than answer for a function that no
@@ -583,7 +583,7 @@ class ReplicaStatusSnapshotTest {
     }
 
     @Test
-    void close_leavesAnInjectedExecutorToItsOwner() throws Exception {
+    void close_leavesAnInjectedExecutorToItsOwner() {
         MutableInstantSource clock = new MutableInstantSource(0);
         try (ExecutorService executor = Executors.newFixedThreadPool(1)) {
             ReplicaStatusSnapshot snapshot = snapshot(clock, executor);

@@ -534,6 +534,7 @@ class P13BoundedProxyTest {
         try {
             socket.close();
         } catch (IOException _) {
+            // Best effort: the peer may already have closed the socket.
         }
     }
 

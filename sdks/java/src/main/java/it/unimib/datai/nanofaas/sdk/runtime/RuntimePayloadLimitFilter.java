@@ -67,12 +67,12 @@ final class RuntimePayloadLimitFilter extends OncePerRequestFilter {
             response.setStatus(408);
             response.setContentType("application/json");
             response.getOutputStream().write(READ_TIMEOUT);
-            try { input.close(); } catch (IOException _) { }
+            try { input.close(); } catch (IOException _) { /* best effort: unblocks the reader */ }
             return;
         } catch (InterruptedException ex) {
             read.cancel(true);
             reader.interrupt();
-            try { input.close(); } catch (IOException _) { }
+            try { input.close(); } catch (IOException _) { /* best effort: unblocks the reader */ }
             Thread.currentThread().interrupt();
             throw new ServletException("Interrupted while reading invocation body", ex);
         } catch (ExecutionException ex) {

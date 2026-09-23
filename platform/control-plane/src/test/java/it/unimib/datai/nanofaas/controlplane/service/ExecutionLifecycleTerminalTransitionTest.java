@@ -114,7 +114,7 @@ class ExecutionLifecycleTerminalTransitionTest {
     }
 
     @Test
-    void weightEvictionDuringCompletionLeavesATombstoneAndNeverReDispatches() throws Exception {
+    void weightEvictionDuringCompletionLeavesATombstoneAndNeverReDispatches() {
         // An outcome budget smaller than the payload: settle declines the outcome, so the
         // payload is gone while the key must still answer for it (I6 / I2).
         rebuild(new ExecutionStoreProperties(Duration.ofMinutes(5), Duration.ofMinutes(30),
@@ -138,7 +138,7 @@ class ExecutionLifecycleTerminalTransitionTest {
     }
 
     @Test
-    void ttlEvictionDuringCompletionRespectsTheRetentionBoundary() throws Exception {
+    void ttlEvictionDuringCompletionRespectsTheRetentionBoundary() {
         rebuild(ExecutionStoreProperties.of(Duration.ofSeconds(30), Duration.ofMinutes(30), Duration.ofSeconds(30)));
 
         InvocationExecutionFactory.ExecutionLookup first = admitAndDispatch("ttl");
@@ -163,7 +163,7 @@ class ExecutionLifecycleTerminalTransitionTest {
     }
 
     @Test
-    void delayedKeyPublishAfterCompletionStillProtectsTheKey() throws Exception {
+    void delayedKeyPublishAfterCompletionStillProtectsTheKey() {
         // The dispatch completes inline and the execution settles BEFORE the admission
         // publishes the key (the no-queue production ordering). The key must still end
         // terminal, with no intermediate reclaimable published binding.
@@ -274,7 +274,7 @@ class ExecutionLifecycleTerminalTransitionTest {
     }
 
     @Test
-    void doubleCompletionIsIdempotent() throws Exception {
+    void doubleCompletionIsIdempotent() {
         rebuild(ExecutionStoreProperties.of(Duration.ofMinutes(5), Duration.ofMinutes(30), Duration.ofSeconds(30)));
 
         InvocationExecutionFactory.ExecutionLookup first = admitAndDispatch("twice");
@@ -295,7 +295,7 @@ class ExecutionLifecycleTerminalTransitionTest {
     }
 
     @Test
-    void completionAgainstAdministrativeExpirySettlesExactlyOnce() throws Exception {
+    void completionAgainstAdministrativeExpirySettlesExactlyOnce() {
         // A real ticker and a very short maxLifetime: the record expires on its own (as in
         // production) rather than through a steered clock, which is what keeps the expiry
         // observation deterministic against Caffeine's scheduler.

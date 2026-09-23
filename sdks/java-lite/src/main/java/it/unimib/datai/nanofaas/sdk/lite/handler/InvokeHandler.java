@@ -272,7 +272,7 @@ public final class InvokeHandler implements HttpHandler {
             try {
                 if (!finished.await(limits.bodyReadTimeoutMs, TimeUnit.MILLISECONDS)) {
                     timedOut.set(true);
-                    try { requestBody.close(); } catch (IOException _) { }
+                    try { requestBody.close(); } catch (IOException _) { /* best effort: unblocks the reader */ }
                 }
             } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();

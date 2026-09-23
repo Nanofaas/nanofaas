@@ -34,7 +34,7 @@ class HandlerExecutorCancellationTest {
             } catch (InterruptedException _) {
                 requestInterrupted.set(true);
                 requestCaughtCancellation.countDown();
-            } catch (Exception _) { }
+            } catch (Exception _) { /* only the interruption matters here */ }
         });
         try {
             assertTrue(entered.await(1, TimeUnit.SECONDS));

@@ -31,7 +31,7 @@ class HandlerExecutorLimitsTest {
                     return "ok";
                 },
                         new InvocationRequest(null, null));
-            } catch (Exception _) { }
+            } catch (Exception _) { /* this call only occupies the slot */ }
         });
         assertTrue(entered.await(1, TimeUnit.SECONDS));
 

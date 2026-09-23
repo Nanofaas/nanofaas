@@ -222,7 +222,7 @@ public class CallbackDispatcher {
 
     private void recordRejection(String executionId) {
         log.warn("Rejecting callback for execution {} because dispatcher capacity is full",
-                singleLine(executionId));
+                singleLine(executionId)); // NOSONAR (java:S2629): warn/error logging is always on; singleLine is a bounded sanitizer
         if (runtimeMetrics != null) {
             runtimeMetrics.recordCallbackFailure();
         }

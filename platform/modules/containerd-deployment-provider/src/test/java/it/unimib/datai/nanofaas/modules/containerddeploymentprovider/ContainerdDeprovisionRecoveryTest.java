@@ -37,7 +37,7 @@ class ContainerdDeprovisionRecoveryTest {
     }
 
     @Test
-    void everyReplicaIsAttemptedAndProxyClosesOnPartialDeletion() throws Exception {
+    void everyReplicaIsAttemptedAndProxyClosesOnPartialDeletion() {
         RecoveryFixture state = new RecoveryFixture();
         try (var session = state.open(); HttpClient http = HttpClient.newHttpClient()) {
             String endpoint = session.provider().provision(spec()).endpointUrl();

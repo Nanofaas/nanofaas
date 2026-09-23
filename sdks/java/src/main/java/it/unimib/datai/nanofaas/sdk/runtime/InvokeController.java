@@ -172,7 +172,7 @@ public class InvokeController {
                 isEnvelope = true;
             } else {
                 log.warn("Handler returned invalid statusCode {} for execution {}, treating as platform error",
-                        envelopeStatus, singleLine(executionId));
+                        envelopeStatus, singleLine(executionId)); // NOSONAR (java:S2629): warn/error logging is always on; singleLine is a bounded sanitizer
                 submitCallback(callbackReservation, executionId,
                         CallbackPayload.error("OUTPUT_SERIALIZATION_ERROR",
                                 "Handler returned invalid statusCode: " + envelopeStatus),
@@ -235,7 +235,7 @@ public class InvokeController {
                 .toList();
         if (!dropped.isEmpty()) {
             log.warn("Dropped response header(s) {} for execution {}",
-                    singleLine(dropped), singleLine(executionId));
+                    singleLine(dropped), singleLine(executionId)); // NOSONAR (java:S2629): warn/error logging is always on; singleLine is a bounded sanitizer
         }
     }
 
@@ -245,7 +245,7 @@ public class InvokeController {
                                                         String traceId, String dispatchAttempt) {
         String errorMessage = handlerErrorMessage(ex);
         log.error("Handler error for execution {}: {}",
-                singleLine(effectiveExecutionId), singleLine(errorMessage), ex);
+                singleLine(effectiveExecutionId), singleLine(errorMessage), ex); // NOSONAR (java:S2629): warn/error logging is always on; singleLine is a bounded sanitizer
 
         submitCallback(callbackReservation,
                 effectiveExecutionId,

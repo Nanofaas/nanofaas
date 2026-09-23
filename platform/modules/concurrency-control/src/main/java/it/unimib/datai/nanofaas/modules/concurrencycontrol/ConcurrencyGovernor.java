@@ -227,7 +227,7 @@ public class ConcurrencyGovernor implements SmartLifecycle {
                 // a replica count would mean inventing one — and inventing zero would collapse the
                 // limit of a healthy function because a provider GET failed (invariant I9).
                 log.debug("Skipping concurrency governing for {}: no replica reading available",
-                        registeredFunction.name());
+                        registeredFunction.name()); // NOSONAR (java:S2629): cheap accessors
                 return;
             }
             var latency = observation(registeredFunction.name()).service();

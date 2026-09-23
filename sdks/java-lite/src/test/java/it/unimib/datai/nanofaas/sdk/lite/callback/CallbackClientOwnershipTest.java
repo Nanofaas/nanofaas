@@ -24,7 +24,7 @@ class CallbackClientOwnershipTest {
     }
 
     @Test
-    void closeDoesNotTerminateAnInjectedHttpClient() throws Exception {
+    void closeDoesNotTerminateAnInjectedHttpClient() {
         try (HttpClient injected = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(1))
                 .build()) {

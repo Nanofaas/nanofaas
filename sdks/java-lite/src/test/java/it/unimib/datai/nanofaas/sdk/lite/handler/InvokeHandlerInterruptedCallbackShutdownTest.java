@@ -79,7 +79,7 @@ class InvokeHandlerInterruptedCallbackShutdownTest {
     }
 
     @Test
-    void stopPreservesCallerInterruptWhileStillDrainingCallbackOwnership() throws Exception {
+    void stopPreservesCallerInterruptWhileStillDrainingCallbackOwnership() {
         RuntimeLimits limits = new RuntimeLimits(1, 1, 1_024, 1_024, 1_024, 1_024);
         ThreadPoolExecutor callbacks = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
                 new ArrayBlockingQueue<>(1));
