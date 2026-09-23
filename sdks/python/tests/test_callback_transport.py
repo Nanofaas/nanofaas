@@ -67,3 +67,6 @@ def test_redirect_behavior(callback_server, status):
         ("POST", f"/redirect/{status}", b"{}"),
         ("POST" if preserves_post else "GET", "/status/204", b"{}" if preserves_post else b""),
     ]
+    for _, _, _, received in calls:
+        normalized = {key.lower(): value for key, value in received.items()}
+        assert normalized["x-trace-id"] == "trace-1"
