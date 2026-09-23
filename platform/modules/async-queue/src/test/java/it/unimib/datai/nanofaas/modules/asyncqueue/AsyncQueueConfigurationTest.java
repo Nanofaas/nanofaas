@@ -18,7 +18,6 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingTicket;
 import it.unimib.datai.nanofaas.controlplane.scheduler.TicketId;
 import it.unimib.datai.nanofaas.controlplane.service.EngineInvocationEnqueuer;
 import it.unimib.datai.nanofaas.controlplane.service.EngineInvocationEnqueuer.AdmissionProfile;
-import it.unimib.datai.nanofaas.controlplane.service.EngineInvocationEnqueuer.PerFunctionDepth;
 import it.unimib.datai.nanofaas.controlplane.service.EngineSyncQueueGateway;
 import it.unimib.datai.nanofaas.controlplane.service.EngineWorkloadMetricsSource;
 import it.unimib.datai.nanofaas.controlplane.service.SchedulerConfiguration;
@@ -104,7 +103,7 @@ class AsyncQueueConfigurationTest {
 
         ObjectProvider<EngineSyncQueueGateway> noSyncGateway = noSyncGateway();
         FunctionRegistrationListener listener = new SchedulerConfiguration()
-                .schedulerCapacityGenerationListener(capacityRegistry, engine, new PerFunctionDepth(),
+                .schedulerCapacityGenerationListener(capacityRegistry, engine,
                         noSyncGateway, testMetricsBinder());
 
         FunctionSpec spec = spec("echo");
@@ -192,13 +191,12 @@ class AsyncQueueConfigurationTest {
                 return engine;
             }
         };
-        PerFunctionDepth perFunctionDepth = new PerFunctionDepth();
         AtomicLong sequence = new AtomicLong();
         EngineInvocationEnqueuer enqueuer = new EngineInvocationEnqueuer(engineProvider, capacityRegistry,
-                sequence::incrementAndGet, AdmissionProfile.FUNCTION_QUEUE, true, noSyncGateway(), perFunctionDepth);
+                sequence::incrementAndGet, AdmissionProfile.FUNCTION_QUEUE, true, noSyncGateway());
 
         FunctionRegistrationListener listener = new SchedulerConfiguration()
-                .schedulerCapacityGenerationListener(capacityRegistry, engine, perFunctionDepth,
+                .schedulerCapacityGenerationListener(capacityRegistry, engine,
                         noSyncGateway(), testMetricsBinder());
 
         // A large queueSize: the per-function cap (I1) must not be what stops the admitter mid-race
@@ -233,7 +231,7 @@ class AsyncQueueConfigurationTest {
             listener.onRemove("echo"); // must not throw: NEW-CRITICAL
             // Fix round 3, Item 1/2: EngineInvocationEnqueuer.admitDirect now re-checks
             // capacityRegistry.activeGeneration after a successful engine.enqueue and
-            // compensates (engine.remove + depth release) if the generation was retired in the
+            // compensates (engine.remove) if the generation was retired in the
             // instant between the two — but that compensating action runs on the ADMITTING
             // thread, a few instructions after the enqueue it is undoing, so it is not
             // necessarily visible the very instant onRemove returns on THIS thread. Asserting an
@@ -371,7 +369,7 @@ class AsyncQueueConfigurationTest {
         WorkloadMetricsBinder binder = new WorkloadMetricsBinder(
                 registry, new EngineWorkloadMetricsSource(engine, capacityRegistry));
         FunctionRegistrationListener listener = new SchedulerConfiguration()
-                .schedulerCapacityGenerationListener(capacityRegistry, engine, new PerFunctionDepth(),
+                .schedulerCapacityGenerationListener(capacityRegistry, engine,
                         noSyncGateway(), binder);
 
         int baseline = registry.getMeters().size();
@@ -499,7 +497,7 @@ class AsyncQueueConfigurationTest {
         SchedulerEngine engine = new SchedulerEngine(store, new StrategyRegistry(List.of(strategy)),
                 strategy.id(), dispatch, generation -> true, Clock.systemUTC(), System::nanoTime);
         FunctionRegistrationListener listener = new SchedulerConfiguration()
-                .schedulerCapacityGenerationListener(capacityRegistry, engine, new PerFunctionDepth(),
+                .schedulerCapacityGenerationListener(capacityRegistry, engine,
                         noSyncGateway(), testMetricsBinder());
 
         FunctionSpec spec = spec("echo");

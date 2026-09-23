@@ -264,6 +264,11 @@ claims, and cancels any submitting ticket that returns to the queue under input 
 Sync admission rechecks the function generation after insertion and withdraws tickets whose
 generation was removed during admission.
 
+Per-function queue limits are checked atomically with admission. A queue reservation remains
+occupied through selection and submit, including input backpressure. Reservations still
+submitting for a removed generation count against the same function name until their submit
+finishes; registering a new generation does not reset that occupancy.
+
 The strategy an instance **starts** on is configuration, not a PATCH: set the environment
 variable `NANOFAAS_SCHEDULER_STRATEGY` to one of the artifact's ids (Helm:
 `controlPlane.scheduler.strategy`; Compose passes the same variable through, where it has an

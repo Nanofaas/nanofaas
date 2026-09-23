@@ -381,6 +381,84 @@ class SchedulerConformanceTest {
         assertThat(f.store.pendingCount()).isEqualTo(2);
     }
 
+    // ------------------------------------------------------------------
+    // Per-function cap enforced by engine admission
+    // ------------------------------------------------------------------
+
+    private static PendingEntry candidate(String id, FunctionGeneration generation, long sequence) {
+        var ticket = new SchedulingTicket(new TicketId(id, 1), generation,
+                sequence, NOW, NOW, null);
+        var task = new InvocationTask(id, generation.functionName(), null, null,
+                null, null, NOW, 1, InvocationKind.ASYNC);
+        return new PendingEntry(ticket, task);
+    }
+
+    @ParameterizedTest
+    @MethodSource("strategies")
+    void capIncludesClaimsAndSubmitsUntilTheReservationEnds(SchedulingStrategy strategy) {
+        Fixture f = new Fixture(strategy);
+        var first = candidate("first", f.echo, 0);
+        assertThat(f.engine.enqueue(first, 1)).isTrue();
+        assertThat(f.engine.isQueueFull("echo")).isTrue();
+        doAnswer(invocation -> {
+            assertThat(f.engine.enqueue(candidate("during-submit", f.echo, 1), 1)).isFalse();
+            return null;
+        }).when(f.dispatch).submit(any());
+        f.engine.tick();
+        assertThat(f.engine.isQueueFull("echo")).isFalse();
+        assertThat(f.engine.enqueue(candidate("after-submit", f.echo, 2), 1)).isTrue();
+    }
+
+    @ParameterizedTest
+    @MethodSource("strategies")
+    void concurrentAdmissionsCannotBothTakeTheLastSlot(SchedulingStrategy strategy) throws Exception {
+        Fixture f = new Fixture(strategy);
+        var start = new java.util.concurrent.CountDownLatch(1);
+        try (var pool = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var a = pool.submit(() -> {
+                if (!start.await(5, java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("start");
+                return f.engine.enqueue(candidate("a", f.echo, 0), 1);
+            });
+            var b = pool.submit(() -> {
+                if (!start.await(5, java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("start");
+                return f.engine.enqueue(candidate("b", f.echo, 1), 1);
+            });
+            start.countDown();
+            assertThat(java.util.List.of(a.get(5, java.util.concurrent.TimeUnit.SECONDS),
+                    b.get(5, java.util.concurrent.TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(true, false);
+        }
+        assertThat(f.engine.reservedCount("echo")).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @MethodSource("strategies")
+    void removalDoesNotEraseTheOccupancyOfAnOldSubmit(SchedulingStrategy strategy) {
+        Fixture f = new Fixture(strategy);
+        var next = new FunctionGeneration("echo", 2);
+        f.engine.enqueue(candidate("old", f.echo, 0), 1);
+        doAnswer(invocation -> {
+            f.engine.removeAllFor("echo");
+            assertThat(f.engine.enqueue(candidate("new-too-early", next, 1), 1)).isFalse();
+            return null;
+        }).when(f.dispatch).submit(any());
+        f.engine.tick();
+        assertThat(f.engine.enqueue(candidate("new", next, 2), 1)).isTrue();
+    }
+
+    @ParameterizedTest
+    @MethodSource("strategies")
+    void capUpdatesAndRemovalAreVisibleToTheAdvisoryCheck(SchedulingStrategy strategy) {
+        Fixture f = new Fixture(strategy);
+        assertThat(f.engine.isQueueFull("echo")).isFalse();
+        assertThat(f.engine.enqueue(candidate("a", f.echo, 0), 2)).isTrue();
+        assertThat(f.engine.enqueue(candidate("b", f.echo, 1), 1)).isFalse();
+        assertThat(f.engine.isQueueFull("echo")).isTrue();
+        f.engine.removeAllFor("echo");
+        assertThat(f.engine.isQueueFull("echo")).isFalse();
+        assertThat(f.engine.enqueue(candidate("c", f.echo, 2), 1)).isTrue();
+    }
+
     /**
      * Shared fixture: a real {@link SchedulerEngine} over one real strategy, a mocked
      * {@link EngineDispatch}/{@link EngineReadiness} and a frozen clock — same shape as {@code

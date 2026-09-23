@@ -12,7 +12,6 @@ import org.springframework.beans.factory.ObjectProvider;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
 
 /**
@@ -25,7 +24,8 @@ import java.util.function.LongSupplier;
  * profile is active decides where that ticket goes:
  * <ul>
  *   <li>{@link AdmissionProfile#FUNCTION_QUEUE} — admits straight into the engine: no
- *       depth/wait-time gate beyond a soft per-function cap (see {@link PerFunctionDepth}).</li>
+ *       depth/wait-time gate beyond the per-function cap the engine checks atomically with
+ *       admission ({@link SchedulerEngine#enqueue(PendingEntry, int)}).</li>
  *   <li>{@link AdmissionProfile#SYNC_QUEUE} — this bean's {@code enqueue} is only ever reached
  *       for a <em>retry</em> here (a fresh sync admission goes through
  *       {@link EngineSyncQueueGateway#enqueueOrThrow} directly, never through this class), and it
@@ -55,7 +55,6 @@ public final class EngineInvocationEnqueuer implements InvocationEnqueuer, Retry
     private final AdmissionProfile profile;
     private final boolean asyncEnabled;
     private final ObjectProvider<EngineSyncQueueGateway> syncGateway;
-    private final PerFunctionDepth perFunctionDepth;
     private final Clock clock;
 
     public EngineInvocationEnqueuer(ObjectProvider<SchedulerEngine> engine,
@@ -63,10 +62,8 @@ public final class EngineInvocationEnqueuer implements InvocationEnqueuer, Retry
                                     LongSupplier sequence,
                                     AdmissionProfile profile,
                                     boolean asyncEnabled,
-                                    ObjectProvider<EngineSyncQueueGateway> syncGateway,
-                                    PerFunctionDepth perFunctionDepth) {
-        this(engine, capacityRegistry, sequence, profile, asyncEnabled, syncGateway, perFunctionDepth,
-                Clock.systemUTC());
+                                    ObjectProvider<EngineSyncQueueGateway> syncGateway) {
+        this(engine, capacityRegistry, sequence, profile, asyncEnabled, syncGateway, Clock.systemUTC());
     }
 
     EngineInvocationEnqueuer(ObjectProvider<SchedulerEngine> engine,
@@ -75,7 +72,6 @@ public final class EngineInvocationEnqueuer implements InvocationEnqueuer, Retry
                              AdmissionProfile profile,
                              boolean asyncEnabled,
                              ObjectProvider<EngineSyncQueueGateway> syncGateway,
-                             PerFunctionDepth perFunctionDepth,
                              Clock clock) {
         this.engine = Objects.requireNonNull(engine, "engine must not be null");
         this.capacityRegistry = Objects.requireNonNull(capacityRegistry, "capacityRegistry must not be null");
@@ -83,7 +79,6 @@ public final class EngineInvocationEnqueuer implements InvocationEnqueuer, Retry
         this.profile = Objects.requireNonNull(profile, "profile must not be null");
         this.asyncEnabled = asyncEnabled;
         this.syncGateway = Objects.requireNonNull(syncGateway, "syncGateway must not be null");
-        this.perFunctionDepth = Objects.requireNonNull(perFunctionDepth, "perFunctionDepth must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
     }
 
@@ -111,30 +106,25 @@ public final class EngineInvocationEnqueuer implements InvocationEnqueuer, Retry
 
     @Override
     public boolean isQueueFull(String functionName) {
-        // Advisory only (enqueue remains authoritative). Answerable only once this function has
-        // been admitted at least once (PerFunctionDepth then knows its cap).
-        return profile == AdmissionProfile.FUNCTION_QUEUE && perFunctionDepth.isFull(functionName);
+        // Advisory only (enqueue remains authoritative).
+        return profile == AdmissionProfile.FUNCTION_QUEUE
+                && engine.getObject().isQueueFull(functionName);
     }
 
     private boolean admitDirect(InvocationTask task) {
         int cap = task.functionSpec() != null && task.functionSpec().queueSize() != null
                 ? Math.max(1, task.functionSpec().queueSize())
                 : Integer.MAX_VALUE;
-        if (!perFunctionDepth.tryAcquire(task.functionName(), cap)) {
-            return false;
-        }
         FunctionGeneration generation = capacityRegistry.activeGeneration(task.functionName());
         if (generation == null) {
-            perFunctionDepth.release(task.functionName());
             return false;
         }
         Instant now = clock.instant();
         TicketId id = new TicketId(task.executionId(), task.attempt());
         SchedulingTicket ticket = new SchedulingTicket(id, generation, sequence.getAsLong(), now, now, null);
         SchedulerEngine schedulerEngine = engine.getObject();
-        boolean admitted = schedulerEngine.enqueue(new PendingEntry(ticket, task));
+        boolean admitted = schedulerEngine.enqueue(new PendingEntry(ticket, task), cap);
         if (!admitted) {
-            perFunctionDepth.release(task.functionName());
             return false;
         }
         // Fix round 3: closes the residual admission window between resolving `generation` above
@@ -147,91 +137,10 @@ public final class EngineInvocationEnqueuer implements InvocationEnqueuer, Retry
         // itself is still non-atomic with a concurrent removal), but it turns an unbounded,
         // permanent strand into a bounded compensating removal: worst case, one ticket briefly
         // occupies a reservation before this catches it on the very next line.
-        //
-        // Deliberately no extra `perFunctionDepth.release` here: `SchedulerEngine.remove(id)`
-        // already releases through `EngineDispatch.removed` -> `settle`/`release` on the one path
-        // where this ticket is actually still pending and gets pulled back out (see
-        // `EngineTransport.removed`, `SchedulerConfiguration`). Adding a second release on this
-        // branch would double-release against that path. If the ticket is no longer pending by
-        // the time `remove` runs — already claimed/submitting, or already reaped by a concurrent
-        // `removeAllFor` — then `remove` is a no-op here and whichever path actually settled that
-        // ticket (dispatch's own `submit`/`expired` settlement, or that concurrent removal) is
-        // the one that already released, or will release, its depth slot exactly once.
         if (!generation.equals(capacityRegistry.activeGeneration(task.functionName()))) {
             schedulerEngine.remove(id);
             return false;
         }
         return true;
-    }
-
-    /**
-     * Per-function count of tickets this enqueuer has admitted and the engine has not yet
-     * settled, so the async profile's per-function queue-size cap ({@code FunctionSpec.queueSize})
-     * is preserved even though {@code PendingWorkStore} enforces only one global cap.
-     *
-     * <p>Fix round 2: {@link #tryAcquire} and {@link #release} both mutate {@code counts}
-     * exclusively through {@link ConcurrentHashMap#compute}/{@code computeIfPresent}, so the
-     * cap-check-and-increment and the decrement-or-unmap are each one atomic operation on the
-     * map's own per-key locking — not a separate read, a CAS loop and an independent unmap that
-     * could interleave. The previous shape (an external CAS loop over a value fetched from
-     * {@code computeIfAbsent}, with {@code release} unmapping the same entry independently) had
-     * exactly that interleaving: a release that unmaps the counter between a concurrent
-     * {@code tryAcquire}'s read and its CAS let the CAS succeed against an orphaned
-     * {@code AtomicInteger}, silently loosening the cap forever. There is no such window here:
-     * both methods only ever touch the map's own atomic per-key operations.
-     *
-     * <p>{@link #release} is called by {@code EngineTransport} exactly at the engine's own
-     * {@code finishSubmit}/{@code requeue} decision (whether {@code EngineDispatch.submit}
-     * threw {@code InvocationQuotaExceededException}, matching {@code SchedulerEngine.submit}'s
-     * own branch), and by {@code admitDirect} itself when a slot it reserved does not end up
-     * used (generation gone, or the engine's own store rejected it). A backpressure requeue is
-     * therefore not released — and not double-released either, since it was never released for
-     * that attempt in the first place.
-     *
-     * <p>{@link #forget} is called on function removal (the same hook C2 added for the engine's
-     * own drain), so neither map retains a function's cap/count forever once it is never
-     * re-registered.
-     */
-    public static final class PerFunctionDepth {
-        private final ConcurrentHashMap<String, Integer> counts = new ConcurrentHashMap<>();
-        private final ConcurrentHashMap<String, Integer> caps = new ConcurrentHashMap<>();
-
-        /** Atomically reserves one slot iff doing so would not exceed {@code cap}. */
-        public boolean tryAcquire(String functionName, int cap) {
-            caps.put(functionName, cap);
-            boolean[] acquired = {false};
-            counts.compute(functionName, (name, current) -> {
-                int value = current == null ? 0 : current;
-                if (value >= cap) {
-                    acquired[0] = false;
-                    return current;
-                }
-                acquired[0] = true;
-                return value + 1;
-            });
-            return acquired[0];
-        }
-
-        public void release(String functionName) {
-            counts.computeIfPresent(functionName, (name, count) -> count <= 1 ? null : count - 1);
-        }
-
-        public int get(String functionName) {
-            Integer count = counts.get(functionName);
-            return count == null ? 0 : count;
-        }
-
-        /** {@code false} for a function never seen by {@link #tryAcquire} — matches the SPI's
-         * own {@code isQueueFull} default. */
-        public boolean isFull(String functionName) {
-            Integer cap = caps.get(functionName);
-            return cap != null && get(functionName) >= cap;
-        }
-
-        /** Drops this function's tracked cap and count entirely; called on removal. */
-        public void forget(String functionName) {
-            counts.remove(functionName);
-            caps.remove(functionName);
-        }
     }
 }

@@ -16,7 +16,6 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingStrategy;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingTicket;
 import it.unimib.datai.nanofaas.controlplane.scheduler.TicketId;
 import it.unimib.datai.nanofaas.controlplane.service.EngineInvocationEnqueuer.AdmissionProfile;
-import it.unimib.datai.nanofaas.controlplane.service.EngineInvocationEnqueuer.PerFunctionDepth;
 import it.unimib.datai.nanofaas.execution.EngineDispatch;
 import it.unimib.datai.nanofaas.execution.EngineReadiness;
 import it.unimib.datai.nanofaas.execution.PendingWorkStore;
@@ -76,14 +75,14 @@ public class SchedulerConfiguration {
     /**
      * A generous engine-wide safety net for profiles where no single global admission cap ever
      * existed (async-only and both-modules default to {@link AdmissionProfile#FUNCTION_QUEUE},
-     * which previously had only PER-FUNCTION caps — see {@link PerFunctionDepth}). When the
+     * which previously had only PER-FUNCTION caps — see {@link SchedulerEngine#enqueue(it.unimib.datai.nanofaas.execution.PendingEntry, int)}). When the
      * active profile is {@link AdmissionProfile#SYNC_QUEUE} this is overridden by the sync
      * module's own {@code sync-queue.max-depth}, preserving that cap exactly.
      *
      * <p>Under {@code FUNCTION_QUEUE} it is the only GLOBAL cap, and it is deliberately loose
      * enough to be unreachable with the shipped defaults rather than tuned to them: the binding
      * limit there is the per-function one, {@code nanofaas.defaults.queueSize}
-     * ({@code application.yml}: 100), applied by {@link PerFunctionDepth} per function. Reaching
+     * ({@code application.yml}: 100), applied by the engine per function. Reaching
      * 10 000 pending entries therefore takes on the order of a hundred functions saturated at
      * once — so this constant is a backstop against an unbounded store, not a policy knob, and
      * nothing derives it from {@code queueSize} or from a configured function count. Two edits
@@ -137,11 +136,6 @@ public class SchedulerConfiguration {
     public java.util.function.LongSupplier schedulerTicketSequence() {
         AtomicLong counter = new AtomicLong();
         return counter::incrementAndGet;
-    }
-
-    @Bean
-    public PerFunctionDepth schedulerPerFunctionDepth() {
-        return new PerFunctionDepth();
     }
 
     @Bean
@@ -269,7 +263,6 @@ public class SchedulerConfiguration {
     public EngineDispatch engineDispatch(DispatchCapacity capacityRegistry,
             InvocationDispatch invocationService,
             QueueLifecycle queueLifecycle,
-            PerFunctionDepth perFunctionDepth,
             ObjectProvider<EngineSyncQueueGateway> syncGateway,
             AdmissionProfile profile,
             WakeHandle wakeHandle) {
@@ -278,7 +271,7 @@ public class SchedulerConfiguration {
         // ticket to settle.
         EngineSyncQueueGateway gateway = profile == AdmissionProfile.SYNC_QUEUE ? syncGateway.getIfAvailable() : null;
         return new EngineTransport(capacityRegistry, invocationService, queueLifecycle, wakeHandle,
-                perFunctionDepth, gateway);
+                gateway);
     }
 
     @Bean(destroyMethod = "close")
@@ -359,7 +352,7 @@ public class SchedulerConfiguration {
      */
     @Bean
     public FunctionRegistrationListener schedulerCapacityGenerationListener(DispatchCapacity capacityRegistry,
-            SchedulerEngine engine, PerFunctionDepth perFunctionDepth,
+            SchedulerEngine engine,
             ObjectProvider<EngineSyncQueueGateway> syncGateway,
             WorkloadMetricsBinder metricsBinder) {
         engine.addDrainListener(functionName -> {
@@ -390,7 +383,6 @@ public class SchedulerConfiguration {
                 // order reopens the exact race C2 exists to close.
                 capacityRegistry.remove(functionName);
                 engine.removeAllFor(functionName);
-                perFunctionDepth.forget(functionName);
                 // Meters come down once every reservation this function holds has settled, not
                 // here — see this method's own javadoc.
                 engine.markDraining(functionName);
@@ -411,10 +403,9 @@ public class SchedulerConfiguration {
             java.util.function.LongSupplier sequence,
             AdmissionProfile profile,
             boolean asyncInvocationEnabled,
-            ObjectProvider<EngineSyncQueueGateway> syncGateway,
-            PerFunctionDepth perFunctionDepth) {
+            ObjectProvider<EngineSyncQueueGateway> syncGateway) {
         return new EngineInvocationEnqueuer(engine, capacityRegistry, sequence, profile,
-                asyncInvocationEnabled, syncGateway, perFunctionDepth);
+                asyncInvocationEnabled, syncGateway);
     }
 
     /** Mutable indirection so {@link EngineDispatch} can be built before the engine exists. */
@@ -433,15 +424,13 @@ public class SchedulerConfiguration {
 
     /**
      * The engine's transport: capacity acquisition, dispatch and the three lifecycle events it
-     * reports back through {@link QueueLifecycle}. Also the one place both admission fronts'
-     * per-function depth counter is settled, and (path 1/2 of {@code signal()}) the place a
-     * released capacity slot wakes the engine.
+     * reports back through {@link QueueLifecycle}. Also (path 1/2 of {@code signal()}) the place
+     * a released capacity slot wakes the engine.
      */
     private record EngineTransport(DispatchCapacity capacityRegistry,
                                    InvocationDispatch invocationService,
                                    QueueLifecycle queueLifecycle,
                                    WakeHandle wake,
-                                   PerFunctionDepth perFunctionDepth,
                                    EngineSyncQueueGateway syncGateway)
             implements EngineDispatch {
 
@@ -460,22 +449,18 @@ public class SchedulerConfiguration {
         }
 
         /**
-         * Fix round I1: settled exactly at the engine's own {@code finishSubmit}/{@code requeue}
-         * boundary rather than unconditionally on entry. {@code SchedulerEngine.submit} takes the
-         * requeue branch precisely when this call throws {@code InvocationQuotaExceededException}
-         * (input backpressure) — any other outcome, including a throw of anything else, is the
-         * {@code finishSubmit} branch. The previous unconditional decrement-on-entry both
-         * under-counted a requeued ticket's continued occupancy and, worse, double-released it
-         * (once here, once more on its eventual real settlement) — this now releases exactly once
-         * per admitted ticket, on the same condition the engine itself branches on.
+         * Settled exactly at the engine's own {@code finishSubmit}/{@code requeue} boundary.
+         * {@code SchedulerEngine.submit} takes the requeue branch precisely when this call throws
+         * {@code InvocationQuotaExceededException} (input backpressure) — any other outcome,
+         * including a throw of anything else, is the {@code finishSubmit} branch.
          */
         @Override
         public void submit(InvocationTask task) {
             try {
                 invocationService.dispatch(task);
             } catch (InvocationQuotaExceededException requeue) {
-                // The engine requeues this ticket; it is still occupying its reservation, so
-                // neither the per-function cap nor the sync-origin tracking is released here.
+                // The engine requeues this ticket; it still occupies its reservation, so the
+                // sync-origin tracking is not released here.
                 throw requeue;
             } catch (RuntimeException | Error other) {
                 settle(task);
@@ -485,7 +470,6 @@ public class SchedulerConfiguration {
         }
 
         private void settle(InvocationTask task) {
-            perFunctionDepth.release(task.functionName());
             if (syncGateway != null) {
                 // Fix round C1: feed the estimator sync-origin dispatches only.
                 // settleIfSyncOrigin also clears this gateway's own bookkeeping either way.
@@ -504,14 +488,12 @@ public class SchedulerConfiguration {
 
         @Override
         public void expired(InvocationTask task) {
-            perFunctionDepth.release(task.functionName());
             discardSyncOrigin(task);
             queueLifecycle.expired(task);
         }
 
         @Override
         public void removed(InvocationTask task) {
-            perFunctionDepth.release(task.functionName());
             discardSyncOrigin(task);
             queueLifecycle.removed(task);
         }

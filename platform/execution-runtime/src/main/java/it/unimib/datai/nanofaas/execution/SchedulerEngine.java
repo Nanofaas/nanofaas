@@ -107,6 +107,10 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     private boolean running;
     private Thread worker;
 
+    /** Per-function queue caps supplied by the most recent admission attempt; guarded by
+     * {@link #gate}, cleared by {@link #removeAllFor}. */
+    private final Map<String, Integer> queueCaps = new HashMap<>();
+
     /** Function names whose removal drained the pending index but may still hold a physically
      * active lease; reconciled at the end of every {@link #pass()}. Guarded by {@link #gate}. */
     private final Set<String> draining = new HashSet<>();
@@ -345,16 +349,41 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
      * execution record's monitor.
      */
     public boolean enqueue(PendingEntry entry) {
+        return enqueue(entry, Integer.MAX_VALUE);
+    }
+
+    /**
+     * Admits {@code entry} only while its function name holds fewer than {@code perFunctionCap}
+     * reservations (pending, claimed or submitting, including an older generation's). The cap
+     * check and the insertion are one step under {@link #gate}, so two admissions can never both
+     * take the last slot. The most recent admission attempt supplies the cap that
+     * {@link #isQueueFull} reports.
+     */
+    public boolean enqueue(PendingEntry entry, int perFunctionCap) {
         Objects.requireNonNull(entry, "entry must not be null");
+        if (perFunctionCap <= 0) {
+            throw new IllegalArgumentException("perFunctionCap must be positive");
+        }
         synchronized (gate) {
-            if (!store.offer(entry)) {
+            String name = entry.ticket().generation().functionName();
+            queueCaps.put(name, perFunctionCap);
+            if (store.reservedCount(name) >= perFunctionCap || !store.offer(entry)) {
                 return false;
             }
             active.index().add(entry.ticket());
             track(entry.ticket());
             wake();
+            return true;
         }
-        return true;
+    }
+
+    /** Advisory: whether {@code functionName} is at the cap its last admission attempt supplied.
+     * {@code false} for a name never admitted, or removed since. */
+    public boolean isQueueFull(String functionName) {
+        synchronized (gate) {
+            Integer cap = queueCaps.get(functionName);
+            return cap != null && store.reservedCount(functionName) >= cap;
+        }
     }
 
     /**
@@ -400,6 +429,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         Objects.requireNonNull(functionName, "functionName must not be null");
         List<PendingEntry> removed = new ArrayList<>();
         synchronized (gate) {
+            queueCaps.remove(functionName);
             for (PendingEntry entry : store.snapshotAll()) {
                 if (entry.ticket().generation().functionName().equals(functionName)) {
                     PendingEntry taken = store.remove(entry.ticket().id());
