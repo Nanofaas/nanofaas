@@ -67,7 +67,7 @@ public final class ReactiveInvocationCoordinator {
         try {
             return invokeAttached(lookup, spec, timeoutOverrideMs, offloadContext)
                     .doFinally(ignored -> waiter.close());
-        } catch (RuntimeException | Error failure) {
+        } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             waiter.close();
             throw failure;
         }
@@ -84,7 +84,7 @@ public final class ReactiveInvocationCoordinator {
                 return waiterCapacity.reserve(spec.name(), executionRecord.executionId());
             }
             return waiterCapacity.reserve(spec.name(), lookup.settledExecutionId());
-        } catch (RuntimeException | Error failure) {
+        } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             if (lookup.isNew()) {
                 lookup.abandonAdmission();
             }
@@ -212,7 +212,7 @@ public final class ReactiveInvocationCoordinator {
             InvocationTask queuedTask = executionRecord.prepareForQueue();
             try {
                 syncQueueGateway.enqueueOrThrow(queuedTask);
-            } catch (RuntimeException | Error failure) {
+            } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 queuedTask.releaseQueuedInput();
                 throw failure;
             }
@@ -246,7 +246,7 @@ public final class ReactiveInvocationCoordinator {
         try {
             remote = offloadGateway.invokeRemote(
                     physicalInput.task(), trigger, context, spec.timeoutMs()).toFuture();
-        } catch (RuntimeException | Error failure) {
+        } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             physicalInput.close();
             throw failure;
         }

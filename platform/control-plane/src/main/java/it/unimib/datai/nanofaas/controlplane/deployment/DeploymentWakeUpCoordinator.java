@@ -91,7 +91,7 @@ public class DeploymentWakeUpCoordinator implements DeploymentWakeUpControl, Aut
             } finally {
                 callbackFinished(generation, state);
             }
-        } catch (RuntimeException | Error failure) {
+        } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             if (leaseId != 0) release(generation, state, leaseId);
             throw failure;
         } finally {

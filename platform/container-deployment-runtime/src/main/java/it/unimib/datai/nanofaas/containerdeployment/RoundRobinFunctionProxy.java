@@ -603,7 +603,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
                     }
                     body.length += read;
                 }
-            } catch (IOException | RuntimeException | Error failure) {
+            } catch (IOException | RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 body.close();
                 throw failure;
             }
@@ -620,7 +620,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
             byte[] previous = bytes;
             try {
                 bytes = java.util.Arrays.copyOf(previous, nextLength);
-            } catch (RuntimeException | Error allocationFailure) {
+            } catch (RuntimeException | Error allocationFailure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 budget.release(nextLength);
                 throw allocationFailure;
             }

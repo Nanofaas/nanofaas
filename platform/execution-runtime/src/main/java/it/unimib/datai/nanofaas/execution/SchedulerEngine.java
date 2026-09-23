@@ -493,7 +493,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         }
         try {
             started.start();
-        } catch (RuntimeException | Error failure) {
+        } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             // A worker that never started must not leave the engine claiming to be running:
             // a later start() has to be able to try again.
             synchronized (gate) {
@@ -802,7 +802,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             lease.release();
             log.debug("Input capacity blocked dispatch for execution {}", task.executionId());
             return true;
-        } catch (RuntimeException | Error ex) {
+        } catch (RuntimeException | Error ex) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             try {
                 lease.release();
             } finally {

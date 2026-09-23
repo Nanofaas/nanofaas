@@ -29,7 +29,7 @@ final class InvocationEnqueueSupport {
         boolean enqueued;
         try {
             enqueued = enqueue.test(task);
-        } catch (RuntimeException | Error failure) {
+        } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             task.releaseQueuedInput();
             throw failure;
         }
@@ -60,7 +60,7 @@ final class InvocationEnqueueSupport {
         try {
             admissionAction.run();
             lookup.publishAdmission();
-        } catch (RuntimeException | Error ex) {
+        } catch (RuntimeException | Error ex) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             lookup.abandonAdmission();
             throw ex;
         }

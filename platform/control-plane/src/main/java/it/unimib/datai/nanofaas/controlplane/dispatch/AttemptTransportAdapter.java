@@ -81,13 +81,13 @@ public final class AttemptTransportAdapter implements AttemptTransport {
                             drained.complete(null);
                         }
                     });
-                } catch (RuntimeException | Error failure) {
+                } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                     result.completeExceptionally(failure);
                     drained.complete(null);
                 }
             });
             return new PhysicalDispatch(result, drained);
-        } catch (RuntimeException | Error error) {
+        } catch (RuntimeException | Error error) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             return PhysicalDispatch.raw(
                     CompletableFuture.failedFuture(new AttemptCoordinator.DeploymentWakeUpException(error)));
         }

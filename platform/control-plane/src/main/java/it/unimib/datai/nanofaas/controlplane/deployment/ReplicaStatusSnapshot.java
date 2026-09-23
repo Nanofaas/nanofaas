@@ -631,7 +631,7 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
             ReplicaStatus status;
             try {
                 status = fetcher.fetch(target);
-            } catch (Throwable failure) {
+            } catch (Throwable failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 // Nobody subscribes to this future on the stale-while-revalidate path, so without a
                 // log a provider that has been failing for hours leaves no trace anywhere.
                 log.warn("Replica status refresh failed for {}", target.functionName(), failure);

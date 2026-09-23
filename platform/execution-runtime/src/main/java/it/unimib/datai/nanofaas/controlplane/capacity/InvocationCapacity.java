@@ -84,7 +84,7 @@ public final class InvocationCapacity {
                     .orElseThrow(() -> new InvocationQuotaExceededException(
                             InvocationQuotaExceededException.Resource.INPUT));
             return new Admission(batch, logical, new RetainedInputLease(input, maxInputReferences));
-        } catch (RuntimeException | Error failure) {
+        } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             batch.close();
             throw failure;
         }

@@ -509,7 +509,7 @@ public class ExecutionRecord {
             if (closeable == null) return;
             try {
                 closeable.close();
-            } catch (RuntimeException | Error failure) {
+            } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 throw failure;
             } catch (Exception impossible) {
                 throw new IllegalStateException(impossible);

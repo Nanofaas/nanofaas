@@ -133,7 +133,7 @@ public final class AttemptCoordinator {
                     executionRecord.transportOwnsCapacity();
                     executionRecord.markRunning();
                     executionRecord.markDispatchedAt();
-                } catch (RuntimeException | Error failure) {
+                } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                     inputFailure = failure;
                 }
             }
@@ -172,7 +172,7 @@ public final class AttemptCoordinator {
         AttemptHandle handle;
         try {
             handle = transport.submit(physicalTask);
-        } catch (RuntimeException | Error ex) {
+        } catch (RuntimeException | Error ex) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             attemptInput.close();
             if (directLease != null) directLease.release();
             // No transport was created: return the already-acquired capacity here.
@@ -399,7 +399,7 @@ public final class AttemptCoordinator {
         boolean enqueued;
         try {
             enqueued = retry.enqueue(task);
-        } catch (RuntimeException | Error ex) {
+        } catch (RuntimeException | Error ex) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             task.releaseQueuedInput();
             log.warn("Retry scheduling failed for execution {}, completing with error: {}",
                     executionRecord.executionId(), ex.toString());

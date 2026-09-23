@@ -163,7 +163,7 @@ public final class InvocationExecutionFactory {
                     idempotencyKey,
                     claimToken
             );
-        } catch (RuntimeException | Error ex) {
+        } catch (RuntimeException | Error ex) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             if (executionRecord != null) {
                 executionStore.remove(executionRecord.executionId());
                 executionRecord.rollbackAdmissionResources();
@@ -204,7 +204,7 @@ public final class InvocationExecutionFactory {
         try {
             return ExecutionRecord.withInputResources(
                     executionId, task, invocationCapacity, admission, canonical);
-        } catch (RuntimeException | Error failure) {
+        } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             admission.rollback();
             throw failure;
         }
@@ -214,7 +214,7 @@ public final class InvocationExecutionFactory {
         try {
             executionStore.put(executionRecord);
             executionRecord.publishAdmissionResources();
-        } catch (RuntimeException | Error failure) {
+        } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             executionStore.remove(executionRecord.executionId());
             executionRecord.rollbackAdmissionResources();
             throw failure;

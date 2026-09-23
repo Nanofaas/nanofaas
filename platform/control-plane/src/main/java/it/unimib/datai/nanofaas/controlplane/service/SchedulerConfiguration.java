@@ -405,7 +405,7 @@ public class SchedulerConfiguration {
                 // The engine requeues this ticket; it still occupies its reservation, so this
                 // attempt does not feed the wait estimator.
                 throw requeue;
-            } catch (RuntimeException | Error other) {
+            } catch (RuntimeException | Error other) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 settle(task);
                 throw other;
             }

@@ -208,7 +208,7 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
                     owner.callbackFinished();
                 }
             });
-        } catch (RuntimeException | Error failure) {
+        } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             owner.callbackFinished();
             owner.completeExceptionally(failure);
         }
@@ -265,7 +265,7 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
                     if (result.isDone()) timeoutTask.cancel(false);
                 }
                 submit(() -> readAndWake(deadline), this);
-            } catch (RuntimeException | Error failure) {
+            } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 completeExceptionally(failure);
             }
         }
@@ -296,7 +296,7 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
                 });
                 installLease(lease);
                 schedulePoll(deadline);
-            } catch (RuntimeException | Error failure) {
+            } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 completeExceptionally(failure);
             }
         }
@@ -308,7 +308,7 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
                 if (!canContinue()) return;
                 if (status.readyReplicas() > 0) result.complete(null);
                 else schedulePoll(deadline);
-            } catch (RuntimeException | Error failure) {
+            } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 completeExceptionally(failure);
             }
         }
@@ -343,7 +343,7 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
                     if (retired) scheduled.cancel(false); // NOSONAR (java:S2583): true only when the scheduler runs the poll inline and re-enters this monitor
                 }
                 if (runDeferred) submit(() -> poll(deadline), this); // NOSONAR (java:S2583): true only when the scheduler runs the poll inline and re-enters this monitor
-            } catch (RuntimeException | Error failure) {
+            } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 completeExceptionally(failure);
             }
         }
