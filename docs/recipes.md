@@ -103,6 +103,11 @@ leaves a `jvm` control plane on the JVM, without Spring AOT. With a `jvm` contro
 the recipe, requesting native tasks directly (`nativeCompile -Precipe=...`) and passing a
 contradicting `-PnanofaasBuildType` both fail. Build through `assembleRecipe` instead.
 
+The native executable is compiled on the host and copied as-is into the image, so a native
+component with `container.image` needs a Linux host of the image's architecture; other
+hosts are rejected at configuration. The runtime image is `distroless/cc-debian13`, so the
+host's glibc must not be newer than Debian 13's.
+
 ## Output and runtime configuration
 
 ```
@@ -119,10 +124,12 @@ or [`Dockerfile.native`](../deploy/recipes/Dockerfile.native). Python, JavaScrip
 images use the function's own Dockerfile with the repository as the build context.
 
 `jvm.options` and `launch.args` are standard JVM argument files, with one quoted argument
-per line. Spaces, quotes and backslashes are kept literally. `jvm.options` holds the
-recipe's `jvm.args`. When `jvm.args` is absent it holds the default tuning, which for the
-control plane is `-XX:+UseSerialGC`, so explicit options never add a second collector.
-`launch.args` holds the component's fixed flags and entry point. `jvm.args` applies to the
+per line. Spaces, quotes and backslashes are kept literally. `jvm.options` starts with the
+control plane's fixed flags (`-XX:MaxRAMPercentage=70`, `-Xss256k`, ...), followed by the
+recipe's `jvm.args`. The JVM keeps the last value it sees, so the recipe can override any
+fixed flag. When `jvm.args` is absent, the fixed flags are followed by the default tuning,
+which for the control plane is `-XX:+UseSerialGC`, so explicit options never add a second
+collector. `launch.args` holds only the entry point. `jvm.args` applies to the
 built component, not to Gradle or GraalVM.
 
 `config/recipe.yaml` is `controlPlane.config`, loaded through Spring's

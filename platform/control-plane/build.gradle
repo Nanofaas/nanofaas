@@ -128,6 +128,11 @@ if (!nativeBuildRequested) {
     tasks.named('compileAotJava') { enabled = false }
     tasks.named('processAotResources') { enabled = false }
     tasks.named('aotClasses') { enabled = false }
+    // Disabled tasks keep their previous outputs, and bootJar still packages the aot source set:
+    // without this filter a JVM jar built after a native build carries stale AOT classes.
+    tasks.named('bootJar') {
+        classpath = classpath.filter { !sourceSets.aot.output.files.contains(it) }
+    }
 }
 // Test AOT - @MockBean is incompatible with AOT, always disable
 tasks.named('processTestAot') { enabled = false }

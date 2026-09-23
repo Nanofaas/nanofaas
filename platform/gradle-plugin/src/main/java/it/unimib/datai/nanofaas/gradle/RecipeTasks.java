@@ -172,7 +172,19 @@ final class RecipeTasks {
                     image(function, field, images), jvmArgs(function),
                     sdk.equals("java-lite") && mode.equals("jvm") ? mainClass(field, implementation) : null));
         }
+        String hostProblem = nativeImageHostProblem(System.getProperty("os.name"));
+        for (Target target : resolved) {
+            if (hostProblem != null && target.mode().equals("native") && target.image() != null) {
+                throw fail(target.field() + ".container.image: " + hostProblem);
+            }
+        }
         return List.copyOf(resolved);
+    }
+
+    /** GraalVM cannot cross-compile, and the staged executable is copied as-is into a Linux image. */
+    static String nativeImageHostProblem(String osName) {
+        return osName.startsWith("Linux") ? null
+                : "a native image needs a Linux host, but the executable would be compiled on " + osName;
     }
 
     private static List<String> jvmArgs(JsonNode component) {

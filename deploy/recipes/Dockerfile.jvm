@@ -37,5 +37,6 @@ COPY --from=jre-builder --chown=nonroot:nonroot /jre /opt/jre
 COPY --from=jre-builder --chown=nonroot:nonroot /var/lib/nanofaas /var/lib/nanofaas
 COPY . /app/
 EXPOSE 8080 8081
-# jvm.options: recipe jvm.args, or the default tuning. launch.args: the component's fixed flags and entry point.
+# jvm.options: the component's fixed flags, then recipe jvm.args or the default tuning (later values win).
+# launch.args: the entry point.
 ENTRYPOINT ["/opt/jre/bin/java", "@/app/jvm.options", "@/app/launch.args"]

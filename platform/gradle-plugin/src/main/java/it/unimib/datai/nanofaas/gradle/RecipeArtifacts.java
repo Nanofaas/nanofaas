@@ -45,8 +45,11 @@ final class RecipeArtifacts {
     /** Default tuning group of platform/control-plane/Dockerfile (JVM_TUNING); explicit jvm.args replace it. */
     private static final List<String> CONTROL_PLANE_TUNING = List.of("-XX:+UseSerialGC");
 
-    /** Unconditional control-plane flags, kept in step with the ENTRYPOINT of platform/control-plane/Dockerfile. */
-    private static final List<String> CONTROL_PLANE_LAUNCH = List.of("-XX:MaxRAMPercentage=70", "-Xss256k",
+    /**
+     * Control-plane flags from the ENTRYPOINT of platform/control-plane/Dockerfile (kept in step by hand). They head
+     * jvm.options so that the recipe's jvm.args, later on the command line, override them: the JVM keeps the last value.
+     */
+    private static final List<String> CONTROL_PLANE_FLAGS = List.of("-XX:MaxRAMPercentage=70", "-Xss256k",
             "-Dspring.main.banner-mode=off", "-Dspring.jmx.enabled=false", "-Dspring.devtools.restart.enabled=false",
             "-Dmanagement.endpoints.enabled-by-default=false");
 
@@ -224,12 +227,12 @@ final class RecipeArtifacts {
     static void writeRuntimeFiles(Path directory, RecipeTasks.Target target, JsonNode recipe) {
         try {
             if (target.mode().equals("jvm")) {
-                List<String> tuning = target.jvmArgs() != null ? target.jvmArgs()
-                        : target.controlPlane() ? CONTROL_PLANE_TUNING : List.of();
-                Files.writeString(directory.resolve("jvm.options"), argfile(tuning));
-                List<String> launch = new ArrayList<>(target.controlPlane() ? CONTROL_PLANE_LAUNCH : List.of());
-                launch.addAll(target.mainClass() != null ? List.of("-cp", "lib/*", target.mainClass()) : List.of("-jar", "app.jar"));
-                Files.writeString(directory.resolve("launch.args"), argfile(launch));
+                List<String> options = new ArrayList<>(target.controlPlane() ? CONTROL_PLANE_FLAGS : List.of());
+                options.addAll(target.jvmArgs() != null ? target.jvmArgs()
+                        : target.controlPlane() ? CONTROL_PLANE_TUNING : List.of());
+                Files.writeString(directory.resolve("jvm.options"), argfile(options));
+                Files.writeString(directory.resolve("launch.args"), argfile(target.mainClass() != null
+                        ? List.of("-cp", "lib/*", target.mainClass()) : List.of("-jar", "app.jar")));
             }
             JsonNode config = recipe.path("controlPlane").path("config");
             if (target.controlPlane() && !config.isMissingNode()) {
@@ -288,7 +291,8 @@ final class RecipeArtifacts {
         if (revision == null) {
             return NullNode.getInstance();
         }
-        String status = git(exec, rootDir, "status", "--porcelain", "--untracked-files=no");
+        // Untracked files count: an untracked function directory can be built into an image.
+        String status = git(exec, rootDir, "status", "--porcelain");
         ObjectNode source = JSON.createObjectNode().put("revision", revision);
         return status == null ? source.putNull("dirty") : source.put("dirty", !status.isEmpty());
     }

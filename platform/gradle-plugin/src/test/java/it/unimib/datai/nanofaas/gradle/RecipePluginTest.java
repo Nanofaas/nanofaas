@@ -307,9 +307,12 @@ class RecipePluginTest {
 
         Path out = projectDir.resolve("build/recipes/demo");
         assertThat(out.resolve("control-plane/app.jar")).isRegularFile();
+        // Fixed control-plane flags first, so the recipe's options (later on the command line) win.
         assertThat(Files.readString(out.resolve("control-plane/jvm.options")))
-                .isEqualTo("\"-Xmx128m\"\n\"-Dgreeting=hello world\"\n\"-Dquote=\\\"x\\\"\"\n\"C:\\\\tmp\"\n");
-        assertThat(Files.readString(out.resolve("control-plane/launch.args"))).endsWith("\"-jar\"\n\"app.jar\"\n");
+                .startsWith(CONTROL_PLANE_FLAGS)
+                .endsWith("\"-Xmx128m\"\n\"-Dgreeting=hello world\"\n\"-Dquote=\\\"x\\\"\"\n\"C:\\\\tmp\"\n")
+                .doesNotContain("UseSerialGC");
+        assertThat(Files.readString(out.resolve("control-plane/launch.args"))).isEqualTo("\"-jar\"\n\"app.jar\"\n");
         assertThat(Files.readString(out.resolve("control-plane/config/recipe.yaml"))).contains("profile: basic");
         assertThat(out.resolve("functions/java-lite/word-stats/application")).isExecutable();
         assertThat(out.resolve("functions/java-lite/word-stats/unrelated.txt")).doesNotExist();
@@ -343,7 +346,7 @@ class RecipePluginTest {
         run("assembleRecipe", "-Precipe=recipe.yaml", docker());
 
         Path controlPlane = projectDir.resolve("build/recipes/demo/control-plane");
-        assertThat(Files.readString(controlPlane.resolve("jvm.options"))).isEqualTo("\"-XX:+UseSerialGC\"\n");
+        assertThat(Files.readString(controlPlane.resolve("jvm.options"))).isEqualTo(CONTROL_PLANE_FLAGS + "\"-XX:+UseSerialGC\"\n");
         assertThat(controlPlane.resolve("config")).doesNotExist();
         assertThat(dockerCalls()).isEmpty();
     }
@@ -384,6 +387,35 @@ class RecipePluginTest {
         assertThat(projectDir.resolve("build/recipes/demo/functions/java-lite")).doesNotExist();
         assertThat(projectDir.resolve("build/recipes/demo/control-plane/config")).doesNotExist();
         assertThat(Files.readString(report)).doesNotContain("sha256:old", "java-lite", "published");
+    }
+
+    @Test
+    void nativeImagesNeedALinuxHost() {
+        // The staged executable is copied into a Linux image; GraalVM cannot cross-compile.
+        assertThat(RecipeTasks.nativeImageHostProblem("Linux")).isNull();
+        assertThat(RecipeTasks.nativeImageHostProblem("Mac OS X")).contains("Linux host").contains("Mac OS X");
+        assertThat(RecipeTasks.nativeImageHostProblem("Windows 11")).contains("Linux host");
+    }
+
+    @Test
+    void untrackedSourcesMakeTheReportDirty() throws Exception {
+        recipe(HEADER + CP_JVM);
+        git("init", "-q");
+        git("add", "-A");
+        git("-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "-q", "-m", "fixture");
+        write("functions/python/untracked/Dockerfile", "FROM scratch\n");
+
+        runner("assembleRecipe", "-Precipe=recipe.yaml", docker())
+                .withEnvironment(Map.of("PATH", System.getenv("PATH"))).build();
+
+        assertThat(report().get("source").get("revision").asText()).hasSize(40);
+        assertThat(report().get("source").get("dirty").asBoolean()).isTrue();
+    }
+
+    private void git(String... arguments) throws Exception {
+        List<String> command = new ArrayList<>(List.of("git", "-C", projectDir.toString()));
+        command.addAll(List.of(arguments));
+        assertThat(new ProcessBuilder(command).inheritIO().start().waitFor()).isZero();
     }
 
     @Test
@@ -544,6 +576,15 @@ class RecipePluginTest {
             throw new IllegalStateException(exception);
         }
     }
+
+    private static final String CONTROL_PLANE_FLAGS = """
+            "-XX:MaxRAMPercentage=70"
+            "-Xss256k"
+            "-Dspring.main.banner-mode=off"
+            "-Dspring.jmx.enabled=false"
+            "-Dspring.devtools.restart.enabled=false"
+            "-Dmanagement.endpoints.enabled-by-default=false"
+            """;
 
     private static final String CP_JVM = "controlPlane: {modules: [], build: {mode: jvm}}\n";
 
