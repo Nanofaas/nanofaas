@@ -161,7 +161,10 @@ class CoreArchitectureTest {
             classes().that(scheduling_policy_types())
                     .should().onlyDependOnClassesThat(scheduling_policy_dependencies())
                     .as("a scheduling strategy depends on the scheduling SPI and the values it "
-                            + "names, never on the runtime, a mutable store or Spring");
+                            + "names, never on the runtime, a mutable store or Spring")
+                    // A core-only profile selects no queue module, hence no strategy; the subjects
+                    // guard below pins them per profile, so an empty set here is checked, not silent.
+                    .allowEmptyShould(true);
 
     /**
      * What a policy is allowed to name: the SPI contracts it implements, the value types those
