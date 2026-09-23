@@ -271,9 +271,14 @@ public class SchedulerConfiguration {
             QueueLifecycle queueLifecycle,
             PerFunctionDepth perFunctionDepth,
             ObjectProvider<EngineSyncQueueGateway> syncGateway,
+            AdmissionProfile profile,
             WakeHandle wakeHandle) {
+        // Resolved once, not per dispatch: ObjectProvider.getIfAvailable() re-runs the bean lookup
+        // on every call. Outside SYNC_QUEUE the gateway never admits, so it can have no sync-origin
+        // ticket to settle.
+        EngineSyncQueueGateway gateway = profile == AdmissionProfile.SYNC_QUEUE ? syncGateway.getIfAvailable() : null;
         return new EngineTransport(capacityRegistry, invocationService, queueLifecycle, wakeHandle,
-                perFunctionDepth, syncGateway);
+                perFunctionDepth, gateway);
     }
 
     @Bean(destroyMethod = "close")
@@ -443,7 +448,7 @@ public class SchedulerConfiguration {
                                    QueueLifecycle queueLifecycle,
                                    WakeHandle wake,
                                    PerFunctionDepth perFunctionDepth,
-                                   ObjectProvider<EngineSyncQueueGateway> syncGateway)
+                                   EngineSyncQueueGateway syncGateway)
             implements EngineDispatch {
 
         @Override
@@ -487,21 +492,19 @@ public class SchedulerConfiguration {
 
         private void settle(InvocationTask task) {
             perFunctionDepth.release(task.functionName());
-            EngineSyncQueueGateway gateway = syncGateway.getIfAvailable();
-            if (gateway != null) {
+            if (syncGateway != null) {
                 // Fix round C1: feed the estimator sync-origin dispatches only.
                 // settleIfSyncOrigin also clears this gateway's own bookkeeping either way.
                 TicketId id = new TicketId(task.executionId(), task.attempt());
-                if (gateway.settleIfSyncOrigin(task.functionName(), id)) {
-                    gateway.recordDispatched(task.functionName(), Instant.now());
+                if (syncGateway.settleIfSyncOrigin(task.functionName(), id)) {
+                    syncGateway.recordDispatched(task.functionName(), Instant.now());
                 }
             }
         }
 
         private void discardSyncOrigin(InvocationTask task) {
-            EngineSyncQueueGateway gateway = syncGateway.getIfAvailable();
-            if (gateway != null) {
-                gateway.settleIfSyncOrigin(task.functionName(), new TicketId(task.executionId(), task.attempt()));
+            if (syncGateway != null) {
+                syncGateway.settleIfSyncOrigin(task.functionName(), new TicketId(task.executionId(), task.attempt()));
             }
         }
 

@@ -13,7 +13,6 @@ import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
-import it.unimib.datai.nanofaas.controlplane.execution.TimeSource;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingIndex;
@@ -59,7 +58,7 @@ class AttemptCoordinatorTest {
         var drained = new CompletableFuture<Void>();
         AttemptTransport transport = ignored -> new AttemptHandle(outcome, drained, mock(Future.class));
         var coordinator = new AttemptCoordinator(store, capacity, RetryScheduler.unavailable(),
-                transport, TimeSource.system(), mock(AttemptObserver.class));
+                transport, mock(AttemptObserver.class));
         coordinator.dispatch(task.withDispatchLease(lease));
         outcome.complete(DispatchResult.warm(InvocationResult.success("ok")));
         assertThat(lease.isReleased()).isFalse();
@@ -109,7 +108,7 @@ class AttemptCoordinatorTest {
         var drained = new CompletableFuture<Void>();
         AttemptTransport transport = ignored -> new AttemptHandle(outcome, drained, mock(Future.class));
         var coordinator = new AttemptCoordinator(store, capacity, RetryScheduler.unavailable(),
-                transport, TimeSource.system(), mock(AttemptObserver.class));
+                transport, mock(AttemptObserver.class));
         coordinator.dispatch(task.withDispatchLease(lease));
 
         var engine = new SchedulerEngine(new PendingWorkStore(64),

@@ -27,7 +27,6 @@ public final class SchedulerRuntimeConfigExtension implements PreparedRuntimeCon
     private static final String STRATEGY_KEY = "strategy";
     private static final String AVAILABLE_KEY = "available";
     private static final String PERSISTENCE_KEY = "persistence";
-    private static final String PERSISTENCE_VALUE = "restart";
 
     private final SchedulerControl control;
 
@@ -66,10 +65,8 @@ public final class SchedulerRuntimeConfigExtension implements PreparedRuntimeCon
     @Override
     public PreparedRuntimeConfigChange prepare(Map<String, Object> patch) {
         String target = (String) patch.get(STRATEGY_KEY);
+        // validate() already refused an unavailable target; switchTo re-checks it anyway.
         SchedulerSelection current = control.snapshot();
-        if (!current.available().contains(target)) {
-            throw new IllegalArgumentException(STRATEGY_KEY + " " + target + " is not available");
-        }
         Map<String, Object> snapshotAfterCommit = toSnapshot(
                 new SchedulerSelection(target, current.available(), current.persistence()));
         return new SchedulerSwitch(control, target, snapshotAfterCommit);
@@ -92,7 +89,7 @@ public final class SchedulerRuntimeConfigExtension implements PreparedRuntimeCon
         return Map.of(
                 STRATEGY_KEY, selection.strategy(),
                 AVAILABLE_KEY, selection.available(),
-                PERSISTENCE_KEY, PERSISTENCE_VALUE);
+                PERSISTENCE_KEY, selection.persistence());
     }
 
     private static final class SchedulerSwitch implements PreparedRuntimeConfigChange {

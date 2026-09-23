@@ -7,7 +7,6 @@ import it.unimib.datai.nanofaas.controlplane.dispatch.AttemptTransportAdapter;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
-import it.unimib.datai.nanofaas.controlplane.execution.TimeSource;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationDispatch;
@@ -67,7 +66,7 @@ public class ExecutionCompletionHandler implements InvocationDispatch, AttemptOb
         FunctionCapacityRegistry capacity = capacityRegistry == null ? new FunctionCapacityRegistry() : capacityRegistry;
         AttemptTransport transport = new AttemptTransportAdapter(dispatcherRouter, effectiveReadiness);
         this.coordinator = new AttemptCoordinator(executionStore, capacity,
-                new MeteredRetryScheduler(retry), transport, TimeSource.system(), this);
+                new MeteredRetryScheduler(retry), transport, this);
     }
 
     /**

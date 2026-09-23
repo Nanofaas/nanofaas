@@ -12,7 +12,6 @@ import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionState;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
-import it.unimib.datai.nanofaas.controlplane.execution.TimeSource;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadFailedException;
 import it.unimib.datai.nanofaas.controlplane.offload.OffloadGateway;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
@@ -55,26 +54,17 @@ public final class AttemptCoordinator {
     private final FunctionCapacityRegistry capacity;
     private final RetryScheduler retry;
     private final AttemptTransport transport;
-    // Part of the shared constructor contract; every current time read in this class flows
-    // through ExecutionRecord's own steered clock instead (retryTask's enqueuedAt via
-    // executionRecord.now()), exactly as ExecutionCompletionHandler did before the move. Kept
-    // here rather than dropped from the signature so a future direct time read does not need a
-    // constructor change, and so this class's construction matches the shared contract exactly.
-    @SuppressWarnings("unused")
-    private final TimeSource time;
     private final AttemptObserver observer;
 
     public AttemptCoordinator(ExecutionStore executionStore,
                               FunctionCapacityRegistry capacity,
                               RetryScheduler retry,
                               AttemptTransport transport,
-                              TimeSource time,
                               AttemptObserver observer) {
         this.executionStore = Objects.requireNonNull(executionStore, "executionStore must not be null");
         this.capacity = Objects.requireNonNull(capacity, "capacity must not be null");
         this.retry = Objects.requireNonNull(retry, "retry must not be null");
         this.transport = Objects.requireNonNull(transport, "transport must not be null");
-        this.time = Objects.requireNonNull(time, "time must not be null");
         this.observer = Objects.requireNonNull(observer, "observer must not be null");
         // The store knows nothing about dispatch slots or shared futures; it only knows a record
         // fell out of inFlight on its own. Closing what that record was actually holding is this
@@ -325,7 +315,7 @@ public final class AttemptCoordinator {
         // not whatever the registry considers active by the time metrics are recorded.
         FunctionGeneration generation = executionRecord.currentGeneration();
         releaseAttemptCapacity(executionRecord);
-        if (isTerminal(executionRecord.state())) {
+        if (executionRecord.isTerminal()) {
             return Conclusion.NONE;
         }
 
@@ -429,7 +419,7 @@ public final class AttemptCoordinator {
     private FinalCompletion concludeExhaustedRetry(ExecutionRecord executionRecord, PendingRetry pending) {
         synchronized (executionRecord) {
             if (executionRecord.task().attempt() != pending.attempt()
-                    || isTerminal(executionRecord.state())) {
+                    || executionRecord.isTerminal()) {
                 return null;
             }
             return retryExhaustedUnderLock(executionRecord, pending.functionName(), pending.result(), pending.generation());
@@ -540,7 +530,7 @@ public final class AttemptCoordinator {
         }
         boolean concluded;
         synchronized (executionRecord) {
-            concluded = !isTerminal(executionRecord.state());
+            concluded = !executionRecord.isTerminal();
             if (concluded) {
                 if (result.success()) {
                     executionRecord.markSuccess(result.output(), result.statusCode(),
@@ -579,7 +569,7 @@ public final class AttemptCoordinator {
                 failure.getMessage());
         boolean concluded;
         synchronized (executionRecord) {
-            concluded = !isTerminal(executionRecord.state());
+            concluded = !executionRecord.isTerminal();
             if (concluded) {
                 executionRecord.markFailure(error, failure);
             }
@@ -605,7 +595,7 @@ public final class AttemptCoordinator {
         ErrorInfo error = new ErrorInfo(EXECUTION_EXPIRED_CODE,
                 "Execution exceeded its maximum lifetime before a dispatch outcome arrived");
         synchronized (executionRecord) {
-            wasNonTerminal = !isTerminal(executionRecord.state());
+            wasNonTerminal = !executionRecord.isTerminal();
             if (wasNonTerminal) {
                 executionRecord.markError(error);
             }
@@ -704,11 +694,5 @@ public final class AttemptCoordinator {
     private static void bestEffort(Runnable observation) {
         try { observation.run(); }
         catch (RuntimeException failure) { log.warn("Attempt observer failed", failure); }
-    }
-
-    private static boolean isTerminal(ExecutionState state) {
-        return state == ExecutionState.SUCCESS
-                || state == ExecutionState.ERROR
-                || state == ExecutionState.TIMEOUT;
     }
 }

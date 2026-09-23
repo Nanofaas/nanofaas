@@ -109,19 +109,6 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
                                   PendingWorkStore store,
                                   DispatchCapacity capacityRegistry,
                                   LongSupplier sequence,
-                                  EngineInvocationEnqueuer.AdmissionProfile profile) {
-        this(configSource, admissionCheck, onDispatched, onFunctionRemoved, engine, store, capacityRegistry,
-                sequence, profile, name -> { }, name -> { }, name -> { }, Clock.systemUTC());
-    }
-
-    public EngineSyncQueueGateway(SyncQueueConfigSource configSource,
-                                  AdmissionCheck admissionCheck,
-                                  BiConsumer<String, Instant> onDispatched,
-                                  Consumer<String> onFunctionRemoved,
-                                  ObjectProvider<SchedulerEngine> engine,
-                                  PendingWorkStore store,
-                                  DispatchCapacity capacityRegistry,
-                                  LongSupplier sequence,
                                   EngineInvocationEnqueuer.AdmissionProfile profile,
                                   Consumer<String> onAdmitted,
                                   Consumer<String> onRejected,
@@ -206,7 +193,7 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
         // .theSecondRemovalFenceCheckRejectsAFenceRaisedWhileTheAdmissionIsInFlight goes red when
         // the second is. Removing one of the two is a red test, not a silent loosening.
         if (removalFences.contains(task.functionName())) {
-            throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
+            throw depthRejected();
         }
         Instant now = clock.instant();
         // Valid as a sync-scoped depth only because enabled() now confines this gateway to the
@@ -226,11 +213,11 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
             throw new SyncQueueRejectedException(reason, configSource.syncQueueRetryAfterSeconds());
         }
         if (removalFences.contains(task.functionName())) {
-            throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
+            throw depthRejected();
         }
         FunctionGeneration generation = capacityRegistry.activeGeneration(task.functionName());
         if (generation == null) {
-            throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
+            throw depthRejected();
         }
         TicketId id = new TicketId(task.executionId(), task.attempt());
         Instant deadline = now.plus(configSource.syncQueueMaxQueueWait());
@@ -243,7 +230,7 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
         // against the same atomic cap.
         TrackedTicket tracked = new TrackedTicket();
         if (pendingSyncTickets.putIfAbsent(id, tracked) != null) {
-            throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
+            throw depthRejected();
         }
         boolean enqueued = false;
         try {
@@ -254,15 +241,19 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
             }
         }
         if (!enqueued) {
-            throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
+            throw depthRejected();
         }
         // Removal can finish after the generation read but before enqueue, missing this ticket
         // in its drain. Withdraw it through the engine so lifecycle cleanup runs exactly once.
         if (!generation.equals(capacityRegistry.activeGeneration(task.functionName()))) {
             engine.getObject().remove(id);
-            throw new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
+            throw depthRejected();
         }
         return tracked;
+    }
+
+    private SyncQueueRejectedException depthRejected() {
+        return new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH, configSource.syncQueueRetryAfterSeconds());
     }
 
     /** Raised by the generation-removal listener before it drains this function's pending work. */

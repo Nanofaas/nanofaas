@@ -34,14 +34,4 @@ public final class SchedulerLifecycleAdapter implements SmartLifecycle {
     public boolean isRunning() {
         return running;
     }
-
-    @Override
-    public int getPhase() {
-        return Integer.MAX_VALUE;
-    }
-
-    @Override
-    public boolean isAutoStartup() {
-        return true;
-    }
 }

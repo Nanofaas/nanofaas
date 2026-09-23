@@ -10,7 +10,6 @@ import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionState;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.Outcome;
-import it.unimib.datai.nanofaas.controlplane.execution.TimeSource;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingTicket;
@@ -150,7 +149,7 @@ class SchedulerModelTest {
                         generations.get(task.functionName()), sequenceCursor++, clock.instant(),
                         clock.instant(), null), task));
         AttemptCoordinator coordinator = new AttemptCoordinator(executions, capacity, retry,
-                transport, TimeSource.system(), mock(AttemptObserver.class));
+                transport, mock(AttemptObserver.class));
 
         EngineDispatch dispatch = mock(EngineDispatch.class);
         when(dispatch.isCurrent(any())).thenReturn(true);

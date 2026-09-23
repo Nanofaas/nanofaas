@@ -29,10 +29,7 @@ public final class RuntimeConfigRegistry {
     }
 
     public Map<String, Map<String, Object>> snapshot() {
-        Map<String, Map<String, Object>> snapshot = new LinkedHashMap<>();
-        extensions.forEach((namespace, extension) ->
-                snapshot.put(namespace, Map.copyOf(extension.snapshot())));
-        return Collections.unmodifiableMap(snapshot);
+        return snapshotReplacing(null, null);
     }
 
     /**

@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Set;
 import java.util.function.Predicate;
 
@@ -58,7 +59,14 @@ public class SharedQueueSchedulingStrategy implements SchedulingStrategy {
             if (!present.remove(id)) {
                 return;
             }
-            queue.removeIf(ticket -> ticket.id().equals(id));
+            // Ids are unique (see add), so stop at the match instead of removeIf's full walk:
+            // this runs under the engine's gate on every dispatch, expiry and removal.
+            for (Iterator<SchedulingTicket> it = queue.iterator(); it.hasNext(); ) {
+                if (it.next().id().equals(id)) {
+                    it.remove();
+                    return;
+                }
+            }
         }
 
         @Override

@@ -735,7 +735,9 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
                     blocked.add(ticket.generation());
                 }
                 claimSettled = true;
-                return CAPACITY_BLOCKED_AWAIT_MS;
+                // Pass again at once: the next selection skips this blocked generation, so other
+                // runnable work goes out now, and idleBudgetMs parks if nothing else can run.
+                return 0L;
             }
 
             InvocationTask task;
@@ -858,6 +860,9 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
 
     /** Under the gate. Drops every pending ticket already past its queue deadline, bounded. */
     private List<PendingEntry> reapExpired(Instant now) {
+        if (deadlines.isEmpty()) {
+            return List.of();
+        }
         List<PendingEntry> expired = new ArrayList<>();
         while (expired.size() < MAX_EXPIRED_PER_PASS && !deadlines.isEmpty()) {
             SchedulingTicket head = deadlines.first();
