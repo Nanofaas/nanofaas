@@ -5,10 +5,9 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.context.annotation.Bean;
 
 /**
- * Registers only this module's strategy factory (Task 8, issue #208): the worker, capacity
- * registration listener, metrics source/binder and {@code InvocationEnqueuer} this module used
- * to publish on its own now live once, in {@code SchedulerConfiguration}, shared with the
- * sync-queue module instead of being mutually exclusive with it.
+ * Registers only this module's strategy factory: the worker, capacity registration listener,
+ * metrics source/binder and {@code InvocationEnqueuer} live once, in
+ * {@code SchedulerConfiguration}, shared with the sync-queue module.
  */
 @AutoConfiguration
 public class AsyncQueueConfiguration {

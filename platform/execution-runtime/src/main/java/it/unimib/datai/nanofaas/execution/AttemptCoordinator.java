@@ -26,11 +26,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Owns the attempt state machine: dispatch, retry and completion (issue #208, Task 10). Moved
- * out of {@code ExecutionCompletionHandler}, which becomes a thin Spring facade over this class
- * plus the existing constructor/overload surface the control plane's ~177 upstream callers
- * depend on. No algorithm changed in the move — retry policy, the default of 3 attempts, timeout
- * handling, tombstoning and the physical-drain/lease-release ordering are exactly as they were.
+ * Owns the attempt state machine: dispatch, retry and completion — retry policy (default 3
+ * attempts), timeout handling, tombstoning and the physical-drain/lease-release ordering.
+ * {@code ExecutionCompletionHandler} is a thin Spring facade over this class plus the
+ * constructor/overload surface the control plane's callers depend on.
  *
  * <p>This class never calls a dispatcher or a readiness gate directly: {@link #transport} is the
  * only door to the outside world, so mode selection and any wake-up wait live entirely on the

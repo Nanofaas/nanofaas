@@ -48,9 +48,8 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Composes both scheduling strategies (or however many are on the classpath) around ONE
- * {@link SchedulerEngine}, ONE {@link SchedulerControl} and ONE Spring lifecycle, instead of the
- * two mutually-exclusive scheduler implementations async-queue and sync-queue used to register
- * (Task 8, issue #208).
+ * {@link SchedulerEngine}, ONE {@link SchedulerControl} and ONE Spring lifecycle, shared by the
+ * async-queue and sync-queue modules rather than one scheduler per module.
  *
  * <p>Activates only when at least one {@link SchedulingStrategy} bean exists — i.e. only when a
  * queue module is on the classpath. With none, the core's own {@code InvocationEnqueuerAutoConfiguration}
@@ -148,33 +147,17 @@ public class SchedulerConfiguration {
     }
 
     /**
-     * Fix round I2 correction: this is called from inside the engine gate (it is the
-     * {@code runnable} predicate passed to {@code SchedulingIndex.select}), and
-     * {@code capacityRegistry.state(name)} takes {@code FunctionCapacityRegistry}'s own
-     * per-function {@code ReentrantLock} — so the acquisition order here is genuinely
-     * {@code gate -> entry.lock}, one external lock taken while holding the gate. The plan's
-     * contract for this predicate excludes exactly this ("non chiama provider, store o registry
-     * mutabili"); the original Task 8 report's claim that {@code FunctionCapacityRegistry} "has
-     * no dependency on the scheduler/engine at all" stopped being true the moment
-     * {@link #schedulerEngine} registered {@code engine::signal} as a capacity listener below —
-     * do not read that claim as still standing.
+     * Called inside the engine gate (it is the {@code runnable} predicate passed to
+     * {@code SchedulingIndex.select}), and {@code capacityRegistry.state(name)} takes
+     * {@code FunctionCapacityRegistry}'s per-function {@code ReentrantLock}: generation and
+     * capacity are read under {@code gate -> entry.lock}.
      *
-     * <p>This is not being redesigned: reviewed end to end, there is no cycle. The registry's
-     * only path back into the engine is that one capacity-listener callback
-     * ({@code capacityRegistry.addCapacityListener(functionName -> engine.signal())} in
-     * {@link #schedulerEngine}), and it fires from {@code FunctionCapacityRegistry.setEffectiveConcurrency}
-     * strictly <em>after</em> that method has already released the entry lock (the listener loop
-     * runs "outside the entry lock: listeners may take other locks", per that method's own
-     * comment) — so no path exists that holds {@code entry.lock} while trying to take
-     * {@code gate}. That is what makes {@code gate -> entry.lock} a safe, one-directional order.
-     *
-     * <p><strong>Invariant, recorded for whoever touches this next:</strong> the acquisition
-     * order here is {@code gate -> entry.lock}, and it must stay one-directional. The single fire
-     * site above is the whole reason it is safe today. Adding a second capacity listener (or any
-     * other engine-reachable callback) that runs <em>inside</em> {@code entry.lock} — i.e. before
-     * {@code FunctionCapacityRegistry} releases it — would reintroduce the reverse edge and
-     * deadlock against a concurrent {@code selectAndClaim}. Do not add one without either keeping
-     * it outside the lock (as this one is) or re-deriving this whole argument.
+     * <p>Capacity listeners must run after releasing {@code entry.lock}: calling the engine
+     * while holding that lock would invert the order and could deadlock selection. The
+     * registry's only path back into the engine is the capacity listener
+     * {@link #schedulerEngine} registers, and {@code FunctionCapacityRegistry.setEffectiveConcurrency}
+     * fires it after releasing the entry lock. Do not add an engine-reachable callback that runs
+     * inside {@code entry.lock} without re-deriving this argument.
      */
     @Bean
     public EngineReadiness engineReadiness(DispatchCapacity capacityRegistry) {
@@ -188,13 +171,11 @@ public class SchedulerConfiguration {
     }
 
     /**
-     * Task 11 (issue #208): the engine-backed replacement for the two per-module
-     * {@code WorkloadMetricsSource} beans Task 8 retired. Autoscaler and the concurrency
-     * governor both gate their own startup on a bean of this type
-     * ({@code @ConditionalOnBean(WorkloadMetricsSource.class)}); its absence between Task 8 and
-     * this one silently disabled both — the 2026-08-29 incident {@code AutoscalerConfigurationTest}
-     * documents. There is no longer a presence-check log.warn: a genuine source is always present
-     * whenever this configuration activates at all, so the loud-failure stopgap is retired with it.
+     * The engine-backed {@code WorkloadMetricsSource}. Autoscaler and the concurrency governor
+     * both gate their own startup on a bean of this type
+     * ({@code @ConditionalOnBean(WorkloadMetricsSource.class)}); without it both are silently
+     * disabled — the 2026-08-29 incident {@code AutoscalerConfigurationTest} documents. A genuine
+     * source is always present whenever this configuration activates.
      */
     @Bean
     public EngineWorkloadMetricsSource schedulerWorkloadMetricsSource(SchedulerEngine engine,
@@ -256,8 +237,8 @@ public class SchedulerConfiguration {
      * lookups by the same id are idempotent.
      *
      * <p>The switch observer runs after {@link SchedulerEngine#switchTo}'s own linearization
-     * point and cannot affect its outcome (Task 5's invariant, restated on
-     * {@code SchedulerEngine.switchTo}'s own javadoc): a throwing observer is caught inside the
+     * point and cannot affect its outcome (see {@code SchedulerEngine.switchTo}'s own
+     * javadoc): a throwing observer is caught inside the
      * engine itself, never here.
      */
     private static void registerSwitchObservability(MeterRegistry registry, StrategyRegistry strategies,
@@ -295,17 +276,16 @@ public class SchedulerConfiguration {
     }
 
     /**
-     * The generation-registration listener both queue modules used to embed inside their own
-     * (now retired) scheduler implementations: capacity must still be registered/removed for
-     * every function so {@link EngineInvocationEnqueuer}/{@link EngineSyncQueueGateway} can
+     * The generation-registration listener: capacity is registered/removed for every
+     * function so {@link EngineInvocationEnqueuer}/{@link EngineSyncQueueGateway} can
      * resolve an active {@link FunctionGeneration} at admission time.
      *
-     * <p>Fix round C2: {@code onRemove} now also drains this function's pending, undispatched
+     * <p>{@code onRemove} also drains this function's pending, undispatched
      * engine tickets through {@link SchedulerEngine#removeAllFor}, terminating a
      * queued caller as {@code ExecutionState.ERROR}/{@code FUNCTION_REMOVED} rather than leaving
      * it to hang to its own timeout.
      *
-     * <p>Fix round 2 correction: the drain is {@link SchedulerEngine#removeAllFor}, not a direct
+     * <p>The drain is {@link SchedulerEngine#removeAllFor}, not a direct
      * {@code PendingWorkStore.snapshotPending()} scan from this listener. {@code PendingWorkStore}
      * documents that it does not lock internally — the engine serializes every operation on it —
      * and this listener runs on the request thread serving the removal HTTP call while the
@@ -322,9 +302,8 @@ public class SchedulerConfiguration {
      * whole drain window, letting a concurrent admission insert a ticket the scan has already
      * passed.
      *
-     * <p>Task 11 addition: also owns the per-function {@link WorkloadMetricsBinder} meter
-     * lifecycle, and is the sole place that registers the engine's drain listener — once, here,
-     * never in a strategy (the plan's own constraint on capacity/lifecycle listeners).
+     * <p>It also owns the per-function {@link WorkloadMetricsBinder} meter lifecycle, and is the
+     * sole place that registers the engine's drain listener — once, here, never in a strategy.
      *
      * <p>Meters register at {@code onRegister} like every other per-function resource, but do
      * NOT come down at {@code onRemove}: a generation's meters (queue depth, in-flight,

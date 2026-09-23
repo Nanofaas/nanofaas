@@ -10,10 +10,9 @@ import org.springframework.boot.http.codec.CodecCustomizer;
 /**
  * Wires the calibrated public invocation-capacity contract.
  *
- * <p>{@link InvocationCapacityProperties} moved into the mandatory {@code :execution-runtime}
- * library (issue #208, Task 9) and became a pure POJO with no {@code @ConfigurationProperties}
- * of its own, since that library must not depend on Spring. This is the control plane's binding
- * point instead: every default, validation and public key stays exactly as it was. The bare
+ * <p>{@link InvocationCapacityProperties} lives in the mandatory {@code :execution-runtime}
+ * library as a pure POJO with no {@code @ConfigurationProperties} of its own, since that library
+ * must not depend on Spring. This is the control plane's binding point for it. The bare
  * {@code @EnableConfigurationProperties} activates {@code @ConfigurationProperties} binding for
  * the {@code @Bean} method below wherever this configuration is loaded on its own (e.g. in an
  * {@code ApplicationContextRunner} test), matching production behaviour, where

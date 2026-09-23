@@ -12,8 +12,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 /**
- * The control plane's {@link AttemptTransport}: mode-based dispatch selection (issue #208,
- * Task 10, step 4) — LOCAL/EXTERNAL dispatch, and DEPLOYMENT dispatch behind a cancellable
+ * The control plane's {@link AttemptTransport}: mode-based dispatch selection —
+ * LOCAL/EXTERNAL dispatch, and DEPLOYMENT dispatch behind a cancellable
  * wake-up wait. This is the ONLY place {@link DispatcherRouter} and {@link DeploymentReadiness}
  * are called from the attempt path: {@link AttemptCoordinator} (the selector/state machine, in
  * {@code :execution-runtime}) never imports either type, and never will — no GET and no provider

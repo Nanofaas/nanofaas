@@ -20,9 +20,9 @@ public class InvocationLifecycleRuntimeHints implements RuntimeHintsRegistrar {
      *
      * <p>This is the same erasure as {@link InvocationResponse} below, one hop further out: the
      * endpoint answers through {@code Mono<ResponseEntity<Object>>}, so neither the envelope's own
-     * type nor the snapshot nested inside it is visible to HTTP binding inference. Now that the
+     * type nor the snapshot nested inside it is visible to HTTP binding inference. Because the
      * scheduling strategy is reachable through {@code PATCH /v1/admin/runtime-config/scheduler}
-     * and published by {@code GET} on the same path (issue #208, Task 13), that envelope is part
+     * and published by {@code GET} on the same path, that envelope is part
      * of the contract a native image is expected to serve.
      *
      * <p>By name, not by class, because both types live in the {@code runtime-config} module

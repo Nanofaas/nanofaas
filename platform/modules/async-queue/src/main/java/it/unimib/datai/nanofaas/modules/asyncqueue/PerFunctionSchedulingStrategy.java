@@ -14,8 +14,7 @@ import java.util.Map;
 import java.util.function.Predicate;
 
 /**
- * Ports the selection logic of the retired {@code modules.asyncqueue.Scheduler} loop onto the
- * {@link SchedulingIndex} contract (that loop was deleted in Task 13b, issue #208):
+ * Per-function selection on the {@link SchedulingIndex} contract:
  * one FIFO of tickets per function, visited round-robin, with a bounded number of
  * consecutive dispatches per function turn before moving on to the next active function.
  *

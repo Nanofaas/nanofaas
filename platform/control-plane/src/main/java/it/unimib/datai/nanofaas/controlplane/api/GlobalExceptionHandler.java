@@ -86,11 +86,11 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * {@link InvocationInputRejectedException} used to extend {@code ServerWebInputException}
-     * (caught by {@link #handleServerWebInputException} above) before it moved into the
-     * mandatory {@code :execution-runtime} library, which must not depend on Spring Web (Task 9,
-     * issue #208). This handler reproduces exactly the same HTTP 400 mapping: same status, same
-     * {@code BAD_REQUEST} error code, same message.
+     * {@link InvocationInputRejectedException} lives in the mandatory {@code :execution-runtime}
+     * library, which must not depend on Spring Web, so it cannot extend
+     * {@code ServerWebInputException} (caught by {@link #handleServerWebInputException} above).
+     * This handler gives it the same HTTP 400 mapping: same status, same {@code BAD_REQUEST}
+     * error code, same message.
      */
     @ExceptionHandler(InvocationInputRejectedException.class)
     public ResponseEntity<Map<String, Object>> handleInvocationInputRejected(

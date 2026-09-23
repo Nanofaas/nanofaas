@@ -5,7 +5,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 
 /**
- * What {@link AttemptTransport#submit} hands back for one attempt (issue #208, Task 10):
+ * What {@link AttemptTransport#submit} hands back for one attempt:
  * {@code outcome} is the logical dispatch result, {@code drained} is the independent signal
  * that the raw transport has actually stopped retaining the request (physical capacity), and
  * {@code cancellation} is however the transport wants cancellation requested for this attempt.

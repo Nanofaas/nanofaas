@@ -27,8 +27,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
 
 /**
- * Registers this module's strategy factory plus the legacy config adapters genuinely still
- * needed (Task 8, issue #208): the runtime-mutable {@link SyncQueueConfigSource}, the module's
+ * Registers this module's strategy factory plus the config adapters it needs: the
+ * runtime-mutable {@link SyncQueueConfigSource}, the module's
  * runtime defaults record, and the admission collaborators ({@link WaitEstimator},
  * {@link SyncQueueAdmissionController}) composed into {@link EngineSyncQueueGateway}. Queued
  * work lives in the single engine {@code SchedulerConfiguration} owns ({@code PendingWorkStore}
@@ -39,8 +39,7 @@ import java.util.function.LongSupplier;
 public class SyncQueueConfiguration {
 
     /** How often the wait estimator prunes expired samples in the absence of new dispatches,
-     * mirroring the cadence the retired {@code SyncScheduler} loop gave it before that worker was
-     * deleted in Task 13b. */
+     * matching the cadence the former {@code SyncScheduler} loop gave it. */
     private static final long ESTIMATOR_MAINTENANCE_PERIOD_MS = 500L;
 
     @Bean

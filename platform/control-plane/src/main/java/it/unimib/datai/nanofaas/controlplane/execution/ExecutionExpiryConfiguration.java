@@ -14,10 +14,10 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 
 /**
  * Owns cache expiry timers, including physical removal of cancelled deadlines, and the
- * explicit construction of the execution-ownership beans extracted into the mandatory
- * {@code :execution-runtime} library (issue #208, Task 9): {@link ExecutionStore} and
- * {@link IdempotencyStore} no longer carry {@code @Component}/{@code @Autowired} themselves,
- * since that library must not depend on Spring.
+ * explicit construction of the execution-ownership beans from the mandatory
+ * {@code :execution-runtime} library: {@link ExecutionStore} and {@link IdempotencyStore}
+ * carry no {@code @Component}/{@code @Autowired} themselves, since that library must not
+ * depend on Spring.
  */
 @Configuration(proxyBeanMethods = false)
 @RegisterReflectionForBinding(ExecutionStoreProperties.class)

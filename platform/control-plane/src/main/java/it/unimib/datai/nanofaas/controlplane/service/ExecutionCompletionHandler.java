@@ -21,12 +21,11 @@ import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
- * Spring facade over {@link AttemptCoordinator} (issue #208, Task 10): the attempt state
- * machine — dispatch, retry and completion — moved into the runtime library so it is available
- * regardless of which scheduler strategy is active. This class now owns two things: the existing
- * constructor/overload surface (~177 upstream callers, per the pre-move impact census), and
- * translating {@link AttemptObserver} notifications into the exact same {@link Metrics} calls
- * this class used to make directly.
+ * Spring facade over {@link AttemptCoordinator}, which owns the attempt state machine —
+ * dispatch, retry and completion — in the runtime library, so it is available regardless of
+ * which scheduler strategy is active. This class owns two things: the constructor/overload
+ * surface the control plane's callers use, and translating {@link AttemptObserver}
+ * notifications into {@link Metrics} calls.
  *
  * <p>Mode-based transport selection (LOCAL/EXTERNAL/DEPLOYMENT dispatch, deployment wake-up) is
  * step 4's {@link AttemptTransportAdapter} — the only place {@link DispatcherRouter} and {@link

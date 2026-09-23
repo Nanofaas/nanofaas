@@ -94,10 +94,10 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
 
     @Override
     public boolean enabled() {
-        // Fix round C1: gated on the resolved admission profile, not the runtime flag alone.
-        // sync-queue.enabled defaults to true and this task made sync-queue defaultEnabled too,
+        // Gated on the resolved admission profile, not the runtime flag alone:
+        // sync-queue.enabled defaults to true and the sync-queue module is enabled by default,
         // so without this gate the both-modules default artefact (admissionProfile ==
-        // FUNCTION_QUEUE) ran every sync invocation through this gateway anyway.
+        // FUNCTION_QUEUE) would run every sync invocation through this gateway.
         return profile == EngineInvocationEnqueuer.AdmissionProfile.SYNC_QUEUE && configSource.syncQueueEnabled();
     }
 

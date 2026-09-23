@@ -52,11 +52,9 @@ import java.util.function.Predicate;
  *
  * <h2>One selection per pass</h2>
  * A pass reaps due queue deadlines, then makes at most one selection and carries it to a
- * decision, mirroring the retired {@code SyncScheduler}'s tick (deleted in Task 13b). A
- * generation whose lease could not
- * be acquired is dropped from consideration until the next {@link #signal()} — the wake sequence
- * replaces the old schedulers' "drop the function from activeFunctions and wait to be
- * re-signalled", which the passive index contract deliberately leaves to the engine.
+ * decision. A generation whose lease could not be acquired is dropped from consideration until
+ * the next {@link #signal()}: the passive index contract deliberately leaves that to the
+ * engine's wake sequence.
  */
 public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
 
@@ -177,8 +175,8 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
 
     /**
      * Reports every {@link #switchTo} outcome and its wall-clock duration. Deliberately not part
-     * of the switch's correctness transaction (Task 5's invariant: nothing fallible follows the
-     * linearization point) — a throwing observer is caught and logged, never allowed to make a
+     * of the switch's correctness transaction (nothing fallible follows the linearization
+     * point) — a throwing observer is caught and logged, never allowed to make a
      * committed switch look like it failed, or vice versa.
      */
     @FunctionalInterface
@@ -277,7 +275,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             }
             log.info("Scheduler strategy switched to {}", target.id());
         } finally {
-            // Observation is not part of the correctness transaction above (Task 5's invariant):
+            // Observation is not part of the correctness transaction above:
             // it runs after every possible outcome, including a thrown SchedulerSwitchException,
             // and a throwing observer must never be allowed to turn a committed switch into a
             // reported failure or vice versa.
@@ -933,9 +931,9 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
      *       function's round-robin turn. No work is lost and no ticket is starved — only the
      *       batch boundary moves. Adding a {@code withdraw()} to {@link SchedulingIndex} would
      *       fix it cleanly, but that contract is consumed by both strategies and by the switch
-     *       and fairness work, so it is not widened for a defect that loses nothing. Task 12's
-     *       fairness tests measure this divergence; if it proves material there, {@code
-     *       withdraw()} gets added then, on evidence.</li>
+     *       and fairness work, so it is not widened for a defect that loses nothing. The
+     *       fairness tests measure this divergence; {@code withdraw()} is added only if it
+     *       proves material there.</li>
      * </ul>
      */
     private void retire(SchedulingTicket ticket) {

@@ -5,7 +5,7 @@ import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 
 /**
- * Best-effort completion notifications from {@link AttemptCoordinator} (issue #208, Task 10).
+ * Best-effort completion notifications from {@link AttemptCoordinator}.
  * Every call happens outside the execution record's monitor and only after the coordinator has
  * already confirmed the admitted generation is still current — an implementation never needs to
  * re-check that itself, and a failing implementation must not disturb dispatch or completion
@@ -35,7 +35,7 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
  *
  * <p>Waiter/replay/admission-level observations (a caller's own timeout, a replayed idempotency
  * key, admission counters) are NOT part of this contract: those stay with the entry coordinator
- * that already owns them (issue #208 plan-context).
+ * that already owns them.
  */
 public interface AttemptObserver {
     /** A real dispatch happened but this particular duration could not be computed. */

@@ -230,8 +230,7 @@ public class WaitEstimator {
         return estimate;
     }
 
-    /** Widened to {@code public} by Task 10 (issue #208) for the same cross-module test reason
-     * as the sizing constructor above; the retention accounting it reports is unchanged. */
+    /** Public for the same cross-module test reason as the sizing constructor above. */
     public RetentionSnapshot retentionSnapshot() {
         return new RetentionSnapshot(functionStates.get(), retainedGlobalSamples.get(),
                 retainedPerFunctionSamples.get(), cleanupCandidates.size());

@@ -16,7 +16,7 @@ import java.util.function.LongSupplier;
 
 /**
  * The single admission/retry front door onto the composed {@link SchedulerEngine}, regardless
- * of how many {@code SchedulingStrategy} beans are on the classpath (Task 8, issue #208).
+ * of how many {@code SchedulingStrategy} beans are on the classpath.
  *
  * <p>{@link InvocationEnqueuer#enqueue} and {@link RetryScheduler#enqueue} share one method, as
  * the interfaces already declare it identically: a fresh admission and a retry both become one
