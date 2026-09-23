@@ -16,21 +16,37 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public final class ControlPlaneModulesPlugin implements Plugin<Settings> {
 
     private static final String SELECTOR_PROPERTY = "controlPlaneModules";
-    private static final String SELECTED_EXTRA_PROPERTY = "nanofaasSelectedControlPlaneModules";
+    private static final String RECIPE_PROPERTY = "recipe";
+    private static final String RECIPE_TAG_PROPERTY = "recipeTag";
+    private static final String BUILD_TYPE_PROPERTY = "nanofaasBuildType";
+    static final String SELECTED_EXTRA_PROPERTY = "nanofaasSelectedControlPlaneModules";
     private static final String NATIVE_BUILD_EXTRA_PROPERTY = "nanofaasNativeBuildRequested";
 
     @Override
     public void apply(Settings settings) {
         Path modulesRoot = settings.getSettingsDir().toPath().resolve("platform/modules");
+        RecipeReader.Document recipe = readRecipe(settings);
         List<ModuleDescriptor> descriptors = discover(settings, modulesRoot);
-        List<String> selected = select(settings, descriptors);
-        new ModuleConstraintResolver().validate(descriptors, selected);
+        List<String> selected;
+        boolean nativeBuild;
+        if (recipe == null) {
+            selected = select(settings, descriptors);
+            new ModuleConstraintResolver().validate(descriptors, selected);
+            nativeBuild = isNativeBuildRequested(settings);
+        } else {
+            selected = selectFromRecipe(settings, recipe, descriptors);
+            nativeBuild = recipeNativeBuild(settings, recipe);
+        }
         settings.getGradle().beforeProject(project -> {
+            if (project.getParent() == null) {
+                RecipeTasks.register(project, recipe);
+            }
             if (project.getPath().startsWith(":control-plane-modules:")) {
                 project.getPluginManager().apply(ControlPlaneModuleProjectPlugin.class);
             }
@@ -41,7 +57,60 @@ public final class ControlPlaneModulesPlugin implements Plugin<Settings> {
         settings.getGradle().getExtensions().getExtraProperties()
                 .set(SELECTED_EXTRA_PROPERTY, List.copyOf(selected));
         settings.getGradle().getExtensions().getExtraProperties()
-                .set(NATIVE_BUILD_EXTRA_PROPERTY, isNativeBuildRequested(settings));
+                .set(NATIVE_BUILD_EXTRA_PROPERTY, nativeBuild);
+    }
+
+    private static RecipeReader.Document readRecipe(Settings settings) {
+        Map<String, String> properties = settings.getStartParameter().getProjectProperties();
+        String file = properties.get(RECIPE_PROPERTY);
+        String tag = properties.get(RECIPE_TAG_PROPERTY);
+        if (file == null) {
+            if (tag != null) {
+                throw failure("-PrecipeTag requires -Precipe=<file>");
+            }
+            return null;
+        }
+        return new RecipeReader().read(settings.getSettingsDir().toPath().resolve(file).normalize(), tag);
+    }
+
+    /** With a recipe, its module list is the only composition source: no selector, no environment. */
+    private static List<String> selectFromRecipe(Settings settings, RecipeReader.Document recipe,
+                                                 List<ModuleDescriptor> descriptors) {
+        if (settings.getStartParameter().getProjectProperties().containsKey(SELECTOR_PROPERTY)) {
+            throw RecipeReader.failure(recipe.source(), "-PcontrolPlaneModules cannot be combined with -Precipe;"
+                    + " the recipe's controlPlane.modules selects the modules");
+        }
+        List<String> requested = new ArrayList<>();
+        recipe.data().at("/controlPlane/modules").forEach(module -> requested.add(module.asText()));
+        Set<String> available = descriptors.stream().map(ModuleDescriptor::id).collect(java.util.stream.Collectors.toSet());
+        List<String> unknown = requested.stream().filter(id -> !available.contains(id)).sorted().toList();
+        if (!unknown.isEmpty()) {
+            throw RecipeReader.failure(recipe.source(), "controlPlane.modules: Unknown control-plane module(s): " + unknown);
+        }
+        try {
+            new ModuleConstraintResolver().validate(descriptors, requested);
+        } catch (IllegalArgumentException exception) {
+            throw RecipeReader.failure(recipe.source(), "controlPlane.modules: " + exception.getMessage());
+        }
+        return requested.stream().sorted().toList();
+    }
+
+    /**
+     * With a recipe the control plane's declared mode decides AOT, not the task names: assembleRecipe contains no
+     * native task name, and a native function must not turn a JVM control plane native.
+     */
+    private static boolean recipeNativeBuild(Settings settings, RecipeReader.Document recipe) {
+        String mode = recipe.data().at("/controlPlane/build/mode").asText();
+        String buildType = settings.getStartParameter().getProjectProperties().get(BUILD_TYPE_PROPERTY);
+        if (buildType != null && !buildType.equals(mode)) {
+            throw RecipeReader.failure(recipe.source(), "-P" + BUILD_TYPE_PROPERTY + "=" + buildType
+                    + " contradicts controlPlane.build.mode " + mode);
+        }
+        if (mode.equals("jvm") && isNativeBuildRequested(settings)) {
+            throw RecipeReader.failure(recipe.source(), "native tasks " + settings.getStartParameter().getTaskNames()
+                    + " requested, but the recipe declares a jvm control plane; build it with assembleRecipe");
+        }
+        return mode.equals("native");
     }
 
     /**
