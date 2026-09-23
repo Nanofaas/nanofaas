@@ -94,6 +94,9 @@ between modules with equal `defaultEnabled` values are ambiguous and fail the
 build. Unknown names and other constraint violations also fail the build. The
 default selects only descriptors whose `defaultEnabled=true`; this keeps
 `async-queue` enabled and `sync-queue` disabled.
+With `-Precipe=<file>`, a [distribution recipe](recipes.md)'s
+`controlPlane.modules` is the only selection source: `-PcontrolPlaneModules` is
+rejected and the environment selector is ignored.
 
 The three managed providers (`k8s-deployment-provider`,
 `container-deployment-provider`, `containerd-deployment-provider`) are pairwise

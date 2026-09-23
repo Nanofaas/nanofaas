@@ -31,6 +31,8 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Stages the Java outputs of a resolved recipe, writes their runtime files, builds the images and writes
@@ -49,6 +51,7 @@ final class RecipeArtifacts {
             "-Dmanagement.endpoints.enabled-by-default=false");
 
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final Pattern PUSH_DIGEST = Pattern.compile("(?m)^(\\S+): digest: (sha256:[0-9a-f]{64}) size: \\d+$");
 
     /** Gives a plain task action the injected {@link ExecOperations} service. */
     public interface Services {
@@ -96,6 +99,105 @@ final class RecipeArtifacts {
             task.doLast(ignored -> writeReport(output.resolve(REPORT),
                     report(recipe, targets, modules, source(services.getExec(), rootDir))));
         });
+        root.getTasks().named("publishRecipe", task -> {
+            task.dependsOn("assembleRecipe");
+            task.doLast(ignored -> publish(services.getExec(), docker, output.resolve(REPORT)));
+        });
+        // Checked once the graph is known and before any task runs, so a doomed publish builds nothing.
+        root.getGradle().getTaskGraph().whenReady(graph -> {
+            if (graph.hasTask(root.getPath().equals(":") ? ":publishRecipe" : root.getPath() + ":publishRecipe")) {
+                if (recipe.data().path("registry").isMissingNode()) {
+                    throw RecipeReader.failure(recipe.source(), "publishRecipe requires a registry section");
+                }
+                if (targets.stream().allMatch(target -> target.image() == null)) {
+                    throw RecipeReader.failure(recipe.source(), "publishRecipe found no images: add container.image");
+                }
+            }
+        });
+    }
+
+    /**
+     * Pushes each image in report order, rewriting the report after every push so that a later failure never hides
+     * an earlier success. No retry and no rollback: a registry offers no transaction across images.
+     */
+    static void publish(ExecOperations exec, String docker, Path reportFile) {
+        ObjectNode report;
+        try {
+            report = (ObjectNode) JSON.readTree(reportFile.toFile());
+        } catch (IOException exception) {
+            throw new GradleException("Cannot read " + reportFile + " (" + exception + ")", exception);
+        }
+        List<String> published = new ArrayList<>();
+        for (JsonNode component : report.get("components")) {
+            if (!(component.get("image") instanceof ObjectNode image)) {
+                continue;
+            }
+            String reference = image.get("reference").asText();
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            int exit = exec.exec(spec -> {
+                spec.commandLine(docker, "push", reference);
+                spec.setStandardOutput(output);
+                spec.setIgnoreExitValue(true);
+            }).getExitValue();
+            System.out.print(output.toString(StandardCharsets.UTF_8));
+            if (exit != 0) {
+                image.put("status", "failed");
+                writeReport(reportFile, report);
+                throw new GradleException("docker push " + reference + " failed (exit " + exit + "); already published: "
+                        + published);
+            }
+            String digest = pushedDigest(output.toString(StandardCharsets.UTF_8), reference);
+            if (digest == null) {
+                digest = repoDigest(exec, docker, reference);
+            }
+            image.put("status", digest == null ? "published-unverified" : "published");
+            image.put("digest", digest);
+            try {
+                writeReport(reportFile, report);
+            } catch (GradleException exception) {
+                throw new GradleException(reference + " was pushed, but " + reportFile + " could not record it; "
+                        + "already published before it: " + published, exception);
+            }
+            if (digest == null) {
+                throw new GradleException(reference + " was pushed, but its registry digest could not be determined"
+                        + " (recorded as published-unverified); already published before it: " + published);
+            }
+            published.add(reference + "@" + digest);
+        }
+    }
+
+    /** The manifest digest docker push prints for this tag ("<tag>: digest: sha256:... size: N"), never an image ID. */
+    static String pushedDigest(String pushOutput, String reference) {
+        String tag = reference.substring(reference.lastIndexOf(':') + 1);
+        Matcher matcher = PUSH_DIGEST.matcher(pushOutput);
+        while (matcher.find()) {
+            if (matcher.group(1).equals(tag)) {
+                return matcher.group(2);
+            }
+        }
+        return null;
+    }
+
+    /** Falls back to the local RepoDigests entry of this reference's repository, when exactly one digest matches. */
+    private static String repoDigest(ExecOperations exec, String docker, String reference) {
+        String repository = reference.substring(0, reference.lastIndexOf(':')) + "@";
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        try {
+            exec.exec(spec -> {
+                spec.commandLine(docker, "image", "inspect", "--format", "{{json .RepoDigests}}", reference);
+                spec.setStandardOutput(output);
+                spec.setIgnoreExitValue(true);
+            });
+            List<String> digests = new ArrayList<>();
+            JSON.readTree(output.toString(StandardCharsets.UTF_8)).forEach(entry -> {
+                if (entry.asText().startsWith(repository)) {
+                    digests.add(entry.asText().substring(repository.length()));
+                }
+            });
+            return digests.stream().distinct().count() == 1 ? digests.getFirst() : null;
+        } catch (IOException | RuntimeException exception) {
+            return null;
+        }
     }
 
     private static TaskProvider<Task> producer(Project root, RecipeTasks.Target target) {

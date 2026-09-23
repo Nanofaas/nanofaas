@@ -75,6 +75,11 @@ final class RecipeTasks {
             task.setDescription("Builds the -Precipe artifacts and images into build/recipes/<name>/; never pushes.");
             task.doFirst(ignored -> requireRecipe(recipe, "assembleRecipe"));
         });
+        root.getTasks().register("publishRecipe", task -> {
+            task.setGroup(GROUP);
+            task.setDescription("Assembles the whole -Precipe, then pushes its images and records their digests.");
+            task.doFirst(ignored -> requireRecipe(recipe, "publishRecipe"));
+        });
         if (recipe != null) {
             root.getGradle().projectsEvaluated(ignored -> {
                 recipeTasks.targets = recipeTasks.resolve();

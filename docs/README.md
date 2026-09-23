@@ -16,6 +16,7 @@
 | [Function definition](function-definition.md) | `function.yaml` manifest reference |
 | [Example functions](example-function.md) | Worked examples for every execution mode + real examples in the repo |
 | [Container-only validation](no-k8s-profile.md) | Run the platform without Kubernetes (`container-local` backend) |
+| [Distribution recipes](recipes.md) | Build a control plane and selected functions, their images and a push report from one YAML recipe |
 | [Rootless containerd deployment](deployment-containerd.md) | Prepare pinned Java dependencies, build the provider, and configure its rootless runtime |
 | [E2E tutorial](e2e-tutorial.md) | Validation environments and scenarios (container, Multipass, SSH, load test) |
 

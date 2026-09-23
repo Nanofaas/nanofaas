@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=../platform/gradle-plugin/src/main/resources/recipes/recipe-v1.schema.json
+#
+# A JVM control plane with the local container provider, plus two implementations of
+# word-stats. See docs/recipes.md.
+#   ./gradlew validateRecipe -Precipe=recipes/local-demo.yaml
+#   ./gradlew assembleRecipe -Precipe=recipes/local-demo.yaml
+schemaVersion: 1
+name: local-demo
+
+controlPlane:
+  modules: [async-queue, container-deployment-provider]
+  build:
+    mode: jvm
+  jvm:
+    args: ["-XX:+UseSerialGC", "-Xmx256m"]
+  container:
+    image: control-plane
+  config:
+    nanofaas:
+      metrics:
+        profile: basic
+
+functions:
+  - name: word-stats
+    sdk: java-lite
+    build:
+      mode: jvm
+    container:
+      image: word-stats-java-lite
+
+  - name: word-stats
+    sdk: python
+    container:
+      image: word-stats-python

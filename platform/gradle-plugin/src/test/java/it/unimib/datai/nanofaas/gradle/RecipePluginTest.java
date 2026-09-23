@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.gradle;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.gradle.testkit.runner.BuildResult;
 import org.gradle.testkit.runner.GradleRunner;
 import org.gradle.testkit.runner.TaskOutcome;
@@ -76,6 +78,13 @@ class RecipePluginTest {
                 log=%s
                 { printf '%%s\\n' "$@"; echo '--'; } >> "$log/docker.log"
                 if [ -f "$log/fail-$1" ]; then echo "fake docker $1 failed" >&2; exit 1; fi
+                if [ "$1" = push ]; then
+                  n=$(grep -c '^push$' "$log/docker.log")
+                  if [ -f "$log/fail-push-$n" ]; then echo "fake push $n failed" >&2; exit 1; fi
+                  echo "The push refers to repository [${2%%:*}]"
+                  [ -f "$log/no-digest" ] || echo "${2##*:}: digest: sha256:$(printf %%s "$2" | sha256sum | cut -c1-64) size: 528"
+                fi
+                if [ "$1" = image ]; then cat "$log/repo-digests" 2>/dev/null || echo '[]'; fi
                 """.formatted(projectDir));
         projectDir.resolve("bin/docker").toFile().setExecutable(true);
         write("sdks/java/build.gradle", "plugins { id 'java' }\n");
@@ -380,6 +389,130 @@ class RecipePluginTest {
     @Test
     void assembleRequiresRecipe() {
         assertThat(fails("assembleRecipe")).contains("assembleRecipe requires -Precipe=<file>");
+    }
+
+    private static final String CP_REF = "registry.example:5000/team/control-plane:2.0.0";
+    private static final String LITE_REF = "registry.example:5000/team/ws-lite:2.0.0";
+    private static final String PYTHON_REF = "registry.example:5000/team/ws-python:2.0.0";
+
+    @Test
+    void publishPushesAfterAllBuildsAndRecordsRegistryDigests() throws IOException {
+        recipe(FULL_RECIPE);
+
+        run("publishRecipe", "-Precipe=recipe.yaml", "-PrecipeTag=2.0.0", docker());
+
+        List<List<String>> calls = dockerCalls();
+        List<String> commands = calls.stream().map(List::getFirst).toList();
+        assertThat(commands.lastIndexOf("build")).isLessThan(commands.indexOf("push"));
+        assertThat(calls.stream().filter(call -> call.getFirst().equals("push")))
+                .containsExactly(List.of("push", CP_REF), List.of("push", LITE_REF), List.of("push", PYTHON_REF));
+        JsonNode report = report();
+        assertThat(report.get("tag").asText()).isEqualTo("2.0.0");
+        assertThat(image(report, CP_REF).get("status").asText()).isEqualTo("published");
+        assertThat(image(report, CP_REF).get("digest").asText()).isEqualTo(digestOf(CP_REF));
+        assertThat(image(report, PYTHON_REF).get("digest").asText()).isEqualTo(digestOf(PYTHON_REF));
+    }
+
+    @Test
+    void publishChecksPrerequisitesBeforeBuilding() throws IOException {
+        recipe(HEADER + "controlPlane: {modules: [], build: {mode: jvm}, container: {image: cp}}\n");
+        assertThat(fails(":publishRecipe", "-Precipe=recipe.yaml", docker()))
+                .contains("publishRecipe requires a registry section");
+
+        recipe(HEADER + "registry: {repository: registry.example/team, tag: t}\n" + CP_JVM);
+        assertThat(fails("publishRecipe", "-Precipe=recipe.yaml", docker())).contains("publishRecipe found no images");
+
+        assertThat(projectDir.resolve("markers")).doesNotExist();
+        assertThat(projectDir.resolve("docker.log")).doesNotExist();
+    }
+
+    @Test
+    void failedSecondPushKeepsTheFirstSuccessInTheReport() throws IOException {
+        recipe(FULL_RECIPE);
+        Files.writeString(projectDir.resolve("fail-push-2"), "");
+
+        String output = fails("publishRecipe", "-Precipe=recipe.yaml", "-PrecipeTag=2.0.0", docker());
+
+        assertThat(output).contains("docker push " + LITE_REF + " failed")
+                .contains("already published: [" + CP_REF + "@" + digestOf(CP_REF) + "]");
+        JsonNode report = report();
+        assertThat(image(report, CP_REF).get("status").asText()).isEqualTo("published");
+        assertThat(image(report, CP_REF).get("digest").asText()).isEqualTo(digestOf(CP_REF));
+        assertThat(image(report, LITE_REF).get("status").asText()).isEqualTo("failed");
+        assertThat(image(report, PYTHON_REF).get("status").asText()).isEqualTo("built");
+        assertThat(dockerCalls()).doesNotContain(List.of("push", PYTHON_REF));
+    }
+
+    @Test
+    void missingPushDigestFallsBackToTheMatchingRepoDigest() throws IOException {
+        recipe(PUBLISH_CP_ONLY);
+        Files.writeString(projectDir.resolve("no-digest"), "");
+        String other = "sha256:" + "c".repeat(64);
+        String matching = "sha256:" + "d".repeat(64);
+        Files.writeString(projectDir.resolve("repo-digests"), "[\"registry.example:5000/team/other@" + other
+                + "\",\"registry.example:5000/team/control-plane@" + matching + "\"]\n");
+
+        run("publishRecipe", "-Precipe=recipe.yaml", docker());
+
+        assertThat(dockerCalls()).contains(List.of("image", "inspect", "--format", "{{json .RepoDigests}}",
+                "registry.example:5000/team/control-plane:1.0.0"));
+        assertThat(image(report(), "registry.example:5000/team/control-plane:1.0.0").get("digest").asText())
+                .isEqualTo(matching);
+    }
+
+    @Test
+    void undeterminableDigestIsReportedAsPublishedUnverified() throws IOException {
+        recipe(PUBLISH_CP_ONLY);
+        Files.writeString(projectDir.resolve("no-digest"), "");
+
+        assertThat(fails("publishRecipe", "-Precipe=recipe.yaml", docker()))
+                .contains("registry.example:5000/team/control-plane:1.0.0 was pushed, but its registry digest");
+        JsonNode image = image(report(), "registry.example:5000/team/control-plane:1.0.0");
+        assertThat(image.get("status").asText()).isEqualTo("published-unverified");
+        assertThat(image.get("digest").isNull()).isTrue();
+    }
+
+    @Test
+    void reassemblyAfterPublishForgetsPublication() throws IOException {
+        recipe(PUBLISH_CP_ONLY);
+        run("publishRecipe", "-Precipe=recipe.yaml", docker());
+
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker());
+
+        assertThat(Files.readString(projectDir.resolve("build/recipes/demo/distribution.json")))
+                .contains("\"status\" : \"built\"").doesNotContain("digest", "published");
+    }
+
+    @Test
+    void publishRequiresRecipe() {
+        assertThat(fails("publishRecipe")).contains("publishRecipe requires -Precipe=<file>");
+    }
+
+    private static final String PUBLISH_CP_ONLY = HEADER + """
+            registry: {repository: registry.example:5000/team, tag: "1.0.0"}
+            controlPlane: {modules: [], build: {mode: jvm}, container: {image: control-plane}}
+            """;
+
+    private JsonNode report() throws IOException {
+        return new ObjectMapper().readTree(projectDir.resolve("build/recipes/demo/distribution.json").toFile());
+    }
+
+    private static JsonNode image(JsonNode report, String reference) {
+        for (JsonNode component : report.get("components")) {
+            if (component.path("image").path("reference").asText().equals(reference)) {
+                return component.get("image");
+            }
+        }
+        throw new AssertionError("no image " + reference + " in " + report);
+    }
+
+    private static String digestOf(String reference) {
+        try {
+            return "sha256:" + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(reference.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 
     private String docker() {
