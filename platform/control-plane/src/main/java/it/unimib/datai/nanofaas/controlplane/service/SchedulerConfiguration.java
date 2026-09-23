@@ -202,15 +202,6 @@ public class SchedulerConfiguration {
         return new EngineWorkloadMetricsSource(engine, capacityRegistry);
     }
 
-    // Fix round 1 (issue #208): a WorkloadDiagnostics bean was removed from here. It registered
-    // six per-function meters (queue offer/poll duration, dispatch-slot hold, scheduler
-    // wakeup/poll delay) via registerFunction below, but nothing in this composition ever called
-    // a single recorder method on it — six always-empty series per function, presented as
-    // restored observability. Registering without recording is half-wiring, not observability;
-    // wiring the actual recorders into EngineTransport's hot dispatch path is deferred to a task
-    // that reviews that path deliberately, not folded into this fix round. Do not re-add the
-    // registerFunction/removeFunction calls without wiring at least one recorder alongside them.
-
     @Bean
     public WorkloadMetricsBinder schedulerWorkloadMetricsBinder(MeterRegistry registry,
             EngineWorkloadMetricsSource source) {
@@ -336,8 +327,6 @@ public class SchedulerConfiguration {
      * <p>Task 11 addition: also owns the per-function {@link WorkloadMetricsBinder} meter
      * lifecycle, and is the sole place that registers the engine's drain listener — once, here,
      * never in a strategy (the plan's own constraint on capacity/lifecycle listeners).
-     * {@code WorkloadDiagnostics} is deliberately NOT wired here (fix round 1) — see the comment
-     * above where its bean used to be.
      *
      * <p>Meters register at {@code onRegister} like every other per-function resource, but do
      * NOT come down at {@code onRemove}: a generation's meters (queue depth, in-flight,
