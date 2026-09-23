@@ -64,7 +64,7 @@ class SchedulingTicketTest {
     @Test void schedulerSelectionCopiesAvailableList() {
         var mutable = new java.util.ArrayList<>(List.of("per-function", "shared-queue"));
         var selection = new it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerSelection(
-                "per-function", mutable, "restart");
+                "per-function", mutable);
         mutable.add("mutated-after");
         assertThat(selection.available()).containsExactly("per-function", "shared-queue");
         assertThatThrownBy(() -> selection.available().add("x"))
@@ -73,10 +73,8 @@ class SchedulingTicketTest {
 
     @Test void schedulerSelectionRejectsNulls() {
         assertThatThrownBy(() -> new it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerSelection(
-                null, List.of("per-function"), "restart")).isInstanceOf(NullPointerException.class);
+                null, List.of("per-function"))).isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> new it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerSelection(
-                "per-function", null, "restart")).isInstanceOf(NullPointerException.class);
-        assertThatThrownBy(() -> new it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerSelection(
-                "per-function", List.of("per-function"), null)).isInstanceOf(NullPointerException.class);
+                "per-function", null)).isInstanceOf(NullPointerException.class);
     }
 }

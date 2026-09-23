@@ -208,40 +208,6 @@ public class SchedulerConfiguration {
         return new WorkloadMetricsBinder(registry, source);
     }
 
-    /**
-     * Two gauges (one per built-in strategy, so cardinality is bounded by the artefact's own
-     * {@link StrategyRegistry}, never by execution/ticket/generation identity) plus one bounded
-     * switch-outcome counter and a switch-duration timer. Registered once, at composition time —
-     * not per switch — since {@code Gauge} is pull-based and {@code Counter}/{@code Timer}
-     * lookups by the same id are idempotent.
-     *
-     * <p>The switch observer runs after {@link SchedulerEngine#switchTo}'s own linearization
-     * point and cannot affect its outcome (Task 5's invariant, restated on
-     * {@code SchedulerEngine.switchTo}'s own javadoc): a throwing observer is caught inside the
-     * engine itself, never here.
-     */
-    @Bean
-    public Object schedulerSwitchObservability(MeterRegistry registry, StrategyRegistry strategies,
-            SchedulerEngine engine) {
-        for (String id : strategies.ids()) {
-            Gauge.builder("scheduler_active", engine,
-                            candidate -> candidate.snapshot().strategy().equals(id) ? 1 : 0)
-                    .tag("strategy", id)
-                    .register(registry);
-        }
-        Timer switchDuration = Timer.builder("scheduler_switch_duration").register(registry);
-        engine.setSwitchObserver((strategy, outcome, durationNanos) -> {
-            Counter.builder("scheduler_switch_total")
-                    .tag("outcome", outcome.name().toLowerCase(Locale.ROOT))
-                    .register(registry)
-                    .increment();
-            switchDuration.record(durationNanos, TimeUnit.NANOSECONDS);
-        });
-        // The return value is never consumed; this bean exists for the registration side effects
-        // above, run once at startup like every other composition bean here.
-        return new Object();
-    }
-
     /** Bound to the real engine once it exists (see {@link #schedulerEngine}), breaking the
      * constructor cycle between the engine and its own dispatch adapter. */
     @Bean
@@ -267,7 +233,8 @@ public class SchedulerConfiguration {
     @Bean(destroyMethod = "close")
     public SchedulerEngine schedulerEngine(PendingWorkStore store, StrategyRegistry strategies,
             SchedulerProperties props, DispatchCapacity capacityRegistry,
-            EngineDispatch dispatch, EngineReadiness readiness, WakeHandle wakeHandle) {
+            EngineDispatch dispatch, EngineReadiness readiness, WakeHandle wakeHandle,
+            MeterRegistry registry) {
         String initial = resolveInitialStrategy(props, strategies);
         SchedulerEngine engine = new SchedulerEngine(store, strategies, initial, dispatch, readiness,
                 generation -> generation.equals(capacityRegistry.activeGeneration(generation.functionName())),
@@ -277,7 +244,38 @@ public class SchedulerConfiguration {
         // generation the last pass found blocked is re-examined without waiting out the park
         // safety bound. Path 1/2 is EngineTransport.tryAcquire's onReleased callback below.
         capacityRegistry.addCapacityListener(functionName -> engine.signal());
+        registerSwitchObservability(registry, strategies, engine);
         return engine;
+    }
+
+    /**
+     * Two gauges (one per built-in strategy, so cardinality is bounded by the artefact's own
+     * {@link StrategyRegistry}, never by execution/ticket/generation identity) plus one bounded
+     * switch-outcome counter and a switch-duration timer. Registered once, at composition time —
+     * not per switch — since {@code Gauge} is pull-based and {@code Counter}/{@code Timer}
+     * lookups by the same id are idempotent.
+     *
+     * <p>The switch observer runs after {@link SchedulerEngine#switchTo}'s own linearization
+     * point and cannot affect its outcome (Task 5's invariant, restated on
+     * {@code SchedulerEngine.switchTo}'s own javadoc): a throwing observer is caught inside the
+     * engine itself, never here.
+     */
+    private static void registerSwitchObservability(MeterRegistry registry, StrategyRegistry strategies,
+            SchedulerEngine engine) {
+        for (String id : strategies.ids()) {
+            Gauge.builder("scheduler_active", engine,
+                            candidate -> candidate.snapshot().strategy().equals(id) ? 1 : 0)
+                    .tag("strategy", id)
+                    .register(registry);
+        }
+        Timer switchDuration = Timer.builder("scheduler_switch_duration").register(registry);
+        engine.setSwitchObserver((strategy, outcome, durationNanos) -> {
+            Counter.builder("scheduler_switch_total")
+                    .tag("outcome", outcome.name().toLowerCase(Locale.ROOT))
+                    .register(registry)
+                    .increment();
+            switchDuration.record(durationNanos, TimeUnit.NANOSECONDS);
+        });
     }
 
     @Bean

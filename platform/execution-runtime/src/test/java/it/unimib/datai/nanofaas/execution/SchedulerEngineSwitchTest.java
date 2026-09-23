@@ -129,7 +129,7 @@ class SchedulerEngineSwitchTest {
     void snapshotReportsTheActiveStrategyAndEveryRegisteredId() {
         assertThat(engine.snapshot())
                 .isEqualTo(new SchedulerSelection("per-function",
-                        List.of("per-function", "shared-queue"), "restart"));
+                        List.of("per-function", "shared-queue")));
 
         engine.switchTo("shared-queue");
 

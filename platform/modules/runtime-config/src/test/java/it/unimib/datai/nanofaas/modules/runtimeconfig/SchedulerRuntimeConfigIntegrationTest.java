@@ -46,7 +46,7 @@ class SchedulerRuntimeConfigIntegrationTest {
 
         @Override
         public SchedulerSelection snapshot() {
-            return new SchedulerSelection(strategy.get(), available, "restart");
+            return new SchedulerSelection(strategy.get(), available);
         }
 
         @Override

@@ -349,7 +349,7 @@ class RuntimeConfigServiceTest {
 
         @Override
         public SchedulerSelection snapshot() {
-            return new SchedulerSelection(active, available, "restart");
+            return new SchedulerSelection(active, available);
         }
 
         @Override

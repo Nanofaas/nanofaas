@@ -150,9 +150,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
 
     @Override
     public SchedulerSelection snapshot() {
-        // The selection is an API override that does not outlive the process: on restart the
-        // configured initial strategy wins again.
-        return new SchedulerSelection(active.id(), strategies.ids(), "restart");
+        return new SchedulerSelection(active.id(), strategies.ids());
     }
 
     /** A point-in-time view of the pending population; see {@link EngineQueueSnapshot}. Cheap
