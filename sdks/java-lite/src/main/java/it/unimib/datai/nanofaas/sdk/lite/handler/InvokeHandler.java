@@ -130,37 +130,11 @@ public final class InvokeHandler implements HttpHandler {
 
     @Override
     public void handle(HttpExchange exchange) throws IOException {
-        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-            exchange.sendResponseHeaders(405, -1);
-            exchange.close();
-            return;
-        }
-        if (!isAccepting()) {
-            sendStopping(exchange);
-            return;
-        }
-
-        String headerExecutionId = exchange.getRequestHeaders().getFirst("X-Execution-Id");
+        String effectiveExecutionId = executionIdOf(exchange);
         String traceId = exchange.getRequestHeaders().getFirst("X-Trace-Id");
         String dispatchAttempt = exchange.getRequestHeaders().getFirst("X-Dispatch-Attempt");
-
-        String effectiveExecutionId = (headerExecutionId != null && !headerExecutionId.isBlank())
-                ? headerExecutionId
-                : envExecutionId;
-
-        if (effectiveExecutionId == null || effectiveExecutionId.isBlank()) {
-            log.error("No execution ID provided (header or ENV)");
-            sendJson(exchange, 400, Map.of(ERROR_KEY, "Execution ID not configured"));
-            return;
-        }
-
-        if (limits.handlerCapacityExhausted()) {
-            sendRetryable(exchange, "RUNTIME_HANDLER_SATURATED", "Runtime handler capacity exhausted");
-            return;
-        }
-        RuntimeLimits.Reservation callbackReservation = limits.tryReserveCallback();
+        RuntimeLimits.Reservation callbackReservation = admit(exchange, effectiveExecutionId);
         if (callbackReservation == null) {
-            sendRetryable(exchange, "RUNTIME_CALLBACK_SATURATED", "Runtime callback capacity exhausted");
             return;
         }
 
@@ -184,7 +158,7 @@ public final class InvokeHandler implements HttpHandler {
             Object output = invokeWithTimeout(readResult.request());
 
             byte[] outputBody = serializeOutput(output);
-            if (outputBody == null) {
+            if (outputBody.length == 0) {
                 failInvocation(callbackReservation, effectiveExecutionId, InvocationResult.error(
                         OUTPUT_TOO_LARGE_CODE, "Runtime output exceeds configured byte limit"), traceId, dispatchAttempt);
                 callbackReservation = null;
@@ -491,12 +465,44 @@ public final class InvokeHandler implements HttpHandler {
         }
     }
 
-    /** The serialized output, or null when it exceeds the configured output limit. */
+    private String executionIdOf(HttpExchange exchange) {
+        String headerExecutionId = exchange.getRequestHeaders().getFirst("X-Execution-Id");
+        return headerExecutionId != null && !headerExecutionId.isBlank() ? headerExecutionId : envExecutionId;
+    }
+
+    /** The callback reservation of an admitted invocation, or null once a rejection was sent. */
+    private RuntimeLimits.Reservation admit(HttpExchange exchange, String executionId) throws IOException {
+        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(405, -1);
+            exchange.close();
+            return null;
+        }
+        if (!isAccepting()) {
+            sendStopping(exchange);
+            return null;
+        }
+        if (executionId == null || executionId.isBlank()) {
+            log.error("No execution ID provided (header or ENV)");
+            sendJson(exchange, 400, Map.of(ERROR_KEY, "Execution ID not configured"));
+            return null;
+        }
+        if (limits.handlerCapacityExhausted()) {
+            sendRetryable(exchange, "RUNTIME_HANDLER_SATURATED", "Runtime handler capacity exhausted");
+            return null;
+        }
+        RuntimeLimits.Reservation callbackReservation = limits.tryReserveCallback();
+        if (callbackReservation == null) {
+            sendRetryable(exchange, "RUNTIME_CALLBACK_SATURATED", "Runtime callback capacity exhausted");
+        }
+        return callbackReservation;
+    }
+
+    /** The serialized output, or an empty array when it exceeds the output limit (JSON is never empty). */
     private byte[] serializeOutput(Object output) {
         try {
             return boundedJson.serialize(output, limits.maxOutputBytes);
         } catch (BoundedJson.PayloadTooLargeException _) {
-            return null;
+            return new byte[0];
         }
     }
 

@@ -98,7 +98,7 @@ class P12CrossHostAdmissionTest {
             inputOwner.rollback();
 
             WaiterCapacity waiters = new WaiterCapacity(generations, 1, 1);
-            try (WaiterCapacity.Waiter _ = waiters.reserve("host-a", "waiter-a")) {
+            try (var _ = waiters.reserve("host-a", "waiter-a")) {
                 assertThatThrownBy(() -> waiters.reserve("host-b", "waiter-b"))
                         .isInstanceOf(InvocationQuotaExceededException.class)
                         .extracting("resource")

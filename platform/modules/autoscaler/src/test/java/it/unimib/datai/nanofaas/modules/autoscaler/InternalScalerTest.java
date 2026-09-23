@@ -251,6 +251,10 @@ class InternalScalerTest {
         when(registry.listRegistered()).thenReturn(List.of(spec));
         when(deploymentCoordinator.observeReplicaStatus(target(spec))).thenReturn(observed(2, 2));
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(0.0);
+        // A protection whose deadline has already passed must no longer hold the scale-down.
+        wakeUpCoordinator.protectAndScaleUp(wakeUpResources.generation("echo"), target(spec),
+                System.nanoTime() - 1, () -> { });
+
         scaler.scalingLoop();
 
         verify(deploymentCoordinator).setReplicas(any(), eq(target(spec)), eq(0));

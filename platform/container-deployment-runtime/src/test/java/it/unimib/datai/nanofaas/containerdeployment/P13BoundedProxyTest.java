@@ -79,7 +79,7 @@ class P13BoundedProxyTest {
 
         try (Socket socket = connect()) {
             OutputStream output = socket.getOutputStream();
-            output.write(("POST /invoke HTTP/1.1\r\n"
+            output.write(("POST /invoke HTTP/1.1\r\n" // NOSONAR (java:S6126): raw HTTP needs explicit CRLF line endings
                     + "Host: 127.0.0.1\r\n"
                     + "Transfer-Encoding: chunked\r\n"
                     + "Content-Type: application/octet-stream\r\n\r\n"
@@ -107,7 +107,7 @@ class P13BoundedProxyTest {
 
         try (Socket socket = connect()) {
             OutputStream output = socket.getOutputStream();
-            output.write(("POST /invoke HTTP/1.1\r\n"
+            output.write(("POST /invoke HTTP/1.1\r\n" // NOSONAR (java:S6126): raw HTTP needs explicit CRLF line endings
                     + "Host: 127.0.0.1\r\n"
                     + "Content-Length: 4\r\n\r\n"
                     + "x").getBytes(StandardCharsets.US_ASCII));
@@ -308,7 +308,7 @@ class P13BoundedProxyTest {
                 "127.0.0.1", 1, Duration.ofSeconds(30), HttpClient.newHttpClient(), limits(64, 64, 128));
         proxy.updateBackends(List.of(baseUrl(backend)));
         Socket caller = connect();
-        caller.getOutputStream().write(("POST /invoke HTTP/1.1\r\n"
+        caller.getOutputStream().write(("POST /invoke HTTP/1.1\r\n" // NOSONAR (java:S6126): raw HTTP needs explicit CRLF line endings
                 + "Host: 127.0.0.1\r\n"
                 + "Content-Length: 1\r\n\r\nx").getBytes(StandardCharsets.US_ASCII));
         caller.getOutputStream().flush();

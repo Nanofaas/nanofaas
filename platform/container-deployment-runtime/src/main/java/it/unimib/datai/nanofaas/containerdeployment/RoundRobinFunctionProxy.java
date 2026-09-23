@@ -329,7 +329,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
             // the body into allocated ByteBuffers. HttpResponse retains its initial HttpRequest.
             // Keep both physical-byte leases until the helper's whole request/response graph can
             // become unreachable; publisher content is the request array, not a third byte owner.
-            try (BufferReservation _ = bufferBudget.reserve(requestBody.length())) {
+            try (var _ = bufferBudget.reserve(requestBody.length())) {
                 forwardRetainingRequestGraph(exchange, target, requestBody);
             }
         } finally {

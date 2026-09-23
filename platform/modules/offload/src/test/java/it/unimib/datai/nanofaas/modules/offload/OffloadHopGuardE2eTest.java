@@ -227,7 +227,7 @@ class OffloadHopGuardE2eTest {
                 .as("a direct call to a cloud function with an eager offload policy must "
                         + "reach the offload target")
                 .hasSize(rogueBefore + 1);
-        assertThat(hopBackendRequests).hasSize(hopBackendBefore);
+        assertThat(hopBackendRequests).hasSize(hopBackendBefore); // NOSONAR (java:S3415): actual list, expected size
     }
 
     private static String baseUrl(MockWebServer server) {

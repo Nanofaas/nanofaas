@@ -97,15 +97,12 @@ public final class IngressBodyLimitWebFilter implements WebFilter {
                         "The first applicable InvocationRequest JSON reader does not expose a finite limit");
             }
             Object decoder = decoderReader.getDecoder();
-            int readerLimit;
-            if (decoder instanceof AbstractJacksonDecoder<?> jacksonDecoder) {
-                readerLimit = jacksonDecoder.getMaxInMemorySize();
-            } else if (decoder instanceof AbstractDataBufferDecoder<?> dataBufferDecoder) {
-                readerLimit = dataBufferDecoder.getMaxInMemorySize();
-            } else {
-                throw new IllegalStateException(
+            int readerLimit = switch (decoder) {
+                case AbstractJacksonDecoder<?> jacksonDecoder -> jacksonDecoder.getMaxInMemorySize();
+                case AbstractDataBufferDecoder<?> dataBufferDecoder -> dataBufferDecoder.getMaxInMemorySize();
+                default -> throw new IllegalStateException(
                         "The first applicable InvocationRequest JSON reader uses an unsupported decoder");
-            }
+            };
             if (readerLimit <= 0) {
                 throw new IllegalStateException("Invocation JSON decoder must expose a finite max-in-memory size");
             }

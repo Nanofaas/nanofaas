@@ -209,24 +209,6 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
         return isCurrent(generation) && registry.getRegistered(generation.functionName()).isPresent();
     }
 
-    private void submit(Runnable action, WakeUp owner) {
-        if (!owner.callbackStarted()) {
-            return;
-        }
-        try {
-            executor.execute(() -> {
-                try {
-                    action.run();
-                } finally {
-                    owner.callbackFinished();
-                }
-            });
-        } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
-            owner.callbackFinished();
-            owner.completeExceptionally(failure);
-        }
-    }
-
     private static boolean isEligible(RegisteredFunction function) {
         DeploymentMetadata metadata = function.deploymentMetadata();
         return metadata.effectiveExecutionMode() == ExecutionMode.DEPLOYMENT && isEligible(function.spec());
@@ -277,7 +259,7 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
                             () -> fail("DEPLOYMENT_WAKE_UP_TIMEOUT"), timeout.toNanos(), TimeUnit.NANOSECONDS);
                     if (result.isDone()) timeoutTask.cancel(false);
                 }
-                submit(() -> readAndWake(deadline), this);
+                submit(() -> readAndWake(deadline));
             } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 completeExceptionally(failure);
             }
@@ -355,7 +337,7 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
                     if (runDeferred) pollTask = null; // NOSONAR (java:S2583): true only when the scheduler runs the poll inline and re-enters this monitor
                     if (retired) scheduled.cancel(false); // NOSONAR (java:S2583): true only when the scheduler runs the poll inline and re-enters this monitor
                 }
-                if (runDeferred) submit(() -> poll(deadline), this); // NOSONAR (java:S2583): true only when the scheduler runs the poll inline and re-enters this monitor
+                if (runDeferred) submit(() -> poll(deadline)); // NOSONAR (java:S2583): true only when the scheduler runs the poll inline and re-enters this monitor
             } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 completeExceptionally(failure);
             }
@@ -370,7 +352,7 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
                 }
                 pollTask = null;
             }
-            submit(() -> poll(deadline), this);
+            submit(() -> poll(deadline));
         }
 
         private boolean canContinue() {
@@ -425,6 +407,24 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
             DeploymentWakeUpCoordinator.WakeUpLease lease = wakeUpLease;
             wakeUpLease = null;
             if (lease != null) lease.close();
+        }
+
+        private void submit(Runnable action) {
+            if (!callbackStarted()) {
+                return;
+            }
+            try {
+                executor.execute(() -> {
+                    try {
+                        action.run();
+                    } finally {
+                        callbackFinished();
+                    }
+                });
+            } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
+                callbackFinished();
+                completeExceptionally(failure);
+            }
         }
     }
 }
