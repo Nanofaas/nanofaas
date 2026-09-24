@@ -12,8 +12,8 @@ def selectedOptionalControlPlaneModuleProjects = rootProject.subprojects
 if (selectedOptionalControlPlaneModuleNames.contains('containerd-deployment-provider')) {
     dependencyManagement {
         dependencies {
-            dependency 'com.google.protobuf:protobuf-java:4.35.0'
-            dependency 'com.google.protobuf:protobuf-java-util:4.35.0'
+            dependency 'com.google.protobuf:protobuf-java:4.36.2'
+            dependency 'com.google.protobuf:protobuf-java-util:4.36.2'
         }
     }
 }
