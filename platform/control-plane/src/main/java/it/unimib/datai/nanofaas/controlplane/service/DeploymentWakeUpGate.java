@@ -52,6 +52,14 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
     private final InstantSource clock;
     private final LongSupplier nanoTime;
     private final ConcurrentMap<FunctionGeneration, WakeUp> inFlight = new ConcurrentHashMap<>();
+    /**
+     * Registered DEPLOYMENT generations not yet observed ready, by function name. A fresh
+     * Deployment is not Ready for the seconds its first pod takes to start, and a dispatch sent
+     * then meets a Service with no endpoints; holding it here waits once instead of spending
+     * retries. Keyed by name so the ordinary path, a function already seen ready, costs one
+     * lookup and no provider call.
+     */
+    private final ConcurrentMap<String, FunctionGeneration> awaitingFirstReadiness = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
     private final Object ownerLifecycle = new Object();
 
@@ -98,7 +106,9 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
             return isEligible(task.functionSpec()) ? unavailableTarget() : CompletableFuture.completedFuture(null);
         }
         RegisteredFunction function = registered.get();
-        if (!isEligible(function)) {
+        boolean scaleToZero = isEligible(function);
+        FunctionGeneration awaitingReady = awaitingFirstReadiness.get(function.name());
+        if (!scaleToZero && (awaitingReady == null || !isDeployment(function))) {
             return CompletableFuture.completedFuture(null);
         }
         String backend = function.deploymentMetadata().deploymentBackend();
@@ -109,12 +119,19 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
         if (generation == null) {
             return unavailableTarget();
         }
+        if (!scaleToZero && !generation.equals(awaitingReady)) {
+            return CompletableFuture.completedFuture(null);
+        }
         ManagedDeploymentTarget target = new ManagedDeploymentTarget(function.name(), backend);
         ReplicaObservation observation = coordinator.observeReplicaStatus(target);
-        if (isReadyWithinPolicy(observation, clock.instant())) {
-            return readyOutcome(generation);
+        CompletableFuture<Void> outcome = isReadyWithinPolicy(observation, clock.instant())
+                ? readyOutcome(generation)
+                : joinOrStartWakeUp(generation, target);
+        if (awaitingReady != null) {
+            // Once ready, this generation takes the ordinary path: no wait unless it scales to zero.
+            outcome.thenRun(() -> awaitingFirstReadiness.remove(function.name(), generation));
         }
-        return joinOrStartWakeUp(generation, target);
+        return outcome;
     }
 
     private CompletableFuture<Void> readyOutcome(FunctionGeneration generation) {
@@ -159,6 +176,9 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
         FunctionGeneration generation = generations.activeGeneration(spec.name());
         if (generation != null) {
             wakeUpCoordinator.restoreFunctionState(generation);
+            if (spec.executionMode() == ExecutionMode.DEPLOYMENT) {
+                awaitingFirstReadiness.put(spec.name(), generation);
+            }
         }
     }
 
@@ -172,6 +192,7 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
             }
         }
         wakeUpCoordinator.removeFunctionState(functionName);
+        awaitingFirstReadiness.remove(functionName);
     }
 
     @Override
@@ -210,8 +231,12 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
     }
 
     private static boolean isEligible(RegisteredFunction function) {
+        return isDeployment(function) && isEligible(function.spec());
+    }
+
+    private static boolean isDeployment(RegisteredFunction function) {
         DeploymentMetadata metadata = function.deploymentMetadata();
-        return metadata.effectiveExecutionMode() == ExecutionMode.DEPLOYMENT && isEligible(function.spec());
+        return metadata.effectiveExecutionMode() == ExecutionMode.DEPLOYMENT;
     }
 
     private static boolean isEligible(FunctionSpec spec) {

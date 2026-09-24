@@ -69,6 +69,8 @@ import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.clearInvocations;
 
 class DeploymentWakeUpGateTest {
 
@@ -953,6 +955,77 @@ class DeploymentWakeUpGateTest {
         gate().ensureReady(task(function.name(), function.spec().executionMode(), ScalingStrategy.INTERNAL, 0)).join();
 
         verifyNoInteractions(coordinator);
+    }
+
+    /**
+     * A freshly created Deployment is not Ready for the seconds its first pod takes to start.
+     * Dispatched straight to its Service, an invocation got "Connection refused", and one sent
+     * in that window could exhaust its retries and time out; the gate used to engage only for
+     * scale-to-zero functions.
+     */
+    @ParameterizedTest
+    @MethodSource("alwaysOnDeploymentStrategies")
+    void ensureReady_holdsAFreshlyRegisteredDeploymentUntilItsFirstReadiness(ScalingStrategy strategy) {
+        RegisteredFunction echo = deployment("echo", "k8s", strategy, 1);
+        ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
+        when(registry.getRegistered("echo")).thenReturn(Optional.of(echo));
+        when(coordinator.getFreshReplicaStatus(target)).thenReturn(new ReplicaStatus(1, 0), new ReplicaStatus(1, 1));
+        DeploymentWakeUpGate gate = gate();
+        gate.onRegister(echo.spec());
+
+        gate.ensureReady(task("echo", ExecutionMode.DEPLOYMENT, strategy, 1)).join();
+
+        verify(coordinator, times(2)).getFreshReplicaStatus(target);
+        verify(coordinator, never()).setReplicas(any(FunctionGeneration.class), eq(target), anyInt());
+    }
+
+    private static Stream<ScalingStrategy> alwaysOnDeploymentStrategies() {
+        return Stream.of(ScalingStrategy.INTERNAL, ScalingStrategy.HPA);
+    }
+
+    @Test
+    void ensureReady_stopsHoldingAGenerationOnceItHasBeenReady() {
+        RegisteredFunction echo = deployment("echo", "k8s", ScalingStrategy.INTERNAL, 1);
+        ManagedDeploymentTarget target = new ManagedDeploymentTarget("echo", "k8s");
+        when(registry.getRegistered("echo")).thenReturn(Optional.of(echo));
+        when(coordinator.getFreshReplicaStatus(target)).thenReturn(new ReplicaStatus(1, 1));
+        DeploymentWakeUpGate gate = gate();
+        gate.onRegister(echo.spec());
+        InvocationTask task = task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 1);
+        gate.ensureReady(task).join();
+        clearInvocations(coordinator);
+
+        gate.ensureReady(task).join();
+
+        verify(coordinator, never()).observeReplicaStatus(any());
+        verify(coordinator, never()).getFreshReplicaStatus(any());
+    }
+
+    @Test
+    void ensureReady_doesNotHoldARemovedRegistration() {
+        RegisteredFunction echo = deployment("echo", "k8s", ScalingStrategy.INTERNAL, 1);
+        when(registry.getRegistered("echo")).thenReturn(Optional.of(echo));
+        DeploymentWakeUpGate gate = gate();
+        gate.onRegister(echo.spec());
+        gate.onRemove("echo");
+
+        gate.ensureReady(task("echo", ExecutionMode.DEPLOYMENT, ScalingStrategy.INTERNAL, 1)).join();
+
+        verify(coordinator, never()).observeReplicaStatus(any());
+        verify(coordinator, never()).getFreshReplicaStatus(any());
+    }
+
+    @Test
+    void ensureReady_neverHoldsARegisteredExternalFunction() {
+        RegisteredFunction external = registered("echo", ExecutionMode.EXTERNAL, null, ScalingStrategy.INTERNAL, 1);
+        when(registry.getRegistered("echo")).thenReturn(Optional.of(external));
+        DeploymentWakeUpGate gate = gate();
+        gate.onRegister(external.spec());
+
+        gate.ensureReady(task("echo", ExecutionMode.EXTERNAL, ScalingStrategy.INTERNAL, 1)).join();
+
+        verify(coordinator, never()).observeReplicaStatus(any());
+        verify(coordinator, never()).getFreshReplicaStatus(any());
     }
 
     private static Stream<RegisteredFunction> ineligibleFunctions() {
