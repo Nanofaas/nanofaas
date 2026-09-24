@@ -25,19 +25,16 @@ import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 
 /**
- * Registers Vert.x resource files for GraalVM native-image inclusion.
+ * Registers the fabric8 types the native image reaches only reflectively.
  * <p>
- * Spring Boot AOT processing overwrites static {@code resource-config.json} files
+ * Spring Boot AOT processing overwrites static {@code reflect-config.json} files
  * placed in {@code META-INF/native-image/}, so we use {@link RuntimeHintsRegistrar}
  * which gets properly merged with the AOT-generated configuration.
- * <p>
- * Without this, the native binary crashes at startup with:
- * {@code IllegalStateException: Cannot find vertx-version.txt on classpath}
  */
 @Configuration
-@ImportRuntimeHints(VertxRuntimeHints.VertxResourceHints.class)
+@ImportRuntimeHints(Fabric8RuntimeHints.Fabric8Hints.class)
 @SuppressWarnings("java:S1118") // @Configuration class: Spring must be able to instantiate it
-public class VertxRuntimeHints {
+public class Fabric8RuntimeHints {
 
     private static final List<String> FABRIC8_MODEL_PACKAGES = List.of(
             "io.fabric8.kubernetes.api.model",
@@ -45,10 +42,9 @@ public class VertxRuntimeHints {
             "io.fabric8.kubernetes.api.model.autoscaling.v2"
     );
 
-    static class VertxResourceHints implements RuntimeHintsRegistrar {
+    static class Fabric8Hints implements RuntimeHintsRegistrar {
         @Override
         public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
-            hints.resources().registerPattern("META-INF/vertx/*");
             // Fabric8 serializes Pod reflectively when creating validation pods.
             hints.reflection().registerType(Pod.class, MemberCategory.INVOKE_PUBLIC_METHODS);
             // Fabric8 serializes DeleteOptions reflectively when deleting validation pods.

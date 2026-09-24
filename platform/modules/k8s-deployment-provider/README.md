@@ -14,7 +14,7 @@ pods.
   `FunctionSpec` (image, command, env, resources, `imagePullSecrets`) and
   injects the `CALLBACK_URL` env var from `nanofaas.k8s.callbackUrl`.
 - `KubernetesResourceManager`, `KubernetesMetricsTranslator`,
-  `KubernetesClientConfig` (fabric8 client), `VertxRuntimeHints` (native
+  `KubernetesClientConfig` (fabric8 client over the JDK HTTP client), `Fabric8RuntimeHints` (native
   image support).
 
 ## Configuration (`nanofaas.k8s.*`)

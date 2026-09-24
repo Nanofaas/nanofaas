@@ -14,18 +14,15 @@ import java.util.Enumeration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class VertxRuntimeHintsTest {
+class Fabric8RuntimeHintsTest {
 
     @Test
-    void registerHints_registersVertxAndCoreFabric8Types() {
+    void registerHints_registersCoreFabric8Types() {
         RuntimeHints hints = new RuntimeHints();
         ClassLoader classLoader = getClass().getClassLoader();
 
-        new VertxRuntimeHints.VertxResourceHints().registerHints(hints, classLoader);
+        new Fabric8RuntimeHints.Fabric8Hints().registerHints(hints, classLoader);
 
-        assertThat(RuntimeHintsPredicates.resource()
-                .forResource("META-INF/vertx/vertx-version.txt")
-                .test(hints)).isTrue();
         assertThat(RuntimeHintsPredicates.reflection()
                 .onType(Pod.class)
                 .withMemberCategory(MemberCategory.INVOKE_PUBLIC_METHODS)
@@ -51,7 +48,7 @@ class VertxRuntimeHintsTest {
             }
         };
 
-        new VertxRuntimeHints.VertxResourceHints().registerHints(hints, failingLoader);
+        new Fabric8RuntimeHints.Fabric8Hints().registerHints(hints, failingLoader);
 
         assertThat(RuntimeHintsPredicates.reflection()
                 .onType(Pod.class)

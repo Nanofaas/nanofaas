@@ -12,7 +12,7 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class VertxRuntimeHintsBranchTest {
+class Fabric8RuntimeHintsBranchTest {
 
     @TempDir
     Path tempDir;
@@ -26,7 +26,7 @@ class VertxRuntimeHintsBranchTest {
         Files.write(packageDir.resolve("package-info.class"), new byte[0]);
         Files.write(packageDir.resolve("module-info.class"), new byte[0]);
 
-        Method findClasses = VertxRuntimeHints.VertxResourceHints.class
+        Method findClasses = Fabric8RuntimeHints.Fabric8Hints.class
                 .getDeclaredMethod("findClassesInPackage", ClassLoader.class, String.class);
         findClasses.setAccessible(true);
 
@@ -45,7 +45,7 @@ class VertxRuntimeHintsBranchTest {
     @Test
     void registerTypeHint_handlesInterfaceAndMissingClassSafely() throws Exception {
         RuntimeHints hints = new RuntimeHints();
-        Method registerTypeHint = VertxRuntimeHints.VertxResourceHints.class
+        Method registerTypeHint = Fabric8RuntimeHints.Fabric8Hints.class
                 .getDeclaredMethod("registerTypeHint", RuntimeHints.class, ClassLoader.class, String.class);
         registerTypeHint.setAccessible(true);
 

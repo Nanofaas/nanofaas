@@ -5,7 +5,7 @@ import io.fabric8.kubernetes.client.ConfigBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.http.HttpClient;
 import io.fabric8.kubernetes.client.impl.KubernetesClientImpl;
-import io.fabric8.kubernetes.client.vertx.VertxHttpClientFactory;
+import io.fabric8.kubernetes.client.jdkhttp.JdkHttpClientFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -84,7 +84,7 @@ public class KubernetesClientConfig {
     }
 
     private KubernetesClient createClient(Config config) {
-        HttpClient httpClient = new VertxHttpClientFactory().newBuilder(config).build();
+        HttpClient httpClient = new JdkHttpClientFactory().newBuilder(config).build();
         return new KubernetesClientImpl(httpClient, config);
     }
 }
