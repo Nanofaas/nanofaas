@@ -18,10 +18,11 @@ class NanofaasRuntimeTest {
     void startAndStop() throws Exception {
         NanofaasRuntime runtime = NanofaasRuntime.builder()
                 .handler(req -> Map.of("echo", req.input()))
-                .port(0) // random port - but HttpServer doesn't support port 0
+                .port(0)
                 .functionName("test")
-                .port(18080)
                 .build();
+        int port = runtime.getPort();
+        assertNotEquals(0, port, "port 0 binds an ephemeral port, which getPort() reports");
 
         // Start in background thread (start() blocks)
         Thread t = new Thread(runtime::start);
@@ -33,7 +34,7 @@ class NanofaasRuntimeTest {
         // Wait for server to be ready by polling the health endpoint
         await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -> {
             HttpResponse<String> healthResp = client.send(
-                    HttpRequest.newBuilder().uri(URI.create("http://localhost:18080/health")).GET().build(),
+                    HttpRequest.newBuilder().uri(URI.create("http://localhost:" + port + "/health")).GET().build(),
                     HttpResponse.BodyHandlers.ofString());
             assertEquals(200, healthResp.statusCode());
             assertTrue(healthResp.body().contains("ok"));
@@ -41,7 +42,7 @@ class NanofaasRuntimeTest {
 
         // Test metrics
         HttpResponse<String> metricsResp = client.send(
-                HttpRequest.newBuilder().uri(URI.create("http://localhost:18080/metrics")).GET().build(),
+                HttpRequest.newBuilder().uri(URI.create("http://localhost:" + port + "/metrics")).GET().build(),
                 HttpResponse.BodyHandlers.ofString());
         assertEquals(200, metricsResp.statusCode());
         assertTrue(metricsResp.body().contains("nanofaas_invocations_total"));
