@@ -20,6 +20,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.aot.hint.annotation.RegisterReflectionForBinding;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.MultiValueMap;
@@ -115,6 +116,9 @@ public class InvocationController {
         return nominated;
     }
 
+    // The 429 quota body travels as ResponseEntity<Object>, invisible to AOT's return-type
+    // inference: without this a native image fails to serialize it exactly when it is under load.
+    @RegisterReflectionForBinding(InvocationQuotaError.class)
     @PostMapping("/functions/{name}:invoke")
     public Mono<ResponseEntity<Object>> invokeSync(
             @PathVariable @NotBlank(message = "Function name is required") String name,
@@ -187,6 +191,7 @@ public class InvocationController {
         return builder.body(response);
     }
 
+    @RegisterReflectionForBinding(InvocationQuotaError.class)
     @PostMapping("/functions/{name}:enqueue")
     public Mono<ResponseEntity<Object>> invokeAsync(
             @PathVariable @NotBlank(message = "Function name is required") String name,

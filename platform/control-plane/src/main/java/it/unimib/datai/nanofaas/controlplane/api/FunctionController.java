@@ -7,6 +7,7 @@ import it.unimib.datai.nanofaas.controlplane.registry.FunctionUpdateRequest;
 import it.unimib.datai.nanofaas.controlplane.registry.RegisteredFunction;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import org.springframework.aot.hint.annotation.RegisterReflectionForBinding;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -18,6 +19,11 @@ import java.util.Optional;
 @RestController
 @RequestMapping("/v1/functions")
 @Validated
+// ResponseEntity<Object> hides these bodies from AOT's return-type inference, so a native image
+// had no metadata for them: GET /{name}/replicas answered 500 with "Record components not
+// available for record class ReplicaStatusResponse". FunctionResponse is listed too, rather than
+// relying on list() and get() happening to declare it.
+@RegisterReflectionForBinding({FunctionResponse.class, ReplicaResponse.class, ReplicaStatusResponse.class})
 public class FunctionController {
     private final FunctionService functionService;
 
