@@ -45,11 +45,17 @@ public class InvocationEnqueuerAutoConfiguration {
     @Bean(destroyMethod = "shutdown")
     @ConditionalOnMissingBean(RetryScheduler.class)
     ExecutorBackedInvocationEnqueuer invocationEnqueuer(ObjectProvider<ExecutionCompletionHandler> completionHandler,
-                                                       FunctionCapacityRegistry capacityRegistry) {
+                                                       FunctionCapacityRegistry capacityRegistry,
+                                                       it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore executions) {
+        var timer = new java.util.concurrent.ScheduledThreadPoolExecutor(1,
+                Thread.ofPlatform().daemon(true).name("nanofaas-core-retry-timer").factory());
+        timer.setRemoveOnCancelPolicy(true);
+        timer.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
         return new ExecutorBackedInvocationEnqueuer(
                 task -> completionHandler.getObject().dispatch(task),
                 capacityRegistry,
                 SchedulerLifecycleSupport.newBoundedExecutor(
-                        "nanofaas-core-retry", RETRY_POOL_CORE_SIZE, RETRY_POOL_MAX_SIZE, RETRY_POOL_QUEUE_CAPACITY));
+                        "nanofaas-core-retry", RETRY_POOL_CORE_SIZE, RETRY_POOL_MAX_SIZE, RETRY_POOL_QUEUE_CAPACITY),
+                timer, RETRY_POOL_MAX_SIZE + RETRY_POOL_QUEUE_CAPACITY, java.time.Clock.systemUTC(), executions);
     }
 }

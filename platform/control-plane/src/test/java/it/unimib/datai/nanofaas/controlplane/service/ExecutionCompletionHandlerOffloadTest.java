@@ -60,7 +60,7 @@ class ExecutionCompletionHandlerOffloadTest {
         handler.completeOffloadedExecution("exec-ok", result);
 
         assertThat(ownership.releases()).isZero();
-        verify(enqueuer, never()).enqueue(any());
+        verify(enqueuer, never()).enqueue(any(), any(), any());
         assertThat(executionRecord.completion()).isCompletedWithValue(result);
     }
 
@@ -71,7 +71,7 @@ class ExecutionCompletionHandlerOffloadTest {
         InvocationResult remoteError = InvocationResult.error("BOOM", "remote function failed");
         handler.completeOffloadedExecution("exec-err", remoteError);
 
-        verify(enqueuer, never()).enqueue(any());
+        verify(enqueuer, never()).enqueue(any(), any(), any());
         verify(dispatcherRouter, never()).dispatchLocal(any());
         assertThat(executionRecord.completion()).isCompletedWithValue(remoteError);
     }
@@ -84,7 +84,7 @@ class ExecutionCompletionHandlerOffloadTest {
         OffloadFailedException failure = new OffloadFailedException("http://cloud:8080", false, "unreachable");
         handler.failOffloadedExecution("exec-fail", failure);
 
-        verify(enqueuer, never()).enqueue(any());
+        verify(enqueuer, never()).enqueue(any(), any(), any());
         assertThat(ownership.releases()).isZero();
         verify(dispatcherRouter, never()).dispatchLocal(any());
         assertThat(executionRecord.completion().isCompletedExceptionally()).isTrue();
@@ -94,18 +94,18 @@ class ExecutionCompletionHandlerOffloadTest {
     @Test
     void ordinaryErrorStillRetries() {
         ExecutionRecord executionRecord = executionRecord("exec-plain", "fn2");
-        when(enqueuer.enqueue(any())).thenReturn(true);
+        when(enqueuer.enqueue(any(), any(), any())).thenReturn(true);
 
         handler.completeExecution("exec-plain", InvocationResult.error("BOOM", "transient"));
 
-        verify(enqueuer).enqueue(any());
+        verify(enqueuer).enqueue(any(), any(), any());
         assertThat(executionRecord.completion()).isNotCompleted();
     }
 
     @Test
     void retrySchedulingErrorConcludesInsteadOfParkingTheRecord() {
         ExecutionRecord executionRecord = executionRecord("exec-retry-error", "fn3");
-        when(enqueuer.enqueue(any())).thenThrow(new AssertionError("scheduler failed"));
+        when(enqueuer.enqueue(any(), any(), any())).thenThrow(new AssertionError("scheduler failed"));
 
         assertThatCode(() -> handler.completeExecution(
                 "exec-retry-error", InvocationResult.error("BOOM", "transient")))

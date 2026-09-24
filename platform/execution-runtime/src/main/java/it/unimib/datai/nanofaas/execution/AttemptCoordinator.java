@@ -17,9 +17,12 @@ import it.unimib.datai.nanofaas.controlplane.offload.OffloadGateway;
 import it.unimib.datai.nanofaas.controlplane.queue.QueueFullException;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.service.RetryScheduler;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
@@ -54,12 +57,25 @@ public final class AttemptCoordinator {
     private final RetryScheduler retry;
     private final AttemptTransport transport;
     private final AttemptObserver observer;
+    private final RetryBackoff backoff;
 
     public AttemptCoordinator(ExecutionStore executionStore,
                               FunctionCapacityRegistry capacity,
                               RetryScheduler retry,
                               AttemptTransport transport,
                               AttemptObserver observer) {
+        this(executionStore, capacity, retry, transport, observer,
+                new RetryBackoff(Duration.ofMillis(100), Duration.ofSeconds(2),
+                        () -> ThreadLocalRandom.current().nextDouble()));
+    }
+
+    public AttemptCoordinator(ExecutionStore executionStore,
+                              FunctionCapacityRegistry capacity,
+                              RetryScheduler retry,
+                              AttemptTransport transport,
+                              AttemptObserver observer,
+                              RetryBackoff backoff) {
+        this.backoff = Objects.requireNonNull(backoff, "backoff must not be null");
         this.executionStore = Objects.requireNonNull(executionStore, "executionStore must not be null");
         this.capacity = Objects.requireNonNull(capacity, "capacity must not be null");
         this.retry = Objects.requireNonNull(retry, "retry must not be null");
@@ -346,7 +362,12 @@ public final class AttemptCoordinator {
         if (shouldRetry) {
             // prepareRetry always terminates the retry path: the execution is back in QUEUED
             // with its next attempt ready to publish, and never falls through to final completion.
-            return Conclusion.of(prepareRetry(executionRecord, currentTask, result, generation));
+            Instant due = backoff.notBefore(currentTask.attempt(), executionRecord.now(),
+                    dispatchResult.retryNotBefore());
+            log.debug("Retry execution {} failedAttempt={} nextAttempt={} notBefore={} hintPresent={}",
+                    executionRecord.executionId(), currentTask.attempt(), currentTask.attempt() + 1,
+                    due, dispatchResult.retryNotBefore() != null);
+            return Conclusion.of(prepareRetry(executionRecord, currentTask, result, generation, due));
         }
 
         if (result.success()) {
@@ -385,7 +406,7 @@ public final class AttemptCoordinator {
      * {@link #completeExecution} once the caller has released the monitor.
      */
     private PendingRetry prepareRetry(ExecutionRecord executionRecord, InvocationTask currentTask,
-                                      InvocationResult result, FunctionGeneration generation) {
+                                      InvocationResult result, FunctionGeneration generation, Instant notBefore) {
         String functionName = currentTask.functionName();
         InvocationTask retryTask = new InvocationTask(
                 executionRecord.executionId(),
@@ -404,7 +425,7 @@ public final class AttemptCoordinator {
         // The queue-entry input owner is taken here, with the reset, so the attempt that is about
         // to be published already holds it when it becomes visible to a scheduler.
         return new PendingRetry(executionRecord.prepareForQueue(), retryTask.attempt(),
-                functionName, result, generation);
+                functionName, result, generation, notBefore);
     }
 
     /**
@@ -421,7 +442,10 @@ public final class AttemptCoordinator {
         InvocationTask task = pending.task();
         boolean enqueued;
         try {
-            enqueued = retry.enqueue(task);
+            enqueued = retry.enqueue(task, pending.notBefore(), () -> {
+                task.releaseQueuedInput();
+                publishFinalCompletion(executionRecord, concludeExhaustedRetry(executionRecord, pending));
+            });
         } catch (RuntimeException | Error ex) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             task.releaseQueuedInput();
             log.warn("Retry scheduling failed for execution {}, completing with error: {}",
@@ -517,7 +541,8 @@ public final class AttemptCoordinator {
                                 int attempt,
                                 String functionName,
                                 InvocationResult result,
-                                FunctionGeneration generation) {
+                                FunctionGeneration generation,
+                                Instant notBefore) {
     }
 
     private record FinalCompletion(String functionName,

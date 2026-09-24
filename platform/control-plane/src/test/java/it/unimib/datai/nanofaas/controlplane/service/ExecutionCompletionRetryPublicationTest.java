@@ -70,7 +70,7 @@ class ExecutionCompletionRetryPublicationTest {
         CountDownLatch publishing = new CountDownLatch(1);
         CountDownLatch recordExercised = new CountDownLatch(1);
         AtomicBoolean monitorHeldDuringPublish = new AtomicBoolean(true);
-        ExecutionCompletionHandler handler = handlerPublishingWith(task -> {
+        ExecutionCompletionHandler handler = handlerPublishingWith((task, due, rejected) -> {
             monitorHeldDuringPublish.set(Thread.holdsLock(executionRecord));
             publishing.countDown();
             try {
@@ -103,7 +103,7 @@ class ExecutionCompletionRetryPublicationTest {
     @Test
     void publishingTheNextAttemptIsNotASecondAdmission() {
         ExecutionRecord executionRecord = seed("e2");
-        ExecutionCompletionHandler handler = handlerPublishingWith(task -> true);
+        ExecutionCompletionHandler handler = handlerPublishingWith((task, due, rejected) -> true);
 
         handler.completeExecution("e2", InvocationResult.error("ERROR", "attempt 1 failed"));
 
@@ -115,7 +115,7 @@ class ExecutionCompletionRetryPublicationTest {
     @Test
     void aFailedPublicationConcludesTheSameExecutionWithoutRefusingAnAdmission() {
         ExecutionRecord executionRecord = seed("e3");
-        ExecutionCompletionHandler handler = handlerPublishingWith(task -> false);
+        ExecutionCompletionHandler handler = handlerPublishingWith((task, due, rejected) -> false);
 
         handler.completeExecution("e3", InvocationResult.error("ERROR", "attempt 1 failed"));
 
@@ -124,4 +124,65 @@ class ExecutionCompletionRetryPublicationTest {
         verify(metrics).queueRejected("fn");
         verify(metrics, never()).refused(anyString(), any());
     }
+    @Test
+    void lateRefusalPreservesOriginalErrorAndDoesNotReenterRetryPolicy() {
+        ExecutionRecord record = seed("late");
+        var refusal = new java.util.concurrent.atomic.AtomicReference<Runnable>();
+        var publications = new java.util.concurrent.atomic.AtomicInteger();
+        ExecutionCompletionHandler handler = handlerPublishingWith((task, due, rejected) -> {
+            publications.incrementAndGet();
+            refusal.set(rejected);
+            assertThat(Thread.holdsLock(record)).isFalse();
+            return true;
+        });
+        handler.completeExecution("late", InvocationResult.error("ORIGINAL", "attempt failed"));
+        refusal.get().run();
+        refusal.get().run();
+        assertThat(record.completion().join().error().code()).isEqualTo("ORIGINAL");
+        assertThat(record.task().attempt()).isEqualTo(2);
+        assertThat(publications).hasValue(1);
+    }
+
+    @Test
+    void refusalMayRunBeforePublicationReturnsTrue() {
+        ExecutionRecord record = seed("inline");
+        ExecutionCompletionHandler handler = handlerPublishingWith((task, due, rejected) -> {
+            rejected.run();
+            return true;
+        });
+        handler.completeExecution("inline", InvocationResult.error("ORIGINAL", "attempt failed"));
+        assertThat(record.completion().join().error().code()).isEqualTo("ORIGINAL");
+        assertThat(record.task().attempt()).isEqualTo(2);
+    }
+
+    @Test
+    void throwingPublicationPreservesOriginalFailureAndRetryCount() {
+        var record = seed("throw");
+        var handler = handlerPublishingWith((task, due, rejected) -> {
+            throw new java.util.concurrent.RejectedExecutionException("closed");
+        });
+        handler.completeExecution("throw", InvocationResult.error("ORIGINAL", "busy"), 1);
+        assertThat(record.completion().join().error().code()).isEqualTo("ORIGINAL");
+        verify(metrics).retry("fn");
+        verify(metrics).error("fn");
+    }
+
+    @Test
+    void configuredBackoffReachesMeteredPublication() {
+        var record = seed("configured");
+        var due = new java.util.concurrent.atomic.AtomicReference<Instant>();
+        var before = Instant.now();
+        var handler = new ExecutionCompletionHandler(store, (task, instant, rejected) -> {
+            due.set(instant);
+            return true;
+        }, mock(DispatcherRouter.class), metrics, null, null,
+                new it.unimib.datai.nanofaas.controlplane.config.RetryProperties(
+                        java.time.Duration.ofSeconds(4), java.time.Duration.ofSeconds(4)));
+        handler.completeExecution("configured", InvocationResult.error("ORIGINAL", "busy"), 1);
+        assertThat(due.get()).isBetween(before.plusSeconds(2), Instant.now().plusSeconds(4));
+        assertThat(record.task().attempt()).isEqualTo(2);
+        verify(metrics).retry("fn");
+        verify(metrics).enqueue("fn");
+    }
+
 }

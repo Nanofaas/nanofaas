@@ -1,0 +1,167 @@
+{
+  "baseline": {
+    "executionSamples": 245,
+    "samplesByThread": {
+      "main": 16,
+      "benchmark-driver": 101,
+      "nanofaas-scheduler-engine": 117,
+      "JFR Periodic Tasks": 10,
+      "JFR Shutdown Hook": 1
+    },
+    "topFrames": [
+      [
+        "it/unimib/datai/nanofaas/SchedulerSwitchBenchmark$Run$Driver.run",
+        18
+      ],
+      [
+        "it/unimib/datai/nanofaas/execution/SchedulerEngine.enqueue",
+        15
+      ],
+      [
+        "it/unimib/datai/nanofaas/execution/SchedulerEngine.pass",
+        9
+      ],
+      [
+        "it/unimib/datai/nanofaas/modules/asyncqueue/PerFunctionSchedulingStrategy$PerFunctionIndex.remove",
+        7
+      ],
+      [
+        "it/unimib/datai/nanofaas/execution/PendingWorkStore.offer",
+        6
+      ],
+      [
+        "java/util/HashMap.hash",
+        5
+      ],
+      [
+        "it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityState.tryAcquireSlot",
+        4
+      ],
+      [
+        "java/util/Comparator.lambda$thenComparing$36697e65$1",
+        4
+      ],
+      [
+        "java/util/concurrent/ConcurrentHashMap.compute",
+        4
+      ],
+      [
+        "it/unimib/datai/nanofaas/modules/asyncqueue/PerFunctionSchedulingStrategy$PerFunctionIndex.removeAndReturnFromFifo",
+        4
+      ],
+      [
+        "java/lang/invoke/DelegatingMethodHandle$Holder.delegate",
+        4
+      ],
+      [
+        "java/util/ArrayDeque$DeqIterator.remove",
+        4
+      ]
+    ],
+    "schedulerParkCount": 0,
+    "schedulerParkOvershootUs": null,
+    "machineCpuLoad": {
+      "median": 0.019534284,
+      "max": 0.094349146
+    },
+    "arms": [
+      {
+        "arm": "per-function (no change)",
+        "cpuUs": 684.227,
+        "p99Ms": 2.646677
+      },
+      {
+        "arm": "shared-queue (no change)",
+        "cpuUs": 653.512,
+        "p99Ms": 2.641429
+      },
+      {
+        "arm": "shared-queue -> per-function",
+        "cpuUs": 585.346,
+        "p99Ms": 2.617157
+      }
+    ]
+  },
+  "candidate": {
+    "executionSamples": 185,
+    "samplesByThread": {
+      "main": 16,
+      "benchmark-driver": 63,
+      "nanofaas-scheduler-engine": 94,
+      "JFR Periodic Tasks": 12
+    },
+    "topFrames": [
+      [
+        "it/unimib/datai/nanofaas/execution/SchedulerEngine.enqueue",
+        12
+      ],
+      [
+        "it/unimib/datai/nanofaas/execution/SchedulerEngine.pass",
+        7
+      ],
+      [
+        "it/unimib/datai/nanofaas/SchedulerSwitchBenchmark$Run$Driver.run",
+        6
+      ],
+      [
+        "java.lang.invoke.LambdaForm$MH/0x0000001801089000.guard",
+        5
+      ],
+      [
+        "it/unimib/datai/nanofaas/controlplane/capacity/FunctionCapacityRegistry.lambda$tryAcquireLease$1",
+        5
+      ],
+      [
+        "it/unimib/datai/nanofaas/modules/syncqueue/SharedQueueSchedulingStrategy$SharedQueueIndex.select",
+        4
+      ],
+      [
+        "java/util/HashMap.removeNode",
+        3
+      ],
+      [
+        "java/util/Objects.hashCode",
+        3
+      ],
+      [
+        "it/unimib/datai/nanofaas/execution/PendingWorkStore.lambda$releaseReservation$0",
+        3
+      ],
+      [
+        "java/util/Comparator.lambda$comparing$77a9974f$1",
+        3
+      ],
+      [
+        "java.lang.invoke.LambdaForm$MH/0x0000001801083400.invoke",
+        3
+      ],
+      [
+        "it/unimib/datai/nanofaas/execution/SchedulerEngine.checkDrained",
+        3
+      ]
+    ],
+    "schedulerParkCount": 0,
+    "schedulerParkOvershootUs": null,
+    "machineCpuLoad": {
+      "median": 0.020869941,
+      "max": 0.19937041
+    },
+    "arms": [
+      {
+        "arm": "per-function (no change)",
+        "cpuUs": 623.986,
+        "p99Ms": 2.650693
+      },
+      {
+        "arm": "shared-queue (no change)",
+        "cpuUs": 607.891,
+        "p99Ms": 2.644805
+      },
+      {
+        "arm": "shared-queue -> per-function",
+        "cpuUs": 561.522,
+        "p99Ms": 2.587429
+      }
+    ]
+  }
+}

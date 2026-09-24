@@ -86,7 +86,7 @@ class InvocationServiceDispatchTest {
         executionStore = new ExecutionStore();
         idempotencyStore = new IdempotencyStore();
 
-        completionHandler = new ExecutionCompletionHandler(executionStore, enqueuer::enqueue, dispatcherRouter, metrics);
+        completionHandler = new ExecutionCompletionHandler(executionStore, (queued, due, rejected) -> enqueuer.enqueue(queued), dispatcherRouter, metrics);
 
         invocationService = TestWaiterCapacity.service(
                 functionService,
@@ -309,7 +309,7 @@ class InvocationServiceDispatchTest {
 
     @Test
     void invokeSync_whenSyncQueueGatewayMissingAndEnqueuerDisabled_dispatchesInline() {
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(executionStore, enqueuer::enqueue, dispatcherRouter, metrics);
+        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(executionStore, (queued, due, rejected) -> enqueuer.enqueue(queued), dispatcherRouter, metrics);
         InvocationService invocationServiceWithoutSyncQueue = TestWaiterCapacity.service(
                 functionService,
                 enqueuer,
@@ -650,7 +650,7 @@ class InvocationServiceDispatchTest {
                 staleStore,
                 metrics,
                 syncQueueGateway,
-                new ExecutionCompletionHandler(blockedStore, enqueuer::enqueue, dispatcherRouter, metrics),
+                new ExecutionCompletionHandler(blockedStore, (queued, due, rejected) -> enqueuer.enqueue(queued), dispatcherRouter, metrics),
                 "stale-publication-fn"
         );
 

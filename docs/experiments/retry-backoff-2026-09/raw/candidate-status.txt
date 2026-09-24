@@ -1,0 +1,134 @@
+ M clients/cli/build.gradle
+ M clients/cli/src/main/resources/META-INF/native-image/nanofaas/nanofaas-cli/reflect-config.json
+ M deploy/helm/nanofaas/templates/control-plane-deployment.yaml
+MM deploy/helm/nanofaas/values.yaml
+M  docs/architecture/0002-manual-scheduler-switching.md
+M  docs/control-plane.md
+ M docs/example-function.md
+ M docs/experiments/scheduler-switching-2026-09/.classpath-execution-runtime
+ M docs/experiments/scheduler-switching-2026-09/SchedulerSwitchBenchmark.java
+ M functions/go/handler-envelope/go.mod
+ M functions/go/handler-envelope/go.sum
+ M functions/go/json-transform/go.mod
+ M functions/go/json-transform/go.sum
+ M functions/go/qr-code/go.mod
+ M functions/go/qr-code/go.sum
+ M functions/go/roman-numeral/go.mod
+ M functions/go/roman-numeral/go.sum
+ M functions/go/word-stats/go.mod
+ M functions/go/word-stats/go.sum
+ M functions/java/json-transform-lite/src/main/java/it/unimib/datai/nanofaas/examples/jsontransformlite/JsonTransformLite.java
+ M functions/java/json-transform-lite/src/test/java/it/unimib/datai/nanofaas/examples/jsontransformlite/JsonTransformLiteContractTest.java
+ M functions/java/roman-numeral-lite/src/main/java/it/unimib/datai/nanofaas/examples/romannumerallite/RomanNumeralLite.java
+ M functions/java/roman-numeral-lite/src/test/java/it/unimib/datai/nanofaas/examples/romannumerallite/RomanNumeralLiteTest.java
+ D functions/java/roman-numeral/payloads/01-one.json
+ D functions/java/roman-numeral/payloads/02-four.json
+ D functions/java/roman-numeral/payloads/03-five.json
+ D functions/java/roman-numeral/payloads/04-nine.json
+ D functions/java/roman-numeral/payloads/05-ten.json
+ D functions/java/roman-numeral/payloads/06-fourteen.json
+ D functions/java/roman-numeral/payloads/07-twenty.json
+ D functions/java/roman-numeral/payloads/08-forty.json
+ D functions/java/roman-numeral/payloads/09-forty-two.json
+ D functions/java/roman-numeral/payloads/10-fifty.json
+ D functions/java/roman-numeral/payloads/11-ninety.json
+ D functions/java/roman-numeral/payloads/12-hundred.json
+ D functions/java/roman-numeral/payloads/13-four-hundred.json
+ D functions/java/roman-numeral/payloads/14-five-hundred.json
+ D functions/java/roman-numeral/payloads/15-nine-hundred.json
+ D functions/java/roman-numeral/payloads/16-thousand.json
+ D functions/java/roman-numeral/payloads/17-mcmxciv.json
+ D functions/java/roman-numeral/payloads/18-mmxxiv.json
+ D functions/java/roman-numeral/payloads/19-max.json
+ D functions/java/roman-numeral/payloads/20-missing-number.json
+ M functions/javascript/word-stats/payloads/happy-path.json
+ M gradle.properties
+M  openapi/core.yaml
+ M platform/common/build.gradle
+ M platform/control-plane-spi/build.gradle
+M  platform/control-plane-spi/src/main/java/it/unimib/datai/nanofaas/controlplane/service/RetryScheduler.java
+ M platform/control-plane/build.gradle
+ M platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/ControlPlaneApplication.java
+ M platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/FunctionController.java
+ M platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/api/InvocationController.java
+A  platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/config/RetryProperties.java
+M  platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcher.java
+M  platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/EngineInvocationEnqueuer.java
+M  platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/EngineSyncQueueGateway.java
+M  platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ExecutionCompletionHandler.java
+M  platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/ExecutorBackedInvocationEnqueuer.java
+M  platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/InvocationEnqueuerAutoConfiguration.java
+M  platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/SchedulerConfiguration.java
+M  platform/control-plane/src/main/resources/application.yml
+M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/SchedulerCompositionTest.java
+A  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/config/RetryPropertiesTest.java
+M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/dispatch/ExternalDispatcherTest.java
+M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/DispatchLifecycleAndCancellationTest.java
+A  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/EngineInvocationEnqueuerTimingTest.java
+M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/EngineSyncQueueGatewaySettlementTest.java
+M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/ExecutionCompletionHandlerAdministrativeExpiryTest.java
+M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/ExecutionCompletionHandlerOffloadTest.java
+M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/ExecutionCompletionHandlerRetryMetricsRegressionTest.java
+M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/ExecutionCompletionHandlerSlotReleaseTest.java
+M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/ExecutionCompletionHandlerTest.java
+M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/ExecutionCompletionHandlerTimingTest.java
+M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/ExecutionCompletionRetryPublicationTest.java
+M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/ExecutorBackedInvocationEnqueuerTest.java
+M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/InvocationPathAccountingTest.java
+M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/InvocationServiceAsyncReplayTest.java
+M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/InvocationServiceCoreRetryTest.java
+M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/InvocationServiceDispatchTest.java
+M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/InvocationServiceEarlyRefusalTest.java
+M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/InvocationServiceRetryQueueFullTest.java
+M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/InvocationServiceRetryTest.java
+M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P05WaiterTimeoutSharedOutcomeTest.java
+M  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/P07dWaiterAdmissionTest.java
+A  platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/service/RetryBackoffIntegrationTest.java
+MM platform/execution-runtime/build.gradle
+M  platform/execution-runtime/src/main/java/it/unimib/datai/nanofaas/controlplane/dispatch/DispatchResult.java
+M  platform/execution-runtime/src/main/java/it/unimib/datai/nanofaas/execution/AttemptCoordinator.java
+A  platform/execution-runtime/src/main/java/it/unimib/datai/nanofaas/execution/RetryBackoff.java
+M  platform/execution-runtime/src/main/java/it/unimib/datai/nanofaas/execution/SchedulerEngine.java
+M  platform/execution-runtime/src/test/java/it/unimib/datai/nanofaas/execution/AttemptCoordinatorTest.java
+A  platform/execution-runtime/src/test/java/it/unimib/datai/nanofaas/execution/RetryBackoffTest.java
+A  platform/execution-runtime/src/test/java/it/unimib/datai/nanofaas/execution/SchedulerEngineBackoffTest.java
+M  platform/execution-runtime/src/test/java/it/unimib/datai/nanofaas/execution/SchedulerEngineSwitchTest.java
+M  platform/execution-runtime/src/test/java/it/unimib/datai/nanofaas/execution/SchedulerModelTest.java
+ M platform/gradle-plugin/build.gradle
+M  platform/modules/async-queue/src/test/java/it/unimib/datai/nanofaas/modules/asyncqueue/PerFunctionSchedulingStrategyTest.java
+M  platform/modules/concurrency-control/src/test/java/it/unimib/datai/nanofaas/modules/concurrencycontrol/SojournRetryTimeoutMixTest.java
+ M platform/modules/containerd-deployment-provider/build.gradle
+ M platform/modules/k8s-deployment-provider/build.gradle
+M  platform/modules/sync-queue/build.gradle
+M  platform/modules/sync-queue/src/test/java/it/unimib/datai/nanofaas/modules/syncqueue/SharedQueueSchedulingStrategyTest.java
+M  platform/modules/sync-queue/src/test/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueRuntimeLifecycleTest.java
+ M platform/workload-metrics/build.gradle
+ M scripts/tests/test_helm_chart.py
+ M sdks/go/go.mod
+ M sdks/go/go.sum
+ M sdks/java-lite/build.gradle
+ M sdks/java-lite/src/main/java/it/unimib/datai/nanofaas/sdk/lite/handler/InvokeHandler.java
+ M sdks/java-lite/src/main/resources/META-INF/native-image/it.unimib.datai.nanofaas/function-sdk-java-lite/reflect-config.json
+ M sdks/javascript/package-lock.json
+ M sdks/python/uv.lock
+ M settings.gradle
+?? clients/cli/src/test/java/it/unimib/datai/nanofaas/cli/http/NativeReflectConfigCoverageTest.java
+?? docs/experiments/retry-backoff-2026-09/
+?? docs/experiments/scheduler-switching-2026-09/raw/retry-backoff-correctness-50.err
+?? docs/experiments/scheduler-switching-2026-09/raw/retry-backoff-correctness-50.jsonl
+?? docs/superpowers/plans/2026-09-23-code-simplification-cleanup.md
+?? docs/superpowers/plans/2026-09-23-code-simplification-java.md
+?? docs/superpowers/plans/2026-09-23-code-simplification-python.md
+?? docs/superpowers/plans/2026-09-23-code-simplification.md
+?? docs/superpowers/plans/2026-09-23-gradle-recipes.md
+?? docs/superpowers/plans/2026-09-23-scheduler-admission-ownership.md
+?? docs/superpowers/plans/2026-09-24-retry-backoff.md
+?? docs/superpowers/specs/2026-09-23-gradle-recipes-design.md
+?? docs/superpowers/specs/2026-09-24-retry-backoff-design.md
+?? functions/java/roman-numeral/payloads/happy-path.json
+?? functions/java/roman-numeral/payloads/missing-input.json
+?? minikube_latest_arm64.deb
+?? platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/config/NettyEpollRuntimeHints.java
+?? platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/api/ErasedResponseBodyHintsTest.java
+?? platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/config/NettyEpollRuntimeHintsTest.java
+?? sdks/java-lite/src/test/java/it/unimib/datai/nanofaas/sdk/lite/handler/InvokeHandlerEnvelopeTest.java

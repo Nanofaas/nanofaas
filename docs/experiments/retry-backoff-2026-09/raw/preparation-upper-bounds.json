@@ -1,0 +1,6 @@
+{
+  "retry-backoff-candidate-steady.jsonl": 3.605855,
+  "retry-backoff-candidate-mixed.jsonl": 5.491128,
+  "retry-backoff-candidate-delayed.jsonl": 5.613607,
+  "retry-backoff-baseline-steady.jsonl": 3.030228
+}

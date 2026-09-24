@@ -32,6 +32,9 @@ management:
         enabled: true
 
 nanofaas:
+  retry:
+    initial-backoff: 100ms
+    max-backoff: 2s
   container-local:
     proxy:
       # Bounded integral buffering at the local container hop. The aggregate cap

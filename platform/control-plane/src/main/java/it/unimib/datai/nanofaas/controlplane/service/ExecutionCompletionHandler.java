@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.controlplane.service;
 
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
+import it.unimib.datai.nanofaas.controlplane.config.RetryProperties;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentReadiness;
 import it.unimib.datai.nanofaas.controlplane.dispatch.AttemptTransportAdapter;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
@@ -14,6 +15,8 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.execution.AttemptCoordinator;
 import it.unimib.datai.nanofaas.execution.AttemptObserver;
 import it.unimib.datai.nanofaas.execution.AttemptTransport;
+import it.unimib.datai.nanofaas.execution.RetryBackoff;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,7 +58,8 @@ public class ExecutionCompletionHandler implements InvocationDispatch, AttemptOb
                                       DispatcherRouter dispatcherRouter,
                                       Metrics metrics,
                                       @Nullable DeploymentReadiness readiness,
-                                      FunctionCapacityRegistry capacityRegistry) {
+                                      FunctionCapacityRegistry capacityRegistry,
+                                      RetryProperties retryProperties) {
         this.metrics = metrics;
         RetryScheduler retry = enqueuer == null ? RetryScheduler.unavailable() : enqueuer;
         // A handler built without one (a bare unit test) has no managed deployment to wake.
@@ -65,7 +69,19 @@ public class ExecutionCompletionHandler implements InvocationDispatch, AttemptOb
         FunctionCapacityRegistry capacity = capacityRegistry == null ? new FunctionCapacityRegistry() : capacityRegistry;
         AttemptTransport transport = new AttemptTransportAdapter(dispatcherRouter, effectiveReadiness);
         this.coordinator = new AttemptCoordinator(executionStore, capacity,
-                new MeteredRetryScheduler(retry), transport, this);
+                new MeteredRetryScheduler(retry), transport, this,
+                new RetryBackoff(retryProperties.initialBackoff(), retryProperties.maxBackoff(),
+                        () -> ThreadLocalRandom.current().nextDouble()));
+    }
+
+    public ExecutionCompletionHandler(ExecutionStore executionStore,
+                                      @Nullable RetryScheduler enqueuer,
+                                      DispatcherRouter dispatcherRouter,
+                                      Metrics metrics,
+                                      @Nullable DeploymentReadiness readiness,
+                                      FunctionCapacityRegistry capacityRegistry) {
+        this(executionStore, enqueuer, dispatcherRouter, metrics, readiness, capacityRegistry,
+                new RetryProperties(null, null));
     }
 
     /**
@@ -226,9 +242,9 @@ public class ExecutionCompletionHandler implements InvocationDispatch, AttemptOb
         }
 
         @Override
-        public boolean enqueue(InvocationTask task) {
+        public boolean enqueue(InvocationTask task, java.time.Instant notBefore, Runnable onRejected) {
             try {
-                InvocationEnqueueSupport.publishOrThrow(delegate::enqueue, metrics, task, false);
+                InvocationEnqueueSupport.publishOrThrow(queued -> delegate.enqueue(queued, notBefore, onRejected), metrics, task, false);
                 return true;
             } catch (QueueFullException _) {
                 // publishOrThrow's own signal that the enqueue refused the task, translated back

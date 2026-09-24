@@ -60,7 +60,7 @@ class InvocationServiceRetryTest {
         idempotencyStore = new IdempotencyStore();
 
         ExecutionCompletionHandler completionHandler = new ExecutionCompletionHandler(
-                executionStore, enqueuer::enqueue, dispatcherRouter, metrics);
+                executionStore, (queued, due, rejected) -> enqueuer.enqueue(queued), dispatcherRouter, metrics);
 
         invocationService = TestWaiterCapacity.service(
                 functionService,

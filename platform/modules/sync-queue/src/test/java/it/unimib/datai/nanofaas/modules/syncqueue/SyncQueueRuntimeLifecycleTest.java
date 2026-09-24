@@ -355,10 +355,12 @@ class SyncQueueRuntimeLifecycleTest {
             ExecutionRecord executionRecord = new ExecutionRecord(admitted.executionId(), admitted);
             store.put(executionRecord);
             assertThat(enqueuer.enqueue(admitted)).isTrue();
-            for (int i = 0; i < 3 && !executionRecord.completion().isDone(); i++) {
+            // The production clock keeps the retry ineligible during its backoff.
+            // Keep driving the stopped worker until that delay has elapsed.
+            Awaitility.await().atMost(Duration.ofSeconds(2)).untilAsserted(() -> {
                 engine.tick();
-            }
-            assertThat(executionRecord.completion().isDone()).isTrue();
+                assertThat(executionRecord.completion().isDone()).isTrue();
+            });
             assertThat(executionRecord.completion().join().success()).isTrue();
             assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
             assertThat(attempts.get()).isEqualTo(2);

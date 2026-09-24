@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -94,6 +95,12 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     private final TreeSet<SchedulingTicket> deadlines = new TreeSet<>(
             Comparator.comparing(SchedulingTicket::queueDeadline)
                     .thenComparingLong(SchedulingTicket::sequence));
+    /** Future eligibility, independent of the selected strategy. Guarded by {@link #gate}. */
+    private final TreeSet<SchedulingTicket> delayed = new TreeSet<>(
+            Comparator.comparing(SchedulingTicket::notBefore)
+                    .thenComparingLong(SchedulingTicket::sequence)
+                    .thenComparing(t -> t.id().executionId())
+                    .thenComparingInt(t -> t.id().attempt()));
     /** Generations whose lease could not be acquired since the last wake. Guarded by {@link #gate}. */
     private final Set<FunctionGeneration> blocked = new HashSet<>();
     /**
@@ -102,6 +109,9 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
      * applied if — and only if — that dispatch comes back for a requeue. Guarded by {@link #gate}.
      */
     private final Set<TicketId> cancelRequests = new HashSet<>();
+    /** Tickets retained by each execution, including overlapping retry publication during submit.
+     * Terminal notifications use this lookup instead of scanning unrelated backlog. Guarded by gate. */
+    private final Map<String, Set<TicketId>> executionTickets = new HashMap<>();
 
     /**
      * The active policy and its index, published as one immutable pair. Written only under
@@ -112,6 +122,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     private volatile ActiveScheduler active; // NOSONAR (java:S3077): thread-safe or immutable value replaced wholesale
     private long wakeSequence;
     private boolean running;
+    private boolean disposed;
     private Thread worker;
 
     /** Per-function queue caps supplied by the most recent admission attempt. Written only under
@@ -298,6 +309,11 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
      * untouched.
      */
     private SchedulingIndex prepare(SchedulingStrategy target) {
+        if (store.reservedCount() > MAX_SWITCH_REBUILD_TICKETS) {
+            throw new SchedulerSwitchException(SchedulerSwitchException.Reason.TEMPORARY_CAP,
+                    "Too much reserved work to switch scheduler: " + store.reservedCount()
+                            + " tickets, cap " + MAX_SWITCH_REBUILD_TICKETS);
+        }
         List<PendingEntry> pending = store.snapshotPending();
         SchedulingIndex candidate;
         try {
@@ -320,7 +336,9 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
                             "Scheduler preparation outran its " + SWITCH_BUDGET_MS + " ms budget after "
                                     + rebuilt + " of " + pending.size() + " tickets");
                 }
-                candidate.add(entry.ticket());
+                if (!delayed.contains(entry.ticket())) {
+                    candidate.add(entry.ticket());
+                }
                 rebuilt++;
             }
         } catch (RuntimeException failure) {
@@ -353,7 +371,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
 
     /**
      * Admits work with no per-function cap: one reservation in the store and one ticket in the
-     * active index, or nothing at all when the store is full or the ticket's generation is no
+     * ready or delayed index, or nothing at all when the store is full or the ticket's generation is no
      * longer the function's active one (see {@link #enqueue(PendingEntry, int)}). Safe to call from
      * any thread, including one holding an execution record's monitor, but not while holding a
      * capacity-registry entry lock.
@@ -380,7 +398,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             // Before any state changes: a stale generation never becomes a reservation, and never
             // recreates cap metadata a removal just cleared. Removal retires the generation before
             // it drains under this gate, so a concurrent admission is either drained or refused.
-            if (!generationActive.test(entry.ticket().generation())) {
+            if (disposed || !generationActive.test(entry.ticket().generation())) {
                 return false;
             }
             String name = entry.ticket().generation().functionName();
@@ -388,8 +406,14 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             if (store.reservedCount(name) >= perFunctionCap || !store.offer(entry)) {
                 return false;
             }
-            active.index().add(entry.ticket());
-            track(entry.ticket());
+            try {
+                indexEligible(entry.ticket(), clock.instant());
+                track(entry.ticket());
+            } catch (RuntimeException | Error failure) {
+                store.remove(entry.ticket().id());
+                retire(entry.ticket());
+                throw failure;
+            }
             wake();
             return true;
         }
@@ -484,6 +508,9 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     public void start() {
         Thread started;
         synchronized (gate) {
+            if (disposed) {
+                throw new IllegalStateException("Scheduler engine is disposed");
+            }
             if (running) {
                 return;
             }
@@ -527,6 +554,62 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    /** Permanently releases retained work; unlike close(), this owner cannot restart. */
+    public void dispose() {
+        List<PendingEntry> removed;
+        synchronized (gate) {
+            disposed = true;
+            queueCaps.clear();
+            removed = removeMatching(entry -> true);
+        }
+        close();
+        for (PendingEntry entry : removed) {
+            dispatch.removed(entry.task());
+        }
+    }
+
+    /** Terminal execution cleanup, including a removal racing a committed submit. */
+    public void removeExecution(String executionId) {
+        Objects.requireNonNull(executionId, "executionId must not be null");
+        List<PendingEntry> removed;
+        synchronized (gate) {
+            Set<TicketId> tickets = executionTickets.get(executionId);
+            if (tickets == null) {
+                return;
+            }
+            removed = new ArrayList<>();
+            for (TicketId id : List.copyOf(tickets)) {
+                PendingEntry taken = store.remove(id);
+                if (taken != null) {
+                    retire(taken.ticket());
+                    removed.add(taken);
+                } else {
+                    cancelRequests.add(id);
+                }
+            }
+        }
+        for (PendingEntry entry : removed) {
+            dispatch.removed(entry.task());
+        }
+    }
+
+    /** Under the gate. Submitting entries can only be cancelled if they return for requeue. */
+    private List<PendingEntry> removeMatching(Predicate<PendingEntry> matches) {
+        List<PendingEntry> removed = new ArrayList<>();
+        for (PendingEntry entry : store.snapshotAll()) {
+            if (matches.test(entry)) {
+                PendingEntry taken = store.remove(entry.ticket().id());
+                if (taken != null) {
+                    retire(taken.ticket());
+                    removed.add(taken);
+                } else {
+                    cancelRequests.add(entry.ticket().id());
+                }
+            }
+        }
+        return removed;
     }
 
     private void loop() {
@@ -630,19 +713,24 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
      */
     private long pass() {
         Instant now = clock.instant();
-        List<PendingEntry> expired;
+        List<PendingEntry> expired = List.of();
         Claim claim;
-        synchronized (gate) {
-            expired = reapExpired(now);
-            claim = selectAndClaim(now);
-        }
-        // Outside the gate: lifecycle notifications never run under it.
-        for (PendingEntry entry : expired) {
-            dispatch.expired(entry.task());
+        int promoted;
+        try {
+            synchronized (gate) {
+                expired = reapExpired(now);
+                promoted = promoteDue(now);
+                claim = selectAndClaim(now);
+            }
+        } finally {
+            // Even a failing promotion must deliver the expiries already removed from the store.
+            for (PendingEntry entry : expired) {
+                dispatch.expired(entry.task());
+            }
         }
         long budgetMs;
         if (claim == null) {
-            budgetMs = expired.isEmpty() ? idleBudgetMs() : 0L;
+            budgetMs = expired.isEmpty() && promoted == 0 ? idleBudgetMs() : 0L;
         } else {
             carry(claim);
             budgetMs = 0L;
@@ -692,10 +780,35 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         return store.reservedCount(functionName);
     }
 
-    private long idleBudgetMs() {
+    long idleBudgetMs() {
         synchronized (gate) {
-            return store.pendingCount() == 0 ? EMPTY_QUEUE_AWAIT_MS : CAPACITY_BLOCKED_AWAIT_MS;
+            Instant now = clock.instant();
+            long budget = store.pendingCount() == 0 ? EMPTY_QUEUE_AWAIT_MS : CAPACITY_BLOCKED_AWAIT_MS;
+            if (!deadlines.isEmpty()) {
+                budget = boundWait(budget, now, deadlines.first().queueDeadline());
+            }
+            if (!delayed.isEmpty()) {
+                budget = boundWait(budget, now, delayed.first().notBefore());
+            }
+            return budget;
         }
+    }
+
+    private static long boundWait(long safetyMs, Instant now, Instant event) {
+        if (!event.isAfter(now)) {
+            return 0;
+        }
+        Instant safetyEnd;
+        try {
+            safetyEnd = now.plusMillis(safetyMs);
+        } catch (java.time.DateTimeException overflow) {
+            safetyEnd = Instant.MAX;
+        }
+        if (!event.isBefore(safetyEnd)) {
+            return safetyMs;
+        }
+        Duration wait = Duration.between(now, event);
+        return Math.max(1, wait.toMillis() + (wait.getNano() % 1_000_000 == 0 ? 0 : 1));
     }
 
     /** Under the gate. Only tickets in the index are claimed, and the index holds no submitting ticket. */
@@ -748,11 +861,10 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
                 if (current == null) {
                     // The claim was removed while the lease was being acquired: nothing to dispatch.
                     task = null;
-                } else if (claim.epoch() != active.epoch()) {
-                    // The index was swapped under this selection. A provisional claim is not a
-                    // committed dispatch, so this attempt goes back to the index that is active now
-                    // and gets re-selected by the new policy. The rebuild excluded it — it was
-                    // claimed — so this add cannot collide with a copy of itself.
+                } else if (claim.epoch() != active.epoch() || ticket.notBefore().isAfter(clock.instant())) {
+                    // A switch invalidates the policy decision; a backward clock can invalidate
+                    // eligibility. Return the provisional claim to the current ready/delayed
+                    // location before releasing its lease outside the gate.
                     abortClaim(claim);
                     task = null;
                 } else {
@@ -785,8 +897,12 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             return; // Removed while lifecycle code ran outside the gate.
         }
         store.abort(ticket.id());
+        Instant now = clock.instant();
         if (claim.epoch() != active.epoch()) {
-            active.index().add(ticket);
+            indexEligible(ticket, now);
+        } else if (ticket.notBefore().isAfter(now)) {
+            active.index().remove(ticket.id());
+            indexEligible(ticket, now);
         } else {
             active.index().defer(ticket.id());
         }
@@ -841,11 +957,12 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             store.requeueSubmit(ticket.id());
             if (cancelRequests.remove(ticket.id())) {
                 cancelled = store.remove(ticket.id());
+                untrackExecution(ticket.id());
                 if (ticket.queueDeadline() != null) {
                     deadlines.remove(ticket);
                 }
             } else {
-                active.index().add(ticket);
+                indexEligible(ticket, clock.instant());
                 // Re-track in case a reap polled this deadline off while the submit was in
                 // flight and then found the ticket committed; TreeSet.add is idempotent here.
                 track(ticket);
@@ -860,6 +977,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     private void finishSubmit(SchedulingTicket ticket) {
         synchronized (gate) {
             store.finishSubmit(ticket.id());
+            untrackExecution(ticket.id());
             cancelRequests.remove(ticket.id());
             if (ticket.queueDeadline() != null) {
                 deadlines.remove(ticket);
@@ -873,17 +991,20 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             return List.of();
         }
         List<PendingEntry> expired = new ArrayList<>();
-        while (expired.size() < MAX_EXPIRED_PER_PASS && !deadlines.isEmpty()) {
+        int visited = 0;
+        while (visited < MAX_EXPIRED_PER_PASS && !deadlines.isEmpty()) {
             SchedulingTicket head = deadlines.first();
             if (head.queueDeadline().isAfter(now)) {
                 break;
             }
             deadlines.pollFirst();
+            visited++;
             PendingEntry entry = store.remove(head.id());
             if (entry != null) {
                 // Out-of-band removal: the per-function index treats this exactly as it treats a
                 // dispatch of that function's turn (see remove()).
-                active.index().remove(head.id());
+                removeEligibility(head);
+                untrackExecution(head.id());
                 expired.add(entry);
             }
             // A null entry is a ticket already gone or already submitting: its dispatch is
@@ -892,24 +1013,40 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         return expired;
     }
 
-    /**
-     * Under the gate.
-     *
-     * <p><strong>Precondition for any future backoff policy.</strong> The engine holds no delayed
-     * index: a ticket whose {@code notBefore} is in the future simply sits in the active index
-     * until a scan finds it due. That is sound only because <em>nothing is ever future-dated in
-     * any current profile</em> — there is no backoff, so a retry is published with
-     * {@code notBefore = enqueuedAt}. It is NOT true that both indexes tolerate future-dated
-     * tickets: {@code SharedQueueSchedulingStrategy.select} scans its window and skips forward,
-     * but {@code PerFunctionSchedulingStrategy.select} inspects only {@code fifo.peekFirst()}
-     * before moving to the next function, so a future-dated head hides every later ticket of the
-     * same function until it comes due. Anyone introducing a backoff that sets
-     * {@code notBefore > enqueuedAt} must therefore either add a bounded delayed index here (and
-     * wake on the nearest {@code notBefore}, not only on the safety bound) or change the
-     * per-function index to scan past a not-yet-due head. Do not assume the current arrangement
-     * survives that change.
-     */
+    /** Under the gate. Exactly one eligibility location for each pending ticket. */
+    private void indexEligible(SchedulingTicket ticket, Instant now) {
+        if (ticket.notBefore().isAfter(now)) {
+            delayed.add(ticket);
+        } else {
+            active.index().add(ticket);
+        }
+    }
+
+    private void removeEligibility(SchedulingTicket ticket) {
+        if (!delayed.remove(ticket)) {
+            active.index().remove(ticket.id());
+        }
+    }
+
+    private int promoteDue(Instant now) {
+        int promoted = 0;
+        while (promoted < 64 && !delayed.isEmpty() && !delayed.first().notBefore().isAfter(now)) {
+            SchedulingTicket ticket = delayed.first();
+            if (ticket.queueDeadline() != null && !ticket.queueDeadline().isAfter(now)) {
+                break;
+            }
+            // Add first: an index failure leaves the delayed reservation reachable for retry.
+            active.index().add(ticket);
+            delayed.remove(ticket);
+            promoted++;
+        }
+        return promoted;
+    }
+
+    /** Reservation lookup and deadlines are independent of eligibility, idempotent across requeue. */
     private void track(SchedulingTicket ticket) {
+        executionTickets.computeIfAbsent(ticket.id().executionId(), ignored -> new HashSet<>())
+                .add(ticket.id());
         if (ticket.queueDeadline() != null) {
             deadlines.add(ticket);
         }
@@ -940,9 +1077,18 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
      * </ul>
      */
     private void retire(SchedulingTicket ticket) {
-        active.index().remove(ticket.id());
+        untrackExecution(ticket.id());
+        removeEligibility(ticket);
         if (ticket.queueDeadline() != null) {
             deadlines.remove(ticket);
+        }
+    }
+
+    /** Under the gate. Forget only the settled attempt; a published retry may still be retained. */
+    private void untrackExecution(TicketId id) {
+        Set<TicketId> tickets = executionTickets.get(id.executionId());
+        if (tickets != null && tickets.remove(id) && tickets.isEmpty()) {
+            executionTickets.remove(id.executionId());
         }
     }
 

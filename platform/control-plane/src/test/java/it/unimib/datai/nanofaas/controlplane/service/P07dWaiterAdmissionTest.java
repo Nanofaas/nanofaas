@@ -333,7 +333,7 @@ class P07dWaiterAdmissionTest {
                 store, new IdempotencyStore(), metrics, invocations,
                 new RetainedInputEstimator.Limits(12, 128, 1_024, 64 * 1_024));
         ExecutionCompletionHandler completion = new ExecutionCompletionHandler(
-                store, enqueuer::enqueue, new DispatcherRouter(dispatcher, null), metrics, null, generations);
+                store, (queued, due, rejected) -> enqueuer.enqueue(queued), new DispatcherRouter(dispatcher, null), metrics, null, generations);
         ReactiveInvocationCoordinator coordinator = new ReactiveInvocationCoordinator(
                 enqueuer, metrics, syncGateway, null, completion, new InvocationResponseMapper(), waiters);
         return new Harness(store, factory, invocations, waiters, completion, coordinator);

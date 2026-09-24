@@ -62,13 +62,14 @@ class ExecutionCompletionHandlerRetryMetricsRegressionTest {
         ExecutionRecord executionRecord = new ExecutionRecord("exec-retry-e2e", originalTask, clock.source());
         executionStore.put(executionRecord);
 
-        when(enqueuer.enqueue(any())).thenReturn(true);
+        when(enqueuer.enqueue(any(), any(), any())).thenReturn(true);
 
         // The original caller waited 10 seconds before the first attempt was even dispatched.
         clock.advanceMillis(10_000);
         // Attempt 1 fails -> retried. resetForRetry stamps the retry attempt's enqueue with the
         // steered "now" (10s after admission), discarding nothing about the admission itself.
-        completionHandler.completeExecution("exec-retry-e2e", InvocationResult.error("ERROR", "attempt 1 failed"));
+        completionHandler.completeExecution("exec-retry-e2e", new it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult(
+                InvocationResult.error("ERROR", "attempt 1 failed"), false, null, clock.instant().plusSeconds(1)), 1);
         assertThat(executionRecord.completion().isDone()).isFalse();
         assertThat(executionRecord.task().attempt()).isEqualTo(2);
 

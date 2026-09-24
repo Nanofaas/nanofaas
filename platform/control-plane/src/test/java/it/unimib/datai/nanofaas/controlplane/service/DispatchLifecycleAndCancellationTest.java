@@ -143,8 +143,9 @@ class DispatchLifecycleAndCancellationTest {
         // Production wiring: the core-only retry enqueuer shares the capacity registry and
         // dispatches the immutable task with its ownership handle, so a retry must re-acquire a slot.
         ExecutionCompletionHandler[] holder = new ExecutionCompletionHandler[1];
+        var retryTimer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
         ExecutorBackedInvocationEnqueuer enqueuer = new ExecutorBackedInvocationEnqueuer(
-                task -> holder[0].dispatch(task), capacity, retryExecutor); // NOSONAR (java:S1612): holder[0]::dispatch would capture null
+                task -> holder[0].dispatch(task), capacity, retryExecutor, retryTimer, 264, java.time.Clock.systemUTC(), store); // NOSONAR (java:S1612): holder[0]::dispatch would capture null
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, enqueuer,
                 new DispatcherRouter(local, null), metrics, null, capacity);
         holder[0] = handler;
@@ -180,6 +181,7 @@ class DispatchLifecycleAndCancellationTest {
             await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
                     assertThat(capacity.inFlight("fn")).isZero());
         } finally {
+            enqueuer.shutdown();
             retryExecutor.shutdownNow();
         }
     }

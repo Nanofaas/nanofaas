@@ -66,7 +66,7 @@ class InvocationServiceEarlyRefusalTest {
         invocationService = TestWaiterCapacity.service(
                 functionService, enqueuer, executionStore, idempotencyStore,
                 metrics, syncQueueGateway,
-                new ExecutionCompletionHandler(executionStore, enqueuer::enqueue, dispatcherRouter, metrics),
+                new ExecutionCompletionHandler(executionStore, (queued, due, rejected) -> enqueuer.enqueue(queued), dispatcherRouter, metrics),
                 "full-fn", "hot-fn", "replay-fn", "sync-fn");
     }
 

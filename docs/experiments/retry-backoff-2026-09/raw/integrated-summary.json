@@ -1,0 +1,14 @@
+{
+  "tmp/nanolab-retry-burst-e5a8243727464333b62de312cb96905d/warm-calls.json": {
+    "success": 300
+  },
+  "tmp/nanolab-retry-burst-e5a8243727464333b62de312cb96905d/ready-calls.json": {
+    "success": 300
+  },
+  "tmp/nanolab-retry-burst-e5a8243727464333b62de312cb96905d/immediate-calls.json": {
+    "success": 300
+  },
+  "tmp/nanolab-retry-hint-e5a8243727464333b62de312cb96905d/calls.json": {
+    "success": 300
+  }
+}

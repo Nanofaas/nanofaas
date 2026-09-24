@@ -1,0 +1,24 @@
+SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+[bench] backlog=0 rep=1 pause=0.153ms pending=0 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=0 rep=2 pause=0.111ms pending=0 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=0 rep=3 pause=0.105ms pending=0 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=0 rep=4 pause=0.119ms pending=0 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=0 rep=5 pause=0.129ms pending=0 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=100 rep=1 pause=0.262ms pending=100 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=100 rep=2 pause=0.187ms pending=100 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=100 rep=3 pause=0.212ms pending=100 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=100 rep=4 pause=0.189ms pending=100 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=100 rep=5 pause=0.205ms pending=100 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=1000 rep=1 pause=0.501ms pending=999 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=1000 rep=2 pause=0.508ms pending=999 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=1000 rep=3 pause=0.762ms pending=999 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=1000 rep=4 pause=0.561ms pending=999 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=1000 rep=5 pause=0.498ms pending=999 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=10000 rep=1 pause=3.427ms pending=10000 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=10000 rep=2 pause=5.469ms pending=9999 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=10000 rep=3 pause=3.044ms pending=9999 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=10000 rep=4 pause=2.913ms pending=9999 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=10000 rep=5 pause=2.419ms pending=10000 liveIndexes=1 outcome=COMMITTED
+[bench] return-to-baseline: committed=1000 refused=0 pending switched=395 vs plain=398 live switched=1 vs plain=1 maxLive=2 conserved switched=true plain=true

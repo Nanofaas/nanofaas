@@ -291,7 +291,7 @@ class ExecutionCompletionHandlerSlotReleaseTest {
 
     private static final class CountingEnqueuer implements RetryScheduler {
         @Override
-        public boolean enqueue(InvocationTask task) {
+        public boolean enqueue(InvocationTask task, java.time.Instant notBefore, Runnable onRejected) {
             return true;
         }
 

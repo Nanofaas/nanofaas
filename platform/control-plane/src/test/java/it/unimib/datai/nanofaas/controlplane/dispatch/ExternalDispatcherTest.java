@@ -12,7 +12,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.Instant;
+import java.time.Clock;
+import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -21,6 +25,110 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ExternalDispatcherTest {
+    private static final Instant RETRY_NOW = Instant.parse("2026-09-24T12:00:00Z");
+
+    @Test
+    void retryAfterDatesAndDuplicatesAreUnambiguous() {
+        assertEquals(RETRY_NOW.plusSeconds(1), ExternalDispatcher.parseRetryAfter(List.of("1"), RETRY_NOW));
+        assertEquals(RETRY_NOW.plusSeconds(1), ExternalDispatcher.parseRetryAfter(
+                List.of("Thu, 24 Sep 2026 12:00:01 GMT"), RETRY_NOW));
+        assertEquals(RETRY_NOW.plusSeconds(1), ExternalDispatcher.parseRetryAfter(List.of(" 1 ", "1"), RETRY_NOW));
+        assertNull(ExternalDispatcher.parseRetryAfter(List.of("1", "2"), RETRY_NOW));
+        assertNull(ExternalDispatcher.parseRetryAfter(List.of("1, 2"), RETRY_NOW));
+        assertNull(ExternalDispatcher.parseRetryAfter(List.of("-1"), RETRY_NOW));
+        assertNull(ExternalDispatcher.parseRetryAfter(List.of(""), RETRY_NOW));
+        assertNull(ExternalDispatcher.parseRetryAfter(List.of("  "), RETRY_NOW));
+        assertNull(ExternalDispatcher.parseRetryAfter(List.of("+1"), RETRY_NOW));
+        assertNull(ExternalDispatcher.parseRetryAfter(List.of("1.5"), RETRY_NOW));
+        assertNull(ExternalDispatcher.parseRetryAfter(List.of("not-a-date"), RETRY_NOW));
+        assertEquals(RETRY_NOW, ExternalDispatcher.parseRetryAfter(List.of("0"), RETRY_NOW));
+        assertEquals(RETRY_NOW.minusSeconds(1), ExternalDispatcher.parseRetryAfter(
+                List.of("Thu, 24 Sep 2026 11:59:59 GMT"), RETRY_NOW));
+        assertEquals(Instant.MAX, ExternalDispatcher.parseRetryAfter(
+                List.of("999999999999999999999999999999"), RETRY_NOW));
+        assertEquals(Instant.MAX, ExternalDispatcher.parseRetryAfter(List.of("1"), Instant.MAX));
+        assertNull(ExternalDispatcher.parseRetryAfter(null, RETRY_NOW));
+    }
+
+    @Test
+    void retryAfterAcceptsLegacyHttpDates() {
+        assertEquals(RETRY_NOW.plusSeconds(1), ExternalDispatcher.parseRetryAfter(
+                List.of("Thursday, 24-Sep-26 12:00:01 GMT"), RETRY_NOW));
+        assertEquals(RETRY_NOW.plusSeconds(1), ExternalDispatcher.parseRetryAfter(
+                List.of("Thu Sep 24 12:00:01 2026"), RETRY_NOW));
+    }
+
+    @Test
+    void retryHintOnlyBelongsToUnmarkedRateLimitAndUnavailableResponses() throws Exception {
+        assertHint(429, false, "1", RETRY_NOW.plusSeconds(1));
+        assertHint(503, false, "Thu, 24 Sep 2026 12:00:01 GMT", RETRY_NOW.plusSeconds(1));
+        assertHint(500, false, "1", null);
+        assertHint(429, true, "1", null);
+        assertHint(503, true, "1", null);
+    }
+
+    @Test
+    void retryHintSurvivesErrorBodyDecodeFailure() throws Exception {
+        MockWebServer server = new MockWebServer();
+        server.enqueue(new MockResponse().setResponseCode(429).addHeader("Retry-After", "1")
+                .addHeader("X-Cold-Start", "true").addHeader("X-Init-Duration-Ms", "27")
+                .setBody("x".repeat(300_000)));
+        server.start();
+        try {
+            WebClient limitedClient = WebClient.builder().codecs(codecs ->
+                    codecs.defaultCodecs().maxInMemorySize(1024)).build();
+            DispatchResult result = new ExternalDispatcher(limitedClient,
+                    Clock.fixed(RETRY_NOW, ZoneOffset.UTC)).dispatch(taskFor(server)).get(5, TimeUnit.SECONDS);
+            assertFalse(result.result().success());
+            assertEquals("EXTERNAL_ERROR", result.result().error().code());
+            assertEquals(RETRY_NOW.plusSeconds(1), result.retryNotBefore());
+            assertTrue(result.coldStart());
+            assertEquals(27L, result.initDurationMs());
+        } finally {
+            server.shutdown();
+        }
+    }
+
+    @Test
+    void connectionRefusalHasNoRetryHint() throws Exception {
+        MockWebServer server = new MockWebServer();
+        server.start();
+        InvocationTask task = taskFor(server);
+        server.shutdown();
+
+        DispatchResult result = new ExternalDispatcher(WebClient.create(),
+                Clock.fixed(RETRY_NOW, ZoneOffset.UTC)).dispatch(task).get(5, TimeUnit.SECONDS);
+        assertFalse(result.result().success());
+        assertEquals("EXTERNAL_ERROR", result.result().error().code());
+        assertNull(result.retryNotBefore());
+    }
+
+    private static void assertHint(int status, boolean marked, String retryAfter, Instant expected) throws Exception {
+        MockWebServer server = new MockWebServer();
+        MockResponse response = new MockResponse().setResponseCode(status)
+                .addHeader("Retry-After", retryAfter).setBody(marked ? "{\"ok\":true}" : "busy");
+        if (marked) response.addHeader("X-NanoFaaS-Function-Status", "true");
+        server.enqueue(response);
+        server.start();
+        try {
+            DispatchResult result = new ExternalDispatcher(WebClient.create(),
+                    Clock.fixed(RETRY_NOW, ZoneOffset.UTC)).dispatch(taskFor(server)).get(5, TimeUnit.SECONDS);
+            assertEquals(marked, result.result().success());
+            assertEquals(expected, result.retryNotBefore());
+            if (marked) assertEquals(status, result.result().statusCode());
+            else assertEquals("EXTERNAL_ERROR", result.result().error().code());
+        } finally {
+            server.shutdown();
+        }
+    }
+
+    private static InvocationTask taskFor(MockWebServer server) {
+        FunctionSpec spec = new FunctionSpec("retry-fn", "image", null, Map.of(), null, 1000,
+                1, 10, 3, server.url("/invoke").toString(), ExecutionMode.EXTERNAL, null, null, null);
+        return new InvocationTask("retry-exec", "retry-fn", spec,
+                new InvocationRequest("payload", Map.of()), null, null, RETRY_NOW, 1, InvocationKind.SYNC);
+    }
+
     @Test
     void poolDispatchCallsEndpoint() throws Exception {
         MockWebServer server = new MockWebServer();

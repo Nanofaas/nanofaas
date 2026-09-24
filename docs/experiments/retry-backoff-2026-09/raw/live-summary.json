@@ -1,0 +1,118 @@
+{
+  "baseline": {
+    "managed": {
+      "immediate": {
+        "calls": 300,
+        "outcomes": {
+          "success": 266,
+          "error": 34
+        },
+        "errors": {
+          "callback_saturated": 34
+        },
+        "counterDeltas": {
+          "retry": 351.0,
+          "error": 34.0,
+          "success": 266.0
+        }
+      },
+      "ready": {
+        "calls": 300,
+        "outcomes": {
+          "success": 239,
+          "error": 61
+        },
+        "errors": {
+          "callback_saturated": 61
+        },
+        "counterDeltas": {
+          "retry": 412.0,
+          "error": 61.0,
+          "success": 239.0
+        }
+      },
+      "warm": {
+        "calls": 300,
+        "outcomes": {
+          "success": 237,
+          "error": 63
+        },
+        "errors": {
+          "callback_saturated": 63
+        },
+        "counterDeltas": {
+          "retry": 421.0,
+          "error": 63.0,
+          "success": 237.0
+        }
+      }
+    },
+    "distinctManagedIds": 900,
+    "firstReadyObservedAt": "2026-09-24T15:26:31.058816+00:00",
+    "hint": {
+      "distinctIds": 300,
+      "attempts": 1195,
+      "outcomes": {
+        "error": 297,
+        "success": 3
+      },
+      "retryGapMinSeconds": 0.000726701,
+      "retryGapMedianSeconds": 0.003307156,
+      "retryGapMaxSeconds": 1.054072272,
+      "retryGapsBelowOneSecond": 892
+    }
+  },
+  "candidate": {
+    "managed": {
+      "immediate": {
+        "calls": 300,
+        "outcomes": {
+          "success": 300
+        },
+        "errors": {},
+        "counterDeltas": {
+          "retry": 26.0,
+          "error": 0.0,
+          "success": 300.0
+        }
+      },
+      "ready": {
+        "calls": 300,
+        "outcomes": {
+          "success": 300
+        },
+        "errors": {},
+        "counterDeltas": {
+          "retry": 11.0,
+          "error": 0.0,
+          "success": 300.0
+        }
+      },
+      "warm": {
+        "calls": 300,
+        "outcomes": {
+          "success": 300
+        },
+        "errors": {},
+        "counterDeltas": {
+          "retry": 11.0,
+          "error": 0.0,
+          "success": 300.0
+        }
+      }
+    },
+    "distinctManagedIds": 900,
+    "firstReadyObservedAt": "2026-09-24T15:32:03.404133+00:00",
+    "hint": {
+      "distinctIds": 300,
+      "attempts": 600,
+      "outcomes": {
+        "success": 300
+      },
+      "retryGapMinSeconds": 1.000698158,
+      "retryGapMedianSeconds": 1.002181004,
+      "retryGapMaxSeconds": 1.009121074,
+      "retryGapsBelowOneSecond": 0
+    }
+  }
+}

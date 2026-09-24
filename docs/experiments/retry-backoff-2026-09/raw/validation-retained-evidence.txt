@@ -1,0 +1,4 @@
+baseline retry-backoff: REJECTED candidate invocation did not succeed
+baseline retry-hint: REJECTED candidate invocation did not succeed
+candidate retry-backoff: PASS
+candidate retry-hint: PASS

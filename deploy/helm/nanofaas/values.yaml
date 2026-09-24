@@ -5,6 +5,12 @@ namespace:
   name: nanofaas
 
 controlPlane:
+  # Retry timing override example (global startup settings):
+  # extraEnv:
+  #   - name: NANOFAAS_RETRY_INITIAL_BACKOFF
+  #     value: "100ms"
+  #   - name: NANOFAAS_RETRY_MAX_BACKOFF
+  #     value: "2s"
   replicaCount: 1
   # The scheduling strategy the composed engine starts on. Empty is the default and
   # means "no explicit selection": the engine derives the legacy mapping from the

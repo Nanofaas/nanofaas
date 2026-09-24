@@ -130,6 +130,30 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
                 .isEqualTo(1);
     }
 
+    @Test
+    void administrativeExpiryWinsOverDuplicateLateRetryRefusal() throws Exception {
+        var ticker = new java.util.concurrent.atomic.AtomicLong();
+        var store = new ExecutionStore(ExecutionStoreProperties.of(Duration.ofMinutes(5),
+                SHORT_MAX_LIFETIME, Duration.ofSeconds(30), 100), ticker::get);
+        var refusal = new java.util.concurrent.atomic.AtomicReference<Runnable>();
+        var handler = new ExecutionCompletionHandler(store, (next, due, rejected) -> {
+            refusal.set(rejected);
+            return true;
+        }, mock(DispatcherRouter.class), new Metrics(new SimpleMeterRegistry()));
+        var task = task("expiry-retry", "fn");
+        var record = new ExecutionRecord(task.executionId(), task);
+        store.put(record);
+        handler.completeExecution(task.executionId(), new DispatchResult(
+                InvocationResult.error("ORIGINAL", "busy"), false, null, Instant.MAX), 1);
+        ticker.set(Duration.ofSeconds(1).toNanos());
+        store.inFlightCount();
+        var expired = record.completion().get(5, java.util.concurrent.TimeUnit.SECONDS);
+        refusal.get().run();
+        refusal.get().run();
+        assertThat(expired.error().code()).isEqualTo(ExecutionCompletionHandler.EXECUTION_EXPIRED_CODE);
+        assertThat(record.completion().join()).isSameAs(expired);
+    }
+
     private static ExecutionStore shortLivedStore() {
         return new ExecutionStore(
                 ExecutionStoreProperties.of(Duration.ofMinutes(5), SHORT_MAX_LIFETIME, Duration.ofSeconds(30), 100_000),
@@ -150,7 +174,7 @@ class ExecutionCompletionHandlerAdministrativeExpiryTest {
 
     private static final class CountingEnqueuer implements RetryScheduler {
         @Override
-        public boolean enqueue(InvocationTask task) {
+        public boolean enqueue(InvocationTask task, java.time.Instant notBefore, Runnable onRejected) {
             return true;
         }
 

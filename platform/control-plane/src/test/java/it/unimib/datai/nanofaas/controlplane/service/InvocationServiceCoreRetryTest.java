@@ -40,9 +40,13 @@ class InvocationServiceCoreRetryTest {
 
     private ExecutorService retryExecutor;
     private ExecutionStore store;
+    private it.unimib.datai.nanofaas.controlplane.config.RetryProperties retryProperties =
+            new it.unimib.datai.nanofaas.controlplane.config.RetryProperties(null, null);
+    private final java.util.List<ExecutorBackedInvocationEnqueuer> enqueuers = new java.util.ArrayList<>();
 
     @AfterEach
     void tearDown() {
+        enqueuers.forEach(ExecutorBackedInvocationEnqueuer::shutdown);
         if (retryExecutor != null) {
             retryExecutor.shutdownNow();
         }
@@ -61,14 +65,19 @@ class InvocationServiceCoreRetryTest {
         return handlerBackedBy(store, dispatcherRouter, retryExecutor);
     }
 
-    private static ExecutionCompletionHandler handlerBackedBy(ExecutionStore store,
+    private ExecutionCompletionHandler handlerBackedBy(ExecutionStore store,
                                                                DispatcherRouter dispatcherRouter,
                                                                ExecutorService executor) {
         ExecutionCompletionHandler[] handlerHolder = new ExecutionCompletionHandler[1];
+        var capacity = new it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry();
+        capacity.register("fn", 4);
+        var timer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
         ExecutorBackedInvocationEnqueuer enqueuer =
-                new ExecutorBackedInvocationEnqueuer(t -> handlerHolder[0].dispatch(t), new it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry(), executor); // NOSONAR (java:S1612): handlerHolder[0]::dispatch would capture null
+                new ExecutorBackedInvocationEnqueuer(t -> handlerHolder[0].dispatch(t), capacity, executor, timer, 264, java.time.Clock.systemUTC(), store); // NOSONAR (java:S1612): handlerHolder[0]::dispatch would capture null
         ExecutionCompletionHandler handler =
-                new ExecutionCompletionHandler(store, enqueuer, dispatcherRouter, new Metrics(new SimpleMeterRegistry()));
+                new ExecutionCompletionHandler(store, enqueuer, dispatcherRouter, new Metrics(new SimpleMeterRegistry()),
+                        null, capacity, retryProperties);
+        enqueuers.add(enqueuer);
         handlerHolder[0] = handler;
         return handler;
     }
@@ -253,7 +262,8 @@ class InvocationServiceCoreRetryTest {
 
         handler.dispatch(executionRecord.task());
 
-        assertThat(executionRecord.completion().isDone()).isTrue();
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() ->
+                assertThat(executionRecord.completion().isDone()).isTrue());
         assertThat(executionRecord.completion().join().success()).isFalse();
         assertThat(executionRecord.state()).isNotEqualTo(ExecutionState.QUEUED);
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
@@ -267,6 +277,9 @@ class InvocationServiceCoreRetryTest {
         // Regression for "avoid recursion when the future completes immediately": LOCAL-style
         // dispatch resolves synchronously, so without the executor hop, handleRetry -> enqueue
         // -> dispatch -> handleRetry would recurse directly on the calling thread.
+        // Keep the stack-safety workload fast while still using the real timer and worker hops.
+        retryProperties = new it.unimib.datai.nanofaas.controlplane.config.RetryProperties(
+                java.time.Duration.ofNanos(1), java.time.Duration.ofNanos(1));
         int maxRetries = 20_000;
         AtomicInteger attempts = new AtomicInteger();
         ExecutionCompletionHandler handler = newHandlerWithRealRetryEnqueuer(alwaysFailingDispatcher(attempts));
