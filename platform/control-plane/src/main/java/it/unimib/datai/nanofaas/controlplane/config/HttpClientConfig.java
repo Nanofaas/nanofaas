@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.controlplane.config;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.netty.channel.ChannelOption;
+import io.netty.resolver.dns.NoopDnsCache;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -63,9 +64,7 @@ public class HttpClientConfig {
     public WebClient webClient(WebClient.Builder builder,
                                HttpClientProperties properties,
                                ConnectionProvider dispatchConnectionProvider) {
-        HttpClient httpClient = HttpClient.create(dispatchConnectionProvider)
-                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, properties.connectTimeoutMs())
-                .responseTimeout(Duration.ofMillis(properties.readTimeoutMs()));
+        HttpClient httpClient = dispatchHttpClient(properties, dispatchConnectionProvider);
 
         return builder
                 .clientConnector(new ReactorClientHttpConnector(httpClient))
@@ -73,5 +72,22 @@ public class HttpClientConfig {
                         .defaultCodecs()
                         .maxInMemorySize(properties.maxInMemorySizeMb() * 1024 * 1024))
                 .build();
+    }
+
+    /**
+     * The dispatch client resolves on every new connection instead of caching DNS answers.
+     *
+     * <p>A function deleted and re-registered under the same name gets a new Service with a new
+     * ClusterIP. Cached for the record's TTL (30 s on minikube's CoreDNS), the old answer kept
+     * dispatches dialing the deleted ClusterIP, where nothing answers: each connect hung to the
+     * connect timeout and invocations timed out although the new pod was Ready. A no-op cache,
+     * not a zero TTL: Netty rejects a maximum TTL of zero. Connections are pooled, so a lookup
+     * happens only when one is opened.
+     */
+    static HttpClient dispatchHttpClient(HttpClientProperties properties, ConnectionProvider provider) {
+        return HttpClient.create(provider)
+                .resolver(spec -> spec.resolveCache(NoopDnsCache.INSTANCE))
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, properties.connectTimeoutMs())
+                .responseTimeout(Duration.ofMillis(properties.readTimeoutMs()));
     }
 }
