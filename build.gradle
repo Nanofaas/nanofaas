@@ -79,6 +79,16 @@ subprojects {
         toolVersion = '0.8.14'
     }
 
+    // Spring Boot packs collectReachabilityMetadata's output into the bootJar for buildpack native
+    // builds, and that task never cleans its directory: the jar carried metadata for every version
+    // ever resolved. No native image here is built from a bootJar (bootBuildImage is disabled;
+    // nativeCompile reads the metadata repository itself), so leave it out.
+    plugins.withId('org.springframework.boot') {
+        tasks.named('bootJar') {
+            exclude { it.file.path.contains("${File.separator}native-reachability-metadata${File.separator}") }
+        }
+    }
+
     tasks.withType(Test).configureEach {
         useJUnitPlatform()
         finalizedBy jacocoTestReport
