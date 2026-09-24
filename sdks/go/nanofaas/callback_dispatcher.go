@@ -104,6 +104,9 @@ type CallbackReservation struct {
 	dispatcher      *CallbackDispatcher
 	released        atomic.Bool
 	serializedBytes atomic.Int64
+	// heldBytes is this reservation's share of pendingCallbackBytes, guarded by capacityMu:
+	// the maximum payload at admission, the serialized size once the callback is encoded.
+	heldBytes int64
 }
 
 func (d *CallbackDispatcher) TryReserve() *CallbackReservation {
@@ -119,7 +122,7 @@ func (d *CallbackDispatcher) TryReserve() *CallbackReservation {
 	d.pendingCallbacks++
 	d.pendingCallbackBytes += d.maxCallbackPayloadBytes
 	d.signalChangedLocked()
-	return &CallbackReservation{dispatcher: d}
+	return &CallbackReservation{dispatcher: d, heldBytes: d.maxCallbackPayloadBytes}
 }
 
 func (r *CallbackReservation) Release() {
@@ -129,7 +132,8 @@ func (r *CallbackReservation) Release() {
 	d := r.dispatcher
 	d.capacityMu.Lock()
 	d.pendingCallbacks--
-	d.pendingCallbackBytes -= d.maxCallbackPayloadBytes
+	d.pendingCallbackBytes -= r.heldBytes
+	r.heldBytes = 0
 	d.serializedCallbackBytes -= r.serializedBytes.Load()
 	d.signalChangedLocked()
 	d.capacityMu.Unlock()
@@ -192,6 +196,13 @@ func (d *CallbackDispatcher) SubmitReserved(ctx context.Context, reservation *Ca
 	}
 	d.capacityMu.Lock()
 	d.serializedCallbackBytes += int64(len(body))
+	// Admission reserved the maximum payload, the output being unknown. Held until delivery,
+	// that capped pending callbacks at maxPendingCallbackBytes / maxCallbackPayloadBytes rather
+	// than maxPendingCallbacks; the encoded callback keeps only its own size. Never grows.
+	if serialized := int64(len(body)); !reservation.released.Load() && serialized < reservation.heldBytes {
+		d.pendingCallbackBytes -= reservation.heldBytes - serialized
+		reservation.heldBytes = serialized
+	}
 	d.signalChangedLocked()
 	d.capacityMu.Unlock()
 	defer func() {

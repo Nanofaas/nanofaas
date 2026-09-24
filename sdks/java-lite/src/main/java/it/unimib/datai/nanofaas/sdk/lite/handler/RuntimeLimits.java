@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.sdk.lite.handler;
 
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.LongConsumer;
 
 final class RuntimeLimits {
     static final int DEFAULT_HANDLERS = 32;
@@ -75,7 +76,7 @@ final class RuntimeLimits {
     synchronized Reservation tryReserveHandler() {
         if (!accepting || activeHandlers >= maxHandlers) return null;
         activeHandlers++;
-        return new Reservation(this::releaseHandler);
+        return new Reservation(this::releaseHandler, bytes -> { });
     }
 
     synchronized Reservation tryReserveCallback() {
@@ -83,7 +84,11 @@ final class RuntimeLimits {
                 || maxCallbackBytes > maxPendingCallbackBytes - pendingCallbackBytes) return null;
         pendingCallbacks++;
         pendingCallbackBytes += maxCallbackBytes;
-        return new Reservation(this::releaseCallback);
+        // The maximum, since the output is unknown here; shrinkTo returns the rest once the
+        // callback is serialized. Held to delivery, the maximum capped pending callbacks at
+        // maxPendingCallbackBytes / maxCallbackBytes rather than maxCallbacks.
+        long[] held = {maxCallbackBytes};
+        return new Reservation(() -> releaseCallback(held), bytes -> shrinkCallback(held, bytes));
     }
 
     synchronized void stopAdmission() { accepting = false; }
@@ -92,7 +97,18 @@ final class RuntimeLimits {
     synchronized int pendingCallbacks() { return pendingCallbacks; }
     synchronized long pendingCallbackBytes() { return pendingCallbackBytes; }
     private synchronized void releaseHandler() { activeHandlers--; }
-    private synchronized void releaseCallback() { pendingCallbacks--; pendingCallbackBytes -= maxCallbackBytes; }
+    private synchronized void releaseCallback(long[] held) {
+        pendingCallbacks--;
+        pendingCallbackBytes -= held[0];
+        held[0] = -1;
+    }
+
+    private synchronized void shrinkCallback(long[] held, long bytes) {
+        if (held[0] >= 0 && bytes < held[0]) {
+            pendingCallbackBytes -= held[0] - bytes;
+            held[0] = bytes;
+        }
+    }
 
     private static int setting(String property, String environment, int fallback) {
         long value = settingLong(property, environment, fallback);
@@ -114,8 +130,11 @@ final class RuntimeLimits {
 
     static final class Reservation implements AutoCloseable {
         private final Runnable release;
+        private final LongConsumer shrink;
         private final AtomicBoolean closed = new AtomicBoolean();
-        private Reservation(Runnable release) { this.release = release; }
+        private Reservation(Runnable release, LongConsumer shrink) { this.release = release; this.shrink = shrink; }
         @Override public void close() { if (closed.compareAndSet(false, true)) release.run(); }
+        /** Keeps only {@code bytes} of a callback reserve; never grows it, no-op once released. */
+        void shrinkTo(long bytes) { shrink.accept(bytes); }
     }
 }

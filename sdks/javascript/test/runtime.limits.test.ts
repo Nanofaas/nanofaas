@@ -1046,8 +1046,10 @@ test("owned resource counters expose reservations and return to zero after callb
         assert.equal(metricValue(retained, "runtime_input_bytes"), 0);
         assert.equal(metricValue(retained, "runtime_output_bytes"), 0);
         assert.equal(metricValue(retained, "runtime_pending_callbacks"), 1);
-        assert.equal(metricValue(retained, "runtime_pending_callback_bytes"), 1_024);
+        // Admission reserved the 1 024-byte maximum; the pending callback now holds its serialized size.
         assert.ok(metricValue(retained, "runtime_serialized_callback_bytes") > 0);
+        assert.equal(metricValue(retained, "runtime_pending_callback_bytes"),
+            metricValue(retained, "runtime_serialized_callback_bytes"));
 
         release.resolve();
         const drained = await waitForCountersToDrain(runtime.baseUrl);
@@ -1206,5 +1208,44 @@ test("concurrent start callers await one bind and stop owns a pending bind", asy
     } finally {
         await stoppedDuringBind.stop();
         await runtime.stop();
+    }
+});
+
+// Admission reserves the largest callback payload, the output being unknown; held until
+// delivery, that capped pending callbacks at maxPendingCallbackBytes / maxCallbackPayloadBytes
+// (8 with the defaults) instead of callbackQueueSize. Once serialized, a callback holds its size.
+test("a pending callback holds its serialized size rather than the maximum payload", async () => {
+    const releaseCallbacks = deferred();
+    const twoPending = deferred();
+    let pending = 0;
+    const callbackServer = createServer(async (_req, res) => {
+        pending += 1;
+        if (pending === 2) twoPending.resolve();
+        await releaseCallbacks.promise;
+        res.writeHead(200);
+        res.end();
+    });
+    const callbackPort = await listen(callbackServer);
+    const runtime = createRuntime(options({
+        callbackUrl: `http://127.0.0.1:${callbackPort}`,
+        callbackAttemptTimeoutMs: 2_000,
+        callbackQueueSize: 8,
+        maxConcurrentHandlers: 4,
+        maxPendingCallbackBytes: 2_048,
+    }));
+    runtime.register("echo", async () => null);
+    await runtime.start();
+    try {
+        assert.equal((await invoke(runtime.baseUrl, "first", null)).status, 200);
+        assert.equal((await invoke(runtime.baseUrl, "second", null)).status, 200);
+        await twoPending.promise;
+
+        const third = await invoke(runtime.baseUrl, "third", null);
+
+        assert.equal(third.status, 200, "two small pending callbacks must not fill a budget of two maximum payloads");
+    } finally {
+        releaseCallbacks.resolve();
+        await runtime.stop();
+        await close(callbackServer);
     }
 });

@@ -36,8 +36,44 @@ class CallbackDispatcherLimitsTest {
 
         assertTrue(dispatcher.submit("exec", CallbackPayload.error("E", "m"), null, null));
         assertTrue(entered.await(1, TimeUnit.SECONDS));
-        assertEquals(64, dispatcher.pendingCallbackBytes());
+        // Admission reserved the 64-byte maximum; the queued callback now holds its 2 serialized bytes.
+        assertEquals(2, dispatcher.pendingCallbackBytes());
 
+        release.countDown();
+        org.awaitility.Awaitility.await().atMost(1, TimeUnit.SECONDS)
+                .untilAsserted(() -> assertEquals(0, dispatcher.pendingCallbackBytes()));
+    }
+
+    /**
+     * Admission reserves the largest payload a callback may have, since the output is not known
+     * yet; before this the reservation stayed at that maximum until delivery. With the defaults
+     * (2 MiB each, 16 MiB total) that capped pending callbacks at 8 instead of 128, and a freshly
+     * started function answered RUNTIME_CALLBACK_SATURATED to a burst while its first callbacks
+     * were still slow to leave. Once serialized, a callback holds only its own size.
+     */
+    @Test
+    void aQueuedCallbackHoldsItsSerializedSizeRatherThanTheMaximumPayload() throws Exception {
+        CallbackClient callbackClient = mock(CallbackClient.class);
+        when(callbackClient.serializeBounded(any(), anyInt())).thenReturn(new byte[] {'{', '}'});
+        var release = new java.util.concurrent.CountDownLatch(1);
+        when(callbackClient.sendSerializedResult(anyString(), any(byte[].class), any(), any())).thenAnswer(_ -> {
+            release.await();
+            return true;
+        });
+        executor = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(4), new ThreadPoolExecutor.AbortPolicy());
+        dispatcher = new CallbackDispatcher(callbackClient, executor, null, 8, 128, 64);
+
+        assertEquals(CallbackDispatcher.SubmitResult.ACCEPTED,
+                dispatcher.submit(dispatcher.reserveInvocation(), "a", CallbackPayload.error("E", "m"), null, null));
+        assertEquals(CallbackDispatcher.SubmitResult.ACCEPTED,
+                dispatcher.submit(dispatcher.reserveInvocation(), "b", CallbackPayload.error("E", "m"), null, null));
+
+        assertEquals(4, dispatcher.pendingCallbackBytes(), "two 2-byte callbacks, not two 64-byte maxima");
+        CallbackDispatcher.CallbackReservation third = dispatcher.tryReserve(64);
+        assertNotNull(third, "a third admission must still fit the 128-byte budget");
+
+        third.close();
         release.countDown();
         org.awaitility.Awaitility.await().atMost(1, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertEquals(0, dispatcher.pendingCallbackBytes()));

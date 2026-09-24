@@ -635,6 +635,17 @@ function releaseCallback(
     state.metrics.pendingCallbackBytes.dec(reservation.bytes);
 }
 
+// Admission reserved the largest payload, the output being unknown. Held until delivery, that
+// capped pending callbacks at maxPendingCallbackBytes / maxCallbackPayloadBytes rather than
+// callbackQueueSize; once serialized, the callback keeps only its own size. Never grows.
+function shrinkCallback(state: RuntimeState, reservation: CallbackReservation, bytes: number): void {
+    if (reservation.released || bytes >= reservation.bytes) return;
+    const returned = reservation.bytes - bytes;
+    reservation.bytes = bytes;
+    state.pendingCallbackBytes -= returned;
+    state.metrics.pendingCallbackBytes.dec(returned);
+}
+
 function dispatchCallback(
     state: RuntimeState,
     reservation: CallbackReservation | undefined,
@@ -650,6 +661,7 @@ function dispatchCallback(
         return false;
     }
     const bodyBytes = Buffer.byteLength(body, "utf8");
+    shrinkCallback(state, reservation, bodyBytes);
     state.serializedCallbackBytes += bodyBytes;
     state.metrics.serializedCallbackBytes.inc(bodyBytes);
     const callback = sendCallback(state, target, body, state.callbackController.signal);

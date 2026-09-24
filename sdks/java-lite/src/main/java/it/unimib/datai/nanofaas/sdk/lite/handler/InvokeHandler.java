@@ -359,6 +359,7 @@ public final class InvokeHandler implements HttpHandler {
             log.warn("Rejecting unserializable callback for execution {}", executionId, ex);
             return CallbackHandoff.SERIALIZATION_FAILED;
         }
+        reservation.shrinkTo(callbackBody.length);
         try {
             callbackExecutor.execute(new CallbackTask(
                     reservation, executionId, callbackBody, traceId, dispatchAttempt));
