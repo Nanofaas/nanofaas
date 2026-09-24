@@ -24,6 +24,13 @@ spec:
         - name: control-plane
           image: "{{ .Values.controlPlane.image.repository }}:{{ .Values.controlPlane.image.tag }}"
           imagePullPolicy: {{ .Values.controlPlane.image.pullPolicy }}
+          {{- $ioWorkerCount := .Values.controlPlane.jvm.ioWorkerCount | default (include "nanofaas.controlPlane.ioWorkerCount" .) }}
+          # A native image never reads JAVA_TOOL_OPTIONS (only the HotSpot launcher does), so the
+          # event-loop count set there below is also passed as an argument. The native binary
+          # parses -D from its command line; a JVM image, whose ENTRYPOINT ends in -jar, receives
+          # it as a non-option program argument that Spring Boot ignores.
+          args:
+            - "-Dreactor.netty.ioWorkerCount={{ $ioWorkerCount }}"
           ports:
             - containerPort: {{ .Values.controlPlane.service.ports.http }}
             - containerPort: {{ .Values.controlPlane.service.ports.actuator }}
@@ -74,7 +81,7 @@ spec:
             # controlPlane.jvm.ioWorkerCount overrides the auto-derived value when
             # set; empty (the default) derives it from resources.limits.cpu.
             - name: JAVA_TOOL_OPTIONS
-              value: "-Dreactor.netty.ioWorkerCount={{ .Values.controlPlane.jvm.ioWorkerCount | default (include "nanofaas.controlPlane.ioWorkerCount" .) }}"
+              value: "-Dreactor.netty.ioWorkerCount={{ $ioWorkerCount }}"
             {{- with .Values.controlPlane.extraEnv }}
             {{- range $env := . }}
             - name: {{ $env.name | quote }}

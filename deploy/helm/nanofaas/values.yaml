@@ -67,6 +67,9 @@ controlPlane:
     # value that ignores the CPU limit - e.g. to reproduce Esperimento B's
     # matrix cells, which held the limit fixed at 1 core and varied the
     # worker count independently of it.
+    #
+    # Despite the "jvm" key this also applies to a native control-plane image:
+    # the template passes it both in JAVA_TOOL_OPTIONS and as a -D argument.
     ioWorkerCount: ""
   invocationCapacity:
     # Finite live-owner budgets calibrated for the 512Mi request below. Byte

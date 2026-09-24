@@ -102,6 +102,20 @@ def test_invocation_capacity_env_values_render_as_integers():
     assert [value for _, value in rendered if not value.isdigit()] == []
 
 
+def test_io_worker_count_reaches_both_jvm_and_native_images():
+    """A native binary ignores JAVA_TOOL_OPTIONS, so the count must also be an argument.
+
+    Before the argument existed a native control plane at a one-core limit ran
+    reactor-netty's default four event loops, not the one the chart derives.
+    """
+    for extra, expected in [((), "1"), (("--set", "controlPlane.resources.limits.cpu=1500m"), "2"),
+                            (("--set", "controlPlane.jvm.ioWorkerCount=3"), "3")]:
+        out = render("templates/control-plane-deployment.yaml", *extra)
+        flag = f'-Dreactor.netty.ioWorkerCount={expected}"'
+        assert re.search(r"args:\n\s+- \"" + re.escape(flag), out), out
+        assert re.search(r"name: JAVA_TOOL_OPTIONS\n\s+value: \"" + re.escape(flag), out), out
+
+
 def test_no_rendered_number_uses_scientific_notation():
     """The guard for whatever capacity the chart grows next."""
     assert re.search(r"[0-9]e[+-][0-9]", render_all()) is None
