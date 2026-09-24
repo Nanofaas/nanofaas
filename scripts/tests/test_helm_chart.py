@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 import subprocess
 from pathlib import Path
@@ -135,6 +136,16 @@ def test_callback_url_targets_this_releases_service_and_namespace():
     assert callback("--set", "namespace.create=false", "--namespace", "team-a") \
         == "http://control-plane.team-a.svc.cluster.local:8080/v1/internal/executions"
     assert callback("--set", "controlPlane.callbackUrl=http://proxy:1/cb") == "http://proxy:1/cb"
+
+
+def test_raw_manifest_io_worker_count_matches_its_cpu_limit():
+    """deploy/k8s is static, so its loop count must track its own limit by the chart's rule."""
+    manifest = (REPO_ROOT / "deploy" / "k8s" / "control-plane-deployment.yaml").read_text()
+    cpu = re.search(r"limits:\n\s+cpu: \"?([0-9.]+m?)\"?", manifest).group(1)
+    cores = float(cpu[:-1]) / 1000 if cpu.endswith("m") else float(cpu)
+    expected = f"-Dreactor.netty.ioWorkerCount={max(1, math.ceil(cores))}"
+    assert re.search(r"args:\n\s+- \"" + re.escape(expected) + "\"", manifest), expected
+    assert re.search(r"name: JAVA_TOOL_OPTIONS\n\s+value: \"" + re.escape(expected) + "\"", manifest), expected
 
 
 def test_no_rendered_number_uses_scientific_notation():
