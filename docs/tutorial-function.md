@@ -202,7 +202,9 @@ nanofaas fn test greet --payloads ./payloads/
 ```
 
 Runs every payload file against the deployed function and compares responses
-to `expected`.
+to `expected`. A case also checks the HTTP status: `expectedStatusCode`,
+200 when absent. `missing-input.json` declares the 422 the generated handler
+returns for missing input.
 
 ---
 

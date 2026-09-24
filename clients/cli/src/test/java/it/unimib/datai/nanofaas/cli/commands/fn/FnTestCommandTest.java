@@ -221,6 +221,72 @@ class FnTestCommandTest {
     }
 
     @Test
+    void testPayloadPassesWhenFunctionDecidedStatusMatchesExpectedStatusCode() throws Exception {
+        Path payloads = Files.createDirectories(tmp.resolve("payloads"));
+        Files.writeString(payloads.resolve("missing-input.json"), """
+                {
+                  "description": "empty input",
+                  "input": {},
+                  "expected": {"error": "missing"},
+                  "expectedStatusCode": 422
+                }
+                """);
+        server.enqueue(functionDecided(422, "{\"error\":\"missing\"}"));
+
+        String out = runFnTest(payloads, 0);
+
+        assertThat(out).contains("✅").contains("1 passed, 0 failed");
+    }
+
+    @Test
+    void testPayloadFailsWhenStatusDiffersFromExpectedStatusCode() throws Exception {
+        Path payloads = Files.createDirectories(tmp.resolve("payloads"));
+        Files.writeString(payloads.resolve("missing-input.json"), """
+                {
+                  "description": "empty input",
+                  "input": {},
+                  "expected": {"error": "missing"},
+                  "expectedStatusCode": 422
+                }
+                """);
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"executionId\":\"e1\",\"status\":\"success\",\"output\":{\"error\":\"missing\"}}"));
+
+        String out = runFnTest(payloads, 1);
+
+        assertThat(out)
+                .contains("expected http status: 422")
+                .contains("0 passed, 1 failed");
+    }
+
+    private static MockResponse functionDecided(int status, String output) {
+        return new MockResponse()
+                .setResponseCode(status)
+                .addHeader("X-NanoFaaS-Function-Status", "true")
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"executionId\":\"e1\",\"status\":\"success\",\"output\":" + output
+                        + ",\"statusCode\":" + status + "}");
+    }
+
+    private String runFnTest(Path payloads, int expectedExit) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PrintStream previousOut = System.out;
+        System.setOut(new PrintStream(out));
+        try {
+            int exit = new CommandLine(new RootCommand()).execute(
+                    "--endpoint", server.url("/").toString(),
+                    "fn", "test", "echo",
+                    "--payloads", payloads.toString());
+            assertThat(exit).as(out.toString()).isEqualTo(expectedExit);
+        } finally {
+            System.setOut(previousOut);
+        }
+        return out.toString();
+    }
+
+    @Test
     void testPayloadResolvesJsonAssetInputRelativeToPayloadFile() throws Exception {
         Path payloads = Files.createDirectories(tmp.resolve("payloads"));
         Path assets = Files.createDirectories(payloads.resolve("assets"));

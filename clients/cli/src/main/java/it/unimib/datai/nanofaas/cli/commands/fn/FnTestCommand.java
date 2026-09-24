@@ -58,9 +58,15 @@ public class FnTestCommand implements Callable<Integer> {
             }
             InvocationResponse response = callResult.response();
 
-            if (callResult.isSuccessful() && "success".equalsIgnoreCase(response.status())) {
+            if ("success".equalsIgnoreCase(response.status())) {
                 JsonNode actual = json.valueToTree(response.output());
-                if (actual.equals(payload.expected())) {
+                if (callResult.httpStatus() != payload.expectedStatusCode()) {
+                    failed++;
+                    System.out.printf("\u274c %s - %s%n", file.getFileName(), payload.description());
+                    System.out.printf("  expected http status: %d%n", payload.expectedStatusCode());
+                    System.out.printf("  actual http status:   %d%n", callResult.httpStatus());
+                    System.out.printf("  output: %s%n", compact(actual));
+                } else if (actual.equals(payload.expected())) {
                     passed++;
                     System.out.printf("\u2705 %s - %s%n", file.getFileName(), payload.description());
                 } else {
@@ -119,7 +125,9 @@ public class FnTestCommand implements Callable<Integer> {
         JsonNode input = require(root, "input", file);
         JsonNode expected = require(root, "expected", file);
         String description = root.path("description").asText(file.getFileName().toString());
-        return new PayloadCase(description, resolveInput(file, input, root), expected);
+        // Same key and default as the functions' correctness.json corpus.
+        int expectedStatusCode = root.path("expectedStatusCode").asInt(200);
+        return new PayloadCase(description, resolveInput(file, input, root), expected, expectedStatusCode);
     }
 
     private JsonNode resolveInput(Path payloadFile, JsonNode input, JsonNode root) {
@@ -157,6 +165,6 @@ public class FnTestCommand implements Callable<Integer> {
         }
     }
 
-    private record PayloadCase(String description, JsonNode input, JsonNode expected) {
+    private record PayloadCase(String description, JsonNode input, JsonNode expected, int expectedStatusCode) {
     }
 }
