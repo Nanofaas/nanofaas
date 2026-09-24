@@ -7,6 +7,8 @@ import com.sun.net.httpserver.HttpHandler;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.common.runtime.FunctionHandler;
+import it.unimib.datai.nanofaas.common.runtime.HandlerResponse;
+import it.unimib.datai.nanofaas.common.runtime.ResponseHeaderPolicy;
 import it.unimib.datai.nanofaas.sdk.lite.FunctionContext;
 import it.unimib.datai.nanofaas.sdk.lite.callback.CallbackClient;
 import it.unimib.datai.nanofaas.sdk.lite.metrics.RuntimeMetrics;
@@ -39,6 +41,7 @@ public final class InvokeHandler implements HttpHandler {
     private static final String ERROR_KEY = "error";
     private static final AtomicInteger CALLBACK_THREAD_COUNTER = new AtomicInteger();
     private static final String OUTPUT_TOO_LARGE_CODE = "RUNTIME_OUTPUT_TOO_LARGE";
+    private static final String OUTPUT_SERIALIZATION_ERROR_CODE = "OUTPUT_SERIALIZATION_ERROR";
     private static final String MESSAGE_KEY = "message";
     private static final String RETRY_AFTER = "Retry-After";
     private final FunctionHandler functionHandler;
@@ -157,7 +160,27 @@ public final class InvokeHandler implements HttpHandler {
             }
             Object output = invokeWithTimeout(readResult.request());
 
-            byte[] outputBody = serializeOutput(output);
+            // Same envelope semantics as the Java SDK's InvokeController: a HandlerResponse is the
+            // function deciding its own status, headers and encoding, not a value to serialize.
+            HandlerResponse envelope = output instanceof HandlerResponse response ? response : null;
+            if (envelope != null && !ResponseHeaderPolicy.isStatusCodeValid(envelope.statusCode())) {
+                String message = "Handler returned invalid statusCode: " + envelope.statusCode();
+                log.warn("{} for execution {}", message, effectiveExecutionId);
+                failInvocation(callbackReservation, effectiveExecutionId,
+                        InvocationResult.error(OUTPUT_SERIALIZATION_ERROR_CODE, message), traceId, dispatchAttempt);
+                callbackReservation = null;
+                sendJson(exchange, 500, Map.of(ERROR_KEY, Map.of(
+                        "code", OUTPUT_SERIALIZATION_ERROR_CODE, MESSAGE_KEY, message)));
+                return;
+            }
+            Map<String, String> envelopeHeaders = envelope == null
+                    ? Map.of() : ResponseHeaderPolicy.filterAllowedHeaders(envelope.headers());
+            if (envelope != null && envelope.headers() != null
+                    && envelopeHeaders.size() != envelope.headers().size()) {
+                log.warn("Dropped response header(s) for execution {}", effectiveExecutionId);
+            }
+
+            byte[] outputBody = serializeOutput(envelope == null ? output : envelope.output());
             if (outputBody.length == 0) {
                 failInvocation(callbackReservation, effectiveExecutionId, InvocationResult.error(
                         OUTPUT_TOO_LARGE_CODE, "Runtime output exceeds configured byte limit"), traceId, dispatchAttempt);
@@ -170,8 +193,13 @@ public final class InvokeHandler implements HttpHandler {
 
             metrics.recordInvocation(functionName);
 
+            Object callbackOutput = objectMapper.readTree(outputBody);
             CallbackHandoff handoff = dispatchCallback(callbackReservation, effectiveExecutionId,
-                    InvocationResult.success(objectMapper.readTree(outputBody)), traceId, dispatchAttempt);
+                    envelope == null
+                            ? InvocationResult.success(callbackOutput)
+                            : InvocationResult.successWithEnvelope(callbackOutput, envelope.statusCode(),
+                                    envelopeHeaders, envelope.encoding()),
+                    traceId, dispatchAttempt);
             callbackReservation = null;
             if (handoff != CallbackHandoff.ACCEPTED) {
                 sendCallbackHandoffFailure(exchange, handoff);
@@ -179,7 +207,14 @@ public final class InvokeHandler implements HttpHandler {
             }
 
             if (isColdStart) markColdStart(exchange, initDurationMs);
-            sendJsonBytes(exchange, 200, outputBody);
+            if (envelope != null) {
+                envelopeHeaders.forEach((name, value) -> exchange.getResponseHeaders().set(name, value));
+                exchange.getResponseHeaders().set("X-NanoFaaS-Function-Status", "true");
+                if (envelope.encoding() != null) {
+                    exchange.getResponseHeaders().set("X-NanoFaaS-Encoding", envelope.encoding());
+                }
+            }
+            sendJsonBytes(exchange, envelope == null ? 200 : envelope.statusCode(), outputBody);
         } catch (TimeoutException _) {
             failInvocation(callbackReservation, effectiveExecutionId,
                     InvocationResult.error("HANDLER_TIMEOUT", "Handler exceeded configured timeout"),
@@ -438,7 +473,10 @@ public final class InvokeHandler implements HttpHandler {
     }
 
     private void sendJsonBytes(HttpExchange exchange, int status, byte[] bytes) throws IOException {
-        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        // A Content-Type chosen by a HandlerResponse wins; the body stays the JSON serialization.
+        if (!exchange.getResponseHeaders().containsKey("Content-Type")) {
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+        }
         exchange.sendResponseHeaders(status, bytes.length);
         exchange.getResponseBody().write(bytes);
         exchange.close();
@@ -453,7 +491,7 @@ public final class InvokeHandler implements HttpHandler {
         }
         String code = handoff == CallbackHandoff.PAYLOAD_TOO_LARGE
                 ? OUTPUT_TOO_LARGE_CODE
-                : "OUTPUT_SERIALIZATION_ERROR";
+                : OUTPUT_SERIALIZATION_ERROR_CODE;
         sendJson(exchange, 500, Map.of(ERROR_KEY, Map.of(
                 "code", code, MESSAGE_KEY, "Runtime callback handoff failed")));
     }

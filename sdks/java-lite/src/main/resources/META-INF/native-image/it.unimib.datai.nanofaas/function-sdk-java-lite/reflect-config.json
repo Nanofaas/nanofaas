@@ -12,6 +12,12 @@
     "allDeclaredFields": true
   },
   {
+    "name": "it.unimib.datai.nanofaas.sdk.lite.callback.CallbackPayload",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
     "name": "it.unimib.datai.nanofaas.common.model.ErrorInfo",
     "allDeclaredConstructors": true,
     "allDeclaredMethods": true,
