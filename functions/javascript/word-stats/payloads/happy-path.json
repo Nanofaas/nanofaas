@@ -1,22 +1,26 @@
 {
-  "description": "word stats with repeated words and topN",
+  "description": "orders equal frequencies alphabetically",
   "input": {
-    "text": "hello world hello nano",
-    "topN": 2
+    "text": "beta alpha gamma beta alpha",
+    "topN": 3
   },
   "expected": {
-    "wordCount": 4,
+    "wordCount": 5,
     "uniqueWords": 3,
     "topWords": [
       {
-        "word": "hello",
+        "word": "alpha",
         "count": 2
       },
       {
-        "word": "nano",
+        "word": "beta",
+        "count": 2
+      },
+      {
+        "word": "gamma",
         "count": 1
       }
     ],
-    "averageWordLength": 4.75
+    "averageWordLength": 4.6
   }
 }

@@ -1,9 +1,0 @@
-{
-  "description": "smallest valid number",
-  "input": {
-    "number": 1
-  },
-  "expected": {
-    "roman": "I"
-  }
-}

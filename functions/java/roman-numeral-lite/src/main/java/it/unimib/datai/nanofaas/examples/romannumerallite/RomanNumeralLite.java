@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.examples.romannumerallite;
 
+import it.unimib.datai.nanofaas.common.runtime.HandlerResponse;
 import it.unimib.datai.nanofaas.sdk.lite.FunctionContext;
 import it.unimib.datai.nanofaas.sdk.lite.NanofaasRuntime;
 import org.slf4j.Logger;
@@ -11,6 +12,7 @@ public final class RomanNumeralLite {
     private static final int[] VALUES = {1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1};
     private static final String[] SYMBOLS = {"M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I"};
     private static final String ERROR_KEY = "error";
+    private static final int UNPROCESSABLE = 422;
 
     private RomanNumeralLite() {
     }
@@ -28,18 +30,18 @@ public final class RomanNumeralLite {
         log.info("roman-numeral-lite invoked, executionId={}", FunctionContext.getExecutionId());
 
         if (!(input instanceof Map<?, ?> values)) {
-            return Map.of(ERROR_KEY, "Input must be a JSON object");
+            return HandlerResponse.of(Map.of(ERROR_KEY, "Input must be a JSON object"), UNPROCESSABLE);
         }
         if (!values.containsKey("number")) {
-            return Map.of(ERROR_KEY, "missing required field: number");
+            return HandlerResponse.of(Map.of(ERROR_KEY, "missing required field: number"), UNPROCESSABLE);
         }
         if (!(values.get("number") instanceof Number rawNumber)) {
-            return Map.of(ERROR_KEY, "field 'number' must be an integer");
+            return HandlerResponse.of(Map.of(ERROR_KEY, "field 'number' must be an integer"), UNPROCESSABLE);
         }
 
         int number = rawNumber.intValue();
         if (number < 1 || number > 3999) {
-            return Map.of(ERROR_KEY, "number must be between 1 and 3999, got: " + number);
+            return HandlerResponse.of(Map.of(ERROR_KEY, "number must be between 1 and 3999, got: " + number), UNPROCESSABLE);
         }
         return Map.of("roman", toRoman(number));
     }

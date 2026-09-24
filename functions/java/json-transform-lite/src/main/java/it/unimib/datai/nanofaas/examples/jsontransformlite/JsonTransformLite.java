@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.examples.jsontransformlite;
 
+import it.unimib.datai.nanofaas.common.runtime.HandlerResponse;
 import it.unimib.datai.nanofaas.sdk.lite.FunctionContext;
 import it.unimib.datai.nanofaas.sdk.lite.NanofaasRuntime;
 import org.slf4j.Logger;
@@ -24,6 +25,7 @@ public class JsonTransformLite {
     private static final Logger log = FunctionContext.getLogger(JsonTransformLite.class);
     private static final String ERROR_KEY = "error";
     private static final String OPERATION_COUNT = "count";
+    private static final int BAD_REQUEST = 400;
 
     @SuppressWarnings("java:S1172") // args is required by the JVM main(String[]) contract
     public static void main(String[] args) {
@@ -39,12 +41,10 @@ public class JsonTransformLite {
 
     @SuppressWarnings("unchecked")
     private static Object handle(Object rawInput) {
-        Map<String, Object> input;
-        try {
-            input = (Map<String, Object>) rawInput;
-        } catch (ClassCastException _) {
-            return Map.of(ERROR_KEY, "Input must be a JSON object");
+        if (!(rawInput instanceof Map<?, ?>)) {
+            return HandlerResponse.of(Map.of(ERROR_KEY, "Input must be a JSON object"), BAD_REQUEST);
         }
+        Map<String, Object> input = (Map<String, Object>) rawInput;
 
         List<Map<String, Object>> data = (List<Map<String, Object>>) input.get("data");
         String groupBy = (String) input.get("groupBy");
@@ -52,11 +52,11 @@ public class JsonTransformLite {
         String valueField = (String) input.get("valueField");
 
         if (data == null || groupBy == null) {
-            return Map.of(ERROR_KEY, "Fields 'data' (array) and 'groupBy' (string) are required");
+            return HandlerResponse.of(Map.of(ERROR_KEY, "Fields 'data' (array) and 'groupBy' (string) are required"), BAD_REQUEST);
         }
 
         if (!operation.equals(OPERATION_COUNT) && valueField == null) {
-            return Map.of(ERROR_KEY, "Field 'valueField' is required for operation: " + operation);
+            return HandlerResponse.of(Map.of(ERROR_KEY, "Field 'valueField' is required for operation: " + operation), BAD_REQUEST);
         }
 
         return transform(data, groupBy, operation, valueField);
