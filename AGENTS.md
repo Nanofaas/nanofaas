@@ -25,6 +25,7 @@
 ## Coding Style & Naming Conventions
 
 - Java 25 toolchain; 4-space indentation; `com.nanofaas` package root.
+- Python 3.12 or newer for every Python project (SDK, tools, functions, experiments); function images use `python:3.12-slim`.
 - Class names `PascalCase`, methods/fields `camelCase`, constants `SCREAMING_SNAKE_CASE`.
 - Configuration lives in `platform/control-plane/src/main/resources/application.yml` and `services/java/warm-echo/src/main/resources/application.yml`.
 

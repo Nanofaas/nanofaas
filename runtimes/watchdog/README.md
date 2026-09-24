@@ -150,7 +150,7 @@ ENTRYPOINT ["/usr/local/bin/watchdog"]
 
 ```dockerfile
 FROM nanofaas/watchdog:latest AS watchdog
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 COPY --from=watchdog /watchdog /usr/local/bin/watchdog
 COPY requirements.txt .
@@ -184,7 +184,7 @@ def invoke(payload: dict):
 
 ```dockerfile
 FROM nanofaas/watchdog:latest AS watchdog
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 COPY --from=watchdog /watchdog /usr/local/bin/watchdog
 COPY handler.py /app/handler.py
