@@ -34,6 +34,9 @@ dependencies {
         runtimeOnly project(moduleProject.path)
     }
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
+    // reactor-netty ships only the linux-x86_64 epoll library; without this, aarch64 hosts
+    // silently fall back to NIO.
+    runtimeOnly 'io.netty:netty-transport-native-epoll::linux-aarch_64'
     implementation 'org.springframework.boot:spring-boot-starter-webclient'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'io.micrometer:micrometer-registry-prometheus'
