@@ -25,6 +25,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            # Function pods call back here; application.yml's default names the
+            # `default` namespace, which this manifest does not deploy into.
+            - name: NANOFAAS_K8S_CALLBACKURL
+              value: http://control-plane.nanofaas.svc.cluster.local:8080/v1/internal/executions
           resources:
             requests:
               cpu: 250m

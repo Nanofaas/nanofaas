@@ -32,6 +32,10 @@ controlPlane:
     repository: ghcr.io/miciav/nanofaas/control-plane
     tag: v0.22.0
     pullPolicy: IfNotPresent
+  # Where function pods deliver execution callbacks. Empty derives it from this
+  # release: http://<service.name>.<namespace>.svc.cluster.local:<ports.http>/v1/internal/executions.
+  # Set it only for a cluster domain other than cluster.local or a proxied control plane.
+  callbackUrl: ""
   service:
     name: control-plane
     type: ClusterIP

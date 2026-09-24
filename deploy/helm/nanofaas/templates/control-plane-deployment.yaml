@@ -41,6 +41,11 @@ spec:
                   fieldPath: metadata.namespace
             - name: NANOFAAS_REGISTRY_PATH
               value: /var/lib/nanofaas/functions.json
+            # The URL function pods call back on. application.yml's default names the
+            # `default` namespace, which a release in any other namespace does not serve:
+            # every callback then failed. Derived from this release's Service and namespace.
+            - name: NANOFAAS_K8S_CALLBACKURL
+              value: {{ .Values.controlPlane.callbackUrl | default (printf "http://%s.%s.svc.cluster.local:%v/v1/internal/executions" .Values.controlPlane.service.name (include "nanofaas.namespace" .) .Values.controlPlane.service.ports.http) | quote }}
             # Rendered even when empty: the empty string is the documented "no
             # explicit selection" case, not an unset one, and application.yml
             # resolves ${NANOFAAS_SCHEDULER_STRATEGY:} to whatever lands here.

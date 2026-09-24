@@ -116,6 +116,27 @@ def test_io_worker_count_reaches_both_jvm_and_native_images():
         assert re.search(r"name: JAVA_TOOL_OPTIONS\n\s+value: \"" + re.escape(flag), out), out
 
 
+def test_callback_url_targets_this_releases_service_and_namespace():
+    """Function pods call back on this URL; application.yml's default names `default`.
+
+    A release in the chart's own `nanofaas` namespace got the `default` URL, and every
+    callback from every function pod failed with an I/O error.
+    """
+    def callback(*extra):
+        out = render("templates/control-plane-deployment.yaml", *extra)
+        match = re.search(r"name: NANOFAAS_K8S_CALLBACKURL\n\s+value: \"([^\"]+)\"", out)
+        assert match, out
+        return match.group(1)
+
+    assert callback() == "http://control-plane.nanofaas.svc.cluster.local:8080/v1/internal/executions"
+    assert callback("--set", "namespace.name=faas", "--set", "controlPlane.service.name=cp",
+                    "--set", "controlPlane.service.ports.http=9090") \
+        == "http://cp.faas.svc.cluster.local:9090/v1/internal/executions"
+    assert callback("--set", "namespace.create=false", "--namespace", "team-a") \
+        == "http://control-plane.team-a.svc.cluster.local:8080/v1/internal/executions"
+    assert callback("--set", "controlPlane.callbackUrl=http://proxy:1/cb") == "http://proxy:1/cb"
+
+
 def test_no_rendered_number_uses_scientific_notation():
     """The guard for whatever capacity the chart grows next."""
     assert re.search(r"[0-9]e[+-][0-9]", render_all()) is None
