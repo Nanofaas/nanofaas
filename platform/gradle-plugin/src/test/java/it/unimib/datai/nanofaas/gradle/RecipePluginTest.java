@@ -42,6 +42,15 @@ class RecipePluginTest {
         write("build.gradle", """
                 tasks.register('printNative') { doLast { println "native=${gradle.ext.nanofaasNativeBuildRequested}" } }
                 tasks.register('printSelection') { doLast { println "modules=${gradle.ext.nanofaasSelectedControlPlaneModules}" } }
+                allprojects {
+                    tasks.register('printRecipeProps') {
+                        doLast {
+                            def keys = ['nativeOptimization', 'nativeGc', 'nativeMonitoring', 'nanofaasBuildVariant',
+                                        'nanofaasBuildOptimization', 'nanofaasRecipeBuildMode']
+                            println "props ${project.path} " + keys.collect { "${it}=${project.findProperty(it)}" }.join(' ')
+                        }
+                    }
+                }
                 """);
         // Fake build tasks produce real outputs and leave a marker, so tests can prove what did (not) run.
         write("marker.gradle", """
@@ -276,6 +285,45 @@ class RecipePluginTest {
     @Test
     void withoutRecipeNativeFlagStillFollowsTaskNames() {
         assertThat(run("printNative").getOutput()).contains("native=false");
+    }
+
+    private static final String V2_HEADER = "schemaVersion: 2\nname: demo\n";
+
+    @Test
+    void recipeNativeOptionsReachEachProject() throws IOException {
+        writeModule("build-metadata", "");
+        recipe(V2_HEADER + """
+                controlPlane: {modules: [build-metadata], build: {mode: native, variant: native-os, native: {optimization: s}}}
+                functions: [{name: word-stats, sdk: java, build: {mode: native, native: {gc: G1}}}]
+                """);
+
+        String output = run("printRecipeProps", "-Precipe=recipe.yaml").getOutput();
+
+        assertThat(output)
+                .contains("props :control-plane nativeOptimization=s nativeGc=null")
+                .contains("props :functions:java:word-stats nativeOptimization=null nativeGc=G1")
+                .contains("props :control-plane-modules:build-metadata nativeOptimization=null nativeGc=null"
+                        + " nativeMonitoring=null nanofaasBuildVariant=native-os nanofaasBuildOptimization=s")
+                .contains("props :functions:java:word-stats-lite nativeOptimization=null");
+    }
+
+    @Test
+    void recipeOwnedFlagsAreRejectedAndBuilderFlagsAccepted() throws IOException {
+        recipe(V2_HEADER + CP_JVM);
+
+        assertThat(fails("printRecipeProps", "-Precipe=recipe.yaml", "-PnativeOptimization=s"))
+                .contains("-PnativeOptimization cannot be combined with -Precipe");
+        run("printRecipeProps", "-Precipe=recipe.yaml", "-PnativeBuildMemory=6g", "-PnativeParallelism=2",
+                "-PcontainerdMavenLocal=true", "-Dmaven.repo.local=" + outsideDir);
+    }
+
+    @Test
+    void buildIdentityWithoutBuildMetadataFailsBeforeBuilding() throws IOException {
+        recipe(V2_HEADER + "controlPlane: {modules: [], build: {mode: jvm, variant: jvm}}\n");
+
+        assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker()))
+                .contains("controlPlane.build.variant requires the build-metadata module");
+        assertThat(projectDir.resolve("markers")).doesNotExist();
     }
 
     private static final String FULL_RECIPE = HEADER + """
