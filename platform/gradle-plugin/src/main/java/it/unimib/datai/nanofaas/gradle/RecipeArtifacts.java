@@ -109,7 +109,7 @@ final class RecipeArtifacts {
         root.getTasks().named("assembleRecipe", task -> {
             task.dependsOn(stage, images);
             task.doLast(ignored -> writeReport(output.resolve(REPORT),
-                    report(recipe, targets, modules, source(services.getExec(), rootDir), imageIds)));
+                    report(recipe, targets, modules, source(services.getExec(), rootDir, output), imageIds)));
         });
         root.getTasks().named("publishRecipe", task -> {
             task.dependsOn("assembleRecipe");
@@ -284,7 +284,7 @@ final class RecipeArtifacts {
     static List<String> dockerBuild(String docker, Path rootDir, Path output, RecipeTasks.Target target) {
         Path dockerfile = target.dockerfile() != null ? rootDir.resolve(target.dockerfile())
                 : rootDir.resolve("deploy/recipes/Dockerfile." + target.mode());
-                Path context = target.dockerfile() != null ? rootDir.resolve(target.contextDir()) : output.resolve(target.stagingDir());
+        Path context = target.dockerfile() != null ? rootDir.resolve(target.contextDir()) : output.resolve(target.stagingDir());
         return List.of(docker, "build", "-f", dockerfile.toString(), "-t", target.image(), context.toString());
     }
 
@@ -292,7 +292,9 @@ final class RecipeArtifacts {
                              JsonNode source, Map<String, String> imageIds) {
         ObjectNode report = JSON.createObjectNode();
         report.put("schemaVersion", 2);
-        report.putObject("recipe").put("name", recipe.data().get("name").asText()).put("sha256", recipe.sourceSha256());
+        // recipe.schemaVersion is the file's own version; the report's describes this document.
+        report.putObject("recipe").put("name", recipe.data().get("name").asText()).put("sha256", recipe.sourceSha256())
+                .put("schemaVersion", recipe.declaredVersion());
         report.put("tag", recipe.effectiveTag());
         report.set("source", source);
         ArrayNode moduleNodes = report.putArray("modules");
@@ -303,7 +305,10 @@ final class RecipeArtifacts {
             ObjectNode component = components.addObject().put("kind", target.kind()).put("name", target.name())
                     .put("sdk", target.sdk()).put("mode", target.mode()).put("artifact", target.stagingDir());
             if (target.controlPlane() && identity != null) {
-                component.put("variant", identity.variant()).put("optimization", identity.optimization());
+                if (identity.variant() != null) {
+                    component.put("variant", identity.variant());
+                }
+                component.put("optimization", identity.optimization());
             }
             if (target.nativeOptions() != null) {
                 ObjectNode options = component.putObject("native")
@@ -323,13 +328,18 @@ final class RecipeArtifacts {
     }
 
     /** Git revision and dirty state, or null when Git or the repository is unavailable: never an invented clean state. */
-    static JsonNode source(ExecOperations exec, Path rootDir) {
+    static JsonNode source(ExecOperations exec, Path rootDir, Path output) {
         String revision = git(exec, rootDir, "rev-parse", "HEAD");
         if (revision == null) {
             return NullNode.getInstance();
         }
-        // Untracked files count: an untracked function directory can be built into an image.
-        String status = git(exec, rootDir, "status", "--porcelain");
+        // Untracked files count: an untracked function directory can be built into an image. The assembly's own
+        // output does not, when -PrecipeOutput puts it inside the repository.
+        Path realOutput = output.toAbsolutePath().normalize();
+        String status = realOutput.startsWith(rootDir) && !realOutput.equals(rootDir)
+                ? git(exec, rootDir, "status", "--porcelain", "--", ".",
+                        ":(exclude)" + rootDir.relativize(realOutput).toString().replace('\\', '/'))
+                : git(exec, rootDir, "status", "--porcelain");
         ObjectNode source = JSON.createObjectNode().put("revision", revision);
         return status == null ? source.putNull("dirty") : source.put("dirty", !status.isEmpty());
     }

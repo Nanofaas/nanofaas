@@ -598,6 +598,7 @@ class RecipePluginTest {
         JsonNode report = report();
         JsonNode controlPlane = report.get("components").get(0);
         assertThat(report.get("schemaVersion").asInt()).isEqualTo(2);
+        assertThat(report.at("/recipe/schemaVersion").asInt()).isEqualTo(2);
         assertThat(controlPlane.get("kind").asText()).isEqualTo("control-plane");
         assertThat(controlPlane.get("variant").asText()).isEqualTo("native-o3-g1");
         assertThat(controlPlane.get("optimization").asText()).isEqualTo("3");
@@ -641,6 +642,7 @@ class RecipePluginTest {
 
         run("assembleRecipe", "-Precipe=recipe.yaml", "-PrecipeTag=2.0.0", docker());
 
+        assertThat(report().at("/recipe/schemaVersion").asInt()).isEqualTo(1);
         JsonNode component = report().get("components").get(0);
         assertThat(component.get("kind").asText()).isEqualTo("control-plane");
         assertThat(component.has("variant")).isFalse();
@@ -672,6 +674,35 @@ class RecipePluginTest {
                 .contains("is not empty and holds no recipe output");
         assertThat(evidence.resolve("soak-metrics.csv")).hasContent("user data");
         assertThat(evidence.resolve("distribution.json")).hasContent(report);
+    }
+
+
+    @Test
+    void reportOmitsVariantWhenOnlyTheOptimizationIsRecorded() throws IOException {
+        writeModule("build-metadata", "");
+        recipe(V2_HEADER + "controlPlane: {modules: [build-metadata], build: {mode: native, native: {optimization: s}}}\n");
+
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker());
+
+        JsonNode controlPlane = report().get("components").get(0);
+        assertThat(controlPlane.get("optimization").asText()).isEqualTo("s");
+        assertThat(controlPlane.has("variant")).isFalse();
+    }
+
+
+    @Test
+    void jvmTierReachesBuildMetadataAndTheReport() throws IOException {
+        writeModule("build-metadata", "");
+        for (String[] tier : new String[][] {{"-XX:TieredStopAtLevel=1", "c1"}, {"-Xmx128m", "c2"}}) {
+            recipe(V2_HEADER + "controlPlane: {modules: [build-metadata], build: {mode: jvm, variant: jvm-" + tier[1]
+                    + "}, jvm: {args: ['" + tier[0] + "']}}\n");
+
+            assertThat(run("printRecipeProps", "-Precipe=recipe.yaml").getOutput()).contains(
+                    "props :control-plane-modules:build-metadata nativeOptimization=null nativeGc=null nativeMonitoring=null"
+                            + " nanofaasBuildVariant=jvm-" + tier[1] + " nanofaasBuildOptimization=" + tier[1]);
+            run("assembleRecipe", "-Precipe=recipe.yaml", docker());
+            assertThat(report().at("/components/0/optimization").asText()).isEqualTo(tier[1]);
+        }
     }
 
     private static final String FULL_RECIPE = HEADER + """
@@ -806,6 +837,23 @@ class RecipePluginTest {
 
         assertThat(report().get("source").get("revision").asText()).hasSize(40);
         assertThat(report().get("source").get("dirty").asBoolean()).isTrue();
+    }
+
+
+    @Test
+    void anOutputInsideTheRepositoryDoesNotMakeTheReportDirty() throws Exception {
+        recipe(HEADER + CP_JVM);
+        write(".gitignore", "build/\n.gradle/\nmarkers/\n");   // Gradle's and the fixture's own outputs
+        git("init", "-q");
+        git("add", "-A");
+        git("-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "-q", "-m", "fixture");
+
+        runner("assembleRecipe", "-Precipe=recipe.yaml", docker(), "-PrecipeOutput=recipe-out")
+                .withEnvironment(Map.of("PATH", System.getenv("PATH"))).build();
+
+        JsonNode report = new ObjectMapper().readTree(projectDir.resolve("recipe-out/distribution.json").toFile());
+        assertThat(report.get("source").get("revision").asText()).hasSize(40);
+        assertThat(report.get("source").get("dirty").asBoolean()).isFalse();
     }
 
     private void git(String... arguments) throws Exception {
