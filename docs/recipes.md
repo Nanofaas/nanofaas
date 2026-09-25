@@ -33,18 +33,21 @@ build uses.
 
 ## Recipe format
 
-The schema is
-[`recipe-v1.schema.json`](../platform/gradle-plugin/src/main/resources/recipes/recipe-v1.schema.json);
-the plugin validates against the copy packaged with it, and never downloads a schema. Add
-this line at the top of a recipe to get completion and checks in editors that use the YAML
-language server:
+The current schema is
+[`recipe-v2.schema.json`](../platform/gradle-plugin/src/main/resources/recipes/recipe-v2.schema.json).
+The plugin picks the schema that the file's `schemaVersion` names, validates against the
+copy packaged with it, and never downloads a schema. A `schemaVersion: 1` file is validated
+against the frozen
+[`recipe-v1.schema.json`](../platform/gradle-plugin/src/main/resources/recipes/recipe-v1.schema.json)
+and keeps working unchanged; it cannot use the fields v2 adds. Add this line at the top of a
+recipe to get completion and checks in editors that use the YAML language server:
 
 ```yaml
-# yaml-language-server: $schema=../platform/gradle-plugin/src/main/resources/recipes/recipe-v1.schema.json
+# yaml-language-server: $schema=../platform/gradle-plugin/src/main/resources/recipes/recipe-v2.schema.json
 ```
 
 ```yaml
-schemaVersion: 1
+schemaVersion: 2
 name: demo                         # lowercase words joined by '-'
 
 registry:                          # optional; required by publishRecipe
@@ -52,8 +55,11 @@ registry:                          # optional; required by publishRecipe
   tag: "1.0.0"
 
 controlPlane:
-  modules: [async-queue, container-deployment-provider]   # exact selection; [] = core only
-  build: {mode: native}            # jvm | native, required
+  modules: [async-queue, container-deployment-provider, build-metadata]   # exact selection; [] = core only
+  build:
+    mode: native                   # jvm | native, required
+    variant: native-os             # optional build identity; needs build-metadata
+    native: {optimization: s}      # native mode only; see "Native options"
   jvm: {args: [...]}               # jvm mode only
   container: {image: control-plane}                       # optional
   config:                          # optional Spring configuration
@@ -61,9 +67,13 @@ controlPlane:
 
 functions:                         # optional
   - name: word-stats
-    sdk: java-lite                 # java | java-lite | python | javascript | go
+    sdk: java-lite                 # java | java-lite | python | javascript | go | bash
     build: {mode: native}          # required for java and java-lite, forbidden otherwise
-    container: {image: word-stats-java-lite}   # required for python, javascript and go
+    container: {image: word-stats-java-lite}   # required for the Dockerfile SDKs
+
+services:                          # optional; see "Services"
+  - {name: warm-echo, sdk: java, build: {mode: native}, container: {image: warm-echo}}
+  - {name: watchdog, sdk: dockerfile, container: {image: watchdog}}
 ```
 
 - `controlPlane.modules` is the exact module list: no `all` or `none`, and no hidden
@@ -71,10 +81,10 @@ functions:                         # optional
   `-PcontrolPlaneModules` is rejected and `NANOFAAS_CONTROL_PLANE_MODULES` is ignored.
 - Each function selects source code that already exists. `java` uses
   `functions/java/<name>` (depending on `:sdks:java`), `java-lite` uses
-  `functions/java/<name>-lite` (depending on `:sdks:java-lite`), and the other SDKs use
-  `functions/<sdk>/<name>/Dockerfile`. The same function can appear once per SDK. Two
-  entries with the same name and SDK are rejected, and so are two images with the same
-  reference.
+  `functions/java/<name>-lite` (depending on `:sdks:java-lite`), and the Dockerfile SDKs
+  (`python`, `javascript`, `go` and `bash`) use `functions/<sdk>/<name>/Dockerfile`. The
+  same function can appear once per SDK. Two entries with the same name and SDK are rejected,
+  and so are two images with the same reference, across functions and services.
 - `container.image` is a plain name. The image reference is
   `<registry.repository>/<image>:<tag>`, or `nanofaas/<recipe>/<image>:local` when the
   recipe has no `registry`. The base images are the repository's current ones and cannot
@@ -93,6 +103,60 @@ functions:                         # optional
 `-PrecipeTag` replaces the tag of every image. It requires a `registry` section, must be a
 valid container tag, and is used in the preview, the image builds, the pushes and the
 report alike. The YAML file is not modified. There are no other overrides.
+
+## Native options
+
+`build.native` sets the native-image options of one component: the control plane, a Java
+function or a Java service. It is allowed only with `mode: native`.
+
+| Field | Values | Default | native-image flag |
+| --- | --- | --- | --- |
+| `optimization` | `"s"`, `"0"`, `"1"`, `"2"`, `"3"` | `"3"` | `-O<value>` |
+| `gc` | `serial`, `G1` | `serial` | `--gc=<value>` |
+| `monitoring` | `all`, `heapdump`, `jfr`, `jvmstat`, `jmxserver`, `jmxclient`, `threaddump`, `nmt`, `jcmd` | none | `--enable-monitoring=<list>` |
+
+- `G1` adds `jfr` to `monitoring`, because G1 has no usable GC MXBeans. The report lists the
+  effective values.
+- Numeric optimizations are normalised: `3`, `3.0` and `3e0` all produce `-O3` and the report
+  value `"3"`. A non-integral value such as `3.5` is rejected.
+- `G1` needs Oracle GraalVM on the host, since Community offers only `serial` and `epsilon`.
+  The plugin does not check the distribution; native-image fails with its own message.
+- Two native components in one recipe can use different options.
+
+With `-Precipe`, the recipe owns these choices, so these flags are rejected:
+`-PnativeOptimization`, `-PnativeGc`, `-PnativeMonitoring`, `-PnanofaasBuildVariant` and
+`-PnanofaasBuildOptimization`. Flags that only size or feed the builder remain accepted:
+`-PnativeBuildMemory`, `-PnativeParallelism`, `-PcontainerdMavenLocal` and
+`-Dmaven.repo.local`.
+
+## Build identity
+
+`controlPlane.build.variant` is a label written to `META-INF/nanofaas-build.properties`, which
+`/modules/build-metadata` serves. Soak and comparison evidence uses it to prove which build
+ran. The optimization recorded next to it is derived, never declared:
+
+- native: `native.optimization`, default `3`;
+- JVM: `c1` when the last `-XX:TieredStopAtLevel=` in `jvm.args` is `1`, otherwise `c2`.
+
+The optimization is recorded when `variant` is set or `native.optimization` is given
+explicitly. Either one requires `build-metadata` in `controlPlane.modules`. Module selection
+stays exact, so the plugin fails before building rather than adding the module. Native
+options on functions and services do not need it.
+
+## Services
+
+`services` lists components that are neither the control plane nor functions, with the same
+shape as `functions`:
+
+- `sdk: java` uses `services/java/<name>` (depending on `:sdks:java`). It needs `build`,
+  accepts `jvm` and `native`, and is staged and built like a Java function.
+- `sdk: dockerfile` uses `runtimes/<name>/Dockerfile`. It needs `container` and forbids
+  `build` and `jvm`. Its own directory is the build context, unlike Dockerfile functions,
+  which build from the repository root.
+
+A Java service's mode is independent of the control plane's, Spring AOT included: a JVM
+control plane can ship with a native warm-echo, and the reverse. `listRecipeFunctions` lists
+services in a separate section.
 
 ## Native builds
 
@@ -120,8 +184,24 @@ build/recipes/<name>/
 The directory is regenerated on every assembly. Gradle's incremental compilation and
 Docker's layer cache are what make repeated assemblies fast. Java images are built from
 the staged directory with [`deploy/recipes/Dockerfile.jvm`](../deploy/recipes/Dockerfile.jvm)
-or [`Dockerfile.native`](../deploy/recipes/Dockerfile.native). Python, JavaScript and Go
-images use the function's own Dockerfile with the repository as the build context.
+or [`Dockerfile.native`](../deploy/recipes/Dockerfile.native). Python, JavaScript, Go and bash
+images use the function's own Dockerfile with the repository as the build context; a
+`dockerfile` service uses its own Dockerfile with its own directory as the context.
+
+`-PrecipeOutput=<dir>` puts the staging tree and `distribution.json` elsewhere, for example
+outside a read-only checkout. A relative path resolves against the repository root, like
+`-Precipe`. Because an assembly empties the directory, the plugin only takes one that:
+
+- does not exist;
+- is empty;
+- contains a valid `.nanofaas-recipe-output` marker; or
+- contains a complete `distribution.json` from an earlier assembly.
+
+The repository and its ancestors are always refused, even through a symbolic link, and so is
+a regular file. The check runs before anything is deleted, and also guards `cleanRecipe` and
+`stageRecipe` when they are called directly. The marker is written as soon as the directory
+is claimed and survives a failed assembly, so a retry can reuse the same directory. It does
+not claim that any artifact is usable: only `distribution.json`, written last, does.
 
 `jvm.options` and `launch.args` are standard JVM argument files, with one quoted argument
 per line. Spaces, quotes and backslashes are kept literally. `jvm.options` starts with the
@@ -148,13 +228,21 @@ The images set the same variable to `/app/config/recipe.yaml`.
 
 ## The report
 
-`distribution.json` records:
+`distribution.json` has `schemaVersion: 2` for every recipe, v1 included. It records:
 
 - the recipe's name and the SHA-256 of the recipe file
 - the effective tag
 - the Git revision and dirty state (`"source": null` when Git or the repository is unavailable)
 - the resolved modules
-- each component's SDK, mode, staging directory and image
+- each component's kind (`control-plane`, `function` or `service`), SDK, mode, staging
+  directory and image
+- on the control plane, `variant` and `optimization` whenever the build metadata records them
+- on each native component, `native` with the effective `optimization`, `gc` and `monitoring`
+- for each image, `id`: the local image ID from `docker image inspect`, recorded after the
+  build and kept after a push. A built image that is never pushed can still be pinned. If the
+  inspect fails, the assembly fails.
+
+Version 2 only adds fields: a reader of the version 1 fields sees no difference.
 
 It contains neither the runtime configuration nor environment variables. After a push, an
 image's `status` is one of:
@@ -174,3 +262,10 @@ across images. A new assembly discards all publication data.
 The Docker CLI and its configured credentials are used as they are. `-PrecipeDocker=<path>`
 selects another Docker-compatible executable. Every command runs with separate arguments,
 never through a shell.
+
+## Running several variants
+
+A recipe describes one control plane. To compare variants built from the same source, run
+one `assembleRecipe` per variant, each with its own `-PrecipeOutput`. Gradle and Docker
+caching keep the repeats cheap. The recipe's default JVM tuning, `-XX:+UseSerialGC` with full
+tiering, is the same as the default of `platform/control-plane/Dockerfile`.
