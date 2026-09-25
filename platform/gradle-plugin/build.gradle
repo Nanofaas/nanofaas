@@ -14,6 +14,14 @@ repositories {
     mavenCentral()
 }
 
+// Versions of the plugins warm-echo applies, from the main build's gradle.properties.
+def mainBuildProperties = new Properties()
+file('../../gradle.properties').withInputStream { mainBuildProperties.load(it) }
+
+configurations {
+    testPluginClasspath
+}
+
 dependencies {
     implementation 'org.yaml:snakeyaml:2.7'
     implementation 'com.networknt:json-schema-validator:2.0.7'
@@ -21,6 +29,14 @@ dependencies {
     testImplementation 'org.assertj:assertj-core:3.27.7'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.14.4'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.14.4'
+    testPluginClasspath "org.springframework.boot:spring-boot-gradle-plugin:${mainBuildProperties.springBootVersion}"
+    testPluginClasspath "io.spring.gradle:dependency-management-plugin:${mainBuildProperties.springDependencyManagementVersion}"
+    testPluginClasspath "org.graalvm.buildtools:native-gradle-plugin:${mainBuildProperties.graalvmBuildToolsVersion}"
+}
+
+// TestKit's withPluginClasspath() then resolves these by id, so a fixture can apply the real plugins offline.
+tasks.named('pluginUnderTestMetadata') {
+    pluginClasspath.from(configurations.testPluginClasspath)
 }
 
 gradlePlugin {
@@ -34,4 +50,7 @@ gradlePlugin {
 
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
+    def warmEchoScript = file('../../services/java/warm-echo/build.gradle')
+    inputs.file(warmEchoScript)
+    systemProperty 'nanofaas.warmEchoBuildScript', warmEchoScript.absolutePath
 }
