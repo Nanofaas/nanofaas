@@ -10,7 +10,6 @@ import org.gradle.api.Project;
 import org.gradle.api.Task;
 import org.gradle.api.file.RegularFile;
 import org.gradle.api.provider.Provider;
-import org.gradle.api.tasks.Delete;
 import org.gradle.api.tasks.Exec;
 import org.gradle.api.tasks.Sync;
 import org.gradle.api.tasks.TaskProvider;
@@ -67,16 +66,21 @@ final class RecipeArtifacts {
 
     static void register(Project root, RecipeReader.Document recipe, List<RecipeTasks.Target> targets,
                          List<String> modules) {
-        Path output = root.getLayout().getBuildDirectory().dir("recipes/" + recipe.data().get("name").asText())
-                .get().getAsFile().toPath();
         Path rootDir = realPath(root.getRootDir().toPath());
+        Path output = RecipeOutput.resolve(rootDir, root.findProperty("recipeOutput"),
+                root.getLayout().getBuildDirectory().dir("recipes/" + recipe.data().get("name").asText())
+                        .get().getAsFile().toPath());
         Object dockerProperty = root.findProperty("recipeDocker");
         String docker = dockerProperty == null ? "docker" : dockerProperty.toString();
 
-        TaskProvider<Delete> clean = root.getTasks().register("cleanRecipe", Delete.class, task -> task.delete(output));
+        TaskProvider<Task> clean = root.getTasks().register("cleanRecipe", task -> {
+            task.setDescription("Empties the recipe output directory it owns and marks it; refuses any other directory.");
+            task.doLast(ignored -> RecipeOutput.claim(recipe.source(), output, rootDir));
+        });
         TaskProvider<Sync> stage = root.getTasks().register("stageRecipe", Sync.class, sync -> {
             sync.dependsOn(clean);
             sync.into(output);
+            sync.preserve(filter -> filter.include(RecipeOutput.MARKER));
             targets.stream().filter(target -> target.task() != null).forEach(target -> stageJava(root, sync, target));
             sync.doLast(ignored -> targets.stream().filter(target -> target.task() != null)
                     .forEach(target -> writeRuntimeFiles(output.resolve(target.stagingDir()), target, recipe.data())));

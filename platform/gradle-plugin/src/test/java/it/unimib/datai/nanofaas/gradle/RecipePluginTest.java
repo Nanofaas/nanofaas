@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.gradle;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.gradle.testkit.runner.BuildResult;
 import org.gradle.testkit.runner.GradleRunner;
 import org.gradle.testkit.runner.TaskOutcome;
@@ -386,6 +387,194 @@ class RecipePluginTest {
                 """);
         assertThat(fails("validateRecipe", "-Precipe=recipe.yaml"))
                 .contains("services[0].container.image: image nanofaas/demo/shared:local is already used");
+    }
+
+    private String output(Path dir) {
+        return "-PrecipeOutput=" + dir;
+    }
+
+    @Test
+    void assemblesIntoAnOutputOutsideTheCheckout() throws IOException {
+        recipe(HEADER + CP_JVM);
+        Path out = outsideDir.resolve("run-1");
+
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(out));
+
+        assertThat(out.resolve("distribution.json")).isRegularFile();
+        assertThat(Files.readString(out.resolve(".nanofaas-recipe-output"))).isEqualTo("nanofaas-recipe-output-v1\n");
+        assertThat(projectDir.resolve("build/recipes")).doesNotExist();
+    }
+
+    @Test
+    void refusesOutputsItDoesNotOwn() throws IOException {
+        recipe(HEADER + CP_JVM);
+        Path unrelated = Files.createDirectories(outsideDir.resolve("unrelated"));
+        Files.writeString(unrelated.resolve("keep.txt"), "user data");
+        Path malformed = Files.createDirectories(outsideDir.resolve("malformed"));
+        Files.writeString(malformed.resolve(".nanofaas-recipe-output"), "nanofaas-recipe-output-v2\n");
+        Files.writeString(malformed.resolve("keep.txt"), "user data");
+        Path file = Files.writeString(outsideDir.resolve("a-file"), "user data");
+        Path link = Files.createSymbolicLink(outsideDir.resolve("link-to-repo"), projectDir);
+
+        assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(unrelated)))
+                .contains("is not empty and holds no recipe output");
+        assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(malformed)))
+                .contains("is not empty and holds no recipe output");
+        assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(file)))
+                .contains("is not a directory");
+        assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(link)))
+                .contains("is the repository or one of its ancestors");
+        assertThat(fails("cleanRecipe", "-Precipe=recipe.yaml", output(unrelated)))
+                .contains("is not empty and holds no recipe output");
+        assertThat(fails("stageRecipe", "-Precipe=recipe.yaml", output(unrelated)))
+                .contains("is not empty and holds no recipe output");
+
+        assertThat(unrelated.resolve("keep.txt")).hasContent("user data");
+        assertThat(malformed.resolve("keep.txt")).hasContent("user data");
+        assertThat(file).hasContent("user data");
+        assertThat(projectDir.resolve("recipe.yaml")).isRegularFile();
+    }
+
+    @Test
+    void reusesAnOutputHoldingALegacyReport() throws IOException {
+        recipe(HEADER + CP_JVM);
+        Path legacy = Files.createDirectories(outsideDir.resolve("legacy"));
+        Files.writeString(legacy.resolve("distribution.json"), legacyReport().toPrettyString());
+        Files.writeString(legacy.resolve("stale.txt"), "old");
+
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(legacy));
+
+        assertThat(legacy.resolve("stale.txt")).doesNotExist();
+        assertThat(legacy.resolve(".nanofaas-recipe-output")).isRegularFile();
+    }
+
+    /** Complete report emitted by the v1 writer for HEADER + CP_JVM in this fixture (no Git repository). */
+    private JsonNode legacyReport() throws IOException {
+        return new ObjectMapper().readTree("""
+                {
+                  "schemaVersion": 1,
+                  "recipe": {"name": "demo", "sha256": "%s"},
+                  "tag": "local",
+                  "source": null,
+                  "modules": [],
+                  "components": [{"name": "control-plane", "sdk": "java", "mode": "jvm",
+                                  "artifact": "control-plane/", "image": null}]
+                }
+                """.formatted(sha256(projectDir.resolve("recipe.yaml"))));
+    }
+
+    @Test
+    void incompleteLegacyReportsDoNotAuthorizeDeletion() throws IOException {
+        recipe(HEADER + CP_JVM);
+        Path out = Files.createDirectories(outsideDir.resolve("incomplete-report"));
+        Files.writeString(out.resolve("keep.txt"), "user data");
+        List<JsonNode> invalid = new ArrayList<>();
+        invalid.add(new ObjectMapper().readTree("{\"schemaVersion\":1,\"recipe\":{\"name\":\"\"}}"));
+        for (String field : List.of("recipe", "tag", "source", "modules", "components")) {
+            ObjectNode report = (ObjectNode) legacyReport();
+            report.remove(field);
+            invalid.add(report);
+        }
+        ObjectNode wrongVersion = (ObjectNode) legacyReport();
+        wrongVersion.put("schemaVersion", "1");
+        invalid.add(wrongVersion);
+        ObjectNode incompleteComponent = (ObjectNode) legacyReport();
+        ((ObjectNode) incompleteComponent.at("/components/0")).remove("artifact");
+        invalid.add(incompleteComponent);
+        ObjectNode incompleteImage = (ObjectNode) legacyReport();
+        ((ObjectNode) incompleteImage.at("/components/0")).putObject("image")
+                .put("reference", "nanofaas/demo/control-plane:local");
+        invalid.add(incompleteImage);
+
+        for (JsonNode report : invalid) {
+            String contents = report.toPrettyString();
+            Files.writeString(out.resolve("distribution.json"), contents);
+            assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(out)))
+                    .contains("is not empty and holds no recipe output");
+            assertThat(out.resolve("keep.txt")).hasContent("user data");
+            assertThat(out.resolve("distribution.json")).hasContent(contents);
+        }
+    }
+
+    @Test
+    void failedAssemblyCanBeRetriedInTheSameOutput() throws IOException {
+        recipe(PUBLISH_CP_ONLY);
+        Path out = outsideDir.resolve("retry");
+        Files.writeString(projectDir.resolve("fail-build"), "");
+
+        fails("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(out));
+
+        assertThat(out.resolve(".nanofaas-recipe-output")).isRegularFile();
+        assertThat(out.resolve("distribution.json")).doesNotExist();
+        Files.delete(projectDir.resolve("fail-build"));
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(out));
+        assertThat(out.resolve("distribution.json")).isRegularFile();
+    }
+
+    private static String hex64(char c) {
+        return String.valueOf(c).repeat(64);
+    }
+
+    @Test
+    void reusesOutputsHoldingACompleteV2OrPublishedReport() throws IOException {
+        recipe(HEADER + CP_JVM);
+        ObjectNode v2 = (ObjectNode) legacyReport();
+        v2.put("schemaVersion", 2);
+        ((ObjectNode) v2.at("/components/0")).put("kind", "control-plane").putObject("image")
+                .put("reference", "nanofaas/demo/control-plane:local").put("status", "built").put("id", "sha256:" + hex64('a'));
+        ObjectNode published = (ObjectNode) legacyReport();
+        ((ObjectNode) published.at("/components/0")).putObject("image")
+                .put("reference", "nanofaas/demo/control-plane:local").put("status", "published")
+                .put("digest", "sha256:" + hex64('b'));
+
+        for (Map.Entry<String, JsonNode> report : Map.of("v2", (JsonNode) v2, "published", published).entrySet()) {
+            Path out = Files.createDirectories(outsideDir.resolve("reuse-" + report.getKey()));
+            Files.writeString(out.resolve("distribution.json"), report.getValue().toPrettyString());
+            Files.writeString(out.resolve("stale.txt"), "old");
+
+            run("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(out));
+
+            assertThat(out.resolve("stale.txt")).as(report.getKey()).doesNotExist();
+            assertThat(out.resolve(".nanofaas-recipe-output")).as(report.getKey()).isRegularFile();
+        }
+    }
+
+    @Test
+    void malformedReportsDoNotAuthorizeDeletion() throws IOException {
+        recipe(HEADER + CP_JVM);
+        Path out = Files.createDirectories(outsideDir.resolve("malformed-report"));
+        Files.writeString(out.resolve("keep.txt"), "user data");
+        List<JsonNode> invalid = new ArrayList<>();
+        ObjectNode noHash = (ObjectNode) legacyReport();
+        ((ObjectNode) noHash.get("recipe")).remove("sha256");
+        invalid.add(noHash);
+        ObjectNode badSource = (ObjectNode) legacyReport();
+        badSource.putObject("source").put("revision", "abc").put("dirty", false);
+        invalid.add(badSource);
+        ObjectNode badModule = (ObjectNode) legacyReport();
+        badModule.putArray("modules").add("Not A Slug");
+        invalid.add(badModule);
+        ObjectNode noComponents = (ObjectNode) legacyReport();
+        noComponents.putArray("components");
+        invalid.add(noComponents);
+        ObjectNode v2WithoutId = (ObjectNode) legacyReport();
+        v2WithoutId.put("schemaVersion", 2);
+        ((ObjectNode) v2WithoutId.at("/components/0")).put("kind", "control-plane").putObject("image")
+                .put("reference", "nanofaas/demo/control-plane:local").put("status", "built");
+        invalid.add(v2WithoutId);
+        ObjectNode publishedWithoutDigest = (ObjectNode) legacyReport();
+        ((ObjectNode) publishedWithoutDigest.at("/components/0")).putObject("image")
+                .put("reference", "nanofaas/demo/control-plane:local").put("status", "published");
+        invalid.add(publishedWithoutDigest);
+
+        for (JsonNode report : invalid) {
+            String contents = report.toPrettyString();
+            Files.writeString(out.resolve("distribution.json"), contents);
+            assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(out)))
+                    .contains("is not empty and holds no recipe output");
+            assertThat(out.resolve("keep.txt")).hasContent("user data");
+            assertThat(out.resolve("distribution.json")).hasContent(contents);
+        }
     }
 
     private static final String FULL_RECIPE = HEADER + """
