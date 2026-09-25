@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.gradle;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.networknt.schema.Schema;
 import com.networknt.schema.SchemaLocation;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -18,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -151,7 +154,7 @@ class RecipeReaderTest {
     static Stream<Arguments> invalidRecipes() {
         return Stream.of(
                 Arguments.of("duplicate key", BASE + "name: other\n" + CP, "name"),
-                Arguments.of("unsupported version", "schemaVersion: 2\nname: demo\n" + CP, "schemaVersion"),
+                Arguments.of("unsupported version", "schemaVersion: 3\nname: demo\n" + CP, "supported versions are 1 and 2"),
                 Arguments.of("unknown field", BASE + "nmae: x\n" + CP, "nmae"),
                 Arguments.of("missing name", "schemaVersion: 1\n" + CP, "name"),
                 Arguments.of("missing controlPlane", BASE, "controlPlane"),
@@ -221,6 +224,114 @@ class RecipeReaderTest {
 
         assertThatThrownBy(() -> new RecipeReader().read(file, null))
                 .isInstanceOf(GradleException.class).hasMessageContaining(file.toString());
+    }
+
+    private static final String V2 = """
+            schemaVersion: 2
+            name: demo
+            controlPlane:
+              modules: [build-metadata]
+              build:
+                mode: native
+                variant: native-o3-g1
+                native: {optimization: "s", gc: G1, monitoring: [jvmstat]}
+            functions:
+              - {name: word-stats, sdk: bash, container: {image: ws-bash}}
+            services:
+              - {name: warm-echo, sdk: java, build: {mode: native, native: {optimization: "3"}}, container: {image: echo}}
+              - {name: watchdog, sdk: dockerfile, container: {image: watchdog}}
+            """;
+
+    @Test
+    void readsV2Recipe() throws IOException {
+        RecipeReader.Document document = new RecipeReader().read(write(V2), null);
+
+        assertThat(document.declaredVersion()).isEqualTo(2);
+        assertThat(document.data().at("/controlPlane/build/native/gc").asText()).isEqualTo("G1");
+        assertThat(document.data().at("/services/1/sdk").asText()).isEqualTo("dockerfile");
+    }
+
+    @Test
+    void normalisesV1ToTheV2Model() throws IOException {
+        RecipeReader.Document document = new RecipeReader().read(write(VALID), null);
+
+        assertThat(document.declaredVersion()).isEqualTo(1);
+        assertThat(document.data().get("schemaVersion").asInt()).isEqualTo(2);
+        assertThat(document.data().path("services").isMissingNode()).isTrue();
+        assertThat(document.data().at("/functions/1/sdk").asText()).isEqualTo("python");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"3", "3.0", "3e0"})
+    void normalisesNumericOptimizationOnEveryJavaComponent(String value) throws IOException {
+        Path file = write("""
+                schemaVersion: 2
+                name: demo
+                controlPlane: {modules: [build-metadata], build: {mode: native, native: {optimization: %s}}}
+                functions: [{name: word-stats, sdk: java, build: {mode: native, native: {optimization: %s}}}]
+                services: [{name: warm-echo, sdk: java, build: {mode: native, native: {optimization: %s}}}]
+                """.formatted(value, value, value));
+        JsonNode data = new RecipeReader().read(file, null).data();
+
+        for (String pointer : List.of("/controlPlane", "/functions/0", "/services/0")) {
+            JsonNode optimization = data.at(pointer + "/build/native/optimization");
+            assertThat(optimization.isTextual()).isTrue();
+            assertThat(optimization.asText()).isEqualTo("3");
+        }
+    }
+
+    static Stream<Arguments> invalidV2Recipes() {
+        String head = "schemaVersion: 2\nname: demo\n";
+        String cp = "controlPlane: {modules: [], build: {mode: jvm}}\n";
+        return Stream.of(
+                Arguments.of("v1 with a v2 field", BASE
+                        + "controlPlane: {modules: [], build: {mode: jvm, variant: x}}\n", "variant"),
+                Arguments.of("v1 with services", BASE + CP
+                        + "services: [{name: watchdog, sdk: dockerfile, container: {image: w}}]\n", "services"),
+                Arguments.of("native options in jvm mode", head
+                        + "controlPlane: {modules: [], build: {mode: jvm, native: {gc: G1}}}\n", "native"),
+                Arguments.of("unknown optimization", head
+                        + "controlPlane: {modules: [], build: {mode: native, native: {optimization: fast}}}\n", "optimization"),
+                Arguments.of("unknown collector", head
+                        + "controlPlane: {modules: [], build: {mode: native, native: {gc: parallel}}}\n", "gc"),
+                Arguments.of("unknown monitoring", head
+                        + "controlPlane: {modules: [], build: {mode: native, native: {monitoring: [perf]}}}\n", "monitoring"),
+                Arguments.of("variant on a function", head + cp
+                        + "functions: [{name: f, sdk: java, build: {mode: jvm, variant: x}}]\n", "variant"),
+                Arguments.of("bad variant", head
+                        + "controlPlane: {modules: [], build: {mode: jvm, variant: Bad_1}}\n", "variant"),
+                Arguments.of("bash with build", head + cp
+                        + "functions: [{name: f, sdk: bash, build: {mode: jvm}, container: {image: f}}]\n", "build"),
+                Arguments.of("dockerfile service without container", head + cp
+                        + "services: [{name: w, sdk: dockerfile}]\n", "container"),
+                Arguments.of("dockerfile service with jvm", head + cp
+                        + "services: [{name: w, sdk: dockerfile, jvm: {args: [-Xmx1m]}, container: {image: w}}]\n", "jvm"),
+                Arguments.of("java service without build", head + cp
+                        + "services: [{name: warm-echo, sdk: java}]\n", "build"),
+                Arguments.of("unknown service sdk", head + cp
+                        + "services: [{name: w, sdk: rust, container: {image: w}}]\n", "sdk"),
+                Arguments.of("non-integral optimization", head
+                        + "controlPlane: {modules: [], build: {mode: native, native: {optimization: 3.5}}}\n", "optimization"),
+                Arguments.of("string version", "schemaVersion: '2'\nname: demo\n" + cp, "supported versions are 1 and 2"));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("invalidV2Recipes")
+    void rejectsInvalidV2Recipes(String description, String yaml, String expected) throws IOException {
+        Path file = write(yaml);
+
+        assertThatThrownBy(() -> new RecipeReader().read(file, null))
+                .as(description).isInstanceOf(GradleException.class)
+                .hasMessageContaining(file.toString()).hasMessageContaining(expected);
+    }
+
+    @Test
+    void v2SchemaConformsToBundledDraft202012Metaschema() throws IOException {
+        SchemaRegistry registry = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12);
+        Schema metaschema = registry.getSchema(SchemaLocation.of(SpecificationVersion.DRAFT_2020_12.getDialectId()));
+        try (var schema = getClass().getClassLoader().getResourceAsStream(RecipeReader.SCHEMA_V2_RESOURCE)) {
+            assertThat(metaschema.validate(new ObjectMapper().readTree(schema))).isEmpty();
+        }
     }
 
     private Path write(String content) throws IOException {

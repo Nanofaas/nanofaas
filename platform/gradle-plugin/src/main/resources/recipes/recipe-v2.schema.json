@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NanoFaaS distribution recipe v2",
+  "$comment": "Patterns end with (?![\\s\\S]) instead of $: in Java regex $ also matches before a trailing line break.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "name", "controlPlane"],
+  "properties": {
+    "schemaVersion": {"const": 2},
+    "name": {"$ref": "#/$defs/slug"},
+    "registry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "tag"],
+      "properties": {
+        "repository": {
+          "description": "Registry host and optional path, without URL scheme, image name or tag (e.g. ghcr.io/my-org).",
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]+)?(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)*(?![\\s\\S])"
+        },
+        "tag": {"$ref": "#/$defs/tag"}
+      }
+    },
+    "controlPlane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modules", "build"],
+      "properties": {
+        "modules": {
+          "description": "Exact optional module selection; [] selects only the core.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/slug"}
+        },
+        "build": {"$ref": "#/$defs/controlPlaneBuild"},
+        "jvm": {"$ref": "#/$defs/jvm"},
+        "container": {"$ref": "#/$defs/container"},
+        "config": {
+          "description": "Spring configuration written to config/recipe.yaml; not validated property by property.",
+          "type": "object"
+        }
+      },
+      "$ref": "#/$defs/nativeHasNoJvm"
+    },
+    "functions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/function"}
+    },
+    "services": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/service"}
+    }
+  },
+  "$defs": {
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?![\\s\\S])"
+    },
+    "tag": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}(?![\\s\\S])"
+    },
+    "native": {
+      "description": "native-image options of this component; omitted fields keep -O3, the serial collector and no monitoring.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "optimization": {"enum": ["s", "0", "1", "2", "3", 0, 1, 2, 3]},
+        "gc": {"description": "G1 needs Oracle GraalVM; it also enables jfr.", "enum": ["serial", "G1"]},
+        "monitoring": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["all", "heapdump", "jfr", "jvmstat", "jmxserver", "jmxclient", "threaddump", "nmt", "jcmd"]}
+        }
+      }
+    },
+    "nativeOptionsNeedNativeMode": {
+      "if": {"required": ["mode"], "properties": {"mode": {"const": "jvm"}}},
+      "then": {"properties": {"native": false}}
+    },
+    "javaBuild": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": {"enum": ["jvm", "native"]},
+        "native": {"$ref": "#/$defs/native"}
+      },
+      "$ref": "#/$defs/nativeOptionsNeedNativeMode"
+    },
+    "controlPlaneBuild": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": {"enum": ["jvm", "native"]},
+        "native": {"$ref": "#/$defs/native"},
+        "variant": {"description": "Label written to nanofaas-build.properties; needs the build-metadata module.", "$ref": "#/$defs/slug"}
+      },
+      "$ref": "#/$defs/nativeOptionsNeedNativeMode"
+    },
+    "jvm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["args"],
+      "properties": {
+        "args": {
+          "description": "JVM options of the produced component, one option per item; spaces and quotes are preserved.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "not": {"pattern": "[\\u0000\\n\\r]"}
+          }
+        }
+      }
+    },
+    "container": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["image"],
+      "properties": {
+        "image": {"$ref": "#/$defs/slug"}
+      }
+    },
+    "nativeHasNoJvm": {
+      "if": {
+        "required": ["build"],
+        "properties": {"build": {"required": ["mode"], "properties": {"mode": {"const": "native"}}}}
+      },
+      "then": {"properties": {"jvm": false}}
+    },
+    "function": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "sdk"],
+      "properties": {
+        "name": {"$ref": "#/$defs/slug"},
+        "sdk": {"enum": ["java", "java-lite", "python", "javascript", "go", "bash"]},
+        "build": {"$ref": "#/$defs/javaBuild"},
+        "jvm": {"$ref": "#/$defs/jvm"},
+        "container": {"$ref": "#/$defs/container"}
+      },
+      "allOf": [
+        {"$ref": "#/$defs/nativeHasNoJvm"},
+        {
+          "if": {"properties": {"sdk": {"enum": ["java", "java-lite"]}}},
+          "then": {"required": ["build"]},
+          "else": {"required": ["container"], "properties": {"build": false, "jvm": false}}
+        }
+      ]
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "sdk"],
+      "properties": {
+        "name": {"$ref": "#/$defs/slug"},
+        "sdk": {"enum": ["java", "dockerfile"]},
+        "build": {"$ref": "#/$defs/javaBuild"},
+        "jvm": {"$ref": "#/$defs/jvm"},
+        "container": {"$ref": "#/$defs/container"}
+      },
+      "allOf": [
+        {"$ref": "#/$defs/nativeHasNoJvm"},
+        {
+          "if": {"properties": {"sdk": {"const": "java"}}},
+          "then": {"required": ["build"]},
+          "else": {"required": ["container"], "properties": {"build": false, "jvm": false}}
+        }
+      ]
+    }
+  }
+}
