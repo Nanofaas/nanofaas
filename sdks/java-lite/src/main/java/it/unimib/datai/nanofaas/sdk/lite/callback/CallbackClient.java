@@ -63,7 +63,7 @@ public final class CallbackClient implements AutoCloseable {
                 DEFAULT_MAX_PAYLOAD_BYTES, false);
     }
 
-    private CallbackClient(HttpClient httpClient, ObjectMapper objectMapper, String baseUrl,
+    private CallbackClient(HttpClient httpClient, ObjectMapper objectMapper, String baseUrl, // NOSONAR (java:S107): composition constructor; each argument is an injected collaborator or limit
                            Duration attemptTimeout, int maxAttempts, int[] retryDelaysMs,
                            int maxPayloadBytes, boolean ownsHttpClient) {
         if (maxPayloadBytes <= 0) throw new IllegalArgumentException("max payload bytes must be positive");
@@ -169,7 +169,7 @@ public final class CallbackClient implements AutoCloseable {
             log.warn("Callback failed for execution {} (attempt {}) with status {}",
                     executionId, attempt + 1, status);
             return SendStatus.RETRYABLE;
-        } catch (InterruptedException ex) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
             log.warn("Callback interrupted for execution {} (attempt {})", executionId, attempt + 1);
             return SendStatus.INTERRUPTED;

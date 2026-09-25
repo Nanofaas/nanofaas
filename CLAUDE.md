@@ -131,6 +131,7 @@ Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `Ex
 - No authentication/authorization
 - Performance and latency prioritized over features
 - Java 25 toolchain, 4-space indentation, `com.nanofaas` package root
+- Python 3.12 or newer for every Python project (SDK, tools, functions, experiments); function images use `python:3.12-slim`
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence

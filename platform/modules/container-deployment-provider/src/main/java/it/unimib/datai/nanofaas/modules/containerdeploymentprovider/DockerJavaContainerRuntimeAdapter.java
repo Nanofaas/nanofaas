@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 
+import it.unimib.datai.nanofaas.containerdeployment.LocalManagedDeploymentProvider;
 import it.unimib.datai.nanofaas.containerdeployment.ContainerRuntimeAdapter;
 import it.unimib.datai.nanofaas.containerdeployment.ContainerInstanceSpec;
 import it.unimib.datai.nanofaas.containerdeployment.ManagedContainer;
@@ -109,7 +110,7 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
             client.startContainerCmd(created.getId()).exec();
         }
         return new ManagedContainer(spec.containerName(),
-                ContainerLocalDeploymentProvider.replicaIndex(spec.containerName()),
+                LocalManagedDeploymentProvider.replicaIndex(spec.containerName()),
                 baseUrl(spec.containerName(), hostPort), true);
     }
 
@@ -127,8 +128,8 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
         return client.listContainersCmd()
                 .withShowAll(true)
                 .withLabelFilter(Map.of(
-                        ContainerLocalDeploymentProvider.MANAGED_LABEL, "true",
-                        ContainerLocalDeploymentProvider.FUNCTION_LABEL, functionName))
+                        LocalManagedDeploymentProvider.MANAGED_LABEL, "true",
+                        LocalManagedDeploymentProvider.FUNCTION_LABEL, functionName))
                 .exec().stream()
                 .map(this::toManagedContainer)
                 .toList();
@@ -138,7 +139,7 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
         String name = containerName(container);
         return new ManagedContainer(
                 name,
-                ContainerLocalDeploymentProvider.replicaIndex(name),
+                LocalManagedDeploymentProvider.replicaIndex(name),
                 baseUrl(name, publishedHostPort(container)),
                 "running".equalsIgnoreCase(container.getState()));
     }

@@ -66,6 +66,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
 
     private static final Logger log = LoggerFactory.getLogger(ReplicaStatusSnapshot.class);
+    private static final String REPLICA_STATUS_FOR = "Replica status for ";
 
     /** Default freshness window: one autoscaler/governor poll interval. */
     public static final Duration DEFAULT_TTL = Duration.ofSeconds(5);
@@ -369,7 +370,7 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
             // Release any waiter before cancelling, so a task cancelled before it ever ran cannot
             // leave a caller waiting for a completion that will never come.
             pending.completeExceptionally(new ReplicaStatusUnavailableException(
-                    "Replica status for " + functionName + " was invalidated while it was being fetched"));
+                    REPLICA_STATUS_FOR + functionName + " was invalidated while it was being fetched"));
         }
         if (task != null) {
             // Cancellation is best effort and is all the Fetcher contract supports: a queued task is
@@ -573,9 +574,9 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
     private ReplicaStatus awaitWithinDeadline(Entry entry, Refresh refresh, ManagedDeploymentTarget target) {
         try {
             return refresh.result().get(freshnessDeadline.toNanos(), TimeUnit.NANOSECONDS);
-        } catch (TimeoutException timedOut) {
+        } catch (TimeoutException _) {
             ReplicaStatusUnavailableException failure = new ReplicaStatusUnavailableException(
-                    "Replica status for " + target.functionName() + " was not available within the "
+                    REPLICA_STATUS_FOR + target.functionName() + " was not available within the "
                             + freshnessDeadline + " freshness deadline");
             if (refresh.result().completeExceptionally(failure)) {
                 // Nobody can still be served by this fetch: every waiter shares the future that has
@@ -585,7 +586,7 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
             throw failure;
         } catch (ExecutionException failure) {
             throw rethrow(failure.getCause());
-        } catch (InterruptedException interrupted) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
             throw new ReplicaStatusUnavailableException(
                     "Interrupted while reading the replica status of " + target.functionName());
@@ -612,7 +613,7 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
     /** Detaches this refresh from the entry, but only while the entry still owns it. */
     @SuppressWarnings("ReferenceEquality") // Identity is the ownership token for an in-flight refresh.
     private void forget(Entry entry, Refresh refresh) {
-        synchronized (entry) {
+        synchronized (entry) { // NOSONAR (java:S2445): this object is its own monitor by design; every path locks the same instance
             if (entry.inFlight == refresh.result()) {
                 entry.inFlight = null;
             }
@@ -631,7 +632,7 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
             ReplicaStatus status;
             try {
                 status = fetcher.fetch(target);
-            } catch (Throwable failure) {
+            } catch (Throwable failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 // Nobody subscribes to this future on the stale-while-revalidate path, so without a
                 // log a provider that has been failing for hours leaves no trace anywhere.
                 log.warn("Replica status refresh failed for {}", target.functionName(), failure);
@@ -641,7 +642,7 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
                 return;
             }
             boolean applied;
-            synchronized (entry) {
+            synchronized (entry) { // NOSONAR (java:S2445): this object is its own monitor by design; every path locks the same instance
                 applied = entry.generation == capturedGeneration && target.backendId().equals(entry.backendId);
                 if (applied) {
                     // A late completion still lands here: it is a real reading for the generation
@@ -659,7 +660,7 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
                 // deprovision and re-registration must fail rather than answer for a function that no
                 // longer exists in that form; the caller's next read starts from the new generation.
                 result.completeExceptionally(new ReplicaStatusUnavailableException(
-                        "Replica status for " + target.functionName()
+                        REPLICA_STATUS_FOR + target.functionName()
                                 + " was superseded by a newer generation while it was being fetched"));
                 return;
             }
@@ -672,7 +673,7 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
     }
 
     private void recordFailure(Entry entry, long capturedGeneration, ManagedDeploymentTarget target, String reason) {
-        synchronized (entry) {
+        synchronized (entry) { // NOSONAR (java:S2445): this object is its own monitor by design; every path locks the same instance
             if (entry.generation == capturedGeneration && target.backendId().equals(entry.backendId)) {
                 entry.failureReason = reason;
             }
@@ -728,10 +729,10 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
     private static final class Entry {
         volatile long generation;
         volatile String backendId;
-        volatile ReplicaStatus status;
+        volatile ReplicaStatus status; // NOSONAR (java:S3077): thread-safe or immutable value replaced wholesale
         volatile Instant fetchedAt;
-        volatile CompletableFuture<ReplicaStatus> inFlight;
-        volatile RefreshTask task;
+        volatile CompletableFuture<ReplicaStatus> inFlight; // NOSONAR (java:S3077): thread-safe or immutable value replaced wholesale
+        volatile RefreshTask task; // NOSONAR (java:S3077): thread-safe or immutable value replaced wholesale
         /** Short summary of the last failed fetch; a string, so no stack trace is retained. */
         volatile String failureReason;
 

@@ -58,14 +58,14 @@ class P07cReviewFixTest {
         when(gate.ensureReady(any())).thenReturn(readiness);
         DispatcherRouter router = mock(DispatcherRouter.class);
         ExecutionCompletionHandler handler = fixture.handler(router, gate);
-        ExecutionRecord record = fixture.newLookup(deploymentSpec()).executionRecord();
+        ExecutionRecord executionRecord = fixture.newLookup(deploymentSpec()).executionRecord();
         long canonicalBytes = fixture.capacity.inputReservedGlobally();
 
-        handler.dispatchDirect(record.task());
+        handler.dispatchDirect(executionRecord.task());
         assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
         assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
 
-        fixture.expire(record);
+        fixture.expire(executionRecord);
 
         assertThat(fixture.capacity.inputReservedGlobally())
                 .as("the pending readiness callback still captures the physical request")
@@ -90,11 +90,11 @@ class P07cReviewFixTest {
         DispatcherRouter router = mock(DispatcherRouter.class);
         when(router.dispatchExternal(any())).thenReturn(transport);
         ExecutionCompletionHandler handler = fixture.handler(router, gate);
-        ExecutionRecord record = fixture.newLookup(deploymentSpec()).executionRecord();
+        ExecutionRecord executionRecord = fixture.newLookup(deploymentSpec()).executionRecord();
         long canonicalBytes = fixture.capacity.inputReservedGlobally();
 
-        handler.dispatchDirect(record.task());
-        fixture.expire(record);
+        handler.dispatchDirect(executionRecord.task());
+        fixture.expire(executionRecord);
 
         assertThat(transport.cancelRequested).isTrue();
         assertThat(fixture.capacity.inputReservedGlobally())
@@ -123,14 +123,14 @@ class P07cReviewFixTest {
                 null, fixture.metrics, null, gateway, handler, new InvocationResponseMapper(), fixture.waiters());
         FunctionSpec spec = offloadSpec();
         InvocationExecutionFactory.ExecutionLookup lookup = fixture.newLookup(spec);
-        ExecutionRecord record = lookup.executionRecord();
+        ExecutionRecord executionRecord = lookup.executionRecord();
         long canonicalBytes = fixture.capacity.inputReservedGlobally();
 
         coordinator.invoke(lookup, spec, 10_000, OffloadContext.none()).subscribe();
         assertThat(fixture.capacity.inputReservedGlobally()).isEqualTo(canonicalBytes);
         assertThat(fixture.capacity.physicalInputCopyReservedGlobally()).isEqualTo(canonicalBytes);
 
-        fixture.expire(record);
+        fixture.expire(executionRecord);
 
         assertThat(fixture.capacity.inputReservedGlobally())
                 .as("canceling the local outcome must not masquerade as remote drain")
@@ -163,8 +163,8 @@ class P07cReviewFixTest {
         FunctionSpec spec = localSpec();
         InvocationExecutionFactory.ExecutionLookup lookup = fixture.newLookup(spec);
 
-        assertThatThrownBy(() -> coordinator.invoke(
-                lookup, spec, 10_000, OffloadContext.none()).block())
+        var response = coordinator.invoke(lookup, spec, 10_000, OffloadContext.none());
+        assertThatThrownBy(response::block)
                 .isInstanceOf(InvocationQuotaExceededException.class)
                 .extracting("resource")
                 .isEqualTo(InvocationQuotaExceededException.Resource.INPUT_COPY);
@@ -190,7 +190,7 @@ class P07cReviewFixTest {
         FunctionSpec spec = localSpec();
         InvocationExecutionFactory.ExecutionLookup lookup = fixture.newLookup(spec);
 
-        assertThatThrownBy(() -> coordinator.invoke(
+        assertThatThrownBy(() -> coordinator.invoke( // NOSONAR (java:S5778): invoke() itself throws synchronously on this path
                 lookup, spec, 10_000, OffloadContext.none()).block())
                 .isInstanceOf(AssertionError.class)
                 .hasMessage("dispatcher failed");
@@ -265,16 +265,16 @@ class P07cReviewFixTest {
     @Test
     void retryKeepsTheLogicalAdmissionsGenerationIdentity() {
         Fixture fixture = new Fixture(new AtomicLong(), 1_000_000);
-        ExecutionRecord record = fixture.newLookup(localSpec()).executionRecord();
-        var admittedGeneration = record.currentGeneration();
-        InvocationTask first = record.task();
+        ExecutionRecord executionRecord = fixture.newLookup(localSpec()).executionRecord();
+        var admittedGeneration = executionRecord.currentGeneration();
+        InvocationTask first = executionRecord.task();
         InvocationTask retry = new InvocationTask(
                 first.executionId(), first.functionName(), first.functionSpec(), first.request(),
                 null, first.traceId(), first.enqueuedAt(), first.attempt() + 1, first.kind());
 
-        record.resetForRetry(retry);
+        executionRecord.resetForRetry(retry);
 
-        assertThat(record.currentGeneration()).isEqualTo(admittedGeneration);
+        assertThat(executionRecord.currentGeneration()).isEqualTo(admittedGeneration);
     }
 
     private static FunctionSpec deploymentSpec() {
@@ -342,11 +342,11 @@ class P07cReviewFixTest {
                     null, null, InvocationKind.SYNC);
         }
 
-        private void expire(ExecutionRecord record) {
+        private void expire(ExecutionRecord executionRecord) {
             tickerNanos.set(Duration.ofMinutes(31).toNanos());
             store.inFlightCount();
             await().atMost(Duration.ofSeconds(3)).untilAsserted(() ->
-                    assertThat(record.completion()).isDone());
+                    assertThat(executionRecord.completion()).isDone());
         }
     }
 

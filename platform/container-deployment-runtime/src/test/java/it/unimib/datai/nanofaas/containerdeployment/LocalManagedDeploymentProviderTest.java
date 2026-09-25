@@ -17,6 +17,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -33,7 +34,7 @@ class LocalManagedDeploymentProviderTest {
         when(proxy.endpointUrl()).thenReturn("http://127.0.0.1:19090/invoke");
         LocalManagedDeploymentProvider provider = new LocalManagedDeploymentProvider("test-runtime",
                 new LocalDeploymentSettings(null, Duration.ofSeconds(5), Duration.ofMillis(10)),
-                adapter, probe, name -> proxy);
+                adapter, probe, factoryReturning(proxy));
 
 
         provider.provision(spec());
@@ -52,7 +53,7 @@ class LocalManagedDeploymentProviderTest {
                 new ManagedContainer("owned-echo-instance1", 1, "http://10.90.0.5:8080", true)));
         LocalManagedDeploymentProvider provider = new LocalManagedDeploymentProvider("test-runtime",
                 new LocalDeploymentSettings(null, Duration.ofSeconds(5), Duration.ofMillis(10)),
-                adapter, probe, name -> proxy) {
+                adapter, probe, factoryReturning(proxy)) {
             @Override
             protected String containerNamePrefix(String functionName) {
                 return "owned-" + functionName;
@@ -80,4 +81,9 @@ class LocalManagedDeploymentProviderTest {
                         List.of(new ScalingMetric("queue_depth", "5", null))));
     }
 
+    private static RoundRobinFunctionProxyFactory factoryReturning(ManagedFunctionProxy proxy) {
+        RoundRobinFunctionProxyFactory factory = mock(RoundRobinFunctionProxyFactory.class);
+        when(factory.create(anyString())).thenReturn(proxy);
+        return factory;
+    }
 }

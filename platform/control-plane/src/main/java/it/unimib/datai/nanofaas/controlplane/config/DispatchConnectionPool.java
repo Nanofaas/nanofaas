@@ -346,8 +346,10 @@ public final class DispatchConnectionPool implements AutoCloseable, ConnectionPr
             return delegate.maxConnections();
         }
 
+        // java:S2638 is a false positive: reactor-netty declares this return type-use
+        // @Nullable (its default returns null); the analyzer sees only @NullMarked.
         @Override
-        public @Nullable Map<SocketAddress, Integer> maxConnectionsPerHost() {
+        public @Nullable Map<SocketAddress, Integer> maxConnectionsPerHost() { // NOSONAR
             return delegate.maxConnectionsPerHost();
         }
 

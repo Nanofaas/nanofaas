@@ -5,6 +5,7 @@ import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpContext;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpPrincipal;
+import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.sdk.lite.callback.CallbackClient;
 import it.unimib.datai.nanofaas.sdk.lite.metrics.RuntimeMetrics;
 import org.junit.jupiter.api.Test;
@@ -32,7 +33,7 @@ class InvokeHandlerBodyDeadlineTest {
                 40, 40, 3, 100);
         ThreadPoolExecutor callbacks = new ThreadPoolExecutor(
                 1, 1, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(1));
-        InvokeHandler handler = new InvokeHandler(request -> request.input(), new CallbackClient(mapper, null),
+        InvokeHandler handler = new InvokeHandler(InvocationRequest::input, new CallbackClient(mapper, null),
                 new RuntimeMetrics("body-deadline"), mapper, "body-deadline", callbacks, 1_000, limits);
         BlockingExchange exchange = new BlockingExchange();
         long started = System.nanoTime();
@@ -68,7 +69,7 @@ class InvokeHandlerBodyDeadlineTest {
         @Override public URI getRequestURI() { return URI.create("/invoke"); }
         @Override public String getRequestMethod() { return "POST"; }
         @Override public HttpContext getHttpContext() { return null; }
-        @Override public void close() { }
+        @Override public void close() { /* no-op: this test double ignores the call */ }
         @Override public InputStream getRequestBody() { return requestBody; }
         @Override public OutputStream getResponseBody() { return body; }
         @Override public void sendResponseHeaders(int responseCode, long responseLength) { status = responseCode; }
@@ -77,8 +78,8 @@ class InvokeHandlerBodyDeadlineTest {
         @Override public InetSocketAddress getLocalAddress() { return null; }
         @Override public String getProtocol() { return "HTTP/1.1"; }
         @Override public Object getAttribute(String name) { return null; }
-        @Override public void setAttribute(String name, Object value) { }
-        @Override public void setStreams(InputStream input, OutputStream output) { }
+        @Override public void setAttribute(String name, Object value) { /* no-op: this test double ignores the call */ }
+        @Override public void setStreams(InputStream input, OutputStream output) { /* no-op: this test double ignores the call */ }
         @Override public HttpPrincipal getPrincipal() { return null; }
     }
 }

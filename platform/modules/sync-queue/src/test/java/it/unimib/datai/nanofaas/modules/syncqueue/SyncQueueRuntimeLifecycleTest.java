@@ -231,8 +231,8 @@ class SyncQueueRuntimeLifecycleTest {
                     "syncQueueMetricsLifecycleListener", FunctionRegistrationListener.class);
             metricsListener.onRegister(spec);
             InvocationTask task = task("admission-racing-removal", spec);
-            ExecutionRecord record = new ExecutionRecord(task.executionId(), task);
-            store.put(record);
+            ExecutionRecord executionRecord = new ExecutionRecord(task.executionId(), task);
+            store.put(executionRecord);
 
             AtomicBoolean armed = new AtomicBoolean(duringGenerationRead);
             AtomicBoolean removalCompleted = new AtomicBoolean();
@@ -263,10 +263,10 @@ class SyncQueueRuntimeLifecycleTest {
                     .tag("function", "").gauge().value()).isZero();
             if (duringGenerationRead) {
                 // The bare gateway does not own completion of a ticket it refused.
-                assertThat(record.completion().isDone()).isFalse();
+                assertThat(executionRecord.completion().isDone()).isFalse();
             } else {
-                assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
-                assertThat(record.completion().isDone()).isTrue();
+                assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
+                assertThat(executionRecord.completion().isDone()).isTrue();
             }
         });
     }
@@ -352,15 +352,15 @@ class SyncQueueRuntimeLifecycleTest {
                 return null;
             }).when(context.getBean(InvocationDispatch.class)).dispatch(any(InvocationTask.class));
             InvocationTask admitted = task("retry-after-disable", spec);
-            ExecutionRecord record = new ExecutionRecord(admitted.executionId(), admitted);
-            store.put(record);
+            ExecutionRecord executionRecord = new ExecutionRecord(admitted.executionId(), admitted);
+            store.put(executionRecord);
             assertThat(enqueuer.enqueue(admitted)).isTrue();
-            for (int i = 0; i < 3 && !record.completion().isDone(); i++) {
+            for (int i = 0; i < 3 && !executionRecord.completion().isDone(); i++) {
                 engine.tick();
             }
-            assertThat(record.completion().isDone()).isTrue();
-            assertThat(record.completion().join().success()).isTrue();
-            assertThat(record.state()).isEqualTo(ExecutionState.SUCCESS);
+            assertThat(executionRecord.completion().isDone()).isTrue();
+            assertThat(executionRecord.completion().join().success()).isTrue();
+            assertThat(executionRecord.state()).isEqualTo(ExecutionState.SUCCESS);
             assertThat(attempts.get()).isEqualTo(2);
             assertThat(engine.reservedCount(spec.name())).isZero();
             // Both dispatches fed the estimator, including the retry queued after deactivation:

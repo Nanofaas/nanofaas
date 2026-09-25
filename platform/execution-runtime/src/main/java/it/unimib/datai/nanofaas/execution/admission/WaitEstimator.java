@@ -93,7 +93,7 @@ public class WaitEstimator {
                 DEFAULT_MAINTENANCE_SAMPLE_BUDGET);
     }
 
-    WaitEstimator(Duration window,
+    WaitEstimator(Duration window, // NOSONAR (java:S107): composition constructor; each argument is an injected collaborator or limit
                   int perFunctionMinSamples,
                   int maxGlobalSamples,
                   int maxPerFunctionSamples,
@@ -106,7 +106,7 @@ public class WaitEstimator {
                 maxTotalPerFunctionSamples, cleanupBudget, maintenanceSampleBudget);
     }
 
-    private WaitEstimator(Duration window,
+    private WaitEstimator(Duration window, // NOSONAR (java:S107): composition constructor; each argument is an injected collaborator or limit
                           int perFunctionMinSamples,
                           Deque<Instant> globalEvents,
                           Map<String, ? extends Deque<Instant>> perFunctionEvents,
@@ -230,8 +230,7 @@ public class WaitEstimator {
         return estimate;
     }
 
-    /** Widened to {@code public} by Task 10 (issue #208) for the same cross-module test reason
-     * as the sizing constructor above; the retention accounting it reports is unchanged. */
+    /** Public for the same cross-module test reason as the sizing constructor above. */
     public RetentionSnapshot retentionSnapshot() {
         return new RetentionSnapshot(functionStates.get(), retainedGlobalSamples.get(),
                 retainedPerFunctionSamples.get(), cleanupCandidates.size());
@@ -262,14 +261,14 @@ public class WaitEstimator {
     }
 
     private ThroughputSnapshot snapshot(Deque<Instant> events, Instant now) {
-        synchronized (events) {
+        synchronized (events) { // NOSONAR (java:S2445): this object is its own monitor by design; every path locks the same instance
             retainedGlobalSamples.addAndGet(-prune(events, now));
             return throughputSnapshot(retainedGlobalSamples.get());
         }
     }
 
     private ThroughputSnapshot throughputSnapshot(int samples) {
-        double seconds = Math.max(1.0, (double) window.toSeconds());
+        double seconds = Math.max(1.0, window.toSeconds());
         return new ThroughputSnapshot(samples, samples / seconds);
     }
 
@@ -307,34 +306,40 @@ public class WaitEstimator {
             if (first == null) {
                 first = state;
             }
-            if (state.functionName.equals(excludedFunction)) {
-                queueForCleanup(state);
-                continue;
-            }
-            boolean empty;
-            synchronized (state.events) {
-                int removed = prune(state.events, now, perStateSampleBudget);
-                removeSamples(state, removed);
-                empty = state.samples == 0;
-            }
-            if (!empty) {
-                queueForCleanup(state);
-                continue;
-            }
-            perFunctionEvents.computeIfPresent(state.functionName, (name, current) -> {
-                if (current != state) {
-                    return current;
-                }
-                synchronized (state.events) {
-                    if (state.samples == 0) {
-                        functionStates.decrementAndGet();
-                        return null;
-                    }
-                }
-                queueForCleanup(state);
-                return state;
-            });
+            cleanOne(state, now, excludedFunction, perStateSampleBudget);
         }
+    }
+
+    private void cleanOne(FunctionEvents state, Instant now, String excludedFunction, int perStateSampleBudget) {
+        if (state.functionName.equals(excludedFunction)) {
+            queueForCleanup(state);
+            return;
+        }
+        boolean empty;
+        synchronized (state.events) {
+            int removed = prune(state.events, now, perStateSampleBudget);
+            removeSamples(state, removed);
+            empty = state.samples == 0;
+        }
+        if (!empty) {
+            queueForCleanup(state);
+            return;
+        }
+        perFunctionEvents.computeIfPresent(state.functionName, (name, current) -> retainOrDrop(state, current));
+    }
+
+    private FunctionEvents retainOrDrop(FunctionEvents state, FunctionEvents current) {
+        if (current != state) {
+            return current;
+        }
+        synchronized (state.events) {
+            if (state.samples == 0) {
+                functionStates.decrementAndGet();
+                return null;
+            }
+        }
+        queueForCleanup(state);
+        return state;
     }
 
     private boolean makeRoomForFunction(Instant now) {
@@ -467,7 +472,7 @@ public class WaitEstimator {
     private Instant cutoff(Instant now) {
         try {
             return now.minus(window);
-        } catch (DateTimeException | ArithmeticException ignored) {
+        } catch (DateTimeException | ArithmeticException _) {
             return Instant.MIN;
         }
     }

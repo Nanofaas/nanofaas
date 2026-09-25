@@ -77,7 +77,6 @@ class SchedulerEngineSwitchTest {
         readiness = mock(EngineReadiness.class);
         when(readiness.runnable(any())).thenReturn(true);
         dispatch = mock(EngineDispatch.class);
-        when(dispatch.isCurrent(any())).thenReturn(true);
         when(dispatch.tryAcquire(any())).thenReturn(lease);
         doAnswer(invocation -> submitted.add(task(invocation).executionId()))
                 .when(dispatch).submit(any());
@@ -130,7 +129,7 @@ class SchedulerEngineSwitchTest {
     void snapshotReportsTheActiveStrategyAndEveryRegisteredId() {
         assertThat(engine.snapshot())
                 .isEqualTo(new SchedulerSelection("per-function",
-                        List.of("per-function", "shared-queue"), "restart"));
+                        List.of("per-function", "shared-queue")));
 
         engine.switchTo("shared-queue");
 
@@ -327,8 +326,8 @@ class SchedulerEngineSwitchTest {
             if (switched.compareAndSet(false, true)) {
                 engine.switchTo("shared-queue");
             }
-            return true;
-        }).when(dispatch).isCurrent(any());
+            return lease;
+        }).when(dispatch).tryAcquire(any());
 
         engine.tick();
 

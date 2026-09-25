@@ -82,13 +82,6 @@ public final class RetainedInputEstimator {
         return OptionalLong.of(current + increment);
     }
 
-    private static OptionalLong multiplyWithinLimit(long left, long right, long limit) {
-        if (left < 0 || right < 0 || limit < 0 || (left != 0 && right > limit / left)) {
-            return OptionalLong.empty();
-        }
-        return OptionalLong.of(left * right);
-    }
-
     private static final class State {
         private final Limits limits;
         private final IdentityHashMap<Object, Boolean> visited = new IdentityHashMap<>();
@@ -179,6 +172,13 @@ public final class RetainedInputEstimator {
                 return 4;
             }
             return 8;
+        }
+
+        private static OptionalLong multiplyWithinLimit(long left, long right, long limit) {
+            if (left < 0 || right < 0 || limit < 0 || (left != 0 && right > limit / left)) {
+                return OptionalLong.empty();
+            }
+            return OptionalLong.of(left * right);
         }
     }
 }

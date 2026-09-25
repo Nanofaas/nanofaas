@@ -6,7 +6,7 @@ import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.containerdeployment.ContainerRuntimeAdapter;
 import it.unimib.datai.nanofaas.containerdeployment.EndpointProbe;
 import it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxy;
-import it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxyFactory;
+import it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxyFactory;
 import it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult;
 import org.junit.jupiter.api.Test;
 import java.util.Map;
@@ -19,7 +19,7 @@ class ContainerdDeploymentProviderTest {
     private final ContainerdDeploymentProvider provider = new ContainerdDeploymentProvider(
             mock(ContainerRuntimeAdapter.class),
             ContainerdProperties.defaults(Map.of("HOME", "/home/service", "XDG_RUNTIME_DIR", "/run/user/1000")),
-            mock(EndpointProbe.class), mock(ManagedFunctionProxyFactory.class));
+            mock(EndpointProbe.class), mock(RoundRobinFunctionProxyFactory.class));
 
     @Test
     void namesAreDeterministicBoundedAndAvoidNormalizationCollisions() {
@@ -41,7 +41,7 @@ class ContainerdDeploymentProviderTest {
 
     @Test
     void provisionPersistsTheActualHashedNamePrefix() {
-        ManagedFunctionProxyFactory factory = mock(ManagedFunctionProxyFactory.class);
+        RoundRobinFunctionProxyFactory factory = mock(RoundRobinFunctionProxyFactory.class);
         ManagedFunctionProxy proxy = mock(ManagedFunctionProxy.class);
         when(factory.create("hello.world")).thenReturn(proxy);
         when(proxy.endpointUrl()).thenReturn("http://127.0.0.1:9000");
@@ -62,5 +62,15 @@ class ContainerdDeploymentProviderTest {
     private static FunctionSpec spec(ExecutionMode mode, java.util.List<String> secrets) {
         return new FunctionSpec("echo", "echo:1", null, null, null, null, null,
                 null, null, null, mode, null, null, null, secrets);
+    }
+
+    @Test
+    void namePrefixTrimsSeparatorsIncludingATruncatedTail() {
+        assertThat(ContainerdDeploymentProvider.namePrefix("--Hello.World--"))
+                .matches("nanofaas-hello-world-[0-9a-f]{10}");
+        assertThat(ContainerdDeploymentProvider.namePrefix("a".repeat(43) + ".b"))
+                .matches("nanofaas-a{43}-[0-9a-f]{10}");
+        assertThat(ContainerdDeploymentProvider.namePrefix("..."))
+                .matches("nanofaas-fn-[0-9a-f]{10}");
     }
 }

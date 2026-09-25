@@ -9,9 +9,8 @@ import java.util.Objects;
 
 /**
  * The single {@link WorkloadMetricsSource} for the composed engine. Both the autoscaler and the concurrency governor gate their own startup on a
- * bean of this type ({@code @ConditionalOnBean(WorkloadMetricsSource.class)}); its absence since
- * Task 8 silently disabled both, which is the incident {@code AutoscalerConfigurationTest}
- * documents.
+ * bean of this type ({@code @ConditionalOnBean(WorkloadMetricsSource.class)}); without it both
+ * are silently disabled, which is the incident {@code AutoscalerConfigurationTest} documents.
  *
  * <p>Every method here is O(1) and reads a value already maintained incrementally at its own
  * mutation point — {@link SchedulerEngine#reservedCount} (updated at admission/settlement, never

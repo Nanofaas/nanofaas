@@ -20,7 +20,8 @@ class WaiterCapacityTest {
                         failure -> assertThat(failure.resource())
                                 .isEqualTo(InvocationQuotaExceededException.Resource.WAITER));
         WaiterCapacity.Waiter second = capacity.reserve(generations.activeGeneration("b"), "exec-b");
-        assertThatThrownBy(() -> capacity.reserve(generations.activeGeneration("b"), "exec-b"))
+        var generationB = generations.activeGeneration("b");
+        assertThatThrownBy(() -> capacity.reserve(generationB, "exec-b"))
                 .isInstanceOf(InvocationQuotaExceededException.class);
 
         assertThat(capacity.reservedGlobally()).isEqualTo(2);
@@ -75,7 +76,8 @@ class WaiterCapacityTest {
         assertThat(capacity.reservedGlobally()).isZero();
         assertThat(capacity.retainedWaiters()).isZero();
         waiter.close();
-        assertThatThrownBy(() -> capacity.reserve(generations.activeGeneration("fn"), "late"))
+        var generationFn = generations.activeGeneration("fn");
+        assertThatThrownBy(() -> capacity.reserve(generationFn, "late"))
                 .isInstanceOf(InvocationQuotaExceededException.class);
     }
 }

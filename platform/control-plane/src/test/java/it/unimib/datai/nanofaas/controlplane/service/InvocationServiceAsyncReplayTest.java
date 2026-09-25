@@ -32,6 +32,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
 
 /**
  * Regression coverage for A1: {@code invokeAsync} must handle a settled/archived
@@ -123,28 +124,28 @@ class InvocationServiceAsyncReplayTest {
     private ExecutionRecord queueAndSettleSuccess(String idempotencyKey, Object output) {
         InvocationResponse queued = invocationService.invokeAsync(
                 "testFunc", new InvocationRequest("payload", null), idempotencyKey, null);
-        ExecutionRecord record = executionStore.get(queued.executionId()).orElseThrow();
-        record.markSuccess(output, 200, null, null);
-        executionStore.settle(record);
-        return record;
+        ExecutionRecord executionRecord = executionStore.get(queued.executionId()).orElseThrow();
+        executionRecord.markSuccess(output, 200, null, null);
+        executionStore.settle(executionRecord);
+        return executionRecord;
     }
 
     private ExecutionRecord queueAndSettleError(String idempotencyKey, ErrorInfo error) {
         InvocationResponse queued = invocationService.invokeAsync(
                 "testFunc", new InvocationRequest("payload", null), idempotencyKey, null);
-        ExecutionRecord record = executionStore.get(queued.executionId()).orElseThrow();
-        record.markError(error);
-        executionStore.settle(record);
-        return record;
+        ExecutionRecord executionRecord = executionStore.get(queued.executionId()).orElseThrow();
+        executionRecord.markError(error);
+        executionStore.settle(executionRecord);
+        return executionRecord;
     }
 
     private ExecutionRecord queueAndSettleTimeout(String idempotencyKey) {
         InvocationResponse queued = invocationService.invokeAsync(
                 "testFunc", new InvocationRequest("payload", null), idempotencyKey, null);
-        ExecutionRecord record = executionStore.get(queued.executionId()).orElseThrow();
-        record.markTimeout();
-        executionStore.settle(record);
-        return record;
+        ExecutionRecord executionRecord = executionStore.get(queued.executionId()).orElseThrow();
+        executionRecord.markTimeout();
+        executionStore.settle(executionRecord);
+        return executionRecord;
     }
 
     @Test
@@ -203,7 +204,7 @@ class InvocationServiceAsyncReplayTest {
         // Admission (metrics.admitted) fires only for the original enqueue, never for the replay.
         verify(metrics, times(1)).admitted(anyString(), any());
         verify(enqueuer, times(1)).enqueue(any());
-        verify(dispatcherRouter, org.mockito.Mockito.never()).dispatchLocal(any());
+        verify(dispatcherRouter, never()).dispatchLocal(any());
     }
 
     @Test
@@ -211,7 +212,7 @@ class InvocationServiceAsyncReplayTest {
         // First arrival: claims the key and queues a live execution.
         InvocationResponse first = invocationService.invokeAsync(
                 "testFunc", new InvocationRequest("payload", null), "idem-race", null);
-        ExecutionRecord record = executionStore.get(first.executionId()).orElseThrow();
+        ExecutionRecord executionRecord = executionStore.get(first.executionId()).orElseThrow();
 
         // A second arrival while the record is still live (not yet settled) must
         // find the same live record and must not enqueue again.
@@ -221,8 +222,8 @@ class InvocationServiceAsyncReplayTest {
         assertThat(duringLive.status()).isEqualTo("queued");
 
         // The transition to settled now happens...
-        record.markSuccess("done", 200, null, null);
-        executionStore.settle(record);
+        executionRecord.markSuccess("done", 200, null, null);
+        executionStore.settle(executionRecord);
 
         // ...and a third arrival, after settlement, must replay the archived
         // outcome rather than create a second execution.
@@ -259,8 +260,8 @@ class InvocationServiceAsyncReplayTest {
         assertThat(executionStore.size()).isZero();
         assertThat(executionStore.outcomeOf(first.executionId())).isNull();
 
-        assertThatThrownBy(() -> invocationService.invokeAsync(
-                "testFunc", new InvocationRequest("payload", null), "idem-gone", null))
+        var request = new InvocationRequest("payload", null);
+        assertThatThrownBy(() -> invocationService.invokeAsync("testFunc", request, "idem-gone", null))
                 .isInstanceOf(OutcomeGoneException.class)
                 .hasMessageContaining(first.executionId());
 

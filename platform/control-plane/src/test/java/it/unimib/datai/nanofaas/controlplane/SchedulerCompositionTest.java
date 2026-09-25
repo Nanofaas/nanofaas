@@ -102,7 +102,7 @@ class SchedulerCompositionTest {
         Class<?> type;
         try {
             type = Class.forName(className, false, SchedulerCompositionTest.class.getClassLoader());
-        } catch (ClassNotFoundException notOnClasspath) {
+        } catch (ClassNotFoundException _) {
             // The class is not even on this profile's classpath: trivially absent as a bean too.
             return;
         }

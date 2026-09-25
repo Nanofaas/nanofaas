@@ -59,7 +59,7 @@ public class InternalScaler implements SmartLifecycle {
                 wakeUpCoordinator, decisionMetrics, InstantSource.system());
     }
 
-    public InternalScaler(FunctionCatalogView registry,
+    public InternalScaler(FunctionCatalogView registry, // NOSONAR (java:S107): composition constructor; each argument is an injected collaborator or limit
                           ScalingMetricsReader metricsReader,
                           @Autowired(required = false) ManagedReplicaControl deploymentCoordinator,
                           ScalingProperties properties,
@@ -196,22 +196,18 @@ public class InternalScaler implements SmartLifecycle {
         if (recommended > requestedReplicas) {
             // Genuine scale-up: the load needs more replicas than we have already asked for.
             scaleUp(generation, target, functionName, decision, requestedReplicas, now);
-        } else if (recommended < requestedReplicas) {
-            // The load needs fewer replicas than already requested.
-            if (decision.downscaleSignal()) {
-                // Explicit downscale: the serving (ready) replicas already exceed what the
-                // load needs. This never waits for the rollout to complete, so replicas that
-                // never became ready cannot block it.
-                scaleDown(generation, target, functionName, decision, requestedReplicas, now);
-            } else if (progressTracker.isStuck(functionName, requestedReplicas, readyReplicas, now)) {
-                // Mid-rollout recommendation (ready <= recommended < requested) but the
-                // rollout has made no progress for a full window: reconcile the requested
-                // target down so a stuck rollout cannot hold a phantom target (or block a
-                // real downscale) forever.
-                scaleDown(generation, target, functionName, decision, requestedReplicas, now);
-            }
-            // Otherwise the rollout is still catching up and progressing: keep the
-            // already-commanded higher target, do not walk it back.
+        } else if (recommended < requestedReplicas
+                && (decision.downscaleSignal()
+                        || progressTracker.isStuck(functionName, requestedReplicas, readyReplicas, now))) {
+            // The load needs fewer replicas than already requested. Scale down on an explicit
+            // downscale signal: the serving (ready) replicas already exceed what the load needs,
+            // and this never waits for the rollout to complete, so replicas that never became
+            // ready cannot block it. Otherwise, a mid-rollout recommendation
+            // (ready <= recommended < requested) whose rollout has made no progress for a full
+            // window also reconciles the requested target down, so a stuck rollout cannot hold a
+            // phantom target (or block a real downscale) forever. A rollout still catching up
+            // and progressing keeps the already-commanded higher target.
+            scaleDown(generation, target, functionName, decision, requestedReplicas, now);
         }
         // recommended == requestedReplicas: nothing to do.
     }

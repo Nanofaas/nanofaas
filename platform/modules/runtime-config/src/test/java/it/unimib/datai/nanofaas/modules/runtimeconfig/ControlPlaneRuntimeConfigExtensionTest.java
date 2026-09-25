@@ -1,6 +1,5 @@
 package it.unimib.datai.nanofaas.modules.runtimeconfig;
 
-import it.unimib.datai.nanofaas.controlplane.config.RuntimeConfigExtension;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.service.HotAdmissionLimits;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
@@ -73,8 +72,9 @@ class ControlPlaneRuntimeConfigExtensionTest {
         assertThat(fixture.waiters.reservedGlobally()).isEqualTo(2);
         assertThatThrownBy(() -> fixture.invocations.reserve("fn", "e2", 1))
                 .isInstanceOf(RuntimeException.class);
+        var owner = new ResourceOwner(ResourceOwner.Scope.INPUT_COPY, "e2/copy");
         assertThatThrownBy(() -> fixture.invocations.reserveInputCopy(
-                generation, new ResourceOwner(ResourceOwner.Scope.INPUT_COPY, "e2/copy"), 1))
+                generation, owner, 1))
                 .isInstanceOf(RuntimeException.class);
         assertThatThrownBy(() -> fixture.waiters.reserve(generation, "e2"))
                 .isInstanceOf(RuntimeException.class);

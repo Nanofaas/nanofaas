@@ -1,7 +1,6 @@
 package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 
 import it.unimib.datai.nanofaas.containerdeployment.ContainerRuntimeAdapter;
-import it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxyFactory;
 import it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxyFactory;
 import it.unimib.datai.nanofaas.containerdeployment.EndpointProbe;
 import it.unimib.datai.nanofaas.containerdeployment.HttpEndpointProbe;
@@ -78,7 +77,7 @@ public class ContainerDeploymentProviderConfiguration {
     }
 
     @Bean
-    ManagedFunctionProxyFactory managedFunctionProxyFactory(ContainerLocalProperties properties,
+    RoundRobinFunctionProxyFactory managedFunctionProxyFactory(ContainerLocalProperties properties,
                                                             ContainerProxyProperties proxyProperties) {
         return new RoundRobinFunctionProxyFactory(properties.bindHost(), proxyProperties.settings());
     }
@@ -87,7 +86,7 @@ public class ContainerDeploymentProviderConfiguration {
     ContainerLocalDeploymentProvider containerLocalDeploymentProvider(ContainerRuntimeAdapter adapter,
                                                                      ContainerLocalProperties properties,
                                                                      EndpointProbe endpointProbe,
-                                                                     ManagedFunctionProxyFactory proxyFactory) {
+                                                                     RoundRobinFunctionProxyFactory proxyFactory) {
         return new ContainerLocalDeploymentProvider(adapter, properties, endpointProbe, proxyFactory);
     }
 }

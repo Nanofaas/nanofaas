@@ -73,11 +73,6 @@ class AsyncQueueConfigurationTest {
             }
 
             @Override
-            public boolean isCurrent(SchedulingTicket ticket) {
-                return true;
-            }
-
-            @Override
             public void submit(InvocationTask task) {
                 throw new AssertionError("never selected: readiness always refuses");
             }
@@ -157,11 +152,6 @@ class AsyncQueueConfigurationTest {
             @Override
             public DispatchOwnership tryAcquire(SchedulingTicket ticket) {
                 throw new AssertionError("never selected: readiness always refuses");
-            }
-
-            @Override
-            public boolean isCurrent(SchedulingTicket ticket) {
-                return true;
             }
 
             @Override
@@ -253,13 +243,10 @@ class AsyncQueueConfigurationTest {
     }
 
     /**
-     * Task 11 fix round 1 (issue #208): the brief's own named acceptance test (brief line 14),
-     * missing from the first pass. It is written against a real {@link WorkloadMetricsBinder}
-     * bound to a real {@link EngineWorkloadMetricsSource} (not the zero-source stand-in the other
-     * tests in this file use) specifically so it can observe actual meter registration/removal —
-     * the first-pass gap this test would have caught: {@code WorkloadDiagnostics} half-wired
-     * (registered, never recorded) and {@code sync_queue_depth} never decremented would both have
-     * been visible here had this file's helper still wired {@code WorkloadDiagnostics} in.
+     * Written against a real {@link WorkloadMetricsBinder} bound to a real
+     * {@link EngineWorkloadMetricsSource} (not the zero-source stand-in the other tests in this
+     * file use) so it can observe actual meter registration/removal: a meter registered but never
+     * recorded, or a {@code sync_queue_depth} never decremented, would both be visible here.
      *
      * <p>Falsifiable against the pre-fix code two different ways: (1) reverting the drain-listener
      * registration in {@code SchedulerConfiguration.schedulerCapacityGenerationListener} (calling
@@ -326,18 +313,13 @@ class AsyncQueueConfigurationTest {
             }
 
             @Override
-            public boolean isCurrent(SchedulingTicket ticket) {
-                return true;
-            }
-
-            @Override
             public void submit(InvocationTask task) {
                 if (holdNextSubmit.compareAndSet(true, false)) {
                     submitEntered.countDown();
                     awaitUninterruptibly(releaseSubmit);
                     return;
                 }
-                // No-op success: SchedulerDispatchSupport treats this as DISPATCHED and the
+                // No-op success: the engine treats this as dispatched and the
                 // engine settles the reservation (finishSubmit) synchronously within the same
                 // tick — see SchedulerEngineQueueSnapshotTest for the same observation.
             }
@@ -464,11 +446,6 @@ class AsyncQueueConfigurationTest {
             @Override
             public DispatchOwnership tryAcquire(SchedulingTicket ticket) {
                 return capacityRegistry.tryAcquireLease(ticket.generation(), ignored -> { });
-            }
-
-            @Override
-            public boolean isCurrent(SchedulingTicket ticket) {
-                return true;
             }
 
             @Override

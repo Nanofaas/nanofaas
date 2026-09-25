@@ -1009,11 +1009,6 @@ public final class SchedulerSwitchBenchmark {
         }
 
         @Override
-        public boolean isCurrent(SchedulingTicket ticket) {
-            return true;
-        }
-
-        @Override
         public void submit(InvocationTask task) {
             TicketId id = new TicketId(task.executionId(), task.attempt());
             Long admitted = admittedTimes.remove(id);

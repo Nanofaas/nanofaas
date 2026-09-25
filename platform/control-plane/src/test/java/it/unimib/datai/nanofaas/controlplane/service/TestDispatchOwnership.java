@@ -23,7 +23,7 @@ final class TestDispatchOwnership {
         }));
     }
 
-    void attach(ExecutionRecord record) { record.attachDispatchLease(acquire(record.task()).dispatchLease()); }
+    void attach(ExecutionRecord executionRecord) { executionRecord.attachDispatchLease(acquire(executionRecord.task()).dispatchLease()); }
     int releases(String name) { return releases.getOrDefault(name, new AtomicInteger()).get(); }
     int releases() { return releases.values().stream().mapToInt(AtomicInteger::get).sum(); }
 }

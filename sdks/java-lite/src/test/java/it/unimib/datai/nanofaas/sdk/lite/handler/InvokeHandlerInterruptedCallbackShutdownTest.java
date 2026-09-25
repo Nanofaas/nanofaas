@@ -20,7 +20,6 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class InvokeHandlerInterruptedCallbackShutdownTest {
@@ -32,8 +31,8 @@ class InvokeHandlerInterruptedCallbackShutdownTest {
         callbackServer.createContext("/", exchange -> {
             callbackEntered.countDown();
             try {
-                Thread.sleep(10_000);
-            } catch (InterruptedException ex) {
+                Thread.sleep(10_000); // NOSONAR (java:S2925): simulates a slow backend
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
             } finally {
                 exchange.close();
@@ -53,7 +52,7 @@ class InvokeHandlerInterruptedCallbackShutdownTest {
         HttpServer runtime = HttpServer.create(new InetSocketAddress(0), 0);
         runtime.createContext("/invoke", handler);
         runtime.start();
-        try {
+        try { // NOSONAR (java:S2093): HttpServer is not AutoCloseable; teardown order matters
             HttpResponse<String> response = HttpClient.newHttpClient().send(HttpRequest.newBuilder(
                             URI.create("http://127.0.0.1:" + runtime.getAddress().getPort() + "/invoke"))
                     .header("Content-Type", "application/json")
@@ -80,7 +79,7 @@ class InvokeHandlerInterruptedCallbackShutdownTest {
     }
 
     @Test
-    void stopPreservesCallerInterruptWhileStillDrainingCallbackOwnership() throws Exception {
+    void stopPreservesCallerInterruptWhileStillDrainingCallbackOwnership() {
         RuntimeLimits limits = new RuntimeLimits(1, 1, 1_024, 1_024, 1_024, 1_024);
         ThreadPoolExecutor callbacks = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
                 new ArrayBlockingQueue<>(1));

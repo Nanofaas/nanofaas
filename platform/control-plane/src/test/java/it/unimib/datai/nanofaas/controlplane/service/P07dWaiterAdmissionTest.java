@@ -160,8 +160,9 @@ class P07dWaiterAdmissionTest {
 
         CompletableFuture<SyncInvocation> occupying =
                 h.coordinator.invoke(h.lookup("other", "pending-key"), spec("other"), 10_000).toFuture();
-        assertThatThrownBy(() -> h.coordinator
-                .invoke(h.lookup("fn", "terminal-key"), spec("fn"), 10_000).block())
+        var lookup = h.lookup("fn", "terminal-key");
+        var fnSpec = spec("fn");
+        assertThatThrownBy(() -> h.coordinator.invoke(lookup, fnSpec, 10_000).block()) // NOSONAR (java:S5778): invoke() itself throws synchronously on this path
                 .isInstanceOf(InvocationQuotaExceededException.class);
         assertThat(h.waiters.retainedWaiters()).isOne();
 
@@ -197,7 +198,8 @@ class P07dWaiterAdmissionTest {
         Harness h = harness(generations, 2, 2, failing, null, new LocalDispatcher());
         var lookup = h.lookup("fn", "new-key");
 
-        assertThatThrownBy(() -> h.coordinator.invoke(lookup, spec("fn"), 10_000).block())
+        var fnSpec = spec("fn");
+        assertThatThrownBy(() -> h.coordinator.invoke(lookup, fnSpec, 10_000).block()) // NOSONAR (java:S5778): invoke() itself throws synchronously on this path
                 .isInstanceOf(AssertionError.class)
                 .hasMessage("enqueue failed");
         assertThat(h.waiters.reservedGlobally()).isZero();
@@ -272,8 +274,9 @@ class P07dWaiterAdmissionTest {
                                 .isEqualTo(InvocationQuotaExceededException.Resource.WAITER));
         CompletableFuture<SyncInvocation> second =
                 h.coordinator.invoke(h.lookup("other", null), spec("other"), 10_000).toFuture();
-        assertThatThrownBy(() ->
-                h.coordinator.invoke(h.lookup("third", null), spec("third"), 10_000))
+        var third = h.lookup("third", null);
+        var thirdSpec = spec("third");
+        assertThatThrownBy(() -> h.coordinator.invoke(third, thirdSpec, 10_000))
                 .isInstanceOf(InvocationQuotaExceededException.class);
         assertThat(h.waiters.reservedGlobally()).isEqualTo(2);
         assertThat(h.waiters.reservedForFunction("fn")).isOne();
@@ -300,7 +303,7 @@ class P07dWaiterAdmissionTest {
     private static Harness queuedHarness(boolean sync) {
         FunctionCapacityRegistry generations = generations("fn", "other", "third");
         SyncQueueGateway gateway = sync ? new SyncQueueGateway() {
-            @Override public void enqueueOrThrow(InvocationTask task) { }
+            @Override public void enqueueOrThrow(InvocationTask task) { /* no-op: this test double ignores the call */ }
             @Override public boolean enabled() { return true; }
             @Override public int retryAfterSeconds() { return 1; }
         } : null;

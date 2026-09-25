@@ -52,6 +52,9 @@ Final callback-delivery exhaustion increments
 `runtime_callback_delivery_failures_total{function=...}`; its only label is the
 process-local function name, keeping callback failure cardinality bounded.
 
+The callback transport uses requests to preserve POST redirect behavior; replacing it
+requires transport parity tests, including HTTP 307 and 308.
+
 ### 3. Local Development
 
 Install dependencies:

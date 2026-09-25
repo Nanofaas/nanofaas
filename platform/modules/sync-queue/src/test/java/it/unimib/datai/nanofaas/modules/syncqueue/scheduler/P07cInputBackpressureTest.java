@@ -10,7 +10,6 @@ import it.unimib.datai.nanofaas.controlplane.capacity.InvocationCapacity;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.DispatcherRouter;
 import it.unimib.datai.nanofaas.controlplane.dispatch.LocalDispatcher;
-import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionState;
 import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
 import it.unimib.datai.nanofaas.controlplane.execution.IdempotencyStore;
@@ -110,11 +109,6 @@ class P07cInputBackpressureTest {
             @Override
             public DispatchOwnership tryAcquire(SchedulingTicket ticket) {
                 return generations.tryAcquireLease(ticket.generation(), ignored -> { });
-            }
-
-            @Override
-            public boolean isCurrent(SchedulingTicket ticket) {
-                return true;
             }
 
             @Override

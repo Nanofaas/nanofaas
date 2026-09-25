@@ -18,6 +18,7 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -54,13 +55,13 @@ class InvokeHandlerCancellationTest {
             boolean released = false;
             while (!released) {
                 try { released = releaseHandler.await(20, TimeUnit.MILLISECONDS); }
-                catch (InterruptedException _) { }
+                catch (InterruptedException _) { /* this handler deliberately ignores cancellation */ }
             }
             return java.util.Map.of("result", "late");
         }, client, new RuntimeMetrics("cancel"), mapper, "cancel", callbacks, 2_000, limits);
         MemoryExchange exchange = new MemoryExchange();
         Thread request = Thread.ofPlatform().start(() -> {
-            try { handler.handle(exchange); } catch (Exception _) { }
+            try { handler.handle(exchange); } catch (Exception _) { /* asserted through the exchange */ }
         });
         try {
             assertTrue(handlerEntered.await(1, TimeUnit.SECONDS));
@@ -74,9 +75,8 @@ class InvokeHandlerCancellationTest {
 
             releaseHandler.countDown();
             request.join(1_000);
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
-            while (limits.activeHandlers() != 0 && System.nanoTime() < deadline) Thread.sleep(5);
-            assertEquals(0, limits.activeHandlers());
+            org.awaitility.Awaitility.await().pollDelay(Duration.ZERO).pollInterval(Duration.ofMillis(5))
+                    .atMost(Duration.ofSeconds(1)).until(() -> limits.activeHandlers() == 0);
         } finally {
             releaseHandler.countDown();
             handler.shutdown(java.time.Duration.ofMillis(100));
@@ -98,7 +98,7 @@ class InvokeHandlerCancellationTest {
         @Override public URI getRequestURI() { return URI.create("/invoke"); }
         @Override public String getRequestMethod() { return "POST"; }
         @Override public HttpContext getHttpContext() { return null; }
-        @Override public void close() { }
+        @Override public void close() { /* no-op: this test double ignores the call */ }
         @Override public InputStream getRequestBody() { return input; }
         @Override public OutputStream getResponseBody() { return output; }
         @Override public void sendResponseHeaders(int code, long length) { status = code; }
@@ -107,8 +107,8 @@ class InvokeHandlerCancellationTest {
         @Override public InetSocketAddress getLocalAddress() { return null; }
         @Override public String getProtocol() { return "HTTP/1.1"; }
         @Override public Object getAttribute(String name) { return null; }
-        @Override public void setAttribute(String name, Object value) { }
-        @Override public void setStreams(InputStream input, OutputStream output) { }
+        @Override public void setAttribute(String name, Object value) { /* no-op: this test double ignores the call */ }
+        @Override public void setStreams(InputStream input, OutputStream output) { /* no-op: this test double ignores the call */ }
         @Override public HttpPrincipal getPrincipal() { return null; }
     }
 }

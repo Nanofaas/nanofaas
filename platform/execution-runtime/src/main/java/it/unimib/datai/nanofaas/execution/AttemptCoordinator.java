@@ -26,11 +26,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Owns the attempt state machine: dispatch, retry and completion (issue #208, Task 10). Moved
- * out of {@code ExecutionCompletionHandler}, which becomes a thin Spring facade over this class
- * plus the existing constructor/overload surface the control plane's ~177 upstream callers
- * depend on. No algorithm changed in the move — retry policy, the default of 3 attempts, timeout
- * handling, tombstoning and the physical-drain/lease-release ordering are exactly as they were.
+ * Owns the attempt state machine: dispatch, retry and completion — retry policy (default 3
+ * attempts), timeout handling, tombstoning and the physical-drain/lease-release ordering.
+ * {@code ExecutionCompletionHandler} is a thin Spring facade over this class plus the
+ * constructor/overload surface the control plane's callers depend on.
  *
  * <p>This class never calls a dispatcher or a readiness gate directly: {@link #transport} is the
  * only door to the outside world, so mode selection and any wake-up wait live entirely on the
@@ -106,10 +105,7 @@ public final class AttemptCoordinator {
     private void dispatchInternal(InvocationTask task, DispatchOwnership directLease) {
         ExecutionRecord executionRecord = executionStore.getOrNull(task.executionId());
         if (executionRecord == null) {
-            task.releaseQueuedInput();
-            if (directLease != null) {
-                directLease.release();
-            }
+            releaseUndispatched(task, directLease);
             return;
         }
 
@@ -124,7 +120,9 @@ public final class AttemptCoordinator {
                     // protected by the record monitor. Administrative settlement may release
                     // the logical/base owners afterwards, but this reader then keeps the input
                     // charged until the raw transport or LOCAL worker really drains.
-                    physicalInput = executionRecord.openPhysicalInput(task);
+                    // Not try-with-resources (java:S2095): ownership moves to the attempt, which
+                    // closes it on a failed submit or once the transport drains.
+                    physicalInput = executionRecord.openPhysicalInput(task); // NOSONAR
                     task.releaseQueuedInput();
                     if (directLease != null) {
                         executionRecord.attachDispatchLease(directLease);
@@ -132,59 +130,79 @@ public final class AttemptCoordinator {
                     executionRecord.transportOwnsCapacity();
                     executionRecord.markRunning();
                     executionRecord.markDispatchedAt();
-                } catch (RuntimeException failure) {
-                    inputFailure = failure;
-                } catch (Error failure) {
+                } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                     inputFailure = failure;
                 }
             }
         }
         if (terminal) {
-            task.releaseQueuedInput();
-            if (directLease != null) {
-                directLease.release();
-            }
+            releaseUndispatched(task, directLease);
             executionStore.settle(executionRecord);
             return;
         }
         if (inputFailure != null) {
-            if (physicalInput != null) physicalInput.close();
-            if (directLease != null) directLease.release();
-            if (inputFailure instanceof InvocationQuotaExceededException quotaFailure) {
-                throw quotaFailure;
-            }
-            task.releaseQueuedInput();
-            if (inputFailure instanceof Error error) {
-                completeOffloadedExecution(task.executionId(), InvocationResult.error(
-                        "INPUT_PREPARATION_ERROR", error.getMessage()));
-                throw error;
-            }
-            completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.error(
-                    "INPUT_CAPACITY_EXHAUSTED", inputFailure.getMessage())), task.attempt());
+            failInputPreparation(task, directLease, physicalInput, inputFailure);
             return;
         }
         bestEffort(() -> observer.submitted(task));
 
         ExecutionMode mode = task.functionSpec().executionMode();
         DispatchAttempt ownership = new DispatchAttempt(task.executionId(), task.attempt(), directLease);
-        int attemptAtDispatch = ownership.attempt();
-        ExecutionRecord.PhysicalInput attemptInput = physicalInput;
+        AttemptHandle handle = submitOrConclude(task, physicalInput, ownership, mode);
+        if (handle != null) {
+            trackAttempt(task, executionRecord, handle, ownership, physicalInput, mode);
+        }
+    }
+
+    /** Returns the queued input and any direct lease of a dispatch that never started. */
+    private static void releaseUndispatched(InvocationTask task, DispatchOwnership directLease) {
+        task.releaseQueuedInput();
+        if (directLease != null) {
+            directLease.release();
+        }
+    }
+
+    private void failInputPreparation(InvocationTask task, DispatchOwnership directLease,
+                                      ExecutionRecord.PhysicalInput physicalInput, Throwable inputFailure) {
+        if (physicalInput != null) physicalInput.close();
+        if (directLease != null) directLease.release();
+        if (inputFailure instanceof InvocationQuotaExceededException quotaFailure) {
+            throw quotaFailure;
+        }
+        task.releaseQueuedInput();
+        if (inputFailure instanceof Error error) {
+            completeOffloadedExecution(task.executionId(), InvocationResult.error(
+                    "INPUT_PREPARATION_ERROR", error.getMessage()));
+            throw error;
+        }
+        completeExecution(task.executionId(), DispatchResult.warm(InvocationResult.error(
+                "INPUT_CAPACITY_EXHAUSTED", inputFailure.getMessage())), task.attempt());
+    }
+
+    /** Submits the attempt, or concludes it and returns null when no transport was created. */
+    private AttemptHandle submitOrConclude(InvocationTask task, ExecutionRecord.PhysicalInput attemptInput,
+                                           DispatchAttempt ownership, ExecutionMode mode) {
         InvocationTask physicalTask = attemptInput.task();
-        AttemptHandle handle;
         try {
-            handle = transport.submit(physicalTask);
-        } catch (RuntimeException | Error ex) {
+            return transport.submit(physicalTask);
+        } catch (RuntimeException | Error ex) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             attemptInput.close();
-            if (directLease != null) directLease.release();
+            if (ownership.lease() != null) ownership.lease().release();
             // No transport was created: return the already-acquired capacity here.
             InvocationResult failure = InvocationResult.error(mode.name() + "_ERROR", ex.getMessage());
             if (ex instanceof Error error) {
                 completeOffloadedExecution(task.executionId(), failure);
                 throw error;
             }
-            completeExecution(task.executionId(), DispatchResult.warm(failure), attemptAtDispatch);
-            return;
+            completeExecution(task.executionId(), DispatchResult.warm(failure), ownership.attempt());
+            return null;
         }
+    }
+
+    private void trackAttempt(InvocationTask task, ExecutionRecord executionRecord, AttemptHandle handle,
+                              DispatchAttempt ownership, ExecutionRecord.PhysicalInput attemptInput,
+                              ExecutionMode mode) {
+        int attemptAtDispatch = ownership.attempt();
         CompletableFuture<DispatchResult> future = handle.outcome();
 
         // Remember cancellation across handle publication: however the transport chose to
@@ -214,27 +232,31 @@ public final class AttemptCoordinator {
         long attemptDeadlineMs = task.functionSpec().timeoutMs();
         if (attemptDeadlineMs > 0) attempt.orTimeout(attemptDeadlineMs, TimeUnit.MILLISECONDS);
 
-        attempt.whenComplete((dispatchResult, error) -> {
-            if (error instanceof TimeoutException) {
-                // Attempt deadline elapsed: conclude the wait and feed the retry policy, but do
-                // not release the direct lease here. The raw future's own completion (registered
-                // above) releases it, so a non-interruptible LOCAL handler keeps its slot until
-                // its work actually ends and the retry cannot acquire a fresh slot meanwhile.
-                completeExecution(task.executionId(),
-                        DispatchResult.warm(InvocationResult.error("ATTEMPT_TIMEOUT", "Attempt deadline exceeded")),
-                        attemptAtDispatch);
-                if (mode != ExecutionMode.LOCAL) future.cancel(true);
-            } else if (error != null) {
-                Throwable failure = deploymentWakeUpFailure(error);
-                completeExecution(task.executionId(),
-                        DispatchResult.warm(InvocationResult.error(
-                                failure != null ? "DEPLOYMENT_WAKE_UP_FAILED" : mode.name() + "_ERROR",
-                                (failure != null ? failure : error).getMessage())),
-                        attemptAtDispatch);
-            } else {
-                completeExecution(task.executionId(), dispatchResult, attemptAtDispatch);
-            }
-        });
+        attempt.whenComplete((dispatchResult, error) ->
+                concludeAttempt(task, mode, future, attemptAtDispatch, dispatchResult, error));
+    }
+
+    private void concludeAttempt(InvocationTask task, ExecutionMode mode, CompletableFuture<DispatchResult> future,
+                                 int attemptAtDispatch, DispatchResult dispatchResult, Throwable error) {
+        if (error instanceof TimeoutException) {
+            // Attempt deadline elapsed: conclude the wait and feed the retry policy, but do
+            // not release the direct lease here. The raw future's own completion (registered
+            // above) releases it, so a non-interruptible LOCAL handler keeps its slot until
+            // its work actually ends and the retry cannot acquire a fresh slot meanwhile.
+            completeExecution(task.executionId(),
+                    DispatchResult.warm(InvocationResult.error("ATTEMPT_TIMEOUT", "Attempt deadline exceeded")),
+                    attemptAtDispatch);
+            if (mode != ExecutionMode.LOCAL) future.cancel(true);
+        } else if (error != null) {
+            Throwable failure = deploymentWakeUpFailure(error);
+            completeExecution(task.executionId(),
+                    DispatchResult.warm(InvocationResult.error(
+                            failure != null ? "DEPLOYMENT_WAKE_UP_FAILED" : mode.name() + "_ERROR",
+                            (failure != null ? failure : error).getMessage())),
+                    attemptAtDispatch);
+        } else {
+            completeExecution(task.executionId(), dispatchResult, attemptAtDispatch);
+        }
     }
 
     private static Throwable deploymentWakeUpFailure(Throwable error) {
@@ -400,7 +422,7 @@ public final class AttemptCoordinator {
         boolean enqueued;
         try {
             enqueued = retry.enqueue(task);
-        } catch (RuntimeException | Error ex) {
+        } catch (RuntimeException | Error ex) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             task.releaseQueuedInput();
             log.warn("Retry scheduling failed for execution {}, completing with error: {}",
                     executionRecord.executionId(), ex.toString());
@@ -417,7 +439,7 @@ public final class AttemptCoordinator {
     }
 
     private FinalCompletion concludeExhaustedRetry(ExecutionRecord executionRecord, PendingRetry pending) {
-        synchronized (executionRecord) {
+        synchronized (executionRecord) { // NOSONAR (java:S2445): this object is its own monitor by design; every path locks the same instance
             if (executionRecord.task().attempt() != pending.attempt()
                     || executionRecord.isTerminal()) {
                 return null;
@@ -594,7 +616,7 @@ public final class AttemptCoordinator {
         Future<?> handle;
         ErrorInfo error = new ErrorInfo(EXECUTION_EXPIRED_CODE,
                 "Execution exceeded its maximum lifetime before a dispatch outcome arrived");
-        synchronized (executionRecord) {
+        synchronized (executionRecord) { // NOSONAR (java:S2445): this object is its own monitor by design; every path locks the same instance
             wasNonTerminal = !executionRecord.isTerminal();
             if (wasNonTerminal) {
                 executionRecord.markError(error);
@@ -660,10 +682,14 @@ public final class AttemptCoordinator {
         // statusCode/headers/encoding) a caller already received from the shared completion
         // future — output is deliberately omitted here, unlike ExecutionRecord.publishTerminal.
         ExecutionState state = executionRecord.state();
-        InvocationResult result = state == ExecutionState.SUCCESS
-                ? InvocationResult.success(null)
-                : new InvocationResult(false, null, executionRecord.lastError() != null
-                        ? executionRecord.lastError() : new ErrorInfo("TIMEOUT", "Execution timed out"));
+        InvocationResult result;
+        if (state == ExecutionState.SUCCESS) {
+            result = InvocationResult.success(null);
+        } else {
+            ErrorInfo error = executionRecord.lastError() != null
+                    ? executionRecord.lastError() : new ErrorInfo("TIMEOUT", "Execution timed out");
+            result = new InvocationResult(false, null, error);
+        }
         bestEffort(() -> observer.terminal(task, result, TimeUnit.MILLISECONDS.toNanos(e2eMs)));
     }
 

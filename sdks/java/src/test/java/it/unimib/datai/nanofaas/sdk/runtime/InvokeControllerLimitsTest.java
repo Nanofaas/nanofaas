@@ -53,7 +53,7 @@ class InvokeControllerLimitsTest {
     }
 
     @Test
-    void callbackSaturationRejectsBeforeHandlerWithCanonicalRetryable429() throws Exception {
+    void callbackSaturationRejectsBeforeHandlerWithCanonicalRetryable429() {
         CallbackDispatcher callbacks = mock(CallbackDispatcher.class);
         when(callbacks.reserveInvocation()).thenThrow(new CallbackSaturatedException());
         HandlerRegistry registry = mock(HandlerRegistry.class);
@@ -74,7 +74,7 @@ class InvokeControllerLimitsTest {
     }
 
     @Test
-    void oversizedOutputReturnsCanonical500AndStillSubmitsBoundedErrorCallback() throws Exception {
+    void oversizedOutputReturnsCanonical500AndStillSubmitsBoundedErrorCallback() {
         CallbackDispatcher callbacks = mock(CallbackDispatcher.class);
         HandlerRegistry registry = mock(HandlerRegistry.class);
         when(registry.resolve()).thenReturn(_ -> Map.of("value", "01234567890123456789"));

@@ -17,6 +17,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CountDownLatch;
@@ -89,10 +90,10 @@ class InvokeHandlerCriticalTest {
         }
     }
 
-    private static void await(java.util.function.BooleanSupplier condition) throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-        while (!condition.getAsBoolean() && System.nanoTime() < deadline) Thread.sleep(5);
-        assertTrue(condition.getAsBoolean());
+    private static void await(java.util.function.BooleanSupplier condition) {
+        org.awaitility.Awaitility.await().pollDelay(Duration.ZERO)
+                .pollInterval(Duration.ofMillis(5))
+                .atMost(Duration.ofSeconds(2)).until(condition::getAsBoolean);
     }
 
     private static final class StreamedValue { }
@@ -126,7 +127,7 @@ class InvokeHandlerCriticalTest {
                     try {
                         releaseCallback.await();
                         exchange.sendResponseHeaders(204, -1);
-                    } catch (InterruptedException ex) {
+                    } catch (InterruptedException _) {
                         Thread.currentThread().interrupt();
                     } finally {
                         exchange.close();

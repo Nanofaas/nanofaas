@@ -5,7 +5,6 @@ import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.capacity.InvocationQuotaExceededException;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
-import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingIndex;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingStrategy;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingTicket;
 import it.unimib.datai.nanofaas.controlplane.scheduler.TicketId;
@@ -92,8 +91,8 @@ class SchedulerConformanceTest {
                 new FunctionGeneration("echo", 1), 1, NOW, NOW, null);
         index.add(ticket);
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> index.add(
-                        new SchedulingTicket(ticket.id(), ticket.generation(), 2, NOW, NOW, null)))
+        var duplicate = new SchedulingTicket(ticket.id(), ticket.generation(), 2, NOW, NOW, null);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> index.add(duplicate))
                 .isInstanceOf(RuntimeException.class);
 
         assertThat(index.size()).isEqualTo(1);
@@ -552,7 +551,6 @@ class SchedulerConformanceTest {
             this.store = store;
             when(readiness.runnable(any())).thenReturn(true);
             when(generationActive.test(any())).thenReturn(true);
-            when(dispatch.isCurrent(any())).thenReturn(true);
             when(dispatch.tryAcquire(any())).thenReturn(lease);
             doAnswer(inv -> submitted.add(((InvocationTask) inv.getArgument(0)).executionId()))
                     .when(dispatch).submit(any());

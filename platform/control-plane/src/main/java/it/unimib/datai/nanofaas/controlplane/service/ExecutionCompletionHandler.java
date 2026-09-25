@@ -21,12 +21,11 @@ import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
- * Spring facade over {@link AttemptCoordinator} (issue #208, Task 10): the attempt state
- * machine — dispatch, retry and completion — moved into the runtime library so it is available
- * regardless of which scheduler strategy is active. This class now owns two things: the existing
- * constructor/overload surface (~177 upstream callers, per the pre-move impact census), and
- * translating {@link AttemptObserver} notifications into the exact same {@link Metrics} calls
- * this class used to make directly.
+ * Spring facade over {@link AttemptCoordinator}, which owns the attempt state machine —
+ * dispatch, retry and completion — in the runtime library, so it is available regardless of
+ * which scheduler strategy is active. This class owns two things: the constructor/overload
+ * surface the control plane's callers use, and translating {@link AttemptObserver}
+ * notifications into {@link Metrics} calls.
  *
  * <p>Mode-based transport selection (LOCAL/EXTERNAL/DEPLOYMENT dispatch, deployment wake-up) is
  * step 4's {@link AttemptTransportAdapter} — the only place {@link DispatcherRouter} and {@link
@@ -160,25 +159,30 @@ public class ExecutionCompletionHandler implements InvocationDispatch, AttemptOb
         String functionName = task.functionName();
         bestEffort(() -> {
             if (queueWaitNanos != AttemptObserver.NO_ATTEMPT || serviceNanos != AttemptObserver.NO_ATTEMPT) {
-                Metrics.FunctionTimers timers = metrics.timers(functionName);
-                if (result.coldStart()) {
-                    metrics.coldStart(functionName);
-                    if (result.initDurationMs() != null) {
-                        timers.initDuration().record(result.initDurationMs(), TimeUnit.MILLISECONDS);
-                    }
-                } else {
-                    metrics.warmStart(functionName);
-                }
-                if (serviceNanos >= 0) {
-                    timers.latency().record(serviceNanos, TimeUnit.NANOSECONDS);
-                }
-                if (queueWaitNanos >= 0) {
-                    timers.queueWait().record(queueWaitNanos, TimeUnit.NANOSECONDS);
-                }
+                recordAttemptTimers(functionName, result, queueWaitNanos, serviceNanos);
             }
             if (result.result().success()) metrics.success(functionName);
             else metrics.error(functionName);
         });
+    }
+
+    private void recordAttemptTimers(String functionName, DispatchResult result,
+                                     long queueWaitNanos, long serviceNanos) {
+        Metrics.FunctionTimers timers = metrics.timers(functionName);
+        if (result.coldStart()) {
+            metrics.coldStart(functionName);
+            if (result.initDurationMs() != null) {
+                timers.initDuration().record(result.initDurationMs(), TimeUnit.MILLISECONDS);
+            }
+        } else {
+            metrics.warmStart(functionName);
+        }
+        if (serviceNanos >= 0) {
+            timers.latency().record(serviceNanos, TimeUnit.NANOSECONDS);
+        }
+        if (queueWaitNanos >= 0) {
+            timers.queueWait().record(queueWaitNanos, TimeUnit.NANOSECONDS);
+        }
     }
 
     /**
@@ -226,7 +230,7 @@ public class ExecutionCompletionHandler implements InvocationDispatch, AttemptOb
             try {
                 InvocationEnqueueSupport.publishOrThrow(delegate::enqueue, metrics, task, false);
                 return true;
-            } catch (QueueFullException refusal) {
+            } catch (QueueFullException _) {
                 // publishOrThrow's own signal that the enqueue refused the task, translated back
                 // into this method's boolean contract: AttemptCoordinator distinguishes a refusal
                 // from a failure and logs it separately, and that distinction is preserved here.

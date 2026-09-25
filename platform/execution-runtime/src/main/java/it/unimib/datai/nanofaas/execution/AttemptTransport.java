@@ -3,7 +3,7 @@ package it.unimib.datai.nanofaas.execution;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 
 /**
- * Submits one already-admitted attempt to whatever actually executes it (issue #208, Task 10):
+ * Submits one already-admitted attempt to whatever actually executes it:
  * LOCAL/EXTERNAL/DEPLOYMENT dispatch, including any deployment wake-up wait. {@link
  * AttemptCoordinator} calls this once per attempt and otherwise never touches a dispatcher or a
  * readiness gate itself — mode selection, provider calls and wake-up waiting all live on the

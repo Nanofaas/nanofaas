@@ -107,7 +107,10 @@ func (p *jsonPreflight) value(value reflect.Value, depth int) error {
 	if isNilJSONValue(value) {
 		return p.add(4)
 	}
+	return p.kind(value, depth)
+}
 
+func (p *jsonPreflight) kind(value reflect.Value, depth int) error {
 	switch value.Kind() {
 	case reflect.Interface:
 		return p.value(value.Elem(), depth+1)
@@ -120,24 +123,14 @@ func (p *jsonPreflight) value(value reflect.Value, depth int) error {
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 		return p.add(20)
 	case reflect.Float32:
-		if math.IsNaN(value.Float()) || math.IsInf(value.Float(), 0) {
-			return &json.UnsupportedValueError{Value: value, Str: "non-finite float"}
-		}
-		return p.add(16)
+		return p.float(value, 16)
 	case reflect.Float64:
-		if math.IsNaN(value.Float()) || math.IsInf(value.Float(), 0) {
-			return &json.UnsupportedValueError{Value: value, Str: "non-finite float"}
-		}
-		return p.add(24)
+		return p.float(value, 24)
 	case reflect.String:
 		return p.quotedString(value.String())
 	case reflect.Slice:
 		if value.Type().Elem().Kind() == reflect.Uint8 {
-			if int64(value.Len()) > p.limit-p.size {
-				return errPayloadTooLarge
-			}
-			encoded := int64(base64.StdEncoding.EncodedLen(value.Len()))
-			return p.add(encoded + 2)
+			return p.byteSlice(value)
 		}
 		return p.withVisit(value, func() error { return p.sequence(value, depth) })
 	case reflect.Array:
@@ -149,6 +142,22 @@ func (p *jsonPreflight) value(value reflect.Value, depth int) error {
 	default:
 		return &json.UnsupportedTypeError{Type: value.Type()}
 	}
+}
+
+func (p *jsonPreflight) float(value reflect.Value, size int64) error {
+	if math.IsNaN(value.Float()) || math.IsInf(value.Float(), 0) {
+		return &json.UnsupportedValueError{Value: value, Str: "non-finite float"}
+	}
+	return p.add(size)
+}
+
+// byteSlice sizes a []byte, which encoding/json writes as a quoted base64 string.
+func (p *jsonPreflight) byteSlice(value reflect.Value) error {
+	if int64(value.Len()) > p.limit-p.size {
+		return errPayloadTooLarge
+	}
+	encoded := int64(base64.StdEncoding.EncodedLen(value.Len()))
+	return p.add(encoded + 2)
 }
 
 func (p *jsonPreflight) sequence(value reflect.Value, depth int) error {
@@ -169,37 +178,47 @@ func (p *jsonPreflight) sequence(value reflect.Value, depth int) error {
 }
 
 func (p *jsonPreflight) objectMap(value reflect.Value, depth int) error {
-	keyType := value.Type().Key()
-	knownKey := isKnownBoundedEncodingType(keyType)
-	if keyType.Kind() != reflect.String && keyType.Implements(textMarshalerType) && !knownKey {
-		return fmt.Errorf("%w: map key %s", errCustomJSONMarshaler, keyType)
-	}
-	if !isBuiltinJSONMapKey(keyType) && !knownKey {
-		return &json.UnsupportedTypeError{Type: value.Type()}
+	if err := checkJSONMapKeyType(value.Type()); err != nil {
+		return err
 	}
 	if err := p.add(2); err != nil {
 		return err
 	}
 	iterator := value.MapRange()
-	index := 0
-	for iterator.Next() {
-		if index > 0 {
-			if err := p.add(1); err != nil {
-				return err
-			}
-		}
-		if err := p.mapKey(iterator.Key()); err != nil {
+	for index := 0; iterator.Next(); index++ {
+		if err := p.mapEntry(iterator.Key(), iterator.Value(), index, depth); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func checkJSONMapKeyType(mapType reflect.Type) error {
+	keyType := mapType.Key()
+	knownKey := isKnownBoundedEncodingType(keyType)
+	if keyType.Kind() != reflect.String && keyType.Implements(textMarshalerType) && !knownKey {
+		return fmt.Errorf("%w: map key %s", errCustomJSONMarshaler, keyType)
+	}
+	if !isBuiltinJSONMapKey(keyType) && !knownKey {
+		return &json.UnsupportedTypeError{Type: mapType}
+	}
+	return nil
+}
+
+// mapEntry sizes one "key":value pair, preceded by a comma after the first entry.
+func (p *jsonPreflight) mapEntry(key, item reflect.Value, index, depth int) error {
+	if index > 0 {
 		if err := p.add(1); err != nil {
 			return err
 		}
-		if err := p.value(iterator.Value(), depth+1); err != nil {
-			return err
-		}
-		index++
 	}
-	return nil
+	if err := p.mapKey(key); err != nil {
+		return err
+	}
+	if err := p.add(1); err != nil {
+		return err
+	}
+	return p.value(item, depth+1)
 }
 
 func (p *jsonPreflight) objectStruct(value reflect.Value, depth int) error {
@@ -214,31 +233,38 @@ func (p *jsonPreflight) objectStruct(value reflect.Value, depth int) error {
 		if tagName == "-" || (field.PkgPath != "" && !field.Anonymous) {
 			continue
 		}
-		if fieldCount > 0 {
-			if err := p.add(1); err != nil {
-				return err
-			}
-		}
-		name := field.Name
-		if escapedJSONStringSize(tagName) > escapedJSONStringSize(name) {
-			name = tagName
-		}
-		if err := p.quotedString(name); err != nil {
+		if err := p.structField(field.Name, tagName, options, value.Field(index), fieldCount, depth); err != nil {
 			return err
 		}
+		fieldCount++
+	}
+	return nil
+}
+
+// structField sizes one encoded field, using the longer of its Go and tag names as the key.
+func (p *jsonPreflight) structField(fieldName, tagName, options string, field reflect.Value,
+	fieldCount, depth int) error {
+	if fieldCount > 0 {
 		if err := p.add(1); err != nil {
 			return err
 		}
-		beforeValue := p.size
-		if err := p.value(value.Field(index), depth+1); err != nil {
-			return err
-		}
-		if hasJSONTagOption(options, "string") && isJSONStringOptionValue(value.Field(index)) {
-			if err := p.add((p.size - beforeValue) + 2); err != nil {
-				return err
-			}
-		}
-		fieldCount++
+	}
+	name := fieldName
+	if escapedJSONStringSize(tagName) > escapedJSONStringSize(name) {
+		name = tagName
+	}
+	if err := p.quotedString(name); err != nil {
+		return err
+	}
+	if err := p.add(1); err != nil {
+		return err
+	}
+	beforeValue := p.size
+	if err := p.value(field, depth+1); err != nil {
+		return err
+	}
+	if hasJSONTagOption(options, "string") && isJSONStringOptionValue(field) {
+		return p.add((p.size - beforeValue) + 2)
 	}
 	return nil
 }

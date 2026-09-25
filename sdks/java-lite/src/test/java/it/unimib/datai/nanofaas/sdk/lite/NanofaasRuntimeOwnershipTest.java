@@ -285,7 +285,7 @@ class NanofaasRuntimeOwnershipTest {
                     handlerStarted.countDown();
                     try {
                         releaseHandler.await();
-                    } catch (InterruptedException interrupted) {
+                    } catch (InterruptedException _) {
                         handlerInterrupted.countDown();
                         Thread.currentThread().interrupt();
                     }

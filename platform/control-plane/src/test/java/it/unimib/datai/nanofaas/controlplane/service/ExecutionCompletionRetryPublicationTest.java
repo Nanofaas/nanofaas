@@ -55,9 +55,9 @@ class ExecutionCompletionRetryPublicationTest {
     private ExecutionRecord seed(String executionId) {
         InvocationTask task = new InvocationTask(executionId, SPEC.name(), SPEC,
                 new InvocationRequest("payload", null), null, null, Instant.now(), 1, InvocationKind.ASYNC);
-        ExecutionRecord record = new ExecutionRecord(executionId, task);
-        store.put(record);
-        return record;
+        ExecutionRecord executionRecord = new ExecutionRecord(executionId, task);
+        store.put(executionRecord);
+        return executionRecord;
     }
 
     private ExecutionCompletionHandler handlerPublishingWith(RetryScheduler enqueuer) {
@@ -66,16 +66,16 @@ class ExecutionCompletionRetryPublicationTest {
 
     @Test
     void theRecordMonitorIsFreeWhileTheNextAttemptIsPublished() throws Exception {
-        ExecutionRecord record = seed("e1");
+        ExecutionRecord executionRecord = seed("e1");
         CountDownLatch publishing = new CountDownLatch(1);
         CountDownLatch recordExercised = new CountDownLatch(1);
         AtomicBoolean monitorHeldDuringPublish = new AtomicBoolean(true);
         ExecutionCompletionHandler handler = handlerPublishingWith(task -> {
-            monitorHeldDuringPublish.set(Thread.holdsLock(record));
+            monitorHeldDuringPublish.set(Thread.holdsLock(executionRecord));
             publishing.countDown();
             try {
                 recordExercised.await(5, TimeUnit.SECONDS);
-            } catch (InterruptedException interrupted) {
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
             }
             return true;
@@ -88,39 +88,39 @@ class ExecutionCompletionRetryPublicationTest {
         assertThat(publishing.await(5, TimeUnit.SECONDS)).isTrue();
         // A second party takes the record while the publication is still in flight. It can only
         // get in because the completion released the monitor before publishing.
-        synchronized (record) {
-            assertThat(record.task().attempt()).isEqualTo(2);
-            assertThat(record.state()).isEqualTo(ExecutionState.QUEUED);
+        synchronized (executionRecord) {
+            assertThat(executionRecord.task().attempt()).isEqualTo(2);
+            assertThat(executionRecord.state()).isEqualTo(ExecutionState.QUEUED);
         }
         recordExercised.countDown();
         completion.join(TimeUnit.SECONDS.toMillis(5));
 
         assertThat(completion.isAlive()).isFalse();
         assertThat(monitorHeldDuringPublish).isFalse();
-        assertThat(record.completion().isDone()).isFalse();
+        assertThat(executionRecord.completion().isDone()).isFalse();
     }
 
     @Test
     void publishingTheNextAttemptIsNotASecondAdmission() {
-        ExecutionRecord record = seed("e2");
+        ExecutionRecord executionRecord = seed("e2");
         ExecutionCompletionHandler handler = handlerPublishingWith(task -> true);
 
         handler.completeExecution("e2", InvocationResult.error("ERROR", "attempt 1 failed"));
 
-        assertThat(record.task().attempt()).isEqualTo(2);
+        assertThat(executionRecord.task().attempt()).isEqualTo(2);
         verify(metrics, never()).admitted(anyString(), any());
         verify(metrics).enqueue("fn");
     }
 
     @Test
     void aFailedPublicationConcludesTheSameExecutionWithoutRefusingAnAdmission() {
-        ExecutionRecord record = seed("e3");
+        ExecutionRecord executionRecord = seed("e3");
         ExecutionCompletionHandler handler = handlerPublishingWith(task -> false);
 
         handler.completeExecution("e3", InvocationResult.error("ERROR", "attempt 1 failed"));
 
-        assertThat(record.state()).isEqualTo(ExecutionState.ERROR);
-        assertThat(record.completion().isDone()).isTrue();
+        assertThat(executionRecord.state()).isEqualTo(ExecutionState.ERROR);
+        assertThat(executionRecord.completion().isDone()).isTrue();
         verify(metrics).queueRejected("fn");
         verify(metrics, never()).refused(anyString(), any());
     }

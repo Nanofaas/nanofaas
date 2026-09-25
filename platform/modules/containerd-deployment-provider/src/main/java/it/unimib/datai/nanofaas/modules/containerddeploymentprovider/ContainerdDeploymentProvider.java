@@ -4,7 +4,7 @@ import it.unimib.datai.nanofaas.containerdeployment.ContainerRuntimeAdapter;
 import it.unimib.datai.nanofaas.containerdeployment.EndpointProbe;
 import it.unimib.datai.nanofaas.containerdeployment.LocalDeploymentSettings;
 import it.unimib.datai.nanofaas.containerdeployment.LocalManagedDeploymentProvider;
-import it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxyFactory;
+import it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxyFactory;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -14,7 +14,7 @@ import java.util.Locale;
 
 public final class ContainerdDeploymentProvider extends LocalManagedDeploymentProvider {
     public ContainerdDeploymentProvider(ContainerRuntimeAdapter adapter, ContainerdProperties properties,
-                                        EndpointProbe endpointProbe, ManagedFunctionProxyFactory proxyFactory) {
+                                        EndpointProbe endpointProbe, RoundRobinFunctionProxyFactory proxyFactory) {
         super("containerd", new LocalDeploymentSettings(properties.callbackUrl(),
                 properties.readinessTimeout(), properties.readinessPollInterval()),
                 adapter, endpointProbe, proxyFactory);
@@ -29,10 +29,9 @@ public final class ContainerdDeploymentProvider extends LocalManagedDeploymentPr
         if (functionName == null || functionName.isBlank()) {
             throw new IllegalArgumentException("function name is required for containerd deployment");
         }
-        String slug = functionName.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-")
-                .replaceAll("^-+|-+$", "");
+        String slug = trimDashes(functionName.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-"));
         if (slug.isEmpty()) slug = "fn";
-        if (slug.length() > 44) slug = slug.substring(0, 44).replaceAll("-+$", "");
+        if (slug.length() > 44) slug = trimDashes(slug.substring(0, 44));
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(functionName.getBytes(StandardCharsets.UTF_8));
@@ -40,6 +39,14 @@ public final class ContainerdDeploymentProvider extends LocalManagedDeploymentPr
         } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException("SHA-256 is unavailable", impossible);
         }
+    }
+
+    private static String trimDashes(String value) {
+        int start = 0;
+        int end = value.length();
+        while (start < end && value.charAt(start) == '-') start++;
+        while (end > start && value.charAt(end - 1) == '-') end--;
+        return value.substring(start, end);
     }
 
     @Override

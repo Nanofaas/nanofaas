@@ -17,7 +17,8 @@ class ContainerdImageValidatorTest {
         validator.validate(spec(ExecutionMode.DEPLOYMENT));
         verify(adapter).pullImage("example/echo:1");
         doThrow(new IllegalStateException("registry unavailable")).when(adapter).pullImage("example/echo:1");
-        assertThatThrownBy(() -> validator.validate(spec(ExecutionMode.DEPLOYMENT)))
+        var deploymentSpec = spec(ExecutionMode.DEPLOYMENT);
+        assertThatThrownBy(() -> validator.validate(deploymentSpec))
                 .isInstanceOf(ImageValidationException.class)
                 .extracting(error -> ((ImageValidationException) error).errorCode())
                 .isEqualTo("IMAGE_REGISTRY_UNAVAILABLE");

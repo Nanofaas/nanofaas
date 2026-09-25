@@ -27,6 +27,8 @@ public final class SchedulerRuntimeConfigExtension implements PreparedRuntimeCon
     private static final String STRATEGY_KEY = "strategy";
     private static final String AVAILABLE_KEY = "available";
     private static final String PERSISTENCE_KEY = "persistence";
+    /** A switch does not outlive the process: on restart the configured initial strategy wins. */
+    private static final String PERSISTENCE = "restart";
 
     private final SchedulerControl control;
 
@@ -68,7 +70,7 @@ public final class SchedulerRuntimeConfigExtension implements PreparedRuntimeCon
         // validate() already refused an unavailable target; switchTo re-checks it anyway.
         SchedulerSelection current = control.snapshot();
         Map<String, Object> snapshotAfterCommit = toSnapshot(
-                new SchedulerSelection(target, current.available(), current.persistence()));
+                new SchedulerSelection(target, current.available()));
         return new SchedulerSwitch(control, target, snapshotAfterCommit);
     }
 
@@ -86,10 +88,8 @@ public final class SchedulerRuntimeConfigExtension implements PreparedRuntimeCon
     }
 
     private static Map<String, Object> toSnapshot(SchedulerSelection selection) {
-        return Map.of(
-                STRATEGY_KEY, selection.strategy(),
-                AVAILABLE_KEY, selection.available(),
-                PERSISTENCE_KEY, selection.persistence());
+        return Map.of(STRATEGY_KEY, selection.strategy(),
+                AVAILABLE_KEY, selection.available(), PERSISTENCE_KEY, PERSISTENCE);
     }
 
     private static final class SchedulerSwitch implements PreparedRuntimeConfigChange {

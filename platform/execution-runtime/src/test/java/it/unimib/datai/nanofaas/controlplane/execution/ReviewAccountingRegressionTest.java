@@ -12,7 +12,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.awaitility.Awaitility.await;
 
 class ReviewAccountingRegressionTest {
     private static Outcome outcome(Object value) {
@@ -75,7 +74,7 @@ class ReviewAccountingRegressionTest {
             ForkJoinPool.commonPool().execute(() -> {
                 started.countDown();
                 try { release.await(10, TimeUnit.SECONDS); }
-                catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                catch (InterruptedException _) { Thread.currentThread().interrupt(); }
             });
         }
         try {

@@ -73,8 +73,7 @@ final class FunctionApplicationState {
     }
 
     synchronized boolean beginRemoval(String functionName) {
-        Applications current = byFunction.get(functionName);
-        return current != null && current.unavailable() != null;
+        return isUnavailable(functionName);
     }
 
     synchronized void markPartialRemoval(String functionName, List<String> remainingResources) {

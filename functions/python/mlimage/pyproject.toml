@@ -1,7 +1,7 @@
 [project]
 name = "mlimage"
 version = "0.1.0"
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "flask",
     "waitress",
@@ -28,7 +28,7 @@ dev = [
 
 [tool.ruff]
 line-length = 88
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["ALL"]

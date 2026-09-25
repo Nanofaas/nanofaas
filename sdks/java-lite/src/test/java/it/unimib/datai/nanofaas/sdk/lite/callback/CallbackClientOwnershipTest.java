@@ -24,19 +24,16 @@ class CallbackClientOwnershipTest {
     }
 
     @Test
-    void closeDoesNotTerminateAnInjectedHttpClient() throws Exception {
-        HttpClient injected = HttpClient.newBuilder()
+    void closeDoesNotTerminateAnInjectedHttpClient() {
+        try (HttpClient injected = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(1))
-                .build();
-        try {
+                .build()) {
             CallbackClient callbackClient = new CallbackClient(
                     injected, new ObjectMapper(), "http://127.0.0.1:1");
 
             callbackClient.close();
 
             assertFalse(injected.isTerminated(), "the injector retains ownership");
-        } finally {
-            injected.close();
         }
     }
 

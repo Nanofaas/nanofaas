@@ -37,6 +37,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.LongSupplier;
 
 public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegistrationListener, AutoCloseable {
+    private static final String WAKE_UP_CLOSED = "DEPLOYMENT_WAKE_UP_CLOSED";
+    private static final String WAKE_UP_REMOVED = "DEPLOYMENT_WAKE_UP_REMOVED";
 
     private final FunctionRegistry registry;
     private final ManagedDeploymentCoordinator coordinator;
@@ -64,7 +66,7 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
                 InstantSource.system(), System::nanoTime);
     }
 
-    DeploymentWakeUpGate(FunctionRegistry registry,
+    DeploymentWakeUpGate(FunctionRegistry registry, // NOSONAR (java:S107): composition constructor; each argument is an injected collaborator or limit
                          ManagedDeploymentCoordinator coordinator,
                          FunctionCapacityRegistry generations,
                          DeploymentWakeUpProperties properties,
@@ -89,7 +91,7 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
     @Override
     public CompletableFuture<Void> ensureReady(InvocationTask task) {
         if (closed.get()) {
-            return failed("DEPLOYMENT_WAKE_UP_CLOSED");
+            return failed(WAKE_UP_CLOSED);
         }
         Optional<RegisteredFunction> registered = registry.getRegistered(task.functionName());
         if (registered.isEmpty()) {
@@ -110,23 +112,30 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
         ManagedDeploymentTarget target = new ManagedDeploymentTarget(function.name(), backend);
         ReplicaObservation observation = coordinator.observeReplicaStatus(target);
         if (isReadyWithinPolicy(observation, clock.instant())) {
-            if (closed.get()) {
-                return failed("DEPLOYMENT_WAKE_UP_CLOSED");
-            }
-            if (!isActive(generation)) {
-                return failed("DEPLOYMENT_WAKE_UP_REMOVED");
-            }
-            return CompletableFuture.completedFuture(null);
+            return readyOutcome(generation);
         }
-        if (closed.get() || !isActive(generation)) {
-            return failed(closed.get() ? "DEPLOYMENT_WAKE_UP_CLOSED" : "DEPLOYMENT_WAKE_UP_REMOVED");
-        }
+        return joinOrStartWakeUp(generation, target);
+    }
 
+    private CompletableFuture<Void> readyOutcome(FunctionGeneration generation) {
+        if (closed.get()) {
+            return failed(WAKE_UP_CLOSED);
+        }
+        if (!isActive(generation)) {
+            return failed(WAKE_UP_REMOVED);
+        }
+        return CompletableFuture.completedFuture(null);
+    }
+
+    private CompletableFuture<Void> joinOrStartWakeUp(FunctionGeneration generation, ManagedDeploymentTarget target) {
+        if (closed.get() || !isActive(generation)) {
+            return closedOrRemoved();
+        }
         WakeUp owner;
         boolean startOwner = false;
         synchronized (ownerLifecycle) {
             if (closed.get() || !isActive(generation)) {
-                return failed(closed.get() ? "DEPLOYMENT_WAKE_UP_CLOSED" : "DEPLOYMENT_WAKE_UP_REMOVED");
+                return closedOrRemoved();
             }
             WakeUp candidate = new WakeUp(generation, target);
             owner = inFlight.putIfAbsent(generation, candidate);
@@ -139,6 +148,10 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
             owner.start();
         }
         return owner.callerView();
+    }
+
+    private CompletableFuture<Void> closedOrRemoved() {
+        return failed(closed.get() ? WAKE_UP_CLOSED : WAKE_UP_REMOVED);
     }
 
     @Override
@@ -154,7 +167,7 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
         synchronized (ownerLifecycle) {
             for (WakeUp wakeUp : new ArrayList<>(inFlight.values())) {
                 if (wakeUp.generation.functionName().equals(functionName)) {
-                    wakeUp.fail("DEPLOYMENT_WAKE_UP_REMOVED");
+                    wakeUp.fail(WAKE_UP_REMOVED);
                 }
             }
         }
@@ -168,7 +181,7 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
                 return;
             }
             for (WakeUp wakeUp : new ArrayList<>(inFlight.values())) {
-                wakeUp.fail("DEPLOYMENT_WAKE_UP_CLOSED");
+                wakeUp.fail(WAKE_UP_CLOSED);
             }
         }
     }
@@ -182,36 +195,18 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
     }
 
     private boolean isReadyWithinPolicy(ReplicaObservation observation, Instant now) {
-        return observation instanceof ReplicaObservation.Available available
-                && available.state() == ReplicaObservation.State.FRESH
-                && available.status().readyReplicas() > 0
-                && !available.observedAt().isBefore(now.minus(readyObservationMaxAge));
+        return observation instanceof ReplicaObservation.Available(var status, var state, var observedAt)
+                && state == ReplicaObservation.State.FRESH
+                && status.readyReplicas() > 0
+                && !observedAt.isBefore(now.minus(readyObservationMaxAge));
     }
 
     private boolean isCurrent(FunctionGeneration generation) {
         return generation.equals(generations.activeGeneration(generation.functionName()));
     }
 
-    private boolean isActive(FunctionGeneration generation) {
+    private boolean isActive(FunctionGeneration generation) { // NOSONAR (java:S3398): also used by the enclosing class
         return isCurrent(generation) && registry.getRegistered(generation.functionName()).isPresent();
-    }
-
-    private void submit(Runnable action, WakeUp owner) {
-        if (!owner.callbackStarted()) {
-            return;
-        }
-        try {
-            executor.execute(() -> {
-                try {
-                    action.run();
-                } finally {
-                    owner.callbackFinished();
-                }
-            });
-        } catch (RuntimeException | Error failure) {
-            owner.callbackFinished();
-            owner.completeExceptionally(failure);
-        }
     }
 
     private static boolean isEligible(RegisteredFunction function) {
@@ -264,8 +259,8 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
                             () -> fail("DEPLOYMENT_WAKE_UP_TIMEOUT"), timeout.toNanos(), TimeUnit.NANOSECONDS);
                     if (result.isDone()) timeoutTask.cancel(false);
                 }
-                submit(() -> readAndWake(deadline), this);
-            } catch (RuntimeException | Error failure) {
+                submit(() -> readAndWake(deadline));
+            } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 completeExceptionally(failure);
             }
         }
@@ -296,7 +291,7 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
                 });
                 installLease(lease);
                 schedulePoll(deadline);
-            } catch (RuntimeException | Error failure) {
+            } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 completeExceptionally(failure);
             }
         }
@@ -308,7 +303,7 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
                 if (!canContinue()) return;
                 if (status.readyReplicas() > 0) result.complete(null);
                 else schedulePoll(deadline);
-            } catch (RuntimeException | Error failure) {
+            } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 completeExceptionally(failure);
             }
         }
@@ -339,11 +334,11 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
                     pollTask = scheduled;
                     if (previous != null) previous.cancel(false);
                     runDeferred = pollRanWhileScheduling;
-                    if (runDeferred) pollTask = null;
-                    if (retired) scheduled.cancel(false);
+                    if (runDeferred) pollTask = null; // NOSONAR (java:S2583): true only when the scheduler runs the poll inline and re-enters this monitor
+                    if (retired) scheduled.cancel(false); // NOSONAR (java:S2583): true only when the scheduler runs the poll inline and re-enters this monitor
                 }
-                if (runDeferred) submit(() -> poll(deadline), this);
-            } catch (RuntimeException | Error failure) {
+                if (runDeferred) submit(() -> poll(deadline)); // NOSONAR (java:S2583): true only when the scheduler runs the poll inline and re-enters this monitor
+            } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 completeExceptionally(failure);
             }
         }
@@ -357,17 +352,17 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
                 }
                 pollTask = null;
             }
-            submit(() -> poll(deadline), this);
+            submit(() -> poll(deadline));
         }
 
         private boolean canContinue() {
             if (result.isDone()) return false;
             if (closed.get()) {
-                fail("DEPLOYMENT_WAKE_UP_CLOSED");
+                fail(WAKE_UP_CLOSED);
                 return false;
             }
             if (!isActive(generation)) {
-                fail("DEPLOYMENT_WAKE_UP_REMOVED");
+                fail(WAKE_UP_REMOVED);
                 return false;
             }
             return true;
@@ -412,6 +407,24 @@ public class DeploymentWakeUpGate implements DeploymentReadiness, FunctionRegist
             DeploymentWakeUpCoordinator.WakeUpLease lease = wakeUpLease;
             wakeUpLease = null;
             if (lease != null) lease.close();
+        }
+
+        private void submit(Runnable action) {
+            if (!callbackStarted()) {
+                return;
+            }
+            try {
+                executor.execute(() -> {
+                    try {
+                        action.run();
+                    } finally {
+                        callbackFinished();
+                    }
+                });
+            } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
+                callbackFinished();
+                completeExceptionally(failure);
+            }
         }
     }
 }

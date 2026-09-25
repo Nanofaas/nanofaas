@@ -19,7 +19,7 @@ import static org.mockito.Mockito.when;
 
 class InvokeControllerBoundedOutputTest {
     @Test
-    void rejectsCustomOutputBeforeBuildingAnUnlimitedJsonTree() throws Exception {
+    void rejectsCustomOutputBeforeBuildingAnUnlimitedJsonTree() {
         AtomicInteger emitted = new AtomicInteger();
         SimpleModule module = new SimpleModule();
         module.addSerializer(StreamedValue.class, new ValueSerializer<>() {

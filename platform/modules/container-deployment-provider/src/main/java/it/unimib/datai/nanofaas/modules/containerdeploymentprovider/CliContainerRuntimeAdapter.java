@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
 
+import it.unimib.datai.nanofaas.containerdeployment.LocalManagedDeploymentProvider;
 import it.unimib.datai.nanofaas.containerdeployment.ContainerRuntimeAdapter;
 import it.unimib.datai.nanofaas.containerdeployment.ContainerInstanceSpec;
 import it.unimib.datai.nanofaas.containerdeployment.ManagedContainer;
@@ -94,7 +95,7 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
             throw new IllegalStateException("Failed to start container '" + spec.containerName() + "': " + result.output());
         }
         return new ManagedContainer(spec.containerName(),
-                ContainerLocalDeploymentProvider.replicaIndex(spec.containerName()), baseUrl(hostPort), true);
+                LocalManagedDeploymentProvider.replicaIndex(spec.containerName()), baseUrl(hostPort), true);
     }
 
     private static void addResourceFlags(List<String> command, ResourceSpec resources) {
@@ -133,8 +134,8 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
     public List<ManagedContainer> listManagedContainers(String functionName) {
         ExecutionResult listing = executor.run(List.of(
                 runtimeAdapter, "ps", "-a",
-                "--filter", "label=" + ContainerLocalDeploymentProvider.MANAGED_LABEL + "=true",
-                "--filter", "label=" + ContainerLocalDeploymentProvider.FUNCTION_LABEL + "=" + functionName,
+                "--filter", "label=" + LocalManagedDeploymentProvider.MANAGED_LABEL + "=true",
+                "--filter", "label=" + LocalManagedDeploymentProvider.FUNCTION_LABEL + "=" + functionName,
                 "--format", "{{.Names}}\t{{.State}}"));
         if (!listing.isSuccess()) {
             return List.of();
@@ -150,7 +151,7 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
             boolean running = tab >= 0 && "running".equalsIgnoreCase(line.substring(tab + 1).strip());
             containers.add(new ManagedContainer(
                     name,
-                    ContainerLocalDeploymentProvider.replicaIndex(name),
+                    LocalManagedDeploymentProvider.replicaIndex(name),
                     running ? baseUrl(publishedPort(name)) : null,
                     running));
         }

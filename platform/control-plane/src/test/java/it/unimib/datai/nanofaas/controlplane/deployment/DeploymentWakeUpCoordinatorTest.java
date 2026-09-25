@@ -141,7 +141,7 @@ class DeploymentWakeUpCoordinatorTest {
         long firstDeadline = Duration.ofDays(1).toNanos();
         long secondDeadline = Duration.ofDays(2).toNanos();
         ScheduledThreadPoolExecutor scheduler = scheduler();
-        try {
+        try { // NOSONAR (java:S2093): teardown is shutdownNow(), not a blocking close()
             DeploymentWakeUpCoordinator coordinator =
                     new DeploymentWakeUpCoordinator(generations, scheduler, nanoTime::get);
             DeploymentWakeUpCoordinator.WakeUpLease first = coordinator.protectAndScaleUp(
@@ -174,7 +174,7 @@ class DeploymentWakeUpCoordinatorTest {
         long firstDeadline = Duration.ofDays(1).toNanos();
         long secondDeadline = Duration.ofDays(2).toNanos();
         ScheduledThreadPoolExecutor scheduler = scheduler();
-        try {
+        try { // NOSONAR (java:S2093): teardown is shutdownNow(), not a blocking close()
             DeploymentWakeUpCoordinator coordinator =
                     new DeploymentWakeUpCoordinator(generations, scheduler, nanoTime::get);
             DeploymentWakeUpCoordinator.WakeUpLease old = coordinator.protectAndScaleUp(

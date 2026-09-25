@@ -60,7 +60,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
 
     private static final byte[] NO_BACKENDS = "No ready container backends".getBytes(StandardCharsets.UTF_8);
     private static final byte[] BUSY = "Too many concurrent invocations".getBytes(StandardCharsets.UTF_8);
-    private static final byte[] CLOSED = "Proxy is shutting down".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] SHUTTING_DOWN_BODY = "Proxy is shutting down".getBytes(StandardCharsets.UTF_8);
     private static final byte[] UP = "UP".getBytes(StandardCharsets.UTF_8);
     private static final byte[] DOWN = "DOWN".getBytes(StandardCharsets.UTF_8);
     private static final byte[] INTERRUPTED = "Interrupted while proxying request".getBytes(StandardCharsets.UTF_8);
@@ -253,7 +253,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
         activeExchanges.add(exchange);
         try {
             if (closed.get()) {
-                send(exchange, 503, CLOSED);
+                send(exchange, 503, SHUTTING_DOWN_BODY);
                 return;
             }
             List<String> currentBackends = backends.get();
@@ -267,23 +267,23 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
             }
             try {
                 forward(exchange, selectBackend(currentBackends));
-            } catch (InboundReadTimeoutException e) {
+            } catch (InboundReadTimeoutException _) {
                 send(exchange, 408, REQUEST_TIMEOUT);
             } catch (BodyLimitExceededException e) {
                 send(exchange, e.responseBody ? 502 : 413,
                         e.responseBody ? RESPONSE_TOO_LARGE : REQUEST_TOO_LARGE);
-            } catch (BufferCapacityExceededException e) {
+            } catch (BufferCapacityExceededException _) {
                 send(exchange, 503, BUFFER_CAPACITY_EXHAUSTED);
-            } catch (ResponseWriteTimeoutException e) {
+            } catch (ResponseWriteTimeoutException _) {
                 exchange.close();
-            } catch (InterruptedException e) {
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
                 send(exchange, 500, INTERRUPTED);
             } catch (HttpConnectTimeoutException e) {
                 send(exchange, 502, proxyError(e));
-            } catch (HttpTimeoutException e) {
+            } catch (HttpTimeoutException _) {
                 send(exchange, 504, PROXY_TIMEOUT);
-            } catch (IOException | RuntimeException e) {
+            } catch (IOException | RuntimeException e) { // NOSONAR (java:S2147): the connect-timeout catch must precede HttpTimeoutException
                 send(exchange, 502, proxyError(e));
             } finally {
                 inFlight.decrementAndGet();
@@ -329,7 +329,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
             // the body into allocated ByteBuffers. HttpResponse retains its initial HttpRequest.
             // Keep both physical-byte leases until the helper's whole request/response graph can
             // become unreachable; publisher content is the request array, not a third byte owner.
-            try (BufferReservation publisherCopy = bufferBudget.reserve(requestBody.length())) {
+            try (var _ = bufferBudget.reserve(requestBody.length())) {
                 forwardRetainingRequestGraph(exchange, target, requestBody);
             }
         } finally {
@@ -603,7 +603,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
                     }
                     body.length += read;
                 }
-            } catch (IOException | RuntimeException | Error failure) {
+            } catch (IOException | RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 body.close();
                 throw failure;
             }
@@ -620,7 +620,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
             byte[] previous = bytes;
             try {
                 bytes = java.util.Arrays.copyOf(previous, nextLength);
-            } catch (RuntimeException | Error allocationFailure) {
+            } catch (RuntimeException | Error allocationFailure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 budget.release(nextLength);
                 throw allocationFailure;
             }

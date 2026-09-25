@@ -116,12 +116,12 @@ class IdempotentRetentionContractTest {
 
         // The retry replaces the task with one whose key is null; the record must still
         // remember the key it was admitted under so the terminal transition can find it.
-        ExecutionRecord record = lookup.executionRecord();
-        record.markRunning();
-        record.resetForRetry(new InvocationTask(executionId, "fn", spec(), request(), null,
+        ExecutionRecord executionRecord = lookup.executionRecord();
+        executionRecord.markRunning();
+        executionRecord.resetForRetry(new InvocationTask(executionId, "fn", spec(), request(), null,
                 "trace-1", Instant.now(), 2, InvocationKind.SYNC));
-        record.markSuccess("done");
-        executions.settle(record);
+        executionRecord.markSuccess("done");
+        executions.settle(executionRecord);
 
         InvocationExecutionFactory.ExecutionLookup replay =
                 factory.createOrReuseExecution("fn", spec(), request(), "k", "trace-2", InvocationKind.SYNC);
@@ -221,7 +221,10 @@ class IdempotentRetentionContractTest {
                 factory.createOrReuseExecution("fn", spec(), request(), "k1", "trace-1", InvocationKind.SYNC);
         first.publishAdmission();
 
-        assertThatThrownBy(() -> factory.createOrReuseExecution("fn", spec(), request(), "k2", "trace-2", InvocationKind.SYNC))
+        var secondSpec = spec();
+        var secondRequest = request();
+        assertThatThrownBy(() -> factory.createOrReuseExecution(
+                "fn", secondSpec, secondRequest, "k2", "trace-2", InvocationKind.SYNC))
                 .isInstanceOf(IdempotencyBudgetExhaustedException.class);
 
         // The existing key still serves its replay.

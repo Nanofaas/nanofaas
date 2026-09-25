@@ -1,6 +1,5 @@
 package it.unimib.datai.nanofaas.execution;
 
-import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingIndex;
@@ -21,7 +20,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -61,7 +59,6 @@ class SchedulerEngineRemoveAllForGateDisciplineTest {
         PendingWorkStore store = new PendingWorkStore(50_000);
         EngineReadiness readiness = generation -> false; // nothing is ever selected/claimed
         EngineDispatch dispatch = mock(EngineDispatch.class);
-        when(dispatch.isCurrent(any())).thenReturn(true);
         SchedulingStrategy strategy = mock(SchedulingStrategy.class);
         RecordingIndex index = new RecordingIndex();
         when(strategy.id()).thenReturn("test");

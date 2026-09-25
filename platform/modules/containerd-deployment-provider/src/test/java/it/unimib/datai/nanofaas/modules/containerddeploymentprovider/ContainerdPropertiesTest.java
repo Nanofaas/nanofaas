@@ -33,7 +33,8 @@ class ContainerdPropertiesTest {
 
     @Test
     void missingRuntimeDirectoryHasActionableDiagnostic() {
-        assertThatThrownBy(() -> ContainerdProperties.defaults(Map.of("HOME", "/home/service")))
+        var environment = Map.of("HOME", "/home/service");
+        assertThatThrownBy(() -> ContainerdProperties.defaults(environment))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("XDG_RUNTIME_DIR");
     }
 

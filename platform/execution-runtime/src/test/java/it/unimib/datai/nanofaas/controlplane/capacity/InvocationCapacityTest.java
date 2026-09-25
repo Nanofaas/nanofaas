@@ -138,7 +138,9 @@ class InvocationCapacityTest {
         admission.publish();
         RetainedInputLease.Reference onlyPhysical = admission.canonicalInput().retain(owner("one"));
 
-        assertThatThrownBy(() -> admission.canonicalInput().retain(owner("overflow")))
+        var canonicalInput = admission.canonicalInput();
+        var overflow = owner("overflow");
+        assertThatThrownBy(() -> canonicalInput.retain(overflow))
                 .isInstanceOf(IllegalStateException.class);
         assertThat(capacity.inputReservedGlobally()).isEqualTo(60);
 
@@ -163,7 +165,7 @@ class InvocationCapacityTest {
                         InvocationCapacity.Admission admission = capacity.reserve("fn", "e" + id, 1);
                         admission.publish();
                         return admission;
-                    } catch (InvocationQuotaExceededException ignored) {
+                    } catch (InvocationQuotaExceededException _) {
                         return null;
                     }
                 }));

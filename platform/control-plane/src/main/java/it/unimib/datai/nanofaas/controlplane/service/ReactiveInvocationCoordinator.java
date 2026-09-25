@@ -67,7 +67,7 @@ public final class ReactiveInvocationCoordinator {
         try {
             return invokeAttached(lookup, spec, timeoutOverrideMs, offloadContext)
                     .doFinally(ignored -> waiter.close());
-        } catch (RuntimeException | Error failure) {
+        } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             waiter.close();
             throw failure;
         }
@@ -76,15 +76,15 @@ public final class ReactiveInvocationCoordinator {
     private WaiterCapacity.Waiter reserveWaiter(
             InvocationExecutionFactory.ExecutionLookup lookup, FunctionSpec spec) {
         try {
-            ExecutionRecord record = lookup.executionRecord();
-            if (record != null) {
-                if (record.currentGeneration() != null) {
-                    return waiterCapacity.reserve(record.currentGeneration(), record.executionId());
+            ExecutionRecord executionRecord = lookup.executionRecord();
+            if (executionRecord != null) {
+                if (executionRecord.currentGeneration() != null) {
+                    return waiterCapacity.reserve(executionRecord.currentGeneration(), executionRecord.executionId());
                 }
-                return waiterCapacity.reserve(spec.name(), record.executionId());
+                return waiterCapacity.reserve(spec.name(), executionRecord.executionId());
             }
             return waiterCapacity.reserve(spec.name(), lookup.settledExecutionId());
-        } catch (RuntimeException | Error failure) {
+        } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             if (lookup.isNew()) {
                 lookup.abandonAdmission();
             }
@@ -212,7 +212,7 @@ public final class ReactiveInvocationCoordinator {
             InvocationTask queuedTask = executionRecord.prepareForQueue();
             try {
                 syncQueueGateway.enqueueOrThrow(queuedTask);
-            } catch (RuntimeException | Error failure) {
+            } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 queuedTask.releaseQueuedInput();
                 throw failure;
             }
@@ -236,15 +236,17 @@ public final class ReactiveInvocationCoordinator {
         // Bypasses the local queue entirely: no local concurrency slots are consumed,
         // so completion goes through the offload-specific path (no slot release, no retry).
         ExecutionRecord.PhysicalInput physicalInput;
-        synchronized (executionRecord) {
+        synchronized (executionRecord) { // NOSONAR (java:S2445): this object is its own monitor by design; every path locks the same instance
             if (executionRecord.isTerminal()) return;
-            physicalInput = executionRecord.openPhysicalInput(executionRecord.task());
+            // Not try-with-resources (java:S2095): the remote call owns the input until its
+            // terminal signal; it is closed on a failed invokeRemote or in whenComplete below.
+            physicalInput = executionRecord.openPhysicalInput(executionRecord.task()); // NOSONAR
         }
         java.util.concurrent.CompletableFuture<InvocationResult> remote;
         try {
             remote = offloadGateway.invokeRemote(
                     physicalInput.task(), trigger, context, spec.timeoutMs()).toFuture();
-        } catch (RuntimeException | Error failure) {
+        } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             physicalInput.close();
             throw failure;
         }

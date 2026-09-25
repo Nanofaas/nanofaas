@@ -24,7 +24,7 @@ class RuntimePayloadLimitFilterDeadlineTest {
                 return new ServletInputStream() {
                     @Override public boolean isFinished() { return false; }
                     @Override public boolean isReady() { return true; }
-                    @Override public void setReadListener(ReadListener listener) { }
+                    @Override public void setReadListener(ReadListener listener) { /* no-op: this test double ignores the call */ }
                     @Override public int read() throws IOException {
                         try { release.await(); return -1; }
                         catch (InterruptedException ex) { Thread.currentThread().interrupt(); throw new IOException(ex); }

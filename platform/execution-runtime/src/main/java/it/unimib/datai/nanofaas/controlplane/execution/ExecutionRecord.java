@@ -370,15 +370,6 @@ public class ExecutionRecord {
     }
 
     /**
-     * Whether the current attempt was dispatched (its slot or lease was acquired). Marked by
-     * {@link #markRunning()}, which is what a dispatch does; a record still sitting in a queue
-     * (or a completion of work that never dispatched) has never run, so it acquired nothing.
-     */
-    public synchronized boolean wasDispatched() {
-        return startedAt != null;
-    }
-
-    /**
      * Records the lease the current attempt acquired at dispatch. Called under the record
      * monitor, before the dispatch future is kicked off.
      */
@@ -435,7 +426,8 @@ public class ExecutionRecord {
     }
 
     /** Remember the request even when the dispatcher has not returned its handle yet. */
-    public synchronized Future<?> takeDispatchHandle() {
+    // The wildcard is deliberate (java:S1452): handles have unrelated result types, callers only cancel.
+    public synchronized Future<?> takeDispatchHandle() { // NOSONAR
         dispatchCancellationRequested = true;
         Future<?> handle = dispatchHandle;
         dispatchHandle = null;
@@ -517,7 +509,7 @@ public class ExecutionRecord {
             if (closeable == null) return;
             try {
                 closeable.close();
-            } catch (RuntimeException | Error failure) {
+            } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 throw failure;
             } catch (Exception impossible) {
                 throw new IllegalStateException(impossible);
@@ -532,10 +524,12 @@ public class ExecutionRecord {
         synchronized (this) {
             if (!isTerminal()) return;
             failure = terminalFailure;
-            result = state == ExecutionState.SUCCESS
-                    ? InvocationResult.successWithEnvelope(output, statusCode, headers, encoding)
-                    : new InvocationResult(false, null, lastError != null ? lastError
-                            : new ErrorInfo("TIMEOUT", "Execution timed out"));
+            if (state == ExecutionState.SUCCESS) {
+                result = InvocationResult.successWithEnvelope(output, statusCode, headers, encoding);
+            } else {
+                ErrorInfo error = lastError != null ? lastError : new ErrorInfo("TIMEOUT", "Execution timed out");
+                result = new InvocationResult(false, null, error);
+            }
         }
         if (failure != null) completion.completeExceptionally(failure);
         else completion.complete(result);
@@ -585,12 +579,6 @@ public class ExecutionRecord {
         return finishedAtNanos;
     }
 
-    /**
-     * Records that the end-to-end conclusion for this invocation has been emitted.
-     *
-     * @return true the first time this is called, false on duplicates — the guard that keeps a
-     *     late dispatch callback racing a sync timeout from double-sampling the duration.
-     */
     /**
      * Wall-clock now from this record's own {@link TimeSource}. Collaborators that stamp
      * something onto the record (a retry task's enqueue instant) read the clock here rather than

@@ -7,11 +7,11 @@ import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.RuntimeMode;
-import it.unimib.datai.nanofaas.controlplane.config.ExecutionStoreBindingProperties;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.test.context.support.TestPropertySourceUtils;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -27,16 +27,12 @@ import static org.awaitility.Awaitility.await;
 class ExecutionExpiryOwnershipTest {
     private AnnotationConfigApplicationContext context() {
         var context = new AnnotationConfigApplicationContext();
-        // ExecutionStore/IdempotencyStore no longer carry @Component (Task 9, issue #208): they
-        // are constructed explicitly by ExecutionExpiryConfiguration's @Bean methods, from the
-        // ExecutionStoreBindingProperties Spring binds and converts to the runtime record.
-        context.registerBean(ExecutionStoreBindingProperties.class, () -> {
-            var binding = new ExecutionStoreBindingProperties();
-            binding.setTtl(Duration.ofMillis(80));
-            binding.setMaxLifetime(Duration.ofMillis(80));
-            binding.setSyncTtl(Duration.ofMillis(80));
-            return binding;
-        });
+        // ExecutionStore/IdempotencyStore carry no @Component: ExecutionExpiryConfiguration's
+        // @Bean methods construct them from the record it binds out of the environment.
+        TestPropertySourceUtils.addInlinedPropertiesToEnvironment(context,
+                "nanofaas.execution-store.ttl=80ms",
+                "nanofaas.execution-store.max-lifetime=80ms",
+                "nanofaas.execution-store.sync-ttl=80ms");
         context.registerBean(MeterRegistry.class, SimpleMeterRegistry::new);
         context.register(ExecutionExpiryConfiguration.class);
         context.refresh();
@@ -48,10 +44,10 @@ class ExecutionExpiryOwnershipTest {
         try (var context = context()) {
             var store = context.getBean(ExecutionStore.class);
             var gauge = context.getBean(MeterRegistry.class).get("execution_store_size").gauge();
-            var record = record("completed");
-            store.put(record);
-            record.markSuccess("ok");
-            store.settle(record);
+            var executionRecord = newRecord("completed");
+            store.put(executionRecord);
+            executionRecord.markSuccess("ok");
+            store.settle(executionRecord);
             // Reading the gauge does not run cleanUp(), unlike store.size().
             await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(gauge.value()).isZero());
         }
@@ -83,12 +79,12 @@ class ExecutionExpiryOwnershipTest {
             var store = context.getBean(ExecutionStore.class);
             var expired = new ConcurrentLinkedQueue<ExecutionRecord>();
             store.onAdministrativeExpiry(expired::add);
-            store.put(record("abandoned"));
+            store.put(newRecord("abandoned"));
             await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(expired).hasSize(1));
         }
     }
 
-    private ExecutionRecord record(String id) {
+    private ExecutionRecord newRecord(String id) {
         var spec = new FunctionSpec("fn", "img", List.of(), Map.of(), null, 1000, 1, 10, 0,
                 null, ExecutionMode.LOCAL, RuntimeMode.HTTP, null, null, null);
         var task = new InvocationTask(id, "fn", spec, new InvocationRequest("payload", Map.of()),

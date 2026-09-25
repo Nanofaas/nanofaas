@@ -9,6 +9,9 @@ import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
 import it.unimib.datai.nanofaas.execution.PendingEntry;
 import it.unimib.datai.nanofaas.execution.PendingWorkStore;
 import it.unimib.datai.nanofaas.execution.SchedulerEngine;
+import it.unimib.datai.nanofaas.execution.admission.SyncQueueAdmissionController;
+import it.unimib.datai.nanofaas.execution.admission.SyncQueueAdmissionResult;
+import it.unimib.datai.nanofaas.execution.admission.WaitEstimator;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 
@@ -22,18 +25,26 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class EngineSyncQueueGatewaySettlementTest {
 
     private static final Instant NOW = Instant.parse("2026-09-16T10:00:00Z");
 
+    private final SyncQueueAdmissionController controller = mock(SyncQueueAdmissionController.class);
+    private final WaitEstimator estimator = mock(WaitEstimator.class);
+
+    {
+        when(controller.evaluate(any(), anyInt(), any())).thenReturn(SyncQueueAdmissionResult.accepted(0));
+    }
+
     @Test
     void dispatchDuringAdmissionSettlesDepthAndRecordsWaitSample() {
         AtomicInteger admissions = new AtomicInteger();
-        AtomicInteger samples = new AtomicInteger();
         PendingWorkStore store = new PendingWorkStore(8);
         SyncQueueConfigSource config = mock(SyncQueueConfigSource.class);
         when(config.syncQueueMaxQueueWait()).thenReturn(Duration.ofSeconds(30));
@@ -43,9 +54,7 @@ class EngineSyncQueueGatewaySettlementTest {
         @SuppressWarnings("unchecked")
         ObjectProvider<SchedulerEngine> provider = mock(ObjectProvider.class);
         when(provider.getObject()).thenReturn(engine);
-        EngineSyncQueueGateway gateway = new EngineSyncQueueGateway(config,
-                (function, pending, now) -> null,
-                (function, now) -> samples.incrementAndGet(), function -> { },
+        EngineSyncQueueGateway gateway = new EngineSyncQueueGateway(config, controller, estimator,
                 provider, store, capacity, () -> 0L,
                 EngineInvocationEnqueuer.AdmissionProfile.SYNC_QUEUE,
                 function -> admissions.incrementAndGet(), function -> { },
@@ -66,8 +75,11 @@ class EngineSyncQueueGatewaySettlementTest {
 
         assertAll(
                 () -> assertThat(store.reservedCount()).isZero(),
-                () -> assertThat(admissions).hasValue(1),
-                () -> assertThat(samples).hasValue(1));
+                () -> assertThat(admissions).hasValue(1));
+        verify(estimator).recordDispatch("echo", NOW);
+
+        gateway.functionRemoved("echo");
+        verify(estimator).removeFunctionState("echo");
     }
 
     @Test
@@ -83,9 +95,7 @@ class EngineSyncQueueGatewaySettlementTest {
         PendingWorkStore store = new PendingWorkStore(8);
         AtomicInteger admitted = new AtomicInteger();
         AtomicInteger rejected = new AtomicInteger();
-        EngineSyncQueueGateway gateway = new EngineSyncQueueGateway(config,
-                (function, pending, now) -> null,
-                (function, now) -> { }, function -> { },
+        EngineSyncQueueGateway gateway = new EngineSyncQueueGateway(config, controller, estimator,
                 provider, store, capacity, () -> 0L,
                 EngineInvocationEnqueuer.AdmissionProfile.SYNC_QUEUE,
                 function -> admitted.incrementAndGet(), function -> rejected.incrementAndGet(),

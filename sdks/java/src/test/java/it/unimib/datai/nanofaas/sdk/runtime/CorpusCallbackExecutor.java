@@ -14,7 +14,7 @@ final class CorpusCallbackExecutor extends ThreadPoolExecutor {
         owned.addAll(running);
         long bytes = 0;
         for (Runnable task : owned) {
-            if (!task.getClass().getSimpleName().equals("CallbackTask")) continue;
+            if (!task.getClass().getSimpleName().equals("CallbackTask")) continue; // NOSONAR (java:S1872): CallbackTask is private to the runtime; the test cannot name its type
             Object payload = field(task, "payload");
             bytes += ((byte[]) payload).length;
         }

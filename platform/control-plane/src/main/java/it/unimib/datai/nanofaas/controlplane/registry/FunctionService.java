@@ -19,7 +19,6 @@ import java.util.ArrayList;
 import java.time.InstantSource;
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -316,7 +315,7 @@ public class FunctionService {
             partial.addSuppressed(persistFailure);
         }
         log.error("Function '{}' is in pending removal: backend '{}' still owns {}",
-                existing.name(), partial.backendId(), partial.remainingResources());
+                existing.name(), partial.backendId(), partial.remainingResources()); // NOSONAR (java:S2629): cheap accessors
     }
 
     /**

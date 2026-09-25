@@ -260,6 +260,25 @@ type corpusIdentityExpected struct {
 
 func TestConsumesSharedRuntimeSaturationWireContract(t *testing.T) {
 	corpusPath := saturationCorpusPath(t)
+	runSharedCorpusValidator(t, corpusPath)
+	corpus := decodeSaturationCorpus(t, corpusPath)
+	definitions, ok := corpus.ContractDefinitions[corpus.Policy.DefinitionsRef]
+	if !ok || len(corpus.Scenarios) != len(definitions.Vocabulary["scenarioKinds"]) {
+		t.Fatal("scenario projection mismatch")
+	}
+	for _, scenario := range corpus.Scenarios {
+		assertTypedScenarioProjection(t, corpus.Policy.MaximumScenarioDeadlineMS, scenario)
+		t.Run("runtime/"+scenario.ID, func(t *testing.T) {
+			runRuntimeCorpusScenario(t, corpus, scenario)
+		})
+	}
+	if len(corpus.MutationTests) == 0 {
+		t.Fatal("mutation fixtures are required")
+	}
+}
+
+func runSharedCorpusValidator(t *testing.T, corpusPath string) {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	validator := filepath.Join(filepath.Dir(corpusPath), "validate_saturation_wire_corpus.py")
@@ -270,7 +289,10 @@ func TestConsumesSharedRuntimeSaturationWireContract(t *testing.T) {
 	if ctx.Err() != nil {
 		t.Fatal("shared validator exceeded finite adapter deadline")
 	}
+}
 
+func decodeSaturationCorpus(t *testing.T, corpusPath string) saturationCorpus {
+	t.Helper()
 	body, err := os.ReadFile(corpusPath)
 	if err != nil {
 		t.Fatal(err)
@@ -281,43 +303,40 @@ func TestConsumesSharedRuntimeSaturationWireContract(t *testing.T) {
 	if err := decoder.Decode(&corpus); err != nil {
 		t.Fatal(err)
 	}
-	definitions, ok := corpus.ContractDefinitions[corpus.Policy.DefinitionsRef]
-	if !ok || len(corpus.Scenarios) != len(definitions.Vocabulary["scenarioKinds"]) {
-		t.Fatal("scenario projection mismatch")
+	return corpus
+}
+
+func assertTypedScenarioProjection(t *testing.T, maximumDeadlineMS int, scenario corpusScenario) {
+	t.Helper()
+	if scenario.ID == "" || scenario.Kind == "" || scenario.RuntimeConfigRef == "" || len(scenario.Requests) == 0 ||
+		len(scenario.Backend.Handlers) != len(scenario.Requests) || len(scenario.Backend.Callbacks) != len(scenario.Requests) ||
+		len(scenario.Harness.Actions) == 0 || len(scenario.Expected.Observations) == 0 ||
+		scenario.DeadlineMS <= 0 || scenario.DeadlineMS > maximumDeadlineMS {
+		t.Fatalf("incomplete typed projection for %q", scenario.ID)
 	}
-	for _, scenario := range corpus.Scenarios {
-		if scenario.ID == "" || scenario.Kind == "" || scenario.RuntimeConfigRef == "" || len(scenario.Requests) == 0 ||
-			len(scenario.Backend.Handlers) != len(scenario.Requests) || len(scenario.Backend.Callbacks) != len(scenario.Requests) ||
-			len(scenario.Harness.Actions) == 0 || len(scenario.Expected.Observations) == 0 ||
-			scenario.DeadlineMS <= 0 || scenario.DeadlineMS > corpus.Policy.MaximumScenarioDeadlineMS {
-			t.Fatalf("incomplete typed projection for %q", scenario.ID)
+	for _, expected := range scenario.Expected.Handlers {
+		if expected.Started == nil || expected.CancelRequested == nil {
+			t.Fatalf("missing handler boolean in %q", scenario.ID)
 		}
-		for _, expected := range scenario.Expected.Handlers {
-			if expected.Started == nil || expected.CancelRequested == nil {
-				t.Fatalf("missing handler boolean in %q", scenario.ID)
-			}
-		}
-		for _, expected := range scenario.Expected.Callbacks {
-			if expected.Required == nil || expected.Attempted == nil || expected.Delivered == nil {
-				t.Fatalf("missing callback boolean in %q", scenario.ID)
-			}
-			if expected.LifecycleRef == "" || expected.EnvelopeRef == "" ||
-				(expected.Attempts > 0 && expected.RequestProjection == nil) {
-				t.Fatalf("missing callback projection in %q", scenario.ID)
-			}
-		}
-		for name, count := range scenario.Expected.FinalCounters {
-			if name == "" || count != 0 {
-				t.Fatalf("undrained final counter in %q", scenario.ID)
-			}
-		}
-		scenario := scenario
-		t.Run("runtime/"+scenario.ID, func(t *testing.T) {
-			runRuntimeCorpusScenario(t, corpus, scenario)
-		})
 	}
-	if len(corpus.MutationTests) == 0 {
-		t.Fatal("mutation fixtures are required")
+	for _, expected := range scenario.Expected.Callbacks {
+		assertCallbackProjection(t, scenario.ID, expected)
+	}
+	for name, count := range scenario.Expected.FinalCounters {
+		if name == "" || count != 0 {
+			t.Fatalf("undrained final counter in %q", scenario.ID)
+		}
+	}
+}
+
+func assertCallbackProjection(t *testing.T, scenarioID string, expected corpusCallbackExpected) {
+	t.Helper()
+	if expected.Required == nil || expected.Attempted == nil || expected.Delivered == nil {
+		t.Fatalf("missing callback boolean in %q", scenarioID)
+	}
+	if expected.LifecycleRef == "" || expected.EnvelopeRef == "" ||
+		(expected.Attempts > 0 && expected.RequestProjection == nil) {
+		t.Fatalf("missing callback projection in %q", scenarioID)
 	}
 }
 

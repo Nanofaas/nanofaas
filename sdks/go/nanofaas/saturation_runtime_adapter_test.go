@@ -525,63 +525,94 @@ func deadlineFromContext(ctx context.Context) time.Time {
 
 func (h *runtimeCorpusHarness) verify() {
 	for _, expected := range h.scenario.Expected.Responses {
-		actual := h.requests[expected.RequestID]
-		if expected.ConnectionOutcome == "client-disconnected" {
-			if actual.result.Body.Len() != 0 {
-				h.t.Fatalf("%s: disconnected request wrote %q", expected.RequestID, actual.result.Body.String())
-			}
-			continue
-		}
-		if actual.result.Code != expected.Status {
-			h.t.Fatalf("%s: status=%d want=%d body=%s", expected.RequestID, actual.result.Code, expected.Status, actual.result.Body.String())
-		}
-		var body any
-		if err := json.Unmarshal(actual.result.Body.Bytes(), &body); err != nil {
-			h.t.Fatalf("%s: invalid response JSON: %v", expected.RequestID, err)
-		}
-		if !reflect.DeepEqual(body, expected.Body) {
-			h.t.Fatalf("%s: body=%#v want=%#v", expected.RequestID, body, expected.Body)
-		}
-		for name, value := range expected.RequiredHeaders {
-			if got := actual.result.Header().Get(name); !strings.EqualFold(got, value) {
-				h.t.Fatalf("%s: header %s=%q want=%q", expected.RequestID, name, got, value)
-			}
-		}
+		h.verifyResponse(expected)
 	}
 	for _, expected := range h.scenario.Expected.Handlers {
-		h.mu.Lock()
-		actual := h.handlers[expected.RequestID]
-		h.mu.Unlock()
-		if *expected.Started {
-			if actual == nil || !actual.started || actual.cancelRequested != *expected.CancelRequested || actual.terminal != expected.Terminal {
-				h.t.Fatalf("%s: handler=%+v want=%+v", expected.RequestID, actual, expected)
-			}
-		} else if actual != nil {
-			h.t.Fatalf("%s: handler unexpectedly started: %+v", expected.RequestID, actual)
-		}
+		h.verifyHandler(expected)
 	}
 	for _, expected := range h.scenario.Expected.Callbacks {
-		h.mu.Lock()
-		actual := h.callbacks[expected.RequestID]
-		h.mu.Unlock()
-		if expected.Attempts == 0 {
-			if actual != nil {
-				h.t.Fatalf("%s: unexpected callback %+v", expected.RequestID, actual)
-			}
-			continue
-		}
-		if actual == nil || actual.attempts != expected.Attempts || actual.delivered != *expected.Delivered ||
-			!reflect.DeepEqual(actual.dispatchAttempts, expected.DispatchAttempts) {
-			h.t.Fatalf("%s: callback=%+v want=%+v", expected.RequestID, actual, expected)
-		}
-		h.verifyCallbackProjection(expected, actual)
+		h.verifyCallback(expected)
 	}
 	h.verifyCounters("final", h.scenario.Expected.FinalCounters)
 	h.verifyObservations()
 }
 
+func (h *runtimeCorpusHarness) verifyResponse(expected corpusResponse) {
+	actual := h.requests[expected.RequestID]
+	if expected.ConnectionOutcome == "client-disconnected" {
+		if actual.result.Body.Len() != 0 {
+			h.t.Fatalf("%s: disconnected request wrote %q", expected.RequestID, actual.result.Body.String())
+		}
+		return
+	}
+	if actual.result.Code != expected.Status {
+		h.t.Fatalf("%s: status=%d want=%d body=%s", expected.RequestID, actual.result.Code, expected.Status, actual.result.Body.String())
+	}
+	var body any
+	if err := json.Unmarshal(actual.result.Body.Bytes(), &body); err != nil {
+		h.t.Fatalf("%s: invalid response JSON: %v", expected.RequestID, err)
+	}
+	if !reflect.DeepEqual(body, expected.Body) {
+		h.t.Fatalf("%s: body=%#v want=%#v", expected.RequestID, body, expected.Body)
+	}
+	for name, value := range expected.RequiredHeaders {
+		if got := actual.result.Header().Get(name); !strings.EqualFold(got, value) {
+			h.t.Fatalf("%s: header %s=%q want=%q", expected.RequestID, name, got, value)
+		}
+	}
+}
+
+func (h *runtimeCorpusHarness) verifyHandler(expected corpusHandlerExpected) {
+	h.mu.Lock()
+	actual := h.handlers[expected.RequestID]
+	h.mu.Unlock()
+	if !*expected.Started {
+		if actual != nil {
+			h.t.Fatalf("%s: handler unexpectedly started: %+v", expected.RequestID, actual)
+		}
+		return
+	}
+	if actual == nil || !actual.started || actual.cancelRequested != *expected.CancelRequested || actual.terminal != expected.Terminal {
+		h.t.Fatalf("%s: handler=%+v want=%+v", expected.RequestID, actual, expected)
+	}
+}
+
+func (h *runtimeCorpusHarness) verifyCallback(expected corpusCallbackExpected) {
+	h.mu.Lock()
+	actual := h.callbacks[expected.RequestID]
+	h.mu.Unlock()
+	if expected.Attempts == 0 {
+		if actual != nil {
+			h.t.Fatalf("%s: unexpected callback %+v", expected.RequestID, actual)
+		}
+		return
+	}
+	if actual == nil || actual.attempts != expected.Attempts || actual.delivered != *expected.Delivered ||
+		!reflect.DeepEqual(actual.dispatchAttempts, expected.DispatchAttempts) {
+		h.t.Fatalf("%s: callback=%+v want=%+v", expected.RequestID, actual, expected)
+	}
+	h.verifyCallbackProjection(expected, actual)
+}
+
 func (h *runtimeCorpusHarness) verifyObservations() {
 	observed := make(map[string]bool)
+	h.observeRequests(observed)
+	h.observeOwners(observed)
+	observed["stop-complete"] = h.stops > 0
+	observed["restart-complete"] = h.starts > 1 && h.stops > 0
+	observed["counters-zero"] = h.runtime.limits.snapshot().activeHandlers == 0 &&
+		h.runtime.callbackDispatcher.snapshot() == (callbackDispatcherSnapshot{})
+	h.observeFailureMetric(observed)
+	h.observeStructuredLog(observed)
+	for _, name := range h.scenario.Expected.Observations {
+		if !observed[name] {
+			h.t.Errorf("missing actual observation %q", name)
+		}
+	}
+	h.t.Logf("observations=%v", observed)
+}
+
+func (h *runtimeCorpusHarness) observeRequests(observed map[string]bool) {
 	for id, request := range h.requests {
 		observed["wire-response"] = observed["wire-response"] || request.result.Body.Len() > 0
 		observed["no-wire-response"] = observed["no-wire-response"] || (request.result.Body.Len() == 0 && request.result.Code == 200)
@@ -589,7 +620,11 @@ func (h *runtimeCorpusHarness) verifyObservations() {
 			observed["health-response"] = true
 		}
 	}
+}
+
+func (h *runtimeCorpusHarness) observeOwners(observed map[string]bool) {
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	for _, handler := range h.handlers {
 		observed["handler-start"] = observed["handler-start"] || handler.started
 		observed["handler-cancel"] = observed["handler-cancel"] || handler.cancelRequested
@@ -604,28 +639,31 @@ func (h *runtimeCorpusHarness) verifyObservations() {
 	// Every handler start must correspond to one explicit harness request;
 	// invokeHandler separately rejects duplicate starts below.
 	observed["runtime-redispatch-zero"] = len(h.handlers) <= len(h.requests)
-	h.mu.Unlock()
-	observed["stop-complete"] = h.stops > 0
-	observed["restart-complete"] = h.starts > 1 && h.stops > 0
-	observed["counters-zero"] = h.runtime.limits.snapshot().activeHandlers == 0 &&
-		h.runtime.callbackDispatcher.snapshot() == (callbackDispatcherSnapshot{})
+}
+
+func (h *runtimeCorpusHarness) observeFailureMetric(observed map[string]bool) {
 	families, err := h.runtime.metrics.registry.Gather()
 	if err != nil {
 		h.t.Fatal(err)
 	}
 	for _, family := range families {
-		if family.GetName() == "nanofaas_runtime_callback_drops_total" {
-			for _, metric := range family.Metric {
-				observed["callback-failure-metric"] = metric.GetCounter().GetValue() > 0
-			}
+		if family.GetName() != "nanofaas_runtime_callback_drops_total" {
+			continue
+		}
+		for _, metric := range family.Metric {
+			observed["callback-failure-metric"] = metric.GetCounter().GetValue() > 0
 		}
 	}
+}
+
+func (h *runtimeCorpusHarness) observeStructuredLog(observed map[string]bool) {
 	h.logs.mu.Lock()
+	defer h.logs.mu.Unlock()
 	decoder := json.NewDecoder(bytes.NewReader(h.logs.Bytes()))
 	for {
 		var record map[string]any
 		if err := decoder.Decode(&record); err == io.EOF {
-			break
+			return
 		} else if err != nil {
 			h.t.Fatal(err)
 		}
@@ -633,13 +671,6 @@ func (h *runtimeCorpusHarness) verifyObservations() {
 			observed["structured-log"] = true
 		}
 	}
-	h.logs.mu.Unlock()
-	for _, name := range h.scenario.Expected.Observations {
-		if !observed[name] {
-			h.t.Errorf("missing actual observation %q", name)
-		}
-	}
-	h.t.Logf("observations=%v", observed)
 }
 
 func (h *runtimeCorpusHarness) verifyCounters(phase string, expected map[string]int) {

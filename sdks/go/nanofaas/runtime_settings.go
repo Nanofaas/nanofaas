@@ -171,53 +171,33 @@ func boundedDuration(value, fallback, maximum time.Duration) time.Duration {
 }
 
 func mergeRuntimeSettings(target *RuntimeSettings, source RuntimeSettings) {
-	if source.Port != "" {
-		target.Port = source.Port
+	overrideString(&target.Port, source.Port)
+	overrideString(&target.ExecutionID, source.ExecutionID)
+	overrideString(&target.TraceID, source.TraceID)
+	overrideString(&target.CallbackURL, source.CallbackURL)
+	overrideString(&target.FunctionHandler, source.FunctionHandler)
+	overridePositive(&target.HandlerTimeout, source.HandlerTimeout)
+	overridePositive(&target.MaxConcurrentHandlers, source.MaxConcurrentHandlers)
+	overridePositive(&target.MaxInputBytes, source.MaxInputBytes)
+	overridePositive(&target.MaxOutputBytes, source.MaxOutputBytes)
+	overridePositive(&target.MaxPendingCallbacks, source.MaxPendingCallbacks)
+	overridePositive(&target.MaxPendingCallbackBytes, source.MaxPendingCallbackBytes)
+	overridePositive(&target.MaxCallbackPayloadBytes, source.MaxCallbackPayloadBytes)
+	overridePositive(&target.BodyReadTimeout, source.BodyReadTimeout)
+	overridePositive(&target.CallbackAttemptTimeout, source.CallbackAttemptTimeout)
+	overridePositive(&target.CallbackMaxAttempts, source.CallbackMaxAttempts)
+	overridePositive(&target.ShutdownTimeout, source.ShutdownTimeout)
+}
+
+func overrideString(target *string, value string) {
+	if value != "" {
+		*target = value
 	}
-	if source.ExecutionID != "" {
-		target.ExecutionID = source.ExecutionID
-	}
-	if source.TraceID != "" {
-		target.TraceID = source.TraceID
-	}
-	if source.CallbackURL != "" {
-		target.CallbackURL = source.CallbackURL
-	}
-	if source.FunctionHandler != "" {
-		target.FunctionHandler = source.FunctionHandler
-	}
-	if source.HandlerTimeout > 0 {
-		target.HandlerTimeout = source.HandlerTimeout
-	}
-	if source.MaxConcurrentHandlers > 0 {
-		target.MaxConcurrentHandlers = source.MaxConcurrentHandlers
-	}
-	if source.MaxInputBytes > 0 {
-		target.MaxInputBytes = source.MaxInputBytes
-	}
-	if source.MaxOutputBytes > 0 {
-		target.MaxOutputBytes = source.MaxOutputBytes
-	}
-	if source.MaxPendingCallbacks > 0 {
-		target.MaxPendingCallbacks = source.MaxPendingCallbacks
-	}
-	if source.MaxPendingCallbackBytes > 0 {
-		target.MaxPendingCallbackBytes = source.MaxPendingCallbackBytes
-	}
-	if source.MaxCallbackPayloadBytes > 0 {
-		target.MaxCallbackPayloadBytes = source.MaxCallbackPayloadBytes
-	}
-	if source.BodyReadTimeout > 0 {
-		target.BodyReadTimeout = source.BodyReadTimeout
-	}
-	if source.CallbackAttemptTimeout > 0 {
-		target.CallbackAttemptTimeout = source.CallbackAttemptTimeout
-	}
-	if source.CallbackMaxAttempts > 0 {
-		target.CallbackMaxAttempts = source.CallbackMaxAttempts
-	}
-	if source.ShutdownTimeout > 0 {
-		target.ShutdownTimeout = source.ShutdownTimeout
+}
+
+func overridePositive[T ~int | ~int64](target *T, value T) {
+	if value > 0 {
+		*target = value
 	}
 }
 

@@ -98,13 +98,16 @@ final class RecoveryFixture {
         EndpointProbe probe = mock(EndpointProbe.class);
         when(probe.isReady(anyString())).thenReturn(true);
         List<ManagedFunctionProxy> proxies = new ArrayList<>();
+        RoundRobinFunctionProxyFactory realFactory = new RoundRobinFunctionProxyFactory("127.0.0.1");
+        RoundRobinFunctionProxyFactory proxyFactory = mock(RoundRobinFunctionProxyFactory.class);
+        when(proxyFactory.create(anyString())).thenAnswer(invocation -> {
+            ManagedFunctionProxy proxy = realFactory.create(invocation.getArgument(0));
+            proxies.add(proxy);
+            return proxy;
+        });
         ContainerdDeploymentProvider provider = new ContainerdDeploymentProvider(adapter,
                 ContainerdProperties.defaults(Map.of("HOME", "/home/service", "XDG_RUNTIME_DIR", "/run/user/1000")),
-                probe, name -> {
-                    ManagedFunctionProxy proxy = new RoundRobinFunctionProxyFactory("127.0.0.1").create(name);
-                    proxies.add(proxy);
-                    return proxy;
-                });
+                probe, proxyFactory);
         return new Session(client, adapter, provider, proxies);
     }
 

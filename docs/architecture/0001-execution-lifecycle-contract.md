@@ -735,6 +735,6 @@ and the contract library share package names on purpose: `controlplane.service` 
 - **`workload-metrics` keeps only observability contracts.** The mutable capacity it once owned
   moved into the core in P06 and P20b; the core no longer depends on this project at all, and the
   one remaining unused bridge alias (`recordDispatchSlotBlocked`) is deleted. What stays —
-  `WorkloadMetricsSource`, `WorkloadCapacityController`, `WorkloadDiagnostics`,
-  `WorkloadMetricsBinder`, `WorkloadMetricNames` — has real consumers in the queue modules, the
-  autoscaler and the governor.
+  `WorkloadMetricsSource`, `WorkloadCapacityController`, `WorkloadMetricsBinder`,
+  `WorkloadMetricNames` — has real consumers in the queue modules, the autoscaler and the
+  governor. `WorkloadDiagnostics`, which no composition ever recorded into, was deleted later.

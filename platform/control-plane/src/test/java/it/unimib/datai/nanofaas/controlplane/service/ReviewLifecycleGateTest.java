@@ -26,7 +26,7 @@ class ReviewLifecycleGateTest {
         return new FunctionSpec("fn", "img", List.of(), Map.of(), null, 10000,
                 concurrency, 100, 0, "http://unused/invoke", mode, null, null, null);
     }
-    private static ExecutionRecord record(String id, FunctionSpec spec) {
+    private static ExecutionRecord newRecord(String id, FunctionSpec spec) {
         return new ExecutionRecord(id, new InvocationTask(id, "fn", spec,
                 new InvocationRequest("payload", Map.of()), null, null, Instant.now(),
                 1, InvocationKind.ASYNC));
@@ -35,10 +35,10 @@ class ReviewLifecycleGateTest {
         return new ExecutionStore(new ExecutionStoreProperties(Duration.ofMinutes(5),
                 Duration.ofMinutes(30), Duration.ofSeconds(30), 100, 100, 11600), clock::get);
     }
-    private static void expire(AtomicLong clock, ExecutionStore store, ExecutionRecord record) {
+    private static void expire(AtomicLong clock, ExecutionStore store, ExecutionRecord executionRecord) {
         clock.set(Duration.ofMinutes(31).toNanos());
         store.inFlightCount();
-        await().atMost(Duration.ofSeconds(3)).until(() -> record.completion().isDone());
+        await().atMost(Duration.ofSeconds(3)).until(() -> executionRecord.completion().isDone());
     }
     private static void awaitLatch(CountDownLatch latch) {
         try { if (!latch.await(5, TimeUnit.SECONDS)) throw new IllegalStateException("latch timeout"); }
@@ -52,7 +52,7 @@ class ReviewLifecycleGateTest {
             @Override public void success(String fn) { throw new IllegalStateException("metric failure"); }
         };
         var handler = new ExecutionCompletionHandler(store, null, mock(DispatcherRouter.class), metrics);
-        var rec = record("metrics", spec(ExecutionMode.LOCAL, 1));
+        var rec = newRecord("metrics", spec(ExecutionMode.LOCAL, 1));
         store.put(rec);
         handler.completeExecution(rec.executionId(), InvocationResult.success("done"));
         System.out.println("METRIC_FAILURE state=" + rec.state() + " sharedDone="
@@ -71,7 +71,7 @@ class ReviewLifecycleGateTest {
             }
         };
         var handler = new ExecutionCompletionHandler(store, null, mock(DispatcherRouter.class), metrics);
-        var rec = record("offload-race", spec(ExecutionMode.LOCAL, 1));
+        var rec = newRecord("offload-race", spec(ExecutionMode.LOCAL, 1));
         store.put(rec);
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
@@ -113,12 +113,13 @@ class ReviewLifecycleGateTest {
         when(router.dispatchLocal(any())).thenReturn(first, blocked, blocked);
         var handler = new ExecutionCompletionHandler(store, null, router,
                 new Metrics(new SimpleMeterRegistry()), null, capacity);
-        var warm = record("warm", spec(ExecutionMode.LOCAL, 2)); store.put(warm);
+        var warm = newRecord("warm", spec(ExecutionMode.LOCAL, 2)); store.put(warm);
         handler.dispatchDirect(warm.task());
-        var a = record("new-a", spec(ExecutionMode.LOCAL, 1)); store.put(a);
-        var b = record("new-b", spec(ExecutionMode.LOCAL, 1)); store.put(b);
+        var a = newRecord("new-a", spec(ExecutionMode.LOCAL, 1)); store.put(a);
+        var b = newRecord("new-b", spec(ExecutionMode.LOCAL, 1)); store.put(b);
         handler.dispatchDirect(a.task());
-        assertThatThrownBy(() -> handler.dispatchDirect(b.task()))
+        var taskB = b.task();
+        assertThatThrownBy(() -> handler.dispatchDirect(taskB))
                 .isInstanceOf(QueueFullException.class);
         System.out.println("DIRECT_RECONFIG requested=1 inFlight=" + capacity.inFlight("fn"));
         try { assertThat(capacity.inFlight("fn")).isEqualTo(1); }
@@ -137,7 +138,7 @@ class ReviewLifecycleGateTest {
         });
         var handler = new ExecutionCompletionHandler(store, null, router,
                 new Metrics(new SimpleMeterRegistry()), null, capacity);
-        var rec = record("publish-race", spec(ExecutionMode.EXTERNAL, 1)); store.put(rec);
+        var rec = newRecord("publish-race", spec(ExecutionMode.EXTERNAL, 1)); store.put(rec);
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
             Future<?> dispatch = executor.submit(() -> handler.dispatchDirect(rec.task()));
@@ -161,7 +162,7 @@ class ReviewLifecycleGateTest {
         when(router.dispatchExternal(any())).thenReturn(transport);
         var handler = new ExecutionCompletionHandler(store, null, router,
                 new Metrics(new SimpleMeterRegistry()), gate, new FunctionCapacityRegistry());
-        var rec = record("deployment-expiry", spec(ExecutionMode.DEPLOYMENT, 1)); store.put(rec);
+        var rec = newRecord("deployment-expiry", spec(ExecutionMode.DEPLOYMENT, 1)); store.put(rec);
         handler.dispatchDirect(rec.task());
         expire(clock, store, rec);
         System.out.println("DEPLOYMENT_EXPIRY sharedDone=" + rec.completion().isDone()
@@ -181,7 +182,7 @@ class ReviewLifecycleGateTest {
         var capacity = new FunctionCapacityRegistry();
         var handler = new ExecutionCompletionHandler(store, null, router,
                 new Metrics(new SimpleMeterRegistry()), gate, capacity);
-        var rec = record("before-wakeup", spec(ExecutionMode.DEPLOYMENT, 1));
+        var rec = newRecord("before-wakeup", spec(ExecutionMode.DEPLOYMENT, 1));
         store.put(rec);
         handler.dispatchDirect(rec.task());
         expire(clock, store, rec);
@@ -203,7 +204,7 @@ class ReviewLifecycleGateTest {
                 new Metrics(new SimpleMeterRegistry()), null, capacity);
         var spec = new FunctionSpec("fn", "img", List.of(), Map.of(), null, 50,
                 1, 100, 0, "http://unused/invoke", ExecutionMode.EXTERNAL, null, null, null);
-        var rec = record("attempt-timeout", spec);
+        var rec = newRecord("attempt-timeout", spec);
         store.put(rec);
         handler.dispatchDirect(rec.task());
         await().atMost(Duration.ofSeconds(3)).until(cancelled::get);
@@ -222,7 +223,7 @@ class ReviewLifecycleGateTest {
         var work = CompletableFuture.supplyAsync(() -> {
             actualRunning.incrementAndGet(); started.countDown();
             while (stop.getCount() > 0) {
-                try { stop.await(); } catch (InterruptedException ignored) { }
+                try { stop.await(); } catch (InterruptedException _) { /* keep running until stop opens */ }
             }
             actualRunning.decrementAndGet();
             return DispatchResult.warm(InvocationResult.success("done"));
@@ -231,7 +232,7 @@ class ReviewLifecycleGateTest {
         when(router.dispatchLocal(any())).thenReturn(work);
         var handler = new ExecutionCompletionHandler(store, null, router,
                 new Metrics(new SimpleMeterRegistry()), null, capacity);
-        var rec = record("local-expiry", spec(ExecutionMode.LOCAL, 1)); store.put(rec);
+        var rec = newRecord("local-expiry", spec(ExecutionMode.LOCAL, 1)); store.put(rec);
         try {
             assertThat(started.await(3, TimeUnit.SECONDS)).isTrue();
             handler.dispatchDirect(rec.task());

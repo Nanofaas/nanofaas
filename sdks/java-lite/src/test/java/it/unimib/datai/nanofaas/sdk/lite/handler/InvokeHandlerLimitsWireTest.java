@@ -13,6 +13,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
+import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.Flow;
@@ -58,7 +59,7 @@ class InvokeHandlerLimitsWireTest {
             try {
                 releaseCallback.await();
                 exchange.sendResponseHeaders(204, -1);
-            } catch (InterruptedException ex) {
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
             } finally {
                 exchange.close();
@@ -132,12 +133,10 @@ class InvokeHandlerLimitsWireTest {
                 .build(), HttpResponse.BodyHandlers.ofString());
     }
 
-    private static void await(BooleanSupplier condition) throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-        while (!condition.getAsBoolean() && System.nanoTime() < deadline) {
-            Thread.sleep(10);
-        }
-        assertTrue(condition.getAsBoolean());
+    private static void await(BooleanSupplier condition) {
+        org.awaitility.Awaitility.await().pollDelay(Duration.ZERO)
+                .pollInterval(Duration.ofMillis(10))
+                .atMost(Duration.ofSeconds(2)).until(condition::getAsBoolean);
     }
 
     private static Object field(Object target, String name) throws ReflectiveOperationException {
@@ -185,7 +184,7 @@ class InvokeHandlerLimitsWireTest {
         CountDownLatch release = new CountDownLatch(1);
         try (Harness harness = new Harness(_ -> {
             entered.countDown();
-            try { release.await(); } catch (InterruptedException ex) { Thread.currentThread().interrupt(); }
+            try { release.await(); } catch (InterruptedException _) { Thread.currentThread().interrupt(); }
             return Map.of("ok", true);
         }, limits)) {
             Future<HttpResponse<String>> first = harness.requests.submit(() -> harness.invoke("{\"input\":{}}"));

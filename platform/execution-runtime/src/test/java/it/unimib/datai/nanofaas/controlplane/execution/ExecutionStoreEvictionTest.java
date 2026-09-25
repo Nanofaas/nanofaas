@@ -186,16 +186,16 @@ class ExecutionStoreEvictionTest {
         // key its terminal transition — that would silently reopen the re-execution window.
         ExecutionStore store = store();
         List<String> ran = new java.util.ArrayList<>();
-        store.onTerminal(record -> {
+        store.onTerminal(executionRecord -> {
             ran.add("first");
             throw new IllegalStateException("listener failed");
         });
-        store.onTerminal(record -> ran.add("second"));
+        store.onTerminal(executionRecord -> ran.add("second"));
 
-        ExecutionRecord record = executionRecord("exec");
-        store.put(record);
-        record.markSuccess("ok");
-        store.settle(record);
+        ExecutionRecord execution = executionRecord("exec");
+        store.put(execution);
+        execution.markSuccess("ok");
+        store.settle(execution);
 
         assertThat(ran).containsExactly("first", "second");
         assertThat(store.outcomeOf("exec").state()).isEqualTo(ExecutionState.SUCCESS);
@@ -208,16 +208,16 @@ class ExecutionStoreEvictionTest {
         // key's tombstone - not the payload - is what keeps a replay from re-invoking.
         ExecutionStore store = store();
         List<String> terminal = new java.util.ArrayList<>();
-        store.onTerminal(record -> terminal.add(record.executionId()));
+        store.onTerminal(executionRecord -> terminal.add(executionRecord.executionId()));
 
-        ExecutionRecord record = asyncExecutionRecord("oversized");
-        store.put(record);
+        ExecutionRecord executionRecord = asyncExecutionRecord("oversized");
+        store.put(executionRecord);
         Object payload = "x";
         for (int depth = 0; depth < 5; depth++) {
             payload = List.of(payload);
         }
-        record.markSuccess(payload);
-        store.settle(record);
+        executionRecord.markSuccess(payload);
+        store.settle(executionRecord);
 
         assertThat(store.size()).isZero();
         assertThat(store.outcomeOf("oversized")).isNull();

@@ -22,7 +22,6 @@ import it.unimib.datai.nanofaas.execution.SchedulerEngine;
 import it.unimib.datai.nanofaas.execution.StrategyRegistry;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadCapacityController;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsBinder;
-import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -48,9 +47,8 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Composes both scheduling strategies (or however many are on the classpath) around ONE
- * {@link SchedulerEngine}, ONE {@link SchedulerControl} and ONE Spring lifecycle, instead of the
- * two mutually-exclusive scheduler implementations async-queue and sync-queue used to register
- * (Task 8, issue #208).
+ * {@link SchedulerEngine}, ONE {@link SchedulerControl} and ONE Spring lifecycle, shared by the
+ * async-queue and sync-queue modules rather than one scheduler per module.
  *
  * <p>Activates only when at least one {@link SchedulingStrategy} bean exists — i.e. only when a
  * queue module is on the classpath. With none, the core's own {@code InvocationEnqueuerAutoConfiguration}
@@ -70,6 +68,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class SchedulerConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(SchedulerConfiguration.class);
+    private static final String PER_FUNCTION_STRATEGY = "per-function";
 
     /**
      * A generous engine-wide safety net for profiles where no single global admission cap ever
@@ -104,7 +103,7 @@ public class SchedulerConfiguration {
                     explicit.trim().toUpperCase(Locale.ROOT).replace('-', '_'));
         }
         List<String> ids = strategies.ids();
-        if (ids.contains("per-function")) {
+        if (ids.contains(PER_FUNCTION_STRATEGY)) {
             return AdmissionProfile.FUNCTION_QUEUE;
         }
         if (ids.contains("shared-queue")) {
@@ -127,7 +126,7 @@ public class SchedulerConfiguration {
             return props.strategy();
         }
         List<String> ids = strategies.ids();
-        return ids.contains("per-function") ? "per-function" : ids.get(0);
+        return ids.contains(PER_FUNCTION_STRATEGY) ? PER_FUNCTION_STRATEGY : ids.get(0);
     }
 
     /** Shared ticket admission order across every strategy and both admission fronts. */
@@ -148,33 +147,17 @@ public class SchedulerConfiguration {
     }
 
     /**
-     * Fix round I2 correction: this is called from inside the engine gate (it is the
-     * {@code runnable} predicate passed to {@code SchedulingIndex.select}), and
-     * {@code capacityRegistry.state(name)} takes {@code FunctionCapacityRegistry}'s own
-     * per-function {@code ReentrantLock} — so the acquisition order here is genuinely
-     * {@code gate -> entry.lock}, one external lock taken while holding the gate. The plan's
-     * contract for this predicate excludes exactly this ("non chiama provider, store o registry
-     * mutabili"); the original Task 8 report's claim that {@code FunctionCapacityRegistry} "has
-     * no dependency on the scheduler/engine at all" stopped being true the moment
-     * {@link #schedulerEngine} registered {@code engine::signal} as a capacity listener below —
-     * do not read that claim as still standing.
+     * Called inside the engine gate (it is the {@code runnable} predicate passed to
+     * {@code SchedulingIndex.select}), and {@code capacityRegistry.state(name)} takes
+     * {@code FunctionCapacityRegistry}'s per-function {@code ReentrantLock}: generation and
+     * capacity are read under {@code gate -> entry.lock}.
      *
-     * <p>This is not being redesigned: reviewed end to end, there is no cycle. The registry's
-     * only path back into the engine is that one capacity-listener callback
-     * ({@code capacityRegistry.addCapacityListener(functionName -> engine.signal())} in
-     * {@link #schedulerEngine}), and it fires from {@code FunctionCapacityRegistry.setEffectiveConcurrency}
-     * strictly <em>after</em> that method has already released the entry lock (the listener loop
-     * runs "outside the entry lock: listeners may take other locks", per that method's own
-     * comment) — so no path exists that holds {@code entry.lock} while trying to take
-     * {@code gate}. That is what makes {@code gate -> entry.lock} a safe, one-directional order.
-     *
-     * <p><strong>Invariant, recorded for whoever touches this next:</strong> the acquisition
-     * order here is {@code gate -> entry.lock}, and it must stay one-directional. The single fire
-     * site above is the whole reason it is safe today. Adding a second capacity listener (or any
-     * other engine-reachable callback) that runs <em>inside</em> {@code entry.lock} — i.e. before
-     * {@code FunctionCapacityRegistry} releases it — would reintroduce the reverse edge and
-     * deadlock against a concurrent {@code selectAndClaim}. Do not add one without either keeping
-     * it outside the lock (as this one is) or re-deriving this whole argument.
+     * <p>Capacity listeners must run after releasing {@code entry.lock}: calling the engine
+     * while holding that lock would invert the order and could deadlock selection. The
+     * registry's only path back into the engine is the capacity listener
+     * {@link #schedulerEngine} registers, and {@code FunctionCapacityRegistry.setEffectiveConcurrency}
+     * fires it after releasing the entry lock. Do not add an engine-reachable callback that runs
+     * inside {@code entry.lock} without re-deriving this argument.
      */
     @Bean
     public EngineReadiness engineReadiness(DispatchCapacity capacityRegistry) {
@@ -188,13 +171,11 @@ public class SchedulerConfiguration {
     }
 
     /**
-     * Task 11 (issue #208): the engine-backed replacement for the two per-module
-     * {@code WorkloadMetricsSource} beans Task 8 retired. Autoscaler and the concurrency
-     * governor both gate their own startup on a bean of this type
-     * ({@code @ConditionalOnBean(WorkloadMetricsSource.class)}); its absence between Task 8 and
-     * this one silently disabled both — the 2026-08-29 incident {@code AutoscalerConfigurationTest}
-     * documents. There is no longer a presence-check log.warn: a genuine source is always present
-     * whenever this configuration activates at all, so the loud-failure stopgap is retired with it.
+     * The engine-backed {@code WorkloadMetricsSource}. Autoscaler and the concurrency governor
+     * both gate their own startup on a bean of this type
+     * ({@code @ConditionalOnBean(WorkloadMetricsSource.class)}); without it both are silently
+     * disabled — the 2026-08-29 incident {@code AutoscalerConfigurationTest} documents. A genuine
+     * source is always present whenever this configuration activates.
      */
     @Bean
     public EngineWorkloadMetricsSource schedulerWorkloadMetricsSource(SchedulerEngine engine,
@@ -202,53 +183,10 @@ public class SchedulerConfiguration {
         return new EngineWorkloadMetricsSource(engine, capacityRegistry);
     }
 
-    // Fix round 1 (issue #208): a WorkloadDiagnostics bean was removed from here. It registered
-    // six per-function meters (queue offer/poll duration, dispatch-slot hold, scheduler
-    // wakeup/poll delay) via registerFunction below, but nothing in this composition ever called
-    // a single recorder method on it — six always-empty series per function, presented as
-    // restored observability. Registering without recording is half-wiring, not observability;
-    // wiring the actual recorders into EngineTransport's hot dispatch path is deferred to a task
-    // that reviews that path deliberately, not folded into this fix round. Do not re-add the
-    // registerFunction/removeFunction calls without wiring at least one recorder alongside them.
-
     @Bean
     public WorkloadMetricsBinder schedulerWorkloadMetricsBinder(MeterRegistry registry,
             EngineWorkloadMetricsSource source) {
         return new WorkloadMetricsBinder(registry, source);
-    }
-
-    /**
-     * Two gauges (one per built-in strategy, so cardinality is bounded by the artefact's own
-     * {@link StrategyRegistry}, never by execution/ticket/generation identity) plus one bounded
-     * switch-outcome counter and a switch-duration timer. Registered once, at composition time —
-     * not per switch — since {@code Gauge} is pull-based and {@code Counter}/{@code Timer}
-     * lookups by the same id are idempotent.
-     *
-     * <p>The switch observer runs after {@link SchedulerEngine#switchTo}'s own linearization
-     * point and cannot affect its outcome (Task 5's invariant, restated on
-     * {@code SchedulerEngine.switchTo}'s own javadoc): a throwing observer is caught inside the
-     * engine itself, never here.
-     */
-    @Bean
-    public Object schedulerSwitchObservability(MeterRegistry registry, StrategyRegistry strategies,
-            SchedulerEngine engine) {
-        for (String id : strategies.ids()) {
-            Gauge.builder("scheduler_active", engine,
-                            candidate -> candidate.snapshot().strategy().equals(id) ? 1 : 0)
-                    .tag("strategy", id)
-                    .register(registry);
-        }
-        Timer switchDuration = Timer.builder("scheduler_switch_duration").register(registry);
-        engine.setSwitchObserver((strategy, outcome, durationNanos) -> {
-            Counter.builder("scheduler_switch_total")
-                    .tag("outcome", outcome.name().toLowerCase(Locale.ROOT))
-                    .register(registry)
-                    .increment();
-            switchDuration.record(durationNanos, TimeUnit.NANOSECONDS);
-        });
-        // The return value is never consumed; this bean exists for the registration side effects
-        // above, run once at startup like every other composition bean here.
-        return new Object();
     }
 
     /** Bound to the real engine once it exists (see {@link #schedulerEngine}), breaking the
@@ -276,7 +214,8 @@ public class SchedulerConfiguration {
     @Bean(destroyMethod = "close")
     public SchedulerEngine schedulerEngine(PendingWorkStore store, StrategyRegistry strategies,
             SchedulerProperties props, DispatchCapacity capacityRegistry,
-            EngineDispatch dispatch, EngineReadiness readiness, WakeHandle wakeHandle) {
+            EngineDispatch dispatch, EngineReadiness readiness, WakeHandle wakeHandle,
+            MeterRegistry registry) {
         String initial = resolveInitialStrategy(props, strategies);
         SchedulerEngine engine = new SchedulerEngine(store, strategies, initial, dispatch, readiness,
                 generation -> generation.equals(capacityRegistry.activeGeneration(generation.functionName())),
@@ -286,7 +225,38 @@ public class SchedulerConfiguration {
         // generation the last pass found blocked is re-examined without waiting out the park
         // safety bound. Path 1/2 is EngineTransport.tryAcquire's onReleased callback below.
         capacityRegistry.addCapacityListener(functionName -> engine.signal());
+        registerSwitchObservability(registry, strategies, engine);
         return engine;
+    }
+
+    /**
+     * Two gauges (one per built-in strategy, so cardinality is bounded by the artefact's own
+     * {@link StrategyRegistry}, never by execution/ticket/generation identity) plus one bounded
+     * switch-outcome counter and a switch-duration timer. Registered once, at composition time —
+     * not per switch — since {@code Gauge} is pull-based and {@code Counter}/{@code Timer}
+     * lookups by the same id are idempotent.
+     *
+     * <p>The switch observer runs after {@link SchedulerEngine#switchTo}'s own linearization
+     * point and cannot affect its outcome (see {@code SchedulerEngine.switchTo}'s own
+     * javadoc): a throwing observer is caught inside the
+     * engine itself, never here.
+     */
+    private static void registerSwitchObservability(MeterRegistry registry, StrategyRegistry strategies,
+            SchedulerEngine engine) {
+        for (String id : strategies.ids()) {
+            Gauge.builder("scheduler_active", engine,
+                            candidate -> candidate.snapshot().strategy().equals(id) ? 1 : 0)
+                    .tag("strategy", id)
+                    .register(registry);
+        }
+        Timer switchDuration = Timer.builder("scheduler_switch_duration").register(registry);
+        engine.setSwitchObserver((strategy, outcome, durationNanos) -> {
+            Counter.builder("scheduler_switch_total")
+                    .tag("outcome", outcome.name().toLowerCase(Locale.ROOT))
+                    .register(registry)
+                    .increment();
+            switchDuration.record(durationNanos, TimeUnit.NANOSECONDS);
+        });
     }
 
     @Bean
@@ -306,17 +276,16 @@ public class SchedulerConfiguration {
     }
 
     /**
-     * The generation-registration listener both queue modules used to embed inside their own
-     * (now retired) scheduler implementations: capacity must still be registered/removed for
-     * every function so {@link EngineInvocationEnqueuer}/{@link EngineSyncQueueGateway} can
+     * The generation-registration listener: capacity is registered/removed for every
+     * function so {@link EngineInvocationEnqueuer}/{@link EngineSyncQueueGateway} can
      * resolve an active {@link FunctionGeneration} at admission time.
      *
-     * <p>Fix round C2: {@code onRemove} now also drains this function's pending, undispatched
+     * <p>{@code onRemove} also drains this function's pending, undispatched
      * engine tickets through {@link SchedulerEngine#removeAllFor}, terminating a
      * queued caller as {@code ExecutionState.ERROR}/{@code FUNCTION_REMOVED} rather than leaving
      * it to hang to its own timeout.
      *
-     * <p>Fix round 2 correction: the drain is {@link SchedulerEngine#removeAllFor}, not a direct
+     * <p>The drain is {@link SchedulerEngine#removeAllFor}, not a direct
      * {@code PendingWorkStore.snapshotPending()} scan from this listener. {@code PendingWorkStore}
      * documents that it does not lock internally — the engine serializes every operation on it —
      * and this listener runs on the request thread serving the removal HTTP call while the
@@ -333,11 +302,8 @@ public class SchedulerConfiguration {
      * whole drain window, letting a concurrent admission insert a ticket the scan has already
      * passed.
      *
-     * <p>Task 11 addition: also owns the per-function {@link WorkloadMetricsBinder} meter
-     * lifecycle, and is the sole place that registers the engine's drain listener — once, here,
-     * never in a strategy (the plan's own constraint on capacity/lifecycle listeners).
-     * {@code WorkloadDiagnostics} is deliberately NOT wired here (fix round 1) — see the comment
-     * above where its bean used to be.
+     * <p>It also owns the per-function {@link WorkloadMetricsBinder} meter lifecycle, and is the
+     * sole place that registers the engine's drain listener — once, here, never in a strategy.
      *
      * <p>Meters register at {@code onRegister} like every other per-function resource, but do
      * NOT come down at {@code onRemove}: a generation's meters (queue depth, in-flight,
@@ -397,7 +363,7 @@ public class SchedulerConfiguration {
 
     /** Mutable indirection so {@link EngineDispatch} can be built before the engine exists. */
     static final class WakeHandle implements Runnable {
-        private volatile Runnable delegate = () -> { };
+        private volatile Runnable delegate = () -> { }; // NOSONAR (java:S3077): thread-safe or immutable value replaced wholesale
 
         void bind(Runnable delegate) {
             this.delegate = Objects.requireNonNull(delegate, "delegate must not be null");
@@ -426,15 +392,6 @@ public class SchedulerConfiguration {
             return capacityRegistry.tryAcquireLease(ticket.generation(), held -> wake.run());
         }
 
-        @Override
-        public boolean isCurrent(SchedulingTicket ticket) {
-            // ponytail: no separate staleness pre-check here. Neither retired scheduler
-            // (Scheduler, SyncScheduler) pre-checked either; dispatch() already fences by
-            // execution/attempt/generation internally. Revisit only if a real staleness leak
-            // shows up in practice.
-            return true;
-        }
-
         /**
          * Settled exactly at the engine's own {@code finishSubmit}/{@code requeue} boundary.
          * {@code SchedulerEngine.submit} takes the requeue branch precisely when this call throws
@@ -449,7 +406,7 @@ public class SchedulerConfiguration {
                 // The engine requeues this ticket; it still occupies its reservation, so this
                 // attempt does not feed the wait estimator.
                 throw requeue;
-            } catch (RuntimeException | Error other) {
+            } catch (RuntimeException | Error other) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
                 settle(task);
                 throw other;
             }

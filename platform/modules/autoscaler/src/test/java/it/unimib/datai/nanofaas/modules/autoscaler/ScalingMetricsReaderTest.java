@@ -1,7 +1,6 @@
 package it.unimib.datai.nanofaas.modules.autoscaler;
 
 import io.micrometer.core.instrument.Counter;
-import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource;
@@ -113,22 +112,22 @@ class ScalingMetricsReaderTest {
     void rpsDoesNotRecreateRemovedMetersOrCompareDifferentGenerations() {
         var registry = new SimpleMeterRegistry();
         var metrics = new it.unimib.datai.nanofaas.controlplane.service.Metrics(registry);
-        var reader = new ScalingMetricsReader(scalingMetricsSource, metrics);
+        var localReader = new ScalingMetricsReader(scalingMetricsSource, metrics);
         var rps = new ScalingMetric("rps", "1", null);
         metrics.registerFunction("echo");
         metrics.dispatch("echo");
-        assertThat(reader.readMetric("echo", rps)).isZero();
+        assertThat(localReader.readMetric("echo", rps)).isZero();
         metrics.removeFunction("echo");
-        reader.removeFunctionState("echo");
-        assertThat(reader.readMetric("echo", rps)).isZero();
+        localReader.removeFunctionState("echo");
+        assertThat(localReader.readMetric("echo", rps)).isZero();
         assertThat(registry.getMeters()).isEmpty();
         metrics.registerFunction("echo");
         metrics.dispatch("echo");
         metrics.dispatch("echo");
-        assertThat(reader.readMetric("echo", rps)).isZero();
+        assertThat(localReader.readMetric("echo", rps)).isZero();
         // Generation changes also reset the sample if a polling cycle races lifecycle cleanup.
         metrics.removeFunction("echo");
         metrics.registerFunction("echo");
-        assertThat(reader.readMetric("echo", rps)).isZero();
+        assertThat(localReader.readMetric("echo", rps)).isZero();
     }
 }

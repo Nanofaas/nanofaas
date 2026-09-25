@@ -80,7 +80,8 @@ class FunctionServicePartialDeprovisionTest {
                 .isInstanceOf(FunctionRemovalPendingException.class)
                 .satisfies(thrown -> assertThat(((FunctionRemovalPendingException) thrown).remainingResources())
                         .isEqualTo(LEFTOVERS));
-        assertThatThrownBy(() -> service.update("fn", new FunctionUpdateRequest(8, null, null, null)))
+        var update = new FunctionUpdateRequest(8, null, null, null);
+        assertThatThrownBy(() -> service.update("fn", update))
                 .isInstanceOf(FunctionRemovalPendingException.class);
         assertThatThrownBy(() -> service.setReplicas("fn", 3))
                 .isInstanceOf(FunctionRemovalPendingException.class);

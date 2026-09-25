@@ -44,7 +44,7 @@ final class ExecutorBackedInvocationEnqueuer implements RetryScheduler {
         try {
             executor.execute(() -> dispatch.dispatch(task.withDispatchLease(lease)));
             return true;
-        } catch (RuntimeException | Error ex) {
+        } catch (RuntimeException | Error ex) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             lease.release();
             log.warn("Retry scheduling rejected for execution {} (function {}, attempt {}): {}",
                     task.executionId(), task.functionName(), task.attempt(), ex.toString());

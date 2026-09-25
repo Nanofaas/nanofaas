@@ -4,7 +4,6 @@ import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentProviderResolver;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinator;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpProperties;
-import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider;
 import it.unimib.datai.nanofaas.controlplane.config.ReplicaStatusSnapshotConfiguration;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatusSnapshot;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionOperationLocks;

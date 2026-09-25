@@ -38,10 +38,8 @@ public record ContainerdProperties(
         if (socketPath == null || socketPath.isBlank()) {
             socketPath = required(env, "XDG_RUNTIME_DIR") + "/containerd/containerd.sock";
         }
-        String home = null;
-        if (cniConfigDirectory == null || cniCacheDirectory == null || stateDirectory == null) {
-            home = required(env, "HOME");
-        }
+        String home = cniConfigDirectory == null || cniCacheDirectory == null || stateDirectory == null
+                ? required(env, "HOME") : null;
         if (cniConfigDirectory == null) cniConfigDirectory = Path.of(home, ".config/cni/net.d");
         if (cniCacheDirectory == null) cniCacheDirectory = Path.of(home, ".local/share/nanofaas/cni");
         if (stateDirectory == null) stateDirectory = Path.of(home, ".local/share/nanofaas/containerd");
@@ -58,10 +56,17 @@ public record ContainerdProperties(
         readinessTimeout = positive(readinessTimeout, Duration.ofSeconds(20), "readinessTimeout");
         readinessPollInterval = positive(readinessPollInterval, Duration.ofMillis(250), "readinessPollInterval");
         systemdCgroup = systemdCgroup == null ? Boolean.TRUE : systemdCgroup;
-        cpuset = cpuset == null || cpuset.isBlank() ? null : cpuset;
-        callbackUrl = callbackUrl == null || callbackUrl.isBlank() ? null : callbackUrl;
-        for (Path path : new Path[]{Path.of(socketPath), cniPluginDirectory, cniConfigDirectory,
-                cniCacheDirectory, stateDirectory}) {
+        cpuset = blankToNull(cpuset);
+        callbackUrl = blankToNull(callbackUrl);
+        requireAbsolute(Path.of(socketPath), cniPluginDirectory, cniConfigDirectory, cniCacheDirectory, stateDirectory);
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
+    }
+
+    private static void requireAbsolute(Path... paths) {
+        for (Path path : paths) {
             if (!path.isAbsolute()) throw new IllegalArgumentException("containerd path must be absolute: " + path);
         }
     }

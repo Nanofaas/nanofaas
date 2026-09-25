@@ -152,7 +152,6 @@ class SchedulerModelTest {
                 transport, mock(AttemptObserver.class));
 
         EngineDispatch dispatch = mock(EngineDispatch.class);
-        when(dispatch.isCurrent(any())).thenReturn(true);
         when(dispatch.tryAcquire(any())).thenAnswer(inv -> {
             SchedulingTicket ticket = inv.getArgument(0);
             return capacity.tryAcquireLease(ticket.generation(), ignored -> engineRef.get().signal());
@@ -204,15 +203,15 @@ class SchedulerModelTest {
             assertThat(retryCount)
                     .as("a real completion must actually have driven retry re-queues")
                     .isGreaterThan(0);
-            assertThat(completedStateById.values())
+            assertThat(completedStateById)
                     .as("the retry budget must actually have been exhausted at least once, so the "
                             + "ERROR terminal branch is exercised and not merely reachable")
-                    .contains(ExecutionState.ERROR);
-            assertThat(completedStateById.values())
+                    .containsValue(ExecutionState.ERROR);
+            assertThat(completedStateById)
                     .as("a successful completion must actually have been concluded through the "
                             + "engine, so the SUCCESS terminal branch — the dominant one — is "
                             + "exercised and not merely reachable")
-                    .contains(ExecutionState.SUCCESS);
+                    .containsValue(ExecutionState.SUCCESS);
         } catch (AssertionError | RuntimeException failure) {
             throw new AssertionError("Model test failed with seed " + SEED
                     + " after operation log:\n" + opLog, failure);
@@ -416,10 +415,10 @@ class SchedulerModelTest {
             assertThat(expiredIds).as("op %d: %s live and expired", op, id).doesNotContain(id);
             assertThat(completedStateById).as("op %d: %s live and completed", op, id)
                     .doesNotContainKey(id);
-            ExecutionRecord record = executions.getOrNull(id);
-            assertThat(record).as("op %d: %s is live but its execution record was settled", op, id)
+            ExecutionRecord executionRecord = executions.getOrNull(id);
+            assertThat(executionRecord).as("op %d: %s is live but its execution record was settled", op, id)
                     .isNotNull();
-            assertThat(record.task().attempt())
+            assertThat(executionRecord.task().attempt())
                     .as("op %d: %s is live on a different attempt than the model's attempts map "
                             + "says", op, id)
                     .isEqualTo(attemptById.get(id));

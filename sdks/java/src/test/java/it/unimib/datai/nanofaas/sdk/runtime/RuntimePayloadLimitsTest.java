@@ -17,7 +17,8 @@ class RuntimePayloadLimitsTest {
 
     @Test
     void rejectsNonPositiveLimit() {
+        var mapper = JsonMapper.builder().build();
         assertThrows(IllegalArgumentException.class,
-                () -> new RuntimePayloadLimits(JsonMapper.builder().build(), 0));
+                () -> new RuntimePayloadLimits(mapper, 0));
     }
 }

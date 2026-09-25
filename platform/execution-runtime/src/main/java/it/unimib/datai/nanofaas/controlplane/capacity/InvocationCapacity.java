@@ -24,7 +24,7 @@ public final class InvocationCapacity {
                 maxInputReferences);
     }
 
-    public InvocationCapacity(
+    public InvocationCapacity( // NOSONAR (java:S107): composition constructor; each argument is an injected collaborator or limit
             FunctionCapacityRegistry generations,
             long globalExecutions, long perFunctionExecutions,
             long globalCanonicalInputBytes, long perFunctionCanonicalInputBytes,
@@ -84,7 +84,7 @@ public final class InvocationCapacity {
                     .orElseThrow(() -> new InvocationQuotaExceededException(
                             InvocationQuotaExceededException.Resource.INPUT));
             return new Admission(batch, logical, new RetainedInputLease(input, maxInputReferences));
-        } catch (RuntimeException | Error failure) {
+        } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             batch.close();
             throw failure;
         }

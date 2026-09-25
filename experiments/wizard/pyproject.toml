@@ -2,7 +2,7 @@
 name = "nanofaas-control-plane-experiment"
 version = "0.1.0"
 description = "Interactive wizard for control-plane native module experiments on k3s"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "questionary>=2.1.1",
 ]

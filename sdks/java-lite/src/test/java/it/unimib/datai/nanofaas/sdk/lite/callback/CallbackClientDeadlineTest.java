@@ -25,11 +25,11 @@ class CallbackClientDeadlineTest {
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
         server.createContext("/", exchange -> {
             attempts.incrementAndGet();
-            try { release.await(); } catch (InterruptedException ex) { Thread.currentThread().interrupt(); }
+            try { release.await(); } catch (InterruptedException _) { Thread.currentThread().interrupt(); }
             exchange.close();
         });
         server.start();
-        try {
+        try { // NOSONAR (java:S2093): HttpServer is not AutoCloseable; teardown order matters
             CallbackClient client = new CallbackClient(HttpClient.newHttpClient(), new ObjectMapper(),
                     "http://127.0.0.1:" + server.getAddress().getPort(), Duration.ofMillis(40), 3,
                     new int[]{0, 0});

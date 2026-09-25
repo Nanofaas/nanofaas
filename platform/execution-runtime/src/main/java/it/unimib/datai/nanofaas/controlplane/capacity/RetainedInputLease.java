@@ -55,7 +55,7 @@ public final class RetainedInputLease implements AutoCloseable {
         if (drained) reservation.close();
     }
 
-    private void releaseReference() {
+    private void releaseReference() { // NOSONAR (java:S3398): updates the lease's own reference count; the reference only delegates
         boolean drained;
         synchronized (this) {
             if (references == 0) return;

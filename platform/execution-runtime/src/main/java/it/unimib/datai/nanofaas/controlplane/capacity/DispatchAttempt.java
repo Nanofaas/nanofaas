@@ -7,9 +7,4 @@ package it.unimib.datai.nanofaas.controlplane.capacity;
  * exactly the capacity that attempt acquired (ADR 0001 invariant I4).
  */
 public record DispatchAttempt(String executionId, int attempt, DispatchOwnership lease) {
-
-    /** An attempt that holds no local capacity (offload, or never dispatched). */
-    public static DispatchAttempt withoutLease(String executionId, int attempt) {
-        return new DispatchAttempt(executionId, attempt, null);
-    }
 }

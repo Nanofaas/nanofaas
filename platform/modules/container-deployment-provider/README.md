@@ -15,7 +15,7 @@ via Docker Java or a Docker-compatible CLI, no Kubernetes required.
 - `EphemeralPortAllocator` — Docker host-port assignment. The adapters return
   the reachable endpoint, including container DNS when a Docker network is used.
 - Shared `HttpEndpointProbe` — readiness polling for each instance.
-- Shared `RoundRobinFunctionProxy` (`ManagedFunctionProxyFactory`) — load-balances
+- Shared `RoundRobinFunctionProxy` (`RoundRobinFunctionProxyFactory`) — load-balances
   invocations across the instances of a function, concurrently and under a
   bound (see below).
 

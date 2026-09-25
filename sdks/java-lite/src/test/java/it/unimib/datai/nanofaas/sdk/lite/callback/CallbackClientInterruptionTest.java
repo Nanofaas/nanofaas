@@ -26,15 +26,15 @@ class CallbackClientInterruptionTest {
             attempts.incrementAndGet();
             entered.countDown();
             try {
-                Thread.sleep(10_000);
-            } catch (InterruptedException ex) {
+                Thread.sleep(10_000); // NOSONAR (java:S2925): simulates a slow backend
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
             } finally {
                 exchange.close();
             }
         });
         server.start();
-        try {
+        try { // NOSONAR (java:S2093): HttpServer is not AutoCloseable; teardown order matters
             CallbackClient client = new CallbackClient(HttpClient.newHttpClient(), new ObjectMapper(),
                     "http://127.0.0.1:" + server.getAddress().getPort(), Duration.ofSeconds(5), 3,
                     new int[]{0, 0});
@@ -70,7 +70,7 @@ class CallbackClientInterruptionTest {
             firstAttempt.countDown();
         });
         server.start();
-        try {
+        try { // NOSONAR (java:S2093): HttpServer is not AutoCloseable; teardown order matters
             CallbackClient client = new CallbackClient(HttpClient.newHttpClient(), new ObjectMapper(),
                     "http://127.0.0.1:" + server.getAddress().getPort(), Duration.ofSeconds(1), 3,
                     new int[]{10_000, 10_000});

@@ -149,7 +149,7 @@ class P05WaiterTimeoutSharedOutcomeTest {
     }
 
     @Test
-    void whenEveryWaiterTimesOut_theSharedExecutionStillConcludesForTheReplay() throws Exception {
+    void whenEveryWaiterTimesOut_theSharedExecutionStillConcludesForTheReplay() {
         CompletableFuture<DispatchResult> backend = new CompletableFuture<>();
         CoordinatorHarness h = harnessWithBackend(backend);
 
@@ -296,19 +296,19 @@ class P05WaiterTimeoutSharedOutcomeTest {
     }
 
     @Test
-    void anExecutionLevelDeadline_concludesEveryObserverWithTheSameTerminal() throws Exception {
+    void anExecutionLevelDeadline_concludesEveryObserverWithTheSameTerminal() {
         CompletableFuture<DispatchResult> backend = new CompletableFuture<>();
         CoordinatorHarness h = harnessWithBackend(backend);
 
         InvocationExecutionFactory.ExecutionLookup first = lookup(h.factory(), "key");
-        ExecutionRecord record = first.executionRecord();
+        ExecutionRecord executionRecord = first.executionRecord();
         CompletableFuture<SyncInvocation> owner = h.coordinator().invoke(first, spec("fn"), 10_000).toFuture();
         try {
             // The execution-level deadline (the sync queue's wait expiry) concludes the whole
             // execution: TIMEOUT state, a QUEUE_TIMEOUT result on the shared future, settle.
-            record.markTimeout();
-            record.completion().complete(InvocationResult.error("QUEUE_TIMEOUT", "Queue wait exceeded"));
-            h.store().settle(record);
+            executionRecord.markTimeout();
+            executionRecord.completion().complete(InvocationResult.error("QUEUE_TIMEOUT", "Queue wait exceeded"));
+            h.store().settle(executionRecord);
 
             // Every remaining observer sees the same terminal: the replay reads TIMEOUT.
             SyncInvocation replay = h.coordinator().invoke(lookup(h.factory(), "key"), spec("fn"), 10_000)
@@ -319,7 +319,7 @@ class P05WaiterTimeoutSharedOutcomeTest {
 
             // A late backend success cannot change the already-archived terminal.
             backend.complete(DispatchResult.warm(InvocationResult.success("late")));
-            assertThat(h.store().outcomeOf(record.executionId()).state())
+            assertThat(h.store().outcomeOf(executionRecord.executionId()).state())
                     .as("a late response must not overwrite the shared execution-level timeout")
                     .isEqualTo(ExecutionState.TIMEOUT);
         } finally {

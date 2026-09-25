@@ -66,7 +66,7 @@ final class ExecutionInputResources {
                         source.enqueuedAt(), source.attempt(), source.kind(), source.dispatchLease());
             }
             return new ExecutionRecord.PhysicalInput(physicalTask, shared, copy);
-        } catch (RuntimeException | Error failure) {
+        } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             if (copy != null) copy.close();
             shared.close();
             throw failure;

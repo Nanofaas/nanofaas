@@ -49,7 +49,7 @@ class ReplicaStatusSnapshotConfigurationTest {
                     if (!release.await(10, TimeUnit.SECONDS)) {
                         throw new AssertionError("context did not stop the provider");
                     }
-                } catch (InterruptedException expected) {
+                } catch (InterruptedException _) {
                     interrupted.countDown();
                     Thread.currentThread().interrupt();
                 }

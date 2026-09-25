@@ -423,7 +423,7 @@ class SchedulerSwitchRaceTest {
         Thread switcher = new Thread(() -> {
             try {
                 engine.switchTo(failing.id());
-            } catch (SchedulerSwitchException expected) {
+            } catch (SchedulerSwitchException _) {
                 // Expected: the injected failure refuses the switch.
             }
         });
@@ -461,16 +461,16 @@ class SchedulerSwitchRaceTest {
         ExecutionStore store = new ExecutionStore();
         InvocationTask task = new InvocationTask("e1", "echo", null, null, null, null, NOW, 1,
                 InvocationKind.ASYNC);
-        ExecutionRecord record = new ExecutionRecord("e1", task);
-        store.put(record);
-        record.markRunning();
+        ExecutionRecord executionRecord = new ExecutionRecord("e1", task);
+        store.put(executionRecord);
+        executionRecord.markRunning();
 
         List<String> order = new CopyOnWriteArrayList<>();
         CountDownLatch disconnected = new CountDownLatch(1);
         Thread disconnecter = new Thread(() -> {
             // The client gives up waiting: it stops watching the shared future. That must not
             // affect the server-side record of what actually happened.
-            record.completion().cancel(false);
+            executionRecord.completion().cancel(false);
             order.add("disconnect");
             disconnected.countDown();
         });
@@ -485,16 +485,16 @@ class SchedulerSwitchRaceTest {
         AtomicReference<Throwable> committerFailure = new AtomicReference<>();
         Thread committer = new Thread(() -> {
             try {
-                synchronized (record) {
+                synchronized (executionRecord) {
                     // The premise, checked rather than assumed: the commit really does land on an
                     // execution whose shared future the client has already abandoned. Without this
                     // the test would still pass if cancel(false) had never taken effect.
-                    assertThat(record.completion().isCancelled())
+                    assertThat(executionRecord.completion().isCancelled())
                             .as("the commit must land after the client's own wait was cancelled")
                             .isTrue();
-                    record.markSuccess("ok", 200, java.util.Map.of(), null);
+                    executionRecord.markSuccess("ok", 200, java.util.Map.of(), null);
                 }
-                store.settle(record);
+                store.settle(executionRecord);
                 order.add("commit");
             } catch (Throwable failure) {
                 committerFailure.compareAndSet(null, failure);
@@ -738,11 +738,6 @@ class SchedulerSwitchRaceTest {
             afterAcquire.accept(lease);
             lastAcquired = lease;
             return lease;
-        }
-
-        @Override
-        public boolean isCurrent(SchedulingTicket ticket) {
-            return true;
         }
 
         @Override

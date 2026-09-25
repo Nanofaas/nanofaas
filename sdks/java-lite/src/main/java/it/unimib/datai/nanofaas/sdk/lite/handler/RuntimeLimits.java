@@ -36,7 +36,7 @@ final class RuntimeLimits {
                 DEFAULT_CALLBACK_MAX_ATTEMPTS, DEFAULT_SHUTDOWN_TIMEOUT_MS);
     }
 
-    RuntimeLimits(int maxHandlers, int maxCallbacks, long maxPendingCallbackBytes,
+    RuntimeLimits(int maxHandlers, int maxCallbacks, long maxPendingCallbackBytes, // NOSONAR (java:S107): composition constructor; each argument is an injected collaborator or limit
                   int maxInputBytes, int maxOutputBytes, int maxCallbackBytes,
                   int bodyReadTimeoutMs, int callbackAttemptTimeoutMs, int callbackMaxAttempts,
                   int shutdownTimeoutMs) {
@@ -75,7 +75,7 @@ final class RuntimeLimits {
     synchronized Reservation tryReserveHandler() {
         if (!accepting || activeHandlers >= maxHandlers) return null;
         activeHandlers++;
-        return new Reservation(() -> releaseHandler());
+        return new Reservation(this::releaseHandler);
     }
 
     synchronized Reservation tryReserveCallback() {
@@ -83,7 +83,7 @@ final class RuntimeLimits {
                 || maxCallbackBytes > maxPendingCallbackBytes - pendingCallbackBytes) return null;
         pendingCallbacks++;
         pendingCallbackBytes += maxCallbackBytes;
-        return new Reservation(() -> releaseCallback());
+        return new Reservation(this::releaseCallback);
     }
 
     synchronized void stopAdmission() { accepting = false; }

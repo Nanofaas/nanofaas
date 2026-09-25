@@ -6,7 +6,6 @@ import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.ScalingConfig;
 import it.unimib.datai.nanofaas.common.model.ScalingMetric;
 import it.unimib.datai.nanofaas.common.model.ScalingStrategy;
-import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinator;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaObservation;
 import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaStatus;
@@ -28,6 +27,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 import java.time.Instant;
 
 /**
@@ -121,7 +121,7 @@ class InternalScalerDesiredVsReadyRegressionTest {
         scaler.scalingLoop();
 
         ArgumentCaptor<Integer> replicaCounts = ArgumentCaptor.forClass(Integer.class);
-        org.mockito.Mockito.verify(deploymentCoordinator, org.mockito.Mockito.atLeastOnce())
+        verify(deploymentCoordinator, org.mockito.Mockito.atLeastOnce())
                 .setReplicas(org.mockito.ArgumentMatchers.any(),
                         org.mockito.ArgumentMatchers.eq(target), replicaCounts.capture());
 

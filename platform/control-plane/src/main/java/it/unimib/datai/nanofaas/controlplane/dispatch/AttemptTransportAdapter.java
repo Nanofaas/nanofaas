@@ -12,8 +12,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 /**
- * The control plane's {@link AttemptTransport}: mode-based dispatch selection (issue #208,
- * Task 10, step 4) — LOCAL/EXTERNAL dispatch, and DEPLOYMENT dispatch behind a cancellable
+ * The control plane's {@link AttemptTransport}: mode-based dispatch selection —
+ * LOCAL/EXTERNAL dispatch, and DEPLOYMENT dispatch behind a cancellable
  * wake-up wait. This is the ONLY place {@link DispatcherRouter} and {@link DeploymentReadiness}
  * are called from the attempt path: {@link AttemptCoordinator} (the selector/state machine, in
  * {@code :execution-runtime}) never imports either type, and never will — no GET and no provider
@@ -58,38 +58,44 @@ public final class AttemptTransportAdapter implements AttemptTransport {
             }
             var result = new CancellableDispatchFuture();
             var drained = new CompletableFuture<Void>();
-            readiness.ensureReady(task).whenComplete((ignored, error) -> {
-                if (result.isCancelled()) {
-                    drained.complete(null);
-                    return;
-                }
-                if (error != null) {
-                    result.completeExceptionally(new AttemptCoordinator.DeploymentWakeUpException(error));
-                    drained.complete(null);
-                    return;
-                }
-                try {
-                    CompletableFuture<DispatchResult> transport = dispatcherRouter.dispatchExternal(task);
-                    result.attach(transport);
-                    transport.whenComplete((value, failure) -> {
-                        try {
-                            if (!result.cancellationRequested()) {
-                                if (failure != null) result.completeExceptionally(failure);
-                                else result.complete(value);
-                            }
-                        } finally {
-                            drained.complete(null);
-                        }
-                    });
-                } catch (RuntimeException | Error failure) {
-                    result.completeExceptionally(failure);
-                    drained.complete(null);
-                }
-            });
+            readiness.ensureReady(task).whenComplete((ignored, error) -> afterWakeUp(task, result, drained, error));
             return new PhysicalDispatch(result, drained);
-        } catch (RuntimeException | Error error) {
+        } catch (RuntimeException | Error error) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             return PhysicalDispatch.raw(
                     CompletableFuture.failedFuture(new AttemptCoordinator.DeploymentWakeUpException(error)));
+        }
+    }
+
+    private void afterWakeUp(InvocationTask task, CancellableDispatchFuture result,
+                             CompletableFuture<Void> drained, Throwable error) {
+        if (result.isCancelled()) {
+            drained.complete(null);
+            return;
+        }
+        if (error != null) {
+            result.completeExceptionally(new AttemptCoordinator.DeploymentWakeUpException(error));
+            drained.complete(null);
+            return;
+        }
+        try {
+            CompletableFuture<DispatchResult> transport = dispatcherRouter.dispatchExternal(task);
+            result.attach(transport);
+            transport.whenComplete((value, failure) -> forwardOutcome(result, drained, value, failure));
+        } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
+            result.completeExceptionally(failure);
+            drained.complete(null);
+        }
+    }
+
+    private static void forwardOutcome(CancellableDispatchFuture result, CompletableFuture<Void> drained,
+                                       DispatchResult value, Throwable failure) {
+        try {
+            if (!result.cancellationRequested()) {
+                if (failure != null) result.completeExceptionally(failure);
+                else result.complete(value);
+            }
+        } finally {
+            drained.complete(null);
         }
     }
 

@@ -91,7 +91,7 @@ final class CorpusRuntimeDriver implements AutoCloseable {
     void fillCallback() throws Exception {
         callbacks.execute(() -> {
             callbackBlocked.countDown();
-            try { callbackRelease.await(); } catch (InterruptedException ex) { Thread.currentThread().interrupt(); }
+            try { callbackRelease.await(); } catch (InterruptedException _) { Thread.currentThread().interrupt(); }
         });
         SaturationRuntimeHarness.await(callbackBlocked);
         int bytes = 512;
@@ -170,7 +170,7 @@ final class CorpusRuntimeDriver implements AutoCloseable {
         @Override public InetSocketAddress getLocalAddress() { return new InetSocketAddress(0); }
         @Override public String getProtocol() { return "HTTP/1.1"; }
         @Override public Object getAttribute(String name) { return null; }
-        @Override public void setAttribute(String name, Object value) { }
+        @Override public void setAttribute(String name, Object value) { /* no-op: this test double ignores the call */ }
         @Override public void setStreams(InputStream input, OutputStream output) { throw new UnsupportedOperationException(); }
         @Override public HttpPrincipal getPrincipal() { return null; }
     }

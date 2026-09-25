@@ -3,7 +3,6 @@ package it.unimib.datai.nanofaas.controlplane.service;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class NoOpInvocationEnqueuerTest {

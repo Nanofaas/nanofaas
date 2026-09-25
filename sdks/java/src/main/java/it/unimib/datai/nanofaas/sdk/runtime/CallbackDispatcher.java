@@ -200,15 +200,8 @@ public class CallbackDispatcher {
             byte[] serialized = callbackClient.serializeBounded(payload, maxCallbackBytes);
             CallbackTask task = new CallbackTask(
                     reservation, executionId, serialized, traceId, dispatchAttempt);
-            try {
-                executor.execute(task);
-                return SubmitResult.ACCEPTED;
-            } catch (RejectedExecutionException _) {
-                task.release();
-                recordRejection(executionId);
-                return SubmitResult.SATURATED;
-            }
-        } catch (BoundedJson.PayloadTooLargeException ex) {
+            return execute(task, executionId);
+        } catch (BoundedJson.PayloadTooLargeException _) {
             reservation.close();
             recordRejection(executionId);
             return SubmitResult.PAYLOAD_TOO_LARGE;
@@ -220,9 +213,20 @@ public class CallbackDispatcher {
         }
     }
 
+    private SubmitResult execute(CallbackTask task, String executionId) {
+        try {
+            executor.execute(task);
+            return SubmitResult.ACCEPTED;
+        } catch (RejectedExecutionException _) {
+            task.release();
+            recordRejection(executionId);
+            return SubmitResult.SATURATED;
+        }
+    }
+
     private void recordRejection(String executionId) {
         log.warn("Rejecting callback for execution {} because dispatcher capacity is full",
-                singleLine(executionId));
+                singleLine(executionId)); // NOSONAR (java:S2629): warn/error logging is always on; singleLine is a bounded sanitizer
         if (runtimeMetrics != null) {
             runtimeMetrics.recordCallbackFailure();
         }

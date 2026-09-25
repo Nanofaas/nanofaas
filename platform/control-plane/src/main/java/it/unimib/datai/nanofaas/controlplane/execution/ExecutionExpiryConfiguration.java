@@ -2,22 +2,25 @@ package it.unimib.datai.nanofaas.controlplane.execution;
 
 import com.github.benmanes.caffeine.cache.Scheduler;
 import io.micrometer.core.instrument.MeterRegistry;
-import it.unimib.datai.nanofaas.controlplane.config.ExecutionStoreBindingProperties;
 import it.unimib.datai.nanofaas.controlplane.config.ExecutionStoreProperties;
+import org.springframework.aot.hint.annotation.RegisterReflectionForBinding;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 
 /**
  * Owns cache expiry timers, including physical removal of cancelled deadlines, and the
- * explicit construction of the execution-ownership beans extracted into the mandatory
- * {@code :execution-runtime} library (issue #208, Task 9): {@link ExecutionStore} and
- * {@link IdempotencyStore} no longer carry {@code @Component}/{@code @Autowired} themselves,
- * since that library must not depend on Spring.
+ * explicit construction of the execution-ownership beans from the mandatory
+ * {@code :execution-runtime} library: {@link ExecutionStore} and {@link IdempotencyStore}
+ * carry no {@code @Component}/{@code @Autowired} themselves, since that library must not
+ * depend on Spring.
  */
 @Configuration(proxyBeanMethods = false)
+@RegisterReflectionForBinding(ExecutionStoreProperties.class)
 public class ExecutionExpiryConfiguration {
     @Bean(name = "executionExpiryExecutor", destroyMethod = "shutdownNow")
     public ScheduledThreadPoolExecutor executionExpiryExecutor() {
@@ -42,10 +45,14 @@ public class ExecutionExpiryConfiguration {
         return Scheduler.forScheduledExecutorService(executor);
     }
 
-    /** The runtime record, produced from the mutable Spring binding target. */
+    /**
+     * Binds {@code nanofaas.execution-store} straight into the runtime record; every default and
+     * validation lives in its compact constructor.
+     */
     @Bean
-    public ExecutionStoreProperties executionStoreProperties(ExecutionStoreBindingProperties binding) {
-        return binding.toRuntime();
+    public ExecutionStoreProperties executionStoreProperties(Environment environment) {
+        return Binder.get(environment).bindOrCreate(
+                "nanofaas.execution-store", ExecutionStoreProperties.class);
     }
 
     /** Explicit construction: {@link ExecutionStore} carries no Spring annotations of its own. */

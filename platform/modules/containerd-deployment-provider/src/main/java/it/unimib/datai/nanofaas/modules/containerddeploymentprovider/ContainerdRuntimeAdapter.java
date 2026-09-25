@@ -73,10 +73,10 @@ public final class ContainerdRuntimeAdapter implements ContainerRuntimeAdapter {
         try {
             check.get(availabilityTimeout.toNanos(), TimeUnit.NANOSECONDS);
             return true;
-        } catch (InterruptedException interrupted) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
             return false;
-        } catch (ExecutionException | TimeoutException failure) {
+        } catch (ExecutionException | TimeoutException _) {
             return false;
         } finally {
             check.cancel(true);
@@ -90,6 +90,24 @@ public final class ContainerdRuntimeAdapter implements ContainerRuntimeAdapter {
 
     @Override
     public ManagedContainer runContainer(ContainerInstanceSpec instance) {
+        ContainerSpec containerSpec = containerSpec(instance);
+        boolean created = false;
+        try {
+            containers.create(containerSpec);
+            created = true;
+            containers.start(instance.containerName());
+            String baseUrl = baseUrl(containers.networkAttachment(instance.containerName()));
+            if (baseUrl == null) throw new IllegalStateException("containerd container '"
+                    + instance.containerName() + "' has no CNI IP address");
+            return new ManagedContainer(instance.containerName(),
+                    LocalManagedDeploymentProvider.replicaIndex(instance.containerName()), baseUrl, true);
+        } catch (RuntimeException failure) {
+            if (created) removeAfterFailure(instance.containerName(), failure);
+            throw failure;
+        }
+    }
+
+    private ContainerSpec containerSpec(ContainerInstanceSpec instance) {
         Map<String, String> labels = new HashMap<>(instance.labels());
         labels.put(BACKEND_LABEL, "containerd");
         ContainerSpec.Builder spec = ContainerSpec.builder()
@@ -103,30 +121,18 @@ public final class ContainerdRuntimeAdapter implements ContainerRuntimeAdapter {
         if (cpuset != null && !cpuset.isBlank()) spec.cpuSetCpus(cpuset);
         if (cgroupScope != null) {
             String leaf = cgroupScope + "-" + instance.containerName();
-            spec.cgroupsPath(systemdCgroup ? cgroupsPath + ":nanofaas:" + leaf
-                    : cgroupsPath + (cgroupsPath.endsWith("/") ? "" : "/") + leaf);
+            String separator = cgroupsPath.endsWith("/") ? "" : "/";
+            spec.cgroupsPath(systemdCgroup ? cgroupsPath + ":nanofaas:" + leaf : cgroupsPath + separator + leaf);
         }
         applyResources(spec, instance.resources());
+        return spec.build();
+    }
 
-        boolean created = false;
+    private void removeAfterFailure(String containerName, RuntimeException failure) {
         try {
-            containers.create(spec.build());
-            created = true;
-            containers.start(instance.containerName());
-            String baseUrl = baseUrl(containers.networkAttachment(instance.containerName()));
-            if (baseUrl == null) throw new IllegalStateException("containerd container '"
-                    + instance.containerName() + "' has no CNI IP address");
-            return new ManagedContainer(instance.containerName(),
-                    LocalManagedDeploymentProvider.replicaIndex(instance.containerName()), baseUrl, true);
-        } catch (RuntimeException failure) {
-            if (created) {
-                try {
-                    containers.remove(instance.containerName(), REMOVE);
-                } catch (RuntimeException cleanup) {
-                    failure.addSuppressed(cleanup);
-                }
-            }
-            throw failure;
+            containers.remove(containerName, REMOVE);
+        } catch (RuntimeException cleanup) {
+            failure.addSuppressed(cleanup);
         }
     }
 
@@ -213,10 +219,10 @@ public final class ContainerdRuntimeAdapter implements ContainerRuntimeAdapter {
     private static String baseUrl(NetworkAttachment attachment) {
         if (attachment == null) return null;
         for (String cidr : attachment.addresses()) {
-            if (cidr == null || cidr.isBlank()) continue;
-            String address = cidr.split("/", 2)[0];
-            if (address.isBlank()) continue;
-            return "http://" + (address.contains(":") ? "[" + address + "]" : address) + ":8080";
+            String address = cidr == null ? "" : cidr.split("/", 2)[0];
+            if (!address.isBlank()) {
+                return "http://" + (address.contains(":") ? "[" + address + "]" : address) + ":8080";
+            }
         }
         return null;
     }

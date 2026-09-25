@@ -68,8 +68,9 @@ class SyncQueueRuntimeConfigAutoConfigurationTest {
         MutableSyncQueueConfigSource source = source(false, Duration.ofMillis(1500));
         RuntimeConfigService service = service(source);
 
-        assertThatThrownBy(() -> service.update(0, "sync-queue", Map.of(
-                MutableSyncQueueConfigSource.KEY_RETRY_AFTER_SECONDS, 0)))
+        Map<String, Object> patch = Map.of(
+                MutableSyncQueueConfigSource.KEY_RETRY_AFTER_SECONDS, 0);
+        assertThatThrownBy(() -> service.update(0, "sync-queue", patch))
                 .isInstanceOf(RuntimeConfigValidationException.class);
 
         assertThat(source.syncQueueEnabled()).isFalse();
@@ -84,8 +85,9 @@ class SyncQueueRuntimeConfigAutoConfigurationTest {
         RuntimeConfigService service = service(source);
         service.update(0, "sync-queue", Map.of(MutableSyncQueueConfigSource.KEY_ENABLED, true));
 
-        assertThatThrownBy(() -> service.update(0, "sync-queue", Map.of(
-                MutableSyncQueueConfigSource.KEY_ENABLED, false)))
+        Map<String, Object> patch = Map.of(
+                MutableSyncQueueConfigSource.KEY_ENABLED, false);
+        assertThatThrownBy(() -> service.update(0, "sync-queue", patch))
                 .isInstanceOf(RevisionMismatchException.class);
         assertThat(source.syncQueueEnabled()).isTrue();
     }

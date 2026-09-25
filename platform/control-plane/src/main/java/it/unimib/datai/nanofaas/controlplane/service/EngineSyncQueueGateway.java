@@ -12,12 +12,14 @@ import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueRejectedException;
 import it.unimib.datai.nanofaas.execution.PendingEntry;
 import it.unimib.datai.nanofaas.execution.PendingWorkStore;
 import it.unimib.datai.nanofaas.execution.SchedulerEngine;
+import it.unimib.datai.nanofaas.execution.admission.SyncQueueAdmissionController;
+import it.unimib.datai.nanofaas.execution.admission.SyncQueueAdmissionResult;
+import it.unimib.datai.nanofaas.execution.admission.WaitEstimator;
 import org.springframework.beans.factory.ObjectProvider;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 
@@ -25,32 +27,20 @@ import java.util.function.LongSupplier;
  * Keeps the sync admission contract ({@link SyncQueueGateway}) and delegates the actual
  * scheduling to the shared {@link SchedulerEngine}.
  *
- * <p>This class deliberately has no compile-time knowledge of {@code SyncQueueAdmissionController}
- * or {@code WaitEstimator} — those live in {@code :execution-runtime}'s {@code
- * it.unimib.datai.nanofaas.execution.admission} package as of Task 10 (issue #208), and this
- * class is deliberately not the one that references them; {@code SyncQueueConfiguration} (in the
- * sync-queue module) builds this bean and hands it the module's admission controller and
- * estimator (via {@link AdmissionCheck}, {@code onDispatched} and {@code onFunctionRemoved}), so admission
- * thresholds and wait estimation are reused byte-for-byte rather than re-derived: there is no
- * second implementation of sync admission to drift from the one the depth cap and wait estimate
- * were validated against.
+ * <p>{@code SyncQueueConfiguration} (in the sync-queue module) builds this bean with the
+ * {@link SyncQueueAdmissionController} and {@link WaitEstimator} from {@code :execution-runtime},
+ * so admission thresholds and wait estimation are reused byte-for-byte rather than re-derived:
+ * there is no second implementation of sync admission to drift from the one the depth cap and
+ * wait estimate were validated against.
  */
 public final class EngineSyncQueueGateway implements SyncQueueGateway {
 
-    /** Reused verdict of {@code SyncQueueAdmissionController.evaluate}. */
-    @FunctionalInterface
-    public interface AdmissionCheck {
-        /** {@code null} when accepted; the reject reason otherwise. */
-        SyncQueueRejectReason evaluate(String functionName, int pendingDepth, Instant now);
-    }
-
     private final SyncQueueConfigSource configSource;
-    private final AdmissionCheck admissionCheck;
-    private final BiConsumer<String, Instant> onDispatched;
-    private final Consumer<String> onFunctionRemoved;
-    /** Feeds {@code SyncQueueMetrics}' admitted/rejected counters. A plain {@link Consumer} rather than the concrete metrics type, matching
-     * {@link #onDispatched}/{@link #onFunctionRemoved} above, so this class stays free of a
-     * compile-time dependency on the sync-queue module. */
+    private final SyncQueueAdmissionController admissionController;
+    private final WaitEstimator estimator;
+    /** Feeds {@code SyncQueueMetrics}' admitted/rejected counters. A plain {@link Consumer} rather
+     * than the concrete metrics type, so this class stays free of a compile-time dependency on
+     * the sync-queue module. */
     private final Consumer<String> onAdmitted;
     private final Consumer<String> onRejected;
     // A provider, not a direct reference: see EngineInvocationEnqueuer for why this must be
@@ -64,10 +54,9 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
     private final EngineInvocationEnqueuer.AdmissionProfile profile;
     private final Clock clock;
 
-    public EngineSyncQueueGateway(SyncQueueConfigSource configSource,
-                                  AdmissionCheck admissionCheck,
-                                  BiConsumer<String, Instant> onDispatched,
-                                  Consumer<String> onFunctionRemoved,
+    public EngineSyncQueueGateway(SyncQueueConfigSource configSource, // NOSONAR (java:S107): composition constructor; each argument is an injected collaborator or limit
+                                  SyncQueueAdmissionController admissionController,
+                                  WaitEstimator estimator,
                                   ObjectProvider<SchedulerEngine> engine,
                                   PendingWorkStore store,
                                   DispatchCapacity capacityRegistry,
@@ -75,14 +64,13 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
                                   EngineInvocationEnqueuer.AdmissionProfile profile,
                                   Consumer<String> onAdmitted,
                                   Consumer<String> onRejected) {
-        this(configSource, admissionCheck, onDispatched, onFunctionRemoved, engine, store, capacityRegistry,
+        this(configSource, admissionController, estimator, engine, store, capacityRegistry,
                 sequence, profile, onAdmitted, onRejected, Clock.systemUTC());
     }
 
-    EngineSyncQueueGateway(SyncQueueConfigSource configSource,
-                          AdmissionCheck admissionCheck,
-                          BiConsumer<String, Instant> onDispatched,
-                          Consumer<String> onFunctionRemoved,
+    EngineSyncQueueGateway(SyncQueueConfigSource configSource, // NOSONAR (java:S107): composition constructor; each argument is an injected collaborator or limit
+                          SyncQueueAdmissionController admissionController,
+                          WaitEstimator estimator,
                           ObjectProvider<SchedulerEngine> engine,
                           PendingWorkStore store,
                           DispatchCapacity capacityRegistry,
@@ -92,9 +80,8 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
                           Consumer<String> onRejected,
                           Clock clock) {
         this.configSource = Objects.requireNonNull(configSource, "configSource must not be null");
-        this.admissionCheck = Objects.requireNonNull(admissionCheck, "admissionCheck must not be null");
-        this.onDispatched = Objects.requireNonNull(onDispatched, "onDispatched must not be null");
-        this.onFunctionRemoved = Objects.requireNonNull(onFunctionRemoved, "onFunctionRemoved must not be null");
+        this.admissionController = Objects.requireNonNull(admissionController, "admissionController must not be null");
+        this.estimator = Objects.requireNonNull(estimator, "estimator must not be null");
         this.engine = Objects.requireNonNull(engine, "engine must not be null");
         this.store = Objects.requireNonNull(store, "store must not be null");
         this.capacityRegistry = Objects.requireNonNull(capacityRegistry, "capacityRegistry must not be null");
@@ -107,10 +94,10 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
 
     @Override
     public boolean enabled() {
-        // Fix round C1: gated on the resolved admission profile, not the runtime flag alone.
-        // sync-queue.enabled defaults to true and this task made sync-queue defaultEnabled too,
+        // Gated on the resolved admission profile, not the runtime flag alone:
+        // sync-queue.enabled defaults to true and the sync-queue module is enabled by default,
         // so without this gate the both-modules default artefact (admissionProfile ==
-        // FUNCTION_QUEUE) ran every sync invocation through this gateway anyway.
+        // FUNCTION_QUEUE) would run every sync invocation through this gateway.
         return profile == EngineInvocationEnqueuer.AdmissionProfile.SYNC_QUEUE && configSource.syncQueueEnabled();
     }
 
@@ -144,9 +131,9 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
         // gate inside enqueue() — which is also why the sync admission profile's max-depth
         // (SchedulerConfiguration.pendingWorkStore) is the real limit here, not this number.
         int pendingDepth = store.pendingCount();
-        SyncQueueRejectReason reason = admissionCheck.evaluate(task.functionName(), pendingDepth, now);
-        if (reason != null) {
-            throw new SyncQueueRejectedException(reason, configSource.syncQueueRetryAfterSeconds());
+        SyncQueueAdmissionResult result = admissionController.evaluate(task.functionName(), pendingDepth, now);
+        if (!result.accepted()) {
+            throw new SyncQueueRejectedException(result.reason(), configSource.syncQueueRetryAfterSeconds());
         }
         FunctionGeneration generation = capacityRegistry.activeGeneration(task.functionName());
         if (generation == null) {
@@ -179,7 +166,7 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
         try {
             enqueueOrThrow(task);
             return true;
-        } catch (SyncQueueRejectedException rejected) {
+        } catch (SyncQueueRejectedException _) {
             return false;
         }
     }
@@ -187,11 +174,11 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
     /** Called by the engine's dispatch adapter for every settled dispatch while the immutable
      * admission profile is SYNC_QUEUE, the only profile in which this gateway admits. */
     public void recordDispatched(String functionName, Instant now) {
-        onDispatched.accept(functionName, now);
+        estimator.recordDispatch(functionName, now);
     }
 
     /** Called by the generation-removal listener so the estimator does not retain a dead function. */
     public void functionRemoved(String functionName) {
-        onFunctionRemoved.accept(functionName);
+        estimator.removeFunctionState(functionName);
     }
 }

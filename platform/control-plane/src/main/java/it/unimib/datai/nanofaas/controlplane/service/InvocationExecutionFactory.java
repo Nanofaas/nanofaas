@@ -97,31 +97,9 @@ public final class InvocationExecutionFactory {
             }
 
             String existingExecutionId = acquire.executionIdOrToken();
-            ExecutionRecord existing = executionStore.getOrNull(existingExecutionId);
-            if (existing != null) {
-                // The key did its job: a second arrival found the first execution and will
-                // wait on its result instead of running the function again.
-                metrics.replayed(functionName, kind);
-                return ExecutionLookup.existing(existing);
-            }
-
-            // Finished and archived. Looking only among the living would make this pass
-            // for a stale claim, and the function would run a second time in silence:
-            // exactly the failure the key exists to prevent.
-            Outcome settledOutcome = executionStore.outcomeOf(existingExecutionId);
-            if (settledOutcome != null) {
-                metrics.replayed(functionName, kind);
-                return ExecutionLookup.settled(existingExecutionId, settledOutcome);
-            }
-
-            // A TERMINAL binding pointing at an execution that is neither alive nor
-            // archived: the execution concluded and its outcome payload was evicted for
-            // capacity before the end of the window. The deduplication guarantee still
-            // holds - the tombstone is the key itself - so the replay does NOT re-run the
-            // function: it gets an explicit "no longer available" outcome (HTTP 410).
-            if (acquire.terminal()) {
-                metrics.replayed(functionName, kind);
-                return ExecutionLookup.gone(existingExecutionId);
+            ExecutionLookup replay = replayOf(functionName, kind, existingExecutionId, acquire.terminal());
+            if (replay != null) {
+                return replay;
             }
 
             // A binding pointing at an execution that is neither alive nor archived. It is
@@ -144,6 +122,38 @@ public final class InvocationExecutionFactory {
         }
     }
 
+    /** The outcome a replay of an already-bound key gets, or null when the binding may be re-claimed. */
+    private ExecutionLookup replayOf(String functionName, InvocationKind kind, String existingExecutionId,
+                                     boolean terminal) {
+        ExecutionRecord existing = executionStore.getOrNull(existingExecutionId);
+        if (existing != null) {
+            // The key did its job: a second arrival found the first execution and will
+            // wait on its result instead of running the function again.
+            metrics.replayed(functionName, kind);
+            return ExecutionLookup.existing(existing);
+        }
+
+        // Finished and archived. Looking only among the living would make this pass
+        // for a stale claim, and the function would run a second time in silence:
+        // exactly the failure the key exists to prevent.
+        Outcome settledOutcome = executionStore.outcomeOf(existingExecutionId);
+        if (settledOutcome != null) {
+            metrics.replayed(functionName, kind);
+            return ExecutionLookup.settled(existingExecutionId, settledOutcome);
+        }
+
+        // A TERMINAL binding pointing at an execution that is neither alive nor
+        // archived: the execution concluded and its outcome payload was evicted for
+        // capacity before the end of the window. The deduplication guarantee still
+        // holds - the tombstone is the key itself - so the replay does NOT re-run the
+        // function: it gets an explicit "no longer available" outcome (HTTP 410).
+        if (terminal) {
+            metrics.replayed(functionName, kind);
+            return ExecutionLookup.gone(existingExecutionId);
+        }
+        return null;
+    }
+
     private ExecutionLookup createClaimedRecord(String functionName,
                                                 FunctionSpec spec,
                                                 InvocationRequest request,
@@ -163,7 +173,7 @@ public final class InvocationExecutionFactory {
                     idempotencyKey,
                     claimToken
             );
-        } catch (RuntimeException | Error ex) {
+        } catch (RuntimeException | Error ex) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             if (executionRecord != null) {
                 executionStore.remove(executionRecord.executionId());
                 executionRecord.rollbackAdmissionResources();
@@ -181,8 +191,8 @@ public final class InvocationExecutionFactory {
                                                       InvocationKind kind) {
         String executionId = newExecutionId();
         CanonicalInvocationInput.Result result = CanonicalInvocationInput.canonicalize(request, inputLimits);
-        if (result instanceof CanonicalInvocationInput.Rejected rejected) {
-            throw new InvocationInputRejectedException(rejected.reason());
+        if (result instanceof CanonicalInvocationInput.Rejected(var reason)) {
+            throw new InvocationInputRejectedException(reason);
         }
         CanonicalInvocationInput.Accepted canonical = (CanonicalInvocationInput.Accepted) result;
         if (standaloneCapacity) {
@@ -204,7 +214,7 @@ public final class InvocationExecutionFactory {
         try {
             return ExecutionRecord.withInputResources(
                     executionId, task, invocationCapacity, admission, canonical);
-        } catch (RuntimeException | Error failure) {
+        } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             admission.rollback();
             throw failure;
         }
@@ -214,7 +224,7 @@ public final class InvocationExecutionFactory {
         try {
             executionStore.put(executionRecord);
             executionRecord.publishAdmissionResources();
-        } catch (RuntimeException | Error failure) {
+        } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             executionStore.remove(executionRecord.executionId());
             executionRecord.rollbackAdmissionResources();
             throw failure;

@@ -76,10 +76,10 @@ class R1OutcomeByteBudgetRegressionTest {
             for (int depth = 0; depth < 5; depth++) {
                 payload = List.of(payload);
             }
-            ExecutionRecord record = new ExecutionRecord("w" + i, task("w" + i));
-            store.put(record);
-            record.markSuccess(payload);
-            store.settle(record);
+            ExecutionRecord executionRecord = new ExecutionRecord("w" + i, task("w" + i));
+            store.put(executionRecord);
+            executionRecord.markSuccess(payload);
+            store.settle(executionRecord);
         }
 
         // Wide case: a 1 MiB string placed after 256 null entries is skipped by the

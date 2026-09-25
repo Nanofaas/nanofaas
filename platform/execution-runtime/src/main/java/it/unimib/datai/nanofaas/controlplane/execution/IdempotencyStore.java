@@ -279,13 +279,12 @@ public class IdempotencyStore {
     public void abandonClaim(String functionName, String key, String claimToken) {
         String composed = compose(functionName, key);
         StoredKey existing = keys.get(composed);
-        if (existing != null && existing.pending() && existing.executionId().equals(claimToken)) {
-            // The eviction listener does not handle explicit removal, so the slot
-            // is released here, exactly once, in the same step that removes the entry.
-            // (A claim already evicted for expiry was released by the EXPIRED listener.)
-            if (keys.remove(composed, existing)) {
-                releaseOne();
-            }
+        // The eviction listener does not handle explicit removal, so the slot
+        // is released here, exactly once, in the same step that removes the entry.
+        // (A claim already evicted for expiry was released by the EXPIRED listener.)
+        if (existing != null && existing.pending() && existing.executionId().equals(claimToken)
+                && keys.remove(composed, existing)) {
+            releaseOne();
         }
     }
 

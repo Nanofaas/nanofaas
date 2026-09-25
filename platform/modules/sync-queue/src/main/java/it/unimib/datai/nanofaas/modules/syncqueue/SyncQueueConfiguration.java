@@ -12,7 +12,6 @@ import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueConfigSource;
 import it.unimib.datai.nanofaas.execution.PendingWorkStore;
 import it.unimib.datai.nanofaas.execution.SchedulerEngine;
 import it.unimib.datai.nanofaas.execution.admission.SyncQueueAdmissionController;
-import it.unimib.datai.nanofaas.execution.admission.SyncQueueAdmissionResult;
 import it.unimib.datai.nanofaas.execution.admission.WaitEstimator;
 import it.unimib.datai.nanofaas.modules.syncqueue.config.SyncQueueProperties;
 import it.unimib.datai.nanofaas.modules.syncqueue.sync.SyncQueueMetrics;
@@ -28,8 +27,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
 
 /**
- * Registers this module's strategy factory plus the legacy config adapters genuinely still
- * needed (Task 8, issue #208): the runtime-mutable {@link SyncQueueConfigSource}, the module's
+ * Registers this module's strategy factory plus the config adapters it needs: the
+ * runtime-mutable {@link SyncQueueConfigSource}, the module's
  * runtime defaults record, and the admission collaborators ({@link WaitEstimator},
  * {@link SyncQueueAdmissionController}) composed into {@link EngineSyncQueueGateway}. Queued
  * work lives in the single engine {@code SchedulerConfiguration} owns ({@code PendingWorkStore}
@@ -40,8 +39,7 @@ import java.util.function.LongSupplier;
 public class SyncQueueConfiguration {
 
     /** How often the wait estimator prunes expired samples in the absence of new dispatches,
-     * mirroring the cadence the retired {@code SyncScheduler} loop gave it before that worker was
-     * deleted in Task 13b. */
+     * matching the cadence the former {@code SyncScheduler} loop gave it. */
     private static final long ESTIMATOR_MAINTENANCE_PERIOD_MS = 500L;
 
     @Bean
@@ -139,13 +137,7 @@ public class SyncQueueConfiguration {
             PendingWorkStore store, DispatchCapacity capacityRegistry,
             LongSupplier schedulerTicketSequence, AdmissionProfile admissionProfile,
             SyncQueueMetrics metrics) {
-        return new EngineSyncQueueGateway(configSource,
-                (functionName, depth, now) -> {
-                    SyncQueueAdmissionResult result = admissionController.evaluate(functionName, depth, now);
-                    return result.accepted() ? null : result.reason();
-                },
-                estimator::recordDispatch,
-                estimator::removeFunctionState,
+        return new EngineSyncQueueGateway(configSource, admissionController, estimator,
                 engine, store, capacityRegistry, schedulerTicketSequence, admissionProfile,
                 metrics::admitted, metrics::rejected);
     }

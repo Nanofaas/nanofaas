@@ -66,7 +66,7 @@ class R2ArchiveEvictionReplayRegressionTest {
         CountDownLatch release = new CountDownLatch(1);
         // Pause at the actual boundary: after outcome publication and live-record
         // invalidation, but before the factory's key-terminal listener runs.
-        store.onTerminal(record -> {
+        store.onTerminal(executionRecord -> {
             store.size();
             archived.countDown();
             try {

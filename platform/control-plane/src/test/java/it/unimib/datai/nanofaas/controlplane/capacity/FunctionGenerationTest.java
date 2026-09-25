@@ -13,8 +13,8 @@ class FunctionGenerationTest {
         FunctionGeneration first = new FunctionGeneration("echo", 1);
         FunctionGeneration second = new FunctionGeneration("echo", 2);
 
-        assertThat(first).isNotEqualTo(second);
-        assertThat(first).isEqualTo(new FunctionGeneration("echo", 1));
+        assertThat(first).isNotEqualTo(second)
+                .isEqualTo(new FunctionGeneration("echo", 1));
         assertThat(second.supersedes(first)).isTrue();
         assertThat(first.supersedes(second)).isFalse();
         assertThat(first.supersedes(first)).isFalse();

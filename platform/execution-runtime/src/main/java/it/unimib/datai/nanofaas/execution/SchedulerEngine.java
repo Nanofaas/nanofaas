@@ -2,9 +2,9 @@ package it.unimib.datai.nanofaas.execution;
 
 import it.unimib.datai.nanofaas.controlplane.capacity.DispatchOwnership;
 import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
+import it.unimib.datai.nanofaas.controlplane.capacity.InvocationQuotaExceededException;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerControl;
-import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerDispatchSupport;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulerSelection;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingIndex;
 import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingStrategy;
@@ -52,15 +52,14 @@ import java.util.function.Predicate;
  *
  * <h2>One selection per pass</h2>
  * A pass reaps due queue deadlines, then makes at most one selection and carries it to a
- * decision, mirroring the retired {@code SyncScheduler}'s tick (deleted in Task 13b). A
- * generation whose lease could not
- * be acquired is dropped from consideration until the next {@link #signal()} — the wake sequence
- * replaces the old schedulers' "drop the function from activeFunctions and wait to be
- * re-signalled", which the passive index contract deliberately leaves to the engine.
+ * decision. A generation whose lease could not be acquired is dropped from consideration until
+ * the next {@link #signal()}: the passive index contract deliberately leaves that to the
+ * engine's wake sequence.
  */
 public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
 
     private static final Logger log = LoggerFactory.getLogger(SchedulerEngine.class);
+    private static final String FUNCTION_NAME_REQUIRED = "functionName must not be null";
 
     /** Safety bound for a park with nothing pending; work, capacity and removals wake earlier. */
     static final long EMPTY_QUEUE_AWAIT_MS = 500L;
@@ -110,7 +109,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
      * it. The epoch is what a provisional claim carries, so a selection that spans a switch is
      * detected by value rather than by index identity.
      */
-    private volatile ActiveScheduler active;
+    private volatile ActiveScheduler active; // NOSONAR (java:S3077): thread-safe or immutable value replaced wholesale
     private long wakeSequence;
     private boolean running;
     private Thread worker;
@@ -130,9 +129,9 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
 
     /** No-op until {@link #setSwitchObserver} binds one; observation is best-effort and must
      * never affect a switch's own outcome — see {@link #switchTo}. */
-    private volatile SwitchObserver switchObserver = (strategy, outcome, durationNanos) -> { };
+    private volatile SwitchObserver switchObserver = (strategy, outcome, durationNanos) -> { }; // NOSONAR (java:S3077): thread-safe or immutable value replaced wholesale
 
-    public SchedulerEngine(PendingWorkStore store, StrategyRegistry strategies, String initialStrategy,
+    public SchedulerEngine(PendingWorkStore store, StrategyRegistry strategies, String initialStrategy, // NOSONAR (java:S107): composition constructor; each argument is an injected collaborator or limit
                            EngineDispatch dispatch, EngineReadiness readiness,
                            Predicate<FunctionGeneration> generationActive,
                            Clock clock, LongSupplier nanoTime) {
@@ -150,9 +149,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
 
     @Override
     public SchedulerSelection snapshot() {
-        // The selection is an API override that does not outlive the process: on restart the
-        // configured initial strategy wins again.
-        return new SchedulerSelection(active.id(), strategies.ids(), "restart");
+        return new SchedulerSelection(active.id(), strategies.ids());
     }
 
     /** A point-in-time view of the pending population; see {@link EngineQueueSnapshot}. Cheap
@@ -179,8 +176,8 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
 
     /**
      * Reports every {@link #switchTo} outcome and its wall-clock duration. Deliberately not part
-     * of the switch's correctness transaction (Task 5's invariant: nothing fallible follows the
-     * linearization point) — a throwing observer is caught and logged, never allowed to make a
+     * of the switch's correctness transaction (nothing fallible follows the linearization
+     * point) — a throwing observer is caught and logged, never allowed to make a
      * committed switch look like it failed, or vice versa.
      */
     @FunctionalInterface
@@ -209,7 +206,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
      * drain listener fires once with its name.
      */
     public void markDraining(String functionName) {
-        Objects.requireNonNull(functionName, "functionName must not be null");
+        Objects.requireNonNull(functionName, FUNCTION_NAME_REQUIRED);
         synchronized (gate) {
             draining.add(functionName);
         }
@@ -222,7 +219,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
      * meters torn down when the old generation's last reservation happens to settle afterwards.
      */
     public void clearDraining(String functionName) {
-        Objects.requireNonNull(functionName, "functionName must not be null");
+        Objects.requireNonNull(functionName, FUNCTION_NAME_REQUIRED);
         synchronized (gate) {
             draining.remove(functionName);
         }
@@ -277,9 +274,9 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
                 }
                 discard(superseded);
             }
-            log.info("Scheduler strategy switched to {}", target.id());
+            log.info("Scheduler strategy switched to {}", target.id()); // NOSONAR (java:S2629): cheap accessors
         } finally {
-            // Observation is not part of the correctness transaction above (Task 5's invariant):
+            // Observation is not part of the correctness transaction above:
             // it runs after every possible outcome, including a thrown SchedulerSwitchException,
             // and a throwing observer must never be allowed to turn a committed switch into a
             // reported failure or vice versa.
@@ -447,7 +444,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
      * case input backpressure returns it to the queue.
      */
     public void removeAllFor(String functionName) {
-        Objects.requireNonNull(functionName, "functionName must not be null");
+        Objects.requireNonNull(functionName, FUNCTION_NAME_REQUIRED);
         List<PendingEntry> removed = new ArrayList<>();
         synchronized (gate) {
             queueCaps.remove(functionName);
@@ -497,7 +494,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         }
         try {
             started.start();
-        } catch (RuntimeException | Error failure) {
+        } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             // A worker that never started must not leave the engine claiming to be running:
             // a later start() has to be able to try again.
             synchronized (gate) {
@@ -527,7 +524,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         toStop.interrupt();
         try {
             toStop.join(TimeUnit.SECONDS.toMillis(5));
-        } catch (InterruptedException interrupted) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
         }
     }
@@ -613,17 +610,15 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     private boolean await(long budgetMs, long observed) {
         long deadlineNanos = nanoTime.getAsLong() + TimeUnit.MILLISECONDS.toNanos(budgetMs);
         synchronized (gate) {
-            while (running && wakeSequence == observed) {
-                long remainingNanos = deadlineNanos - nanoTime.getAsLong();
-                if (remainingNanos <= 0) {
-                    break;
-                }
+            long remainingNanos = deadlineNanos - nanoTime.getAsLong();
+            while (running && wakeSequence == observed && remainingNanos > 0) {
                 try {
                     gate.wait(TimeUnit.NANOSECONDS.toMillis(remainingNanos) + 1);
-                } catch (InterruptedException interrupted) {
+                } catch (InterruptedException _) {
                     Thread.currentThread().interrupt();
                     break;
                 }
+                remainingNanos = deadlineNanos - nanoTime.getAsLong();
             }
             return wakeSequence != observed;
         }
@@ -645,9 +640,13 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         for (PendingEntry entry : expired) {
             dispatch.expired(entry.task());
         }
-        long budgetMs = claim == null
-                ? (expired.isEmpty() ? idleBudgetMs() : 0L)
-                : carry(claim);
+        long budgetMs;
+        if (claim == null) {
+            budgetMs = expired.isEmpty() ? idleBudgetMs() : 0L;
+        } else {
+            carry(claim);
+            budgetMs = 0L;
+        }
         checkDrained();
         return budgetMs;
     }
@@ -723,28 +722,14 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     }
 
     /** Outside the gate, except where noted: record check, lease acquisition, commit, submit. */
-    private long carry(Claim claim) {
+    private void carry(Claim claim) {
         SchedulingTicket ticket = claim.ticket();
-        // A claim is provisional and lives only inside this method. isCurrent, tryAcquire and
-        // release are all pluggable lifecycle code: if one of them throws, the loop's barrier
+        // A claim is provisional and lives only inside this method. tryAcquire and release are
+        // both pluggable lifecycle code: if either of them throws, the loop's barrier
         // catches it, and without this guard the claim would stay in the store forever —
         // reserved, unselectable and invisible to the deadline reap.
         boolean claimSettled = false;
         try {
-            if (!dispatch.isCurrent(ticket)) {
-                PendingEntry dropped;
-                synchronized (gate) {
-                    dropped = store.remove(ticket.id());
-                    if (dropped != null) {
-                        retire(ticket);
-                    }
-                }
-                claimSettled = true;
-                if (dropped != null) {
-                    dispatch.removed(dropped.task());
-                }
-                return 0L;
-            }
             DispatchOwnership lease = dispatch.tryAcquire(ticket);
             if (lease == null) {
                 synchronized (gate) {
@@ -754,7 +739,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
                 claimSettled = true;
                 // Pass again at once: the next selection skips this blocked generation, so other
                 // runnable work goes out now, and idleBudgetMs parks if nothing else can run.
-                return 0L;
+                return;
             }
 
             InvocationTask task;
@@ -781,10 +766,9 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
             claimSettled = true;
             if (task == null) {
                 lease.release();
-                return 0L;
+                return;
             }
             submit(ticket, task.withDispatchLease(lease), lease);
-            return 0L;
         } finally {
             if (!claimSettled) {
                 synchronized (gate) {
@@ -808,25 +792,37 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
         }
     }
 
-    private void submit(SchedulingTicket ticket, InvocationTask leased, DispatchOwnership lease) {
-        SchedulerDispatchSupport.Result result = null;
+    /** Returns true only for input backpressure whose lease was released. */
+    private boolean dispatchWithFailureCleanup(InvocationTask task, DispatchOwnership lease) {
         try {
-            result = SchedulerDispatchSupport.dispatchWithFailureCleanup(
-                    leased,
-                    () -> dispatch.submit(leased),
-                    lease::release,
-                    failure -> dispatch.rejected(leased, failure),
-                    log);
+            dispatch.submit(task);
+            return false;
+        } catch (InvocationQuotaExceededException _) {
+            lease.release();
+            log.debug("Input capacity blocked dispatch for execution {}", task.executionId());
+            return true;
+        } catch (RuntimeException | Error ex) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
+            try {
+                lease.release();
+            } finally {
+                dispatch.rejected(task, ex);
+            }
+            log.error("Dispatch failed for execution {}: {}", task.executionId(), ex.getMessage(), ex);
+            return false;
+        }
+    }
+
+    private void submit(SchedulingTicket ticket, InvocationTask leased, DispatchOwnership lease) {
+        boolean inputBackpressured = false;
+        try {
+            inputBackpressured = dispatchWithFailureCleanup(leased, lease);
         } finally {
-            // Both predecessors settled the reservation in a finally (the retired SyncScheduler,
-            // Scheduler), and for good reason: dispatchWithFailureCleanup can itself throw — a
-            // throwing rejected() escapes its FAILED branch, a throwing lease.release() escapes
-            // the backpressure branch. A ticket left in `submitting` holds its reservation
-            // forever: no index holds it so nothing can select it, and the deadline reap cannot
-            // remove a submitting ticket either. When the settlement is unknown the reservation
-            // is released, as the predecessors did; concluding that execution is the lifecycle's
-            // job, not the queue's.
-            if (result == SchedulerDispatchSupport.Result.INPUT_BACKPRESSURED) {
+            // A throwing cleanup still settles the reservation; only confirmed input
+            // backpressure requeues the ticket and retains its reservation. A ticket left in
+            // `submitting` would hold its reservation forever: no index holds it, and the
+            // deadline reap cannot remove it. When the settlement is unknown the reservation is
+            // released; concluding that execution is the lifecycle's job, not the queue's.
+            if (inputBackpressured) {
                 requeue(ticket);
             } else {
                 finishSubmit(ticket);
@@ -938,9 +934,9 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
      *       function's round-robin turn. No work is lost and no ticket is starved — only the
      *       batch boundary moves. Adding a {@code withdraw()} to {@link SchedulingIndex} would
      *       fix it cleanly, but that contract is consumed by both strategies and by the switch
-     *       and fairness work, so it is not widened for a defect that loses nothing. Task 12's
-     *       fairness tests measure this divergence; if it proves material there, {@code
-     *       withdraw()} gets added then, on evidence.</li>
+     *       and fairness work, so it is not widened for a defect that loses nothing. The
+     *       fairness tests measure this divergence; {@code withdraw()} is added only if it
+     *       proves material there.</li>
      * </ul>
      */
     private void retire(SchedulingTicket ticket) {
@@ -954,7 +950,7 @@ public final class SchedulerEngine implements AutoCloseable, SchedulerControl {
     private void wake() {
         wakeSequence++;
         blocked.clear();
-        gate.notifyAll();
+        gate.notifyAll(); // NOSONAR (java:S2273): wake() is only called under synchronized (gate)
     }
 
     /** One selection in flight, with the epoch of the index it was selected from. */
