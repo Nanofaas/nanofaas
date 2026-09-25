@@ -27,22 +27,25 @@ import java.util.stream.Stream;
 final class RecipeTasks {
 
     private static final String GROUP = "distribution";
-    private static final List<String> DOCKERFILE_SDKS = List.of("go", "javascript", "python");
+    private static final List<String> DOCKERFILE_SDKS = List.of("bash", "go", "javascript", "python");
 
     /** An implementation present in this checkout; {@code projectPath} is null for Dockerfile SDKs. */
     record Implementation(String name, String sdk, Path directory, String projectPath, List<String> modes) {
     }
 
     /**
-     * One component of the resolved recipe. {@code task} is the Gradle task producing a Java artifact, else null;
-     * {@code dockerfile} is set for Dockerfile SDKs; {@code image} is null when the component has no container.
-     * {@code jvmArgs} is null when the recipe sets none; {@code mainClass} is set only for java-lite on the JVM.
+     * One component of the resolved recipe; {@code kind} is control-plane, function or service. {@code task} is the
+     * Gradle task producing a Java artifact, else null; {@code dockerfile} and {@code contextDir} (both relative to the
+     * repository) are set for Dockerfile components; {@code image} is null when the component has no container.
+     * {@code jvmArgs} is null when the recipe sets none; {@code mainClass} is set only for java-lite on the JVM;
+     * {@code nativeOptions} is null unless the component is native.
      */
-    record Target(String field, String name, String sdk, String mode, String task, Path dockerfile,
-                  String stagingDir, String image, List<String> jvmArgs, String mainClass) {
+    record Target(String field, String kind, String name, String sdk, String mode, String task, Path dockerfile,
+                  Path contextDir, String stagingDir, String image, List<String> jvmArgs, String mainClass,
+                  RecipeBuildProperties.NativeOptions nativeOptions) {
 
         boolean controlPlane() {
-            return field.equals("controlPlane");
+            return kind.equals("control-plane");
         }
     }
 
@@ -61,9 +64,11 @@ final class RecipeTasks {
         root.getTasks().register("listRecipeFunctions", task -> {
             task.setGroup(GROUP);
             task.setDescription("Lists the function implementations a recipe can select.");
-            task.doLast(ignored -> recipeTasks.catalog().forEach(implementation -> System.out.printf(
-                    "%-24s %-11s %-44s %s%n", implementation.name(), implementation.sdk(),
-                    slash(implementation.directory()), String.join(", ", implementation.modes()))));
+                        task.doLast(ignored -> {
+                            recipeTasks.catalog().forEach(RecipeTasks::printImplementation);
+                            System.out.println("Services:");
+                            recipeTasks.serviceCatalog().forEach(RecipeTasks::printImplementation);
+                        });
         });
         root.getTasks().register("validateRecipe", task -> {
             task.setGroup(GROUP);
@@ -88,44 +93,66 @@ final class RecipeTasks {
         }
     }
 
-    List<Implementation> catalog() {
-        Path rootDir = realPath(root.getRootDir().toPath());
-        List<Implementation> implementations = new ArrayList<>();
-        for (Project project : root.getAllprojects()) {
-            if (project.getParent() == null || !project.getParent().getPath().equals(":functions:java")) {
-                continue;
+        /** Java implementations under {@code parentPath} depending on the SDK their directory name implies. */
+        private List<Implementation> javaImplementations(Path rootDir, String parentPath, boolean servicesOnly) {
+            List<Implementation> implementations = new ArrayList<>();
+            for (Project project : root.getAllprojects()) {
+                if (project.getParent() == null || !project.getParent().getPath().equals(parentPath)) {
+                    continue;
+                }
+                String sdk = javaSdkOf(project);
+                boolean lite = "java-lite".equals(sdk);
+                if (sdk == null || (servicesOnly && lite) || lite != project.getName().endsWith("-lite")
+                        || !inside(rootDir, project.getProjectDir().toPath())) {
+                    continue;
+                }
+                Set<String> taskNames = project.getTasks().getNames();
+                List<String> modes = Stream.of("jvm", "native").filter(mode -> taskNames.contains(taskName(sdk, mode))).toList();
+                if (!modes.isEmpty()) {
+                    String name = lite ? project.getName().substring(0, project.getName().length() - "-lite".length())
+                            : project.getName();
+                    implementations.add(new Implementation(name, sdk, relative(project.getProjectDir().toPath()),
+                            project.getPath(), modes));
+                }
             }
-            String sdk = javaSdkOf(project);
-            boolean lite = "java-lite".equals(sdk);
-            if (sdk == null || lite != project.getName().endsWith("-lite") || !inside(rootDir, project.getProjectDir().toPath())) {
-                continue;
-            }
-            Set<String> taskNames = project.getTasks().getNames();
-            List<String> modes = Stream.of("jvm", "native").filter(mode -> taskNames.contains(taskName(sdk, mode))).toList();
-            if (!modes.isEmpty()) {
-                String name = lite ? project.getName().substring(0, project.getName().length() - "-lite".length())
-                        : project.getName();
-                implementations.add(new Implementation(name, sdk, relative(project.getProjectDir().toPath()),
-                        project.getPath(), modes));
-            }
+            return implementations;
         }
-        for (String sdk : DOCKERFILE_SDKS) {
-            Path sdkDir = rootDir.resolve("functions").resolve(sdk);
-            if (!Files.isDirectory(sdkDir)) {
-                continue;
+
+        /** Dockerfile implementations: {@code <parent>/<name>/Dockerfile}, listed under {@code sdk}. */
+        private List<Implementation> dockerfileImplementations(Path rootDir, Path parent, String sdk) {
+            List<Implementation> implementations = new ArrayList<>();
+            if (!Files.isDirectory(parent)) {
+                return implementations;
             }
-            try (Stream<Path> directories = Files.list(sdkDir)) {
+            try (Stream<Path> directories = Files.list(parent)) {
                 directories.filter(directory -> Files.isRegularFile(directory.resolve("Dockerfile")))
                         .filter(directory -> inside(rootDir, directory))
                         .forEach(directory -> implementations.add(new Implementation(directory.getFileName().toString(),
                                 sdk, relative(directory), null, List.of("container"))));
             } catch (IOException exception) {
-                throw new GradleException("Cannot list " + sdkDir, exception);
+                throw new GradleException("Cannot list " + parent, exception);
             }
+            return implementations;
         }
-        implementations.sort(Comparator.comparing(Implementation::name).thenComparing(Implementation::sdk));
-        return implementations;
-    }
+
+        List<Implementation> catalog() {
+            Path rootDir = realPath(root.getRootDir().toPath());
+            List<Implementation> implementations = new ArrayList<>(javaImplementations(rootDir, ":functions:java", false));
+            for (String sdk : DOCKERFILE_SDKS) {
+                implementations.addAll(dockerfileImplementations(rootDir, rootDir.resolve("functions").resolve(sdk), sdk));
+            }
+            implementations.sort(Comparator.comparing(Implementation::name).thenComparing(Implementation::sdk));
+            return implementations;
+        }
+
+        /** Java services under services/java (on :sdks:java), and Dockerfile services under runtimes/. */
+        List<Implementation> serviceCatalog() {
+            Path rootDir = realPath(root.getRootDir().toPath());
+            List<Implementation> implementations = new ArrayList<>(javaImplementations(rootDir, ":services:java", true));
+            implementations.addAll(dockerfileImplementations(rootDir, rootDir.resolve("runtimes"), "dockerfile"));
+            implementations.sort(Comparator.comparing(Implementation::name).thenComparing(Implementation::sdk));
+            return implementations;
+        }
 
     private List<Target> resolve() {
         JsonNode data = recipe.data();
@@ -140,38 +167,13 @@ final class RecipeTasks {
         if (!controlPlane.getTasks().getNames().contains(taskName("java", controlPlaneMode))) {
             throw fail("controlPlane.build.mode: the control plane does not support " + controlPlaneMode);
         }
-        resolved.add(new Target("controlPlane", "control-plane", "java", controlPlaneMode,
-                controlPlane.getPath() + ":" + taskName("java", controlPlaneMode), null, "control-plane/",
-                image(data.path("controlPlane"), "controlPlane", images), jvmArgs(data.path("controlPlane")), null));
+                resolved.add(new Target("controlPlane", "control-plane", "control-plane", "java", controlPlaneMode,
+                        controlPlane.getPath() + ":" + taskName("java", controlPlaneMode), null, null, "control-plane/",
+                        image(data.path("controlPlane"), "controlPlane", images), jvmArgs(data.path("controlPlane")), null,
+                        RecipeBuildProperties.effectiveNative(data.path("controlPlane"))));
 
-        Map<List<String>, Implementation> available = new HashMap<>();
-        catalog().forEach(implementation -> available.put(List.of(implementation.name(), implementation.sdk()), implementation));
-        Set<List<String>> declared = new HashSet<>();
-        JsonNode functions = data.path("functions");
-        for (int index = 0; index < functions.size(); index++) {
-            JsonNode function = functions.get(index);
-            String field = "functions[" + index + "]";
-            String name = function.get("name").asText();
-            String sdk = function.get("sdk").asText();
-            if (!declared.add(List.of(name, sdk))) {
-                throw fail(field + ": " + name + " (" + sdk + ") is already declared");
-            }
-            Implementation implementation = available.get(List.of(name, sdk));
-            if (implementation == null) {
-                throw fail(field + ": " + sdk + " implementation of " + name + " is not available");
-            }
-            boolean java = implementation.projectPath() != null;
-            String mode = java ? function.at("/build/mode").asText() : "container";
-            if (!implementation.modes().contains(mode)) {
-                throw fail(field + ".build.mode: " + sdk + " implementation of " + name + " does not support " + mode);
-            }
-            resolved.add(new Target(field, name, sdk, mode,
-                    java ? implementation.projectPath() + ":" + taskName(sdk, mode) : null,
-                    java ? null : implementation.directory().resolve("Dockerfile"),
-                    java ? "functions/" + sdk + "/" + name + "/" : null,
-                    image(function, field, images), jvmArgs(function),
-                    sdk.equals("java-lite") && mode.equals("jvm") ? mainClass(field, implementation) : null));
-        }
+                resolveComponents(data.path("functions"), "functions", "function", catalog(), images, resolved);
+                resolveComponents(data.path("services"), "services", "service", serviceCatalog(), images, resolved);
         String hostProblem = nativeImageHostProblem(System.getProperty("os.name"));
         for (Target target : resolved) {
             if (hostProblem != null && target.mode().equals("native") && target.image() != null) {
@@ -180,6 +182,40 @@ final class RecipeTasks {
         }
         return List.copyOf(resolved);
     }
+
+        private void resolveComponents(JsonNode components, String list, String kind, List<Implementation> catalog,
+                                       Set<String> images, List<Target> resolved) {
+            Map<List<String>, Implementation> available = new HashMap<>();
+            catalog.forEach(implementation -> available.put(List.of(implementation.name(), implementation.sdk()), implementation));
+            Set<List<String>> declared = new HashSet<>();
+            for (int index = 0; index < components.size(); index++) {
+                JsonNode component = components.get(index);
+                String field = list + "[" + index + "]";
+                String name = component.get("name").asText();
+                String sdk = component.get("sdk").asText();
+                if (!declared.add(List.of(name, sdk))) {
+                    throw fail(field + ": " + name + " (" + sdk + ") is already declared");
+                }
+                Implementation implementation = available.get(List.of(name, sdk));
+                if (implementation == null) {
+                    throw fail(field + ": " + sdk + " implementation of " + name + " is not available");
+                }
+                boolean java = implementation.projectPath() != null;
+                String mode = java ? component.at("/build/mode").asText() : "container";
+                if (!implementation.modes().contains(mode)) {
+                    throw fail(field + ".build.mode: " + sdk + " implementation of " + name + " does not support " + mode);
+                }
+                // Dockerfile functions copy repository paths (sdks/, runtimes/watchdog); a Dockerfile service is self-contained.
+                Path contextDir = java ? null : kind.equals("service") ? implementation.directory() : Path.of("");
+                resolved.add(new Target(field, kind, name, sdk, mode,
+                        java ? implementation.projectPath() + ":" + taskName(sdk, mode) : null,
+                        java ? null : implementation.directory().resolve("Dockerfile"), contextDir,
+                        java ? list + "/" + sdk + "/" + name + "/" : null,
+                        image(component, field, images), jvmArgs(component),
+                        sdk.equals("java-lite") && mode.equals("jvm") ? mainClass(field, implementation) : null,
+                        RecipeBuildProperties.effectiveNative(component)));
+            }
+        }
 
     /** GraalVM cannot cross-compile, and the staged executable is copied as-is into a Linux image. */
     static String nativeImageHostProblem(String osName) {
@@ -241,8 +277,9 @@ final class RecipeTasks {
         System.out.println("Tag: " + recipe.effectiveTag());
         System.out.println("Control-plane modules: " + (modules.isEmpty() ? "(core only)" : String.join(", ", modules)));
         for (Target target : targets) {
-            String build = target.task() != null ? target.task()
-                    : "docker build -f " + slash(target.dockerfile()) + " .";
+                        String build = target.task() != null ? target.task()
+                                : "docker build -f " + slash(target.dockerfile()) + " "
+                                        + (target.contextDir().toString().isEmpty() ? "." : slash(target.contextDir()));
             System.out.printf("  %-20s %-11s %-10s %s%s%s%n", target.name(), target.sdk(), target.mode(), build,
                     target.stagingDir() == null ? "" : " -> " + target.stagingDir(),
                     target.image() == null ? "" : "  image " + target.image());
@@ -282,6 +319,11 @@ final class RecipeTasks {
     private Path relative(Path directory) {
         return realPath(root.getRootDir().toPath()).relativize(realPath(directory));
     }
+
+        private static void printImplementation(Implementation implementation) {
+            System.out.printf("%-24s %-11s %-44s %s%n", implementation.name(), implementation.sdk(),
+                    slash(implementation.directory()), String.join(", ", implementation.modes()));
+        }
 
     private static String slash(Path path) {
         return path.toString().replace('\\', '/');

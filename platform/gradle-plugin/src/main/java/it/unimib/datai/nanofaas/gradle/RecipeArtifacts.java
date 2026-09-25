@@ -259,7 +259,7 @@ final class RecipeArtifacts {
     static List<String> dockerBuild(String docker, Path rootDir, Path output, RecipeTasks.Target target) {
         Path dockerfile = target.dockerfile() != null ? rootDir.resolve(target.dockerfile())
                 : rootDir.resolve("deploy/recipes/Dockerfile." + target.mode());
-        Path context = target.dockerfile() != null ? rootDir : output.resolve(target.stagingDir());
+                Path context = target.dockerfile() != null ? rootDir.resolve(target.contextDir()) : output.resolve(target.stagingDir());
         return List.of(docker, "build", "-f", dockerfile.toString(), "-t", target.image(), context.toString());
     }
 

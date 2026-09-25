@@ -36,7 +36,7 @@ class RecipePluginTest {
         write("settings.gradle", """
                 plugins { id 'it.unimib.datai.nanofaas.control-plane-modules' }
                 include ':control-plane', ':sdks:java', ':sdks:java-lite'
-                include ':functions:java:word-stats', ':functions:java:word-stats-lite', ':functions:java:jvm-only'
+                include ':functions:java:word-stats', ':functions:java:word-stats-lite', ':functions:java:jvm-only', ':services:java:warm-echo'
                 project(':control-plane').projectDir = file('platform/control-plane')
                 """);
         write("build.gradle", """
@@ -107,6 +107,14 @@ class RecipePluginTest {
                 fakeNative('word-stats-lite')
                 """);
         writeJavaFunction("jvm-only", ":sdks:java", "fakeBootJar('jvm-only.jar')");
+        write("services/java/warm-echo/build.gradle", """
+                plugins { id 'java' }
+                apply from: rootProject.file('marker.gradle')
+                dependencies { implementation project(':sdks:java') }
+                fakeBootJar('warm-echo.jar'); fakeNative('warm-echo')
+                """);
+        write("runtimes/watchdog/Dockerfile", "FROM scratch\n");
+        write("functions/bash/word-stats/Dockerfile", "FROM scratch\n");
         write("functions/python/word-stats/Dockerfile", "FROM scratch\n");
         write("functions/go/qr-code/Dockerfile", "FROM scratch\n");
         Files.createDirectories(projectDir.resolve("functions/javascript/no-dockerfile"));
@@ -324,6 +332,60 @@ class RecipePluginTest {
         assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker()))
                 .contains("controlPlane.build.variant requires the build-metadata module");
         assertThat(projectDir.resolve("markers")).doesNotExist();
+    }
+
+    @Test
+    void catalogListsServicesAndBashFunctions() {
+        assertThat(run("listRecipeFunctions").getOutput())
+                .containsSubsequence("word-stats", "bash", "functions/bash/word-stats", "container")
+                .containsSubsequence("Services:", "warm-echo", "java", "services/java/warm-echo", "jvm, native",
+                        "watchdog", "dockerfile", "runtimes/watchdog", "container");
+    }
+
+    @Test
+    void servicesAndBashBuildWithTheirOwnContexts() throws IOException {
+        recipe(V2_HEADER + CP_JVM + """
+                functions: [{name: word-stats, sdk: bash, container: {image: ws-bash}}]
+                services:
+                  - {name: warm-echo, sdk: java, build: {mode: native, native: {optimization: s}}, container: {image: echo}}
+                  - {name: watchdog, sdk: dockerfile, container: {image: watchdog}}
+                """);
+
+        BuildResult result = run("assembleRecipe", "-Precipe=recipe.yaml", docker());
+
+        assertThat(result.task(":services:java:warm-echo:nativeCompile").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+        Path root = projectDir.toRealPath();
+        assertThat(projectDir.resolve("build/recipes/demo/services/java/warm-echo/application")).isExecutable();
+        assertThat(dockerCalls().stream().filter(call -> call.getFirst().equals("build")).toList()).containsExactlyInAnyOrder(
+                List.of("build", "-f", root.resolve("functions/bash/word-stats/Dockerfile").toString(),
+                        "-t", "nanofaas/demo/ws-bash:local", root.toString()),
+                List.of("build", "-f", root.resolve("deploy/recipes/Dockerfile.native").toString(),
+                        "-t", "nanofaas/demo/echo:local", root.resolve("build/recipes/demo/services/java/warm-echo").toString()),
+                List.of("build", "-f", root.resolve("runtimes/watchdog/Dockerfile").toString(),
+                        "-t", "nanofaas/demo/watchdog:local", root.resolve("runtimes/watchdog").toString()));
+    }
+
+    @Test
+    void previewShowsServices() throws IOException {
+        recipe(V2_HEADER + CP_JVM + "services: [{name: watchdog, sdk: dockerfile, container: {image: watchdog}}]\n");
+
+        assertThat(run("validateRecipe", "-Precipe=recipe.yaml").getOutput())
+                .containsSubsequence("watchdog", "dockerfile", "container",
+                        "docker build -f runtimes/watchdog/Dockerfile runtimes/watchdog", "nanofaas/demo/watchdog:local");
+    }
+
+    @Test
+    void rejectsUnknownServiceAndImagesSharedAcrossKinds() throws IOException {
+        recipe(V2_HEADER + CP_JVM + "services: [{name: echo-server, sdk: dockerfile, container: {image: x}}]\n");
+        assertThat(fails("validateRecipe", "-Precipe=recipe.yaml"))
+                .contains("services[0]: dockerfile implementation of echo-server is not available");
+
+        recipe(V2_HEADER + CP_JVM + """
+                functions: [{name: word-stats, sdk: bash, container: {image: shared}}]
+                services: [{name: watchdog, sdk: dockerfile, container: {image: shared}}]
+                """);
+        assertThat(fails("validateRecipe", "-Precipe=recipe.yaml"))
+                .contains("services[0].container.image: image nanofaas/demo/shared:local is already used");
     }
 
     private static final String FULL_RECIPE = HEADER + """
