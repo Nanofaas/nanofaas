@@ -94,6 +94,10 @@ class RecipePluginTest {
                   echo "The push refers to repository [${2%%:*}]"
                   [ -f "$log/no-digest" ] || echo "${2##*:}: digest: sha256:$(printf %%s "$2" | sha256sum | cut -c1-64) size: 528"
                 fi
+                if [ "$1" = image ] && [ "$4" = '{{.Id}}' ]; then
+                  [ -f "$log/fail-inspect-id" ] && { echo "fake inspect failed" >&2; exit 1; }
+                  echo "sha256:$(printf 'id-%%s' "$5" | sha256sum | cut -c1-64)"; exit 0
+                fi
                 if [ "$1" = image ]; then cat "$log/repo-digests" 2>/dev/null || echo '[]'; fi
                 """.formatted(projectDir));
         projectDir.resolve("bin/docker").toFile().setExecutable(true);
@@ -577,6 +581,73 @@ class RecipePluginTest {
         }
     }
 
+    @Test
+    void reportRecordsKindsIdentityNativeOptionsAndImageIds() throws IOException {
+        writeModule("build-metadata", "");
+        recipe(V2_HEADER + """
+                registry: {repository: registry.example:5000/team, tag: "1.0.0"}
+                controlPlane:
+                  modules: [build-metadata]
+                  build: {mode: native, variant: native-o3-g1, native: {optimization: 3.0, gc: G1, monitoring: [jvmstat]}}
+                  container: {image: control-plane}
+                services: [{name: watchdog, sdk: dockerfile, container: {image: watchdog}}]
+                """);
+
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker());
+
+        JsonNode report = report();
+        JsonNode controlPlane = report.get("components").get(0);
+        assertThat(report.get("schemaVersion").asInt()).isEqualTo(2);
+        assertThat(controlPlane.get("kind").asText()).isEqualTo("control-plane");
+        assertThat(controlPlane.get("variant").asText()).isEqualTo("native-o3-g1");
+        assertThat(controlPlane.get("optimization").asText()).isEqualTo("3");
+        assertThat(controlPlane.get("native").toString())
+                .isEqualTo("{\"optimization\":\"3\",\"gc\":\"G1\",\"monitoring\":[\"jvmstat\",\"jfr\"]}");
+        assertThat(report.get("components").get(1).get("kind").asText()).isEqualTo("service");
+        String reference = "registry.example:5000/team/control-plane:1.0.0";
+        assertThat(image(report, reference).get("id").asText()).isEqualTo(imageIdOf(reference));
+        assertThat(dockerCalls()).contains(List.of("image", "inspect", "--format", "{{.Id}}", reference));
+    }
+
+    @Test
+    void imageIdSurvivesPublication() throws IOException {
+        recipe(PUBLISH_CP_ONLY);
+
+        run("publishRecipe", "-Precipe=recipe.yaml", docker());
+
+        JsonNode image = image(report(), "registry.example:5000/team/control-plane:1.0.0");
+        assertThat(image.get("status").asText()).isEqualTo("published");
+        assertThat(image.get("id").asText()).isEqualTo(imageIdOf("registry.example:5000/team/control-plane:1.0.0"));
+    }
+
+    @Test
+    void failedInspectFailsTheAssemblyAndCanBeRetried() throws IOException {
+        recipe(PUBLISH_CP_ONLY);
+        Files.writeString(projectDir.resolve("fail-inspect-id"), "");
+
+        assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker()))
+                .contains("docker image inspect registry.example:5000/team/control-plane:1.0.0 did not return an image ID");
+        assertThat(projectDir.resolve("build/recipes/demo/distribution.json")).doesNotExist();
+        assertThat(projectDir.resolve("build/recipes/demo/.nanofaas-recipe-output")).isRegularFile();
+
+        Files.delete(projectDir.resolve("fail-inspect-id"));
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker());
+        assertThat(projectDir.resolve("build/recipes/demo/distribution.json")).isRegularFile();
+    }
+
+    @Test
+    void v1RecipeReportsAdditiveFieldsOnly() throws IOException {
+        recipe(FULL_RECIPE);
+
+        run("assembleRecipe", "-Precipe=recipe.yaml", "-PrecipeTag=2.0.0", docker());
+
+        JsonNode component = report().get("components").get(0);
+        assertThat(component.get("kind").asText()).isEqualTo("control-plane");
+        assertThat(component.has("variant")).isFalse();
+        assertThat(component.has("native")).isFalse();
+        assertThat(component.get("image").get("status").asText()).isEqualTo("built");
+    }
+
     private static final String FULL_RECIPE = HEADER + """
             registry: {repository: registry.example:5000/team, tag: "1.0.0"}
             controlPlane:
@@ -620,7 +691,7 @@ class RecipePluginTest {
         assertThat(out.resolve("functions/python")).doesNotExist();
 
         Path root = projectDir.toRealPath();
-        assertThat(dockerCalls()).containsExactlyInAnyOrder(
+        assertThat(dockerCalls().stream().filter(call -> call.getFirst().equals("build")).toList()).containsExactlyInAnyOrder(
                 List.of("build", "-f", root.resolve("deploy/recipes/Dockerfile.jvm").toString(),
                         "-t", "registry.example:5000/team/control-plane:2.0.0", root.resolve("build/recipes/demo/control-plane").toString()),
                 List.of("build", "-f", root.resolve("deploy/recipes/Dockerfile.native").toString(),
@@ -631,7 +702,7 @@ class RecipePluginTest {
 
         String report = Files.readString(out.resolve("distribution.json"));
         assertThat(report)
-                .contains("\"schemaVersion\" : 1", "\"tag\" : \"2.0.0\"", "\"source\" : null", "\"modules\" : [ ]")
+                .contains("\"schemaVersion\" : 2", "\"tag\" : \"2.0.0\"", "\"source\" : null", "\"modules\" : [ ]")
                 .contains("\"sha256\" : \"" + sha256(projectDir.resolve("recipe.yaml")) + "\"")
                 .contains("\"reference\" : \"registry.example:5000/team/ws-python:2.0.0\"", "\"status\" : \"built\"")
                 .contains("\"artifact\" : \"functions/java-lite/word-stats/\"")
@@ -841,6 +912,15 @@ class RecipePluginTest {
         try {
             return "sha256:" + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                     .digest(reference.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException(exception);
+        }
+    }
+
+    private static String imageIdOf(String reference) {
+        try {
+            return "sha256:" + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(("id-" + reference).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException(exception);
         }

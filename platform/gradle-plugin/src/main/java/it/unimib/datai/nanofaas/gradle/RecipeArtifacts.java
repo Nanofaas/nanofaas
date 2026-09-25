@@ -89,6 +89,8 @@ final class RecipeArtifacts {
         targets.stream().filter(target -> target.task() != null)
                 .forEach(target -> producer(root, target).configure(task -> task.mustRunAfter(clean)));
 
+        Services services = root.getObjects().newInstance(Services.class);
+        Map<String, String> imageIds = new java.util.concurrent.ConcurrentHashMap<>();
         List<TaskProvider<Exec>> images = new ArrayList<>();
         for (RecipeTasks.Target target : targets) {
             if (target.image() != null) {
@@ -96,15 +98,16 @@ final class RecipeArtifacts {
                     exec.setDescription("Builds " + target.image());
                     exec.dependsOn(stage);
                     exec.commandLine(dockerBuild(docker, rootDir, output, target));
+                    exec.doLast(ignored -> imageIds.put(target.image(),
+                            imageId(services.getExec(), docker, target.image())));
                 }));
             }
         }
 
-        Services services = root.getObjects().newInstance(Services.class);
         root.getTasks().named("assembleRecipe", task -> {
             task.dependsOn(stage, images);
             task.doLast(ignored -> writeReport(output.resolve(REPORT),
-                    report(recipe, targets, modules, source(services.getExec(), rootDir))));
+                    report(recipe, targets, modules, source(services.getExec(), rootDir), imageIds)));
         });
         root.getTasks().named("publishRecipe", task -> {
             task.dependsOn("assembleRecipe");
@@ -207,6 +210,22 @@ final class RecipeArtifacts {
         }
     }
 
+    /** The local image ID, so an image that is built but never pushed can still be pinned. */
+    static String imageId(ExecOperations exec, String docker, String reference) {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        int exit = exec.exec(spec -> {
+            spec.commandLine(docker, "image", "inspect", "--format", "{{.Id}}", reference);
+            spec.setStandardOutput(output);
+            spec.setIgnoreExitValue(true);
+        }).getExitValue();
+        String id = output.toString(StandardCharsets.UTF_8).trim();
+        if (exit != 0 || id.isEmpty()) {
+            throw new GradleException("docker image inspect " + reference + " did not return an image ID (exit " + exit
+                    + "); an image that cannot be pinned is not a usable result");
+        }
+        return id;
+    }
+
     private static TaskProvider<Task> producer(Project root, RecipeTasks.Target target) {
         int separator = target.task().lastIndexOf(':');
         return root.project(target.task().substring(0, separator)).getTasks().named(target.task().substring(separator + 1));
@@ -268,22 +287,34 @@ final class RecipeArtifacts {
     }
 
     static ObjectNode report(RecipeReader.Document recipe, List<RecipeTasks.Target> targets, List<String> modules,
-                             JsonNode source) {
+                             JsonNode source, Map<String, String> imageIds) {
         ObjectNode report = JSON.createObjectNode();
-        report.put("schemaVersion", 1);
+        report.put("schemaVersion", 2);
         report.putObject("recipe").put("name", recipe.data().get("name").asText()).put("sha256", recipe.sourceSha256());
         report.put("tag", recipe.effectiveTag());
         report.set("source", source);
         ArrayNode moduleNodes = report.putArray("modules");
         modules.forEach(moduleNodes::add);
+        RecipeBuildProperties.Identity identity = RecipeBuildProperties.identity(recipe.data());
         ArrayNode components = report.putArray("components");
         for (RecipeTasks.Target target : targets) {
-            ObjectNode component = components.addObject().put("name", target.name()).put("sdk", target.sdk())
-                    .put("mode", target.mode()).put("artifact", target.stagingDir());
+            ObjectNode component = components.addObject().put("kind", target.kind()).put("name", target.name())
+                    .put("sdk", target.sdk()).put("mode", target.mode()).put("artifact", target.stagingDir());
+            if (target.controlPlane() && identity != null) {
+                component.put("variant", identity.variant()).put("optimization", identity.optimization());
+            }
+            if (target.nativeOptions() != null) {
+                ObjectNode options = component.putObject("native")
+                        .put("optimization", target.nativeOptions().optimization())
+                        .put("gc", target.nativeOptions().gc());
+                ArrayNode monitoring = options.putArray("monitoring");
+                target.nativeOptions().monitoring().forEach(monitoring::add);
+            }
             if (target.image() == null) {
                 component.putNull("image");
             } else {
-                component.putObject("image").put("reference", target.image()).put("status", "built");
+                component.putObject("image").put("reference", target.image()).put("status", "built")
+                        .put("id", imageIds.get(target.image()));
             }
         }
         return report;
