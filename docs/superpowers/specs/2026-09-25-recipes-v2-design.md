@@ -55,7 +55,7 @@ registry:
   tag: "run-42"
 
 controlPlane:
-  modules: [async-queue, k8s-deployment-provider]
+  modules: [async-queue, k8s-deployment-provider, build-metadata]
   build:
     mode: native
     variant: native-o3-g1          # optional; control plane only
@@ -91,6 +91,11 @@ services:
   - The optimization is recorded when `variant` is set or `native.optimization` is given
     explicitly. That matches today, where `-PnativeOptimization` alone already records it.
     Otherwise both stay absent, as they are without `-P` flags.
+  - Setting `controlPlane.build.variant` or explicitly setting
+    `controlPlane.build.native.optimization` requires `build-metadata` in
+    `controlPlane.modules`. The plugin rejects a missing module before any build and names
+    the field that requires it. Module selection stays exact: the plugin never adds it
+    implicitly. Native options on functions and services do not require this module.
 - **`services`** has the same shape as `functions`, with two SDKs:
   - `java`: sources in `services/java/<name>`, depending on `:sdks:java`. It needs `build`,
     and accepts `jvm` and `native` like a Java function.
@@ -144,6 +149,21 @@ Only fields the recipe sets become extra properties, so the build scripts keep t
 defaults. Two native components in one recipe can use different options within the same
 build.
 
+### Service build mode and Spring AOT
+
+The same `beforeProject` hook exposes each selected Java service's `build.mode` as the
+project extra property `nanofaasRecipeBuildMode`. Update `services/java/warm-echo/build.gradle`
+to use that mode when present, falling back to its existing task-name detection without a
+recipe. `assembleRecipe` and `publishRecipe` do not contain `nativeCompile` in their names,
+so task-name detection alone leaves warm-echo's plain jar and Spring AOT tasks disabled.
+
+For a native service, enable the plain jar and all main AOT tasks (`processAot`,
+`compileAotJava`, `processAotResources`, `aotClasses`). For a JVM service, keep main AOT
+disabled and exclude stale AOT outputs and the native-processed manifest attribute from
+`bootJar`, as the control plane already does. Test AOT remains disabled. The service's mode
+is independent of the control plane's: a JVM control plane with native warm-echo must work,
+as must a native control plane with JVM warm-echo.
+
 ## Services and catalog
 
 - The resolver gains two roots:
@@ -171,10 +191,21 @@ build.
   directory only when one of these holds:
   - it does not exist;
   - it is empty;
-  - it contains a `distribution.json` written by an earlier assembly.
+  - it contains a valid `.nanofaas-recipe-output` ownership marker;
+  - it contains a valid `distribution.json` written by an earlier assembly (including
+    output produced before ownership markers were introduced).
 
   In every other case the task fails before deleting anything. The repository root and its
   ancestors are always refused. The error names the rule that failed.
+- **Recovery after failure.** After validating and cleaning the directory, recreate it and
+  write `.nanofaas-recipe-output` with the exact UTF-8 contents
+  `nanofaas-recipe-output-v1\n` before staging or building artifacts. Staging must preserve
+  this marker, including when implemented with Gradle `Sync`. It remains after success or
+  failure, so a failed staging, image build or image inspect can be retried with the same
+  output directory. A marker with other contents does not establish ownership.
+  `distribution.json` is still written only after the whole assembly succeeds; the marker
+  does not claim that any artifact is usable. The safety check also applies to direct
+  invocation of `cleanRecipe` or `stageRecipe`.
 
 ## Report: `distribution.json` version 2
 
@@ -200,6 +231,8 @@ the first build step.
   `build`/`jvm` on Dockerfile components.
 - An unknown service, or an SDK a service does not provide, gets the same message shape as a
   missing function implementation.
+- `controlPlane.build.variant` and explicit `controlPlane.build.native.optimization` fail
+  when `controlPlane.modules` does not include `build-metadata`.
 - Recipe-owned `-P` flags and an unsafe `-PrecipeOutput` fail as described above.
 
 ## Testing
@@ -216,17 +249,35 @@ the first build step.
   - `variant` and the derived optimization appear in the build-metadata properties:
     - `c1` and `c2` from `jvm.args`;
     - the `-O` level in native;
+  - `variant` and explicit control-plane native optimization each fail before any build
+    when `build-metadata` is missing, and succeed when it is selected; native options on
+    functions and services remain valid without that module;
   - services and bash functions appear in the catalog and preview, and build with the right
     context: the service directory for `dockerfile`, the repository root for bash;
   - `image.id` comes from the fake `docker image inspect`, and a failed inspect fails the
     assembly;
-  - `-PrecipeOutput`: each refusal, and the regeneration of an earlier output;
+  - `-PrecipeOutput`: each refusal, regeneration of an earlier output with a marker or a
+    legacy report, and rejection of a nonempty directory whose only ownership evidence is
+    a malformed marker;
+  - fail an image build and, separately, image inspect after staging; assert that the marker
+    survives, no success report exists, and a subsequent assembly succeeds in the same
+    directory without manual cleanup; direct `cleanRecipe` and `stageRecipe` also refuse
+    an unowned nonempty directory;
   - builder-sizing flags are accepted alongside `-Precipe`, and recipe-owned flags are
     rejected;
   - a v1 recipe issues the same build and `docker build` commands as before, plus one
     `docker image inspect` per image.
+- **Service AOT configuration regression**, using the real warm-echo build script and
+  Spring Boot/GraalVM plugins: with `assembleRecipe` and with `publishRecipe` requested,
+  assert that a JVM control plane plus native warm-echo enables the service's plain jar
+  and main AOT tasks; the reverse combination keeps service AOT disabled. Check that a
+  JVM jar assembled after a native build excludes stale AOT outputs and the native-processed
+  manifest attribute. A fake `nativeCompile` that only reads properties does not cover
+  these checks. Preserve the existing behavior of direct builds without a recipe.
 - **Manual end-to-end, once, on the host.** A v2 recipe with a native control plane at `-Os`
-  and a `variant`, warm-echo (native) and the watchdog as services, and one bash function.
+  and a `variant`, explicitly selecting `build-metadata`, warm-echo (native) and the watchdog
+  as services, and one bash function. Also assemble and run a JVM control plane with native
+  warm-echo to verify independent AOT selection.
   Checks:
   - `/modules/build-metadata` reports the variant and optimization;
   - `distribution.json` records the kinds, the native options and each image ID;
@@ -237,8 +288,9 @@ the first build step.
 `docs/recipes.md` describes:
 
 - the v2 format and its rules;
-- services and the bash SDK;
-- `-PrecipeOutput` and its safety rules;
+- services, their independent AOT selection, and the bash SDK;
+- the explicit `build-metadata` requirement for control-plane build identity;
+- `-PrecipeOutput`, its safety rules, and recovery of incomplete output via the ownership marker;
 - the report changes;
 - the two answered questions: back-to-back assemblies, and the JVM tiering default;
 - the G1-on-host requirement.
