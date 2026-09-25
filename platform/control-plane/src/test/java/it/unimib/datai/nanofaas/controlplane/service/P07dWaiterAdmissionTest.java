@@ -19,10 +19,12 @@ import it.unimib.datai.nanofaas.controlplane.input.RetainedInputEstimator;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import it.unimib.datai.nanofaas.controlplane.sync.SyncQueueGateway;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.List;
+import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -141,7 +143,10 @@ class P07dWaiterAdmissionTest {
                 .block(java.time.Duration.ofSeconds(2));
 
         assertThat(shortResult.response().status()).isEqualTo("timeout");
-        assertThat(h.waiters.reservedGlobally()).isOne();
+        // The timeout fires on Reactor's timer, which wakes block() before running the
+        // doFinally that releases this waiter: the release follows the response, not precedes it.
+        Awaitility.await().atMost(Duration.ofSeconds(2))
+                .untilAsserted(() -> assertThat(h.waiters.reservedGlobally()).isOne());
         backend.complete(DispatchResult.warm(InvocationResult.success("long-result")));
         backend.complete(DispatchResult.warm(InvocationResult.success("duplicate")));
         assertThat(longWaiter.get(2, TimeUnit.SECONDS).response().output()).isEqualTo("long-result");
