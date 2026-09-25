@@ -5,6 +5,12 @@ namespace:
   name: nanofaas
 
 controlPlane:
+  # Retry timing override example (global startup settings):
+  # extraEnv:
+  #   - name: NANOFAAS_RETRY_INITIAL_BACKOFF
+  #     value: "100ms"
+  #   - name: NANOFAAS_RETRY_MAX_BACKOFF
+  #     value: "2s"
   replicaCount: 1
   # The scheduling strategy the composed engine starts on. Empty is the default and
   # means "no explicit selection": the engine derives the legacy mapping from the
@@ -26,6 +32,10 @@ controlPlane:
     repository: ghcr.io/miciav/nanofaas/control-plane
     tag: v0.22.0
     pullPolicy: IfNotPresent
+  # Where function pods deliver execution callbacks. Empty derives it from this
+  # release: http://<service.name>.<namespace>.svc.cluster.local:<ports.http>/v1/internal/executions.
+  # Set it only for a cluster domain other than cluster.local or a proxied control plane.
+  callbackUrl: ""
   service:
     name: control-plane
     type: ClusterIP
@@ -61,6 +71,9 @@ controlPlane:
     # value that ignores the CPU limit - e.g. to reproduce Esperimento B's
     # matrix cells, which held the limit fixed at 1 core and varied the
     # worker count independently of it.
+    #
+    # Despite the "jvm" key this also applies to a native control-plane image:
+    # the template passes it both in JAVA_TOOL_OPTIONS and as a -D argument.
     ioWorkerCount: ""
   invocationCapacity:
     # Finite live-owner budgets calibrated for the 512Mi request below. Byte

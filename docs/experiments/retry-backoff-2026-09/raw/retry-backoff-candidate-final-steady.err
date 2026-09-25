@@ -1,0 +1,48 @@
+SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+[bench] backlog=0 rep=1 pause=0.121ms pending=0 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=0 rep=2 pause=0.125ms pending=0 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=0 rep=3 pause=0.114ms pending=0 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=0 rep=4 pause=0.108ms pending=0 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=0 rep=5 pause=0.121ms pending=0 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=100 rep=1 pause=0.265ms pending=99 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=100 rep=2 pause=0.206ms pending=99 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=100 rep=3 pause=0.220ms pending=99 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=100 rep=4 pause=0.197ms pending=99 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=100 rep=5 pause=0.166ms pending=99 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=1000 rep=1 pause=0.623ms pending=999 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=1000 rep=2 pause=0.611ms pending=999 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=1000 rep=3 pause=0.559ms pending=999 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=1000 rep=4 pause=0.614ms pending=1000 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=1000 rep=5 pause=0.570ms pending=999 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=10000 rep=1 pause=2.344ms pending=10000 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=10000 rep=2 pause=3.130ms pending=9999 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=10000 rep=3 pause=2.880ms pending=9999 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=10000 rep=4 pause=1.903ms pending=10000 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=10000 rep=5 pause=2.639ms pending=9999 liveIndexes=1 outcome=COMMITTED
+[bench] warm-up low-load per-function (no change)
+[bench] warm-up low-load shared-queue (no change)
+[bench] warm-up low-load per-function -> shared-queue
+[bench] warm-up low-load shared-queue -> per-function
+[bench] low-load per-function (no change) rep=1 useful=208 p99=2.636ms backlogMax=0
+[bench] low-load shared-queue (no change) rep=1 useful=208 p99=2.902ms backlogMax=0
+[bench] low-load per-function -> shared-queue rep=1 useful=208 p99=2.761ms backlogMax=0
+[bench] low-load shared-queue -> per-function rep=1 useful=208 p99=2.734ms backlogMax=0
+[bench] low-load shared-queue -> per-function rep=2 useful=188 p99=2.568ms backlogMax=0
+[bench] low-load per-function -> shared-queue rep=2 useful=188 p99=2.769ms backlogMax=0
+[bench] low-load shared-queue (no change) rep=2 useful=188 p99=2.605ms backlogMax=0
+[bench] low-load per-function (no change) rep=2 useful=188 p99=2.658ms backlogMax=0
+[bench] low-load per-function (no change) rep=3 useful=174 p99=2.651ms backlogMax=0
+[bench] low-load shared-queue (no change) rep=3 useful=174 p99=2.678ms backlogMax=0
+[bench] low-load per-function -> shared-queue rep=3 useful=174 p99=2.584ms backlogMax=0
+[bench] low-load shared-queue -> per-function rep=3 useful=174 p99=2.541ms backlogMax=0
+[bench] low-load shared-queue -> per-function rep=4 useful=212 p99=2.601ms backlogMax=0
+[bench] low-load per-function -> shared-queue rep=4 useful=212 p99=2.737ms backlogMax=0
+[bench] low-load shared-queue (no change) rep=4 useful=212 p99=2.618ms backlogMax=0
+[bench] low-load per-function (no change) rep=4 useful=212 p99=2.741ms backlogMax=0
+[bench] low-load per-function (no change) rep=5 useful=194 p99=2.777ms backlogMax=0
+[bench] low-load shared-queue (no change) rep=5 useful=194 p99=2.747ms backlogMax=0
+[bench] low-load per-function -> shared-queue rep=5 useful=194 p99=2.600ms backlogMax=0
+[bench] low-load shared-queue -> per-function rep=5 useful=194 p99=2.725ms backlogMax=0
+[bench] return-to-baseline: committed=1000 refused=0 pending switched=401 vs plain=398 live switched=1 vs plain=1 maxLive=2 conserved switched=true plain=true

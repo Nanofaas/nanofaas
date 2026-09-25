@@ -53,5 +53,96 @@
     "name": "it.unimib.datai.nanofaas.common.model.ErrorInfo",
     "allDeclaredConstructors": true,
     "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.cli.http.ReplicaStatus",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.cli.http.BuildMetadata",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.cli.http.BuildMetadata$Build",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.cli.http.BuildMetadata$BaseImages",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.cli.http.BuildMetadata$Runtime",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.cli.http.FunctionPatch",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.cli.http.RuntimeConfigSnapshot",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.cli.http.RuntimeConfigPatchResponse",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.cli.http.RuntimeConfigPatchRequest",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.cli.http.ControlPlaneError",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.cli.http.ControlPlaneCapabilities",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.cli.http.InvocationCallResult",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.cli.config.Config",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.cli.commands.controlplane.ControlPlaneInfoCommand$Info",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.cli.commands.controlplane.config.RuntimeConfigInput",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.cli.commands.fn.FnTestCommand$PayloadCase",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.cli.config.ResolvedContext",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "it.unimib.datai.nanofaas.cli.image.BuildSpec",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
   }
 ]

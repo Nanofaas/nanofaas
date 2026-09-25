@@ -1,9 +1,0 @@
-{
-  "description": "2024 current year",
-  "input": {
-    "number": 2024
-  },
-  "expected": {
-    "roman": "MMXXIV"
-  }
-}

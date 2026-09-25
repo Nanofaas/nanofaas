@@ -75,7 +75,7 @@ class P05WaiterTimeoutSharedOutcomeTest {
         Metrics metrics = new Metrics(new SimpleMeterRegistry());
         TestWaiterCapacity.Runtime runtime = TestWaiterCapacity.runtime(store, keys, metrics, "fn");
         InvocationExecutionFactory factory = runtime.factory();
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, enqueuer::enqueue,
+        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, (queued, due, rejected) -> enqueuer.enqueue(queued),
                 new DispatcherRouter(new LocalDispatcher() {
                     @Override
                     public CompletableFuture<DispatchResult> dispatch(InvocationTask task) {
@@ -262,7 +262,7 @@ class P05WaiterTimeoutSharedOutcomeTest {
             @Override public QueueStrategy queueStrategy() { return QueueStrategy.FUNCTION_QUEUE; }
         };
         TestWaiterCapacity.Runtime runtime = TestWaiterCapacity.runtime(store, keys, metrics, "fn");
-        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, enqueuer::enqueue, router, metrics);
+        ExecutionCompletionHandler handler = new ExecutionCompletionHandler(store, (queued, due, rejected) -> enqueuer.enqueue(queued), router, metrics);
         ReactiveInvocationCoordinator coordinator =
                 new ReactiveInvocationCoordinator(enqueuer, metrics, null, null, handler,
                         new InvocationResponseMapper(), runtime.waiters());

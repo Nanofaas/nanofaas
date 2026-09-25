@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneOffset;
+
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -25,6 +25,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
 
@@ -53,6 +54,7 @@ import static org.mockito.Mockito.when;
  */
 class SchedulerEngineSwitchTest {
 
+    private final AtomicReference<Instant> clockNow = new AtomicReference<>();
     private static final Instant NOW = Instant.parse("2026-09-16T10:00:00Z");
     private static final FunctionGeneration ECHO = new FunctionGeneration("echo", 1);
     private static final FunctionGeneration MAIL = new FunctionGeneration("mail", 3);
@@ -91,9 +93,12 @@ class SchedulerEngineSwitchTest {
     }
 
     private SchedulerEngine engineOver(PendingWorkStore pendingWorkStore, LongSupplier nanoTime) {
+        clockNow.compareAndSet(null, NOW);
+        Clock clock = mock(Clock.class);
+        when(clock.instant()).thenAnswer(call -> clockNow.get());
         return new SchedulerEngine(pendingWorkStore,
                 new StrategyRegistry(List.of(perFunction, sharedQueue)), "per-function",
-                dispatch, readiness, generation -> true, Clock.fixed(NOW, ZoneOffset.UTC), nanoTime);
+                dispatch, readiness, generation -> true, clock, nanoTime);
     }
 
     private SchedulingStrategy strategy(String id, boolean newestFirst) {
@@ -281,9 +286,8 @@ class SchedulerEngineSwitchTest {
                 .extracting(failure -> ((SchedulerSwitchException) failure).reason())
                 .isEqualTo(SchedulerSwitchException.Reason.TEMPORARY_CAP);
 
-        RecordingIndex candidate = activeIndex();
-        assertThat(candidate.added).isEqualTo(SchedulerEngine.MAX_SWITCH_REBUILD_TICKETS);
-        assertThat(candidate.cleared).isEqualTo(1);
+        assertThat(activeIndex()).isSameAs(before);
+        verify(sharedQueue, never()).newIndex();
         assertThat(deepEngine.snapshot().strategy()).isEqualTo("per-function");
         assertThat(before.size()).isEqualTo(overCap);
         assertThat(deep.pendingCount()).isEqualTo(overCap);
@@ -299,7 +303,7 @@ class SchedulerEngineSwitchTest {
         engine.switchTo("shared-queue");
 
         RecordingIndex candidate = activeIndex();
-        assertThat(candidate.ids()).containsExactly(delayed.id(), new TicketId("d1", 1),
+        assertThat(candidate.ids()).containsExactly(new TicketId("d1", 1),
                 new TicketId("d2", 1), ready.id());
 
         engine.tick();
@@ -310,10 +314,15 @@ class SchedulerEngineSwitchTest {
         // Newest-first, but the delayed ticket is not yet due, so the ready one is dispatched and
         // leaves; the delayed ticket keeps its future notBefore and stays.
         assertThat(submitted).containsExactly("ready");
-        assertThat(candidate.ids()).containsExactly(delayed.id());
+        assertThat(candidate.ids()).isEmpty();
         assertThat(store.get(ready.id())).isNull();
         assertThat(store.pendingCount()).isEqualTo(1);
         assertThat(store.get(delayed.id())).isNotNull();
+        clockNow.set(NOW.plusSeconds(60));
+        engine.tick();
+        engine.tick();
+        assertThat(submitted).containsExactly("ready", "late");
+        assertThat(store.reservedCount()).isZero();
     }
 
     @Test
@@ -460,6 +469,88 @@ class SchedulerEngineSwitchTest {
 
         engine.tick();
         assertThat(submitted).containsExactly("e2");
+    }
+
+    @Test
+    void failedPreparationPreservesMixedReadyAndDelayedMembership() {
+        SchedulingTicket delayed = admit(engine, "late", ECHO, 0, NOW.plusSeconds(1), null);
+        admit("ready", 1);
+        RecordingIndex before = activeIndex();
+        doAnswer(call -> {
+            RecordingIndex candidate = new RecordingIndex("shared-queue", true);
+            candidate.failAtAdd = 1;
+            indexes.add(candidate);
+            return candidate;
+        }).when(sharedQueue).newIndex();
+        assertThatThrownBy(() -> engine.switchTo("shared-queue"))
+                .isInstanceOf(SchedulerSwitchException.class);
+        assertThat(before.ids()).containsExactly(new TicketId("ready", 1));
+        assertThat(activeIndex().ids()).isEmpty();
+        engine.tick();
+        assertThat(submitted).containsExactly("ready");
+        assertThat(store.get(delayed.id()).ticket().notBefore()).isEqualTo(NOW.plusSeconds(1));
+        clockNow.set(NOW.plusSeconds(1));
+        engine.tick();
+        engine.tick();
+        assertThat(submitted).containsExactly("ready", "late");
+        assertThat(store.reservedCount()).isZero();
+    }
+
+    @Test
+    void delayedMembershipSurvivesClockAdvanceDuringCandidateBuild() {
+        admit("ready", 0);
+        admit(engine, "late", ECHO, 1, NOW.plusSeconds(1), null);
+        doAnswer(call -> {
+            RecordingIndex candidate = new RecordingIndex("shared-queue", true);
+            candidate.onFirstAdd = () -> clockNow.set(NOW.plusSeconds(1));
+            indexes.add(candidate);
+            return candidate;
+        }).when(sharedQueue).newIndex();
+        engine.switchTo("shared-queue");
+        assertThat(activeIndex().ids()).containsExactly(new TicketId("ready", 1));
+        engine.tick();
+        engine.tick();
+        engine.tick();
+        assertThat(submitted).containsExactly("late", "ready");
+        assertThat(store.reservedCount()).isZero();
+    }
+
+    @Test
+    void switchDuringClaimWithBackwardClockKeepsOriginalDueInstant() {
+        SchedulingTicket ticket = admit("claimed", 0);
+        doAnswer(call -> {
+            engine.switchTo("shared-queue");
+            clockNow.set(NOW.minusSeconds(1));
+            return lease;
+        }).when(dispatch).tryAcquire(any());
+        engine.tick();
+        assertThat(activeIndex().ids()).isEmpty();
+        assertThat(submitted).isEmpty();
+        verify(lease).release();
+        assertThat(store.get(ticket.id()).ticket().notBefore()).isEqualTo(NOW);
+        doReturn(lease).when(dispatch).tryAcquire(any());
+        clockNow.set(NOW);
+        engine.tick();
+        engine.tick();
+        assertThat(submitted).containsExactly("claimed");
+        assertThat(store.reservedCount()).isZero();
+    }
+
+    @Test
+    void delayedBacklogCountsTowardRebuildCapBeforeSnapshot() {
+        int count = SchedulerEngine.MAX_SWITCH_REBUILD_TICKETS + 1;
+        PendingWorkStore deep = new PendingWorkStore(count);
+        SchedulerEngine deepEngine = engineOver(deep, () -> 0L);
+        for (int i = 0; i < count; i++) {
+            admit(deepEngine, "late" + i, ECHO, i, Instant.MAX, null);
+        }
+        assertThatThrownBy(() -> deepEngine.switchTo("shared-queue"))
+                .isInstanceOf(SchedulerSwitchException.class)
+                .extracting(failure -> ((SchedulerSwitchException) failure).reason())
+                .isEqualTo(SchedulerSwitchException.Reason.TEMPORARY_CAP);
+        verify(sharedQueue, never()).newIndex();
+        assertThat(activeIndex().ids()).isEmpty();
+        assertThat(deep.reservedCount()).isEqualTo(count);
     }
 
     /**

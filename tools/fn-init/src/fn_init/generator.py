@@ -250,6 +250,7 @@ def generate_function(
         "description": f"invoke {name} with empty input",
         "input": {},
         "expected": {"error": "Field 'text' is required and must be non-empty"},
+        "expectedStatusCode": 422,
     }
     (payloads_dir / "happy-path.json").write_text(json.dumps(happy, indent=2))
     (payloads_dir / "missing-input.json").write_text(json.dumps(missing, indent=2))

@@ -23,7 +23,7 @@ dependencies {
     api 'com.github.ben-manes.caffeine:caffeine'
     api 'io.micrometer:micrometer-core'
 
-    testImplementation 'org.junit.jupiter:junit-jupiter:6.0.3'
+    testImplementation 'org.junit.jupiter:junit-jupiter:6.1.3'
     testImplementation 'org.assertj:assertj-core'
     testImplementation 'org.mockito:mockito-core'
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.0'
@@ -39,9 +39,9 @@ dependencies {
     // transitive = false: both strategy classes compile against control-plane-spi only (already
     // on this module's classpath via `api project(':control-plane-spi')` above) and touch
     // neither Spring nor :control-plane. Left transitive, these project dependencies would also
-    // drag in sync-queue's own `implementation project(':control-plane')` and both modules'
-    // Spring starters, which would put :control-plane's own Spring-annotated classes onto this
-    // module's TEST classpath — and RuntimeArchitectureTest's ClassFileImporter scans by package
+    // drag in both modules' Spring starters, and any runtime edge from them to :control-plane
+    // (sync-queue's is compileOnly today) would put :control-plane's own Spring-annotated classes
+    // onto this module's TEST classpath — and RuntimeArchitectureTest's ClassFileImporter scans by package
     // name, not by origin module, so it would see them too: :control-plane happens to reuse the
     // "it.unimib.datai.nanofaas.controlplane.capacity"/".controlplane.execution" package names
     // for its own Spring configuration classes. That is a real classpath leak, not a false

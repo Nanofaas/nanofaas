@@ -28,6 +28,33 @@ class RuntimeLimitsTest {
         assertEquals(0, limits.pendingCallbackBytes());
     }
 
+    /**
+     * Admission reserves the largest callback payload, the output being unknown; held until
+     * delivery, that capped pending callbacks at the byte budget / maximum payload (8 with the
+     * defaults) instead of the configured count.
+     */
+    @Test
+    void aSerializedCallbackHoldsOnlyItsOwnSize() {
+        RuntimeLimits limits = new RuntimeLimits(4, 8, 128, 32, 32, 64);
+        var first = limits.tryReserveCallback();
+        var second = limits.tryReserveCallback();
+        assertNull(limits.tryReserveCallback(), "two maxima fill the 128-byte budget");
+
+        first.shrinkTo(2);
+        second.shrinkTo(2);
+
+        assertEquals(4, limits.pendingCallbackBytes());
+        var third = limits.tryReserveCallback();
+        assertNotNull(third, "the returned bytes admit a third callback");
+
+        first.close();
+        first.shrinkTo(1);
+        second.close();
+        third.close();
+        assertEquals(0, limits.pendingCallbacks());
+        assertEquals(0, limits.pendingCallbackBytes(), "a shrink after release changes nothing");
+    }
+
     @Test
     void rejectsInvalidOrInconsistentLimits() {
         assertThrows(IllegalArgumentException.class, () -> new RuntimeLimits(0, 1, 1, 1, 1, 1));

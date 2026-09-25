@@ -1,0 +1,229 @@
+{
+  "processes": [
+    {
+      "id": "proc_249_admitlocally",
+      "summary": "AdmitLocally → Enabled",
+      "priority": 0.089,
+      "symbol_count": 1,
+      "process_type": "cross_community",
+      "step_count": 4
+    },
+    {
+      "id": "proc_437_admitlocally",
+      "summary": "AdmitLocally → SyncQueueEnabled",
+      "priority": 0.089,
+      "symbol_count": 1,
+      "process_type": "cross_community",
+      "step_count": 3
+    },
+    {
+      "id": "proc_548_queuefullmeansrefusa",
+      "summary": "QueueFullMeansRefusal → Enabled",
+      "priority": 0.089,
+      "symbol_count": 1,
+      "process_type": "cross_community",
+      "step_count": 4
+    },
+    {
+      "id": "proc_585_queuefullmeansrefusa",
+      "summary": "QueueFullMeansRefusal → SyncQueueEnabled",
+      "priority": 0.089,
+      "symbol_count": 1,
+      "process_type": "cross_community",
+      "step_count": 3
+    },
+    {
+      "id": "proc_126_runt1",
+      "summary": "RunT1 → FunctionTimers",
+      "priority": 0.074,
+      "symbol_count": 1,
+      "process_type": "intra_community",
+      "step_count": 5
+    }
+  ],
+  "process_symbols": [
+    {
+      "id": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/EngineSyncQueueGateway.java:EngineSyncQueueGateway.enabled#0",
+      "name": "enabled",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/EngineSyncQueueGateway.java",
+      "startLine": 95,
+      "endLine": 102,
+      "module": "Service",
+      "process_id": "proc_249_admitlocally",
+      "step_index": 2
+    },
+    {
+      "id": "Method:docs/experiments/lifecycle-memory-2026-09/P07Calibration.java:P07Calibration.runT1#0",
+      "name": "runT1",
+      "filePath": "docs/experiments/lifecycle-memory-2026-09/P07Calibration.java",
+      "startLine": 44,
+      "endLine": 80,
+      "module": "Lifecycle-memory-2026-09",
+      "process_id": "proc_126_runt1",
+      "step_index": 1
+    }
+  ],
+  "definitions": [
+    {
+      "id": "Class:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/AsyncCapabilityStrategyIndependenceApiTest.java:AsyncCapabilityStrategyIndependenceApiTest",
+      "name": "AsyncCapabilityStrategyIndependenceApiTest",
+      "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/AsyncCapabilityStrategyIndependenceApiTest.java",
+      "startLine": 46,
+      "endLine": 155
+    },
+    {
+      "id": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/AsyncCapabilityStrategyIndependenceApiTest.java:AsyncCapabilityStrategyIndependenceApiTest.asyncCapabilityStaysAsyncAcrossASwitchToSharedQueue#0",
+      "name": "asyncCapabilityStaysAsyncAcrossASwitchToSharedQueue",
+      "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/AsyncCapabilityStrategyIndependenceApiTest.java",
+      "startLine": 74,
+      "endLine": 97,
+      "module": "Registry"
+    },
+    {
+      "id": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/AsyncCapabilityStrategyIndependenceApiTest.java:AsyncCapabilityStrategyIndependenceApiTest.assertSyncInvokeIsNotGatedBySyncQueue#0",
+      "name": "assertSyncInvokeIsNotGatedBySyncQueue",
+      "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/AsyncCapabilityStrategyIndependenceApiTest.java",
+      "startLine": 148,
+      "endLine": 154,
+      "module": "Registry"
+    },
+    {
+      "id": "Class:platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueRuntimeConfigAutoConfiguration.java:SyncQueueRuntimeConfigAutoConfiguration",
+      "name": "SyncQueueRuntimeConfigAutoConfiguration",
+      "filePath": "platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueRuntimeConfigAutoConfiguration.java",
+      "startLine": 14,
+      "endLine": 63,
+      "module": "Runtimeconfig"
+    },
+    {
+      "id": "Class:platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueRuntimeConfigAutoConfiguration.java:SyncQueueRuntimeConfigAutoConfiguration$1",
+      "name": "SyncQueueRuntimeConfigAutoConfiguration$1",
+      "filePath": "platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueRuntimeConfigAutoConfiguration.java",
+      "startLine": 20,
+      "endLine": 50,
+      "module": "Runtimeconfig"
+    },
+    {
+      "id": "Method:platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueRuntimeConfigAutoConfiguration.java:SyncQueueRuntimeConfigAutoConfiguration$1.validate#1",
+      "name": "validate",
+      "filePath": "platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueRuntimeConfigAutoConfiguration.java",
+      "startLine": 23,
+      "endLine": 47,
+      "module": "Syncqueue"
+    },
+    {
+      "id": "Property:spring-config:platform/control-plane/src/main/resources/application.yml:sync-queue.max-estimated-wait",
+      "name": "sync-queue.max-estimated-wait",
+      "filePath": "platform/control-plane/src/main/resources/application.yml",
+      "startLine": 168,
+      "endLine": 168
+    },
+    {
+      "id": "Property:spring-config:platform/control-plane/src/main/resources/application.yml:sync-queue.throughput-window",
+      "name": "sync-queue.throughput-window",
+      "filePath": "platform/control-plane/src/main/resources/application.yml",
+      "startLine": 171,
+      "endLine": 171
+    },
+    {
+      "id": "Property:spring-config:platform/control-plane/src/main/resources/application.yml:sync-queue.per-function-min-samples",
+      "name": "sync-queue.per-function-min-samples",
+      "filePath": "platform/control-plane/src/main/resources/application.yml",
+      "startLine": 172,
+      "endLine": 172
+    },
+    {
+      "id": "Class:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/AdmissionStrategyIndependenceApiTest.java:AdmissionStrategyIndependenceApiTest",
+      "name": "AdmissionStrategyIndependenceApiTest",
+      "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/AdmissionStrategyIndependenceApiTest.java",
+      "startLine": 37,
+      "endLine": 149
+    },
+    {
+      "id": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/AdmissionStrategyIndependenceApiTest.java:AdmissionStrategyIndependenceApiTest.switchingStrategyAloneLeavesSyncAdmissionContractUnchanged#0",
+      "name": "switchingStrategyAloneLeavesSyncAdmissionContractUnchanged",
+      "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/AdmissionStrategyIndependenceApiTest.java",
+      "startLine": 72,
+      "endLine": 95,
+      "module": "Registry"
+    },
+    {
+      "id": "Method:platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/AdmissionStrategyIndependenceApiTest.java:AdmissionStrategyIndependenceApiTest.assertSyncRejectionUnchanged#0",
+      "name": "assertSyncRejectionUnchanged",
+      "filePath": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/AdmissionStrategyIndependenceApiTest.java",
+      "startLine": 140,
+      "endLine": 148,
+      "module": "Registry"
+    },
+    {
+      "id": "Class:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/EngineSyncQueueGateway.java:EngineSyncQueueGateway",
+      "name": "EngineSyncQueueGateway",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/EngineSyncQueueGateway.java",
+      "startLine": 36,
+      "endLine": 184,
+      "module": "Service"
+    },
+    {
+      "id": "Method:platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/EngineSyncQueueGateway.java:EngineSyncQueueGateway.recordDispatched#2",
+      "name": "recordDispatched",
+      "filePath": "platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane/service/EngineSyncQueueGateway.java",
+      "startLine": 176,
+      "endLine": 178,
+      "module": "Service"
+    },
+    {
+      "id": "Class:platform/modules/sync-queue/src/test/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueRuntimeLifecycleTest.java:SyncQueueRuntimeLifecycleTest",
+      "name": "SyncQueueRuntimeLifecycleTest",
+      "filePath": "platform/modules/sync-queue/src/test/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueRuntimeLifecycleTest.java",
+      "startLine": 65,
+      "endLine": 378
+    },
+    {
+      "id": "Property:platform/modules/sync-queue/src/test/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueRuntimeLifecycleTest.java:SyncQueueRuntimeLifecycleTest.runner",
+      "name": "runner",
+      "filePath": "platform/modules/sync-queue/src/test/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueRuntimeLifecycleTest.java",
+      "startLine": 98,
+      "endLine": 109
+    },
+    {
+      "id": "Method:platform/modules/sync-queue/src/test/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueRuntimeLifecycleTest.java:SyncQueueRuntimeLifecycleTest.onlyTheSyncAdmissionProfileFeedsTheEstimatorAfterRuntimeDisable#1",
+      "name": "onlyTheSyncAdmissionProfileFeedsTheEstimatorAfterRuntimeDisable",
+      "filePath": "platform/modules/sync-queue/src/test/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueRuntimeLifecycleTest.java",
+      "startLine": 274,
+      "endLine": 303,
+      "module": "Execution"
+    },
+    {
+      "id": "Class:platform/modules/sync-queue/src/test/java/it/unimib/datai/nanofaas/modules/syncqueue/config/SyncQueuePropertiesTest.java:SyncQueuePropertiesTest",
+      "name": "SyncQueuePropertiesTest",
+      "filePath": "platform/modules/sync-queue/src/test/java/it/unimib/datai/nanofaas/modules/syncqueue/config/SyncQueuePropertiesTest.java",
+      "startLine": 13,
+      "endLine": 39
+    },
+    {
+      "id": "Method:platform/modules/sync-queue/src/test/java/it/unimib/datai/nanofaas/modules/syncqueue/config/SyncQueuePropertiesTest.java:SyncQueuePropertiesTest.bindsConfiguredValues#0",
+      "name": "bindsConfiguredValues",
+      "filePath": "platform/modules/sync-queue/src/test/java/it/unimib/datai/nanofaas/modules/syncqueue/config/SyncQueuePropertiesTest.java",
+      "startLine": 14,
+      "endLine": 38,
+      "module": "Config"
+    },
+    {
+      "id": "Class:platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueConfiguration.java:SyncQueueConfiguration",
+      "name": "SyncQueueConfiguration",
+      "filePath": "platform/modules/sync-queue/src/main/java/it/unimib/datai/nanofaas/modules/syncqueue/SyncQueueConfiguration.java",
+      "startLine": 37,
+      "endLine": 144,
+      "module": "Syncqueue"
+    }
+  ],
+  "timing": {
+    "vector": 6.5,
+    "bm25": 377,
+    "merge": 0.3,
+    "symbol_lookup": 25.7,
+    "ranking": 0.1,
+    "formatting": 0.1,
+    "wall": 403.5
+  }
+}

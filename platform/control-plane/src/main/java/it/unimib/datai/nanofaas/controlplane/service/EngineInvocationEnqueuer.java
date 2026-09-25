@@ -7,6 +7,9 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.SchedulingTicket;
 import it.unimib.datai.nanofaas.controlplane.scheduler.TicketId;
 import it.unimib.datai.nanofaas.execution.PendingEntry;
 import it.unimib.datai.nanofaas.execution.SchedulerEngine;
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore;
+
 import org.springframework.beans.factory.ObjectProvider;
 
 import java.time.Clock;
@@ -18,10 +21,7 @@ import java.util.function.LongSupplier;
  * The single admission/retry front door onto the composed {@link SchedulerEngine}, regardless
  * of how many {@code SchedulingStrategy} beans are on the classpath.
  *
- * <p>{@link InvocationEnqueuer#enqueue} and {@link RetryScheduler#enqueue} share one method, as
- * the interfaces already declare it identically: a fresh admission and a retry both become one
- * ticket. Which admission
- * profile is active decides where that ticket goes:
+ * <p>Initial admissions use the admission clock; retries carry their eligibility instant.
  * <ul>
  *   <li>{@link AdmissionProfile#FUNCTION_QUEUE} — admits straight into the engine: no
  *       depth/wait-time gate beyond the per-function cap the engine checks atomically with
@@ -56,6 +56,7 @@ public final class EngineInvocationEnqueuer implements InvocationEnqueuer, Retry
     private final boolean asyncEnabled;
     private final ObjectProvider<EngineSyncQueueGateway> syncGateway;
     private final Clock clock;
+    private final ExecutionStore executions;
 
     public EngineInvocationEnqueuer(ObjectProvider<SchedulerEngine> engine,
                                     DispatchCapacity capacityRegistry,
@@ -73,6 +74,13 @@ public final class EngineInvocationEnqueuer implements InvocationEnqueuer, Retry
                              boolean asyncEnabled,
                              ObjectProvider<EngineSyncQueueGateway> syncGateway,
                              Clock clock) {
+        this(engine, capacityRegistry, sequence, profile, asyncEnabled, syncGateway, clock, null);
+    }
+
+    public EngineInvocationEnqueuer(ObjectProvider<SchedulerEngine> engine, DispatchCapacity capacityRegistry,
+            LongSupplier sequence, AdmissionProfile profile, boolean asyncEnabled,
+            ObjectProvider<EngineSyncQueueGateway> syncGateway, Clock clock, ExecutionStore executions) {
+        this.executions = executions;
         this.engine = Objects.requireNonNull(engine, "engine must not be null");
         this.capacityRegistry = Objects.requireNonNull(capacityRegistry, "capacityRegistry must not be null");
         this.sequence = Objects.requireNonNull(sequence, "sequence must not be null");
@@ -101,7 +109,38 @@ public final class EngineInvocationEnqueuer implements InvocationEnqueuer, Retry
         if (profile != AdmissionProfile.FUNCTION_QUEUE) {
             return false;
         }
-        return admitDirect(task);
+        return admitDirect(task, clock.instant(), capacityRegistry.activeGeneration(task.functionName()));
+    }
+
+    @Override
+    public boolean enqueue(InvocationTask task, Instant notBefore, Runnable onRejected) {
+        ExecutionRecord record = executions == null ? null : executions.getOrNull(task.executionId());
+        FunctionGeneration generation = capacityRegistry.activeGeneration(task.functionName());
+        if (!retryIsLive(record, task, generation)) return false;
+        boolean accepted;
+        if (profile == AdmissionProfile.SYNC_QUEUE) {
+            EngineSyncQueueGateway gateway = syncGateway.getIfAvailable();
+            accepted = gateway != null && gateway.enqueue(task, notBefore, generation);
+        } else {
+            accepted = profile == AdmissionProfile.FUNCTION_QUEUE && admitDirect(task, notBefore, generation);
+        }
+        if (accepted && !retryIsLive(record, task, generation)) {
+            engine.getObject().remove(new TicketId(task.executionId(), task.attempt()));
+            return false;
+        }
+        return accepted;
+    }
+
+    @SuppressWarnings("ReferenceEquality") // The record identity must survive publication.
+    private boolean retryIsLive(ExecutionRecord record, InvocationTask task, FunctionGeneration generation) {
+        if (generation == null || !generation.equals(capacityRegistry.activeGeneration(task.functionName()))) return false;
+        // The null store exists only for legacy direct-construction tests.
+        if (executions == null) return true;
+        if (record == null || executions.getOrNull(task.executionId()) != record) return false;
+        synchronized (record) {
+            return !record.isTerminal() && record.task().attempt() == task.attempt()
+                    && (record.currentGeneration() == null || generation.equals(record.currentGeneration()));
+        }
     }
 
     @Override
@@ -111,17 +150,16 @@ public final class EngineInvocationEnqueuer implements InvocationEnqueuer, Retry
                 && engine.getObject().isQueueFull(functionName);
     }
 
-    private boolean admitDirect(InvocationTask task) {
+    private boolean admitDirect(InvocationTask task, Instant notBefore, FunctionGeneration generation) {
         int cap = task.functionSpec() != null && task.functionSpec().queueSize() != null
                 ? Math.max(1, task.functionSpec().queueSize())
                 : Integer.MAX_VALUE;
-        FunctionGeneration generation = capacityRegistry.activeGeneration(task.functionName());
         if (generation == null) {
             return false;
         }
         Instant now = clock.instant();
         TicketId id = new TicketId(task.executionId(), task.attempt());
-        SchedulingTicket ticket = new SchedulingTicket(id, generation, sequence.getAsLong(), now, now, null);
+        SchedulingTicket ticket = new SchedulingTicket(id, generation, sequence.getAsLong(), now, notBefore, null);
         // The engine re-checks the generation under its gate, so a removal that completed after
         // the lookup above refuses this ticket instead of stranding it.
         return engine.getObject().enqueue(new PendingEntry(ticket, task), cap);

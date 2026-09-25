@@ -144,7 +144,7 @@ class SchedulerModelTest {
         };
         // A real retry: the coordinator's next attempt becomes one more ticket in this same
         // engine, under id (executionId, attempt).
-        RetryScheduler retry = task -> engineRef.get().enqueue(new PendingEntry(
+        RetryScheduler retry = (task, due, rejected) -> engineRef.get().enqueue(new PendingEntry(
                 new SchedulingTicket(new TicketId(task.executionId(), task.attempt()),
                         generations.get(task.functionName()), sequenceCursor++, clock.instant(),
                         clock.instant(), null), task));

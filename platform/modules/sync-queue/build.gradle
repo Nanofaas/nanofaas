@@ -19,12 +19,16 @@ dependencies {
     // on their test classpath. async-queue and sync-queue now share one classpath by design —
     // the ambiguity this comment used to warn about (two schedulers, two WorkloadCapacityController
     // beans) is exactly what SchedulerConfiguration's single-bean composition removes.
-    implementation project(':control-plane')
+    // compileOnly, not implementation: :control-plane is the host that loads this module, so a
+    // runtime edge would pack its own plain jar into its bootJar (BOOT-INF/lib) as a duplicate
+    // of BOOT-INF/classes.
+    compileOnly project(':control-plane')
     implementation project(':execution-runtime')
 
     implementation 'org.springframework.boot:spring-boot-starter'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
+    testImplementation project(':control-plane')
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-webflux'
     testImplementation project(':control-plane-modules:runtime-config')

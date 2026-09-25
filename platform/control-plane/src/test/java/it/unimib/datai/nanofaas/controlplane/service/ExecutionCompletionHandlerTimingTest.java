@@ -55,7 +55,7 @@ class ExecutionCompletionHandlerTimingTest {
 
     @Test
     void perAttemptWait_serviceTime_andTotalDuration_areRecordedSeparatelyAcrossRetries() {
-        when(enqueuer.enqueue(any())).thenReturn(true);
+        when(enqueuer.enqueue(any(), any(), any())).thenReturn(true);
         FunctionSpec spec = spec("fn", 3);
         MutableClock clock = new MutableClock(1_000_000L, 0L);
         ExecutionRecord executionRecord = new ExecutionRecord("exec", task("exec", spec, clock), clock.source());
@@ -65,22 +65,23 @@ class ExecutionCompletionHandlerTimingTest {
         clock.advanceMillis(5);
         executionRecord.markRunning();
         clock.advanceMillis(10);
-        completionHandler.completeExecution("exec", InvocationResult.error("E", "attempt 1"));
+        completionHandler.completeExecution("exec", new it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult(
+                InvocationResult.error("E", "attempt 1"), false, null, clock.instant().plusSeconds(1)), 1);
         assertThat(executionRecord.task().attempt()).isEqualTo(2);
 
-        // Attempt 2: wait 8ms, service 12ms, succeeds (finished at 35ms).
-        clock.advanceMillis(8);
+        // Attempt 2 waits the 1s upstream minimum, then serves for 12ms.
+        clock.advanceMillis(1_000);
         executionRecord.markRunning();
         clock.advanceMillis(12);
         completionHandler.completeExecution("exec", InvocationResult.success("ok"));
 
         // Three separate measures, one sample each:
-        //  - total: 5 + 10 + 8 + 12 ms, i.e. 35ms from the ORIGINAL admission,
+        //  - total: 5 + 10 + 1000 + 12 ms, i.e. 1027ms from the ORIGINAL admission,
         //  - service: 12ms, the final attempt's dispatch-to-completion,
-        //  - wait: 8ms, the final attempt's enqueue-to-dispatch.
-        assertThat(metrics.e2eLatency("fn").totalTime(TimeUnit.MILLISECONDS)).isEqualTo(35.0);
+        //  - wait: 1000ms, the final attempt's enqueue-to-dispatch.
+        assertThat(metrics.e2eLatency("fn").totalTime(TimeUnit.MILLISECONDS)).isEqualTo(1027.0);
         assertThat(metrics.latency("fn").totalTime(TimeUnit.MILLISECONDS)).isEqualTo(12.0);
-        assertThat(metrics.queueWait("fn").totalTime(TimeUnit.MILLISECONDS)).isEqualTo(8.0);
+        assertThat(metrics.queueWait("fn").totalTime(TimeUnit.MILLISECONDS)).isEqualTo(1000.0);
         assertThat(metrics.e2eLatency("fn").count()).isEqualTo(1);
         assertThat(metrics.latency("fn").count()).isEqualTo(1);
         assertThat(metrics.queueWait("fn").count()).isEqualTo(1);
@@ -118,7 +119,7 @@ class ExecutionCompletionHandlerTimingTest {
 
     @Test
     void aRetryThatCannotBeScheduled_stillRecordsTheInvocationTotal() {
-        when(enqueuer.enqueue(any())).thenReturn(false); // queue full
+        when(enqueuer.enqueue(any(), any(), any())).thenReturn(false); // queue full
         FunctionSpec spec = spec("fn", 3);
         MutableClock clock = new MutableClock(1_000_000L, 0L);
         ExecutionRecord executionRecord = new ExecutionRecord("exec", task("exec", spec, clock), clock.source());
@@ -152,7 +153,7 @@ class ExecutionCompletionHandlerTimingTest {
         clock.advanceMillis(7);
         executionRecord.markRunning();
         clock.advanceMillis(3);
-        when(enqueuer.enqueue(any())).thenReturn(true);
+        when(enqueuer.enqueue(any(), any(), any())).thenReturn(true);
         completionHandler.completeExecution("exec", InvocationResult.error("E", "attempt 1"));
 
         // The retry replaced the task (and its enqueuedAt), but not the invocation's admission.

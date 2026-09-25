@@ -1,0 +1,409 @@
+{
+  "status": "found",
+  "symbol": {
+    "uid": "Class:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher",
+    "name": "CallbackDispatcher",
+    "kind": "Class",
+    "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java",
+    "startLine": 28,
+    "endLine": 290,
+    "bean": {
+      "framework": "spring",
+      "role": "component",
+      "annotation": "org.springframework.stereotype.Component"
+    }
+  },
+  "epistemic": "exact",
+  "incoming": {
+    "calls": [
+      {
+        "uid": "Class:sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/RuntimeSoakMetricsTest.java:RuntimeSoakMetricsTest",
+        "name": "RuntimeSoakMetricsTest",
+        "filePath": "sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/RuntimeSoakMetricsTest.java"
+      },
+      {
+        "uid": "Constructor:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.CallbackDispatcher#2~CallbackClient,ThreadPoolExecutor",
+        "name": "CallbackDispatcher",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Constructor:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.CallbackDispatcher#2~CallbackClient,int",
+        "name": "CallbackDispatcher",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Constructor:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.CallbackDispatcher#3",
+        "name": "CallbackDispatcher",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Constructor:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.CallbackDispatcher#5",
+        "name": "CallbackDispatcher",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Constructor:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.CallbackDispatcher#6~CallbackClient,RuntimeMetricsFilter,int,int,long,int",
+        "name": "CallbackDispatcher",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Constructor:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.CallbackDispatcher#6~CallbackClient,ThreadPoolExecutor,RuntimeMetricsFilter,int,long,int",
+        "name": "CallbackDispatcher",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Constructor:sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CorpusRuntimeDriver.java:CorpusRuntimeDriver.CorpusRuntimeDriver#1",
+        "name": "CorpusRuntimeDriver",
+        "filePath": "sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CorpusRuntimeDriver.java"
+      },
+      {
+        "uid": "Method:sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherBoundedSerializationTest.java:CallbackDispatcherBoundedSerializationTest.abortsPathologicalCallbackSerializationBeforeQueueing#0",
+        "name": "abortsPathologicalCallbackSerializationBeforeQueueing",
+        "filePath": "sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherBoundedSerializationTest.java"
+      },
+      {
+        "uid": "Method:sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherLimitsTest.java:CallbackDispatcherLimitsTest.boundedStopReleasesRunningAndQueuedReservations#0",
+        "name": "boundedStopReleasesRunningAndQueuedReservations",
+        "filePath": "sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherLimitsTest.java"
+      },
+      {
+        "uid": "Method:sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherLimitsTest.java:CallbackDispatcherLimitsTest.legacySubmitAlsoReservesTheFiniteCallbackByteBudget#0",
+        "name": "legacySubmitAlsoReservesTheFiniteCallbackByteBudget",
+        "filePath": "sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherLimitsTest.java"
+      },
+      {
+        "uid": "Method:sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherLimitsTest.java:CallbackDispatcherLimitsTest.rejectsAnOversizedSerializedCallbackBeforeQueueing#0",
+        "name": "rejectsAnOversizedSerializedCallbackBeforeQueueing",
+        "filePath": "sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherLimitsTest.java"
+      },
+      {
+        "uid": "Method:sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherLimitsTest.java:CallbackDispatcherLimitsTest.reservesCallbackCountAndBytesBeforeHandlerAndReleasesThemExactlyOnce#0",
+        "name": "reservesCallbackCountAndBytesBeforeHandlerAndReleasesThemExactlyOnce",
+        "filePath": "sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherLimitsTest.java"
+      },
+      {
+        "uid": "Method:sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherLimitsTest.java:CallbackDispatcherLimitsTest.submittedReservationIsOwnedUntilPhysicalCallbackExit#0",
+        "name": "submittedReservationIsOwnedUntilPhysicalCallbackExit",
+        "filePath": "sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherLimitsTest.java"
+      },
+      {
+        "uid": "Method:sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherTest.java:CallbackDispatcherTest.shutdown_waitsForRunningCallbacksToFinish#0",
+        "name": "shutdown_waitsForRunningCallbacksToFinish",
+        "filePath": "sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherTest.java"
+      },
+      {
+        "uid": "Method:sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherTest.java:CallbackDispatcherTest.submit_delegatesToCallbackClient#0",
+        "name": "submit_delegatesToCallbackClient",
+        "filePath": "sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherTest.java"
+      },
+      {
+        "uid": "Method:sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherTest.java:CallbackDispatcherTest.submit_dispatchesMultipleCallbacksConcurrently#0",
+        "name": "submit_dispatchesMultipleCallbacksConcurrently",
+        "filePath": "sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherTest.java"
+      },
+      {
+        "uid": "Method:sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherTest.java:CallbackDispatcherTest.submit_returnsFalseWhenQueueIsFull#0",
+        "name": "submit_returnsFalseWhenQueueIsFull",
+        "filePath": "sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherTest.java"
+      },
+      {
+        "uid": "Method:sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/InvokeControllerTest.java:InvokeControllerTest.invoke_withDispatchAttemptHeader_sendsAttemptOnCallback#0",
+        "name": "invoke_withDispatchAttemptHeader_sendsAttemptOnCallback",
+        "filePath": "sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/InvokeControllerTest.java"
+      }
+    ],
+    "accesses": [
+      {
+        "uid": "Constructor:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/InvokeController.java:InvokeController.InvokeController#7",
+        "name": "InvokeController",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/InvokeController.java"
+      },
+      {
+        "uid": "Function:sdks/go/nanofaas/http_invoke_admission_test.go:assertAccountingUnchanged",
+        "name": "assertAccountingUnchanged",
+        "filePath": "sdks/go/nanofaas/http_invoke_admission_test.go"
+      },
+      {
+        "uid": "Function:sdks/go/nanofaas/http_invoke_admission_test.go:assertNoRuntimeLeaks",
+        "name": "assertNoRuntimeLeaks",
+        "filePath": "sdks/go/nanofaas/http_invoke_admission_test.go"
+      },
+      {
+        "uid": "Function:sdks/go/nanofaas/http_invoke_admission_test.go:occupyCallback",
+        "name": "occupyCallback",
+        "filePath": "sdks/go/nanofaas/http_invoke_admission_test.go"
+      },
+      {
+        "uid": "Function:sdks/go/nanofaas/http_invoke_limits_test.go:TestCallbackDeliveryExhaustionIsCountedAndReleasesResources",
+        "name": "TestCallbackDeliveryExhaustionIsCountedAndReleasesResources",
+        "filePath": "sdks/go/nanofaas/http_invoke_limits_test.go"
+      },
+      {
+        "uid": "Function:sdks/go/nanofaas/http_invoke_limits_test.go:TestHealthRemainsAvailableWhileInvokeCapacityIsSaturated",
+        "name": "TestHealthRemainsAvailableWhileInvokeCapacityIsSaturated",
+        "filePath": "sdks/go/nanofaas/http_invoke_limits_test.go"
+      },
+      {
+        "uid": "Function:sdks/go/nanofaas/http_invoke_limits_test.go:TestInvokeCancellationRequestsHandlerStopAndEmitsCanonicalCallback",
+        "name": "TestInvokeCancellationRequestsHandlerStopAndEmitsCanonicalCallback",
+        "filePath": "sdks/go/nanofaas/http_invoke_limits_test.go"
+      },
+      {
+        "uid": "Function:sdks/go/nanofaas/http_invoke_limits_test.go:TestInvokeRejectsCallbackSaturationBeforeHandler",
+        "name": "TestInvokeRejectsCallbackSaturationBeforeHandler",
+        "filePath": "sdks/go/nanofaas/http_invoke_limits_test.go"
+      },
+      {
+        "uid": "Function:sdks/go/nanofaas/http_invoke_limits_test.go:TestInvokeReturnsStoppingWhenDispatcherClosesAfterAdmission",
+        "name": "TestInvokeReturnsStoppingWhenDispatcherClosesAfterAdmission",
+        "filePath": "sdks/go/nanofaas/http_invoke_limits_test.go"
+      },
+      {
+        "uid": "Function:sdks/go/nanofaas/runtime.go:NewRuntime",
+        "name": "NewRuntime",
+        "filePath": "sdks/go/nanofaas/runtime.go"
+      },
+      {
+        "uid": "Method:sdks/go/nanofaas/callback_dispatcher.go:CallbackDispatcher.SubmitReserved#6",
+        "name": "SubmitReserved",
+        "filePath": "sdks/go/nanofaas/callback_dispatcher.go"
+      },
+      {
+        "uid": "Method:sdks/go/nanofaas/callback_dispatcher.go:CallbackReservation.Release#0",
+        "name": "Release",
+        "filePath": "sdks/go/nanofaas/callback_dispatcher.go"
+      },
+      {
+        "uid": "Method:sdks/go/nanofaas/http_invoke.go:Runtime.handleInvoke#2",
+        "name": "handleInvoke",
+        "filePath": "sdks/go/nanofaas/http_invoke.go"
+      },
+      {
+        "uid": "Method:sdks/go/nanofaas/http_invoke.go:Runtime.handleInvokeResult#7",
+        "name": "handleInvokeResult",
+        "filePath": "sdks/go/nanofaas/http_invoke.go"
+      },
+      {
+        "uid": "Method:sdks/go/nanofaas/http_invoke.go:Runtime.submitCallback#3",
+        "name": "submitCallback",
+        "filePath": "sdks/go/nanofaas/http_invoke.go"
+      },
+      {
+        "uid": "Method:sdks/go/nanofaas/http_invoke.go:Runtime.submitReservedCallback#4",
+        "name": "submitReservedCallback",
+        "filePath": "sdks/go/nanofaas/http_invoke.go"
+      },
+      {
+        "uid": "Method:sdks/go/nanofaas/server.go:Runtime.Start#1",
+        "name": "Start",
+        "filePath": "sdks/go/nanofaas/server.go"
+      },
+      {
+        "uid": "Method:sdks/go/nanofaas/server.go:Runtime.stop#1",
+        "name": "stop",
+        "filePath": "sdks/go/nanofaas/server.go"
+      }
+    ]
+  },
+  "outgoing": {
+    "has_method": [
+      {
+        "uid": "Constructor:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.CallbackDispatcher#2~CallbackClient,ThreadPoolExecutor",
+        "name": "CallbackDispatcher",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Constructor:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.CallbackDispatcher#2~CallbackClient,int",
+        "name": "CallbackDispatcher",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Constructor:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.CallbackDispatcher#3",
+        "name": "CallbackDispatcher",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Constructor:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.CallbackDispatcher#5",
+        "name": "CallbackDispatcher",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Constructor:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.CallbackDispatcher#6~CallbackClient,RuntimeMetricsFilter,int,int,long,int",
+        "name": "CallbackDispatcher",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Constructor:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.CallbackDispatcher#6~CallbackClient,ThreadPoolExecutor,RuntimeMetricsFilter,int,long,int",
+        "name": "CallbackDispatcher",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Constructor:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.CallbackDispatcher#7",
+        "name": "CallbackDispatcher",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Method:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.execute#2",
+        "name": "execute",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Method:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.newExecutor#1",
+        "name": "newExecutor",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Method:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.pendingCallbackBytes#0",
+        "name": "pendingCallbackBytes",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Method:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.pendingCallbackCount#0",
+        "name": "pendingCallbackCount",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Method:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.recordRejection#1",
+        "name": "recordRejection",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Method:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.releaseCancelled#1",
+        "name": "releaseCancelled",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Method:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.reserveInvocation#0",
+        "name": "reserveInvocation",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Method:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.shutdown#0",
+        "name": "shutdown",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Method:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.submit#3",
+        "name": "submit",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Method:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.submit#4",
+        "name": "submit",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Method:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.submit#5",
+        "name": "submit",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Method:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.tryReserve#1",
+        "name": "tryReserve",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      }
+    ],
+    "has_property": [
+      {
+        "uid": "Property:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.DEFAULT_MAX_CALLBACK_BYTES",
+        "name": "DEFAULT_MAX_CALLBACK_BYTES",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Property:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.DEFAULT_MAX_PENDING_BYTES",
+        "name": "DEFAULT_MAX_PENDING_BYTES",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Property:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.QUEUE_CAPACITY",
+        "name": "QUEUE_CAPACITY",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Property:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.SHUTDOWN_TIMEOUT_SECONDS",
+        "name": "SHUTDOWN_TIMEOUT_SECONDS",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Property:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.THREAD_COUNTER",
+        "name": "THREAD_COUNTER",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Property:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.callbackClient",
+        "name": "callbackClient",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Property:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.capacityLock",
+        "name": "capacityLock",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Property:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.executor",
+        "name": "executor",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Property:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.log",
+        "name": "log",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Property:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.maxCallbackBytes",
+        "name": "maxCallbackBytes",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      },
+      {
+        "uid": "Property:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java:CallbackDispatcher.maxPendingCallbackBytes",
+        "name": "maxPendingCallbackBytes",
+        "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcher.java"
+      }
+    ]
+  },
+  "typed_properties": [
+    {
+      "uid": "Property:sdks/go/nanofaas/callback_dispatcher.go:CallbackReservation.dispatcher",
+      "name": "dispatcher",
+      "filePath": "sdks/go/nanofaas/callback_dispatcher.go",
+      "declaredType": "CallbackDispatcher"
+    },
+    {
+      "uid": "Property:sdks/go/nanofaas/runtime.go:Runtime.callbackDispatcher",
+      "name": "callbackDispatcher",
+      "filePath": "sdks/go/nanofaas/runtime.go",
+      "declaredType": "CallbackDispatcher"
+    },
+    {
+      "uid": "Property:sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/InvokeController.java:InvokeController.callbackDispatcher",
+      "name": "callbackDispatcher",
+      "filePath": "sdks/java/src/main/java/it/unimib/datai/nanofaas/sdk/runtime/InvokeController.java",
+      "declaredType": "CallbackDispatcher"
+    },
+    {
+      "uid": "Property:sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherLimitsTest.java:CallbackDispatcherLimitsTest.dispatcher",
+      "name": "dispatcher",
+      "filePath": "sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherLimitsTest.java",
+      "declaredType": "CallbackDispatcher"
+    },
+    {
+      "uid": "Property:sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherTest.java:CallbackDispatcherTest.dispatcher",
+      "name": "dispatcher",
+      "filePath": "sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CallbackDispatcherTest.java",
+      "declaredType": "CallbackDispatcher"
+    },
+    {
+      "uid": "Property:sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CorpusRuntimeDriver.java:CorpusRuntimeDriver.dispatcher",
+      "name": "dispatcher",
+      "filePath": "sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/CorpusRuntimeDriver.java",
+      "declaredType": "CallbackDispatcher"
+    },
+    {
+      "uid": "Property:sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/InvokeControllerTest.java:InvokeControllerTest.callbackDispatcher",
+      "name": "callbackDispatcher",
+      "filePath": "sdks/java/src/test/java/it/unimib/datai/nanofaas/sdk/runtime/InvokeControllerTest.java",
+      "declaredType": "CallbackDispatcher"
+    }
+  ],
+  "processes": []
+}

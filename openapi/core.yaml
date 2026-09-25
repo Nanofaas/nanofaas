@@ -437,7 +437,12 @@ components:
           type: integer
           minimum: 0
           default: 3
-          description: Number of retries for failed invocations (default 3)
+          description: |
+            Number of retries for failed invocations (default 3; 0 disables retries).
+            Retries use capped exponential backoff with jitter. Unmarked upstream 429 and 503 responses may
+            extend that delay through Retry-After. Function-selected status responses are returned as function
+            results. Queue deadlines and maximum execution lifetime can end an invocation before another
+            attempt is eligible; a caller's waiter timeout does not cancel the shared execution.
         endpointUrl:
           type: string
           description: HTTP endpoint of the function, required for EXTERNAL execution mode

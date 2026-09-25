@@ -148,9 +148,14 @@ public final class SchedulerSwitchBenchmark {
     private static final List<Long> baselineSwitchPauses = new ArrayList<>();
 
     private static PrintStream out = System.out;
+    private static int delayedPercent;
 
     public static void main(String[] args) throws Exception {
         Map<String, String> opts = parseArgs(args);
+        delayedPercent = intOpt(opts, "delayed-percent", 0);
+        if (delayedPercent != 0 && delayedPercent != 50 && delayedPercent != 100) {
+            throw new IllegalArgumentException("--delayed-percent must be 0, 50 or 100");
+        }
         Path budgetsFile = Path.of(opts.getOrDefault("budgets", "budgets.json"));
         Budgets budgets = Budgets.read(budgetsFile);
         int repetitions = intOpt(opts, "repetitions", budgets.repetitions());
@@ -168,6 +173,9 @@ public final class SchedulerSwitchBenchmark {
         }
 
         emitHeader(budgetsFile, budgets);
+        for (int backlog : backlogs) {
+            verifyDelayedDrain(backlog);
+        }
 
         if (parts.contains("backlog")) {
             new SwitchPauseSweep(backlogs, repetitions).run();
@@ -190,6 +198,76 @@ public final class SchedulerSwitchBenchmark {
         out.flush();
     }
 
+    private static Instant eligibility(long sequence, Instant enqueuedAt) {
+        return sequence % 100 < delayedPercent ? enqueuedAt.plusSeconds(1) : enqueuedAt;
+    }
+
+    /** Check identity and reservations with controlled time before collecting any timings. */
+    private static void verifyDelayedDrain(int backlog) {
+        Instant admittedAt = Instant.parse("2026-09-24T00:00:00Z");
+        Instant[] now = {admittedAt};
+        Clock clock = new Clock() {
+            public java.time.ZoneId getZone() { return java.time.ZoneOffset.UTC; }
+            public Clock withZone(java.time.ZoneId zone) { return this; }
+            public Instant instant() { return now[0]; }
+        };
+        FunctionCapacityRegistry capacity = new FunctionCapacityRegistry();
+        capacity.register("check", 1);
+        FunctionGeneration generation = capacity.activeGeneration("check");
+        PendingWorkStore store = new PendingWorkStore(Math.max(backlog, 1));
+        Set<String> completed = new HashSet<>();
+        EngineDispatch dispatch = new EngineDispatch() {
+            public DispatchOwnership tryAcquire(SchedulingTicket ticket) {
+                return capacity.tryAcquireLease(ticket.generation(), ignored -> {});
+            }
+            public void submit(InvocationTask task) {
+                long sequence = Long.parseLong(task.executionId());
+                if (now[0].isBefore(eligibility(sequence, admittedAt))
+                        || !completed.add(task.executionId())) {
+                    throw new AssertionError("early or duplicate dispatch: " + task.executionId());
+                }
+                task.dispatchLease().release();
+            }
+            public void expired(InvocationTask task) { throw new AssertionError("unexpected expiry"); }
+            public void removed(InvocationTask task) { throw new AssertionError("unexpected removal"); }
+            public void rejected(InvocationTask task, Throwable failure) {
+                throw new AssertionError("unexpected rejection", failure);
+            }
+        };
+        SchedulerEngine engine = new SchedulerEngine(store, new StrategyRegistry(List.of(
+                new PerFunctionSchedulingStrategy(), new SharedQueueSchedulingStrategy())),
+                PER_FUNCTION, dispatch, ignored -> true, ignored -> true, clock, System::nanoTime);
+        try {
+            int ready = 0;
+            for (int sequence = 0; sequence < backlog; sequence++) {
+                String id = Integer.toString(sequence);
+                Instant due = eligibility(sequence, admittedAt);
+                if (due.equals(admittedAt)) ready++;
+                SchedulingTicket ticket = new SchedulingTicket(new TicketId(id, 1), generation,
+                        sequence, admittedAt, due, due.plusSeconds(10));
+                InvocationTask task = new InvocationTask(id, "check", null, null, null, null,
+                        admittedAt, 1, InvocationKind.ASYNC);
+                if (!engine.enqueue(new PendingEntry(ticket, task))) {
+                    throw new AssertionError("correctness admission refused");
+                }
+            }
+            engine.switchTo(SHARED_QUEUE);
+            for (int i = 0; i <= backlog; i++) engine.tick();
+            if (completed.size() != ready) throw new AssertionError("ready population mismatch");
+            now[0] = admittedAt.plusSeconds(1);
+            engine.switchTo(PER_FUNCTION);
+            for (int i = 0; i <= backlog; i++) engine.tick();
+            if (completed.size() != backlog || store.reservedCount() != 0) {
+                throw new AssertionError("drain lost work or retained reservations");
+            }
+            out.println("{\"kind\":\"correctness\",\"backlog\":" + backlog
+                    + ",\"delayedPercent\":" + delayedPercent + ",\"completed\":" + completed.size()
+                    + ",\"remainingReservations\":" + store.reservedCount() + "}");
+        } finally {
+            engine.close();
+        }
+    }
+
     // ==================================================================
     // Header and summary
     // ==================================================================
@@ -199,6 +277,8 @@ public final class SchedulerSwitchBenchmark {
         json.append("{\"kind\":\"header\"")
                 .append(",\"campaign\":\"scheduler-switching-2026-09\"")
                 .append(",\"task\":\"12c\"")
+                .append(",\"delayedPercent\":").append(delayedPercent)
+                .append(",\"intentionalWaitMs\":").append(delayedPercent == 0 ? 0 : 1000)
                 .append(",\"startedAt\":\"").append(Instant.now()).append('"')
                 .append(",\"sha\":\"").append(prop("nanofaas.sha", "unknown")).append('"')
                 .append(",\"artifact\":\"").append(prop("nanofaas.artifact", "jvm")).append('"')
@@ -829,8 +909,9 @@ public final class SchedulerSwitchBenchmark {
                         ? InvocationKind.SYNC : InvocationKind.ASYNC;
                 TicketId ticketId = new TicketId(executionId, attempt);
                 Instant now = Instant.now();
+                Instant due = eligibility(sequence, now);
                 SchedulingTicket ticket = new SchedulingTicket(ticketId, generation, sequence, now,
-                        now, now.plusMillis(profile.contractMs));
+                        due, due.plusMillis(profile.contractMs));
                 InvocationRequest request = profile.payloadBytes(index) == 0 ? null
                         : new InvocationRequest(new byte[profile.payloadBytes(index)], Map.of());
                 InvocationTask task = new InvocationTask(executionId, function, null, request, null,

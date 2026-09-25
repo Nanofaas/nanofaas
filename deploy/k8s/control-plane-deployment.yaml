@@ -17,6 +17,13 @@ spec:
       containers:
         - name: control-plane
           image: ghcr.io/miciav/nanofaas/control-plane:v0.22.0
+          # One event loop for the 500m CPU limit below, by the chart's rule (the limit
+          # rounded up, at least one; see nanofaas.controlPlane.ioWorkerCount in the chart).
+          # reactor-netty's own default is four loops regardless of the quota. Passed twice:
+          # a native image reads this argument, a JVM image reads JAVA_TOOL_OPTIONS and
+          # ignores the argument, which lands after -jar. Keep both in step with the limit.
+          args:
+            - "-Dreactor.netty.ioWorkerCount=1"
           ports:
             - containerPort: 8080
             - containerPort: 8081
@@ -25,6 +32,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            # Function pods call back here; application.yml's default names the
+            # `default` namespace, which this manifest does not deploy into.
+            - name: NANOFAAS_K8S_CALLBACKURL
+              value: http://control-plane.nanofaas.svc.cluster.local:8080/v1/internal/executions
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Dreactor.netty.ioWorkerCount=1"
           resources:
             requests:
               cpu: 250m

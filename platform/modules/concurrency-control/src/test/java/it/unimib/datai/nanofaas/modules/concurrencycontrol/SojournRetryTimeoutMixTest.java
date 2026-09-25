@@ -60,7 +60,7 @@ class SojournRetryTimeoutMixTest {
         metrics.registerFunction("mix");
         ExecutionStore store = new ExecutionStore();
         RetryScheduler enqueuer = mock(RetryScheduler.class);
-        when(enqueuer.enqueue(any())).thenReturn(true);
+        when(enqueuer.enqueue(any(), any(), any())).thenReturn(true);
         ExecutionCompletionHandler handler = new ExecutionCompletionHandler(
                 store, enqueuer, mock(DispatcherRouter.class), metrics);
         SteppedClock clock = new SteppedClock();

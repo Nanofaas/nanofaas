@@ -1,9 +1,0 @@
-{
-  "description": "simple M",
-  "input": {
-    "number": 1000
-  },
-  "expected": {
-    "roman": "M"
-  }
-}

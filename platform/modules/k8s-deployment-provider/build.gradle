@@ -16,13 +16,17 @@ dependencies {
     implementation project(':control-plane-spi')
 
     implementation 'org.springframework.boot:spring-boot-starter'
-    implementation 'io.fabric8:kubernetes-client:7.8.0'
-    implementation 'io.fabric8:kubernetes-httpclient-vertx:7.8.0'
+    // The JDK HTTP client, not the Vert.x default: Vert.x is a second Netty stack beside
+    // reactor-netty, with its own event loops and blocked-thread checker.
+    implementation('io.fabric8:kubernetes-client:7.9.0') {
+        exclude group: 'io.fabric8', module: 'kubernetes-httpclient-vertx'
+    }
+    implementation 'io.fabric8:kubernetes-httpclient-jdk:7.9.0'
 
     testImplementation project(':control-plane')
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-webflux'
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.0'
-    testImplementation 'io.fabric8:kubernetes-server-mock:7.8.0'
+    testImplementation 'io.fabric8:kubernetes-server-mock:7.9.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }

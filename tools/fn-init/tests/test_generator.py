@@ -177,6 +177,14 @@ def test_generate_java_payload_format(tmp_path):
     assert "input" in payload
     assert "expected" in payload
 
+def test_generate_missing_input_payload_expects_the_templates_422(tmp_path):
+    # Every template handler answers missing text with a 422 envelope; without the
+    # declared status `nanofaas fn test` fails the scaffold's own payload.
+    out = tmp_path / "greet"
+    generate_function("greet", "java", out, vscode=False, placeholders=JAVA_PLACEHOLDERS)
+    payload = json.loads((out / "payloads" / "missing-input.json").read_text())
+    assert payload["expectedStatusCode"] == 422
+
 def test_generate_java_vscode(tmp_path):
     out = tmp_path / "greet"
     generate_function("greet", "java", out, vscode=True, placeholders=JAVA_PLACEHOLDERS)

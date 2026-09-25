@@ -11,11 +11,13 @@ export NANOFAAS_ROOT="$(pwd)"   # nanolab commands below read nanoFaaS source fr
 # Canonical control-plane orchestration wrapper
 (cd ../nanolab && ./nanolab.sh --help)
 
-# Build all modules
-./gradlew build
+# Build all modules. The containerd provider's dependencies are not on Maven Central:
+# stage them once with scripts/bootstrap-containerd-dependencies.sh (docs/deployment-containerd.md),
+# then pass the staged repo, or compilation fails with "Could not find io.nanofaas:containerd-java-cni".
+./gradlew build -PcontainerdMavenLocal=true -Dmaven.repo.local="$PWD/.gradle/containerd-m2"
 
 # Run all tests (unit + integration; E2E validation is owned by NanoLab)
-./gradlew test --no-parallel
+./gradlew test --no-parallel -PcontainerdMavenLocal=true -Dmaven.repo.local="$PWD/.gradle/containerd-m2"
 
 # E2E scenarios (run from NanoLab checkout)
 # Container validation (requires Docker)

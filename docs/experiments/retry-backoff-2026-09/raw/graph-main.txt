@@ -1,0 +1,36 @@
+LISTING CAPPED: the changed-symbol list was capped, so it does not name every changed symbol. The counts and risk level still cover all of them.
+
+Changes: 470 files, 3284 symbols
+Affected processes: 486
+Risk level: critical
+
+Changed symbols:
+  Section Repository Guidelines → AGENTS.md
+  Section Coding Style & Naming Conventions → AGENTS.md
+  Section Python tests for experiments → CLAUDE.md
+  Section Project Constraints → CLAUDE.md
+  Section NanoFaaS → README.md
+  Section Build and run → README.md
+  Section NanoFaaS documentation → docs/README.md
+  Section Guides → docs/README.md
+  Section ADR 0001 — Execution binding lifecycle contract → docs/architecture/0001-execution-lifecycle-contract.md
+  Section 13. P22: bean ownership, architectural boundaries, and the separations kept → docs/architecture/0001-execution-lifecycle-contract.md
+  Section 13.5 Separations kept, and the evaluations now closed → docs/architecture/0001-execution-lifecycle-contract.md
+  Section ADR 0002 — Manual scheduler switching: baseline contract and lock order → docs/architecture/0002-manual-scheduler-switching.md
+  Section 1. Context and problem → docs/architecture/0002-manual-scheduler-switching.md
+  Section 2. Baseline profile mapping → docs/architecture/0002-manual-scheduler-switching.md
+  Section 3. Lock order: the index gate, the record monitor, and `DispatchCapacity` → docs/architecture/0002-manual-scheduler-switching.md
+... and 3269 more
+
+Affected execution flows:
+  • Phase → Close (10 steps) — changed: phase, expired, pass, runOnce, loop, start, concludeQueued
+  • Run → ExecutionId (10 steps) — changed: phase, run, expired, pass, runOnce, loop, start, concludeQueued
+  • Run → ReleaseQueuedInput (10 steps) — changed: phase, run, expired, pass, runOnce, loop, start, concludeQueued
+  • Run → Task (10 steps) — changed: run, execute, expired, pass, runOnce, loop, start, concludeQueued
+  • Run → Attempt (10 steps) — changed: run, execute, expired, pass, runOnce, loop, start, concludeQueued
+  • Main → Forget (9 steps) — changed: run, forget, expired, execute, main, pass, runOnce, loop, start
+  • Main → TicketId (9 steps) — changed: TicketId, run, expired, execute, main, pass, runOnce, loop, start
+  • Run → Expired (8 steps) — changed: phase, run, expired, pass, runOnce, loop, start
+  • Main → Expired (8 steps) — changed: run, execute, main, pass, runOnce, loop, start, expired
+  • JoinOrStartWakeUp → CompleteExceptionally (8 steps) — changed: start, close, joinOrStartWakeUp, submit
+... and 476 more

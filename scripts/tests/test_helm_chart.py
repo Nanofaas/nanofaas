@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 import subprocess
 from pathlib import Path
@@ -100,6 +101,51 @@ def test_invocation_capacity_env_values_render_as_integers():
     )
     assert rendered, "no invocation-capacity env vars found in the deployment"
     assert [value for _, value in rendered if not value.isdigit()] == []
+
+
+def test_io_worker_count_reaches_both_jvm_and_native_images():
+    """A native binary ignores JAVA_TOOL_OPTIONS, so the count must also be an argument.
+
+    Before the argument existed a native control plane at a one-core limit ran
+    reactor-netty's default four event loops, not the one the chart derives.
+    """
+    for extra, expected in [((), "1"), (("--set", "controlPlane.resources.limits.cpu=1500m"), "2"),
+                            (("--set", "controlPlane.jvm.ioWorkerCount=3"), "3")]:
+        out = render("templates/control-plane-deployment.yaml", *extra)
+        flag = f'-Dreactor.netty.ioWorkerCount={expected}"'
+        assert re.search(r"args:\n\s+- \"" + re.escape(flag), out), out
+        assert re.search(r"name: JAVA_TOOL_OPTIONS\n\s+value: \"" + re.escape(flag), out), out
+
+
+def test_callback_url_targets_this_releases_service_and_namespace():
+    """Function pods call back on this URL; application.yml's default names `default`.
+
+    A release in the chart's own `nanofaas` namespace got the `default` URL, and every
+    callback from every function pod failed with an I/O error.
+    """
+    def callback(*extra):
+        out = render("templates/control-plane-deployment.yaml", *extra)
+        match = re.search(r"name: NANOFAAS_K8S_CALLBACKURL\n\s+value: \"([^\"]+)\"", out)
+        assert match, out
+        return match.group(1)
+
+    assert callback() == "http://control-plane.nanofaas.svc.cluster.local:8080/v1/internal/executions"
+    assert callback("--set", "namespace.name=faas", "--set", "controlPlane.service.name=cp",
+                    "--set", "controlPlane.service.ports.http=9090") \
+        == "http://cp.faas.svc.cluster.local:9090/v1/internal/executions"
+    assert callback("--set", "namespace.create=false", "--namespace", "team-a") \
+        == "http://control-plane.team-a.svc.cluster.local:8080/v1/internal/executions"
+    assert callback("--set", "controlPlane.callbackUrl=http://proxy:1/cb") == "http://proxy:1/cb"
+
+
+def test_raw_manifest_io_worker_count_matches_its_cpu_limit():
+    """deploy/k8s is static, so its loop count must track its own limit by the chart's rule."""
+    manifest = (REPO_ROOT / "deploy" / "k8s" / "control-plane-deployment.yaml").read_text()
+    cpu = re.search(r"limits:\n\s+cpu: \"?([0-9.]+m?)\"?", manifest).group(1)
+    cores = float(cpu[:-1]) / 1000 if cpu.endswith("m") else float(cpu)
+    expected = f"-Dreactor.netty.ioWorkerCount={max(1, math.ceil(cores))}"
+    assert re.search(r"args:\n\s+- \"" + re.escape(expected) + "\"", manifest), expected
+    assert re.search(r"name: JAVA_TOOL_OPTIONS\n\s+value: \"" + re.escape(expected) + "\"", manifest), expected
 
 
 def test_no_rendered_number_uses_scientific_notation():

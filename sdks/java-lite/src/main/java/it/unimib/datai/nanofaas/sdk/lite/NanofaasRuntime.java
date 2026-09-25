@@ -278,7 +278,7 @@ public final class NanofaasRuntime {
                 server.createContext("/health", new HealthHandler());
                 server.createContext("/metrics", new MetricsHandler(metrics.getRegistry()));
 
-                return new NanofaasRuntime(server, port, effectiveName, invokeHandler, callbackClient,
+                return new NanofaasRuntime(server, server.getAddress().getPort(), effectiveName, invokeHandler, callbackClient,
                         serverExecutor, ownsServerExecutor, shutdownTimeout, shutdownHooks);
             } catch (IOException e) {
                 cleanupPartialBuild(server, invokeHandler, callbackClient, serverExecutor,

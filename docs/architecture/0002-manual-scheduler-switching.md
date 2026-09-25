@@ -167,3 +167,30 @@ for. Task 13a's review round deleted them and recorded the ruling in `applicatio
 nowhere. The only `nanofaas.scheduler` key is `strategy`, and the only thing the admin API can
 change is the live strategy selection. The plan's own text still carries the two keys at lines
 570 and 818; both now carry this amendment inline. Do not re-add either key.
+
+
+## 7. Retry backoff amendment
+
+Retries use capped exponential backoff with jitter. Unmarked upstream 429 and 503 responses may
+extend that delay through Retry-After. Function-selected status responses are returned as function
+results. Queue deadlines and maximum execution lifetime can end an invocation before another
+attempt is eligible; a caller's waiter timeout does not cancel the shared execution.
+
+The engine owns one delayed `TreeSet`, ordered by eligibility instant and ticket
+sequence. `PendingWorkStore` remains the reservation and payload owner: a delayed
+ticket is pending but absent from both strategy indexes. Each pass promotes at
+most 64 eligible tickets through the active strategy's normal add operation,
+then permits selection. Switching rebuilds ready membership only; delayed work
+keeps its reservation and eligibility across the switch. Terminal removal,
+function removal and expiry retire either membership, with cleanup outside the gate.
+
+`SchedulerEngine.close()` stops the worker and retains pending work for restart.
+Spring destruction uses `dispose()`, which prohibits new admission and drains
+retained work. Disposal is distinct from an ordinary stop/start cycle.
+
+The record/gate lock discipline in §3 is unchanged. Retry preparation and attempt
+reset occur under the record monitor; publication occurs after releasing it, then
+revalidates terminal state and generation to cover expiry racing insertion. No
+record monitor, lifecycle callback, provider request or lease acquisition runs
+under the engine gate. The historical §4 hazard is resolved by this publication
+sequence; delayed timing does not reintroduce it.

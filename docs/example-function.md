@@ -59,12 +59,14 @@ nanofaas fn replicas get echo     # desired + ready replicas
 ```json
 {
   "name": "legacy-service",
+  "image": "legacy.example.com/transform:1",
   "executionMode": "EXTERNAL",
   "endpointUrl": "http://legacy.example.com/api/transform"
 }
 ```
 
-No image is needed: the control plane forwards every invocation to
+`image` is required by the `FunctionSpec` contract even here, although nothing
+is pulled or run from it: the control plane forwards every invocation to
 `endpointUrl` and relays the endpoint's response as the function output. The
 function must already be serving the `InvocationRequest` contract (`input` +
 `metadata`) on that URL. There is no lifecycle management — deleting the

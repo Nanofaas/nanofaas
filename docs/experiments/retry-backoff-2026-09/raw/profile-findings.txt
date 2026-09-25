@@ -1,0 +1,6 @@
+baseline
+Execution samples (top frame): Counter({'it/unimib/datai/nanofaas/modules/syncqueue/SharedQueueSchedulingStrategy$SharedQueueIndex.remove': 1, 'java/util/Comparator.lambda$comparingLong$6043328a$1': 1, 'it/unimib/datai/nanofaas/SchedulerSwitchBenchmark$Run$Driver.offer': 1, 'java/util/TreeMap.addEntryToEmptyMap': 1, 'sun/net/util/URLUtil.urlNoFragString': 1, 'java/util/DualPivotQuicksort.insertionSort': 1, 'it/unimib/datai/nanofaas/SchedulerSwitchBenchmark.percentile': 1, 'java/util/Arrays.copyOf': 1, 'java/util/Formatter$FormatSpecifier.printFloat': 1})
+Thread park events: Counter({'main': 32})
+candidate
+Execution samples (top frame): Counter({'jdk/internal/loader/BuiltinClassLoader.loadClassOrNull': 1, 'java/lang/invoke/InvokerBytecodeGenerator.methodSetup': 1, 'java/util/HashMap.clear': 1, 'it/unimib/datai/nanofaas/modules/asyncqueue/PerFunctionSchedulingStrategy$PerFunctionIndex.add': 1, 'java/util/concurrent/ConcurrentHashMap.transfer': 1, 'java/lang/invoke/StringConcatFactory$InlineHiddenClassStrategy$4.accept': 1, 'java/util/HashMap.putAll': 1, 'it/unimib/datai/nanofaas/SchedulerSwitchBenchmark$Run$Driver.run': 1, 'java.lang.invoke.LambdaForm$MH/0x0000003001091400.invoke': 1, 'java/util/stream/LongPipeline.toArray': 1, 'jdk/internal/misc/Unsafe.allocateUninitializedArray0': 1})
+Thread park events: Counter({'main': 32})

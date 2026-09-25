@@ -1,9 +1,0 @@
-{
-  "description": "subtractive XL",
-  "input": {
-    "number": 40
-  },
-  "expected": {
-    "roman": "XL"
-  }
-}

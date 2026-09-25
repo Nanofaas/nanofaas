@@ -304,19 +304,60 @@ be switched over HTTP. The same flag also gates the rest of the admin surface, s
 in native" and "the native image ships with its admin API off" describe two different builds of the
 same sources; the shipped default is off.
 
-## Retries without a queue module
+## Retry timing and configuration
 
-Retries do not depend on a queue module. With none loaded, the core hands the
-next attempt to a small bounded pool (2 core / 8 max threads, 256 queued) instead
-of leaving the record parked in `QUEUED` forever, which is what it used to do.
-The retry policy itself is unchanged: `maxRetries` and the retryable-error rules
-are the same in every profile.
+Retries use capped exponential backoff with jitter. Unmarked upstream 429 and 503 responses may
+extend that delay through Retry-After. Function-selected status responses are returned as function
+results. Queue deadlines and maximum execution lifetime can end an invocation before another
+attempt is eligible; a caller's waiter timeout does not cancel the shared execution.
 
-The pool is a fallback, not a queue: it does not enable the asynchronous
-`:enqueue` path, which still answers `501` without the `async-queue` module. If
-the pool cannot accept a retry (it is saturated), the invocation concludes as a
-terminal queue-full error rather than being silently dropped. The sizing is a
-compile-time constant with no configuration knob.
+`maxRetries` defaults to 3: one initial attempt and at most three additional attempts.
+Set it to 0 to disable retries. Retryability and attempt limits are the same across
+admission profiles; offloaded invocations retain their existing terminal policy.
+
+Configure startup durations through `nanofaas.retry.initial-backoff` (default `100ms`)
+and `nanofaas.retry.max-backoff` (default `2s`). Both must be positive finite durations,
+and the maximum must be at least the initial value; invalid settings fail startup.
+These are global startup settings, with no per-function or runtime update API.
+For Helm, use the existing environment override:
+
+```yaml
+controlPlane:
+  extraEnv:
+    - name: NANOFAAS_RETRY_INITIAL_BACKOFF
+      value: "100ms"
+    - name: NANOFAAS_RETRY_MAX_BACKOFF
+      value: "2s"
+```
+
+For retry ordinal `n` (starting at 1), the local base is
+`min(max-backoff, initial-backoff × 2^(n-1))`. Jitter selects a delay between
+half that base and the base, with a minimum of 1ns. With the defaults, the
+first three retries wait approximately 50–100ms, 100–200ms and 200–400ms;
+further retries eventually use the 1–2s range.
+
+A valid upstream `Retry-After` (delta seconds or HTTP date) is a minimum retry
+instant and is **not capped** by `max-backoff`. The later of the local backoff
+and that instant wins. Invalid or conflicting hints fall back to local backoff.
+Queued retries keep their reservation and spend the delay waiting in the queue;
+the delay consumes any remaining queue deadline and execution lifetime.
+For example, a 1s upstream hint can outlast a caller's shorter waiter budget.
+That caller stops waiting, while the shared execution can still retry and later
+be replayed with the same idempotency key if its other budgets permit.
+
+### Retries without a queue module
+
+Without a queue module, one owned timer schedules retries onto the bounded
+executor (2 core / 8 maximum threads, 256 queued). The direct retry owner retains
+at most 264 outstanding jobs across waiting timers and executor handoff. Queue
+profiles use their engine and do not create this fallback timer or executor.
+The bound is a compile-time constant.
+
+This does not enable public asynchronous admission: `:enqueue` still answers
+`501` without `async-queue`. If timer admission or the later executor handoff
+refuses a retry, the same execution finishes once with its original failure and
+releases retained input. Administrative expiry and owner shutdown remove delayed
+work; a caller's waiter timeout does not.
 
 ## Abandoned executions and administrative expiry
 

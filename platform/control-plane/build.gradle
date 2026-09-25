@@ -12,8 +12,8 @@ def selectedOptionalControlPlaneModuleProjects = rootProject.subprojects
 if (selectedOptionalControlPlaneModuleNames.contains('containerd-deployment-provider')) {
     dependencyManagement {
         dependencies {
-            dependency 'com.google.protobuf:protobuf-java:4.35.0'
-            dependency 'com.google.protobuf:protobuf-java-util:4.35.0'
+            dependency 'com.google.protobuf:protobuf-java:4.36.2'
+            dependency 'com.google.protobuf:protobuf-java-util:4.36.2'
         }
     }
 }
@@ -34,6 +34,9 @@ dependencies {
         runtimeOnly project(moduleProject.path)
     }
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
+    // reactor-netty ships only the linux-x86_64 epoll library; without this, aarch64 hosts
+    // silently fall back to NIO.
+    runtimeOnly 'io.netty:netty-transport-native-epoll::linux-aarch_64'
     implementation 'org.springframework.boot:spring-boot-starter-webclient'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'io.micrometer:micrometer-registry-prometheus'
@@ -88,6 +91,16 @@ tasks.named('test') {
 
 tasks.named('bootJar') {
     archiveFileName = 'app.jar'
+    // Nothing runs -Djarmode=tools: the Dockerfile unpacks the jar with `jar xf`.
+    includeTools = false
+    // Kept on the runtime classpath (tests, bootRun, native), dropped from the Linux image:
+    // JMS/Mail metrics with no JMS or Mail here, the macOS DNS resolver, and caffeine's
+    // compile-time annotations.
+    classpath = classpath.filter { jar ->
+        !(jar.name.startsWith('micrometer-jakarta9-')
+                || (jar.name.startsWith('netty-resolver-dns-') && jar.name.contains('macos'))
+                || jar.name.startsWith('error_prone_annotations-'))
+    }
 }
 
 tasks.named('jar') {

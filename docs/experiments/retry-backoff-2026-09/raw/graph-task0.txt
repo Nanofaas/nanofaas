@@ -1,0 +1,34 @@
+Changes: 94 files, 255 symbols
+Affected processes: 120
+Risk level: critical
+
+Changed symbols:
+  Section ADR 0002 — Manual scheduler switching: baseline contract and lock order → docs/architecture/0002-manual-scheduler-switching.md
+  Section 6. Amendment recorded by Task 13b: the switch-budget keys are not runtime configuration → docs/architecture/0002-manual-scheduler-switching.md
+  Section Invalid: the deployment providers are mutually exclusive. → docs/control-plane.md
+  Section Retries without a queue module → docs/control-plane.md
+  Section Abandoned executions and administrative expiry → docs/control-plane.md
+  Section Invocation ingress and retained-input measurement → docs/control-plane.md
+  Section Example functions → docs/example-function.md
+  Section Scale a managed deployment to zero → docs/example-function.md
+  Section EXTERNAL (passthrough to a hosted endpoint) → docs/example-function.md
+  Class SchedulerSwitchBenchmark → docs/experiments/scheduler-switching-2026-09/SchedulerSwitchBenchmark.java
+  Method main → docs/experiments/scheduler-switching-2026-09/SchedulerSwitchBenchmark.java
+  Method emitHeader → docs/experiments/scheduler-switching-2026-09/SchedulerSwitchBenchmark.java
+  Method emitSummary → docs/experiments/scheduler-switching-2026-09/SchedulerSwitchBenchmark.java
+  Method host → docs/experiments/scheduler-switching-2026-09/SchedulerSwitchBenchmark.java
+  Enum Arm → docs/experiments/scheduler-switching-2026-09/SchedulerSwitchBenchmark.java
+... and 240 more
+
+Affected execution flows:
+  • Phase → Close (10 steps) — changed: runOnce, loop
+  • Run → ExecutionId (10 steps) — changed: runOnce, loop
+  • Run → ReleaseQueuedInput (10 steps) — changed: runOnce, loop
+  • Run → Task (10 steps) — changed: runOnce, loop
+  • Run → Attempt (10 steps) — changed: runOnce, loop
+  • PublishRetry → Prune (10 steps) — changed: publishRetry, doEnqueueOrThrow, enqueueOrThrow
+  • Main → Forget (9 steps) — changed: runOnce, loop, main
+  • Main → TicketId (9 steps) — changed: runOnce, loop, main
+  • Run → Expired (8 steps) — changed: runOnce, loop
+  • Main → Expired (8 steps) — changed: runOnce, loop, main
+... and 110 more

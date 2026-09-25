@@ -1,9 +1,0 @@
-{
-  "description": "simple C",
-  "input": {
-    "number": 100
-  },
-  "expected": {
-    "roman": "C"
-  }
-}

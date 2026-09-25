@@ -159,11 +159,26 @@ public class CallbackDispatcher {
     }
 
     public final class CallbackReservation implements AutoCloseable {
-        private final long retainedBytes;
+        /** Guarded by {@link #capacityLock}: admission reserves the maximum, serialization shrinks it. */
+        private long retainedBytes;
         private final AtomicBoolean closed = new AtomicBoolean();
 
         private CallbackReservation(long retainedBytes) {
             this.retainedBytes = retainedBytes;
+        }
+
+        /**
+         * Returns the part of the admission reserve a serialized callback does not need. Only
+         * ever shrinks: the reserve was the largest payload allowed, and a larger one was already
+         * refused as too large.
+         */
+        void shrinkTo(long serializedBytes) {
+            synchronized (capacityLock) {
+                if (!closed.get() && serializedBytes < retainedBytes) {
+                    pendingCallbackBytes -= retainedBytes - serializedBytes;
+                    retainedBytes = serializedBytes;
+                }
+            }
         }
 
         @Override
@@ -198,6 +213,9 @@ public class CallbackDispatcher {
         }
         try {
             byte[] serialized = callbackClient.serializeBounded(payload, maxCallbackBytes);
+            // Held until delivery, a maximum-sized reserve per callback capped pending callbacks
+            // at maxPendingCallbackBytes / maxCallbackBytes (8 with the defaults), not the count.
+            reservation.shrinkTo(serialized.length);
             CallbackTask task = new CallbackTask(
                     reservation, executionId, serialized, traceId, dispatchAttempt);
             return execute(task, executionId);

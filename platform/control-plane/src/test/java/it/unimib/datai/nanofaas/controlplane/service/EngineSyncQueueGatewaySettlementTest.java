@@ -83,6 +83,33 @@ class EngineSyncQueueGatewaySettlementTest {
     }
 
     @Test
+    void timedRetryPreservesAdmissionTimeAndQueueDeadline() {
+        SyncQueueConfigSource config = mock(SyncQueueConfigSource.class);
+        when(config.syncQueueMaxQueueWait()).thenReturn(Duration.ofMillis(100));
+        DispatchCapacity capacity = mock(DispatchCapacity.class);
+        when(capacity.activeGeneration("echo")).thenReturn(new FunctionGeneration("echo", 1));
+        SchedulerEngine engine = mock(SchedulerEngine.class);
+        when(engine.enqueue(any())).thenReturn(true);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<SchedulerEngine> provider = mock(ObjectProvider.class);
+        when(provider.getObject()).thenReturn(engine);
+        EngineSyncQueueGateway gateway = new EngineSyncQueueGateway(config, controller, estimator,
+                provider, new PendingWorkStore(8), capacity, () -> 0L,
+                EngineInvocationEnqueuer.AdmissionProfile.SYNC_QUEUE, function -> {}, function -> {},
+                Clock.fixed(NOW, ZoneOffset.UTC));
+        InvocationTask task = new InvocationTask("e2", "echo", null, null, null, null,
+                NOW, 2, InvocationKind.SYNC);
+
+        assertThat(gateway.enqueue(task, NOW.plusSeconds(1))).isTrue();
+
+        var admitted = org.mockito.ArgumentCaptor.forClass(PendingEntry.class);
+        verify(engine).enqueue(admitted.capture());
+        assertThat(admitted.getValue().ticket().notBefore()).isEqualTo(NOW.plusSeconds(1));
+        assertThat(admitted.getValue().ticket().enqueuedAt()).isEqualTo(NOW);
+        assertThat(admitted.getValue().ticket().queueDeadline()).isEqualTo(NOW.plusMillis(100));
+    }
+
+    @Test
     void rejectedAdmissionLeavesNoReservation() {
         SyncQueueConfigSource config = mock(SyncQueueConfigSource.class);
         when(config.syncQueueMaxQueueWait()).thenReturn(Duration.ofSeconds(30));
@@ -109,4 +136,28 @@ class EngineSyncQueueGatewaySettlementTest {
         assertThat(rejected).hasValue(1);
         assertThat(store.reservedCount()).isZero();
     }
+    @Test
+    void retryUsesCapturedGenerationRatherThanReplacement() {
+        SyncQueueConfigSource config = mock(SyncQueueConfigSource.class);
+        when(config.syncQueueMaxQueueWait()).thenReturn(Duration.ofSeconds(30));
+        DispatchCapacity capacity = mock(DispatchCapacity.class);
+        FunctionGeneration old = new FunctionGeneration("echo", 1);
+        when(capacity.activeGeneration("echo")).thenReturn(new FunctionGeneration("echo", 2));
+        SchedulerEngine engine = mock(SchedulerEngine.class);
+        when(engine.enqueue(any())).thenReturn(true);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<SchedulerEngine> provider = mock(ObjectProvider.class);
+        when(provider.getObject()).thenReturn(engine);
+        EngineSyncQueueGateway gateway = new EngineSyncQueueGateway(config, controller, estimator,
+                provider, new PendingWorkStore(8), capacity, () -> 0L,
+                EngineInvocationEnqueuer.AdmissionProfile.SYNC_QUEUE, function -> {}, function -> {},
+                Clock.fixed(NOW, ZoneOffset.UTC));
+        InvocationTask task = new InvocationTask("e2", "echo", null, null, null, null,
+                NOW, 2, InvocationKind.SYNC);
+        gateway.enqueue(task, NOW.plusSeconds(1), old);
+        var admitted = org.mockito.ArgumentCaptor.forClass(PendingEntry.class);
+        verify(engine).enqueue(admitted.capture());
+        assertThat(admitted.getValue().ticket().generation()).isEqualTo(old);
+    }
+
 }

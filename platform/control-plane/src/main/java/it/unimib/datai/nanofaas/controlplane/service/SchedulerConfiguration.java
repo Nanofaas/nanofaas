@@ -211,16 +211,17 @@ public class SchedulerConfiguration {
                 gateway);
     }
 
-    @Bean(destroyMethod = "close")
+    @Bean(destroyMethod = "dispose")
     public SchedulerEngine schedulerEngine(PendingWorkStore store, StrategyRegistry strategies,
             SchedulerProperties props, DispatchCapacity capacityRegistry,
             EngineDispatch dispatch, EngineReadiness readiness, WakeHandle wakeHandle,
-            MeterRegistry registry) {
+            MeterRegistry registry, QueueLifecycle queueLifecycle) {
         String initial = resolveInitialStrategy(props, strategies);
         SchedulerEngine engine = new SchedulerEngine(store, strategies, initial, dispatch, readiness,
                 generation -> generation.equals(capacityRegistry.activeGeneration(generation.functionName())),
                 Clock.systemUTC(), System::nanoTime);
         wakeHandle.bind(engine::signal);
+        queueLifecycle.onExecutionGone((functionName, executionId) -> engine.removeExecution(executionId));
         // signal() path 2/2: a released or raised capacity ceiling wakes the engine so a
         // generation the last pass found blocked is re-examined without waiting out the park
         // safety bound. Path 1/2 is EngineTransport.tryAcquire's onReleased callback below.
@@ -356,9 +357,9 @@ public class SchedulerConfiguration {
             java.util.function.LongSupplier sequence,
             AdmissionProfile profile,
             boolean asyncInvocationEnabled,
-            ObjectProvider<EngineSyncQueueGateway> syncGateway) {
+            ObjectProvider<EngineSyncQueueGateway> syncGateway, it.unimib.datai.nanofaas.controlplane.execution.ExecutionStore executions) {
         return new EngineInvocationEnqueuer(engine, capacityRegistry, sequence, profile,
-                asyncInvocationEnabled, syncGateway);
+                asyncInvocationEnabled, syncGateway, java.time.Clock.systemUTC(), executions);
     }
 
     /** Mutable indirection so {@link EngineDispatch} can be built before the engine exists. */

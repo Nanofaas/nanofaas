@@ -1,0 +1,24 @@
+SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+[bench] backlog=0 rep=1 pause=0.137ms pending=0 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=0 rep=2 pause=0.113ms pending=0 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=0 rep=3 pause=0.112ms pending=0 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=0 rep=4 pause=0.125ms pending=0 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=0 rep=5 pause=0.122ms pending=0 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=100 rep=1 pause=0.238ms pending=100 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=100 rep=2 pause=0.209ms pending=100 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=100 rep=3 pause=0.154ms pending=100 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=100 rep=4 pause=0.201ms pending=100 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=100 rep=5 pause=0.138ms pending=100 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=1000 rep=1 pause=0.483ms pending=1000 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=1000 rep=2 pause=0.667ms pending=1000 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=1000 rep=3 pause=0.650ms pending=1000 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=1000 rep=4 pause=0.434ms pending=1000 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=1000 rep=5 pause=0.540ms pending=1000 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=10000 rep=1 pause=5.591ms pending=10000 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=10000 rep=2 pause=3.027ms pending=10000 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=10000 rep=3 pause=4.852ms pending=10000 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=10000 rep=4 pause=2.762ms pending=10000 liveIndexes=1 outcome=COMMITTED
+[bench] backlog=10000 rep=5 pause=2.244ms pending=10000 liveIndexes=1 outcome=COMMITTED
+[bench] return-to-baseline: committed=1000 refused=0 pending switched=457 vs plain=496 live switched=1 vs plain=1 maxLive=2 conserved switched=true plain=true

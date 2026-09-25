@@ -63,7 +63,7 @@ class InvocationPathAccountingTest {
         invocationService = TestWaiterCapacity.service(
                 functionService, enqueuer, executionStore, new IdempotencyStore(),
                 metrics, syncQueueGateway,
-                new ExecutionCompletionHandler(executionStore, enqueuer::enqueue, dispatcherRouter, metrics),
+                new ExecutionCompletionHandler(executionStore, (queued, due, rejected) -> enqueuer.enqueue(queued), dispatcherRouter, metrics),
                 "full-fn", "keyed-fn", "mixed-fn");
     }
 

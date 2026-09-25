@@ -1,0 +1,33 @@
+{
+  "tmp/nanolab-retry-burst-84a8585fadf54b98b2b2e1a6e954b67d/warm-calls.json": {
+    "count": 300,
+    "outcomes": {
+      "success": 300
+    }
+  },
+  "tmp/nanolab-retry-burst-84a8585fadf54b98b2b2e1a6e954b67d/ready-calls.json": {
+    "count": 300,
+    "outcomes": {
+      "success": 300
+    }
+  },
+  "tmp/nanolab-retry-burst-84a8585fadf54b98b2b2e1a6e954b67d/immediate-calls.json": {
+    "count": 300,
+    "outcomes": {
+      "success": 300
+    }
+  },
+  "hint": {
+    "executions": 300,
+    "attempts": 600,
+    "gapMinSeconds": 1.000600853,
+    "gapMedianSeconds": 1.0023979765000002,
+    "gapsBelowOneSecond": 0
+  },
+  "tmp/nanolab-retry-hint-84a8585fadf54b98b2b2e1a6e954b67d/calls.json": {
+    "count": 300,
+    "outcomes": {
+      "success": 300
+    }
+  }
+}

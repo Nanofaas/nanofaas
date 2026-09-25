@@ -1,0 +1,48 @@
+top - 16:58:33 up 15 days,  1:51,  1 user,  load average: 0.84, 1.05, 1.30
+Tasks: 506 total,   1 running, 505 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.3 us,  1.8 sy,  0.0 ni, 96.9 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,   7685.3 free,  25540.3 used,  92477.5 buff/cache
+MiB Swap:  16384.0 total,  14978.8 free,   1405.2 used.  99005.9 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+ 271961 michele   20   0 1676484 119284  68888 S   8.3   0.1  38:17.90 codex
+1812142 root      20   0 1621224 298764  57612 S   8.3   0.2   8:48.42 kube-apiserver
+2503741 michele   20   0 7114948 964464 124428 S   8.3   0.8  28:23.03 claude
+2518852 michele   20   0 7123264 968956 124192 S   8.3   0.8  28:01.38 claude
+2534304 michele   20   0 7115012 970492 124008 S   8.3   0.8  27:55.38 claude
+2785608 michele   20   0 2225396 519240 128508 S   8.3   0.4  18:08.19 codex
+3012420 michele   20   0   37.4g 612268  53192 S   8.3   0.5   0:59.48 java
+      1 root      20   0   24076  11504   6672 S   0.0   0.0   2:45.55 systemd
+      2 root      20   0       0      0      0 S   0.0   0.0   0:03.24 kthreadd
+      3 root      20   0       0      0      0 S   0.0   0.0   0:00.00 pool_workqueue_release
+      4 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker/R-rcu_gp
+      5 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker/R-sync_wq
+      6 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker/R-kvfree_rcu_reclaim
+      7 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker/R-slub_flushwq
+      8 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker/R-netns
+     10 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker/0:0H-events_highpri
+     13 root       0 -20       0      0      0 I   0.0   0.0   0:00.00 kworker/R-mm_percpu_wq
+top - 16:58:34 up 15 days,  1:51,  1 user,  load average: 0.84, 1.05, 1.30
+Tasks: 506 total,   1 running, 505 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  0.7 us,  0.7 sy,  0.0 ni, 98.7 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,   7685.3 free,  25540.3 used,  92477.5 buff/cache
+MiB Swap:  16384.0 total,  14978.8 free,   1405.2 used.  99005.9 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+ 307195 michele   20   0 3324156 379388   9312 S   4.0   0.3     17,24 zellij
+1361231 michele   20   0 1706624 113904  30152 S   2.0   0.1   8:04.90 zellij
+1812138 root      20   0   11.3g  68248  23116 S   2.0   0.1   4:56.61 etcd
+1812142 root      20   0 1621224 298764  57612 S   2.0   0.2   8:48.44 kube-apiserver
+1854818 michele   20   0 7126208 381936 131816 S   2.0   0.3   3:38.64 claude
+2785608 michele   20   0 2224948 518896 128508 S   2.0   0.4  18:08.21 codex
+3937230 michele   20   0   26956   5728   3576 R   2.0   0.0   0:00.03 top
+ 169169 michele   20   0 6077652 405044 134392 S   1.0   0.3  11:35.61 claude
+ 271961 michele   20   0 1660068 119184  68888 S   1.0   0.1  38:17.91 codex
+1527695 michele   20   0   37.3g 366052  56488 S   1.0   0.3   0:39.29 java
+1548799 michele   20   0 6077596 374268 134064 S   1.0   0.3   4:45.69 claude
+1812129 root      20   0 1403720  90396  37112 S   1.0   0.1   4:06.96 kube-controller
+1812143 root      20   0 1377240  52184  25056 S   1.0   0.0   1:36.64 kube-scheduler
+1812723 root      20   0 3382992  92512  43956 S   1.0   0.1   5:29.09 kubelet
+1820489 michele   20   0   37.4g 625040  53212 S   1.0   0.5   1:09.32 java
+1938795 michele   20   0   12.3g   1.1g  37280 S   1.0   0.9   5:28.84 java
+1939039 michele   20   0    9.8g   1.0g  26156 S   1.0   0.8   5:39.96 java

@@ -43,6 +43,34 @@ import org.junit.jupiter.api.Test;
 class AttemptCoordinatorTest {
 
     @Test
+    void retryHintIsCalculatedOnceAndStaleCompletionCannotReplaceIt() {
+        Instant now = Instant.parse("2026-09-24T12:00:00Z");
+        var spec = new FunctionSpec("fn", "image", null, null, null,
+                30000, 1, 10, 3, null, ExecutionMode.LOCAL, null, null, null);
+        var task = new InvocationTask("e1", "fn", spec, new InvocationRequest("in", null),
+                null, null, now, 1, InvocationKind.SYNC);
+        var record = new ExecutionRecord("e1", task,
+                new it.unimib.datai.nanofaas.controlplane.execution.TimeSource(() -> now, () -> 0L));
+        var store = new ExecutionStore();
+        store.put(record);
+        var dueTimes = new java.util.ArrayList<Instant>();
+        RetryScheduler retry = (next, due, rejected) -> {
+            assertThat(Thread.holdsLock(record)).isFalse();
+            assertThat(next.attempt()).isEqualTo(2);
+            dueTimes.add(due);
+            return true;
+        };
+        var coordinator = new AttemptCoordinator(store, new FunctionCapacityRegistry(), retry,
+                mock(AttemptTransport.class), mock(AttemptObserver.class));
+        record.markRunning();
+        coordinator.completeExecution("e1", new DispatchResult(
+                InvocationResult.error("EXTERNAL_ERROR", "busy"), false, null, now.plusSeconds(1)), 1);
+        coordinator.completeExecution("e1", new DispatchResult(
+                InvocationResult.error("EXTERNAL_ERROR", "stale"), false, null, now.plusSeconds(30)), 1);
+        assertThat(dueTimes).containsExactly(now.plusSeconds(1));
+    }
+
+    @Test
     void logicalOutcomeDoesNotReleasePhysicalOwnership() {
         var store = new ExecutionStore();
         var capacity = new FunctionCapacityRegistry();
@@ -122,6 +150,110 @@ class AttemptCoordinatorTest {
         drained.complete(null);
         assertThat(lease.isReleased()).isTrue();
         assertThat(capacity.inFlight("fn")).isZero();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {0, 3})
+    void retryBudgetCountsAdditionalAttempts(int maxRetries) {
+        var fixture = new RetryFixture(maxRetries);
+        for (int attempt = 1; attempt <= maxRetries + 1; attempt++) {
+            fixture.record.markRunning();
+            fixture.coordinator.completeExecution("retry", DispatchResult.warm(
+                    InvocationResult.error("EXTERNAL_ERROR", "busy")), attempt);
+        }
+        assertThat(fixture.record.completion().join().error().code()).isEqualTo("EXTERNAL_ERROR");
+        assertThat(fixture.dueTimes).hasSize(maxRetries);
+        assertThat(fixture.draws).hasValue(maxRetries);
+    }
+
+    @Test
+    void duplicateLateRefusalConcludesOnceWithNoAttemptMeasurements() {
+        var fixture = new RetryFixture(3);
+        fixture.fail();
+        fixture.refusal.get().run();
+        fixture.refusal.get().run();
+        assertThat(fixture.record.completion().join().error().code()).isEqualTo("EXTERNAL_ERROR");
+        org.mockito.Mockito.verify(fixture.observer).retried(org.mockito.ArgumentMatchers.any());
+        org.mockito.Mockito.verify(fixture.observer).completed(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(AttemptObserver.NO_ATTEMPT),
+                org.mockito.ArgumentMatchers.eq(AttemptObserver.NO_ATTEMPT));
+        org.mockito.Mockito.verifyNoInteractions(fixture.transport);
+        assertThat(fixture.draws).hasValue(1);
+    }
+
+    @Test
+    void simultaneousCallbackAndHttpCompletionSelectOneDueTime() throws Exception {
+        var fixture = new RetryFixture(3);
+        var barrier = new java.util.concurrent.CyclicBarrier(2);
+        try (var pool = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var first = pool.submit(() -> { awaitBarrier(barrier); fixture.fail(); });
+            var second = pool.submit(() -> { awaitBarrier(barrier); fixture.fail(); });
+            first.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            second.get(5, java.util.concurrent.TimeUnit.SECONDS);
+        }
+        assertThat(fixture.dueTimes).hasSize(1);
+        assertThat(fixture.draws).hasValue(1);
+        assertThat(fixture.record.task().attempt()).isEqualTo(2);
+    }
+
+    @Test
+    void waitingRetryCannotReleaseAnUndrainedPhysicalLease() {
+        var fixture = new RetryFixture(3);
+        fixture.capacity.register("fn", 1);
+        var lease = fixture.capacity.tryAcquireLease("fn", 1);
+        var outcome = new CompletableFuture<DispatchResult>();
+        var drained = new CompletableFuture<Void>();
+        when(fixture.transport.submit(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new AttemptHandle(outcome, drained, mock(Future.class)));
+        fixture.coordinator.dispatch(fixture.record.task().withDispatchLease(lease));
+        // Callback completion may arrive independently of the still-running transport.
+        fixture.fail();
+        assertThat(fixture.dueTimes).hasSize(1);
+        assertThat(lease.isReleased()).isFalse();
+        assertThat(fixture.capacity.inFlight("fn")).isEqualTo(1);
+        drained.complete(null);
+        assertThat(lease.isReleased()).isTrue();
+        outcome.complete(DispatchResult.warm(InvocationResult.success("stale")));
+        assertThat(fixture.record.completion()).isNotDone();
+    }
+
+    private static void awaitBarrier(java.util.concurrent.CyclicBarrier barrier) {
+        try { barrier.await(5, java.util.concurrent.TimeUnit.SECONDS); }
+        catch (Exception failure) { throw new AssertionError(failure); }
+    }
+
+    private static final class RetryFixture {
+        final java.util.concurrent.atomic.AtomicInteger draws = new java.util.concurrent.atomic.AtomicInteger();
+        final java.util.concurrent.atomic.AtomicReference<Runnable> refusal = new java.util.concurrent.atomic.AtomicReference<>();
+        final java.util.List<Instant> dueTimes = new java.util.concurrent.CopyOnWriteArrayList<>();
+        final AttemptObserver observer = mock(AttemptObserver.class);
+        final AttemptTransport transport = mock(AttemptTransport.class);
+        final FunctionCapacityRegistry capacity = new FunctionCapacityRegistry();
+        final ExecutionRecord record;
+        final AttemptCoordinator coordinator;
+
+        RetryFixture(int maxRetries) {
+            Instant now = Instant.parse("2026-09-24T12:00:00Z");
+            var spec = new FunctionSpec("fn", "image", null, null, null,
+                    30000, 1, 10, maxRetries, null, ExecutionMode.LOCAL, null, null, null);
+            var task = new InvocationTask("retry", "fn", spec, new InvocationRequest("in", null),
+                    null, null, now, 1, InvocationKind.SYNC);
+            record = new ExecutionRecord("retry", task,
+                    new it.unimib.datai.nanofaas.controlplane.execution.TimeSource(() -> now, () -> 0L));
+            var store = new ExecutionStore();
+            store.put(record);
+            coordinator = new AttemptCoordinator(store, capacity, (next, due, rejected) -> {
+                dueTimes.add(due);
+                refusal.set(rejected);
+                return true;
+            }, transport, observer, new RetryBackoff(java.time.Duration.ofMillis(100),
+                    java.time.Duration.ofSeconds(2), () -> { draws.incrementAndGet(); return 0.0; }));
+        }
+
+        void fail() {
+            coordinator.completeExecution("retry", DispatchResult.warm(
+                    InvocationResult.error("EXTERNAL_ERROR", "busy")), 1);
+        }
     }
 
     private static SchedulingStrategy fakeStrategy(String id) {

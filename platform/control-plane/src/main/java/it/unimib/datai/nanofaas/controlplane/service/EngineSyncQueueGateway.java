@@ -109,7 +109,7 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
     @Override
     public void enqueueOrThrow(InvocationTask task) {
         try {
-            doEnqueueOrThrow(task);
+            doEnqueueOrThrow(task, clock.instant(), capacityRegistry.activeGeneration(task.functionName()));
         } catch (SyncQueueRejectedException rejected) {
             onRejected.accept(task.functionName());
             throw rejected;
@@ -117,7 +117,7 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
         onAdmitted.accept(task.functionName());
     }
 
-    private void doEnqueueOrThrow(InvocationTask task) {
+    private void doEnqueueOrThrow(InvocationTask task, Instant notBefore, FunctionGeneration generation) {
         Instant now = clock.instant();
         // Valid as a sync-scoped depth only because enabled() now confines this gateway to the
         // SYNC_QUEUE profile: nothing else admits into the engine while it is active, so
@@ -135,13 +135,12 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
         if (!result.accepted()) {
             throw new SyncQueueRejectedException(result.reason(), configSource.syncQueueRetryAfterSeconds());
         }
-        FunctionGeneration generation = capacityRegistry.activeGeneration(task.functionName());
         if (generation == null) {
             throw depthRejected();
         }
         TicketId id = new TicketId(task.executionId(), task.attempt());
         Instant deadline = now.plus(configSource.syncQueueMaxQueueWait());
-        SchedulingTicket ticket = new SchedulingTicket(id, generation, sequence.getAsLong(), now, now, deadline);
+        SchedulingTicket ticket = new SchedulingTicket(id, generation, sequence.getAsLong(), now, notBefore, deadline);
         // PendingWorkStore's own cap is the hard depth limit: its maxPending is sync-queue.max-depth
         // whenever this profile is active (SchedulerConfiguration.pendingWorkStore), and
         // store.offer() runs under the engine's gate, so every admission is serialized against
@@ -167,6 +166,21 @@ public final class EngineSyncQueueGateway implements SyncQueueGateway {
             enqueueOrThrow(task);
             return true;
         } catch (SyncQueueRejectedException _) {
+            return false;
+        }
+    }
+
+    public boolean enqueue(InvocationTask task, Instant notBefore) {
+        return enqueue(task, notBefore, capacityRegistry.activeGeneration(task.functionName()));
+    }
+
+    boolean enqueue(InvocationTask task, Instant notBefore, FunctionGeneration generation) {
+        try {
+            doEnqueueOrThrow(task, notBefore, generation);
+            onAdmitted.accept(task.functionName());
+            return true;
+        } catch (SyncQueueRejectedException rejected) {
+            onRejected.accept(task.functionName());
             return false;
         }
     }

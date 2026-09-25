@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -180,7 +181,9 @@ func TestCallbackDispatcherReleasesAllReservationsAfterDelivery(t *testing.T) {
 		t.Fatalf("submit failed: %v", err)
 	}
 	<-requestStarted
-	if snapshot := dispatcher.snapshot(); snapshot.pendingCallbacks != 1 || snapshot.pendingCallbackBytes != 256 || snapshot.serializedCallbackBytes == 0 {
+	// Admission reserved the 256-byte maximum; the in-flight callback now holds its serialized size.
+	if snapshot := dispatcher.snapshot(); snapshot.pendingCallbacks != 1 || snapshot.serializedCallbackBytes == 0 ||
+		snapshot.pendingCallbackBytes != snapshot.serializedCallbackBytes {
 		t.Fatalf("in-flight callback counters are not physical: %+v", snapshot)
 	}
 	close(releaseRequest)
@@ -247,4 +250,49 @@ func assertDispatcherDrained(t *testing.T, dispatcher *CallbackDispatcher) {
 	if snapshot.pendingCallbacks != 0 || snapshot.pendingCallbackBytes != 0 || snapshot.serializedCallbackBytes != 0 {
 		t.Fatalf("dispatcher retained resources after stop: %+v", snapshot)
 	}
+}
+
+// Admission reserves the largest callback payload, the output being unknown; held until
+// delivery, that capped pending callbacks at maxPendingCallbackBytes / maxCallbackPayloadBytes
+// (8 with the defaults) instead of the configured count. Once serialized, a callback holds its size.
+func TestCallbackDispatcherPendingCallbackHoldsItsSerializedSize(t *testing.T) {
+	started := make(chan struct{}, 2)
+	release := make(chan struct{})
+	client := NewCallbackClient("http://callback/v1/internal/executions")
+	client.retryDelays = []int{0}
+	client.httpClient = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		started <- struct{}{}
+		<-release
+		return &http.Response{StatusCode: http.StatusNoContent, Body: http.NoBody}, nil
+	})}
+	dispatcher := newCallbackDispatcher(client, 2, 4, 8, 256, 128)
+	defer dispatcher.Shutdown(context.Background())
+	releaseOnce := sync.OnceFunc(func() { close(release) })
+	// Runs before Shutdown (defers are LIFO): a failed assertion must not leave the workers
+	// blocked in delivery, which would hang Shutdown and the whole test binary.
+	defer releaseOnce()
+
+	for _, id := range []string{"exec-1", "exec-2"} {
+		reservation := dispatcher.TryReserve()
+		if reservation == nil {
+			t.Fatalf("reservation for %s must succeed", id)
+		}
+		if err := dispatcher.SubmitReserved(context.Background(), reservation, id, Success("ok"), "trace", "1"); err != nil {
+			t.Fatalf("submit %s failed: %v", id, err)
+		}
+	}
+	<-started
+	<-started
+
+	snapshot := dispatcher.snapshot()
+	if snapshot.pendingCallbackBytes != snapshot.serializedCallbackBytes {
+		t.Fatalf("pending callbacks must hold their serialized size, not two 128-byte maxima: %+v", snapshot)
+	}
+	third := dispatcher.TryReserve()
+	if third == nil {
+		t.Fatal("two small pending callbacks must leave room in a budget of two maximum payloads")
+	}
+	third.Release()
+	releaseOnce()
+	waitForDispatcherDrain(t, dispatcher)
 }

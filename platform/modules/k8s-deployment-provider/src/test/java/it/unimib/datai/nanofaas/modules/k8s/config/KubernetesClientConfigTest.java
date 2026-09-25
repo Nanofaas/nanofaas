@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.modules.k8s.config;
 
 import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.impl.KubernetesClientImpl;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -28,6 +29,18 @@ class KubernetesClientConfigTest {
 
         try (KubernetesClient client = config.kubernetesClient()) {
             assertThat(client).isNotNull();
+        }
+    }
+
+    /** The JDK client, not Vert.x: no second Netty stack beside reactor-netty, no Vert.x threads. */
+    @Test
+    void kubernetesClient_usesTheJdkHttpClient() {
+        KubernetesClientConfig config = new KubernetesClientConfig(
+                tempDir.resolve("missing-token"), tempDir.resolve("ca.crt"), key -> null);
+
+        try (KubernetesClient client = config.kubernetesClient()) {
+            assertThat(((KubernetesClientImpl) client).getHttpClient().getClass().getName())
+                    .startsWith("io.fabric8.kubernetes.client.jdkhttp.");
         }
     }
 

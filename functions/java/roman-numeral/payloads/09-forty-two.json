@@ -1,9 +1,0 @@
-{
-  "description": "XLII - the answer",
-  "input": {
-    "number": 42
-  },
-  "expected": {
-    "roman": "XLII"
-  }
-}

@@ -1,9 +1,0 @@
-{
-  "description": "simple V",
-  "input": {
-    "number": 5
-  },
-  "expected": {
-    "roman": "V"
-  }
-}

@@ -5,6 +5,7 @@ import it.unimib.datai.nanofaas.common.runtime.ResponseHeaderPolicy;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -13,6 +14,9 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Duration;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -27,9 +31,16 @@ public class ExternalDispatcher implements Dispatcher {
     private static final JsonMapper JSON_FALLBACK_MAPPER = JsonMapper.shared();
 
     private final WebClient webClient;
+    private final Clock clock;
 
+    @Autowired
     public ExternalDispatcher(WebClient webClient) {
+        this(webClient, Clock.systemUTC());
+    }
+
+    ExternalDispatcher(WebClient webClient, Clock clock) {
         this.webClient = webClient;
+        this.clock = clock;
     }
 
     @Override
@@ -95,9 +106,16 @@ public class ExternalDispatcher implements Dispatcher {
                                 .map(body -> new DispatchResult(InvocationResult.success(body), isCold, initMs))
                                 .defaultIfEmpty(new DispatchResult(InvocationResult.success(null), isCold, initMs));
                     }
+                    int status = response.statusCode().value();
+                    Instant retryAt = status == 429 || status == 503
+                            ? parseRetryAfter(responseHeaders.get("Retry-After"), clock.instant()) : null;
                     return response.bodyToMono(String.class)
                             .defaultIfEmpty(response.statusCode().toString())
-                            .map(msg -> new DispatchResult(InvocationResult.error("EXTERNAL_ERROR", msg), isCold, initMs));
+                            .map(msg -> new DispatchResult(InvocationResult.error("EXTERNAL_ERROR", msg),
+                                    isCold, initMs, retryAt))
+                            .onErrorResume(ex -> Mono.just(new DispatchResult(
+                                    InvocationResult.error("EXTERNAL_ERROR", ex.getMessage()),
+                                    isCold, initMs, retryAt)));
                 })
                 .timeout(Duration.ofMillis(timeoutMs))
                 .onErrorResume(TimeoutException.class, ex -> reactor.core.publisher.Mono.just(
@@ -105,6 +123,36 @@ public class ExternalDispatcher implements Dispatcher {
                 .onErrorResume(ex -> reactor.core.publisher.Mono.just(
                         DispatchResult.warm(InvocationResult.error("EXTERNAL_ERROR", ex.getMessage()))))
                 .toFuture();
+    }
+
+    static Instant parseRetryAfter(List<String> values, Instant receivedAt) {
+        if (values == null || values.isEmpty()) {
+            return null;
+        }
+        String value = values.getFirst().trim();
+        if (value.isEmpty()) {
+            return null;
+        }
+        for (String candidate : values) {
+            if (!value.equals(candidate.trim())) {
+                return null;
+            }
+        }
+        if (value.chars().allMatch(c -> c >= '0' && c <= '9')) {
+            try {
+                return receivedAt.plusSeconds(Long.parseLong(value));
+            } catch (NumberFormatException | java.time.DateTimeException | ArithmeticException overflow) {
+                return Instant.MAX;
+            }
+        }
+        HttpHeaders date = new HttpHeaders();
+        date.set("Retry-After", value);
+        try {
+            long epochMillis = date.getFirstDate("Retry-After");
+            return epochMillis < 0 ? null : Instant.ofEpochMilli(epochMillis);
+        } catch (IllegalArgumentException | java.time.DateTimeException invalid) {
+            return null;
+        }
     }
 
     private static Long parseInitDuration(String header) {

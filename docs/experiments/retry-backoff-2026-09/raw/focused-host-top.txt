@@ -1,0 +1,494 @@
+top - 17:46:16 up 15 days,  2:39,  1 user,  load average: 0.50, 0.95, 1.21
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.5 us,  1.0 sy,  0.0 ni, 97.5 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30753.5 free,  19904.0 used,  75045.7 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104642.2 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25888   4996   2940 R   0.0   0.0   0:00.00 top
+
+top - 17:46:21 up 15 days,  2:39,  1 user,  load average: 0.46, 0.93, 1.20
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.4 us,  1.6 sy,  0.0 ni, 97.0 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30691.7 free,  19965.6 used,  75045.9 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104580.6 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.00 top
+
+top - 17:46:26 up 15 days,  2:39,  1 user,  load average: 0.50, 0.93, 1.20
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.2 us,  1.4 sy,  0.0 ni, 97.4 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30734.7 free,  19922.3 used,  75046.2 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104623.9 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.00 top
+
+top - 17:46:31 up 15 days,  2:39,  1 user,  load average: 0.46, 0.92, 1.20
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.2 us,  1.3 sy,  0.0 ni, 97.5 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30796.5 free,  19860.5 used,  75046.2 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104685.8 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.00 top
+
+top - 17:46:36 up 15 days,  2:39,  1 user,  load average: 0.50, 0.92, 1.19
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.7 us,  2.2 sy,  0.0 ni, 96.1 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30819.8 free,  19847.2 used,  75036.2 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104699.0 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.00 top
+
+top - 17:46:41 up 15 days,  2:40,  1 user,  load average: 0.46, 0.90, 1.19
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.2 us,  1.4 sy,  0.0 ni, 97.4 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30816.7 free,  19850.2 used,  75036.3 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104696.0 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.00 top
+
+top - 17:46:46 up 15 days,  2:40,  1 user,  load average: 0.43, 0.89, 1.18
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.0 us,  1.2 sy,  0.0 ni, 97.7 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30805.1 free,  19861.8 used,  75036.4 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104684.5 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.00 top
+
+top - 17:46:51 up 15 days,  2:40,  1 user,  load average: 0.39, 0.87, 1.17
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.2 us,  1.2 sy,  0.0 ni, 97.6 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30822.0 free,  19844.8 used,  75036.4 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104701.5 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.00 top
+
+top - 17:46:56 up 15 days,  2:40,  1 user,  load average: 0.36, 0.86, 1.17
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.3 us,  1.3 sy,  0.0 ni, 97.4 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30836.6 free,  19830.0 used,  75036.6 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104716.3 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.00 top
+
+top - 17:47:01 up 15 days,  2:40,  1 user,  load average: 0.33, 0.84, 1.16
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.2 us,  1.4 sy,  0.0 ni, 97.4 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30808.2 free,  19858.1 used,  75036.9 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104688.1 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.00 top
+
+top - 17:47:06 up 15 days,  2:40,  1 user,  load average: 0.46, 0.86, 1.17
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.7 us,  2.3 sy,  0.0 ni, 96.0 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30796.4 free,  19869.4 used,  75037.3 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104676.8 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.00 top
+
+top - 17:47:11 up 15 days,  2:40,  1 user,  load average: 0.67, 0.90, 1.18
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.2 us,  1.3 sy,  0.0 ni, 97.4 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30796.3 free,  19869.5 used,  75037.4 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104676.7 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.00 top
+
+top - 17:47:16 up 15 days,  2:40,  1 user,  load average: 0.61, 0.88, 1.17
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.2 us,  1.5 sy,  0.0 ni, 97.3 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30827.6 free,  19838.1 used,  75037.5 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104708.2 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.00 top
+
+top - 17:47:21 up 15 days,  2:40,  1 user,  load average: 0.56, 0.87, 1.16
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.4 us,  1.4 sy,  0.0 ni, 97.3 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30801.2 free,  19864.5 used,  75037.6 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104681.7 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.00 top
+
+top - 17:47:26 up 15 days,  2:40,  1 user,  load average: 0.52, 0.85, 1.16
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.2 us,  1.3 sy,  0.0 ni, 97.5 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30798.7 free,  19866.9 used,  75037.6 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104679.3 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.00 top
+
+top - 17:47:31 up 15 days,  2:40,  1 user,  load average: 0.56, 0.86, 1.16
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.0 us,  1.1 sy,  0.0 ni, 97.9 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30817.3 free,  19848.2 used,  75037.7 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104698.0 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.00 top
+
+top - 17:47:36 up 15 days,  2:40,  1 user,  load average: 0.75, 0.89, 1.17
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.5 us,  1.6 sy,  0.0 ni, 96.9 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30817.5 free,  19847.6 used,  75038.0 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104698.6 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      3 michele   20   0   25856   5256   3192 R   0.2   0.0   0:00.01 top
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+
+top - 17:47:41 up 15 days,  2:41,  1 user,  load average: 0.69, 0.88, 1.16
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.3 us,  1.7 sy,  0.0 ni, 97.0 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30796.8 free,  19868.4 used,  75038.1 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104677.8 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:47:46 up 15 days,  2:41,  1 user,  load average: 0.64, 0.86, 1.15
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.2 us,  1.4 sy,  0.0 ni, 97.3 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30782.3 free,  19882.3 used,  75038.6 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104663.9 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:47:51 up 15 days,  2:41,  1 user,  load average: 0.59, 0.85, 1.15
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.3 us,  1.7 sy,  0.0 ni, 96.9 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30769.9 free,  19894.6 used,  75038.7 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104651.7 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:47:56 up 15 days,  2:41,  1 user,  load average: 0.86, 0.90, 1.16
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.3 us,  1.6 sy,  0.0 ni, 97.1 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30789.8 free,  19874.5 used,  75038.9 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104671.7 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:48:01 up 15 days,  2:41,  1 user,  load average: 0.79, 0.89, 1.16
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.0 us,  1.2 sy,  0.0 ni, 97.7 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30793.8 free,  19870.5 used,  75038.9 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104675.8 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:48:06 up 15 days,  2:41,  1 user,  load average: 0.73, 0.87, 1.15
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.3 us,  1.8 sy,  0.0 ni, 96.8 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30802.0 free,  19862.1 used,  75039.0 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104684.1 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:48:11 up 15 days,  2:41,  1 user,  load average: 0.67, 0.86, 1.14
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.3 us,  1.3 sy,  0.0 ni, 97.3 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30816.0 free,  19848.0 used,  75039.1 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104698.2 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:48:16 up 15 days,  2:41,  1 user,  load average: 0.61, 0.84, 1.14
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  3.3 us,  4.4 sy,  0.0 ni, 92.2 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30813.2 free,  19850.7 used,  75039.3 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104695.6 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:48:21 up 15 days,  2:41,  1 user,  load average: 0.65, 0.84, 1.14
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.5 us,  1.3 sy,  0.0 ni, 97.2 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30754.6 free,  19908.8 used,  75039.8 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104637.4 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:48:26 up 15 days,  2:41,  1 user,  load average: 0.67, 0.85, 1.14
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.3 us,  1.4 sy,  0.0 ni, 97.3 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30742.2 free,  19921.1 used,  75039.9 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104625.1 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:48:31 up 15 days,  2:41,  1 user,  load average: 0.70, 0.85, 1.14
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.3 us,  1.3 sy,  0.0 ni, 97.4 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30745.6 free,  19917.4 used,  75040.2 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104628.8 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:48:36 up 15 days,  2:41,  1 user,  load average: 0.64, 0.84, 1.13
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.5 us,  2.2 sy,  0.0 ni, 96.3 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30772.9 free,  19889.8 used,  75040.4 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104656.4 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:48:41 up 15 days,  2:42,  1 user,  load average: 1.07, 0.92, 1.16
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.2 us,  1.3 sy,  0.0 ni, 97.5 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  30801.5 free,  19861.2 used,  75040.5 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104685.0 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:48:46 up 15 days,  2:42,  1 user,  load average: 1.15, 0.94, 1.16
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  4.2 us,  2.1 sy,  0.0 ni, 93.7 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  29866.1 free,  19878.6 used,  75958.5 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104667.7 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:48:51 up 15 days,  2:42,  1 user,  load average: 1.06, 0.92, 1.15
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.1 us,  1.4 sy,  0.0 ni, 97.4 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  29885.7 free,  19858.9 used,  75958.6 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104687.3 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:48:56 up 15 days,  2:42,  1 user,  load average: 1.13, 0.94, 1.16
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  3.5 us,  2.8 sy,  0.0 ni, 93.6 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  27228.9 free,  22515.5 used,  75958.8 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 102030.7 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:49:01 up 15 days,  2:42,  1 user,  load average: 1.04, 0.93, 1.15
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  2.8 us,  1.4 sy,  0.0 ni, 95.8 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  29184.0 free,  20560.0 used,  75959.2 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 103986.2 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:49:06 up 15 days,  2:42,  1 user,  load average: 1.04, 0.93, 1.15
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.0 us,  1.0 sy,  0.0 ni, 97.9 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  29215.9 free,  20528.1 used,  75959.2 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104018.1 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:49:11 up 15 days,  2:42,  1 user,  load average: 0.95, 0.91, 1.14
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.5 us,  1.8 sy,  0.0 ni, 96.7 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  29284.4 free,  20459.2 used,  75959.6 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104087.0 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:49:16 up 15 days,  2:42,  1 user,  load average: 0.96, 0.91, 1.14
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.1 us,  1.5 sy,  0.0 ni, 97.3 id,  0.1 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  29348.5 free,  20395.1 used,  75959.7 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104151.1 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:49:21 up 15 days,  2:42,  1 user,  load average: 0.96, 0.91, 1.14
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.2 us,  1.3 sy,  0.0 ni, 97.4 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  29419.5 free,  20323.9 used,  75959.7 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104222.3 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:49:26 up 15 days,  2:42,  1 user,  load average: 1.04, 0.93, 1.15
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.1 us,  1.5 sy,  0.0 ni, 97.3 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  29466.3 free,  20277.0 used,  75959.9 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104269.2 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:49:31 up 15 days,  2:42,  1 user,  load average: 0.96, 0.92, 1.14
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.1 us,  1.3 sy,  0.0 ni, 97.5 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  29491.8 free,  20251.3 used,  75960.1 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104294.9 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:49:36 up 15 days,  2:42,  1 user,  load average: 0.88, 0.90, 1.14
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  3.6 us,  2.7 sy,  0.0 ni, 93.7 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  29571.0 free,  20172.0 used,  75960.2 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104374.2 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:49:41 up 15 days,  2:43,  1 user,  load average: 0.89, 0.90, 1.13
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.6 us,  1.9 sy,  0.0 ni, 96.4 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  29580.4 free,  20162.2 used,  75960.5 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104384.0 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:49:46 up 15 days,  2:43,  1 user,  load average: 0.82, 0.89, 1.13
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.0 us,  1.3 sy,  0.0 ni, 97.7 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  29630.2 free,  20112.1 used,  75960.9 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104434.1 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:49:51 up 15 days,  2:43,  1 user,  load average: 0.76, 0.87, 1.12
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.2 us,  1.3 sy,  0.0 ni, 97.5 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  29668.9 free,  20073.0 used,  75961.2 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104473.2 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top
+
+top - 17:49:56 up 15 days,  2:43,  1 user,  load average: 0.78, 0.88, 1.12
+Tasks:   3 total,   1 running,   2 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.1 us,  1.4 sy,  0.0 ni, 97.4 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem : 124546.2 total,  29716.0 free,  20025.9 used,  75961.3 buff/cache
+MiB Swap:  16384.0 total,  14978.9 free,   1405.1 used. 104520.3 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+      1 michele   20   0  237796   6956   6308 S   0.0   0.0   0:00.00 codex
+      2 michele   20   0   21120   3104   2820 S   0.0   0.0   0:00.00 bash
+      3 michele   20   0   25856   5256   3192 R   0.0   0.0   0:00.01 top

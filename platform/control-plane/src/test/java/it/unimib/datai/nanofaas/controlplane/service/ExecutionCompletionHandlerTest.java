@@ -196,21 +196,21 @@ class ExecutionCompletionHandlerTest {
     @Test
     void completeExecution_withRetry_doesNotCompleteTheFuture() {
         ExecutionRecord executionRecord = recordInStore("exec-retry", testSpec, "idem-key");
-        when(enqueuer.enqueue(any())).thenReturn(true);
+        when(enqueuer.enqueue(any(), any(), any())).thenReturn(true);
 
         completionHandler.completeExecution("exec-retry", InvocationResult.error("ERROR", "First attempt failed"));
 
         assertThat(executionRecord.completion().isDone()).isFalse();
         assertThat(executionRecord.state()).isEqualTo(ExecutionState.QUEUED);
         assertThat(executionRecord.task().attempt()).isEqualTo(2);
-        verify(enqueuer, times(1)).enqueue(any());
+        verify(enqueuer, times(1)).enqueue(any(), any(), any());
         assertThat(ownership.releases("testFunc")).isEqualTo(1);
     }
 
     @Test
     void completeExecution_afterMaxRetries_completesTheFuture() {
         ExecutionRecord executionRecord = recordInStore("exec-max", testSpec, null);
-        when(enqueuer.enqueue(any())).thenReturn(true);
+        when(enqueuer.enqueue(any(), any(), any())).thenReturn(true);
 
         // Attempt 1
         completionHandler.completeExecution("exec-max", InvocationResult.error("ERROR", "Attempt 1 failed"));
@@ -283,7 +283,7 @@ class ExecutionCompletionHandlerTest {
     @Test
     void retry_preservesExecutionId() {
         ExecutionRecord executionRecord = recordInStore("exec-preserve", testSpec, null);
-        when(enqueuer.enqueue(any())).thenReturn(true);
+        when(enqueuer.enqueue(any(), any(), any())).thenReturn(true);
 
         completionHandler.completeExecution("exec-preserve", InvocationResult.error("ERROR", "Failed"));
 
@@ -302,7 +302,7 @@ class ExecutionCompletionHandlerTest {
     );
         ExecutionRecord executionRecord = new ExecutionRecord("exec-idem", taskWithKey);
         executionStore.put(executionRecord);
-        when(enqueuer.enqueue(any())).thenReturn(true);
+        when(enqueuer.enqueue(any(), any(), any())).thenReturn(true);
 
         assertThat(executionRecord.task().idempotencyKey()).isEqualTo("my-idempotency-key");
 
@@ -315,7 +315,7 @@ class ExecutionCompletionHandlerTest {
 
     @Test
     void retryWithQueueFull_completesFutureWithError() {
-        when(enqueuer.enqueue(any())).thenReturn(false);
+        when(enqueuer.enqueue(any(), any(), any())).thenReturn(false);
         ExecutionRecord executionRecord = recordInStore("exec-qfull", testSpec, null);
 
         completionHandler.completeExecution("exec-qfull", InvocationResult.error("ERROR", "First attempt failed"));
@@ -330,7 +330,7 @@ class ExecutionCompletionHandlerTest {
 
     @Test
     void retryWithQueueFull_afterSuccessfulRetries_completesFuture() {
-        when(enqueuer.enqueue(any()))
+        when(enqueuer.enqueue(any(), any(), any()))
                 .thenReturn(true)   // first retry succeeds
                 .thenReturn(false); // second retry queue full
         ExecutionRecord executionRecord = recordInStore("exec-mixed", testSpec, null);

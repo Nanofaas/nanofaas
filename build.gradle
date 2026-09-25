@@ -21,6 +21,13 @@ allprojects {
     group = 'it.unimib.datai.nanofaas'
     version = '0.22.0'
 
+    // Reactor Netty 1.3.7 (Spring Boot 4.1.1's reactor-bom 2025.0.7) stops reading a keep-alive
+    // connection when the next request arrives before the previous one's operations terminate:
+    // that request's body is buffered but never delivered, so it hangs (reactor/reactor-netty#4361,
+    // fixed for 1.3.8). Seen here as an enqueue that never answers; P07ConfiguredHttpCalibrationTest
+    // hit it about 1 run in 4 on 2 CPUs. Drop this override once the BOM brings 1.3.8 or later.
+    ext['reactor-bom.version'] = '2025.0.6'
+
     repositories {
         mavenCentral()
         if (containerdMavenLocal) {
@@ -77,6 +84,16 @@ subprojects {
 
     jacoco {
         toolVersion = '0.8.14'
+    }
+
+    // Spring Boot packs collectReachabilityMetadata's output into the bootJar for buildpack native
+    // builds, and that task never cleans its directory: the jar carried metadata for every version
+    // ever resolved. No native image here is built from a bootJar (bootBuildImage is disabled;
+    // nativeCompile reads the metadata repository itself), so leave it out.
+    plugins.withId('org.springframework.boot') {
+        tasks.named('bootJar') {
+            exclude { it.file.path.contains("${File.separator}native-reachability-metadata${File.separator}") }
+        }
     }
 
     tasks.withType(Test).configureEach {

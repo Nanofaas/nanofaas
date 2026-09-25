@@ -40,8 +40,12 @@ class SchedulerCompositionTest {
     private ApplicationContext context;
 
     @Test
-    void composesExactlyOneEngineControlAndRetryScheduler() {
+    void composesExactlyOneEngineControlAndRetryScheduler() throws Exception {
         assertThat(context.getBeansOfType(InvocationEnqueuer.class)).hasSize(1);
+        assertThat(context.getBeansOfType(RetryScheduler.class)).hasSize(1);
+        assertThat(context.getBeansOfType(
+                Class.forName("it.unimib.datai.nanofaas.controlplane.service.ExecutorBackedInvocationEnqueuer")))
+                .hasSize(context.getBeansOfType(SchedulingStrategy.class).isEmpty() ? 1 : 0);
         if (context.getBeansOfType(SchedulingStrategy.class).isEmpty()) {
             // No queue module on this profile's classpath at all: SchedulerConfiguration does
             // not activate, matching the pre-Task-8 "direct" admission profile exactly — no
@@ -52,7 +56,6 @@ class SchedulerCompositionTest {
         }
         assertThat(context.getBeansOfType(SchedulerEngine.class)).hasSize(1);
         assertThat(context.getBeansOfType(SchedulerControl.class)).hasSize(1);
-        assertThat(context.getBeansOfType(RetryScheduler.class)).hasSize(1);
     }
 
     @Test
