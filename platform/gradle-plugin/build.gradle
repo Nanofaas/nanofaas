@@ -52,5 +52,6 @@ tasks.withType(Test).configureEach {
     useJUnitPlatform()
     def warmEchoScript = file('../../services/java/warm-echo/build.gradle')
     inputs.file(warmEchoScript)
+    inputs.file(file('../../gradle/jvm-jar-without-aot.gradle'))
     systemProperty 'nanofaas.warmEchoBuildScript', warmEchoScript.absolutePath
 }

@@ -149,6 +149,7 @@ if (!nativeBuildRequested) {
         def aotOutputs = files(sourceSets.aot.output, tasks.named('processAot').flatMap { it.classesOutput })
         classpath = classpath.filter { !aotOutputs.files.contains(it) }
     }
+    apply from: rootProject.file('gradle/jvm-jar-without-aot.gradle')
 }
 // Test AOT - @MockBean is incompatible with AOT, always disable
 tasks.named('processTestAot') { enabled = false }

@@ -1,0 +1,6 @@
+# Build context of Dockerfile and Dockerfile.simple (this directory): they copy only these.
+# Dockerfile.combined builds from the repository root, where the root .dockerignore applies.
+*
+!Cargo.toml
+!Cargo.lock
+!src

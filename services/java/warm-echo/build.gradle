@@ -47,6 +47,7 @@ if (!nativeBuildRequested) {
         classpath = classpath.filter { !aotOutputs.files.contains(it) }
         doFirst { manifest.attributes.remove('Spring-Boot-Native-Processed') }
     }
+    apply from: rootProject.file('gradle/jvm-jar-without-aot.gradle')
 }
 // Test AOT - always disable (not needed for native builds either)
 tasks.named('processTestAot') { enabled = false }

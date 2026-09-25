@@ -47,9 +47,13 @@ class WarmEchoAotTest {
                 tasks.register('nativeCompile') { ext.outputFile = layout.buildDirectory.file('native/cp') }
                 """);
         write("sdks/java/build.gradle", "plugins { id 'java' }\n");
-        Files.copy(Path.of(System.getProperty("nanofaas.warmEchoBuildScript")),
-                projectDir.resolve(Files.createDirectories(projectDir.resolve("services/java/warm-echo"))
-                        .resolve("build.gradle")));
+        Path warmEchoScript = Path.of(System.getProperty("nanofaas.warmEchoBuildScript"));
+        Files.copy(warmEchoScript, projectDir.resolve(Files.createDirectories(projectDir.resolve("services/java/warm-echo"))
+                .resolve("build.gradle")));
+        // The script applies the repository's JVM-jar AOT guard; copy the real one next to it.
+        Path repositoryRoot = warmEchoScript.getParent().getParent().getParent().getParent();
+        Files.copy(repositoryRoot.resolve("gradle/jvm-jar-without-aot.gradle"),
+                Files.createDirectories(projectDir.resolve("gradle")).resolve("jvm-jar-without-aot.gradle"));
     }
 
     @ParameterizedTest(name = "control plane {0}, warm-echo {1}, {2}")
