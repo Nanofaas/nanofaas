@@ -35,19 +35,23 @@ import java.util.Map;
 public final class RecipeReader {
 
     public static final String SCHEMA_RESOURCE = "recipes/recipe-v1.schema.json";
+    public static final String SCHEMA_V2_RESOURCE = "recipes/recipe-v2.schema.json";
     static final String LOCAL_TAG = "local";
 
     private static final SchemaRegistry REGISTRY = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12,
             builder -> builder.schemaRegistryConfig(SchemaRegistryConfig.builder()
                     .pathType(PathType.LEGACY).locale(Locale.ENGLISH).build()));
-    private static final Schema SCHEMA = REGISTRY.getSchema(SchemaLocation.of("classpath:" + SCHEMA_RESOURCE));
-    private static final Schema TAG_SCHEMA = REGISTRY.getSchema(SchemaLocation.of("classpath:" + SCHEMA_RESOURCE + "#/$defs/tag"));
+    private static final Map<Integer, Schema> SCHEMAS = Map.of(
+            1, REGISTRY.getSchema(SchemaLocation.of("classpath:" + SCHEMA_RESOURCE)),
+            2, REGISTRY.getSchema(SchemaLocation.of("classpath:" + SCHEMA_V2_RESOURCE)));
+    private static final Schema TAG_SCHEMA = REGISTRY.getSchema(SchemaLocation.of("classpath:" + SCHEMA_V2_RESOURCE + "#/$defs/tag"));
 
     /**
-     * @param data validated recipe; callers must not mutate it
+     * @param data validated recipe normalised to the v2 model; callers must not mutate it
      * @param effectiveTag {@code -PrecipeTag}, else {@code registry.tag}, else {@value #LOCAL_TAG}
+     * @param declaredVersion the file's own schemaVersion (1 or 2)
      */
-    public record Document(Path source, JsonNode data, String sourceSha256, String effectiveTag) {
+    public record Document(Path source, JsonNode data, String sourceSha256, String effectiveTag, int declaredVersion) {
     }
 
     /** @param tagOverride value of {@code -PrecipeTag}, or null when absent */
@@ -59,13 +63,36 @@ public final class RecipeReader {
             throw failure(file, "cannot read recipe (" + exception + ")");
         }
         JsonNode data = toJson(file, parse(file, bytes), new StringBuilder(), new IdentityHashMap<>());
-        List<String> errors = SCHEMA.validate(data).stream()
+        if (!data.isObject()) {
+            throw failure(file, "(root): recipe must be an object");
+        }
+        JsonNode version = data.path("schemaVersion");
+        Schema schema = version.isIntegralNumber() ? SCHEMAS.get(version.asInt()) : null;
+        if (schema == null) {
+            throw failure(file, "schemaVersion: supported versions are 1 and 2");
+        }
+        List<String> errors = schema.validate(data).stream()
                 .map(error -> location(error.getInstanceLocation().toString()) + ": " + error.getMessage())
                 .distinct().sorted().toList();
         if (!errors.isEmpty()) {
             throw failure(file, String.join("\n  ", errors));
         }
-        return new Document(file, data, sha256(bytes), effectiveTag(file, data, tagOverride));
+        // A valid v1 document is a v2 document without the v2-only fields: only its version differs.
+        ObjectNode normalised = ((ObjectNode) data).deepCopy().put("schemaVersion", 2);
+        normaliseOptimization(normalised.path("controlPlane"));
+        for (String collection : List.of("functions", "services")) {
+            normalised.path(collection).forEach(RecipeReader::normaliseOptimization);
+        }
+        return new Document(file, normalised, sha256(bytes), effectiveTag(file, normalised, tagOverride), version.asInt());
+    }
+
+    /** Schema validation has already limited numeric values to 0, 1, 2 or 3, including 3.0/3e0. */
+    private static void normaliseOptimization(JsonNode component) {
+        JsonNode options = component.path("build").path("native");
+        JsonNode optimization = options.path("optimization");
+        if (optimization.isNumber()) {
+            ((ObjectNode) options).put("optimization", Integer.toString(optimization.intValue()));
+        }
     }
 
     private static Object parse(Path file, byte[] bytes) {

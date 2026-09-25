@@ -1,0 +1,20 @@
+// Applied by JVM builds that filter Spring AOT outputs out of bootJar. A native build leaves
+// AOT-generated classes behind, and a JVM jar must never ship them: fail loudly if one reaches
+// BOOT-INF/classes, which means a new AOT output directory escaped the bootJar classpath filter.
+tasks.named('bootJar') {
+    doLast {
+        def generated = ['$$SpringCGLIB$$', '__BeanDefinitions', '__BeanFactoryRegistrations', '__ApplicationContextInitializer']
+        def leaked = []
+        new java.util.zip.ZipFile(archiveFile.get().asFile).withCloseable { zip ->
+            zip.entries().each { entry ->
+                if (entry.name.startsWith('BOOT-INF/classes/') && generated.any { entry.name.contains(it) }) {
+                    leaked << entry.name
+                }
+            }
+        }
+        if (leaked) {
+            throw new GradleException("${path}: the JVM jar packages ${leaked.size()} AOT-generated classes " +
+                    "(e.g. ${leaked.first()}); a native build left them and the bootJar AOT filter missed their directory")
+        }
+    }
+}

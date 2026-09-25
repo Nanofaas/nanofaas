@@ -37,7 +37,9 @@ git -C "$containerd_checkout" archive "$CONTAINERD_JAVA_REV" | tar -x -C "$stage
 )
 (
     cd "$stage/containerd-java"
-    ./gradlew publishToMavenLocal -PlibcniFromPackages=true \
+    # containerd-java resolves libcni-java from GitHub Packages, which needs credentials, unless a
+    # checkout is named: build it against the staged libcni-java at LIBCNI_JAVA_REV instead.
+    ./gradlew publishToMavenLocal -PlibcniDir="$stage/libcni-java" \
         -Dmaven.repo.local="$maven_repository" --no-daemon
 )
 
@@ -47,11 +49,9 @@ receipt=$maven_repository/containerd-source-revisions.txt
     printf 'containerd-java source commit: %s\n' "$CONTAINERD_JAVA_REV"
     printf 'Maven outputs: %s, %s, %s\n' \
         "$LIBCNI_JAVA_COORD" "$CONTAINERD_JAVA_COORD" "$CONTAINERD_JAVA_CNI_COORD"
-    for artifact in \
-        io/libcni/libcni-java/0.22.0/libcni-java-0.22.0.jar \
-        io/nanofaas/containerd-java/0.22.0/containerd-java-0.22.0.jar \
-        io/nanofaas/containerd-java-cni/0.22.0/containerd-java-cni-0.22.0.jar; do
-        (cd "$maven_repository" && sha256sum "$artifact")
+    for coord in "$LIBCNI_JAVA_COORD" "$CONTAINERD_JAVA_COORD" "$CONTAINERD_JAVA_CNI_COORD"; do
+        IFS=: read -r group artifact version <<< "$coord"
+        (cd "$maven_repository" && sha256sum "${group//.//}/$artifact/$version/$artifact-$version.jar")
     done
 } > "$receipt"
 echo "Staged $LIBCNI_JAVA_COORD, $CONTAINERD_JAVA_COORD and $CONTAINERD_JAVA_CNI_COORD"

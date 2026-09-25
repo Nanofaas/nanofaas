@@ -40,10 +40,19 @@ public final class ControlPlaneModulesPlugin implements Plugin<Settings> {
             new ModuleConstraintResolver().validate(descriptors, selected);
             nativeBuild = isNativeBuildRequested(settings);
         } else {
+            RecipeBuildProperties.rejectOwnedFlags(recipe.source(),
+                    settings.getStartParameter().getProjectProperties().keySet());
             selected = selectFromRecipe(settings, recipe, descriptors);
+            RecipeBuildProperties.requireBuildMetadata(recipe.source(), recipe.data(), selected);
             nativeBuild = recipeNativeBuild(settings, recipe);
         }
+        Map<String, Map<String, String>> projectProperties =
+                recipe == null ? Map.of() : RecipeBuildProperties.byProject(recipe.data());
         settings.getGradle().beforeProject(project -> {
+            // Before the build script runs: the scripts read these through project.findProperty,
+            // exactly as they read the corresponding -P flags without a recipe.
+            projectProperties.getOrDefault(project.getPath(), Map.of())
+                    .forEach(project.getExtensions().getExtraProperties()::set);
             if (project.getParent() == null) {
                 RecipeTasks.register(project, recipe);
             }

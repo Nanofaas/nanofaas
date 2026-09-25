@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.gradle;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.gradle.testkit.runner.BuildResult;
 import org.gradle.testkit.runner.GradleRunner;
 import org.gradle.testkit.runner.TaskOutcome;
@@ -36,12 +37,21 @@ class RecipePluginTest {
         write("settings.gradle", """
                 plugins { id 'it.unimib.datai.nanofaas.control-plane-modules' }
                 include ':control-plane', ':sdks:java', ':sdks:java-lite'
-                include ':functions:java:word-stats', ':functions:java:word-stats-lite', ':functions:java:jvm-only'
+                include ':functions:java:word-stats', ':functions:java:word-stats-lite', ':functions:java:jvm-only', ':services:java:warm-echo'
                 project(':control-plane').projectDir = file('platform/control-plane')
                 """);
         write("build.gradle", """
                 tasks.register('printNative') { doLast { println "native=${gradle.ext.nanofaasNativeBuildRequested}" } }
                 tasks.register('printSelection') { doLast { println "modules=${gradle.ext.nanofaasSelectedControlPlaneModules}" } }
+                allprojects {
+                    tasks.register('printRecipeProps') {
+                        doLast {
+                            def keys = ['nativeOptimization', 'nativeGc', 'nativeMonitoring', 'nanofaasBuildVariant',
+                                        'nanofaasBuildOptimization', 'nanofaasRecipeBuildMode']
+                            println "props ${project.path} " + keys.collect { "${it}=${project.findProperty(it)}" }.join(' ')
+                        }
+                    }
+                }
                 """);
         // Fake build tasks produce real outputs and leave a marker, so tests can prove what did (not) run.
         write("marker.gradle", """
@@ -84,6 +94,10 @@ class RecipePluginTest {
                   echo "The push refers to repository [${2%%:*}]"
                   [ -f "$log/no-digest" ] || echo "${2##*:}: digest: sha256:$(printf %%s "$2" | sha256sum | cut -c1-64) size: 528"
                 fi
+                if [ "$1" = image ] && [ "$4" = '{{.Id}}' ]; then
+                  [ -f "$log/fail-inspect-id" ] && { echo "fake inspect failed" >&2; exit 1; }
+                  echo "sha256:$(printf 'id-%%s' "$5" | sha256sum | cut -c1-64)"; exit 0
+                fi
                 if [ "$1" = image ]; then cat "$log/repo-digests" 2>/dev/null || echo '[]'; fi
                 """.formatted(projectDir));
         projectDir.resolve("bin/docker").toFile().setExecutable(true);
@@ -98,6 +112,14 @@ class RecipePluginTest {
                 fakeNative('word-stats-lite')
                 """);
         writeJavaFunction("jvm-only", ":sdks:java", "fakeBootJar('jvm-only.jar')");
+        write("services/java/warm-echo/build.gradle", """
+                plugins { id 'java' }
+                apply from: rootProject.file('marker.gradle')
+                dependencies { implementation project(':sdks:java') }
+                fakeBootJar('warm-echo.jar'); fakeNative('warm-echo')
+                """);
+        write("runtimes/watchdog/Dockerfile", "FROM scratch\n");
+        write("functions/bash/word-stats/Dockerfile", "FROM scratch\n");
         write("functions/python/word-stats/Dockerfile", "FROM scratch\n");
         write("functions/go/qr-code/Dockerfile", "FROM scratch\n");
         Files.createDirectories(projectDir.resolve("functions/javascript/no-dockerfile"));
@@ -278,6 +300,411 @@ class RecipePluginTest {
         assertThat(run("printNative").getOutput()).contains("native=false");
     }
 
+    private static final String V2_HEADER = "schemaVersion: 2\nname: demo\n";
+
+    @Test
+    void recipeNativeOptionsReachEachProject() throws IOException {
+        writeModule("build-metadata", "");
+        recipe(V2_HEADER + """
+                controlPlane: {modules: [build-metadata], build: {mode: native, variant: native-os, native: {optimization: s}}}
+                functions: [{name: word-stats, sdk: java, build: {mode: native, native: {gc: G1}}}]
+                """);
+
+        String output = run("printRecipeProps", "-Precipe=recipe.yaml").getOutput();
+
+        assertThat(output)
+                .contains("props :control-plane nativeOptimization=s nativeGc=null")
+                .contains("props :functions:java:word-stats nativeOptimization=null nativeGc=G1")
+                .contains("props :control-plane-modules:build-metadata nativeOptimization=null nativeGc=null"
+                        + " nativeMonitoring=null nanofaasBuildVariant=native-os nanofaasBuildOptimization=s")
+                .contains("props :functions:java:word-stats-lite nativeOptimization=null");
+    }
+
+    @Test
+    void recipeOwnedFlagsAreRejectedAndBuilderFlagsAccepted() throws IOException {
+        recipe(V2_HEADER + CP_JVM);
+
+        assertThat(fails("printRecipeProps", "-Precipe=recipe.yaml", "-PnativeOptimization=s"))
+                .contains("-PnativeOptimization cannot be combined with -Precipe");
+        run("printRecipeProps", "-Precipe=recipe.yaml", "-PnativeBuildMemory=6g", "-PnativeParallelism=2",
+                "-PcontainerdMavenLocal=true", "-Dmaven.repo.local=" + outsideDir);
+    }
+
+    @Test
+    void buildIdentityWithoutBuildMetadataFailsBeforeBuilding() throws IOException {
+        recipe(V2_HEADER + "controlPlane: {modules: [], build: {mode: jvm, variant: jvm}}\n");
+
+        assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker()))
+                .contains("controlPlane.build.variant requires the build-metadata module");
+        assertThat(projectDir.resolve("markers")).doesNotExist();
+    }
+
+    @Test
+    void catalogListsServicesAndBashFunctions() {
+        assertThat(run("listRecipeFunctions").getOutput())
+                .containsSubsequence("word-stats", "bash", "functions/bash/word-stats", "container")
+                .containsSubsequence("Services:", "warm-echo", "java", "services/java/warm-echo", "jvm, native",
+                        "watchdog", "dockerfile", "runtimes/watchdog", "container");
+    }
+
+    @Test
+    void servicesAndBashBuildWithTheirOwnContexts() throws IOException {
+        recipe(V2_HEADER + CP_JVM + """
+                functions: [{name: word-stats, sdk: bash, container: {image: ws-bash}}]
+                services:
+                  - {name: warm-echo, sdk: java, build: {mode: native, native: {optimization: s}}, container: {image: echo}}
+                  - {name: watchdog, sdk: dockerfile, container: {image: watchdog}}
+                """);
+
+        BuildResult result = run("assembleRecipe", "-Precipe=recipe.yaml", docker());
+
+        assertThat(result.task(":services:java:warm-echo:nativeCompile").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+        Path root = projectDir.toRealPath();
+        assertThat(projectDir.resolve("build/recipes/demo/services/java/warm-echo/application")).isExecutable();
+        assertThat(dockerCalls().stream().filter(call -> call.getFirst().equals("build")).toList()).containsExactlyInAnyOrder(
+                List.of("build", "-f", root.resolve("functions/bash/word-stats/Dockerfile").toString(),
+                        "-t", "nanofaas/demo/ws-bash:local", root.toString()),
+                List.of("build", "-f", root.resolve("deploy/recipes/Dockerfile.native").toString(),
+                        "-t", "nanofaas/demo/echo:local", root.resolve("build/recipes/demo/services/java/warm-echo").toString()),
+                List.of("build", "-f", root.resolve("runtimes/watchdog/Dockerfile").toString(),
+                        "-t", "nanofaas/demo/watchdog:local", root.resolve("runtimes/watchdog").toString()));
+    }
+
+    @Test
+    void previewShowsServices() throws IOException {
+        recipe(V2_HEADER + CP_JVM + "services: [{name: watchdog, sdk: dockerfile, container: {image: watchdog}}]\n");
+
+        assertThat(run("validateRecipe", "-Precipe=recipe.yaml").getOutput())
+                .containsSubsequence("watchdog", "dockerfile", "container",
+                        "docker build -f runtimes/watchdog/Dockerfile runtimes/watchdog", "nanofaas/demo/watchdog:local");
+    }
+
+    @Test
+    void rejectsUnknownServiceAndImagesSharedAcrossKinds() throws IOException {
+        recipe(V2_HEADER + CP_JVM + "services: [{name: echo-server, sdk: dockerfile, container: {image: x}}]\n");
+        assertThat(fails("validateRecipe", "-Precipe=recipe.yaml"))
+                .contains("services[0]: dockerfile implementation of echo-server is not available");
+
+        recipe(V2_HEADER + CP_JVM + """
+                functions: [{name: word-stats, sdk: bash, container: {image: shared}}]
+                services: [{name: watchdog, sdk: dockerfile, container: {image: shared}}]
+                """);
+        assertThat(fails("validateRecipe", "-Precipe=recipe.yaml"))
+                .contains("services[0].container.image: image nanofaas/demo/shared:local is already used");
+    }
+
+    private String output(Path dir) {
+        return "-PrecipeOutput=" + dir;
+    }
+
+    @Test
+    void assemblesIntoAnOutputOutsideTheCheckout() throws IOException {
+        recipe(HEADER + CP_JVM);
+        Path out = outsideDir.resolve("run-1");
+
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(out));
+
+        assertThat(out.resolve("distribution.json")).isRegularFile();
+        assertThat(Files.readString(out.resolve(".nanofaas-recipe-output"))).isEqualTo("nanofaas-recipe-output-v1\n");
+        assertThat(projectDir.resolve("build/recipes")).doesNotExist();
+    }
+
+    @Test
+    void refusesOutputsItDoesNotOwn() throws IOException {
+        recipe(HEADER + CP_JVM);
+        Path unrelated = Files.createDirectories(outsideDir.resolve("unrelated"));
+        Files.writeString(unrelated.resolve("keep.txt"), "user data");
+        Path malformed = Files.createDirectories(outsideDir.resolve("malformed"));
+        Files.writeString(malformed.resolve(".nanofaas-recipe-output"), "nanofaas-recipe-output-v2\n");
+        Files.writeString(malformed.resolve("keep.txt"), "user data");
+        Path file = Files.writeString(outsideDir.resolve("a-file"), "user data");
+        Path link = Files.createSymbolicLink(outsideDir.resolve("link-to-repo"), projectDir);
+
+        assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(unrelated)))
+                .contains("is not empty and holds no recipe output");
+        assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(malformed)))
+                .contains("is not empty and holds no recipe output");
+        assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(file)))
+                .contains("is not a directory");
+        assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(link)))
+                .contains("is the repository or one of its ancestors");
+        assertThat(fails("cleanRecipe", "-Precipe=recipe.yaml", output(unrelated)))
+                .contains("is not empty and holds no recipe output");
+        assertThat(fails("stageRecipe", "-Precipe=recipe.yaml", output(unrelated)))
+                .contains("is not empty and holds no recipe output");
+
+        assertThat(unrelated.resolve("keep.txt")).hasContent("user data");
+        assertThat(malformed.resolve("keep.txt")).hasContent("user data");
+        assertThat(file).hasContent("user data");
+        assertThat(projectDir.resolve("recipe.yaml")).isRegularFile();
+    }
+
+    @Test
+    void reusesAnOutputHoldingALegacyReport() throws IOException {
+        recipe(HEADER + CP_JVM);
+        Path legacy = Files.createDirectories(outsideDir.resolve("legacy"));
+        Files.writeString(legacy.resolve("distribution.json"), legacyReport().toPrettyString());
+        Files.writeString(Files.createDirectories(legacy.resolve("control-plane")).resolve("stale.txt"), "old");
+
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(legacy));
+
+        assertThat(legacy.resolve("control-plane/stale.txt")).doesNotExist();
+        assertThat(legacy.resolve(".nanofaas-recipe-output")).isRegularFile();
+    }
+
+    /** Complete report emitted by the v1 writer for HEADER + CP_JVM in this fixture (no Git repository). */
+    private JsonNode legacyReport() throws IOException {
+        return new ObjectMapper().readTree("""
+                {
+                  "schemaVersion": 1,
+                  "recipe": {"name": "demo", "sha256": "%s"},
+                  "tag": "local",
+                  "source": null,
+                  "modules": [],
+                  "components": [{"name": "control-plane", "sdk": "java", "mode": "jvm",
+                                  "artifact": "control-plane/", "image": null}]
+                }
+                """.formatted(sha256(projectDir.resolve("recipe.yaml"))));
+    }
+
+    @Test
+    void incompleteLegacyReportsDoNotAuthorizeDeletion() throws IOException {
+        recipe(HEADER + CP_JVM);
+        Path out = Files.createDirectories(outsideDir.resolve("incomplete-report"));
+        Files.writeString(out.resolve("keep.txt"), "user data");
+        List<JsonNode> invalid = new ArrayList<>();
+        invalid.add(new ObjectMapper().readTree("{\"schemaVersion\":1,\"recipe\":{\"name\":\"\"}}"));
+        for (String field : List.of("recipe", "tag", "source", "modules", "components")) {
+            ObjectNode report = (ObjectNode) legacyReport();
+            report.remove(field);
+            invalid.add(report);
+        }
+        ObjectNode wrongVersion = (ObjectNode) legacyReport();
+        wrongVersion.put("schemaVersion", "1");
+        invalid.add(wrongVersion);
+        ObjectNode incompleteComponent = (ObjectNode) legacyReport();
+        ((ObjectNode) incompleteComponent.at("/components/0")).remove("artifact");
+        invalid.add(incompleteComponent);
+        ObjectNode incompleteImage = (ObjectNode) legacyReport();
+        ((ObjectNode) incompleteImage.at("/components/0")).putObject("image")
+                .put("reference", "nanofaas/demo/control-plane:local");
+        invalid.add(incompleteImage);
+
+        for (JsonNode report : invalid) {
+            String contents = report.toPrettyString();
+            Files.writeString(out.resolve("distribution.json"), contents);
+            assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(out)))
+                    .contains("is not empty and holds no recipe output");
+            assertThat(out.resolve("keep.txt")).hasContent("user data");
+            assertThat(out.resolve("distribution.json")).hasContent(contents);
+        }
+    }
+
+    @Test
+    void failedAssemblyCanBeRetriedInTheSameOutput() throws IOException {
+        recipe(PUBLISH_CP_ONLY);
+        Path out = outsideDir.resolve("retry");
+        Files.writeString(projectDir.resolve("fail-build"), "");
+
+        fails("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(out));
+
+        assertThat(out.resolve(".nanofaas-recipe-output")).isRegularFile();
+        assertThat(out.resolve("distribution.json")).doesNotExist();
+        Files.delete(projectDir.resolve("fail-build"));
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(out));
+        assertThat(out.resolve("distribution.json")).isRegularFile();
+    }
+
+    private static String hex64(char c) {
+        return String.valueOf(c).repeat(64);
+    }
+
+    @Test
+    void reusesOutputsHoldingACompleteV2OrPublishedReport() throws IOException {
+        recipe(HEADER + CP_JVM);
+        ObjectNode v2 = (ObjectNode) legacyReport();
+        v2.put("schemaVersion", 2);
+        ((ObjectNode) v2.at("/components/0")).put("kind", "control-plane").putObject("image")
+                .put("reference", "nanofaas/demo/control-plane:local").put("status", "built").put("id", "sha256:" + hex64('a'));
+        ObjectNode published = (ObjectNode) legacyReport();
+        ((ObjectNode) published.at("/components/0")).putObject("image")
+                .put("reference", "nanofaas/demo/control-plane:local").put("status", "published")
+                .put("digest", "sha256:" + hex64('b'));
+
+        for (Map.Entry<String, JsonNode> report : Map.of("v2", (JsonNode) v2, "published", published).entrySet()) {
+            Path out = Files.createDirectories(outsideDir.resolve("reuse-" + report.getKey()));
+            Files.writeString(out.resolve("distribution.json"), report.getValue().toPrettyString());
+            Files.writeString(Files.createDirectories(out.resolve("control-plane")).resolve("stale.txt"), "old");
+
+            run("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(out));
+
+            assertThat(out.resolve("control-plane/stale.txt")).as(report.getKey()).doesNotExist();
+            assertThat(out.resolve(".nanofaas-recipe-output")).as(report.getKey()).isRegularFile();
+        }
+    }
+
+    @Test
+    void malformedReportsDoNotAuthorizeDeletion() throws IOException {
+        recipe(HEADER + CP_JVM);
+        Path out = Files.createDirectories(outsideDir.resolve("malformed-report"));
+        Files.writeString(out.resolve("keep.txt"), "user data");
+        List<JsonNode> invalid = new ArrayList<>();
+        ObjectNode noHash = (ObjectNode) legacyReport();
+        ((ObjectNode) noHash.get("recipe")).remove("sha256");
+        invalid.add(noHash);
+        ObjectNode badSource = (ObjectNode) legacyReport();
+        badSource.putObject("source").put("revision", "abc").put("dirty", false);
+        invalid.add(badSource);
+        ObjectNode badModule = (ObjectNode) legacyReport();
+        badModule.putArray("modules").add("Not A Slug");
+        invalid.add(badModule);
+        ObjectNode noComponents = (ObjectNode) legacyReport();
+        noComponents.putArray("components");
+        invalid.add(noComponents);
+        ObjectNode v2WithoutId = (ObjectNode) legacyReport();
+        v2WithoutId.put("schemaVersion", 2);
+        ((ObjectNode) v2WithoutId.at("/components/0")).put("kind", "control-plane").putObject("image")
+                .put("reference", "nanofaas/demo/control-plane:local").put("status", "built");
+        invalid.add(v2WithoutId);
+        ObjectNode publishedWithoutDigest = (ObjectNode) legacyReport();
+        ((ObjectNode) publishedWithoutDigest.at("/components/0")).putObject("image")
+                .put("reference", "nanofaas/demo/control-plane:local").put("status", "published");
+        invalid.add(publishedWithoutDigest);
+
+        for (JsonNode report : invalid) {
+            String contents = report.toPrettyString();
+            Files.writeString(out.resolve("distribution.json"), contents);
+            assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(out)))
+                    .contains("is not empty and holds no recipe output");
+            assertThat(out.resolve("keep.txt")).hasContent("user data");
+            assertThat(out.resolve("distribution.json")).hasContent(contents);
+        }
+    }
+
+    @Test
+    void reportRecordsKindsIdentityNativeOptionsAndImageIds() throws IOException {
+        writeModule("build-metadata", "");
+        recipe(V2_HEADER + """
+                registry: {repository: registry.example:5000/team, tag: "1.0.0"}
+                controlPlane:
+                  modules: [build-metadata]
+                  build: {mode: native, variant: native-o3-g1, native: {optimization: 3.0, gc: G1, monitoring: [jvmstat]}}
+                  container: {image: control-plane}
+                services: [{name: watchdog, sdk: dockerfile, container: {image: watchdog}}]
+                """);
+
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker());
+
+        JsonNode report = report();
+        JsonNode controlPlane = report.get("components").get(0);
+        assertThat(report.get("schemaVersion").asInt()).isEqualTo(2);
+        assertThat(report.at("/recipe/schemaVersion").asInt()).isEqualTo(2);
+        assertThat(controlPlane.get("kind").asText()).isEqualTo("control-plane");
+        assertThat(controlPlane.get("variant").asText()).isEqualTo("native-o3-g1");
+        assertThat(controlPlane.get("optimization").asText()).isEqualTo("3");
+        assertThat(controlPlane.get("native").toString())
+                .isEqualTo("{\"optimization\":\"3\",\"gc\":\"G1\",\"monitoring\":[\"jvmstat\",\"jfr\"]}");
+        assertThat(report.get("components").get(1).get("kind").asText()).isEqualTo("service");
+        String reference = "registry.example:5000/team/control-plane:1.0.0";
+        assertThat(image(report, reference).get("id").asText()).isEqualTo(imageIdOf(reference));
+        assertThat(dockerCalls()).contains(List.of("image", "inspect", "--format", "{{.Id}}", reference));
+    }
+
+    @Test
+    void imageIdSurvivesPublication() throws IOException {
+        recipe(PUBLISH_CP_ONLY);
+
+        run("publishRecipe", "-Precipe=recipe.yaml", docker());
+
+        JsonNode image = image(report(), "registry.example:5000/team/control-plane:1.0.0");
+        assertThat(image.get("status").asText()).isEqualTo("published");
+        assertThat(image.get("id").asText()).isEqualTo(imageIdOf("registry.example:5000/team/control-plane:1.0.0"));
+    }
+
+    @Test
+    void failedInspectFailsTheAssemblyAndCanBeRetried() throws IOException {
+        recipe(PUBLISH_CP_ONLY);
+        Files.writeString(projectDir.resolve("fail-inspect-id"), "");
+
+        assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker()))
+                .contains("docker image inspect registry.example:5000/team/control-plane:1.0.0 did not return an image ID");
+        assertThat(projectDir.resolve("build/recipes/demo/distribution.json")).doesNotExist();
+        assertThat(projectDir.resolve("build/recipes/demo/.nanofaas-recipe-output")).isRegularFile();
+
+        Files.delete(projectDir.resolve("fail-inspect-id"));
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker());
+        assertThat(projectDir.resolve("build/recipes/demo/distribution.json")).isRegularFile();
+    }
+
+    @Test
+    void v1RecipeReportsAdditiveFieldsOnly() throws IOException {
+        recipe(FULL_RECIPE);
+
+        run("assembleRecipe", "-Precipe=recipe.yaml", "-PrecipeTag=2.0.0", docker());
+
+        assertThat(report().at("/recipe/schemaVersion").asInt()).isEqualTo(1);
+        JsonNode component = report().get("components").get(0);
+        assertThat(component.get("kind").asText()).isEqualTo("control-plane");
+        assertThat(component.has("variant")).isFalse();
+        assertThat(component.has("native")).isFalse();
+        assertThat(component.get("image").get("status").asText()).isEqualTo("built");
+    }
+
+
+    @Test
+    void skippingCleanRecipeStillRefusesAnUnownedOutput() throws IOException {
+        recipe(HEADER + CP_JVM);
+        Path unrelated = Files.createDirectories(outsideDir.resolve("skip-clean"));
+        Files.writeString(unrelated.resolve("keep.txt"), "user data");
+
+        assertThat(fails("assembleRecipe", "-x", "cleanRecipe", "-Precipe=recipe.yaml", docker(), output(unrelated)))
+                .contains("is not empty and holds no recipe output");
+        assertThat(unrelated.resolve("keep.txt")).hasContent("user data");
+    }
+
+    @Test
+    void aCopiedReportDoesNotMakeADirectoryOwned() throws IOException {
+        recipe(HEADER + CP_JVM);
+        Path evidence = Files.createDirectories(outsideDir.resolve("evidence"));
+        String report = legacyReport().toPrettyString();
+        Files.writeString(evidence.resolve("distribution.json"), report);
+        Files.writeString(evidence.resolve("soak-metrics.csv"), "user data");
+
+        assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(evidence)))
+                .contains("is not empty and holds no recipe output");
+        assertThat(evidence.resolve("soak-metrics.csv")).hasContent("user data");
+        assertThat(evidence.resolve("distribution.json")).hasContent(report);
+    }
+
+
+    @Test
+    void reportOmitsVariantWhenOnlyTheOptimizationIsRecorded() throws IOException {
+        writeModule("build-metadata", "");
+        recipe(V2_HEADER + "controlPlane: {modules: [build-metadata], build: {mode: native, native: {optimization: s}}}\n");
+
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker());
+
+        JsonNode controlPlane = report().get("components").get(0);
+        assertThat(controlPlane.get("optimization").asText()).isEqualTo("s");
+        assertThat(controlPlane.has("variant")).isFalse();
+    }
+
+
+    @Test
+    void jvmTierReachesBuildMetadataAndTheReport() throws IOException {
+        writeModule("build-metadata", "");
+        for (String[] tier : new String[][] {{"-XX:TieredStopAtLevel=1", "c1"}, {"-Xmx128m", "c2"}}) {
+            recipe(V2_HEADER + "controlPlane: {modules: [build-metadata], build: {mode: jvm, variant: jvm-" + tier[1]
+                    + "}, jvm: {args: ['" + tier[0] + "']}}\n");
+
+            assertThat(run("printRecipeProps", "-Precipe=recipe.yaml").getOutput()).contains(
+                    "props :control-plane-modules:build-metadata nativeOptimization=null nativeGc=null nativeMonitoring=null"
+                            + " nanofaasBuildVariant=jvm-" + tier[1] + " nanofaasBuildOptimization=" + tier[1]);
+            run("assembleRecipe", "-Precipe=recipe.yaml", docker());
+            assertThat(report().at("/components/0/optimization").asText()).isEqualTo(tier[1]);
+        }
+    }
+
     private static final String FULL_RECIPE = HEADER + """
             registry: {repository: registry.example:5000/team, tag: "1.0.0"}
             controlPlane:
@@ -321,7 +748,7 @@ class RecipePluginTest {
         assertThat(out.resolve("functions/python")).doesNotExist();
 
         Path root = projectDir.toRealPath();
-        assertThat(dockerCalls()).containsExactlyInAnyOrder(
+        assertThat(dockerCalls().stream().filter(call -> call.getFirst().equals("build")).toList()).containsExactlyInAnyOrder(
                 List.of("build", "-f", root.resolve("deploy/recipes/Dockerfile.jvm").toString(),
                         "-t", "registry.example:5000/team/control-plane:2.0.0", root.resolve("build/recipes/demo/control-plane").toString()),
                 List.of("build", "-f", root.resolve("deploy/recipes/Dockerfile.native").toString(),
@@ -332,7 +759,7 @@ class RecipePluginTest {
 
         String report = Files.readString(out.resolve("distribution.json"));
         assertThat(report)
-                .contains("\"schemaVersion\" : 1", "\"tag\" : \"2.0.0\"", "\"source\" : null", "\"modules\" : [ ]")
+                .contains("\"schemaVersion\" : 2", "\"tag\" : \"2.0.0\"", "\"source\" : null", "\"modules\" : [ ]")
                 .contains("\"sha256\" : \"" + sha256(projectDir.resolve("recipe.yaml")) + "\"")
                 .contains("\"reference\" : \"registry.example:5000/team/ws-python:2.0.0\"", "\"status\" : \"built\"")
                 .contains("\"artifact\" : \"functions/java-lite/word-stats/\"")
@@ -410,6 +837,23 @@ class RecipePluginTest {
 
         assertThat(report().get("source").get("revision").asText()).hasSize(40);
         assertThat(report().get("source").get("dirty").asBoolean()).isTrue();
+    }
+
+
+    @Test
+    void anOutputInsideTheRepositoryDoesNotMakeTheReportDirty() throws Exception {
+        recipe(HEADER + CP_JVM);
+        write(".gitignore", "build/\n.gradle/\nmarkers/\n");   // Gradle's and the fixture's own outputs
+        git("init", "-q");
+        git("add", "-A");
+        git("-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "-q", "-m", "fixture");
+
+        runner("assembleRecipe", "-Precipe=recipe.yaml", docker(), "-PrecipeOutput=recipe-out")
+                .withEnvironment(Map.of("PATH", System.getenv("PATH"))).build();
+
+        JsonNode report = new ObjectMapper().readTree(projectDir.resolve("recipe-out/distribution.json").toFile());
+        assertThat(report.get("source").get("revision").asText()).hasSize(40);
+        assertThat(report.get("source").get("dirty").asBoolean()).isFalse();
     }
 
     private void git(String... arguments) throws Exception {
@@ -542,6 +986,15 @@ class RecipePluginTest {
         try {
             return "sha256:" + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                     .digest(reference.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException(exception);
+        }
+    }
+
+    private static String imageIdOf(String reference) {
+        try {
+            return "sha256:" + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(("id-" + reference).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException(exception);
         }

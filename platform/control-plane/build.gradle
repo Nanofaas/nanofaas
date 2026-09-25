@@ -144,8 +144,12 @@ if (!nativeBuildRequested) {
     // Disabled tasks keep their previous outputs, and bootJar still packages the aot source set:
     // without this filter a JVM jar built after a native build carries stale AOT classes.
     tasks.named('bootJar') {
-        classpath = classpath.filter { !sourceSets.aot.output.files.contains(it) }
+        // processAot writes the generated classes (CGLIB proxies) to its own classesOutput, which is on the
+        // bootJar classpath but not part of sourceSets.aot.output.
+        def aotOutputs = files(sourceSets.aot.output, tasks.named('processAot').flatMap { it.classesOutput })
+        classpath = classpath.filter { !aotOutputs.files.contains(it) }
     }
+    apply from: rootProject.file('gradle/jvm-jar-without-aot.gradle')
 }
 // Test AOT - @MockBean is incompatible with AOT, always disable
 tasks.named('processTestAot') { enabled = false }
