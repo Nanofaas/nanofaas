@@ -444,11 +444,11 @@ class RecipePluginTest {
         recipe(HEADER + CP_JVM);
         Path legacy = Files.createDirectories(outsideDir.resolve("legacy"));
         Files.writeString(legacy.resolve("distribution.json"), legacyReport().toPrettyString());
-        Files.writeString(legacy.resolve("stale.txt"), "old");
+        Files.writeString(Files.createDirectories(legacy.resolve("control-plane")).resolve("stale.txt"), "old");
 
         run("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(legacy));
 
-        assertThat(legacy.resolve("stale.txt")).doesNotExist();
+        assertThat(legacy.resolve("control-plane/stale.txt")).doesNotExist();
         assertThat(legacy.resolve(".nanofaas-recipe-output")).isRegularFile();
     }
 
@@ -534,11 +534,11 @@ class RecipePluginTest {
         for (Map.Entry<String, JsonNode> report : Map.of("v2", (JsonNode) v2, "published", published).entrySet()) {
             Path out = Files.createDirectories(outsideDir.resolve("reuse-" + report.getKey()));
             Files.writeString(out.resolve("distribution.json"), report.getValue().toPrettyString());
-            Files.writeString(out.resolve("stale.txt"), "old");
+            Files.writeString(Files.createDirectories(out.resolve("control-plane")).resolve("stale.txt"), "old");
 
             run("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(out));
 
-            assertThat(out.resolve("stale.txt")).as(report.getKey()).doesNotExist();
+            assertThat(out.resolve("control-plane/stale.txt")).as(report.getKey()).doesNotExist();
             assertThat(out.resolve(".nanofaas-recipe-output")).as(report.getKey()).isRegularFile();
         }
     }
@@ -646,6 +646,32 @@ class RecipePluginTest {
         assertThat(component.has("variant")).isFalse();
         assertThat(component.has("native")).isFalse();
         assertThat(component.get("image").get("status").asText()).isEqualTo("built");
+    }
+
+
+    @Test
+    void skippingCleanRecipeStillRefusesAnUnownedOutput() throws IOException {
+        recipe(HEADER + CP_JVM);
+        Path unrelated = Files.createDirectories(outsideDir.resolve("skip-clean"));
+        Files.writeString(unrelated.resolve("keep.txt"), "user data");
+
+        assertThat(fails("assembleRecipe", "-x", "cleanRecipe", "-Precipe=recipe.yaml", docker(), output(unrelated)))
+                .contains("is not empty and holds no recipe output");
+        assertThat(unrelated.resolve("keep.txt")).hasContent("user data");
+    }
+
+    @Test
+    void aCopiedReportDoesNotMakeADirectoryOwned() throws IOException {
+        recipe(HEADER + CP_JVM);
+        Path evidence = Files.createDirectories(outsideDir.resolve("evidence"));
+        String report = legacyReport().toPrettyString();
+        Files.writeString(evidence.resolve("distribution.json"), report);
+        Files.writeString(evidence.resolve("soak-metrics.csv"), "user data");
+
+        assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker(), output(evidence)))
+                .contains("is not empty and holds no recipe output");
+        assertThat(evidence.resolve("soak-metrics.csv")).hasContent("user data");
+        assertThat(evidence.resolve("distribution.json")).hasContent(report);
     }
 
     private static final String FULL_RECIPE = HEADER + """

@@ -33,17 +33,7 @@ final class RecipeOutput {
     }
 
     static void claim(Path source, Path output, Path rootDir) {
-        Path real = realPathOfExistingPrefix(output);
-        if (rootDir.startsWith(real)) {
-            throw RecipeReader.failure(source, "-PrecipeOutput: " + output + " is the repository or one of its ancestors");
-        }
-        if (Files.exists(output) && !Files.isDirectory(output)) {
-            throw RecipeReader.failure(source, "-PrecipeOutput: " + output + " exists and is not a directory");
-        }
-        if (Files.isDirectory(output) && !isEmpty(output) && !owned(output)) {
-            throw RecipeReader.failure(source, "-PrecipeOutput: " + output + " is not empty and holds no recipe output"
-                    + " (no valid " + MARKER + " and no distribution.json of an earlier assembly); nothing was deleted");
-        }
+        Path real = requireOwned(source, output, rootDir);
         try {
             if (Files.isDirectory(output)) {
                 deleteContents(real);
@@ -55,6 +45,29 @@ final class RecipeOutput {
         }
     }
 
+    /**
+     * Fails unless the directory may be emptied: absent, empty, or visibly an assembly output. Every task that deletes
+     * inside it checks this, so excluding cleanRecipe (-x) cannot route around the rule. Returns the real path.
+     */
+    static Path requireOwned(Path source, Path output, Path rootDir) {
+        Path real = realPathOfExistingPrefix(output);
+        if (rootDir.startsWith(real)) {
+            throw RecipeReader.failure(source, "-PrecipeOutput: " + output + " is the repository or one of its ancestors");
+        }
+        if (Files.exists(output) && !Files.isDirectory(output)) {
+            throw RecipeReader.failure(source, "-PrecipeOutput: " + output + " exists and is not a directory");
+        }
+        if (Files.isDirectory(output) && !isEmpty(output) && !owned(output)) {
+            throw RecipeReader.failure(source, "-PrecipeOutput: " + output + " is not empty and holds no recipe output"
+                    + " (no valid " + MARKER + " and no distribution.json of an earlier assembly); nothing was deleted");
+        }
+        return real;
+    }
+
+    /** What an assembly writes at the top of its output; a report counts as evidence only among these. */
+    private static final Set<String> ASSEMBLY_ENTRIES = Set.of(RecipeArtifacts.REPORT, RecipeArtifacts.REPORT + ".tmp",
+            MARKER, "control-plane", "functions", "services");
+
     private static boolean owned(Path dir) {
         try {
             Path marker = dir.resolve(MARKER);
@@ -65,6 +78,12 @@ final class RecipeOutput {
             Path report = dir.resolve(RecipeArtifacts.REPORT);
             if (!Files.isRegularFile(report, LinkOption.NOFOLLOW_LINKS)) {
                 return false;
+            }
+            // A report copied next to other files (an evidence directory, say) was not written by an assembly there.
+            try (Stream<Path> entries = Files.list(dir)) {
+                if (!entries.allMatch(entry -> ASSEMBLY_ENTRIES.contains(entry.getFileName().toString()))) {
+                    return false;
+                }
             }
             JsonNode json = new ObjectMapper().readTree(report.toFile());
             return validReport(json);

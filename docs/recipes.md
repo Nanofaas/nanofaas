@@ -195,11 +195,13 @@ outside a read-only checkout. A relative path resolves against the repository ro
 - does not exist;
 - is empty;
 - contains a valid `.nanofaas-recipe-output` marker; or
-- contains a complete `distribution.json` from an earlier assembly.
+- contains a complete `distribution.json` from an earlier assembly, and nothing but assembly
+  output (`control-plane/`, `functions/`, `services/`). A report copied into a directory of
+  other files does not count.
 
 The repository and its ancestors are always refused, even through a symbolic link, and so is
 a regular file. The check runs before anything is deleted, and also guards `cleanRecipe` and
-`stageRecipe` when they are called directly. The marker is written as soon as the directory
+`stageRecipe` when they are called directly or when `cleanRecipe` is excluded with `-x`. The marker is written as soon as the directory
 is claimed and survives a failed assembly, so a retry can reuse the same directory. It does
 not claim that any artifact is usable: only `distribution.json`, written last, does.
 

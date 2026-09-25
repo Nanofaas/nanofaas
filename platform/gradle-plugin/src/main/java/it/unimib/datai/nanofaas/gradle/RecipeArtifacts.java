@@ -81,6 +81,8 @@ final class RecipeArtifacts {
             sync.dependsOn(clean);
             sync.into(output);
             sync.preserve(filter -> filter.include(RecipeOutput.MARKER));
+            // Sync deletes whatever it did not copy: check ownership here too, for -x cleanRecipe.
+            sync.doFirst(ignored -> RecipeOutput.requireOwned(recipe.source(), output, rootDir));
             targets.stream().filter(target -> target.task() != null).forEach(target -> stageJava(root, sync, target));
             sync.doLast(ignored -> targets.stream().filter(target -> target.task() != null)
                     .forEach(target -> writeRuntimeFiles(output.resolve(target.stagingDir()), target, recipe.data())));
