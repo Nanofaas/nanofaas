@@ -205,6 +205,10 @@ a regular file. The check runs before anything is deleted, and also guards `clea
 is claimed and survives a failed assembly, so a retry can reuse the same directory. It does
 not claim that any artifact is usable: only `distribution.json`, written last, does.
 
+The marker is new. A default `build/recipes/<name>/` left by an assembly that failed before
+this change has neither a marker nor a report, so it is refused. Delete it once, and later
+assemblies mark it.
+
 `jvm.options` and `launch.args` are standard JVM argument files, with one quoted argument
 per line. Spaces, quotes and backslashes are kept literally. `jvm.options` starts with the
 control plane's fixed flags (`-XX:MaxRAMPercentage=70`, `-Xss256k`, ...), followed by the
@@ -271,3 +275,8 @@ A recipe describes one control plane. To compare variants built from the same so
 one `assembleRecipe` per variant, each with its own `-PrecipeOutput`. Gradle and Docker
 caching keep the repeats cheap. The recipe's default JVM tuning, `-XX:+UseSerialGC` with full
 tiering, is the same as the default of `platform/control-plane/Dockerfile`.
+
+Variants that share an image name and tag also share the local image tag: each assembly
+retags the image, so the last one wins. Give each variant its own tag (`-PrecipeTag`, which
+needs a `registry` section) or its own `container.image`. Otherwise, pin each build by the
+`image.id` in its own `distribution.json`.
