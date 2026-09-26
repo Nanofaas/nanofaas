@@ -53,6 +53,8 @@ name: demo                         # lowercase words joined by '-'
 registry:                          # optional; required by publishRecipe
   repository: ghcr.io/my-org       # host[:port][/path], no scheme
   tag: "1.0.0"
+  platforms: [linux/amd64, linux/arm64]   # optional; selects docker buildx (see Multi-architecture images)
+  provenance: true                 # optional, needs platforms; BuildKit provenance, mode=max
 
 controlPlane:
   modules: [async-queue, container-deployment-provider, build-metadata]   # exact selection; [] = core only
@@ -187,6 +189,47 @@ Build through `assembleRecipe` instead.
   `-PnativeParallelism` are passed into the builder. With the containerd module, the builder
   needs the staged repository: `-PcontainerdMavenLocal=true -Dmaven.repo.local=<dir>`.
 
+## Multi-architecture images
+
+```yaml
+registry:
+  repository: ghcr.io/my-org
+  tag: "1.0.0"
+  platforms: [linux/amd64, linux/arm64]
+  provenance: true
+```
+
+- **The buildx path.** With `registry.platforms`, even with one platform, every image is built
+  with `docker buildx build --platform <list>`. `provenance: true` attaches BuildKit provenance
+  with `mode=max`. Without it, images carry none (`--provenance=false`). Without `platforms`,
+  everything works as described above.
+- **Assembly keeps no local image.** A multi-architecture image cannot live in the classic
+  Docker image store, and provenance does not survive `--load`. So `assembleRecipe` builds every
+  platform into the builder's cache only, and `publishRecipe` repeats each build with `--push`.
+  The repeated build comes from that cache, so it takes a fraction of the first.
+- **The builder.** `-PrecipeBuilder=<name>` selects the buildx builder; without it, the current
+  one is used. Before anything is emptied or built, the `checkRecipeBuilder` task requires
+  `docker buildx inspect` to list every platform.
+  - A builder reaches another architecture through QEMU emulation
+    (`docker run --privileged --rm tonistiigi/binfmt --install all`) or through a node running on
+    it (`docker buildx create --append`).
+  - The default `docker` driver cannot build several platforms at once; use a
+    `docker-container` builder.
+  - This path needs `docker buildx`: podman is not supported here.
+- **Native components.**
+  - With `builder: container` and an image, the component is compiled and packaged in one build,
+    by the `recipe-native` stage of `deploy/native-java/Dockerfile`, once per platform. The
+    image's provenance therefore names the GraalVM builder stage. Its staging directory holds
+    only the runtime files, with no `application`.
+  - With `builder: host`, the executable has the host's architecture, so `platforms` must be
+    exactly the host's platform.
+  - native-image under QEMU emulation is very slow: in practice, each architecture needs a
+    native node.
+- **Other images.** JVM images package the same jar for every platform. Dockerfile components
+  build from their own Dockerfile, and their `RUN` steps need emulation or a native node.
+- **Signing stays outside the recipe.** nanolab and the release sign the digests the report
+  records.
+
 ## Output and runtime configuration
 
 ```
@@ -270,6 +313,10 @@ The images set the same variable to `/app/config/recipe.yaml`.
 - for each image, `id`: the local image ID from `docker image inspect`, recorded after the
   build and kept after a push. A built image that is never pushed can still be pinned. If the
   inspect fails, the assembly fails.
+- on the buildx path, instead of `id`: `platforms` and `provenance` for each image, and after
+  publication `digest` (the multi-architecture index, or the manifest itself for one platform
+  without provenance) and `manifests`, mapping each platform to its manifest digest. Nothing
+  else distinguishes the two paths: a consumer checks for `platforms`.
 
 Version 2 only adds fields: a reader of the version 1 fields sees no difference.
 
@@ -279,8 +326,8 @@ image's `status` is one of:
 | Status | Meaning |
 | --- | --- |
 | `built` | Built by the last assembly, not pushed |
-| `published` | Pushed; `digest` is the registry manifest digest printed by `docker push` (or the matching `RepoDigests` entry), never the local image ID |
-| `published-unverified` | The push succeeded but the digest could not be determined; the task fails |
+| `published` | Pushed; `digest` is the registry digest (`docker push`'s manifest digest, the matching `RepoDigests` entry, or on the buildx path the pushed index), never the local image ID |
+| `published-unverified` | The push succeeded but the digest, or on the buildx path one platform's manifest, could not be determined; the task fails |
 | `failed` | The push failed; the task fails and names the images already published |
 
 Images are pushed one at a time, in order, and the report is rewritten after each push by
@@ -288,9 +335,10 @@ writing a temporary file and moving it into place. A later failure therefore nev
 an earlier success. There is no retry and no rollback: a registry has no transaction
 across images. A new assembly discards all publication data.
 
-The Docker CLI and its configured credentials are used as they are. `-PrecipeDocker=<path>`
-selects another Docker-compatible executable. Every command runs with separate arguments,
-never through a shell.
+The Docker CLI and its configured credentials are used as they are. On the buildx path,
+`-PrecipeBuilder=<name>` selects the builder. `-PrecipeDocker=<path>` selects another
+Docker-compatible executable. Every command runs with separate arguments, never through a
+shell.
 
 ## Running several variants
 
