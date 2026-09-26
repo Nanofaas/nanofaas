@@ -40,7 +40,12 @@ COPY --from=containerd_maven_repo . /tmp/containerd-m2/
 ARG NATIVE_TASK
 ARG NATIVE_BINARY
 ARG GRADLE_ARGS
-RUN ./gradlew "$NATIVE_TASK" $GRADLE_ARGS --no-daemon && \
+# The Gradle user home lives in a BuildKit cache mount: dependencies and the Gradle distribution
+# survive across builds (nanolab assembles several variants in a row). It is not part of the image.
+# Locked, because concurrent builds on one builder, and the platforms of one multi-platform build,
+# would otherwise run Gradle in one user home at the same time from separate network namespaces,
+# where Gradle cannot hand its lock over.
+RUN --mount=type=cache,target=/root/.gradle,sharing=locked ./gradlew "$NATIVE_TASK" $GRADLE_ARGS --no-daemon && \
     cp "$NATIVE_BINARY" /tmp/application && \
     mkdir -p /var/lib/nanofaas && touch /var/lib/nanofaas/.keep
 
@@ -49,6 +54,12 @@ RUN ./gradlew "$NATIVE_TASK" $GRADLE_ARGS --no-daemon && \
 # only pays the few megabytes, which is cheaper than two runtime images that can
 # drift apart — the base image failed at startup, not at build, with
 # "libstdc++.so.6: cannot open shared object file".
+# assembleRecipe's container builder exports only the executable
+# (docker build --target native-executable --output type=local,...) and packages it itself.
+# The release builds the default target, the final stage below, which must stay last.
+FROM scratch AS native-executable
+COPY --from=builder /tmp/application /application
+
 FROM ${RUNTIME_IMAGE}
 ARG BUILDER_IMAGE
 ARG RUNTIME_IMAGE

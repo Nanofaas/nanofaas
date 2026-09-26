@@ -62,9 +62,22 @@ class RecipeBuildPropertiesTest {
         JsonNode data = data("controlPlane: {modules: [], build: {mode: native, native: {gc: G1, monitoring: [jvmstat]}}}\n");
 
         assertThat(RecipeBuildProperties.effectiveNative(data.get("controlPlane")))
-                .isEqualTo(new RecipeBuildProperties.NativeOptions("3", "G1", List.of("jvmstat", "jfr")));
+                .isEqualTo(new RecipeBuildProperties.NativeOptions("3", "G1", List.of("jvmstat", "jfr"), "host", null));
         assertThat(RecipeBuildProperties.effectiveNative(data("controlPlane: {modules: [], build: {mode: jvm}}\n")
                 .get("controlPlane"))).isNull();
+    }
+
+    @Test
+    void containerBuilderPicksTheDistributionFromTheCollector() throws IOException {
+        JsonNode data = data("""
+                controlPlane: {modules: [], build: {mode: native, builder: container, native: {gc: G1}}}
+                services: [{name: warm-echo, sdk: java, build: {mode: native, builder: container}}]
+                """);
+
+        assertThat(RecipeBuildProperties.effectiveNative(data.get("controlPlane")))
+                .isEqualTo(new RecipeBuildProperties.NativeOptions("3", "G1", List.of("jfr"), "container", "oracle"));
+        assertThat(RecipeBuildProperties.effectiveNative(data.at("/services/0")))
+                .isEqualTo(new RecipeBuildProperties.NativeOptions("3", "serial", List.of(), "container", "community"));
     }
 
     @Test

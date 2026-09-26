@@ -58,6 +58,7 @@ controlPlane:
   modules: [async-queue, container-deployment-provider, build-metadata]   # exact selection; [] = core only
   build:
     mode: native                   # jvm | native, required
+    builder: container             # host (default) | container; see "Native builds"
     variant: native-os             # optional build identity; needs build-metadata
     native: {optimization: s}      # native mode only; see "Native options"
   jvm: {args: [...]}               # jvm mode only
@@ -160,17 +161,31 @@ services in a separate section.
 
 ## Native builds
 
-A `native` component compiles with `nativeCompile`, which needs a local GraalVM (see
-`scripts/native-build.sh` for the release this repository pins). JVM components and
-`validateRecipe` do not need it. Each component's mode is independent: a native function
-leaves a `jvm` control plane on the JVM, without Spring AOT. With a `jvm` control plane in
-the recipe, requesting native tasks directly (`nativeCompile -Precipe=...`) and passing a
-contradicting `-PnanofaasBuildType` both fail. Build through `assembleRecipe` instead.
+With the default `host` builder, a `native` component compiles with `nativeCompile`, which
+needs a local GraalVM (see `scripts/native-build.sh` for the release this repository pins).
+JVM components, `builder: container` components and `validateRecipe` do not need it. Each
+component's mode is independent: a native function leaves a `jvm` control plane on the JVM,
+without Spring AOT. With a `jvm` control plane in the recipe, requesting native tasks directly
+(`nativeCompile -Precipe=...`) and passing a contradicting `-PnanofaasBuildType` both fail.
+Build through `assembleRecipe` instead.
 
-The native executable is compiled on the host and copied as-is into the image, so a native
-component with `container.image` needs a Linux host of the image's architecture; other
-hosts are rejected at configuration. The runtime image is `distroless/cc-debian13`, so the
-host's glibc must not be newer than Debian 13's.
+`build.builder` chooses where a native component compiles:
+
+- `host` (the default): `nativeCompile` on this machine, with its GraalVM. The executable is
+  copied as-is into a Linux image, so the host must be Linux on the image's architecture, and
+  its glibc must not be newer than Debian 13's (the runtime image is `distroless/cc-debian13`).
+- `container`: inside the builder of
+  [`deploy/native-java/Dockerfile`](../deploy/native-java/Dockerfile), the one the release uses.
+  The host needs only a Docker-compatible CLI with BuildKit (Docker 23+, or podman through
+  `-PrecipeDocker`), so it also works on macOS and Windows. The builder installs GraalVM
+  Community, or Oracle GraalVM when the component's `gc` is `G1`: Community has no G1. Oracle
+  GraalVM is GFTC-licensed, not GPL, so asking for G1 is also a licensing choice. The report
+  records the distribution. Only the executable comes back
+  (`docker build --target native-executable --output type=local,...`), into the component's
+  staging directory. From there the image is packaged exactly as for `host`. Gradle's
+  dependencies stay in a BuildKit cache between builds. `-PnativeBuildMemory` and
+  `-PnativeParallelism` are passed into the builder. With the containerd module, the builder
+  needs the staged repository: `-PcontainerdMavenLocal=true -Dmaven.repo.local=<dir>`.
 
 ## Output and runtime configuration
 
@@ -199,15 +214,22 @@ outside a read-only checkout. A relative path resolves against the repository ro
   output (`control-plane/`, `functions/`, `services/`). A report copied into a directory of
   other files does not count.
 
-The repository and its ancestors are always refused, even through a symbolic link, and so is
-a regular file. The check runs before anything is deleted, and also guards `cleanRecipe` and
-`stageRecipe` when they are called directly or when `cleanRecipe` is excluded with `-x`. The marker is written as soon as the directory
-is claimed and survives a failed assembly, so a retry can reuse the same directory. It does
-not claim that any artifact is usable: only `distribution.json`, written last, does.
+The repository and its ancestors are always refused, even through a symbolic link, and so is a
+regular file. The check runs before anything is deleted, and also guards `cleanRecipe` and
+`stageRecipe` when they are called directly or when `cleanRecipe` is excluded with `-x`. The
+marker is written as soon as the directory is claimed and survives a failed assembly, so a
+retry can reuse the same directory. It does not claim that any artifact is usable: only
+`distribution.json`, written last, does.
 
 The marker is new. A default `build/recipes/<name>/` left by an assembly that failed before
 this change has neither a marker nor a report, so it is refused. Delete it once, and later
 assemblies mark it.
+
+Keep `-PrecipeOutput` outside the repository, or under a `build/` directory. The repository is
+the build context of every image that builds from it: Dockerfile functions, and the container
+builder's `native-executable` build. The root `.dockerignore` hides
+`build/` directories but not an output placed elsewhere in the checkout, so such an output is
+sent to the builder with each of those builds and changes their cache key.
 
 `jvm.options` and `launch.args` are standard JVM argument files, with one quoted argument
 per line. Spaces, quotes and backslashes are kept literally. `jvm.options` starts with the
@@ -243,7 +265,8 @@ The images set the same variable to `/app/config/recipe.yaml`.
 - each component's kind (`control-plane`, `function` or `service`), SDK, mode, staging
   directory and image
 - on the control plane, `variant` and `optimization` whenever the build metadata records them
-- on each native component, `native` with the effective `optimization`, `gc` and `monitoring`
+- on each native component, `native` with the effective `optimization`, `gc` and `monitoring`,
+  plus `builder` and, for the container builder, `distribution`
 - for each image, `id`: the local image ID from `docker image inspect`, recorded after the
   build and kept after a push. A built image that is never pushed can still be pinned. If the
   inspect fails, the assembly fails.

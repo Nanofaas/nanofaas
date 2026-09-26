@@ -312,6 +312,10 @@ class RecipeReaderTest {
                         + "services: [{name: w, sdk: rust, container: {image: w}}]\n", "sdk"),
                 Arguments.of("non-integral optimization", head
                         + "controlPlane: {modules: [], build: {mode: native, native: {optimization: 3.5}}}\n", "optimization"),
+                Arguments.of("builder in jvm mode", head
+                        + "controlPlane: {modules: [], build: {mode: jvm, builder: container}}\n", "builder"),
+                Arguments.of("unknown builder", head
+                        + "controlPlane: {modules: [], build: {mode: native, builder: cloud}}\n", "builder"),
                 Arguments.of("string version", "schemaVersion: '2'\nname: demo\n" + cp, "supported versions are 1 and 2"));
     }
 
@@ -332,6 +336,22 @@ class RecipeReaderTest {
         try (var schema = getClass().getClassLoader().getResourceAsStream(RecipeReader.SCHEMA_V2_RESOURCE)) {
             assertThat(metaschema.validate(new ObjectMapper().readTree(schema))).isEmpty();
         }
+    }
+
+    @Test
+    void acceptsTheContainerBuilderOnNativeComponents() throws IOException {
+        Path file = write("""
+                schemaVersion: 2
+                name: demo
+                controlPlane: {modules: [], build: {mode: native, builder: container}}
+                functions: [{name: word-stats, sdk: java, build: {mode: native, builder: host}}]
+                services: [{name: warm-echo, sdk: java, build: {mode: native, builder: container}}]
+                """);
+
+        JsonNode data = new RecipeReader().read(file, null).data();
+
+        assertThat(data.at("/controlPlane/build/builder").asText()).isEqualTo("container");
+        assertThat(data.at("/services/0/build/builder").asText()).isEqualTo("container");
     }
 
     private Path write(String content) throws IOException {

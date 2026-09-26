@@ -83,22 +83,71 @@ final class RecipeArtifacts {
             sync.preserve(filter -> filter.include(RecipeOutput.MARKER));
             // Sync deletes whatever it did not copy: check ownership here too, for -x cleanRecipe.
             sync.doFirst(ignored -> RecipeOutput.requireOwned(recipe.source(), output, rootDir));
-            targets.stream().filter(target -> target.task() != null).forEach(target -> stageJava(root, sync, target));
-            sync.doLast(ignored -> targets.stream().filter(target -> target.task() != null)
+            targets.stream().filter(target -> target.task() != null && !target.containerBuilt())
+                    .forEach(target -> stageJava(root, sync, target));
+        });
+        // Not a doLast of the Sync: with every Java component built in the container, the Sync has no source, is
+        // skipped as NO-SOURCE, and would take the control plane's config/recipe.yaml with it.
+        TaskProvider<Task> runtimeFiles = root.getTasks().register("writeRecipeRuntimeFiles", task -> {
+            task.setDescription("Writes jvm.options, launch.args and config/recipe.yaml into the staged components.");
+            task.dependsOn(stage);
+            // A NO-SOURCE Sync also skips its own ownership check, so -x cleanRecipe must be refused here too.
+            task.doFirst(ignored -> RecipeOutput.requireOwned(recipe.source(), output, rootDir));
+            task.doLast(ignored -> targets.stream().filter(target -> target.task() != null)
                     .forEach(target -> writeRuntimeFiles(output.resolve(target.stagingDir()), target, recipe.data())));
         });
         // A compile that fails after the clean must not leave the previous distribution's report behind.
-        targets.stream().filter(target -> target.task() != null)
+        targets.stream().filter(target -> target.task() != null && !target.containerBuilt())
                 .forEach(target -> producer(root, target).configure(task -> task.mustRunAfter(clean)));
 
         Services services = root.getObjects().newInstance(Services.class);
         Map<String, String> imageIds = new java.util.concurrent.ConcurrentHashMap<>();
+        Map<String, String> passThrough = new java.util.LinkedHashMap<>();
+        for (String key : RecipeContainerBuild.PASS_THROUGH) {
+            Object value = root.findProperty(key);
+            if (value != null) {
+                passThrough.put(key, value.toString());
+            }
+        }
+        String mavenRepoLocal = System.getProperty("maven.repo.local");
+        if (targets.stream().anyMatch(target -> target.controlPlane() && target.containerBuilt())) {
+            RecipeContainerBuild.requireContainerdRepository(recipe.source(), modules,
+                    root.findProperty("containerdMavenLocal"), mavenRepoLocal);
+        }
+        Path containerdRepository = modules.contains(RecipeContainerBuild.CONTAINERD_MODULE) && mavenRepoLocal != null
+                ? Path.of(mavenRepoLocal) : null;
+        Map<RecipeTasks.Target, TaskProvider<Exec>> containerBuilds = new java.util.LinkedHashMap<>();
+        for (RecipeTasks.Target target : targets) {
+            if (!target.containerBuilt()) {
+                continue;
+            }
+            String projectPath = target.task().substring(0, target.task().lastIndexOf(':'));
+            // Checked now: a whitespace value must fail before anything is built, not inside the builder.
+            RecipeContainerBuild.gradleArgs(recipe.source(), recipe.data(), projectPath, modules, NullNode.getInstance(),
+                    passThrough);
+            containerBuilds.put(target, root.getTasks().register("recipeNativeBuild" + containerBuilds.size(), Exec.class,
+                    exec -> {
+                        exec.setDescription("Compiles " + target.name() + " natively inside the builder container");
+                        exec.dependsOn(runtimeFiles);
+                        exec.environment("DOCKER_BUILDKIT", "1");
+                        exec.setWorkingDir(rootDir.toFile());
+                        exec.doFirst(ignored -> exec.commandLine(RecipeContainerBuild.command(docker, rootDir,
+                                output.resolve(target.stagingDir()), target.task(), nativeBinary(root, target),
+                                target.nativeOptions().distribution(),
+                                RecipeContainerBuild.gradleArgs(recipe.source(), recipe.data(), projectPath, modules,
+                                        source(services.getExec(), rootDir, output), passThrough),
+                                containerdRepository)));
+                    }));
+        }
         List<TaskProvider<Exec>> images = new ArrayList<>();
         for (RecipeTasks.Target target : targets) {
             if (target.image() != null) {
                 images.add(root.getTasks().register("recipeImage" + images.size(), Exec.class, exec -> {
                     exec.setDescription("Builds " + target.image());
-                    exec.dependsOn(stage);
+                    exec.dependsOn(runtimeFiles);
+                    if (containerBuilds.containsKey(target)) {
+                        exec.dependsOn(containerBuilds.get(target));
+                    }
                     exec.commandLine(dockerBuild(docker, rootDir, output, target));
                     exec.doLast(ignored -> imageIds.put(target.image(),
                             imageId(services.getExec(), docker, target.image())));
@@ -107,7 +156,7 @@ final class RecipeArtifacts {
         }
 
         root.getTasks().named("assembleRecipe", task -> {
-            task.dependsOn(stage, images);
+            task.dependsOn(runtimeFiles, images, containerBuilds.values());
             task.doLast(ignored -> writeReport(output.resolve(REPORT),
                     report(recipe, targets, modules, source(services.getExec(), rootDir, output), imageIds)));
         });
@@ -228,6 +277,12 @@ final class RecipeArtifacts {
         return id;
     }
 
+    /** The executable the builder copies out: the host project's nativeCompile output, relative to the repository. */
+    private static String nativeBinary(Project root, RecipeTasks.Target target) {
+        RegularFile file = (RegularFile) ((Provider<?>) producer(root, target).get().property("outputFile")).get();
+        return root.getRootDir().toPath().relativize(file.getAsFile().toPath()).toString().replace('\\', '/');
+    }
+
     private static TaskProvider<Task> producer(Project root, RecipeTasks.Target target) {
         int separator = target.task().lastIndexOf(':');
         return root.project(target.task().substring(0, separator)).getTasks().named(target.task().substring(separator + 1));
@@ -251,6 +306,7 @@ final class RecipeArtifacts {
     /** jvm.options and launch.args are JVM @argfiles; config/recipe.yaml is loaded through spring.config.additional-location. */
     static void writeRuntimeFiles(Path directory, RecipeTasks.Target target, JsonNode recipe) {
         try {
+            Files.createDirectories(directory);
             if (target.mode().equals("jvm")) {
                 List<String> options = new ArrayList<>(target.controlPlane() ? CONTROL_PLANE_FLAGS : List.of());
                 options.addAll(target.jvmArgs() != null ? target.jvmArgs()
@@ -316,6 +372,10 @@ final class RecipeArtifacts {
                         .put("gc", target.nativeOptions().gc());
                 ArrayNode monitoring = options.putArray("monitoring");
                 target.nativeOptions().monitoring().forEach(monitoring::add);
+                options.put("builder", target.nativeOptions().builder());
+                if (target.nativeOptions().distribution() != null) {
+                    options.put("distribution", target.nativeOptions().distribution());
+                }
             }
             if (target.image() == null) {
                 component.putNull("image");
