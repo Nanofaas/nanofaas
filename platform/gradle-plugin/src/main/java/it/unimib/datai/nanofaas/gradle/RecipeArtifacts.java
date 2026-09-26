@@ -200,7 +200,13 @@ final class RecipeArtifacts {
         });
         root.getTasks().named("publishRecipe", task -> {
             task.dependsOn("assembleRecipe");
-            task.doLast(ignored -> publish(services.getExec(), docker, output.resolve(REPORT)));
+            task.doLast(ignored -> {
+                if (platforms == null) {
+                    publish(services.getExec(), docker, output.resolve(REPORT));
+                } else {
+                    publishBuildx(services.getExec(), docker, output.resolve(REPORT), buildxCommands);
+                }
+            });
         });
         // Checked once the graph is known and before any task runs, so a doomed publish builds nothing.
         root.getGradle().getTaskGraph().whenReady(graph -> {
@@ -220,12 +226,7 @@ final class RecipeArtifacts {
      * an earlier success. No retry and no rollback: a registry offers no transaction across images.
      */
     static void publish(ExecOperations exec, String docker, Path reportFile) {
-        ObjectNode report;
-        try {
-            report = (ObjectNode) JSON.readTree(reportFile.toFile());
-        } catch (IOException exception) {
-            throw new GradleException("Cannot read " + reportFile + " (" + exception + ")", exception);
-        }
+        ObjectNode report = readReport(reportFile);
         List<String> published = new ArrayList<>();
         for (JsonNode component : report.get("components")) {
             if (!(component.get("image") instanceof ObjectNode image)) {
@@ -263,6 +264,90 @@ final class RecipeArtifacts {
             }
             published.add(reference + "@" + digest);
         }
+    }
+
+    private static ObjectNode readReport(Path reportFile) {
+        try {
+            return (ObjectNode) JSON.readTree(reportFile.toFile());
+        } catch (IOException exception) {
+            throw new GradleException("Cannot read " + reportFile + " (" + exception + ")", exception);
+        }
+    }
+
+    /**
+     * Pushes each image by repeating the build that assembled it, which the builder's cache answers, then records the
+     * pushed digest (the index, or the single manifest) and one manifest digest per platform. As for publish, the
+     * report is rewritten after every image, with no retry and no rollback.
+     */
+    static void publishBuildx(ExecOperations exec, String docker, Path reportFile,
+                              Map<String, Function<Path, List<String>>> commands) {
+        ObjectNode report = readReport(reportFile);
+        List<String> published = new ArrayList<>();
+        for (JsonNode component : report.get("components")) {
+            if (!(component.get("image") instanceof ObjectNode image)) {
+                continue;
+            }
+            String reference = image.get("reference").asText();
+            List<String> platforms = new ArrayList<>();
+            image.get("platforms").forEach(platform -> platforms.add(platform.asText()));
+            String metadataJson;
+            int exit;
+            try {
+                Path metadata = Files.createTempFile("recipe-buildx-", ".json");
+                try {
+                    exit = exec.exec(spec -> {
+                        spec.commandLine(commands.get(reference).apply(metadata));
+                        spec.setIgnoreExitValue(true);
+                    }).getExitValue();
+                    metadataJson = Files.readString(metadata);
+                } finally {
+                    Files.deleteIfExists(metadata);
+                }
+            } catch (IOException exception) {
+                throw new GradleException("Cannot use a temporary buildx metadata file (" + exception + ")", exception);
+            }
+            if (exit != 0) {
+                image.put("status", "failed");
+                writeReport(reportFile, report);
+                throw new GradleException("docker buildx build --push " + reference + " failed (exit " + exit
+                        + "); already published: " + published);
+            }
+            String digest = RecipeBuildx.pushedDigest(metadataJson);
+            Map<String, String> manifests = digest == null ? null
+                    : RecipeBuildx.manifests(inspectRaw(exec, docker, reference, digest), digest, platforms);
+            boolean verified = RecipeBuildx.covers(manifests, platforms);
+            image.put("status", verified ? "published" : "published-unverified");
+            image.put("digest", digest);
+            if (verified) {
+                ObjectNode manifestNodes = image.putObject("manifests");
+                manifests.forEach(manifestNodes::put);
+            }
+            try {
+                writeReport(reportFile, report);
+            } catch (GradleException exception) {
+                throw new GradleException(reference + " was pushed, but " + reportFile + " could not record it; "
+                        + "already published before it: " + published, exception);
+            }
+            if (!verified) {
+                String problem = digest == null ? "its digest could not be read from the build metadata"
+                        : manifests == null ? "its pushed index could not be read"
+                        : "its platforms " + manifests.keySet() + " do not match " + platforms;
+                throw new GradleException(reference + " was pushed, but " + problem
+                        + " (recorded as published-unverified); already published before it: " + published);
+            }
+            published.add(reference + "@" + digest);
+        }
+    }
+
+    /** imagetools inspect --raw of a pushed digest; empty when the registry cannot be read. */
+    private static String inspectRaw(ExecOperations exec, String docker, String reference, String digest) {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        int exit = exec.exec(spec -> {
+            spec.commandLine(RecipeBuildx.imagetools(docker, reference, digest));
+            spec.setStandardOutput(output);
+            spec.setIgnoreExitValue(true);
+        }).getExitValue();
+        return exit == 0 ? output.toString(StandardCharsets.UTF_8) : "";
     }
 
     /** The manifest digest docker push prints for this tag ("<tag>: digest: sha256:... size: N"), never an image ID. */

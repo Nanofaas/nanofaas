@@ -1007,6 +1007,91 @@ class RecipePluginTest {
                         + " provenance: max)");
     }
 
+    private static final String MULTI_ARCH_PUBLISH = V2_HEADER + """
+            registry: {repository: registry.example:5000/team, tag: "1.0.0", platforms: [linux/amd64, linux/arm64], provenance: true}
+            controlPlane: {modules: [], build: {mode: jvm}, container: {image: control-plane}}
+            functions: [{name: word-stats, sdk: python, container: {image: ws-python}}]
+            """;
+    private static final String MA_PY = "registry.example:5000/team/ws-python:1.0.0";
+
+    @Test
+    void multiArchPublishPushesTheAssembledBuildsAndRecordsIndexAndPlatformDigests() throws IOException {
+        recipe(MULTI_ARCH_PUBLISH);
+
+        run("publishRecipe", "-Precipe=recipe.yaml", docker());
+
+        List<List<String>> calls = dockerCalls();
+        List<String> assembled = buildxBuild(MA_CP, false);
+        List<String> pushed = buildxBuild(MA_CP, true);
+        assertThat(calls.lastIndexOf(buildxBuild(MA_PY, false))).isLessThan(calls.indexOf(pushed));
+        List<String> withoutPush = new ArrayList<>(pushed);
+        withoutPush.subList(withoutPush.indexOf("--push"), withoutPush.indexOf("--push") + 3).clear();
+        assertThat(withoutPush).as("the push repeats the assembled build").isEqualTo(assembled);
+        assertThat(pushed.get(pushed.indexOf("--push") + 1)).isEqualTo("--metadata-file");
+        assertThat(calls).contains(List.of("buildx", "imagetools", "inspect",
+                "registry.example:5000/team/control-plane@" + digestOf("index-" + MA_CP), "--raw"));
+        assertThat(calls).noneMatch(call -> call.getFirst().equals("push"));
+
+        JsonNode image = image(report(), MA_CP);
+        assertThat(image.get("status").asText()).isEqualTo("published");
+        assertThat(image.get("digest").asText()).isEqualTo(digestOf("index-" + MA_CP));
+        assertThat(image.get("manifests").toString()).isEqualTo("{\"linux/amd64\":\"" + digestOf(MA_CP + "@linux/amd64")
+                + "\",\"linux/arm64\":\"" + digestOf(MA_CP + "@linux/arm64") + "\"}");
+        assertThat(image(report(), MA_PY).get("status").asText()).isEqualTo("published");
+    }
+
+    @Test
+    void multiArchPublishOfOnePlatformWithoutProvenanceRecordsItsManifest() throws IOException {
+        recipe(V2_HEADER + "registry: {repository: registry.example:5000/team, tag: \"1.0.0\", platforms: [linux/arm64]}\n"
+                + "controlPlane: {modules: [], build: {mode: jvm}, container: {image: control-plane}}\n");
+
+        run("publishRecipe", "-Precipe=recipe.yaml", docker());
+
+        assertThat(buildxBuild(MA_CP, true)).contains("--provenance=false");
+        JsonNode image = image(report(), MA_CP);
+        assertThat(image.get("provenance").asBoolean()).isFalse();
+        assertThat(image.get("manifests").toString()).isEqualTo("{\"linux/arm64\":\"" + digestOf("index-" + MA_CP) + "\"}");
+    }
+
+    @Test
+    void multiArchPublishWithAMissingPlatformIsUnverified() throws IOException {
+        recipe(MULTI_ARCH_PUBLISH);
+        Files.writeString(projectDir.resolve("drop-linux-arm64"), "");
+
+        assertThat(fails("publishRecipe", "-Precipe=recipe.yaml", docker())).contains(MA_CP
+                + " was pushed, but its platforms [linux/amd64] do not match [linux/amd64, linux/arm64]");
+        JsonNode image = image(report(), MA_CP);
+        assertThat(image.get("status").asText()).isEqualTo("published-unverified");
+        assertThat(image.get("digest").asText()).isEqualTo(digestOf("index-" + MA_CP));
+        assertThat(image.has("manifests")).isFalse();
+        assertThat(image(report(), MA_PY).get("status").asText()).isEqualTo("built");
+    }
+
+    @Test
+    void multiArchPublishWithoutBuildMetadataIsUnverified() throws IOException {
+        recipe(MULTI_ARCH_PUBLISH);
+        Files.writeString(projectDir.resolve("no-digest"), "");
+
+        assertThat(fails("publishRecipe", "-Precipe=recipe.yaml", docker()))
+                .contains(MA_CP + " was pushed, but its digest could not be read from the build metadata");
+        JsonNode image = image(report(), MA_CP);
+        assertThat(image.get("status").asText()).isEqualTo("published-unverified");
+        assertThat(image.get("digest").isNull()).isTrue();
+        assertThat(dockerCalls()).noneMatch(call -> call.contains("imagetools"));
+    }
+
+    @Test
+    void multiArchFailedSecondPushKeepsTheFirstSuccess() throws IOException {
+        recipe(MULTI_ARCH_PUBLISH);
+        Files.writeString(projectDir.resolve("fail-push-2"), "");
+
+        assertThat(fails("publishRecipe", "-Precipe=recipe.yaml", docker()))
+                .contains("docker buildx build --push " + MA_PY + " failed")
+                .contains("already published: [" + MA_CP + "@" + digestOf("index-" + MA_CP) + "]");
+        assertThat(image(report(), MA_CP).get("status").asText()).isEqualTo("published");
+        assertThat(image(report(), MA_PY).get("status").asText()).isEqualTo("failed");
+    }
+
     private static final String FULL_RECIPE = HEADER + """
             registry: {repository: registry.example:5000/team, tag: "1.0.0"}
             controlPlane:
