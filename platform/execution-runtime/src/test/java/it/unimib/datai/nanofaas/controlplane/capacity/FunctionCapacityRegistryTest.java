@@ -359,12 +359,10 @@ class FunctionCapacityRegistryTest {
         assertThat(state.phase())
                 .as("removal with work in flight retires, it does not close")
                 .isEqualTo(GenerationPhase.RETIRING);
-        assertThat(registry.retainsGeneration(lease.generation())).isTrue();
 
         lease.release();
 
         assertThat(state.phase()).isEqualTo(GenerationPhase.CLOSED);
-        assertThat(registry.retainsGeneration(lease.generation())).isFalse();
         assertThat(registry.entryCount()).isZero();
 
         // A late duplicate release cannot reopen or recreate anything.

@@ -15,10 +15,8 @@ import it.unimib.datai.nanofaas.controlplane.scheduler.QueueLifecycle;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -199,18 +197,6 @@ public class ExecutionStore implements QueueLifecycle {
     public int inFlightCount() {
         inFlight.cleanUp();
         return (int) inFlight.estimatedSize();
-    }
-
-    /**
-     * Snapshots the live executions owned by one function. Lifecycle consumers use this only
-     * on function removal, never on invocation admission; the returned ids let them retain a
-     * removal fence only while concrete executions can still deliver stale work.
-     */
-    public Set<String> inFlightExecutionIds(String functionName) {
-        return inFlight.asMap().values().stream()
-                .filter(executionRecord -> functionName.equals(executionRecord.task().functionName()))
-                .map(ExecutionRecord::executionId)
-                .collect(Collectors.toUnmodifiableSet());
     }
 
     public void put(ExecutionRecord executionRecord) {

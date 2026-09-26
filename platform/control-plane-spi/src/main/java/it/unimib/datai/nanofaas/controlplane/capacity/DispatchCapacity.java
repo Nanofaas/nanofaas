@@ -9,8 +9,6 @@ public interface DispatchCapacity {
     void remove(String functionName);
     CapacityView state(String functionName);
     FunctionGeneration activeGeneration(String functionName);
-    /** Exact identity still tracked, including retirement/drain; never an active-admission guard. */
-    boolean retainsGeneration(FunctionGeneration generation);
     DispatchOwnership tryAcquireLease(FunctionGeneration generation, LongConsumer onReleased);
     int configuredConcurrency(String functionName);
     int effectiveConcurrency(String functionName);

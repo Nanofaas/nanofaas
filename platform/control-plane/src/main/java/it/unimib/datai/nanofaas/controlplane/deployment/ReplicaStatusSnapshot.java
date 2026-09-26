@@ -431,11 +431,6 @@ public final class ReplicaStatusSnapshot implements AutoCloseable, MeterBinder {
         return stats(path).completed.get();
     }
 
-    /** Total time spent inside refresh tasks, per path. */
-    public Duration refreshDuration(RefreshPath path) {
-        return Duration.ofNanos(stats(path).durationNanos.get());
-    }
-
     /** Functions currently held in the snapshot. */
     public int entryCount() {
         return entries.size();

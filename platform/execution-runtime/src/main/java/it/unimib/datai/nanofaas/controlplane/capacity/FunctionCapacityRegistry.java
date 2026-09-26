@@ -138,20 +138,6 @@ public final class FunctionCapacityRegistry implements DispatchCapacity {
     }
 
     @Override
-    public boolean retainsGeneration(FunctionGeneration generation) {
-        if (generation == null) return false;
-        Entry entry = entries.get(generation.functionName());
-        if (entry == null) return false;
-        entry.lock.lock();
-        try {
-            return entries.get(generation.functionName()) == entry
-                    && (generation.equals(entry.generation) || entry.draining.containsKey(generation));
-        } finally {
-            entry.lock.unlock();
-        }
-    }
-
-    @Override
     public DispatchOwnership tryAcquireLease(FunctionGeneration generation,
                                                java.util.function.LongConsumer onReleased) {
         if (generation == null) return null;

@@ -32,7 +32,6 @@ class OutcomeWeigherTest {
         }
 
         assertThat(OutcomeWeigher.freeze(ID, outcome(payload))).isNull();
-        assertThat(OutcomeWeigher.weigh(ID, outcome(payload)).cacheable()).isFalse();
     }
 
     @Test
@@ -41,7 +40,6 @@ class OutcomeWeigherTest {
         wide.add("x".repeat(1024 * 1024));
 
         assertThat(OutcomeWeigher.freeze(ID, outcome(wide))).isNull();
-        assertThat(OutcomeWeigher.weigh(ID, outcome(wide)).cacheable()).isFalse();
     }
 
     @Test
@@ -57,8 +55,8 @@ class OutcomeWeigherTest {
     @Test
     void aNonLatin1StringWeighsTwoBytesPerChar() {
         int length = 64;
-        long latin1 = OutcomeWeigher.weigh(ID, outcome("a".repeat(length))).weight();
-        long utf16 = OutcomeWeigher.weigh(ID, outcome("€".repeat(length))).weight();
+        long latin1 = OutcomeWeigher.freeze(ID, outcome("a".repeat(length))).weight();
+        long utf16 = OutcomeWeigher.freeze(ID, outcome("€".repeat(length))).weight();
 
         // Same char count, but the UTF-16 string retains twice the character bytes.
         assertThat(utf16 - latin1).isEqualTo(length);

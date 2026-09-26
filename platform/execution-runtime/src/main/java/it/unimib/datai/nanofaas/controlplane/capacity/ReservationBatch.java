@@ -44,7 +44,7 @@ public final class ReservationBatch implements AutoCloseable {
         }
         if (state == State.OPEN) {
             for (int i = reservations.size() - 1; i >= 0; i--) {
-                reservations.get(i).rollback();
+                reservations.get(i).close();
             }
             reservations.clear();
         }

@@ -72,7 +72,7 @@ public final class ResourceQuota {
             reservedByFunction.put(generation.functionName(), functionReserved + units);
             reservedByGeneration.merge(generation, units, Long::sum);
             Claim claim = new Claim(generation, units);
-            return new Reservation(claim, generation, owner, claim.version);
+            return new Reservation(claim, owner);
         }
     }
 
@@ -117,16 +117,7 @@ public final class ResourceQuota {
         }
     }
 
-    private void release(Claim claim, long version) { // NOSONAR (java:S3398): quota bookkeeping under the outer lock; the reservation only delegates
-        synchronized (lock) {
-            if (!claim.active || claim.version != version) {
-                return;
-            }
-            releaseCurrent(claim);
-        }
-    }
-
-    private void rollback(Claim claim) { // NOSONAR (java:S3398): quota bookkeeping under the outer lock; the reservation only delegates
+    private void release(Claim claim) { // NOSONAR (java:S3398): quota bookkeeping under the outer lock; the reservation only delegates
         synchronized (lock) {
             if (claim.active) {
                 releaseCurrent(claim);
@@ -141,26 +132,6 @@ public final class ResourceQuota {
         subtractOrRemove(reservedByGeneration, claim.generation, claim.units);
     }
 
-    private Reservation transfer( // NOSONAR (java:S3398): quota bookkeeping under the outer lock; the reservation only delegates
-            Claim claim,
-            long version,
-            FunctionGeneration targetGeneration,
-            ResourceOwner targetOwner) {
-        Objects.requireNonNull(targetGeneration, "targetGeneration");
-        Objects.requireNonNull(targetOwner, "targetOwner");
-        synchronized (lock) {
-            if (!claim.active || claim.version != version) {
-                throw new IllegalStateException("reservation is no longer owned by this handle");
-            }
-            if (!claim.generation.equals(targetGeneration)) {
-                throw new IllegalArgumentException(
-                        "reservation cannot move between generations without lifecycle authority");
-            }
-            claim.version++;
-            return new Reservation(claim, targetGeneration, targetOwner, claim.version);
-        }
-    }
-
     private static <K> void subtractOrRemove(Map<K, Long> reservations, K key, long units) {
         long remaining = reservations.getOrDefault(key, 0L) - units;
         if (remaining == 0) {
@@ -173,7 +144,6 @@ public final class ResourceQuota {
     private static final class Claim {
         private final FunctionGeneration generation;
         private final long units;
-        private long version;
         private boolean active = true;
 
         private Claim(FunctionGeneration generation, long units) {
@@ -185,20 +155,15 @@ public final class ResourceQuota {
     /** The owner capability for one successful reservation. */
     public final class Reservation implements AutoCloseable {
         private final Claim claim;
-        private final FunctionGeneration generation;
         private final ResourceOwner owner;
-        private final long version;
 
-        private Reservation(
-                Claim claim, FunctionGeneration generation, ResourceOwner owner, long version) {
+        private Reservation(Claim claim, ResourceOwner owner) {
             this.claim = claim;
-            this.generation = generation;
             this.owner = owner;
-            this.version = version;
         }
 
         public FunctionGeneration generation() {
-            return generation;
+            return claim.generation;
         }
 
         public ResourceOwner owner() {
@@ -211,31 +176,14 @@ public final class ResourceQuota {
 
         public boolean isClosed() {
             synchronized (lock) {
-                return !claim.active || claim.version != version;
+                return !claim.active;
             }
-        }
-
-        /**
-         * Atomically hands the same units to another owner of the acquiring generation.
-         * The returned handle is the only live release capability; this handle becomes
-         * inert, so a late callback from the previous owner cannot release the transfer.
-         * Cross-generation handoff requires a separate explicit lifecycle authority and
-         * is therefore rejected by this primitive.
-         */
-        public Reservation transferTo(
-                FunctionGeneration targetGeneration, ResourceOwner targetOwner) {
-            return transfer(claim, version, targetGeneration, targetOwner);
-        }
-
-        /** Batch-only rollback follows the claim even if this handle was transferred. */
-        void rollback() {
-            ResourceQuota.this.rollback(claim);
         }
 
         /** Releases this reservation at most once. */
         @Override
         public void close() {
-            release(claim, version);
+            release(claim);
         }
     }
 }

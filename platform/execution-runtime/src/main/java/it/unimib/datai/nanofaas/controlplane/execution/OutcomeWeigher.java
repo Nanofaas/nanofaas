@@ -1,6 +1,5 @@
 package it.unimib.datai.nanofaas.controlplane.execution;
 
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -51,40 +50,8 @@ final class OutcomeWeigher {
     private OutcomeWeigher() {
     }
 
-    /** A weighing verdict: cacheable with a conservative byte weight (key included), or not. */
-    record Weighing(boolean cacheable, long weight) {
-        static Weighing cacheable(long weight) {
-            return new Weighing(true, weight);
-        }
-
-        static Weighing notCacheable() {
-            return new Weighing(false, 0);
-        }
-    }
-
     /** The outcome, with its mutable payload deep-frozen, and its conservative byte weight. */
     record FreezeResult(Outcome outcome, long weight) {
-    }
-
-    /**
-     * The Caffeine weigher: the outcome's weight as a positive {@code int}, saturated
-     * at {@link Integer#MAX_VALUE}. Only ever asked about outcomes the store decided to
-     * retain, so the "not cacheable" answer cannot be returned to Caffeine (its weigher
-     * has no such signal); the saturated maximum is the defensive fallback.
-     */
-    static int weightForCache(String executionId, Outcome outcome) {
-        Weighing result = weigh(executionId, outcome);
-        return result.cacheable() ? weightAsInt(result.weight()) : Integer.MAX_VALUE;
-    }
-
-    /** Conservative estimate, without copying: for the weigher and the tests. */
-    static Weighing weigh(String executionId, Outcome outcome) {
-        Walker walker = new Walker(false);
-        walker.walkOutcome(outcome);
-        if (!walker.cacheable) {
-            return Weighing.notCacheable();
-        }
-        return Weighing.cacheable(saturatingAdd(walker.weight, stringBytes(executionId)));
     }
 
     /**
@@ -98,7 +65,7 @@ final class OutcomeWeigher {
     }
 
     static FreezeResult freeze(String executionId, Outcome outcome, long maximumWeight) {
-        Walker walker = new Walker(true, maximumWeight);
+        Walker walker = new Walker(maximumWeight);
         walker.add(stringBytes(executionId));
         Outcome frozen = walker.freezeOutcome(outcome);
         if (frozen == null) {
@@ -128,7 +95,7 @@ final class OutcomeWeigher {
 
     /** A long weight turned into Caffeine's non-negative {@code int}. */
     static int weightAsInt(long weight) {
-        return (int) Math.max(1, Math.min(Integer.MAX_VALUE, weight));
+        return (int) Math.clamp(weight, 1, Integer.MAX_VALUE);
     }
 
     /**
@@ -153,40 +120,25 @@ final class OutcomeWeigher {
     }
 
     /**
-     * One bounded walk over the outcome. It accumulates the weight and, when
-     * {@code copy} is set, builds an unmodifiable deep copy of the mutable containers
-     * so the retained value can no longer be mutated after weighing.
+     * One bounded walk over the outcome. It accumulates the weight and builds an
+     * unmodifiable deep copy of the mutable containers, so the retained value can no
+     * longer be mutated after weighing.
      */
     private static final class Walker {
         /** Containers already walked; a repeat is a cycle or a shared reference. */
         private final IdentityHashMap<Object, Boolean> seen = new IdentityHashMap<>();
-        private final boolean copy;
         private final long maximumWeight;
         private long weight;
         private int visited;
         private boolean cacheable = true;
 
-        Walker(boolean copy) { this(copy, Long.MAX_VALUE); }
-
-        Walker(boolean copy, long maximumWeight) {
-            this.copy = copy;
+        Walker(long maximumWeight) {
             this.maximumWeight = maximumWeight;
         }
 
         void add(long bytes) {
             weight = saturatingAdd(weight, bytes);
             if (weight > maximumWeight) cacheable = false;
-        }
-
-        void walkOutcome(Outcome outcome) {
-            walk(outcome.output(), 0);
-            walk(outcome.headers(), 0);
-            walk(outcome.encoding(), 0);
-            if (outcome.error() != null) {
-                walk(outcome.error().code(), 0);
-                walk(outcome.error().message(), 0);
-            }
-            add(FIXED_OVERHEAD_BYTES);
         }
 
         Outcome freezeOutcome(Outcome outcome) {
@@ -265,7 +217,7 @@ final class OutcomeWeigher {
             int length = java.lang.reflect.Array.getLength(array);
             add(REFERENCE_BYTES + saturatingMultiply(length, elementBytes));
             if (!cacheable) return null;
-            return copy ? cloneArray(array) : array;
+            return cloneArray(array);
         }
 
         private Object walkObjectArray(Object[] array, int depth) {
@@ -279,12 +231,9 @@ final class OutcomeWeigher {
                 return null;
             }
             add(saturatingMultiply(length, REFERENCE_BYTES));
-            Object[] frozen = copy ? new Object[length] : null;
+            Object[] frozen = new Object[length];
             for (int i = 0; i < length && cacheable; i++) {
-                Object element = walk(array[i], depth + 1);
-                if (frozen != null) {
-                    frozen[i] = element;
-                }
+                frozen[i] = walk(array[i], depth + 1);
             }
             return frozen;
         }
@@ -298,7 +247,7 @@ final class OutcomeWeigher {
                 cacheable = false;
                 return null;
             }
-            Map<Object, Object> frozen = copy ? new LinkedHashMap<>(map.size()) : null;
+            Map<Object, Object> frozen = new LinkedHashMap<>(map.size());
             for (Map.Entry<?, ?> entry : map.entrySet()) {
                 if (!cacheable) {
                     break;
@@ -306,11 +255,9 @@ final class OutcomeWeigher {
                 Object key = walk(entry.getKey(), depth + 1);
                 Object value = walk(entry.getValue(), depth + 1);
                 add(MAP_ENTRY_BYTES);
-                if (frozen != null) {
-                    frozen.put(key, value);
-                }
+                frozen.put(key, value);
             }
-            return frozen != null ? Collections.unmodifiableMap(frozen) : map;
+            return Collections.unmodifiableMap(frozen);
         }
 
         private Object walkList(List<?> list, int depth) {
@@ -323,17 +270,14 @@ final class OutcomeWeigher {
                 return null;
             }
             add(64 + saturatingMultiply(list.size(), 8));
-            List<Object> frozen = copy ? new ArrayList<>(list.size()) : null;
+            List<Object> frozen = new ArrayList<>(list.size());
             for (Object element : list) {
                 if (!cacheable) {
                     break;
                 }
-                Object frozenElement = walk(element, depth + 1);
-                if (frozen != null) {
-                    frozen.add(frozenElement);
-                }
+                frozen.add(walk(element, depth + 1));
             }
-            return frozen != null ? Collections.unmodifiableList(frozen) : list;
+            return Collections.unmodifiableList(frozen);
         }
 
         private Object walkSet(Set<?> set, int depth) {
@@ -346,17 +290,14 @@ final class OutcomeWeigher {
                 return null;
             }
             add(96 + saturatingMultiply(set.size(), MAP_ENTRY_BYTES));
-            Set<Object> frozen = copy ? new LinkedHashSet<>(set.size()) : null;
+            Set<Object> frozen = new LinkedHashSet<>(set.size());
             for (Object element : set) {
                 if (!cacheable) {
                     break;
                 }
-                Object frozenElement = walk(element, depth + 1);
-                if (frozen != null) {
-                    frozen.add(frozenElement);
-                }
+                frozen.add(walk(element, depth + 1));
             }
-            return frozen != null ? Collections.unmodifiableSet(frozen) : set;
+            return Collections.unmodifiableSet(frozen);
         }
 
         /** Records a container and fails the walk when the same one is seen twice. */

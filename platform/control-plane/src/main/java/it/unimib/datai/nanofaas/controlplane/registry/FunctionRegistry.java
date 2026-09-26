@@ -67,31 +67,6 @@ public class FunctionRegistry implements FunctionCatalogView {
         return previous;
     }
 
-    /**
-     * Atomically puts the spec if no mapping exists for the given name.
-     *
-     * @param spec the function spec to put
-     * @return the previous value if one existed, or null if the put succeeded
-     */
-    public FunctionSpec putIfAbsent(FunctionSpec spec) {
-        RegisteredFunction previous = putIfAbsent(RegisteredFunction.nonManaged(spec));
-        return previous == null ? null : previous.spec();
-    }
-
-    public synchronized RegisteredFunction putIfAbsent(RegisteredFunction function) {
-        RegistrySnapshot currentSnapshot = functions;
-        RegisteredFunction previous = currentSnapshot.recovery().get(function.name());
-        if (previous != null) {
-            return previous;
-        }
-        Map<String, RegisteredFunction> next = new HashMap<>(currentSnapshot.recovery());
-        next.put(function.name(), function);
-        Map<String, RegisteredFunction> publicNext = new HashMap<>(currentSnapshot.publicView());
-        publicNext.put(function.name(), function);
-        saveAndPublish(next, publicNext);
-        return null;
-    }
-
     public FunctionSpec remove(String name) {
         RegisteredFunction previous = removeRegistered(name);
         return previous == null ? null : previous.spec();
