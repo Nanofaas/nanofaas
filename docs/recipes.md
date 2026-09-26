@@ -163,10 +163,11 @@ services in a separate section.
 
 With the default `host` builder, a `native` component compiles with `nativeCompile`, which
 needs a local GraalVM (see `scripts/native-build.sh` for the release this repository pins).
-JVM components, `builder: container` components and `validateRecipe` do not need it. Each component's mode is independent: a native function
-leaves a `jvm` control plane on the JVM, without Spring AOT. With a `jvm` control plane in
-the recipe, requesting native tasks directly (`nativeCompile -Precipe=...`) and passing a
-contradicting `-PnanofaasBuildType` both fail. Build through `assembleRecipe` instead.
+JVM components, `builder: container` components and `validateRecipe` do not need it. Each
+component's mode is independent: a native function leaves a `jvm` control plane on the JVM,
+without Spring AOT. With a `jvm` control plane in the recipe, requesting native tasks directly
+(`nativeCompile -Precipe=...`) and passing a contradicting `-PnanofaasBuildType` both fail.
+Build through `assembleRecipe` instead.
 
 `build.builder` chooses where a native component compiles:
 
@@ -213,15 +214,22 @@ outside a read-only checkout. A relative path resolves against the repository ro
   output (`control-plane/`, `functions/`, `services/`). A report copied into a directory of
   other files does not count.
 
-The repository and its ancestors are always refused, even through a symbolic link, and so is
-a regular file. The check runs before anything is deleted, and also guards `cleanRecipe` and
-`stageRecipe` when they are called directly or when `cleanRecipe` is excluded with `-x`. The marker is written as soon as the directory
-is claimed and survives a failed assembly, so a retry can reuse the same directory. It does
-not claim that any artifact is usable: only `distribution.json`, written last, does.
+The repository and its ancestors are always refused, even through a symbolic link, and so is a
+regular file. The check runs before anything is deleted, and also guards `cleanRecipe` and
+`stageRecipe` when they are called directly or when `cleanRecipe` is excluded with `-x`. The
+marker is written as soon as the directory is claimed and survives a failed assembly, so a
+retry can reuse the same directory. It does not claim that any artifact is usable: only
+`distribution.json`, written last, does.
 
 The marker is new. A default `build/recipes/<name>/` left by an assembly that failed before
 this change has neither a marker nor a report, so it is refused. Delete it once, and later
 assemblies mark it.
+
+Keep `-PrecipeOutput` outside the repository, or under a `build/` directory. The repository is
+the build context of every image that builds from it: Dockerfile functions, and the container
+builder's `native-executable` build. The root `.dockerignore` hides
+`build/` directories but not an output placed elsewhere in the checkout, so such an output is
+sent to the builder with each of those builds and changes their cache key.
 
 `jvm.options` and `launch.args` are standard JVM argument files, with one quoted argument
 per line. Spaces, quotes and backslashes are kept literally. `jvm.options` starts with the
