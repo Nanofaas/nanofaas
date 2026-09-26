@@ -256,6 +256,9 @@ public class CallbackDispatcher {
         try {
             if (!executor.awaitTermination(shutdownTimeout.toNanos(), TimeUnit.NANOSECONDS)) {
                 releaseCancelled(executor.shutdownNow());
+                // Interrupted callbacks still unwind. Returning first would let the context close the callback
+                // HTTP client under them; the second, equally bounded wait still never hangs on a stuck callback.
+                executor.awaitTermination(shutdownTimeout.toNanos(), TimeUnit.NANOSECONDS);
             }
         } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
