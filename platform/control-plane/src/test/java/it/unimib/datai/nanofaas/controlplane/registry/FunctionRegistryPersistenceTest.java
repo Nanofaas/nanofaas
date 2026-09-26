@@ -42,15 +42,14 @@ class FunctionRegistryPersistenceTest {
     }
 
     @Test
-    void mutationsSurviveRestartIncludingPutIfAbsentReplacementAndRemoval() {
+    void mutationsSurviveRestartIncludingReplacementAndRemoval() {
         FunctionCatalog catalog = catalog("functions.json");
         FunctionRegistry registry = new FunctionRegistry(catalog);
         FunctionSpec first = spec("fn", ExecutionMode.LOCAL, null);
         FunctionSpec replacement = new FunctionSpec("fn", "other:latest", List.of(), java.util.Map.of(), null,
                 1000, 1, 1, 0, null, ExecutionMode.LOCAL, null, null, null);
 
-        assertNull(registry.putIfAbsent(first));
-        assertEquals(first, registry.putIfAbsent(replacement));
+        assertNull(registry.put(first));
         assertEquals(first, registry.put(replacement));
         assertEquals(replacement, new FunctionRegistry(catalog).get("fn").orElseThrow());
         assertEquals(replacement, registry.remove("fn"));

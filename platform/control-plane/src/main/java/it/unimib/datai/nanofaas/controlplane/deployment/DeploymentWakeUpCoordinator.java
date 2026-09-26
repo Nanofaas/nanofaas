@@ -142,24 +142,6 @@ public class DeploymentWakeUpCoordinator implements DeploymentWakeUpControl, Aut
         }
     }
 
-    boolean isScaleDownProtected(String functionName) {
-        FunctionGeneration generation = generations.activeGeneration(functionName);
-        if (generation == null) {
-            return false;
-        }
-        FunctionState state = functions.get(generation);
-        if (state == null) {
-            return false;
-        }
-        synchronized (state) {
-            if (functions.get(generation) != state || !isCurrent(generation)) {
-                return false;
-            }
-            expireIfDue(state, nanoTime.getAsLong());
-            return state.leaseId != 0;
-        }
-    }
-
     @Override
     public void removeFunctionState(String functionName) {
         synchronized (stateLifecycle) {
