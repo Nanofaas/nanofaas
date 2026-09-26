@@ -17,7 +17,8 @@ def _assert_runtime_stage_redeclares_and_reports_base_images(dockerfile_text):
     # resolving to empty at runtime.
     lines = dockerfile_text.splitlines()
 
-    runtime_from = _line_index(lines, "FROM ${RUNTIME_IMAGE}")
+    # the last runtime FROM: deploy/native-java/Dockerfile also has a recipe-native stage on the same base.
+    runtime_from = max(i for i, line in enumerate(lines) if line.startswith("FROM ${RUNTIME_IMAGE}"))
     # search strictly after the runtime FROM: the global declarations above the
     # first FROM also contain these substrings, and matching those would let a
     # missing redeclaration slip through undetected.
@@ -188,3 +189,31 @@ def test_native_builder_exports_the_executable_and_caches_gradle():
     # Locked: two builds on one builder (or two platforms of one multi-platform build) would otherwise share
     # one Gradle user home at the same time, across network namespaces that Gradle's lock handover cannot cross.
     assert "sharing=locked" in gradle
+
+
+def _stage(dockerfile_text, name):
+    """The lines of stage `name`, from its FROM up to the next FROM."""
+    lines = dockerfile_text.splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith("FROM ") and line.split()[-1] == name)
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("FROM ")), len(lines))
+    return lines[start:end]
+
+
+def test_recipe_native_stage_packages_like_the_recipe_native_dockerfile():
+    """The multi-architecture path compiles and packages a container-built native image in one build, so the
+    image's provenance names the GraalVM builder stage. It must package exactly as Dockerfile.native does."""
+    dockerfile = (REPO_ROOT / "deploy/native-java/Dockerfile").read_text(encoding="utf-8")
+    stage = _stage(dockerfile, "recipe-native")
+    packaging = (REPO_ROOT / "deploy/recipes/Dockerfile.native").read_text(encoding="utf-8").splitlines()
+    runtime = packaging[max(i for i, line in enumerate(packaging) if line.startswith("FROM ${RUNTIME_IMAGE}")):]
+
+    def settings(lines):
+        return [line for line in lines if line.split(" ", 1)[0] in {"ARG", "ENV", "WORKDIR", "EXPOSE", "ENTRYPOINT"}]
+
+    assert stage[0] == "FROM ${RUNTIME_IMAGE} AS recipe-native"
+    assert settings(stage) == settings(runtime)
+    assert "COPY --from=builder --chown=nonroot:nonroot /var/lib/nanofaas /var/lib/nanofaas" in stage
+    recipe = stage.index("COPY --from=recipe . /app/")
+    assert recipe < stage.index("COPY --from=builder /tmp/application /app/application")
+    stages = [line.split() for line in dockerfile.splitlines() if line.startswith("FROM ")]
+    assert stages[-1] == ["FROM", "${RUNTIME_IMAGE}"], "the release's default target must stay the runtime image"

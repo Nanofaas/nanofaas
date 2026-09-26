@@ -49,17 +49,36 @@ RUN --mount=type=cache,target=/root/.gradle,sharing=locked ./gradlew "$NATIVE_TA
     cp "$NATIVE_BINARY" /tmp/application && \
     mkdir -p /var/lib/nanofaas && touch /var/lib/nanofaas/.keep
 
+# assembleRecipe's container builder exports only the executable
+# (docker build --target native-executable --output type=local,...) and packages it itself.
+FROM scratch AS native-executable
+COPY --from=builder /tmp/application /application
+
 # `cc` rather than `base`: it carries libstdc++, which a G1 binary loads at run
 # time because the collector itself is C++. A serial binary does not need it and
 # only pays the few megabytes, which is cheaper than two runtime images that can
 # drift apart — the base image failed at startup, not at build, with
 # "libstdc++.so.6: cannot open shared object file".
-# assembleRecipe's container builder exports only the executable
-# (docker build --target native-executable --output type=local,...) and packages it itself.
-# The release builds the default target, the final stage below, which must stay last.
-FROM scratch AS native-executable
-COPY --from=builder /tmp/application /application
+#
+# assembleRecipe's multi-architecture path (registry.platforms) compiles and packages a
+# container-built native image in this one build, so the image's provenance names the builder
+# stage above. The staged runtime files come from the named context `recipe`; the layout
+# follows deploy/recipes/Dockerfile.native.
+FROM ${RUNTIME_IMAGE} AS recipe-native
+ARG BUILDER_IMAGE
+ARG RUNTIME_IMAGE
+ENV NANOFAAS_BUILD_BASE_IMAGE=${BUILDER_IMAGE}
+ENV NANOFAAS_RUNTIME_BASE_IMAGE=${RUNTIME_IMAGE}
+ENV NANOFAAS_REGISTRY_PATH=/var/lib/nanofaas/functions.json
+ENV SPRING_CONFIG_ADDITIONALLOCATION=optional:file:/app/config/recipe.yaml
+WORKDIR /app
+COPY --from=builder --chown=nonroot:nonroot /var/lib/nanofaas /var/lib/nanofaas
+COPY --from=recipe . /app/
+COPY --from=builder /tmp/application /app/application
+EXPOSE 8080 8081
+ENTRYPOINT ["/app/application"]
 
+# The release builds the default target, this final stage, which must stay last.
 FROM ${RUNTIME_IMAGE}
 ARG BUILDER_IMAGE
 ARG RUNTIME_IMAGE
