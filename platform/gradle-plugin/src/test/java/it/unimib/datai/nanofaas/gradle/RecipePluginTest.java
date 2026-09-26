@@ -107,6 +107,7 @@ class RecipePluginTest {
                     if [ -f "$log/fail-push-$n" ]; then echo "fake push $n failed" >&2; exit 1; fi
                     d="sha256:$(printf 'index-%%s' "$ref" | sha256sum | cut -c1-64)"
                     [ -f "$log/no-digest" ] || printf '{"containerimage.digest": "%%s"}\\n' "$d" > "$meta"
+                    [ -f "$log/remove-metadata" ] && rm -f "$meta"
                     raw="$log/raw-$d"
                     if [ "$prov" = false ] && [ "${plats#*,}" = "$plats" ]; then
                       printf '{"schemaVersion": 2, "config": {"digest": "%%s"}}\\n' "$d" > "$raw"
@@ -1080,6 +1081,19 @@ class RecipePluginTest {
         assertThat(image.get("status").asText()).isEqualTo("published-unverified");
         assertThat(image.get("digest").isNull()).isTrue();
         assertThat(dockerCalls()).noneMatch(call -> call.contains("imagetools"));
+    }
+
+    @Test
+    void multiArchPublishWithAnUnreadableMetadataFileIsUnverified() throws IOException {
+        recipe(MULTI_ARCH_PUBLISH);
+        Files.writeString(projectDir.resolve("remove-metadata"), "");
+
+        assertThat(fails("publishRecipe", "-Precipe=recipe.yaml", docker()))
+                .contains(MA_CP + " was pushed, but its digest could not be read from the build metadata")
+                .contains("already published before it: []");
+        JsonNode image = image(report(), MA_CP);
+        assertThat(image.get("status").asText()).isEqualTo("published-unverified");
+        assertThat(image.get("digest").isNull()).isTrue();
     }
 
     @Test

@@ -290,21 +290,27 @@ final class RecipeArtifacts {
             String reference = image.get("reference").asText();
             List<String> platforms = new ArrayList<>();
             image.get("platforms").forEach(platform -> platforms.add(platform.asText()));
-            String metadataJson;
-            int exit;
+            Path metadata;
             try {
-                Path metadata = Files.createTempFile("recipe-buildx-", ".json");
-                try {
-                    exit = exec.exec(spec -> {
-                        spec.commandLine(commands.get(reference).apply(metadata));
-                        spec.setIgnoreExitValue(true);
-                    }).getExitValue();
-                    metadataJson = Files.readString(metadata);
-                } finally {
-                    Files.deleteIfExists(metadata);
-                }
+                metadata = Files.createTempFile("recipe-buildx-", ".json");
             } catch (IOException exception) {
-                throw new GradleException("Cannot use a temporary buildx metadata file (" + exception + ")", exception);
+                throw new GradleException("Cannot create a temporary buildx metadata file (" + exception + ")", exception);
+            }
+            int exit = exec.exec(spec -> {
+                spec.commandLine(commands.get(reference).apply(metadata));
+                spec.setIgnoreExitValue(true);
+            }).getExitValue();
+            // After a push, an unreadable file is only missing evidence: it ends as published-unverified below.
+            String metadataJson;
+            try {
+                metadataJson = Files.readString(metadata);
+            } catch (IOException exception) {
+                metadataJson = "";
+            }
+            try {
+                Files.deleteIfExists(metadata);
+            } catch (IOException ignored) {
+                // A leftover temporary file is harmless.
             }
             if (exit != 0) {
                 image.put("status", "failed");
