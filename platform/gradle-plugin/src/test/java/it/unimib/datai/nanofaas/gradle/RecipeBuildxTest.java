@@ -97,8 +97,9 @@ class RecipeBuildxTest {
 
     @Test
     void commandsCarryBuilderPlatformsProvenanceAndPush() {
-        assertThat(RecipeBuildx.inspect("docker", null)).containsExactly("docker", "buildx", "inspect");
-        assertThat(RecipeBuildx.inspect("docker", "multi")).containsExactly("docker", "buildx", "inspect", "--builder", "multi");
+        assertThat(RecipeBuildx.inspect("docker", null)).containsExactly("docker", "buildx", "inspect", "--bootstrap");
+        assertThat(RecipeBuildx.inspect("docker", "multi"))
+                .containsExactly("docker", "buildx", "inspect", "--bootstrap", "--builder", "multi");
 
         List<String> source = List.of("-f", "/repo/deploy/recipes/Dockerfile.jvm", "/out/control-plane");
         assertThat(RecipeBuildx.build("docker", null, List.of("linux/amd64", "linux/arm64"), true, "r.example/cp:1",

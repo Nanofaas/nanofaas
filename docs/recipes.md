@@ -208,8 +208,8 @@ registry:
   platform into the builder's cache only, and `publishRecipe` repeats each build with `--push`.
   The repeated build comes from that cache, so it takes a fraction of the first.
 - **The builder.** `-PrecipeBuilder=<name>` selects the buildx builder; without it, the current
-  one is used. Before anything is emptied or built, the `checkRecipeBuilder` task requires
-  `docker buildx inspect` to list every platform.
+  one is used. Before anything is emptied or built, the `checkRecipeBuilder` task starts the
+  builder and requires `docker buildx inspect --bootstrap` to list every platform.
   - A builder reaches another architecture through QEMU emulation
     (`docker run --privileged --rm tonistiigi/binfmt --install all`) or through a node running on
     it (`docker buildx create --append`).

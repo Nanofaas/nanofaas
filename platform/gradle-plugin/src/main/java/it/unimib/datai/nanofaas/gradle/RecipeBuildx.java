@@ -65,8 +65,9 @@ final class RecipeBuildx {
                 + " only for " + (host == null ? osArch : host) + "; use build.builder: container";
     }
 
+    /** --bootstrap: an inactive builder (created, or stopped) lists no platforms until it is started. */
     static List<String> inspect(String docker, String builder) {
-        List<String> command = new ArrayList<>(List.of(docker, "buildx", "inspect"));
+        List<String> command = new ArrayList<>(List.of(docker, "buildx", "inspect", "--bootstrap"));
         if (builder != null) {
             command.addAll(List.of("--builder", builder));
         }

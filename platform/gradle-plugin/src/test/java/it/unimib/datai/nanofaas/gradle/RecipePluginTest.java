@@ -91,6 +91,8 @@ class RecipePluginTest {
                 if [ -f "$log/fail-buildx-$2" ]; then echo "fake buildx $2 failed" >&2; exit 1; fi
                 if [ "$1" = buildx ] && [ "$2" = inspect ]; then
                   echo "Name: fake"
+                  # Like buildx: an inactive builder lists no platforms until --bootstrap starts it.
+                  case " $* " in *" --bootstrap "*) ;; *) echo "Status: inactive"; exit 0 ;; esac
                   cat "$log/builder-platforms" 2>/dev/null || echo "Platforms: linux/arm64, linux/amd64*"
                 fi
                 if [ "$1" = buildx ] && [ "$2" = build ]; then
@@ -907,7 +909,7 @@ class RecipePluginTest {
 
         Path root = projectDir.toRealPath();
         List<List<String>> calls = dockerCalls();
-        assertThat(calls.getFirst()).containsExactly("buildx", "inspect", "--builder", "multi");
+        assertThat(calls.getFirst()).containsExactly("buildx", "inspect", "--bootstrap", "--builder", "multi");
         assertThat(buildxBuild(MA_CP, false)).containsExactly("buildx", "build", "--builder", "multi",
                 "--platform", "linux/amd64,linux/arm64", "--provenance=mode=max", "-t", MA_CP,
                 "-f", root.resolve("deploy/native-java/Dockerfile").toString(), "--target", "recipe-native",
@@ -951,7 +953,7 @@ class RecipePluginTest {
         assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker()))
                 .contains("cannot build [linux/amd64]").contains("-PrecipeBuilder");
         assertThat(projectDir.resolve("build/recipes/demo/distribution.json")).exists();
-        assertThat(dockerCalls()).containsExactly(List.of("buildx", "inspect"));
+        assertThat(dockerCalls()).containsExactly(List.of("buildx", "inspect", "--bootstrap"));
     }
 
     @Test
