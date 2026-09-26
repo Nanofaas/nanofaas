@@ -55,6 +55,22 @@ class GlobalExceptionHandlerTest {
         assertTrue(details.get(0).contains("name"));
     }
 
+    /** Map.of iterates in a per-JVM random order: byte-level comparisons of the body would differ between runs. */
+    @Test
+    void errorBodiesKeepAStableFieldOrder() {
+        BindingResult bindingResult = mock(BindingResult.class);
+        when(bindingResult.getFieldErrors()).thenReturn(List.of(new FieldError("obj", "name", "must not be blank")));
+        Map<String, Object> validation =
+                handler.handleBindingErrors(new MethodArgumentNotValidException(null, bindingResult)).getBody();
+        Map<String, Object> plain =
+                handler.handleServerWebInputException(new ServerWebInputException("Bad body")).getBody();
+
+        assertInstanceOf(java.util.SequencedMap.class, validation);
+        assertEquals(List.of("error", "message", "details"), List.copyOf(validation.keySet()));
+        assertInstanceOf(java.util.SequencedMap.class, plain);
+        assertEquals(List.of("error", "message"), List.copyOf(plain.keySet()));
+    }
+
     @Test
     void handleWebExchangeBindException_returnsBadRequest() {
         BindingResult bindingResult = mock(BindingResult.class);
