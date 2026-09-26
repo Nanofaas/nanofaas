@@ -152,7 +152,9 @@ public class KubernetesImageValidator implements ImageValidator {
         return message.contains("not found")
                 || message.contains("manifest unknown")
                 || message.contains("name unknown")
-                || "invalidimagename".equals(reason);
+                || "invalidimagename".equals(reason)
+                // pullPolicy Never with the image absent from the node: it will never appear.
+                || "errimageneverpull".equals(reason);
     }
 
     private static boolean isAuthFailure(String message) {
@@ -183,7 +185,8 @@ public class KubernetesImageValidator implements ImageValidator {
                     .addNewContainer()
                         .withName("validate")
                         .withImage(spec.image())
-                        .withImagePullPolicy("Always")
+                        // Pull as the function Deployment will, or node-loaded images fail validation.
+                        .withImagePullPolicy(properties.imagePullPolicy())
                     .endContainer()
                     .withImagePullSecrets(imagePullSecrets)
                     .withRestartPolicy("Never")
