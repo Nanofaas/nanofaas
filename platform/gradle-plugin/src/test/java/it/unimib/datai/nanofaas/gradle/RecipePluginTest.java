@@ -814,9 +814,13 @@ class RecipePluginTest {
                 "native", ":control-plane:nativeCompile", null, null, "control-plane/", "img", null, null,
                 new RecipeBuildProperties.NativeOptions("3", "serial", List.of(), "container", "community"));
 
-        assertThat(RecipeTasks.hostProblem("Mac OS X", host)).contains("Linux host");
-        assertThat(RecipeTasks.hostProblem("Mac OS X", container)).isNull();
-        assertThat(RecipeTasks.hostProblem("Linux", host)).isNull();
+        assertThat(RecipeTasks.hostProblem("Mac OS X", host, 2)).contains("Linux host")
+                .contains("use build.builder: container");
+        // v1 has no build.builder: point to the version that does instead of suggesting an invalid field.
+        assertThat(RecipeTasks.hostProblem("Mac OS X", host, 1)).contains("Linux host")
+                .contains("build.builder: container needs schemaVersion: 2").doesNotContain("; use build.builder");
+        assertThat(RecipeTasks.hostProblem("Mac OS X", container, 2)).isNull();
+        assertThat(RecipeTasks.hostProblem("Linux", host, 1)).isNull();
     }
 
 

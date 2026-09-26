@@ -179,7 +179,7 @@ final class RecipeTasks {
         resolveComponents(data.path("functions"), "functions", "function", catalog(), images, resolved);
         resolveComponents(data.path("services"), "services", "service", serviceCatalog(), images, resolved);
         for (Target target : resolved) {
-            String problem = hostProblem(System.getProperty("os.name"), target);
+            String problem = hostProblem(System.getProperty("os.name"), target, recipe.declaredVersion());
             if (problem != null) {
                 throw fail(target.field() + ".container.image: " + problem);
             }
@@ -222,12 +222,13 @@ final class RecipeTasks {
     }
 
     /** GraalVM cannot cross-compile: a host-built executable is copied as-is into a Linux image. The container builder is Linux. */
-    static String hostProblem(String osName, Target target) {
+    static String hostProblem(String osName, Target target, int declaredVersion) {
         if (osName.startsWith("Linux") || !target.mode().equals("native") || target.image() == null || target.containerBuilt()) {
             return null;
         }
         return "a native image needs a Linux host, but the executable would be compiled on " + osName
-                + "; use build.builder: container";
+                + (declaredVersion >= 2 ? "; use build.builder: container"
+                        : " (build.builder: container needs schemaVersion: 2)");
     }
 
     private static List<String> jvmArgs(JsonNode component) {
