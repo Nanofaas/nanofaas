@@ -18,8 +18,21 @@
           "type": "string",
           "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]+)?(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)*(?![\\s\\S])"
         },
-        "tag": {"$ref": "#/$defs/tag"}
-      }
+        "tag": {"$ref": "#/$defs/tag"},
+        "platforms": {
+          "description": "Platforms of every image. Selects the docker buildx path: images are built for each platform, and only publishRecipe pushes them (see docs/recipes.md).",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["linux/amd64", "linux/arm64"]}
+        },
+        "provenance": {
+          "description": "Attach BuildKit provenance (mode=max) to every image. Needs platforms.",
+          "type": "boolean"
+        }
+      },
+      "if": {"required": ["provenance"], "properties": {"provenance": {"const": true}}},
+      "then": {"required": ["platforms"]}
     },
     "controlPlane": {
       "type": "object",

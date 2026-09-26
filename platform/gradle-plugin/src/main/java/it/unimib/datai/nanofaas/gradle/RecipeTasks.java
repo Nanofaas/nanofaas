@@ -178,8 +178,12 @@ final class RecipeTasks {
 
         resolveComponents(data.path("functions"), "functions", "function", catalog(), images, resolved);
         resolveComponents(data.path("services"), "services", "service", serviceCatalog(), images, resolved);
+        List<String> platforms = RecipeBuildx.platforms(data);
         for (Target target : resolved) {
             String problem = hostProblem(System.getProperty("os.name"), target, recipe.declaredVersion());
+            if (problem == null) {
+                problem = RecipeBuildx.platformProblem(System.getProperty("os.arch"), platforms, target);
+            }
             if (problem != null) {
                 throw fail(target.field() + ".container.image: " + problem);
             }
@@ -284,8 +288,14 @@ final class RecipeTasks {
                 + " (sha256 " + recipe.sourceSha256() + ")");
         System.out.println("Tag: " + recipe.effectiveTag());
         System.out.println("Control-plane modules: " + (modules.isEmpty() ? "(core only)" : String.join(", ", modules)));
+        List<String> platforms = RecipeBuildx.platforms(recipe.data());
+        String buildx = platforms == null ? "" : " (docker buildx build --platform " + String.join(",", platforms)
+                + ", provenance: " + (RecipeBuildx.provenance(recipe.data()) ? "max" : "off") + ")";
         for (Target target : targets) {
-            String build = target.containerBuilt()
+            String build = platforms != null && target.containerBuilt() && target.image() != null
+                    ? "docker buildx build -f " + RecipeContainerBuild.DOCKERFILE + " --target " + RecipeBuildx.NATIVE_TARGET
+                            + " (container builder, " + target.nativeOptions().distribution() + ")"
+                    : target.containerBuilt()
                     ? "docker build -f " + RecipeContainerBuild.DOCKERFILE + " --target " + RecipeContainerBuild.TARGET
                             + " (container builder, " + target.nativeOptions().distribution() + ")"
                     : target.task() != null ? target.task()
@@ -293,7 +303,7 @@ final class RecipeTasks {
                             + (target.contextDir().toString().isEmpty() ? "." : slash(target.contextDir()));
             System.out.printf("  %-20s %-11s %-10s %s%s%s%n", target.name(), target.sdk(), target.mode(), build,
                     target.stagingDir() == null ? "" : " -> " + target.stagingDir(),
-                    target.image() == null ? "" : "  image " + target.image());
+                    target.image() == null ? "" : "  image " + target.image() + buildx);
         }
     }
 
