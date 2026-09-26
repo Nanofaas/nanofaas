@@ -172,3 +172,16 @@ def test_native_builder_can_link_the_g1_collector():
     )
 
     assert "gcc-c++" in install, "a G1 build cannot link without a C++ toolchain"
+
+
+def test_native_builder_exports_the_executable_and_caches_gradle():
+    """assembleRecipe's container builder exports only /application from `native-executable`;
+    the release keeps building the default (last) stage, so that one must stay the runtime image."""
+    dockerfile = (REPO_ROOT / "deploy/native-java/Dockerfile").read_text(encoding="utf-8")
+    stages = [line.split() for line in dockerfile.splitlines() if line.startswith("FROM ")]
+
+    assert ["FROM", "scratch", "AS", "native-executable"] in stages
+    assert stages[-1] == ["FROM", "${RUNTIME_IMAGE}"], "the release's default target must stay the runtime image"
+    assert "COPY --from=builder /tmp/application /application" in dockerfile
+    gradle = next(line for line in dockerfile.splitlines() if "./gradlew" in line)
+    assert "--mount=type=cache,target=/root/.gradle" in gradle
