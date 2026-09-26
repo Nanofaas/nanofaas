@@ -28,8 +28,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -72,11 +75,28 @@ final class RecipeArtifacts {
                         .get().getAsFile().toPath());
         Object dockerProperty = root.findProperty("recipeDocker");
         String docker = dockerProperty == null ? "docker" : dockerProperty.toString();
+        Services services = root.getObjects().newInstance(Services.class);
+        List<String> platforms = RecipeBuildx.platforms(recipe.data());
+        boolean provenance = RecipeBuildx.provenance(recipe.data());
+        Object builderProperty = root.findProperty("recipeBuilder");
+        String builder = builderProperty == null ? null : builderProperty.toString();
+        if (builder != null && platforms == null) {
+            throw RecipeReader.failure(recipe.source(), "-PrecipeBuilder selects the buildx builder of"
+                    + " registry.platforms, which this recipe does not set");
+        }
 
         TaskProvider<Task> clean = root.getTasks().register("cleanRecipe", task -> {
             task.setDescription("Empties the recipe output directory it owns and marks it; refuses any other directory.");
             task.doLast(ignored -> RecipeOutput.claim(recipe.source(), output, rootDir));
         });
+        if (platforms != null && targets.stream().anyMatch(target -> target.image() != null)) {
+            TaskProvider<Task> check = root.getTasks().register("checkRecipeBuilder", task -> {
+                task.setDescription("Checks that the buildx builder can build every platform of registry.platforms.");
+                task.doLast(ignored -> requireBuilderPlatforms(services.getExec(), docker, builder, platforms));
+            });
+            // Before the output is emptied, and so before anything compiles (compiles run after cleanRecipe).
+            clean.configure(task -> task.dependsOn(check));
+        }
         TaskProvider<Sync> stage = root.getTasks().register("stageRecipe", Sync.class, sync -> {
             sync.dependsOn(clean);
             sync.into(output);
@@ -100,7 +120,6 @@ final class RecipeArtifacts {
         targets.stream().filter(target -> target.task() != null && !target.containerBuilt())
                 .forEach(target -> producer(root, target).configure(task -> task.mustRunAfter(clean)));
 
-        Services services = root.getObjects().newInstance(Services.class);
         Map<String, String> imageIds = new java.util.concurrent.ConcurrentHashMap<>();
         Map<String, String> passThrough = new java.util.LinkedHashMap<>();
         for (String key : RecipeContainerBuild.PASS_THROUGH) {
@@ -125,6 +144,9 @@ final class RecipeArtifacts {
             // Checked now: a whitespace value must fail before anything is built, not inside the builder.
             RecipeContainerBuild.gradleArgs(recipe.source(), recipe.data(), projectPath, modules, NullNode.getInstance(),
                     passThrough);
+            if (platforms != null && target.image() != null) {
+                continue; // recipe-native compiles it inside the image build, once per platform
+            }
             containerBuilds.put(target, root.getTasks().register("recipeNativeBuild" + containerBuilds.size(), Exec.class,
                     exec -> {
                         exec.setDescription("Compiles " + target.name() + " natively inside the builder container");
@@ -140,8 +162,12 @@ final class RecipeArtifacts {
                     }));
         }
         List<TaskProvider<Exec>> images = new ArrayList<>();
+        Map<String, Function<Path, List<String>>> buildxCommands = new LinkedHashMap<>();
         for (RecipeTasks.Target target : targets) {
-            if (target.image() != null) {
+            if (target.image() == null) {
+                continue;
+            }
+            if (platforms == null) {
                 images.add(root.getTasks().register("recipeImage" + images.size(), Exec.class, exec -> {
                     exec.setDescription("Builds " + target.image());
                     exec.dependsOn(runtimeFiles);
@@ -152,7 +178,19 @@ final class RecipeArtifacts {
                     exec.doLast(ignored -> imageIds.put(target.image(),
                             imageId(services.getExec(), docker, target.image())));
                 }));
+                continue;
             }
+            Function<Path, List<String>> command = metadata -> RecipeBuildx.build(docker, builder, platforms,
+                    provenance, target.image(), buildxSource(root, recipe, modules, services, rootDir, output, target,
+                            passThrough, containerdRepository), metadata);
+            buildxCommands.put(target.image(), command);
+            images.add(root.getTasks().register("recipeImage" + images.size(), Exec.class, exec -> {
+                exec.setDescription("Builds " + target.image() + " for " + String.join(", ", platforms));
+                exec.dependsOn(runtimeFiles);
+                exec.setWorkingDir(rootDir.toFile());
+                // Set at execution: a container-built native image takes the source revision then.
+                exec.doFirst(ignored -> exec.commandLine(command.apply(null)));
+            }));
         }
 
         root.getTasks().named("assembleRecipe", task -> {
@@ -338,10 +376,58 @@ final class RecipeArtifacts {
 
     /** Java images build from their staged directory (the repository .dockerignore hides build/); others from the repository. */
     static List<String> dockerBuild(String docker, Path rootDir, Path output, RecipeTasks.Target target) {
-        Path dockerfile = target.dockerfile() != null ? rootDir.resolve(target.dockerfile())
+        return List.of(docker, "build", "-f", dockerfile(rootDir, target).toString(), "-t", target.image(),
+                context(rootDir, output, target).toString());
+    }
+
+    private static Path dockerfile(Path rootDir, RecipeTasks.Target target) {
+        return target.dockerfile() != null ? rootDir.resolve(target.dockerfile())
                 : rootDir.resolve("deploy/recipes/Dockerfile." + target.mode());
-        Path context = target.dockerfile() != null ? rootDir.resolve(target.contextDir()) : output.resolve(target.stagingDir());
-        return List.of(docker, "build", "-f", dockerfile.toString(), "-t", target.image(), context.toString());
+    }
+
+    private static Path context(Path rootDir, Path output, RecipeTasks.Target target) {
+        return target.dockerfile() != null ? rootDir.resolve(target.contextDir()) : output.resolve(target.stagingDir());
+    }
+
+    /** What follows -t in a buildx image build: the Dockerfile arguments, ending with the build context. */
+    private static List<String> buildxSource(Project root, RecipeReader.Document recipe, List<String> modules,
+                                             Services services, Path rootDir, Path output, RecipeTasks.Target target,
+                                             Map<String, String> passThrough, Path containerdRepository) {
+        if (!target.containerBuilt()) {
+            return List.of("-f", dockerfile(rootDir, target).toString(), context(rootDir, output, target).toString());
+        }
+        String projectPath = target.task().substring(0, target.task().lastIndexOf(':'));
+        List<String> arguments = new ArrayList<>(List.of("-f", rootDir.resolve(RecipeContainerBuild.DOCKERFILE).toString(),
+                "--target", RecipeBuildx.NATIVE_TARGET, "--build-context", "recipe=" + output.resolve(target.stagingDir())));
+        arguments.addAll(RecipeContainerBuild.builderArguments(rootDir, target.task(), nativeBinary(root, target),
+                target.nativeOptions().distribution(), RecipeContainerBuild.gradleArgs(recipe.source(), recipe.data(),
+                        projectPath, modules, source(services.getExec(), rootDir, output), passThrough),
+                containerdRepository));
+        arguments.add(rootDir.toString());
+        return arguments;
+    }
+
+    /** Fails unless the buildx builder lists every requested platform: before the output is emptied, nothing built. */
+    static void requireBuilderPlatforms(ExecOperations exec, String docker, String builder, List<String> platforms) {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        int exit = exec.exec(spec -> {
+            spec.commandLine(RecipeBuildx.inspect(docker, builder));
+            spec.setStandardOutput(output);
+            spec.setIgnoreExitValue(true);
+        }).getExitValue();
+        String name = builder == null ? "the current buildx builder" : "buildx builder " + builder;
+        if (exit != 0) {
+            throw new GradleException("docker buildx inspect of " + name + " failed (exit " + exit
+                    + "); registry.platforms needs docker buildx");
+        }
+        Set<String> available = RecipeBuildx.builderPlatforms(output.toString(StandardCharsets.UTF_8));
+        List<String> missing = platforms.stream().filter(platform -> !available.contains(platform)).toList();
+        if (!missing.isEmpty()) {
+            throw new GradleException(name + " cannot build " + missing + " (it lists " + available + "). Select"
+                    + " another with -PrecipeBuilder=<name>, add a node for them (docker buildx create --append), or"
+                    + " install QEMU emulation (docker run --privileged --rm tonistiigi/binfmt --install all);"
+                    + " native images under emulation are very slow");
+        }
     }
 
     static ObjectNode report(RecipeReader.Document recipe, List<RecipeTasks.Target> targets, List<String> modules,
@@ -380,8 +466,16 @@ final class RecipeArtifacts {
             if (target.image() == null) {
                 component.putNull("image");
             } else {
-                component.putObject("image").put("reference", target.image()).put("status", "built")
-                        .put("id", imageIds.get(target.image()));
+                ObjectNode image = component.putObject("image").put("reference", target.image()).put("status", "built");
+                List<String> platforms = RecipeBuildx.platforms(recipe.data());
+                if (platforms == null) {
+                    image.put("id", imageIds.get(target.image()));
+                } else {
+                    // No local image on the buildx path: publication records the digests instead.
+                    ArrayNode platformNodes = image.putArray("platforms");
+                    platforms.forEach(platformNodes::add);
+                    image.put("provenance", RecipeBuildx.provenance(recipe.data()));
+                }
             }
         }
         return report;

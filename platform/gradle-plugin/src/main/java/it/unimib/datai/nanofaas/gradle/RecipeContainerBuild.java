@@ -64,15 +64,22 @@ final class RecipeContainerBuild {
 
     static List<String> command(String docker, Path rootDir, Path destination, String nativeTask, String nativeBinary,
                                 String distribution, List<String> gradleArgs, Path containerdRepository) {
+        List<String> command = new ArrayList<>(List.of(docker, "build", "-f", rootDir.resolve(DOCKERFILE).toString(),
+                "--target", TARGET, "--output", "type=local," + csvField("dest=" + destination)));
+        command.addAll(builderArguments(rootDir, nativeTask, nativeBinary, distribution, gradleArgs, containerdRepository));
+        command.add(rootDir.toString());
+        return List.copyOf(command);
+    }
+
+    /** The builder stage's inputs, shared by the executable export and the multi-architecture recipe-native build. */
+    static List<String> builderArguments(Path rootDir, String nativeTask, String nativeBinary, String distribution,
+                                         List<String> gradleArgs, Path containerdRepository) {
         Path repository = containerdRepository != null ? containerdRepository : rootDir.resolve(EMPTY_MAVEN_REPOSITORY);
-        return List.of(docker, "build", "-f", rootDir.resolve(DOCKERFILE).toString(), "--target", TARGET,
-                "--output", "type=local," + csvField("dest=" + destination),
-                "--build-context", "containerd_maven_repo=" + repository,
+        return List.of("--build-context", "containerd_maven_repo=" + repository,
                 "--build-arg", "NATIVE_TASK=" + nativeTask,
                 "--build-arg", "NATIVE_BINARY=" + nativeBinary,
                 "--build-arg", "GRAALVM_DISTRIBUTION=" + distribution,
-                "--build-arg", "GRADLE_ARGS=" + String.join(" ", gradleArgs),
-                rootDir.toString());
+                "--build-arg", "GRADLE_ARGS=" + String.join(" ", gradleArgs));
     }
 
     /** docker reads --output as one CSV record: a field holding a comma or a quote is quoted, its quotes doubled. */

@@ -88,6 +88,45 @@ class RecipePluginTest {
                 log=%s
                 { printf '%%s\\n' "$@"; echo '--'; } >> "$log/docker.log"
                 if [ -f "$log/fail-$1" ]; then echo "fake docker $1 failed" >&2; exit 1; fi
+                if [ -f "$log/fail-buildx-$2" ]; then echo "fake buildx $2 failed" >&2; exit 1; fi
+                if [ "$1" = buildx ] && [ "$2" = inspect ]; then
+                  echo "Name: fake"
+                  cat "$log/builder-platforms" 2>/dev/null || echo "Platforms: linux/arm64, linux/amd64*"
+                fi
+                if [ "$1" = buildx ] && [ "$2" = build ]; then
+                  prev=""; meta=""; ref=""; plats=""; prov=""
+                  for a in "$@"; do
+                    case "$prev" in --metadata-file) meta="$a" ;; -t) ref="$a" ;; --platform) plats="$a" ;; esac
+                    case "$a" in --provenance=*) prov="${a#--provenance=}" ;; esac
+                    prev="$a"
+                  done
+                  if [ -n "$meta" ]; then
+                    n=$(grep -c '^--push$' "$log/docker.log")
+                    if [ -f "$log/fail-push-$n" ]; then echo "fake push $n failed" >&2; exit 1; fi
+                    d="sha256:$(printf 'index-%%s' "$ref" | sha256sum | cut -c1-64)"
+                    [ -f "$log/no-digest" ] || printf '{"containerimage.digest": "%%s"}\\n' "$d" > "$meta"
+                    raw="$log/raw-$d"
+                    if [ "$prov" = false ] && [ "${plats#*,}" = "$plats" ]; then
+                      printf '{"schemaVersion": 2, "config": {"digest": "%%s"}}\\n' "$d" > "$raw"
+                    else
+                      printf '{"manifests": [' > "$raw"
+                      sep=""
+                      for p in $(echo "$plats" | tr ',' ' '); do
+                        [ -f "$log/drop-$(echo "$p" | tr / -)" ] && continue
+                        m="sha256:$(printf '%%s@%%s' "$ref" "$p" | sha256sum | cut -c1-64)"
+                        printf '%%s{"digest": "%%s", "platform": {"os": "%%s", "architecture": "%%s"}}' \\
+                          "$sep" "$m" "${p%%/*}" "${p#*/}" >> "$raw"
+                        sep=","
+                      done
+                      if [ "$prov" = mode=max ]; then
+                        printf '%%s{"digest": "sha256:%%s", "annotations": {"vnd.docker.reference.type": "attestation-manifest"}, "platform": {"os": "unknown", "architecture": "unknown"}}' \\
+                          "$sep" "$(printf 'att-%%s' "$ref" | sha256sum | cut -c1-64)" >> "$raw"
+                      fi
+                      echo ']}' >> "$raw"
+                    fi
+                  fi
+                fi
+                if [ "$1" = buildx ] && [ "$2" = imagetools ]; then cat "$log/raw-${4##*@}"; fi
                 if [ "$1" = build ]; then
                   prev=""
                   for a in "$@"; do
@@ -720,6 +759,27 @@ class RecipePluginTest {
                 .orElseThrow(() -> new AssertionError("no container build in " + calls));
     }
 
+    private List<String> buildxBuild(String reference, boolean push) throws IOException {
+        List<List<String>> calls = dockerCalls();
+        return calls.stream().filter(call -> call.size() > 1 && call.get(0).equals("buildx") && call.get(1).equals("build")
+                        && call.contains(reference) && call.contains("--push") == push).findFirst()
+                .orElseThrow(() -> new AssertionError("no buildx build of " + reference + " (push " + push + ") in " + calls));
+    }
+
+    private static final String MULTI_ARCH = V2_HEADER + """
+            registry: {repository: registry.example:5000/team, tag: "1.0.0", platforms: [linux/amd64, linux/arm64], provenance: true}
+            controlPlane:
+              modules: []
+              build: {mode: native, builder: container}
+              container: {image: control-plane}
+              config: {nanofaas: {metrics: {profile: basic}}}
+            functions:
+              - {name: word-stats, sdk: java, build: {mode: jvm}, container: {image: ws-java}}
+              - {name: word-stats, sdk: python, container: {image: ws-python}}
+            services: [{name: warm-echo, sdk: java, build: {mode: native, builder: container}, container: {image: warm-echo}}]
+            """;
+    private static final String MA_CP = "registry.example:5000/team/control-plane:1.0.0";
+
     @Test
     void containerBuilderCompilesInsideTheBuilderAndPackagesAsUsual() throws IOException {
         recipe(V2_HEADER + """
@@ -837,6 +897,114 @@ class RecipePluginTest {
         assertThat(unrelated.resolve("keep.txt")).hasContent("user data");
         assertThat(unrelated.resolve("distribution.json")).hasContent("user report");
         assertThat(unrelated.resolve("control-plane")).doesNotExist();
+    }
+
+    @Test
+    void multiArchAssemblyBuildsEveryImageWithBuildxIntoTheCacheOnly() throws IOException {
+        recipe(MULTI_ARCH);
+
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker(), "-PrecipeBuilder=multi");
+
+        Path root = projectDir.toRealPath();
+        List<List<String>> calls = dockerCalls();
+        assertThat(calls.getFirst()).containsExactly("buildx", "inspect", "--builder", "multi");
+        assertThat(buildxBuild(MA_CP, false)).containsExactly("buildx", "build", "--builder", "multi",
+                "--platform", "linux/amd64,linux/arm64", "--provenance=mode=max", "-t", MA_CP,
+                "-f", root.resolve("deploy/native-java/Dockerfile").toString(), "--target", "recipe-native",
+                "--build-context", "recipe=" + root.resolve("build/recipes/demo/control-plane"),
+                "--build-context", "containerd_maven_repo=" + root.resolve("deploy/native-java/empty-maven-repo"),
+                "--build-arg", "NATIVE_TASK=:control-plane:nativeCompile",
+                "--build-arg", "NATIVE_BINARY=platform/control-plane/build/native/nativeCompile/control-plane",
+                "--build-arg", "GRAALVM_DISTRIBUTION=community",
+                "--build-arg", "GRADLE_ARGS=-PnanofaasBuildType=native -PcontrolPlaneModules=none",
+                root.toString());
+        assertThat(buildxBuild("registry.example:5000/team/ws-java:1.0.0", false)).endsWith("-f",
+                root.resolve("deploy/recipes/Dockerfile.jvm").toString(),
+                root.resolve("build/recipes/demo/functions/java/word-stats").toString());
+        assertThat(buildxBuild("registry.example:5000/team/ws-python:1.0.0", false)).endsWith("-f",
+                root.resolve("functions/python/word-stats/Dockerfile").toString(), root.toString());
+        assertThat(buildxBuild("registry.example:5000/team/warm-echo:1.0.0", false)).contains("--target", "recipe-native",
+                "recipe=" + root.resolve("build/recipes/demo/services/java/warm-echo"));
+        assertThat(calls).noneMatch(call -> call.getFirst().equals("build") || call.getFirst().equals("image")
+                || call.contains("--push"));
+
+        Path staged = projectDir.resolve("build/recipes/demo");
+        assertThat(projectDir.resolve("markers/control-plane-nativeCompile")).doesNotExist();
+        assertThat(staged.resolve("control-plane/config/recipe.yaml")).content().contains("profile: basic");
+        assertThat(staged.resolve("control-plane/application")).doesNotExist();
+        assertThat(staged.resolve("services/java/warm-echo")).isDirectory();
+        JsonNode image = image(report(), MA_CP);
+        assertThat(image.get("status").asText()).isEqualTo("built");
+        assertThat(image.get("platforms").toString()).isEqualTo("[\"linux/amd64\",\"linux/arm64\"]");
+        assertThat(image.get("provenance").asBoolean()).isTrue();
+        assertThat(image.has("id")).isFalse();
+    }
+
+    @Test
+    void multiArchChecksTheBuilderBeforeEmptyingTheOutput() throws IOException {
+        recipe(V2_HEADER + "registry: {repository: registry.example/team, tag: t, platforms: [linux/amd64, linux/arm64]}\n"
+                + "controlPlane: {modules: [], build: {mode: jvm}, container: {image: cp}}\n");
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker());
+        Files.writeString(projectDir.resolve("builder-platforms"), "Platforms: linux/arm64\n");
+        Files.delete(projectDir.resolve("docker.log"));
+
+        assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker()))
+                .contains("cannot build [linux/amd64]").contains("-PrecipeBuilder");
+        assertThat(projectDir.resolve("build/recipes/demo/distribution.json")).exists();
+        assertThat(dockerCalls()).containsExactly(List.of("buildx", "inspect"));
+    }
+
+    @Test
+    void multiArchRejectsHostBuiltNativeImagesAndAStrayBuilder() throws IOException {
+        recipe(V2_HEADER + "registry: {repository: registry.example/team, tag: t, platforms: [linux/amd64, linux/arm64]}\n"
+                + "controlPlane: {modules: [], build: {mode: native}, container: {image: cp}}\n");
+        assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker())).contains("controlPlane.container.image")
+                .contains("builder: host").contains("use build.builder: container");
+
+        recipe(V2_HEADER + "registry: {repository: registry.example/team, tag: t}\n"
+                + "controlPlane: {modules: [], build: {mode: jvm}, container: {image: cp}}\n");
+        assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker(), "-PrecipeBuilder=multi"))
+                .contains("-PrecipeBuilder").contains("registry.platforms");
+        assertThat(projectDir.resolve("docker.log")).doesNotExist();
+    }
+
+    @Test
+    void multiArchWithoutImagesNeedsNoBuilder() throws IOException {
+        recipe(V2_HEADER + "registry: {repository: registry.example/team, tag: t, platforms: [linux/amd64]}\n" + CP_JVM);
+
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker());
+
+        assertThat(projectDir.resolve("docker.log")).as("no image, so no builder to check").doesNotExist();
+    }
+
+    @Test
+    void hostBuiltNativeImageOnTheHostPlatformPackagesTheStagedExecutable() throws IOException {
+        String host = RecipeBuildx.hostPlatform(System.getProperty("os.arch"));
+        org.junit.jupiter.api.Assumptions.assumeTrue(host != null, "no image platform for this architecture");
+        recipe(V2_HEADER + "registry: {repository: registry.example/team, tag: t, platforms: [" + host + "]}\n"
+                + "controlPlane: {modules: [], build: {mode: native}, container: {image: cp}}\n");
+
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker());
+
+        Path root = projectDir.toRealPath();
+        assertThat(projectDir.resolve("markers/control-plane-nativeCompile")).exists();
+        assertThat(projectDir.resolve("build/recipes/demo/control-plane/application")).isExecutable();
+        assertThat(buildxBuild("registry.example/team/cp:t", false)).containsSubsequence("--platform", host,
+                "--provenance=false", "-f", root.resolve("deploy/recipes/Dockerfile.native").toString(),
+                root.resolve("build/recipes/demo/control-plane").toString());
+    }
+
+    @Test
+    void previewShowsTheBuildxPath() throws IOException {
+        recipe(V2_HEADER + "registry: {repository: registry.example/team, tag: t, platforms: [linux/amd64, linux/arm64],"
+                + " provenance: true}\ncontrolPlane: {modules: [], build: {mode: native, builder: container},"
+                + " container: {image: cp}}\n");
+
+        assertThat(run("validateRecipe", "-Precipe=recipe.yaml").getOutput())
+                .contains("docker buildx build -f deploy/native-java/Dockerfile --target recipe-native"
+                        + " (container builder, community)")
+                .contains("image registry.example/team/cp:t (docker buildx build --platform linux/amd64,linux/arm64,"
+                        + " provenance: max)");
     }
 
     private static final String FULL_RECIPE = HEADER + """
