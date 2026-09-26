@@ -805,6 +805,22 @@ class RecipePluginTest {
         assertThat(RecipeTasks.hostProblem("Linux", host)).isNull();
     }
 
+
+    @Test
+    void skippingCleanRecipeStillRefusesAnUnownedOutputWhenEveryComponentIsContainerBuilt() throws IOException {
+        // Nothing for stageRecipe to copy: its Sync is skipped as NO-SOURCE, and so is its own ownership check.
+        recipe(V2_HEADER + "controlPlane: {modules: [], build: {mode: native, builder: container}, config: {a: 1}}\n");
+        Path unrelated = Files.createDirectories(outsideDir.resolve("skip-clean-container"));
+        Files.writeString(unrelated.resolve("keep.txt"), "user data");
+        Files.writeString(unrelated.resolve("distribution.json"), "user report");
+
+        assertThat(fails("assembleRecipe", "-x", "cleanRecipe", "-Precipe=recipe.yaml", docker(), output(unrelated)))
+                .contains("is not empty and holds no recipe output");
+        assertThat(unrelated.resolve("keep.txt")).hasContent("user data");
+        assertThat(unrelated.resolve("distribution.json")).hasContent("user report");
+        assertThat(unrelated.resolve("control-plane")).doesNotExist();
+    }
+
     private static final String FULL_RECIPE = HEADER + """
             registry: {repository: registry.example:5000/team, tag: "1.0.0"}
             controlPlane:

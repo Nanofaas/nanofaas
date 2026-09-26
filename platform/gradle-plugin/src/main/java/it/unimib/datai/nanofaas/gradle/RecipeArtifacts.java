@@ -91,6 +91,8 @@ final class RecipeArtifacts {
         TaskProvider<Task> runtimeFiles = root.getTasks().register("writeRecipeRuntimeFiles", task -> {
             task.setDescription("Writes jvm.options, launch.args and config/recipe.yaml into the staged components.");
             task.dependsOn(stage);
+            // A NO-SOURCE Sync also skips its own ownership check, so -x cleanRecipe must be refused here too.
+            task.doFirst(ignored -> RecipeOutput.requireOwned(recipe.source(), output, rootDir));
             task.doLast(ignored -> targets.stream().filter(target -> target.task() != null)
                     .forEach(target -> writeRuntimeFiles(output.resolve(target.stagingDir()), target, recipe.data())));
         });
