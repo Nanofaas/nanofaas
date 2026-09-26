@@ -88,6 +88,15 @@ class RecipePluginTest {
                 log=%s
                 { printf '%%s\\n' "$@"; echo '--'; } >> "$log/docker.log"
                 if [ -f "$log/fail-$1" ]; then echo "fake docker $1 failed" >&2; exit 1; fi
+                if [ "$1" = build ]; then
+                  prev=""
+                  for a in "$@"; do
+                    if [ "$prev" = --output ]; then
+                      d="${a#type=local,dest=}"; mkdir -p "$d"; printf '#!/bin/sh\\n' > "$d/application"; chmod +x "$d/application"
+                    fi
+                    prev="$a"
+                  done
+                fi
                 if [ "$1" = push ]; then
                   n=$(grep -c '^push$' "$log/docker.log")
                   if [ -f "$log/fail-push-$n" ]; then echo "fake push $n failed" >&2; exit 1; fi
@@ -603,7 +612,7 @@ class RecipePluginTest {
         assertThat(controlPlane.get("variant").asText()).isEqualTo("native-o3-g1");
         assertThat(controlPlane.get("optimization").asText()).isEqualTo("3");
         assertThat(controlPlane.get("native").toString())
-                .isEqualTo("{\"optimization\":\"3\",\"gc\":\"G1\",\"monitoring\":[\"jvmstat\",\"jfr\"]}");
+                .isEqualTo("{\"optimization\":\"3\",\"gc\":\"G1\",\"monitoring\":[\"jvmstat\",\"jfr\"],\"builder\":\"host\"}");
         assertThat(report.get("components").get(1).get("kind").asText()).isEqualTo("service");
         String reference = "registry.example:5000/team/control-plane:1.0.0";
         assertThat(image(report, reference).get("id").asText()).isEqualTo(imageIdOf(reference));
@@ -703,6 +712,97 @@ class RecipePluginTest {
             run("assembleRecipe", "-Precipe=recipe.yaml", docker());
             assertThat(report().at("/components/0/optimization").asText()).isEqualTo(tier[1]);
         }
+    }
+
+    private List<String> containerBuild() throws IOException {
+        List<List<String>> calls = dockerCalls();
+        return calls.stream().filter(call -> call.contains("native-executable")).findFirst()
+                .orElseThrow(() -> new AssertionError("no container build in " + calls));
+    }
+
+    @Test
+    void containerBuilderCompilesInsideTheBuilderAndPackagesAsUsual() throws IOException {
+        recipe(V2_HEADER + """
+                controlPlane:
+                  modules: []
+                  build: {mode: native, builder: container, native: {gc: G1}}
+                  container: {image: control-plane}
+                  config: {nanofaas: {metrics: {profile: basic}}}
+                """);
+
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker(), "-PnativeParallelism=2");
+
+        Path root = projectDir.toRealPath();
+        Path staged = projectDir.resolve("build/recipes/demo/control-plane");
+        assertThat(projectDir.resolve("markers/control-plane-nativeCompile")).doesNotExist();
+        assertThat(staged.resolve("application")).isExecutable();
+        assertThat(staged.resolve("config/recipe.yaml")).content().contains("profile: basic");
+        assertThat(containerBuild()).containsExactly("build", "-f", root.resolve("deploy/native-java/Dockerfile").toString(),
+                "--target", "native-executable", "--output", "type=local,dest=" + root.resolve("build/recipes/demo/control-plane"),
+                "--build-context", "containerd_maven_repo=" + root.resolve("deploy/native-java/empty-maven-repo"),
+                "--build-arg", "NATIVE_TASK=:control-plane:nativeCompile",
+                "--build-arg", "NATIVE_BINARY=platform/control-plane/build/native/nativeCompile/control-plane",
+                "--build-arg", "GRAALVM_DISTRIBUTION=oracle",
+                "--build-arg", "GRADLE_ARGS=-PnanofaasBuildType=native -PnativeGc=G1 -PcontrolPlaneModules=none -PnativeParallelism=2",
+                root.toString());
+        List<String> commands = dockerCalls().stream().map(call -> String.join(" ", call)).toList();
+        assertThat(commands.indexOf(String.join(" ", containerBuild())))
+                .isLessThan(commands.indexOf(commands.stream().filter(c -> c.contains("Dockerfile.native")).findFirst().orElseThrow()));
+        assertThat(report().at("/components/0/native").toString()).isEqualTo(
+                "{\"optimization\":\"3\",\"gc\":\"G1\",\"monitoring\":[\"jfr\"],\"builder\":\"container\",\"distribution\":\"oracle\"}");
+    }
+
+    @Test
+    void hostAndContainerBuildersMixAndImagelessComponentsStillBuild() throws IOException {
+        recipe(V2_HEADER + CP_JVM + """
+                functions: [{name: word-stats, sdk: java, build: {mode: native}}]
+                services: [{name: warm-echo, sdk: java, build: {mode: native, builder: container}}]
+                """);
+
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker());
+
+        assertThat(projectDir.resolve("markers/word-stats-nativeCompile")).exists();
+        assertThat(projectDir.resolve("markers/warm-echo-nativeCompile")).doesNotExist();
+        assertThat(projectDir.resolve("build/recipes/demo/services/java/warm-echo/application")).isExecutable();
+        assertThat(containerBuild()).contains("NATIVE_TASK=:services:java:warm-echo:nativeCompile",
+                "GRAALVM_DISTRIBUTION=community", "GRADLE_ARGS=-PnanofaasBuildType=native");
+        assertThat(report().at("/components/1/native/builder").asText()).isEqualTo("host");
+        assertThat(report().at("/components/1/native").has("distribution")).isFalse();
+    }
+
+    @Test
+    void containerBuilderFailsEarlyOnSplittableArgumentsAndMissingContainerdRepository() throws IOException {
+        recipe(V2_HEADER + "controlPlane: {modules: [], build: {mode: native, builder: container}}\n");
+        assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker(), "-PnativeBuildMemory=6 g"))
+                .contains("-PnativeBuildMemory=6 g").contains("whitespace");
+
+        writeModule("containerd-deployment-provider", "");
+        recipe(V2_HEADER + "controlPlane: {modules: [containerd-deployment-provider], build: {mode: native, builder: container}}\n");
+        assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker()))
+                .contains("needs -PcontainerdMavenLocal=true");
+        assertThat(projectDir.resolve("docker.log")).doesNotExist();
+    }
+
+    @Test
+    void previewShowsTheContainerBuilder() throws IOException {
+        recipe(V2_HEADER + "controlPlane: {modules: [], build: {mode: native, builder: container, native: {gc: G1}}}\n");
+
+        assertThat(run("validateRecipe", "-Precipe=recipe.yaml").getOutput()).contains(
+                "docker build -f deploy/native-java/Dockerfile --target native-executable (container builder, oracle)");
+    }
+
+    @Test
+    void onlyHostBuiltNativeImagesNeedALinuxHost() {
+        RecipeTasks.Target host = new RecipeTasks.Target("controlPlane", "control-plane", "control-plane", "java", "native",
+                ":control-plane:nativeCompile", null, null, "control-plane/", "img", null, null,
+                new RecipeBuildProperties.NativeOptions("3", "serial", List.of(), "host", null));
+        RecipeTasks.Target container = new RecipeTasks.Target("controlPlane", "control-plane", "control-plane", "java",
+                "native", ":control-plane:nativeCompile", null, null, "control-plane/", "img", null, null,
+                new RecipeBuildProperties.NativeOptions("3", "serial", List.of(), "container", "community"));
+
+        assertThat(RecipeTasks.hostProblem("Mac OS X", host)).contains("Linux host");
+        assertThat(RecipeTasks.hostProblem("Mac OS X", container)).isNull();
+        assertThat(RecipeTasks.hostProblem("Linux", host)).isNull();
     }
 
     private static final String FULL_RECIPE = HEADER + """
@@ -814,14 +914,6 @@ class RecipePluginTest {
         assertThat(projectDir.resolve("build/recipes/demo/functions/java-lite")).doesNotExist();
         assertThat(projectDir.resolve("build/recipes/demo/control-plane/config")).doesNotExist();
         assertThat(Files.readString(report)).doesNotContain("sha256:old", "java-lite", "published");
-    }
-
-    @Test
-    void nativeImagesNeedALinuxHost() {
-        // The staged executable is copied into a Linux image; GraalVM cannot cross-compile.
-        assertThat(RecipeTasks.nativeImageHostProblem("Linux")).isNull();
-        assertThat(RecipeTasks.nativeImageHostProblem("Mac OS X")).contains("Linux host").contains("Mac OS X");
-        assertThat(RecipeTasks.nativeImageHostProblem("Windows 11")).contains("Linux host");
     }
 
     @Test

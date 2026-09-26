@@ -47,6 +47,10 @@ final class RecipeTasks {
         boolean controlPlane() {
             return kind.equals("control-plane");
         }
+
+        boolean containerBuilt() {
+            return nativeOptions != null && nativeOptions.builder().equals("container");
+        }
     }
 
     private final Project root;
@@ -174,10 +178,10 @@ final class RecipeTasks {
 
         resolveComponents(data.path("functions"), "functions", "function", catalog(), images, resolved);
         resolveComponents(data.path("services"), "services", "service", serviceCatalog(), images, resolved);
-        String hostProblem = nativeImageHostProblem(System.getProperty("os.name"));
         for (Target target : resolved) {
-            if (hostProblem != null && target.mode().equals("native") && target.image() != null) {
-                throw fail(target.field() + ".container.image: " + hostProblem);
+            String problem = hostProblem(System.getProperty("os.name"), target);
+            if (problem != null) {
+                throw fail(target.field() + ".container.image: " + problem);
             }
         }
         return List.copyOf(resolved);
@@ -217,10 +221,13 @@ final class RecipeTasks {
         }
     }
 
-    /** GraalVM cannot cross-compile, and the staged executable is copied as-is into a Linux image. */
-    static String nativeImageHostProblem(String osName) {
-        return osName.startsWith("Linux") ? null
-                : "a native image needs a Linux host, but the executable would be compiled on " + osName;
+    /** GraalVM cannot cross-compile: a host-built executable is copied as-is into a Linux image. The container builder is Linux. */
+    static String hostProblem(String osName, Target target) {
+        if (osName.startsWith("Linux") || !target.mode().equals("native") || target.image() == null || target.containerBuilt()) {
+            return null;
+        }
+        return "a native image needs a Linux host, but the executable would be compiled on " + osName
+                + "; use build.builder: container";
     }
 
     private static List<String> jvmArgs(JsonNode component) {
@@ -277,7 +284,10 @@ final class RecipeTasks {
         System.out.println("Tag: " + recipe.effectiveTag());
         System.out.println("Control-plane modules: " + (modules.isEmpty() ? "(core only)" : String.join(", ", modules)));
         for (Target target : targets) {
-            String build = target.task() != null ? target.task()
+            String build = target.containerBuilt()
+                    ? "docker build -f " + RecipeContainerBuild.DOCKERFILE + " --target " + RecipeContainerBuild.TARGET
+                            + " (container builder, " + target.nativeOptions().distribution() + ")"
+                    : target.task() != null ? target.task()
                     : "docker build -f " + slash(target.dockerfile()) + " "
                             + (target.contextDir().toString().isEmpty() ? "." : slash(target.contextDir()));
             System.out.printf("  %-20s %-11s %-10s %s%s%s%n", target.name(), target.sdk(), target.mode(), build,
