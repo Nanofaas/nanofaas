@@ -270,7 +270,7 @@ assemblies mark it.
 
 Keep `-PrecipeOutput` outside the repository, or under a `build/` directory. The repository is
 the build context of every image that builds from it: Dockerfile functions, and the container
-builder's `native-executable` build. The root `.dockerignore` hides
+builder's `native-executable` and `recipe-native` builds. The root `.dockerignore` hides
 `build/` directories but not an output placed elsewhere in the checkout, so such an output is
 sent to the builder with each of those builds and changes their cache key.
 
