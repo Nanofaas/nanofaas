@@ -42,7 +42,10 @@ ARG NATIVE_BINARY
 ARG GRADLE_ARGS
 # The Gradle user home lives in a BuildKit cache mount: dependencies and the Gradle distribution
 # survive across builds (nanolab assembles several variants in a row). It is not part of the image.
-RUN --mount=type=cache,target=/root/.gradle ./gradlew "$NATIVE_TASK" $GRADLE_ARGS --no-daemon && \
+# Locked, because concurrent builds on one builder, and the platforms of one multi-platform build,
+# would otherwise run Gradle in one user home at the same time from separate network namespaces,
+# where Gradle cannot hand its lock over.
+RUN --mount=type=cache,target=/root/.gradle,sharing=locked ./gradlew "$NATIVE_TASK" $GRADLE_ARGS --no-daemon && \
     cp "$NATIVE_BINARY" /tmp/application && \
     mkdir -p /var/lib/nanofaas && touch /var/lib/nanofaas/.keep
 

@@ -185,3 +185,6 @@ def test_native_builder_exports_the_executable_and_caches_gradle():
     assert "COPY --from=builder /tmp/application /application" in dockerfile
     gradle = next(line for line in dockerfile.splitlines() if "./gradlew" in line)
     assert "--mount=type=cache,target=/root/.gradle" in gradle
+    # Locked: two builds on one builder (or two platforms of one multi-platform build) would otherwise share
+    # one Gradle user home at the same time, across network namespaces that Gradle's lock handover cannot cross.
+    assert "sharing=locked" in gradle
