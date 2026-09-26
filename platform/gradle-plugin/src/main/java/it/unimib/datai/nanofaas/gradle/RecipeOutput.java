@@ -93,7 +93,7 @@ final class RecipeOutput {
     }
 
     /** Validate the required report structure before using a legacy report as evidence of ownership. */
-    private static boolean validReport(JsonNode json) {
+    static boolean validReport(JsonNode json) {
         if (json == null || !json.isObject() || !json.path("schemaVersion").isIntegralNumber()
                 || !json.path("schemaVersion").canConvertToInt()) {
             return false;
@@ -146,10 +146,16 @@ final class RecipeOutput {
             }
             if (!image.isObject() || !image.path("reference").isTextual() || image.path("reference").asText().isBlank()
                     || !image.path("status").isTextual()
-                    || !Set.of("built", "published", "published-unverified", "failed").contains(image.path("status").asText())
-                    || (version == 2 && !matches(image.path("id"), "sha256:[0-9a-f]{64}"))
-                    || (image.path("status").asText().equals("published")
-                        && !matches(image.path("digest"), "sha256:[0-9a-f]{64}"))) {
+                    || !Set.of("built", "published", "published-unverified", "failed").contains(image.path("status").asText())) {
+                return false;
+            }
+            JsonNode platforms = image.path("platforms");
+            // The buildx path keeps no local image, hence no id: its images are pinned by digest once published.
+            boolean buildx = platforms.isArray() && !platforms.isEmpty();
+            boolean published = image.path("status").asText().equals("published");
+            if ((version == 2 && !buildx && !matches(image.path("id"), "sha256:[0-9a-f]{64}"))
+                    || (published && !matches(image.path("digest"), "sha256:[0-9a-f]{64}"))
+                    || (buildx && published && !coversPlatforms(image.path("manifests"), platforms))) {
                 return false;
             }
         }
@@ -158,6 +164,19 @@ final class RecipeOutput {
 
     private static boolean matches(JsonNode value, String pattern) {
         return value.isTextual() && value.asText().matches(pattern);
+    }
+
+    /** A published multi-architecture image records one digest for exactly each of its platforms. */
+    private static boolean coversPlatforms(JsonNode manifests, JsonNode platforms) {
+        if (!manifests.isObject() || manifests.size() != platforms.size()) {
+            return false;
+        }
+        for (JsonNode platform : platforms) {
+            if (!platform.isTextual() || !matches(manifests.path(platform.asText()), "sha256:[0-9a-f]{64}")) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static boolean isEmpty(Path dir) {
