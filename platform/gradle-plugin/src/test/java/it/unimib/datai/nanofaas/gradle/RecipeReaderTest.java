@@ -316,6 +316,19 @@ class RecipeReaderTest {
                         + "controlPlane: {modules: [], build: {mode: jvm, builder: container}}\n", "builder"),
                 Arguments.of("unknown builder", head
                         + "controlPlane: {modules: [], build: {mode: native, builder: cloud}}\n", "builder"),
+                Arguments.of("v1 with platforms", BASE
+                        + "registry: {repository: r.example, tag: t, platforms: [linux/amd64]}\n" + CP, "platforms"),
+                Arguments.of("unknown platform", head
+                        + "registry: {repository: r.example, tag: t, platforms: [linux/riscv64]}\n" + cp, "platforms"),
+                Arguments.of("duplicate platform", head
+                        + "registry: {repository: r.example, tag: t, platforms: [linux/arm64, linux/arm64]}\n" + cp, "platforms"),
+                Arguments.of("empty platforms", head
+                        + "registry: {repository: r.example, tag: t, platforms: []}\n" + cp, "platforms"),
+                Arguments.of("provenance without platforms", head
+                        + "registry: {repository: r.example, tag: t, provenance: true}\n" + cp, "platforms"),
+                Arguments.of("non-boolean provenance", head
+                        + "registry: {repository: r.example, tag: t, platforms: [linux/amd64], provenance: max}\n" + cp,
+                        "provenance"),
                 Arguments.of("string version", "schemaVersion: '2'\nname: demo\n" + cp, "supported versions are 1 and 2"));
     }
 
@@ -352,6 +365,28 @@ class RecipeReaderTest {
 
         assertThat(data.at("/controlPlane/build/builder").asText()).isEqualTo("container");
         assertThat(data.at("/services/0/build/builder").asText()).isEqualTo("container");
+    }
+
+    @Test
+    void acceptsPlatformsAndProvenance() throws IOException {
+        Path file = write("""
+                schemaVersion: 2
+                name: demo
+                registry: {repository: ghcr.io/my-org, tag: "1.0.0", platforms: [linux/amd64, linux/arm64], provenance: true}
+                controlPlane: {modules: [], build: {mode: jvm}}
+                """);
+
+        JsonNode data = new RecipeReader().read(file, null).data();
+
+        assertThat(data.at("/registry/platforms").toString()).isEqualTo("[\"linux/amd64\",\"linux/arm64\"]");
+        assertThat(data.at("/registry/provenance").asBoolean()).isTrue();
+        Path withoutProvenance = write("""
+                schemaVersion: 2
+                name: demo
+                registry: {repository: ghcr.io/my-org, tag: "1.0.0", platforms: [linux/arm64], provenance: false}
+                controlPlane: {modules: [], build: {mode: jvm}}
+                """);
+        assertThat(new RecipeReader().read(withoutProvenance, null).data().at("/registry/provenance").asBoolean()).isFalse();
     }
 
     private Path write(String content) throws IOException {
