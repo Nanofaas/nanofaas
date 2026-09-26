@@ -106,6 +106,15 @@ class RecipeContainerBuildTest {
     }
 
     @Test
+    void anOutputPathWithACommaIsQuotedForTheCsvOutputOption() {
+        List<String> command = RecipeContainerBuild.command("docker", Path.of("/repo"), Path.of("/out/a,b \"c\"/cp"),
+                ":control-plane:nativeCompile", "bin", "community", List.of("-PnanofaasBuildType=native"), null);
+
+        // docker reads --output as one CSV record: a field holding a comma or a quote is quoted, quotes doubled.
+        assertThat(command.get(command.indexOf("--output") + 1)).isEqualTo("type=local,\"dest=/out/a,b \"\"c\"\"/cp\"");
+    }
+
+    @Test
     void containerdNeedsTheStagedRepository() {
         List<String> modules = List.of("containerd-deployment-provider");
 

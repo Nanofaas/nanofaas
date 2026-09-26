@@ -65,13 +65,18 @@ final class RecipeContainerBuild {
                                 String distribution, List<String> gradleArgs, Path containerdRepository) {
         Path repository = containerdRepository != null ? containerdRepository : rootDir.resolve(EMPTY_MAVEN_REPOSITORY);
         return List.of(docker, "build", "-f", rootDir.resolve(DOCKERFILE).toString(), "--target", TARGET,
-                "--output", "type=local,dest=" + destination,
+                "--output", "type=local," + csvField("dest=" + destination),
                 "--build-context", "containerd_maven_repo=" + repository,
                 "--build-arg", "NATIVE_TASK=" + nativeTask,
                 "--build-arg", "NATIVE_BINARY=" + nativeBinary,
                 "--build-arg", "GRAALVM_DISTRIBUTION=" + distribution,
                 "--build-arg", "GRADLE_ARGS=" + String.join(" ", gradleArgs),
                 rootDir.toString());
+    }
+
+    /** docker reads --output as one CSV record: a field holding a comma or a quote is quoted, its quotes doubled. */
+    private static String csvField(String field) {
+        return field.contains(",") || field.contains("\"") ? "\"" + field.replace("\"", "\"\"") + "\"" : field;
     }
 
     static void requireContainerdRepository(Path recipeSource, List<String> modules, Object containerdMavenLocal,
