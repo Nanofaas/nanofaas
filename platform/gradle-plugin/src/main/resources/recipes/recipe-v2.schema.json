@@ -77,7 +77,7 @@
     },
     "nativeOptionsNeedNativeMode": {
       "if": {"required": ["mode"], "properties": {"mode": {"const": "jvm"}}},
-      "then": {"properties": {"native": false}}
+      "then": {"properties": {"native": false, "builder": false}}
     },
     "javaBuild": {
       "type": "object",
@@ -85,7 +85,8 @@
       "required": ["mode"],
       "properties": {
         "mode": {"enum": ["jvm", "native"]},
-        "native": {"$ref": "#/$defs/native"}
+        "native": {"$ref": "#/$defs/native"},
+        "builder": {"description": "Where a native component compiles: host (default) or container (deploy/native-java/Dockerfile's builder).", "enum": ["host", "container"]}
       },
       "$ref": "#/$defs/nativeOptionsNeedNativeMode"
     },
@@ -96,7 +97,8 @@
       "properties": {
         "mode": {"enum": ["jvm", "native"]},
         "native": {"$ref": "#/$defs/native"},
-        "variant": {"description": "Label written to nanofaas-build.properties; needs the build-metadata module.", "$ref": "#/$defs/slug"}
+        "variant": {"description": "Label written to nanofaas-build.properties; needs the build-metadata module.", "$ref": "#/$defs/slug"},
+        "builder": {"description": "Where a native component compiles: host (default) or container (deploy/native-java/Dockerfile's builder).", "enum": ["host", "container"]}
       },
       "$ref": "#/$defs/nativeOptionsNeedNativeMode"
     },

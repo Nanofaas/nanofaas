@@ -24,7 +24,8 @@ final class RecipeBuildProperties {
     /** -P flag -> the recipe field that replaces it. */
     private static final Map<String, String> OWNED_FLAGS = ownedFlags();
 
-    record NativeOptions(String optimization, String gc, List<String> monitoring) {
+    /** {@code distribution} is the GraalVM the container builder installs; null for the host builder, which uses its own. */
+    record NativeOptions(String optimization, String gc, List<String> monitoring, String builder, String distribution) {
     }
 
     record Identity(String variant, String optimization) {
@@ -105,7 +106,10 @@ final class RecipeBuildProperties {
         if (gc.equals("G1") && !monitoring.contains("jfr")) {
             monitoring.add("jfr");
         }
-        return new NativeOptions(options.path("optimization").asText("3"), gc, List.copyOf(monitoring));
+        String builder = component.path("build").path("builder").asText("host");
+        // The container builder installs Oracle GraalVM only for G1: Community's Native Image has no G1.
+        String distribution = builder.equals("container") ? (gc.equals("G1") ? "oracle" : "community") : null;
+        return new NativeOptions(options.path("optimization").asText("3"), gc, List.copyOf(monitoring), builder, distribution);
     }
 
     /** Recorded with a variant, or with an explicit native optimization, as -PnativeOptimization alone records it. */
