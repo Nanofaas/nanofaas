@@ -2,6 +2,7 @@ package it.unimib.datai.nanofaas.gradle;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -86,6 +87,11 @@ final class RecipeContainerBuild {
             throw RecipeReader.failure(recipeSource, "controlPlane.modules: " + CONTAINERD_MODULE
                     + " with builder: container needs -PcontainerdMavenLocal=true and -Dmaven.repo.local=<the staged"
                     + " repository from scripts/bootstrap-containerd-dependencies.sh>");
+        }
+        if (modules.contains(CONTAINERD_MODULE) && !Files.isDirectory(Path.of(mavenRepoLocal))) {
+            throw RecipeReader.failure(recipeSource, "controlPlane.modules: " + CONTAINERD_MODULE + " with builder:"
+                    + " container: -Dmaven.repo.local=" + mavenRepoLocal + " is not a directory; stage it with"
+                    + " scripts/bootstrap-containerd-dependencies.sh");
         }
     }
 }

@@ -120,7 +120,10 @@ class RecipeContainerBuildTest {
 
         assertThatThrownBy(() -> RecipeContainerBuild.requireContainerdRepository(RECIPE, modules, null, null))
                 .hasMessageContaining("-PcontainerdMavenLocal=true").hasMessageContaining("-Dmaven.repo.local");
-        RecipeContainerBuild.requireContainerdRepository(RECIPE, modules, "true", "/staged");
+        assertThatThrownBy(() -> RecipeContainerBuild.requireContainerdRepository(RECIPE, modules, "true",
+                dir.resolve("missing").toString())).hasMessageContaining(dir.resolve("missing").toString())
+                .hasMessageContaining("is not a directory");
+        RecipeContainerBuild.requireContainerdRepository(RECIPE, modules, "true", dir.toString());
         RecipeContainerBuild.requireContainerdRepository(RECIPE, List.of("async-queue"), null, null);
     }
 }

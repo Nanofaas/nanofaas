@@ -784,6 +784,20 @@ class RecipePluginTest {
     }
 
     @Test
+    void containerBuilderHandsTheStagedContainerdRepositoryToTheBuilder() throws IOException {
+        writeModule("containerd-deployment-provider", "");
+        recipe(V2_HEADER + "controlPlane: {modules: [containerd-deployment-provider], build: {mode: native, builder: container}}\n");
+        Path repository = Files.createDirectories(outsideDir.resolve("containerd-m2"));
+
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker(), "-PcontainerdMavenLocal=true",
+                "-Dmaven.repo.local=" + repository);
+
+        assertThat(containerBuild()).contains("containerd_maven_repo=" + repository,
+                "GRADLE_ARGS=-PnanofaasBuildType=native -PcontrolPlaneModules=containerd-deployment-provider"
+                        + " -PcontainerdMavenLocal=true -Dmaven.repo.local=/tmp/containerd-m2");
+    }
+
+    @Test
     void previewShowsTheContainerBuilder() throws IOException {
         recipe(V2_HEADER + "controlPlane: {modules: [], build: {mode: native, builder: container, native: {gc: G1}}}\n");
 
