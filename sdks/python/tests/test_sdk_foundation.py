@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import io
 import json
 import logging
@@ -46,7 +47,7 @@ def test_decorator_preserves_async_handler():
         return {"async": True}
 
     handler = decorator.get_registered_handler()
-    assert asyncio.iscoroutinefunction(handler), \
+    assert inspect.iscoroutinefunction(handler), \
         "async handler must remain a coroutine function after decoration"
     result = asyncio.run(handler({"x": 1}))
     assert result == {"async": True}
