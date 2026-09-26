@@ -552,16 +552,6 @@ class RuntimeWorkManager:
         )
         return await _await_concurrent_future(work)
 
-    def start_callback_task(self, callback, *args) -> asyncio.Task:
-        """Create and retain callback coroutine work atomically against shutdown."""
-        with self._lock:
-            if not self._accepting:
-                raise HandlerAdmissionError("stopping")
-            task = asyncio.create_task(callback(*args))
-            self._callback_tasks.add(task)
-        task.add_done_callback(self._callback_task_completed)
-        return task
-
     def start_reserved_callback_task(
         self, reservation: CallbackReservation, callback, *args
     ) -> asyncio.Task:
@@ -684,14 +674,11 @@ class RuntimeWorkManager:
         if reservation is not None:
             self._release_callback_physical(reservation)
 
-    def _callback_task_completed(
-        self, task, reservation: CallbackReservation | None = None
-    ) -> None:
+    def _callback_task_completed(self, task, reservation: CallbackReservation) -> None:
         with self._lock:
             self._callback_tasks.discard(task)
             self._notify_drain_waiters_locked()
-        if reservation is not None:
-            reservation.release()
+        reservation.release()
 
     def _notify_drain_waiters_locked(self) -> None:
         self._lock.notify_all()
