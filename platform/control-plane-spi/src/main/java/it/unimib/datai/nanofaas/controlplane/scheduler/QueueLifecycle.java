@@ -1,6 +1,5 @@
 package it.unimib.datai.nanofaas.controlplane.scheduler;
 
-import java.util.Set;
 import java.util.function.BiConsumer;
 
 /**
@@ -13,8 +12,6 @@ public interface QueueLifecycle {
     void expired(InvocationTask task);
     void removed(InvocationTask task);
     void rejected(InvocationTask task, Throwable failure);
-
-    Set<String> inFlightExecutionIds(String functionName);
 
     /** Terminal or administratively expired executions, for queue-owned fence cleanup. */
     void onExecutionGone(BiConsumer<String, String> listener);

@@ -491,8 +491,8 @@ module-ID change or retry-default change. Packaging extraction remains P21.
 | `ExecutionCompletionHandler` | `RetryScheduler.enqueue` | Schedules the next already-admitted attempt, without implying public async or queued initial admission |
 | async `Scheduler`, `SyncScheduler`, core retry executor | `InvocationDispatch.dispatch(InvocationTask)` | Task transports its existing `DispatchOwnership`; schedulers no longer depend on HTTP orchestration |
 | `InvocationTask`, `DispatchAttempt`, completion/physical work | `DispatchOwnership.generation`, `release`, `isReleased` | Existing `DispatchLease` implements the minimal handle; no concrete lease class is exported through task/consumer signatures and no owner is recreated |
-| `QueueManager`, `SyncQueueService`, sync enqueuer/workload source | `DispatchCapacity.register`, `remove`, `state`, `activeGeneration`, `retainsGeneration`, generation-bound `tryAcquireLease`, concurrency readings/control, `addCapacityListener` | Registry remains the authority; `CapacityView` is read-only. Only an owned handle releases a slot |
-| async lifecycle listener, sync queue, both schedulers | `QueueLifecycle.removed`, `expired`, `rejected`; sync also `inFlightExecutionIds`, `onExecutionGone` | Existing `ExecutionStore` resolves IDs and delegates canonical settlement to its attached `ExecutionLifecycle`. Modules cannot mutate records, complete futures, archive outcomes or release capacity by name |
+| `QueueManager`, `SyncQueueService`, sync enqueuer/workload source | `DispatchCapacity.register`, `remove`, `state`, `activeGeneration`, generation-bound `tryAcquireLease`, concurrency readings/control, `addCapacityListener` | Registry remains the authority; `CapacityView` is read-only. Only an owned handle releases a slot |
+| async lifecycle listener, sync queue, both schedulers | `QueueLifecycle.removed`, `expired`, `rejected`; sync also `onExecutionGone` | Existing `ExecutionStore` resolves IDs and delegates canonical settlement to its attached `ExecutionLifecycle`. Modules cannot mutate records, complete futures, archive outcomes or release capacity by name |
 | governor, autoscaler `ScalingMetricsReader` | `InvocationObservations.snapshot` | Immutable totals and the shared `FunctionGeneration`, read from existing metric owners only; no registration or mutable Timer/Counter API |
 | governor policies and autoscaler backlog readings | existing `WorkloadMetricsSource` / `WorkloadCapacityController` | Queue readings and the governor's explicit capacity-control authority remain separate from read-only invocation observations |
 
@@ -519,9 +519,11 @@ The two `InvocationService.completeExecution(InvocationResult, ...)` methods rem
 
 The P20b source inventory refined §10's `hasGeneration` description: surviving sync call sites
 also clean up removal fences/locks, so replacing all of them with a bare active check would
-prematurely forget physical drain. Activation uses `activeGeneration != null`; cleanup may
-additionally ask whether the fence's **exact** generation is still tracked via
-`retainsGeneration(fence.generation)`. No historical-presence lookup can admit new work. Late
+prematurely forget physical drain. Activation uses `activeGeneration != null`. The inventory also
+provided `retainsGeneration(fence.generation)` for cleanup that must know whether the fence's
+**exact** generation is still tracked; no call site ended up needing it, and it was later
+removed, together with the unused `QueueLifecycle.inFlightExecutionIds`. No historical-presence
+lookup can admit new work. Late
 release diagnostics compare the captured identity with the active one before writing meters.
 
 ### 11.3 Observation and event semantics
