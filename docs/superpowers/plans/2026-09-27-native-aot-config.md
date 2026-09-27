@@ -153,7 +153,7 @@ def aotConfig = findProperty('nanofaasAotConfig')
 if (nativeBuildRequested && aotConfig) {
     def aotConfigFile = rootProject.file(aotConfig.toString())
     tasks.named('processAot') {
-        inputs.file(aotConfigFile).withPropertyName('nanofaasAotConfig').withPathSensitivity(PathSensitivity.NONE)
+        inputs.file(aotConfigFile).withPropertyName('nanofaasAotConfig')
         systemProperty 'spring.config.additional-location', 'file:' + aotConfigFile.absolutePath
     }
 }
@@ -324,32 +324,33 @@ and after `byProject`:
     }
 ```
 
-In `ControlPlaneModulesPlugin.apply`, replace
+In `ControlPlaneModulesPlugin.apply`, right after the `projectProperties` declaration, add
 
 ```java
-        Map<String, Map<String, String>> projectProperties =
-                recipe == null ? Map.of() : RecipeBuildProperties.byProject(recipe.data());
+        Path aotConfig = recipe == null ? null : writeAotConfig(settings, recipe);
 ```
 
-with
+and inside the existing `settings.getGradle().beforeProject(project -> { ... })` callback, after the
+`projectProperties…forEach(…)` line, add
 
 ```java
-        Map<String, Map<String, String>> projectProperties =
-                recipe == null ? Map.of() : withAotConfig(settings, recipe, RecipeBuildProperties.byProject(recipe.data()));
+            if (aotConfig != null && project.getPath().equals(RecipeBuildProperties.CONTROL_PLANE)) {
+                project.getExtensions().getExtraProperties()
+                        .set(RecipeBuildProperties.AOT_CONFIG_PROPERTY, aotConfig.toString());
+            }
 ```
 
-and add the method:
+Then add the method:
 
 ```java
     /**
-     * Writes a native control plane's configuration under build/ now, when path and content are known, and hands its
-     * path to :control-plane; processAot, which reads it, runs long after. Rewritten on every invocation: harmless.
+     * Writes a native control plane's configuration under build/ now, when path and content are known, for
+     * processAot, which runs long after; null when there is none. Rewritten on every invocation: harmless.
      */
-    private static Map<String, Map<String, String>> withAotConfig(Settings settings, RecipeReader.Document recipe,
-                                                                  Map<String, Map<String, String>> byProject) {
+    private static Path writeAotConfig(Settings settings, RecipeReader.Document recipe) {
         String yaml = RecipeBuildProperties.aotConfig(recipe.data());
         if (yaml == null) {
-            return byProject;
+            return null;
         }
         Path file = settings.getSettingsDir().toPath().resolve("build/recipe-aot")
                 .resolve(recipe.data().get("name").asText()).resolve("control-plane.yaml");
@@ -359,17 +360,12 @@ and add the method:
         } catch (IOException exception) {
             throw new UncheckedIOException(exception);
         }
-        Map<String, Map<String, String>> result = new LinkedHashMap<>(byProject);
-        Map<String, String> controlPlane =
-                new LinkedHashMap<>(result.getOrDefault(RecipeBuildProperties.CONTROL_PLANE, Map.of()));
-        controlPlane.put(RecipeBuildProperties.AOT_CONFIG_PROPERTY, file.toString());
-        result.put(RecipeBuildProperties.CONTROL_PLANE, controlPlane);
-        return result;
+        return file;
     }
 ```
 
-Add the imports that are missing: `java.io.IOException`, `java.io.UncheckedIOException`,
-`java.nio.file.Files`, `java.util.LinkedHashMap`.
+Add the imports that are missing: `java.io.IOException`, `java.io.UncheckedIOException` and
+`java.nio.file.Files`.
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
@@ -472,11 +468,9 @@ def test_native_builder_hands_the_recipe_configuration_to_spring_aot():
     stage = _stage(dockerfile, "builder")
 
     assert "ARG NATIVE_AOT_CONFIG" in stage
-    decode = next(i for i, line in enumerate(stage) if "base64 -d" in line)
+    decode = next(i for i, line in enumerate(stage) if "base64 -d > /tmp/nanofaas-aot-config.yaml" in line)
     gradle = next(i for i, line in enumerate(stage) if "./gradlew" in line)
     assert decode < gradle
-    assert '[ -n "$NATIVE_AOT_CONFIG" ]' in stage[decode]
-    assert "/tmp/nanofaas-aot-config.yaml" in stage[decode]
     assert "${NATIVE_AOT_CONFIG:+-PnanofaasAotConfig=/tmp/nanofaas-aot-config.yaml}" in stage[gradle]
 ```
 
