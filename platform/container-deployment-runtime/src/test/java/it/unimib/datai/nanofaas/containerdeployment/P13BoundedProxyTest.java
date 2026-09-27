@@ -91,7 +91,6 @@ class P13BoundedProxyTest {
             assertThat(readStatus(socket)).isEqualTo(413);
         }
         assertThat(backendCalls).hasValue(0);
-        awaitIdle();
         assertIdle();
     }
 
@@ -116,7 +115,6 @@ class P13BoundedProxyTest {
             assertThat(readStatusOrClosed(socket)).isIn(-1, 408);
         }
         assertThat(backendCalls).hasValue(0);
-        awaitIdle();
         assertIdle();
     }
 
@@ -170,6 +168,31 @@ class P13BoundedProxyTest {
 
         release.countDown();
         assertThat(admitted.get(AWAIT.toMillis(), TimeUnit.MILLISECONDS).statusCode()).isEqualTo(200);
+        assertIdle();
+    }
+
+    @Test
+    void theCallerCanHoldTheWholeResponseBeforeTheProxyReleasesItsOwnership() throws Exception {
+        // The proxy releases a request's ownership only after its response write returns, and the caller may read
+        // the whole response first. CI hit that window at random; this writer widens it on purpose.
+        HttpServer backend = backend(exchange -> respond(exchange, 200, "r".getBytes(StandardCharsets.UTF_8)));
+        RoundRobinFunctionProxy.ResponseBodyWriter lingeringWriter = (exchange, bytes, length) -> {
+            try (OutputStream output = exchange.getResponseBody()) {
+                output.write(bytes, 0, length);
+            }
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        };
+        proxy = new RoundRobinFunctionProxy(
+                "127.0.0.1", 4, Duration.ofSeconds(30), HttpClient.newHttpClient(),
+                new ProxySettings(16, 1, 33, Duration.ofSeconds(2), Duration.ofSeconds(30)),
+                null, lingeringWriter);
+        proxy.updateBackends(List.of(baseUrl(backend)));
+
+        assertThat(post(new byte[1]).statusCode()).isEqualTo(200);
         assertIdle();
     }
 
@@ -290,7 +313,7 @@ class P13BoundedProxyTest {
         responseWrite.expire();
         assertThat(writerInterrupted.await(AWAIT.toMillis(), TimeUnit.MILLISECONDS)).isTrue();
         call.handle((response, failure) -> null).get(AWAIT.toMillis(), TimeUnit.MILLISECONDS);
-        awaitIdle();
+        assertIdle();
         responseWrite.awaitClosed();
         assertIdle();
     }
@@ -495,16 +518,17 @@ class P13BoundedProxyTest {
         return proxy.endpointUrl().replace("/invoke", "/health");
     }
 
-    private void awaitIdle() throws Exception {
-        CompletableFuture.runAsync(() -> {
-            while (proxy.snapshot().inFlight() != 0 || proxy.snapshot().bufferedBytes() != 0) {
-                Thread.onSpinWait();
-            }
-        }).get(AWAIT.toMillis(), TimeUnit.MILLISECONDS);
-    }
-
+    /**
+     * The proxy releases a request's ownership after its response write returns, so a caller holding the whole
+     * response can still see it reserved for a moment: wait, bounded, for the release, then compare.
+     */
     private void assertIdle() {
-        assertThat(proxy.snapshot()).isEqualTo(new RoundRobinFunctionProxy.Snapshot(0, 0));
+        RoundRobinFunctionProxy.Snapshot idle = new RoundRobinFunctionProxy.Snapshot(0, 0);
+        long deadline = System.nanoTime() + AWAIT.toNanos();
+        while (!proxy.snapshot().equals(idle) && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
+        assertThat(proxy.snapshot()).isEqualTo(idle);
     }
 
     private static void respond(com.sun.net.httpserver.HttpExchange exchange, int status, byte[] body)
