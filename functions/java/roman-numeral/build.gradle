@@ -5,6 +5,8 @@ plugins {
     id 'java'
 }
 
+apply from: rootProject.file('gradle/spring-aot-native-only.gradle')
+
 dependencies {
     implementation project(':sdks:java')
     testImplementation 'org.springframework.boot:spring-boot-starter-test'

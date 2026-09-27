@@ -19,7 +19,11 @@ final class RecipeBuildProperties {
     static final String CONTROL_PLANE = ":control-plane";
     static final String BUILD_METADATA_PROJECT = ":control-plane-modules:build-metadata";
     static final String BUILD_METADATA_MODULE = "build-metadata";
-    static final String SERVICE_MODE_PROPERTY = "nanofaasRecipeBuildMode";
+    /**
+     * A Spring Boot component's mode. assembleRecipe names no native task, so this is how the build script knows whether
+     * to run Spring AOT (gradle/spring-aot-native-only.gradle).
+     */
+    static final String BUILD_MODE_PROPERTY = "nanofaasRecipeBuildMode";
     /** Where platform/control-plane/build.gradle finds the configuration Spring AOT evaluates conditions with. */
     static final String AOT_CONFIG_PROPERTY = "nanofaasAotConfig";
 
@@ -68,7 +72,12 @@ final class RecipeBuildProperties {
             String sdk = function.get("sdk").asText();
             if (sdk.equals("java") || sdk.equals("java-lite")) {
                 String name = function.get("name").asText();
-                putNative(projects, ":functions:java:" + name + (sdk.equals("java-lite") ? "-lite" : ""), function);
+                String path = ":functions:java:" + name + (sdk.equals("java-lite") ? "-lite" : "");
+                putNative(projects, path, function);
+                if (sdk.equals("java")) {
+                    projects.computeIfAbsent(path, ignored -> new LinkedHashMap<>())
+                            .put(BUILD_MODE_PROPERTY, function.at("/build/mode").asText());
+                }
             }
         }
         for (JsonNode service : data.path("services")) {
@@ -76,7 +85,7 @@ final class RecipeBuildProperties {
                 String path = ":services:java:" + service.get("name").asText();
                 putNative(projects, path, service);
                 projects.computeIfAbsent(path, ignored -> new LinkedHashMap<>())
-                        .put(SERVICE_MODE_PROPERTY, service.at("/build/mode").asText());
+                        .put(BUILD_MODE_PROPERTY, service.at("/build/mode").asText());
             }
         }
         Identity identity = identity(data);

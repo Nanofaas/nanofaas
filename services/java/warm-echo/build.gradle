@@ -19,36 +19,13 @@ tasks.named('bootJar') {
     archiveFileName = 'app.jar'
 }
 
-// A recipe states warm-echo's mode (nanofaasRecipeBuildMode): assembleRecipe and publishRecipe
-// contain no native task name, and a native warm-echo must not depend on the control plane's mode.
-// Without a recipe, a native-oriented task name decides, as before.
-def recipeBuildMode = findProperty('nanofaasRecipeBuildMode')
-def nativeBuildRequested = recipeBuildMode != null ? recipeBuildMode == 'native' : gradle.startParameter.taskNames.any {
-    it.contains('nativeCompile') || it.contains('nativeTest')
-}
+apply from: rootProject.file('gradle/spring-aot-native-only.gradle')
 
 // Plain jar is only needed for nativeCompile (provides main class on classpath).
 tasks.named('jar') {
-    enabled = nativeBuildRequested
+    enabled = nanofaasNativeBuild
 }
 
-if (!nativeBuildRequested) {
-    // Main AOT - not needed for regular builds
-    tasks.named('processAot') { enabled = false }
-    tasks.named('compileAotJava') { enabled = false }
-    tasks.named('processAotResources') { enabled = false }
-    tasks.named('aotClasses') { enabled = false }
-    // Disabled tasks keep their previous outputs, and bootJar still packages the aot source set:
-    // without this filter a JVM jar built after a native build carries stale AOT classes.
-    tasks.named('bootJar') {
-        // processAot writes the generated classes (CGLIB proxies) to its own classesOutput, which is on the
-        // bootJar classpath but not part of sourceSets.aot.output.
-        def aotOutputs = files(sourceSets.aot.output, tasks.named('processAot').flatMap { it.classesOutput })
-        classpath = classpath.filter { !aotOutputs.files.contains(it) }
-        doFirst { manifest.attributes.remove('Spring-Boot-Native-Processed') }
-    }
-    apply from: rootProject.file('gradle/jvm-jar-without-aot.gradle')
-}
 // Test AOT - always disable (not needed for native builds either)
 tasks.named('processTestAot') { enabled = false }
 tasks.named('compileAotTestJava') { enabled = false }

@@ -4,6 +4,8 @@ plugins {
     id 'org.graalvm.buildtools.native' version "${graalvmBuildToolsVersion}"
     id 'java'
 }
+
+apply from: rootProject.file('gradle/spring-aot-native-only.gradle')
 dependencies { implementation project(':sdks:java'); testImplementation 'org.springframework.boot:spring-boot-starter-test' }
 tasks.named('test') { useJUnitPlatform() }
 bootJar { archiveFileName = 'binary-envelope.jar' }
