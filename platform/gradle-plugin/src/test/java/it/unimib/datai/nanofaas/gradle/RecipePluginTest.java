@@ -844,6 +844,7 @@ class RecipePluginTest {
                 "--build-arg", "NATIVE_BINARY=platform/control-plane/build/native/nativeCompile/control-plane",
                 "--build-arg", "GRAALVM_DISTRIBUTION=oracle",
                 "--build-arg", "GRADLE_ARGS=-PnanofaasBuildType=native -PnativeGc=G1 -PcontrolPlaneModules=none -PnativeParallelism=2",
+                "--build-arg", "NATIVE_AOT_CONFIG=" + base64("nanofaas:\n  metrics:\n    profile: basic\n"),
                 root.toString());
         List<String> commands = dockerCalls().stream().map(call -> String.join(" ", call)).toList();
         assertThat(commands.indexOf(String.join(" ", containerBuild())))
@@ -866,6 +867,7 @@ class RecipePluginTest {
         assertThat(projectDir.resolve("build/recipes/demo/services/java/warm-echo/application")).isExecutable();
         assertThat(containerBuild()).contains("NATIVE_TASK=:services:java:warm-echo:nativeCompile",
                 "GRAALVM_DISTRIBUTION=community", "GRADLE_ARGS=-PnanofaasBuildType=native");
+        assertThat(containerBuild()).noneMatch(argument -> argument.startsWith("NATIVE_AOT_CONFIG="));
         assertThat(report().at("/components/1/native/builder").asText()).isEqualTo("host");
         assertThat(report().at("/components/1/native").has("distribution")).isFalse();
     }
@@ -957,6 +959,7 @@ class RecipePluginTest {
                 "--build-arg", "NATIVE_BINARY=platform/control-plane/build/native/nativeCompile/control-plane",
                 "--build-arg", "GRAALVM_DISTRIBUTION=community",
                 "--build-arg", "GRADLE_ARGS=-PnanofaasBuildType=native -PcontrolPlaneModules=none",
+                "--build-arg", "NATIVE_AOT_CONFIG=" + base64("nanofaas:\n  metrics:\n    profile: basic\n"),
                 root.toString());
         assertThat(buildxBuild("registry.example:5000/team/ws-java:1.0.0", false)).endsWith("-f",
                 root.resolve("deploy/recipes/Dockerfile.jvm").toString(),
@@ -1412,6 +1415,10 @@ class RecipePluginTest {
             }
         }
         throw new AssertionError("no image " + reference + " in " + report);
+    }
+
+    private static String base64(String text) {
+        return java.util.Base64.getEncoder().encodeToString(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
     private static String digestOf(String reference) {

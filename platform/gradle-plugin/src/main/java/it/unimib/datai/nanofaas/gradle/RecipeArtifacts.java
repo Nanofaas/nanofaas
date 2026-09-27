@@ -158,7 +158,8 @@ final class RecipeArtifacts {
                                 target.nativeOptions().distribution(),
                                 RecipeContainerBuild.gradleArgs(recipe.source(), recipe.data(), projectPath, modules,
                                         source(services.getExec(), rootDir, output), passThrough),
-                                containerdRepository)));
+                                containerdRepository,
+                                target.controlPlane() ? RecipeBuildProperties.aotConfig(recipe.data()) : null)));
                     }));
         }
         List<TaskProvider<Exec>> images = new ArrayList<>();
@@ -497,7 +498,7 @@ final class RecipeArtifacts {
         arguments.addAll(RecipeContainerBuild.builderArguments(rootDir, target.task(), nativeBinary(root, target),
                 target.nativeOptions().distribution(), RecipeContainerBuild.gradleArgs(recipe.source(), recipe.data(),
                         projectPath, modules, source(services.getExec(), rootDir, output), passThrough),
-                containerdRepository));
+                containerdRepository, target.controlPlane() ? RecipeBuildProperties.aotConfig(recipe.data()) : null));
         arguments.add(rootDir.toString());
         return arguments;
     }
