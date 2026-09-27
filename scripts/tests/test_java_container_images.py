@@ -217,3 +217,16 @@ def test_recipe_native_stage_packages_like_the_recipe_native_dockerfile():
     assert recipe < stage.index("COPY --from=builder /tmp/application /app/application")
     stages = [line.split() for line in dockerfile.splitlines() if line.startswith("FROM ")]
     assert stages[-1] == ["FROM", "${RUNTIME_IMAGE}"], "the release's default target must stay the runtime image"
+
+
+def test_native_builder_hands_the_recipe_configuration_to_spring_aot():
+    """A recipe's control-plane configuration arrives base64 in NATIVE_AOT_CONFIG (empty for the release). The
+    builder decodes it and adds -PnanofaasAotConfig itself, so the path lives in one place."""
+    dockerfile = (REPO_ROOT / "deploy/native-java/Dockerfile").read_text(encoding="utf-8")
+    stage = _stage(dockerfile, "builder")
+
+    assert "ARG NATIVE_AOT_CONFIG" in stage
+    decode = next(i for i, line in enumerate(stage) if "base64 -d > /tmp/nanofaas-aot-config.yaml" in line)
+    gradle = next(i for i, line in enumerate(stage) if "./gradlew" in line)
+    assert decode < gradle
+    assert "${NATIVE_AOT_CONFIG:+-PnanofaasAotConfig=/tmp/nanofaas-aot-config.yaml}" in stage[gradle]

@@ -41,13 +41,14 @@ class RecipePluginTest {
                 project(':control-plane').projectDir = file('platform/control-plane')
                 """);
         write("build.gradle", """
+                tasks.register('clean', Delete) { delete layout.buildDirectory }
                 tasks.register('printNative') { doLast { println "native=${gradle.ext.nanofaasNativeBuildRequested}" } }
                 tasks.register('printSelection') { doLast { println "modules=${gradle.ext.nanofaasSelectedControlPlaneModules}" } }
                 allprojects {
                     tasks.register('printRecipeProps') {
                         doLast {
                             def keys = ['nativeOptimization', 'nativeGc', 'nativeMonitoring', 'nanofaasBuildVariant',
-                                        'nanofaasBuildOptimization', 'nanofaasRecipeBuildMode']
+                                        'nanofaasBuildOptimization', 'nanofaasRecipeBuildMode', 'nanofaasAotConfig']
                             println "props ${project.path} " + keys.collect { "${it}=${project.findProperty(it)}" }.join(' ')
                         }
                     }
@@ -379,6 +380,55 @@ class RecipePluginTest {
                 .contains("-PnativeOptimization cannot be combined with -Precipe");
         run("printRecipeProps", "-Precipe=recipe.yaml", "-PnativeBuildMemory=6g", "-PnativeParallelism=2",
                 "-PcontainerdMavenLocal=true", "-Dmaven.repo.local=" + outsideDir);
+    }
+
+    @Test
+    void aNativeControlPlaneHandsItsConfigurationToSpringAot() throws IOException {
+        recipe(V2_HEADER + """
+                controlPlane:
+                  modules: []
+                  build: {mode: native}
+                  config: {nanofaas: {admin: {runtime-config: {enabled: true}}}}
+                """);
+
+        String output = run("printRecipeProps", "-Precipe=recipe.yaml").getOutput();
+
+        String line = output.lines().filter(l -> l.startsWith("props :control-plane ")).findFirst().orElseThrow();
+        String path = line.substring(line.indexOf("nanofaasAotConfig=") + "nanofaasAotConfig=".length());
+        assertThat(path).endsWith("/.gradle/recipe-aot/demo/control-plane.yaml");
+        assertThat(Files.readString(Path.of(path))).isEqualTo("nanofaas:\n  admin:\n    runtime-config:\n      enabled: true\n");
+        assertThat(output.lines().filter(l -> l.contains("nanofaasAotConfig=/"))).as("only the control plane").hasSize(1);
+    }
+
+    @Test
+    void theAotConfigurationSurvivesACleanInTheSameInvocation() throws IOException {
+        // The file is written at settings time, and processAot reads it long after: `clean` runs in between.
+        recipe(V2_HEADER + "controlPlane: {modules: [], build: {mode: native}, config: {nanofaas: {metrics: {profile: soak}}}}\n");
+
+        String output = run("clean", "printRecipeProps", "-Precipe=recipe.yaml").getOutput();
+
+        String line = output.lines().filter(l -> l.startsWith("props :control-plane ")).findFirst().orElseThrow();
+        Path path = Path.of(line.substring(line.indexOf("nanofaasAotConfig=") + "nanofaasAotConfig=".length()));
+        assertThat(path).content().isEqualTo("nanofaas:\n  metrics:\n    profile: soak\n");
+    }
+
+    @Test
+    void onlyANativeControlPlaneWithAConfigurationGetsAnAotConfiguration() throws IOException {
+        recipe(V2_HEADER + "controlPlane: {modules: [], build: {mode: jvm}, config: {nanofaas: {metrics: {profile: basic}}}}\n");
+        assertThat(run("printRecipeProps", "-Precipe=recipe.yaml").getOutput()).contains("nanofaasAotConfig=null")
+                .doesNotContain("recipe-aot");
+
+        recipe(V2_HEADER + "controlPlane: {modules: [], build: {mode: native}}\n");
+        assertThat(run("printRecipeProps", "-Precipe=recipe.yaml").getOutput()).doesNotContain("recipe-aot");
+        assertThat(projectDir.resolve(".gradle/recipe-aot")).doesNotExist();
+    }
+
+    @Test
+    void theAotConfigurationFlagBelongsToTheRecipe() throws IOException {
+        recipe(V2_HEADER + CP_JVM);
+
+        assertThat(fails("printRecipeProps", "-Precipe=recipe.yaml", "-PnanofaasAotConfig=aot.yaml"))
+                .contains("-PnanofaasAotConfig cannot be combined with -Precipe").contains("controlPlane.config");
     }
 
     @Test
@@ -807,6 +857,7 @@ class RecipePluginTest {
                 "--build-arg", "NATIVE_BINARY=platform/control-plane/build/native/nativeCompile/control-plane",
                 "--build-arg", "GRAALVM_DISTRIBUTION=oracle",
                 "--build-arg", "GRADLE_ARGS=-PnanofaasBuildType=native -PnativeGc=G1 -PcontrolPlaneModules=none -PnativeParallelism=2",
+                "--build-arg", "NATIVE_AOT_CONFIG=" + base64("nanofaas:\n  metrics:\n    profile: basic\n"),
                 root.toString());
         List<String> commands = dockerCalls().stream().map(call -> String.join(" ", call)).toList();
         assertThat(commands.indexOf(String.join(" ", containerBuild())))
@@ -829,6 +880,7 @@ class RecipePluginTest {
         assertThat(projectDir.resolve("build/recipes/demo/services/java/warm-echo/application")).isExecutable();
         assertThat(containerBuild()).contains("NATIVE_TASK=:services:java:warm-echo:nativeCompile",
                 "GRAALVM_DISTRIBUTION=community", "GRADLE_ARGS=-PnanofaasBuildType=native");
+        assertThat(containerBuild()).noneMatch(argument -> argument.startsWith("NATIVE_AOT_CONFIG="));
         assertThat(report().at("/components/1/native/builder").asText()).isEqualTo("host");
         assertThat(report().at("/components/1/native").has("distribution")).isFalse();
     }
@@ -920,6 +972,7 @@ class RecipePluginTest {
                 "--build-arg", "NATIVE_BINARY=platform/control-plane/build/native/nativeCompile/control-plane",
                 "--build-arg", "GRAALVM_DISTRIBUTION=community",
                 "--build-arg", "GRADLE_ARGS=-PnanofaasBuildType=native -PcontrolPlaneModules=none",
+                "--build-arg", "NATIVE_AOT_CONFIG=" + base64("nanofaas:\n  metrics:\n    profile: basic\n"),
                 root.toString());
         assertThat(buildxBuild("registry.example:5000/team/ws-java:1.0.0", false)).endsWith("-f",
                 root.resolve("deploy/recipes/Dockerfile.jvm").toString(),
@@ -1375,6 +1428,10 @@ class RecipePluginTest {
             }
         }
         throw new AssertionError("no image " + reference + " in " + report);
+    }
+
+    private static String base64(String text) {
+        return java.util.Base64.getEncoder().encodeToString(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
     private static String digestOf(String reference) {

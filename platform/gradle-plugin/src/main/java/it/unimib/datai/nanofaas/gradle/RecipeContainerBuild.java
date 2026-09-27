@@ -2,9 +2,11 @@ package it.unimib.datai.nanofaas.gradle;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -63,23 +65,34 @@ final class RecipeContainerBuild {
     }
 
     static List<String> command(String docker, Path rootDir, Path destination, String nativeTask, String nativeBinary,
-                                String distribution, List<String> gradleArgs, Path containerdRepository) {
+                                String distribution, List<String> gradleArgs, Path containerdRepository,
+                                String aotConfig) {
         List<String> command = new ArrayList<>(List.of(docker, "build", "-f", rootDir.resolve(DOCKERFILE).toString(),
                 "--target", TARGET, "--output", "type=local," + csvField("dest=" + destination)));
-        command.addAll(builderArguments(rootDir, nativeTask, nativeBinary, distribution, gradleArgs, containerdRepository));
+        command.addAll(builderArguments(rootDir, nativeTask, nativeBinary, distribution, gradleArgs,
+                containerdRepository, aotConfig));
         command.add(rootDir.toString());
         return List.copyOf(command);
     }
 
-    /** The builder stage's inputs, shared by the executable export and the multi-architecture recipe-native build. */
+    /**
+     * The builder stage's inputs, shared by the executable export and the multi-architecture recipe-native build.
+     * @param aotConfig the control plane's configuration for Spring AOT, or null: base64, because a build argument
+     *                  would not keep its quotes and line breaks
+     */
     static List<String> builderArguments(Path rootDir, String nativeTask, String nativeBinary, String distribution,
-                                         List<String> gradleArgs, Path containerdRepository) {
+                                         List<String> gradleArgs, Path containerdRepository, String aotConfig) {
         Path repository = containerdRepository != null ? containerdRepository : rootDir.resolve(EMPTY_MAVEN_REPOSITORY);
-        return List.of("--build-context", "containerd_maven_repo=" + repository,
+        List<String> arguments = new ArrayList<>(List.of("--build-context", "containerd_maven_repo=" + repository,
                 "--build-arg", "NATIVE_TASK=" + nativeTask,
                 "--build-arg", "NATIVE_BINARY=" + nativeBinary,
                 "--build-arg", "GRAALVM_DISTRIBUTION=" + distribution,
-                "--build-arg", "GRADLE_ARGS=" + String.join(" ", gradleArgs));
+                "--build-arg", "GRADLE_ARGS=" + String.join(" ", gradleArgs)));
+        if (aotConfig != null) {
+            arguments.addAll(List.of("--build-arg", "NATIVE_AOT_CONFIG="
+                    + Base64.getEncoder().encodeToString(aotConfig.getBytes(StandardCharsets.UTF_8))));
+        }
+        return List.copyOf(arguments);
     }
 
     /** docker reads --output as one CSV record: a field holding a comma or a quote is quoted, its quotes doubled. */

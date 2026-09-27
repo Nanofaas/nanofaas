@@ -40,12 +40,18 @@ COPY --from=containerd_maven_repo . /tmp/containerd-m2/
 ARG NATIVE_TASK
 ARG NATIVE_BINARY
 ARG GRADLE_ARGS
+# A recipe's control-plane configuration, base64, for Spring AOT to evaluate its conditions with
+# (it decides which beans a native executable contains). Empty for the release and every other caller.
+ARG NATIVE_AOT_CONFIG
+RUN if [ -n "$NATIVE_AOT_CONFIG" ]; then \
+      printf '%s' "$NATIVE_AOT_CONFIG" | base64 -d > /tmp/nanofaas-aot-config.yaml; \
+    fi
 # The Gradle user home lives in a BuildKit cache mount: dependencies and the Gradle distribution
 # survive across builds (nanolab assembles several variants in a row). It is not part of the image.
 # Locked, because concurrent builds on one builder, and the platforms of one multi-platform build,
 # would otherwise run Gradle in one user home at the same time from separate network namespaces,
 # where Gradle cannot hand its lock over.
-RUN --mount=type=cache,target=/root/.gradle,sharing=locked ./gradlew "$NATIVE_TASK" $GRADLE_ARGS --no-daemon && \
+RUN --mount=type=cache,target=/root/.gradle,sharing=locked ./gradlew "$NATIVE_TASK" $GRADLE_ARGS ${NATIVE_AOT_CONFIG:+-PnanofaasAotConfig=/tmp/nanofaas-aot-config.yaml} --no-daemon && \
     cp "$NATIVE_BINARY" /tmp/application && \
     mkdir -p /var/lib/nanofaas && touch /var/lib/nanofaas/.keep
 

@@ -189,6 +189,25 @@ Build through `assembleRecipe` instead.
   `-PnativeParallelism` are passed into the builder. With the containerd module, the builder
   needs the staged repository: `-PcontainerdMavenLocal=true -Dmaven.repo.local=<dir>`.
 
+In native, Spring decides which components exist while the executable is built (Spring AOT),
+not at startup. For example, the runtime-config admin API needs
+`nanofaas.admin.runtime-config.enabled=true`, the soak gauges need
+`nanofaas.metrics.profile=soak`, and each image validator needs its `default-backend`.
+
+- **What the build reads.** A native control plane's build hands `controlPlane.config` to that
+  step. The executable therefore contains the components the recipe's configuration selects,
+  as it would on the JVM.
+- **Changing the configuration after the build.** Values change, but the components do not.
+  Environment variables at run time cannot switch a component on or off either. Assemble again.
+- **Without a recipe.** Pass the same file to a direct build:
+  `./gradlew :control-plane:nativeCompile -PnanofaasAotConfig=<file>`. A relative path resolves
+  against the repository root. A missing file fails the build.
+- **The published native image** is built with the defaults: its runtime-config admin API is
+  off. Build your own image for other choices.
+- **In the container builder**, the configuration travels as the build argument
+  `NATIVE_AOT_CONFIG`, so it also appears in the image's BuildKit provenance. The image already
+  ships it as `config/recipe.yaml`.
+
 ## Multi-architecture images
 
 ```yaml

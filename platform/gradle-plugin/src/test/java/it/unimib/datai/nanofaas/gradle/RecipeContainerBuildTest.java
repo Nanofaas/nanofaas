@@ -94,7 +94,7 @@ class RecipeContainerBuildTest {
 
         assertThat(RecipeContainerBuild.command("docker", root, Path.of("/out/control-plane"), ":control-plane:nativeCompile",
                 "platform/control-plane/build/native/nativeCompile/control-plane", "oracle",
-                List.of("-PnanofaasBuildType=native", "-PcontrolPlaneModules=none"), null)).containsExactly(
+                List.of("-PnanofaasBuildType=native", "-PcontrolPlaneModules=none"), null, null)).containsExactly(
                 "docker", "build", "-f", "/repo/deploy/native-java/Dockerfile", "--target", "native-executable",
                 "--output", "type=local,dest=/out/control-plane",
                 "--build-context", "containerd_maven_repo=/repo/deploy/native-java/empty-maven-repo",
@@ -108,10 +108,26 @@ class RecipeContainerBuildTest {
     @Test
     void anOutputPathWithACommaIsQuotedForTheCsvOutputOption() {
         List<String> command = RecipeContainerBuild.command("docker", Path.of("/repo"), Path.of("/out/a,b \"c\"/cp"),
-                ":control-plane:nativeCompile", "bin", "community", List.of("-PnanofaasBuildType=native"), null);
+                ":control-plane:nativeCompile", "bin", "community", List.of("-PnanofaasBuildType=native"), null, null);
 
         // docker reads --output as one CSV record: a field holding a comma or a quote is quoted, quotes doubled.
         assertThat(command.get(command.indexOf("--output") + 1)).isEqualTo("type=local,\"dest=/out/a,b \"\"c\"\"/cp\"");
+    }
+
+    @Test
+    void theAotConfigurationTravelsAsABase64BuildArgument() {
+        // Quotes, $ and line breaks would not survive a plain build argument (Review Focus 1).
+        String yaml = "nanofaas:\n  admin:\n    runtime-config:\n      enabled: true\n  note: \"it's $HOME\\n\"\n";
+        List<String> with = RecipeContainerBuild.builderArguments(Path.of("/repo"), ":control-plane:nativeCompile", "bin",
+                "community", List.of("-PnanofaasBuildType=native"), null, yaml);
+        String argument = with.stream().filter(a -> a.startsWith("NATIVE_AOT_CONFIG=")).findFirst().orElseThrow();
+
+        assertThat(with.get(with.indexOf(argument) - 1)).isEqualTo("--build-arg");
+        assertThat(new String(java.util.Base64.getDecoder().decode(argument.substring("NATIVE_AOT_CONFIG=".length())),
+                java.nio.charset.StandardCharsets.UTF_8)).isEqualTo(yaml);
+        assertThat(RecipeContainerBuild.builderArguments(Path.of("/repo"), ":control-plane:nativeCompile", "bin",
+                "community", List.of("-PnanofaasBuildType=native"), null, null))
+                .noneMatch(a -> a.startsWith("NATIVE_AOT_CONFIG="));
     }
 
     @Test
