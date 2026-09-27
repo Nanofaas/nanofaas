@@ -12,8 +12,8 @@ import com.github.dockerjava.core.DockerClientImpl;
 import com.github.dockerjava.transport.DockerHttpClient;
 import com.github.dockerjava.zerodep.ZerodepDockerHttpClient;
 import it.unimib.datai.nanofaas.controlplane.registry.ImageValidator;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Bean;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.context.annotation.ImportRuntimeHints;
@@ -45,12 +45,10 @@ public class ContainerDeploymentProviderConfiguration {
                 properties.runtimeAdapter(), executor, properties.cpuset(), properties.bindHost(), portAllocator);
     }
 
+    // An empty backend means the only provider in this build (the provider modules conflict), which is this one.
     @Bean
-    @ConditionalOnProperty(
-            name = "nanofaas.deployment.default-backend",
-            havingValue = "container-local",
-            matchIfMissing = true
-    )
+    @ConditionalOnExpression("'${nanofaas.deployment.default-backend:}'.trim().isEmpty()"
+            + " || '${nanofaas.deployment.default-backend:}'.trim().equalsIgnoreCase('container-local')")
     ImageValidator dockerImageValidator(ContainerRuntimeAdapter adapter) {
         return new DockerImageValidator(adapter);
     }

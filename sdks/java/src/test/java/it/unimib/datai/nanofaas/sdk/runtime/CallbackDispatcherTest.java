@@ -157,4 +157,33 @@ class CallbackDispatcherTest {
         shutdownTask.get(2, TimeUnit.SECONDS);
         verify(callbackClient).sendSerializedResult(eq("exec-1"), any(byte[].class), eq("trace-1"), isNull());
     }
+
+    /** Past its deadline shutdown interrupts the callback; it must still wait until that callback has exited. */
+    @Test
+    void shutdown_pastItsDeadlineWaitsForTheInterruptedCallbackToExit() throws Exception {
+        CallbackClient callbackClient = mock(CallbackClient.class);
+        when(callbackClient.serializeBounded(any(), anyInt())).thenReturn(new byte[] {'{', '}'});
+        CountDownLatch running = new CountDownLatch(1);
+        when(callbackClient.sendSerializedResult(anyString(), any(byte[].class), any(), any())).thenAnswer(invocation -> {
+            running.countDown();
+            try {
+                Thread.sleep(10_000);
+            } catch (InterruptedException interrupted) {
+                // An interrupted send still takes a moment to unwind, as a real HTTP exchange does.
+                long end = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(20);
+                while (System.nanoTime() < end) {
+                    Thread.onSpinWait();
+                }
+            }
+            return true;
+        });
+        executor = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(1));
+        dispatcher = new CallbackDispatcher(callbackClient, executor, null, 1, 64, 64, java.time.Duration.ofMillis(50));
+        assertTrue(dispatcher.submit("exec-1", CallbackPayload.success(StringNode.valueOf("one")), "trace-1"));
+        assertTrue(running.await(1, TimeUnit.SECONDS));
+
+        dispatcher.shutdown();
+
+        assertTrue(executor.isTerminated(), "shutdown returned while the interrupted callback was still running");
+    }
 }

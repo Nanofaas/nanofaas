@@ -29,8 +29,9 @@ class KubernetesImageValidatorLegacyConfigurationTest {
     }
 
     @Test
-    void moduleBeanIsNotCreatedWithoutKubernetesProperties() {
+    void moduleBeanIsNotCreatedForAnotherBackend() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            TestPropertyValues.of("nanofaas.deployment.default-backend=container-local").applyTo(context);
             context.register(DefaultImageValidatorConfiguration.class, KubernetesImageValidatorConfiguration.class);
             context.refresh();
 

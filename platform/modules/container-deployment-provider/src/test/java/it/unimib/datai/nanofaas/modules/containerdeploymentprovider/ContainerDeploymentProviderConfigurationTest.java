@@ -70,6 +70,14 @@ class ContainerDeploymentProviderConfigurationTest {
         verifyNoInteractions(executor, allocator);
     }
 
+    /** application.yml sets default-backend to "": container-local is then the only provider this build has. */
+    @ParameterizedTest
+    @ValueSource(strings = {"", " ", "container-local", "Container-Local"})
+    void anUnsetOrOwnBackendRegistersTheDockerImageValidator(String backend) {
+        contextRunner.withPropertyValues("nanofaas.deployment.default-backend=" + backend)
+                .run(context -> assertThat(context.getBean(ImageValidator.class)).isInstanceOf(DockerImageValidator.class));
+    }
+
     @Test
     void k8sBackendDoesNotRegisterTheDockerImageValidator() {
         new ApplicationContextRunner()
