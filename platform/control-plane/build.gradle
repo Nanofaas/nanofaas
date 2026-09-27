@@ -155,8 +155,15 @@ if (!nativeBuildRequested) {
 // validator) during Spring AOT. Hand AOT the configuration the runtime will read (a recipe's controlPlane.config),
 // or it decides with application.yml's defaults. file:, not optional:file:, so a wrong path fails the build.
 def aotConfig = findProperty('nanofaasAotConfig')
-if (nativeBuildRequested && aotConfig) {
+if (nativeBuildRequested && aotConfig != null) {
+    if (aotConfig.toString().isBlank()) {
+        throw new GradleException('-PnanofaasAotConfig is empty: name a YAML file, or leave the flag out')
+    }
     def aotConfigFile = rootProject.file(aotConfig.toString())
+    if (aotConfigFile.absolutePath.contains(',')) {
+        throw new GradleException("-PnanofaasAotConfig: ${aotConfigFile} contains a comma, which " +
+                'spring.config.additional-location reads as a list separator; move the file or the checkout')
+    }
     tasks.named('processAot') {
         inputs.file(aotConfigFile).withPropertyName('nanofaasAotConfig')
         systemProperty 'spring.config.additional-location', 'file:' + aotConfigFile.absolutePath
