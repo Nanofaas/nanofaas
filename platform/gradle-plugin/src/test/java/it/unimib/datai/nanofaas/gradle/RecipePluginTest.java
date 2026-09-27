@@ -41,6 +41,7 @@ class RecipePluginTest {
                 project(':control-plane').projectDir = file('platform/control-plane')
                 """);
         write("build.gradle", """
+                tasks.register('clean', Delete) { delete layout.buildDirectory }
                 tasks.register('printNative') { doLast { println "native=${gradle.ext.nanofaasNativeBuildRequested}" } }
                 tasks.register('printSelection') { doLast { println "modules=${gradle.ext.nanofaasSelectedControlPlaneModules}" } }
                 allprojects {
@@ -394,9 +395,21 @@ class RecipePluginTest {
 
         String line = output.lines().filter(l -> l.startsWith("props :control-plane ")).findFirst().orElseThrow();
         String path = line.substring(line.indexOf("nanofaasAotConfig=") + "nanofaasAotConfig=".length());
-        assertThat(path).endsWith("build/recipe-aot/demo/control-plane.yaml");
+        assertThat(path).endsWith("/.gradle/recipe-aot/demo/control-plane.yaml");
         assertThat(Files.readString(Path.of(path))).isEqualTo("nanofaas:\n  admin:\n    runtime-config:\n      enabled: true\n");
         assertThat(output.lines().filter(l -> l.contains("nanofaasAotConfig=/"))).as("only the control plane").hasSize(1);
+    }
+
+    @Test
+    void theAotConfigurationSurvivesACleanInTheSameInvocation() throws IOException {
+        // The file is written at settings time, and processAot reads it long after: `clean` runs in between.
+        recipe(V2_HEADER + "controlPlane: {modules: [], build: {mode: native}, config: {nanofaas: {metrics: {profile: soak}}}}\n");
+
+        String output = run("clean", "printRecipeProps", "-Precipe=recipe.yaml").getOutput();
+
+        String line = output.lines().filter(l -> l.startsWith("props :control-plane ")).findFirst().orElseThrow();
+        Path path = Path.of(line.substring(line.indexOf("nanofaasAotConfig=") + "nanofaasAotConfig=".length()));
+        assertThat(path).content().isEqualTo("nanofaas:\n  metrics:\n    profile: soak\n");
     }
 
     @Test
@@ -407,7 +420,7 @@ class RecipePluginTest {
 
         recipe(V2_HEADER + "controlPlane: {modules: [], build: {mode: native}}\n");
         assertThat(run("printRecipeProps", "-Precipe=recipe.yaml").getOutput()).doesNotContain("recipe-aot");
-        assertThat(projectDir.resolve("build/recipe-aot")).doesNotExist();
+        assertThat(projectDir.resolve(".gradle/recipe-aot")).doesNotExist();
     }
 
     @Test

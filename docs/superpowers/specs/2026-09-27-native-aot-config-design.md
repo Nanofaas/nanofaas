@@ -87,15 +87,17 @@ The hook applies when `controlPlane.build.mode` is `native` and the recipe has
 `controlPlane.config`:
 
 - **The property.** The plugin passes
-  `nanofaasAotConfig=<root>/build/recipe-aot/<recipe name>/control-plane.yaml` to
+  `nanofaasAotConfig=<root>/.gradle/recipe-aot/<recipe name>/control-plane.yaml` to
   `:control-plane`. It uses the mechanism that already passes each project's native options,
   `RecipeBuildProperties.byProject`.
 - **The file.** The plugin writes `controlPlane.config` there when it resolves the recipe, the
   moment it computes `byProject`. The path and the content are known at that point, so this needs
   no task and no cross-project ordering. It uses the same YAML serialisation helper as
   `config/recipe.yaml`. The file is rewritten on every invocation with that recipe, including
-  `validateRecipe`. That is harmless, because it lives under `build/`.
-- **Why that location.** The file lives under the root `build/`, not in the recipe output:
+  `validateRecipe`. That is harmless, because it lives under `.gradle/`.
+- **Why that location.** The file lives under the root `.gradle/`, not in the recipe output:
+  - not under `build/`, which `clean` in the same invocation (`clean assembleRecipe`) would
+    delete after the file is written and before `processAot` reads it;
   - the output is emptied and ownership-checked;
   - `config/recipe.yaml` is written only after compilation;
   - the container builder could not see the file there either.

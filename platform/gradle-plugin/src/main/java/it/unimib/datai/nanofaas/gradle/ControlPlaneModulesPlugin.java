@@ -77,15 +77,16 @@ public final class ControlPlaneModulesPlugin implements Plugin<Settings> {
     }
 
     /**
-     * Writes a native control plane's configuration under build/ now, when path and content are known, for
-     * processAot, which runs long after; null when there is none. Rewritten on every invocation: harmless.
+     * Writes a native control plane's configuration now, when path and content are known, for processAot, which
+     * runs long after; null when there is none. Under .gradle/, not build/: `clean` in the same invocation would
+     * delete it in between. Rewritten on every invocation: harmless.
      */
     private static Path writeAotConfig(Settings settings, RecipeReader.Document recipe) {
         String yaml = RecipeBuildProperties.aotConfig(recipe.data());
         if (yaml == null) {
             return null;
         }
-        Path file = settings.getSettingsDir().toPath().resolve("build/recipe-aot")
+        Path file = settings.getSettingsDir().toPath().resolve(".gradle/recipe-aot")
                 .resolve(recipe.data().get("name").asText()).resolve("control-plane.yaml");
         try {
             Files.createDirectories(file.getParent());
