@@ -54,8 +54,9 @@ jobs:
           path: .gradle/ci-sources/containerd-java
       - name: Build containerd dependencies
         run: bash scripts/bootstrap-containerd-dependencies.sh .gradle/ci-sources/libcni-java .gradle/ci-sources/containerd-java
+      # --continue: one failing module must not hide the others' results.
       - name: Run Tests
-        run: ./gradlew test
+        run: ./gradlew test --continue
 
       # The suite above now runs with every optional module loaded, which is what
       # ships. CoreOnlyApiTest asserts the opposite configuration — no-op enqueuer,
@@ -70,6 +71,17 @@ jobs:
       # async-queue; SyncConcurrencyControlE2eTest self-skips there.
       - name: Run Sync-Queue Concurrency Tests
         run: ./gradlew :control-plane-modules:concurrency-control:test :control-plane-modules:sync-queue:test -PcontrolPlaneModules=sync-queue,concurrency-control,runtime-config
+
+      # CI-only failures are otherwise undiagnosable: the log carries only the exception class and line.
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: test-java-reports
+          path: |
+            **/build/test-results/test/*.xml
+            **/build/test-diagnostics/
+          retention-days: 14
 
   # No other job here compiles a native image, and that silence is what let a three-commit-old
   # `.so` sit in the release path (issue #208; `docs/experiments/scheduler-switching-2026-09/
