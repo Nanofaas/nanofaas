@@ -33,6 +33,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.extension.ExtensionContext;
+import org.junit.jupiter.api.extension.TestExecutionExceptionHandler;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -67,6 +70,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @EnabledIfSystemProperty(named = "nanofaas.selectedControlPlaneModules", matches = ".*\\basync-queue\\b.*")
 @EnabledIfSystemProperty(named = "nanofaas.selectedControlPlaneModules", matches = ".*\\bsync-queue\\b.*")
+@ExtendWith(ThreadDumpOnTimeout.class)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "nanofaas.rate.maxPerSecond=1000",
@@ -395,16 +399,7 @@ class SchedulerSwitchHttpTest {
                 .append("; backend dispatched=").append(backend.dispatchedIds())
                 .append("; strategy=").append(engine.snapshot())
                 .append("; queues=").append(engine.snapshotQueues());
-        try {
-            Path dump = Files.createDirectories(Path.of("build/test-diagnostics"))
-                    .resolve("scheduler-switch-" + failedCall + "-" + System.currentTimeMillis() + ".json");
-            ManagementFactory.getPlatformMXBean(HotSpotDiagnosticMXBean.class)
-                    .dumpThreads(dump.toAbsolutePath().toString(), HotSpotDiagnosticMXBean.ThreadDumpFormat.JSON);
-            text.append("; thread dump=").append(dump.toAbsolutePath());
-        } catch (IOException | RuntimeException dumpFailure) {
-            text.append("; thread dump failed: ").append(dumpFailure);
-        }
-        return text.toString();
+        return text.append("; ").append(ThreadDumpOnTimeout.dump("scheduler-switch-" + failedCall)).toString();
     }
 
     private SyncOutcome invokeSync(String payload) {
@@ -560,6 +555,7 @@ class SchedulerSwitchHttpTest {
  */
 @EnabledIfSystemProperty(named = "nanofaas.selectedControlPlaneModules", matches = ".*\\basync-queue\\b.*")
 @EnabledIfSystemProperty(named = "nanofaas.selectedControlPlaneModules", matches = ".*\\bsync-queue\\b.*")
+@ExtendWith(ThreadDumpOnTimeout.class)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "nanofaas.rate.maxPerSecond=1000",
@@ -640,5 +636,37 @@ class LegacySyncProfileSchedulerSwitchHttpTest {
                         .returnResult()), "strategy"))
                 .as("the committed switch must be visible in the engine's own live selection")
                 .isEqualTo(target);
+    }
+}
+
+/**
+ * Both classes here have failed on CI with a WebTestClient response timeout and nothing else to go on. On a failure
+ * whose cause chain holds a TimeoutException, writes a thread dump that includes virtual threads and the Netty event
+ * loops (Thread.getAllStackTraces omits virtual threads) under build/test-diagnostics, then rethrows.
+ */
+final class ThreadDumpOnTimeout implements TestExecutionExceptionHandler {
+
+    @Override
+    public void handleTestExecutionException(ExtensionContext context, Throwable failure) throws Throwable {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof TimeoutException) {
+                failure.addSuppressed(new AssertionError(dump(context.getRequiredTestClass().getSimpleName()
+                        + "-" + context.getRequiredTestMethod().getName())));
+                break;
+            }
+        }
+        throw failure;
+    }
+
+    static String dump(String name) {
+        try {
+            Path dump = Files.createDirectories(Path.of("build/test-diagnostics"))
+                    .resolve(name + "-" + System.currentTimeMillis() + ".json");
+            ManagementFactory.getPlatformMXBean(HotSpotDiagnosticMXBean.class)
+                    .dumpThreads(dump.toAbsolutePath().toString(), HotSpotDiagnosticMXBean.ThreadDumpFormat.JSON);
+            return "thread dump=" + dump.toAbsolutePath();
+        } catch (IOException | RuntimeException dumpFailure) {
+            return "thread dump failed: " + dumpFailure;
+        }
     }
 }
