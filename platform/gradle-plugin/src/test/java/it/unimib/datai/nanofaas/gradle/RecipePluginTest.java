@@ -47,7 +47,7 @@ class RecipePluginTest {
                     tasks.register('printRecipeProps') {
                         doLast {
                             def keys = ['nativeOptimization', 'nativeGc', 'nativeMonitoring', 'nanofaasBuildVariant',
-                                        'nanofaasBuildOptimization', 'nanofaasRecipeBuildMode']
+                                        'nanofaasBuildOptimization', 'nanofaasRecipeBuildMode', 'nanofaasAotConfig']
                             println "props ${project.path} " + keys.collect { "${it}=${project.findProperty(it)}" }.join(' ')
                         }
                     }
@@ -379,6 +379,43 @@ class RecipePluginTest {
                 .contains("-PnativeOptimization cannot be combined with -Precipe");
         run("printRecipeProps", "-Precipe=recipe.yaml", "-PnativeBuildMemory=6g", "-PnativeParallelism=2",
                 "-PcontainerdMavenLocal=true", "-Dmaven.repo.local=" + outsideDir);
+    }
+
+    @Test
+    void aNativeControlPlaneHandsItsConfigurationToSpringAot() throws IOException {
+        recipe(V2_HEADER + """
+                controlPlane:
+                  modules: []
+                  build: {mode: native}
+                  config: {nanofaas: {admin: {runtime-config: {enabled: true}}}}
+                """);
+
+        String output = run("printRecipeProps", "-Precipe=recipe.yaml").getOutput();
+
+        String line = output.lines().filter(l -> l.startsWith("props :control-plane ")).findFirst().orElseThrow();
+        String path = line.substring(line.indexOf("nanofaasAotConfig=") + "nanofaasAotConfig=".length());
+        assertThat(path).endsWith("build/recipe-aot/demo/control-plane.yaml");
+        assertThat(Files.readString(Path.of(path))).isEqualTo("nanofaas:\n  admin:\n    runtime-config:\n      enabled: true\n");
+        assertThat(output.lines().filter(l -> l.contains("nanofaasAotConfig=/"))).as("only the control plane").hasSize(1);
+    }
+
+    @Test
+    void onlyANativeControlPlaneWithAConfigurationGetsAnAotConfiguration() throws IOException {
+        recipe(V2_HEADER + "controlPlane: {modules: [], build: {mode: jvm}, config: {nanofaas: {metrics: {profile: basic}}}}\n");
+        assertThat(run("printRecipeProps", "-Precipe=recipe.yaml").getOutput()).contains("nanofaasAotConfig=null")
+                .doesNotContain("recipe-aot");
+
+        recipe(V2_HEADER + "controlPlane: {modules: [], build: {mode: native}}\n");
+        assertThat(run("printRecipeProps", "-Precipe=recipe.yaml").getOutput()).doesNotContain("recipe-aot");
+        assertThat(projectDir.resolve("build/recipe-aot")).doesNotExist();
+    }
+
+    @Test
+    void theAotConfigurationFlagBelongsToTheRecipe() throws IOException {
+        recipe(V2_HEADER + CP_JVM);
+
+        assertThat(fails("printRecipeProps", "-Precipe=recipe.yaml", "-PnanofaasAotConfig=aot.yaml"))
+                .contains("-PnanofaasAotConfig cannot be combined with -Precipe").contains("controlPlane.config");
     }
 
     @Test

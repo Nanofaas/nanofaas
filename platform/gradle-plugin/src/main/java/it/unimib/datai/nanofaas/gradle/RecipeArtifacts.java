@@ -446,15 +446,19 @@ final class RecipeArtifacts {
             }
             JsonNode config = recipe.path("controlPlane").path("config");
             if (target.controlPlane() && !config.isMissingNode()) {
-                DumperOptions options = new DumperOptions();
-                options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
                 Files.createDirectories(directory.resolve("config"));
-                Files.writeString(directory.resolve("config/recipe.yaml"),
-                        new Yaml(options).dump(JSON.convertValue(config, Map.class)));
+                Files.writeString(directory.resolve("config/recipe.yaml"), configYaml(config));
             }
         } catch (IOException exception) {
             throw new UncheckedIOException(exception);
         }
+    }
+
+    /** The YAML config/recipe.yaml holds; Spring AOT reads the same text for a native control plane. */
+    static String configYaml(JsonNode config) {
+        DumperOptions options = new DumperOptions();
+        options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
+        return new Yaml(options).dump(JSON.convertValue(config, Map.class));
     }
 
     /** One quoted argument per line: the launcher then keeps spaces, quotes and backslashes literally. */

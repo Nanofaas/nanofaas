@@ -11,6 +11,8 @@ import org.gradle.api.tasks.TaskProvider;
 import org.gradle.language.jvm.tasks.ProcessResources;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -48,11 +50,16 @@ public final class ControlPlaneModulesPlugin implements Plugin<Settings> {
         }
         Map<String, Map<String, String>> projectProperties =
                 recipe == null ? Map.of() : RecipeBuildProperties.byProject(recipe.data());
+        Path aotConfig = recipe == null ? null : writeAotConfig(settings, recipe);
         settings.getGradle().beforeProject(project -> {
             // Before the build script runs: the scripts read these through project.findProperty,
             // exactly as they read the corresponding -P flags without a recipe.
             projectProperties.getOrDefault(project.getPath(), Map.of())
                     .forEach(project.getExtensions().getExtraProperties()::set);
+            if (aotConfig != null && project.getPath().equals(RecipeBuildProperties.CONTROL_PLANE)) {
+                project.getExtensions().getExtraProperties()
+                        .set(RecipeBuildProperties.AOT_CONFIG_PROPERTY, aotConfig.toString());
+            }
             if (project.getParent() == null) {
                 RecipeTasks.register(project, recipe);
             }
@@ -67,6 +74,26 @@ public final class ControlPlaneModulesPlugin implements Plugin<Settings> {
                 .set(SELECTED_EXTRA_PROPERTY, List.copyOf(selected));
         settings.getGradle().getExtensions().getExtraProperties()
                 .set(NATIVE_BUILD_EXTRA_PROPERTY, nativeBuild);
+    }
+
+    /**
+     * Writes a native control plane's configuration under build/ now, when path and content are known, for
+     * processAot, which runs long after; null when there is none. Rewritten on every invocation: harmless.
+     */
+    private static Path writeAotConfig(Settings settings, RecipeReader.Document recipe) {
+        String yaml = RecipeBuildProperties.aotConfig(recipe.data());
+        if (yaml == null) {
+            return null;
+        }
+        Path file = settings.getSettingsDir().toPath().resolve("build/recipe-aot")
+                .resolve(recipe.data().get("name").asText()).resolve("control-plane.yaml");
+        try {
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, yaml);
+        } catch (IOException exception) {
+            throw new UncheckedIOException(exception);
+        }
+        return file;
     }
 
     private static RecipeReader.Document readRecipe(Settings settings) {

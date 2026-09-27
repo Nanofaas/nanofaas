@@ -20,6 +20,8 @@ final class RecipeBuildProperties {
     static final String BUILD_METADATA_PROJECT = ":control-plane-modules:build-metadata";
     static final String BUILD_METADATA_MODULE = "build-metadata";
     static final String SERVICE_MODE_PROPERTY = "nanofaasRecipeBuildMode";
+    /** Where platform/control-plane/build.gradle finds the configuration Spring AOT evaluates conditions with. */
+    static final String AOT_CONFIG_PROPERTY = "nanofaasAotConfig";
 
     /** -P flag -> the recipe field that replaces it. */
     private static final Map<String, String> OWNED_FLAGS = ownedFlags();
@@ -41,7 +43,21 @@ final class RecipeBuildProperties {
         flags.put("nativeMonitoring", "build.native.monitoring");
         flags.put("nanofaasBuildVariant", "controlPlane.build.variant");
         flags.put("nanofaasBuildOptimization", "controlPlane.build.native.optimization (derived from jvm.args on the JVM)");
+        flags.put(AOT_CONFIG_PROPERTY, "controlPlane.config");
         return flags;
+    }
+
+    /**
+     * The control plane's configuration as the YAML Spring AOT reads, or null unless the control plane is native and
+     * configured: a native build decides its property-conditional beans at build time, with this configuration.
+     */
+    static String aotConfig(JsonNode data) {
+        JsonNode controlPlane = data.path("controlPlane");
+        JsonNode config = controlPlane.path("config");
+        if (!controlPlane.at("/build/mode").asText().equals("native") || config.isMissingNode()) {
+            return null;
+        }
+        return RecipeArtifacts.configYaml(config);
     }
 
     static Map<String, Map<String, String>> byProject(JsonNode data) {
