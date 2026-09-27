@@ -21,11 +21,13 @@ allprojects {
     group = 'it.unimib.datai.nanofaas'
     version = '0.22.0'
 
-    // Reactor Netty 1.3.7 (Spring Boot 4.1.1's reactor-bom 2025.0.7) stops reading a keep-alive
-    // connection when the next request arrives before the previous one's operations terminate:
-    // that request's body is buffered but never delivered, so it hangs (reactor/reactor-netty#4361,
-    // fixed for 1.3.8). Seen here as an enqueue that never answers; P07ConfiguredHttpCalibrationTest
-    // hit it about 1 run in 4 on 2 CPUs. Drop this override once the BOM brings 1.3.8 or later.
+    // Reactor Netty stays on 1.3.6 (reactor-bom 2025.0.6, not Spring Boot 4.1.1's 2025.0.7): from 1.3.7
+    // an :enqueue under load can go unanswered, which P07ConfiguredHttpCalibrationTest hits on 2 CPUs
+    // (about 1 run in 4 on 1.3.7, 5 in 8 on 1.3.8-SNAPSHOT; never on 1.3.6). That stall is NOT
+    // reactor/reactor-netty#4361 (a keep-alive connection that stops reading after a queued request
+    // completes synchronously): 1.3.6 has #4361 too, its reproducer fails there, and it is what hangs the
+    // scheduler-switch HTTP tests on CI. 1.3.8 fixes #4361 only. Move past 1.3.6 once a release passes P07
+    // on 2 pinned CPUs (taskset -c 0,1 with --no-daemon).
     ext['reactor-bom.version'] = '2025.0.6'
 
     repositories {
