@@ -27,9 +27,27 @@ allprojects {
     // fixed for 1.3.8). Seen here as an enqueue that never answers; P07ConfiguredHttpCalibrationTest
     // hit it about 1 run in 4 on 2 CPUs. Drop this override once the BOM brings 1.3.8 or later.
     ext['reactor-bom.version'] = '2025.0.6'
+    // EXPERIMENT, not for main: reactor-netty 1.3.8-SNAPSHOT carries the #4361 fix (verified with the issue's
+    // reproducer: 1.3.6 and 1.3.7 fail 5/5, the snapshot passes 5/5) and needs Netty 4.2.18.Final.
+    ext['netty.version'] = '4.2.18.Final'
+    pluginManager.withPlugin('io.spring.dependency-management') {
+        dependencyManagement {
+            dependencies {
+                dependencySet(group: 'io.projectreactor.netty', version: '1.3.8-SNAPSHOT') {
+                    entry 'reactor-netty-core'
+                    entry 'reactor-netty-http'
+                }
+            }
+        }
+    }
 
     repositories {
         mavenCentral()
+        maven {
+            url = uri('https://repo.spring.io/snapshot')
+            mavenContent { snapshotsOnly() }
+            content { includeGroup 'io.projectreactor.netty' }
+        }
         if (containerdMavenLocal) {
             maven {
                 url = uri(containerdMavenRepository)
