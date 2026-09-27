@@ -151,6 +151,17 @@ if (!nativeBuildRequested) {
     }
     apply from: rootProject.file('gradle/jvm-jar-without-aot.gradle')
 }
+// A native build decides its property-conditional beans (runtime-config's admin API, the soak metrics, the image
+// validator) during Spring AOT. Hand AOT the configuration the runtime will read (a recipe's controlPlane.config),
+// or it decides with application.yml's defaults. file:, not optional:file:, so a wrong path fails the build.
+def aotConfig = findProperty('nanofaasAotConfig')
+if (nativeBuildRequested && aotConfig) {
+    def aotConfigFile = rootProject.file(aotConfig.toString())
+    tasks.named('processAot') {
+        inputs.file(aotConfigFile).withPropertyName('nanofaasAotConfig')
+        systemProperty 'spring.config.additional-location', 'file:' + aotConfigFile.absolutePath
+    }
+}
 // Test AOT - @MockBean is incompatible with AOT, always disable
 tasks.named('processTestAot') { enabled = false }
 tasks.named('compileAotTestJava') { enabled = false }
