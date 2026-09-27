@@ -8,18 +8,26 @@ import it.unimib.datai.nanofaas.controlplane.dispatch.DispatchResult;
 import it.unimib.datai.nanofaas.controlplane.dispatch.LocalDispatcher;
 import it.unimib.datai.nanofaas.controlplane.registry.FunctionService;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import it.unimib.datai.nanofaas.execution.SchedulerEngine;
+import java.io.IOException;
+import java.lang.management.ManagementFactory;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import com.sun.management.HotSpotDiagnosticMXBean;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -90,6 +98,9 @@ class SchedulerSwitchHttpTest {
 
     @Autowired
     private ControllableLocalDispatcher backend;
+
+    @Autowired
+    private SchedulerEngine engine;
 
     private WebTestClient client;
 
@@ -228,6 +239,12 @@ class SchedulerSwitchHttpTest {
             }
         }
 
+        List<String> dispatchedIds() {
+            synchronized (lock) {
+                return List.copyOf(dispatched);
+            }
+        }
+
         /** Forgets the previous scenario and holds the next dispatch again. */
         void rearm() {
             synchronized (lock) {
@@ -326,6 +343,7 @@ class SchedulerSwitchHttpTest {
     private List<SyncOutcome> invokeThreeAcrossASwitch(String prefix, String target) throws Exception {
         ExecutorService callers = Executors.newFixedThreadPool(3);
         try {
+            long submitted = System.nanoTime();
             List<Future<SyncOutcome>> calls = new ArrayList<>();
             for (int i = 0; i < 3; i++) {
                 String payload = prefix + "-" + i;
@@ -333,8 +351,10 @@ class SchedulerSwitchHttpTest {
             }
             Awaitility.await().atMost(SETTLE).untilAsserted(() ->
                     assertThat(backend.dispatchedCount()).isEqualTo(1));
+            long firstDispatched = System.nanoTime();
 
             switchStrategyTo(target);
+            long switched = System.nanoTime();
 
             assertThat(backend.dispatchedCount())
                     .as("the switch must not re-dispatch the active invocation")
@@ -342,15 +362,49 @@ class SchedulerSwitchHttpTest {
             assertThat(calls).noneMatch(Future::isDone);
 
             backend.releaseAll();
+            long released = System.nanoTime();
 
             List<SyncOutcome> outcomes = new ArrayList<>();
-            for (Future<SyncOutcome> call : calls) {
-                outcomes.add(call.get(CALL_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS));
+            for (int i = 0; i < calls.size(); i++) {
+                try {
+                    outcomes.add(calls.get(i).get(CALL_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS));
+                } catch (ExecutionException | TimeoutException failure) {
+                    throw new AssertionError(diagnosis(prefix + "-" + i, calls,
+                            new long[] {submitted, firstDispatched, switched, released}), failure);
+                }
             }
             return outcomes;
         } finally {
             callers.shutdownNow();
         }
+    }
+
+    /**
+     * What a CI-only failure of this scenario needs to be diagnosed, since CI keeps only the test reports: the
+     * phase timings, which callers finished, what the backend saw, the engine's queues, and a thread dump that
+     * includes virtual threads (Thread.getAllStackTraces does not).
+     */
+    private String diagnosis(String failedCall, List<Future<SyncOutcome>> calls, long[] phases) {
+        long now = System.nanoTime();
+        StringBuilder text = new StringBuilder("caller ").append(failedCall).append(" got no response")
+                .append("; ms since submit: firstDispatched=").append((phases[1] - phases[0]) / 1_000_000)
+                .append(" switched=").append((phases[2] - phases[0]) / 1_000_000)
+                .append(" released=").append((phases[3] - phases[0]) / 1_000_000)
+                .append(" now=").append((now - phases[0]) / 1_000_000)
+                .append("; callers done=").append(calls.stream().map(Future::isDone).toList())
+                .append("; backend dispatched=").append(backend.dispatchedIds())
+                .append("; strategy=").append(engine.snapshot())
+                .append("; queues=").append(engine.snapshotQueues());
+        try {
+            Path dump = Files.createDirectories(Path.of("build/test-diagnostics"))
+                    .resolve("scheduler-switch-" + failedCall + "-" + System.currentTimeMillis() + ".json");
+            ManagementFactory.getPlatformMXBean(HotSpotDiagnosticMXBean.class)
+                    .dumpThreads(dump.toAbsolutePath().toString(), HotSpotDiagnosticMXBean.ThreadDumpFormat.JSON);
+            text.append("; thread dump=").append(dump.toAbsolutePath());
+        } catch (IOException | RuntimeException dumpFailure) {
+            text.append("; thread dump failed: ").append(dumpFailure);
+        }
+        return text.toString();
     }
 
     private SyncOutcome invokeSync(String payload) {
