@@ -16,8 +16,11 @@ import org.springframework.web.bind.support.WebExchangeBindException;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.server.ServerWebInputException;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.SequencedMap;
 
 /**
  * Global exception handler for consistent error responses across all controllers.
@@ -136,18 +139,19 @@ public class GlobalExceptionHandler {
                 .body(errorBody("INTERNAL_ERROR", "An unexpected error occurred"));
     }
 
+    // Ordered, unlike Map.of, whose iteration order changes from one JVM to the next.
     private static Map<String, Object> validationErrorBody(List<String> errors) {
-        return Map.of(
-                "error", "VALIDATION_ERROR",
-                "message", "Request validation failed",
-                "details", errors
-        );
+        SequencedMap<String, Object> body = new LinkedHashMap<>();
+        body.put("error", "VALIDATION_ERROR");
+        body.put("message", "Request validation failed");
+        body.put("details", errors);
+        return Collections.unmodifiableSequencedMap(body);
     }
 
     private static Map<String, Object> errorBody(String error, String message) {
-        return Map.of(
-                "error", error,
-                "message", message
-        );
+        SequencedMap<String, Object> body = new LinkedHashMap<>();
+        body.put("error", error);
+        body.put("message", message);
+        return Collections.unmodifiableSequencedMap(body);
     }
 }

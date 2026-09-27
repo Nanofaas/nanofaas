@@ -209,6 +209,43 @@ class KubernetesImageValidatorTest {
         verify(mocks.pods, atLeastOnce()).inNamespace("default");
     }
 
+    /** The validation pod pulls like the function Deployment will: images loaded into the node pass under IfNotPresent. */
+    @Test
+    void validate_pullsWithTheConfiguredImagePullPolicy() {
+        K8sMocks mocks = mockK8s(runningPod(), null);
+
+        KubernetesImageValidator validator = new KubernetesImageValidator(
+                mocks.provider,
+                new KubernetesProperties("nanofaas", null, "IfNotPresent")
+        );
+
+        validator.validate(deploymentSpec("fn", "nanofaas/local:dev", null));
+
+        var captor = org.mockito.ArgumentCaptor.forClass(Pod.class);
+        verify(mocks.pods).resource(captor.capture());
+        assertThat(captor.getValue().getSpec().getContainers().getFirst().getImagePullPolicy()).isEqualTo("IfNotPresent");
+    }
+
+    /** Under pullPolicy Never an absent image never becomes pullable: it is reported at once, not after the timeout. */
+    @Test
+    void validate_whenImageIsAbsentUnderNeverPolicy_mapsToNotFound() {
+        Pod neverPull = waitingPod("ErrImageNeverPull",
+                "Container image \"nanofaas/missing:dev\" is not present with pull policy of Never");
+        K8sMocks mocks = mockK8s(neverPull, null);
+
+        KubernetesImageValidator validator = new KubernetesImageValidator(
+                mocks.provider,
+                new KubernetesProperties("nanofaas", null, "Never"),
+                java.time.Duration.ofMillis(300),
+                java.time.Duration.ofMillis(10)
+        );
+
+        assertThatThrownBy(() -> validator.validate(deploymentSpec("fn", "nanofaas/missing:dev", null)))
+                .isInstanceOf(ImageValidationException.class)
+                .extracting(ex -> ((ImageValidationException) ex).errorCode())
+                .isEqualTo("IMAGE_NOT_FOUND");
+    }
+
     @Test
     void validate_trimsAndFiltersImagePullSecrets() {
         K8sMocks mocks = mockK8s(runningPod(), null);
