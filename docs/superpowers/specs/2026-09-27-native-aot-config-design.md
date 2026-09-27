@@ -90,15 +90,17 @@ The hook applies when `controlPlane.build.mode` is `native` and the recipe has
   `nanofaasAotConfig=<root>/build/recipe-aot/<recipe name>/control-plane.yaml` to
   `:control-plane`. It uses the mechanism that already passes each project's native options,
   `RecipeBuildProperties.byProject`.
-- **The file.** A new root task, `writeRecipeAotConfig`, writes `controlPlane.config` there. It
-  uses the same YAML serialisation as `config/recipe.yaml`, so the two files are identical.
-  `:control-plane:processAot` depends on it.
+- **The file.** The plugin writes `controlPlane.config` there when it resolves the recipe, the
+  moment it computes `byProject`. The path and the content are known at that point, so this needs
+  no task and no cross-project ordering. It uses the same YAML serialisation helper as
+  `config/recipe.yaml`. The file is rewritten on every invocation with that recipe, including
+  `validateRecipe`. That is harmless, because it lives under `build/`.
 - **Why that location.** The file lives under the root `build/`, not in the recipe output:
   - the output is emptied and ownership-checked;
   - `config/recipe.yaml` is written only after compilation;
   - the container builder could not see the file there either.
 - **When the hook does not apply.** Without `controlPlane.config`, or with a JVM control plane,
-  there is no property and no task.
+  there is no property and no file.
 
 `nanofaasAotConfig` joins the flags a recipe owns. Passing it by hand together with `-Precipe`
 is rejected before anything is built.
@@ -108,19 +110,15 @@ is rejected before anything is built.
 Both container paths share the builder stage of `deploy/native-java/Dockerfile`: the executable
 export (`native-executable`) and the one-build multi-architecture image (`recipe-native`).
 
-- **`RecipeContainerBuild`.** For a native control plane with a configuration:
-  - `gradleArgs` adds `-PnanofaasAotConfig=/tmp/nanofaas-aot-config.yaml`;
-  - `builderArguments` adds `--build-arg NATIVE_AOT_CONFIG=<the YAML, base64>`;
-  - the YAML is the same serialisation as on the host.
-- **The builder stage** declares `ARG NATIVE_AOT_CONFIG`, empty by default. The Gradle `RUN`
-  decodes it to `/tmp/nanofaas-aot-config.yaml` first, but only when the argument is set.
+- **`RecipeContainerBuild`.** For a native control plane with a configuration,
+  `builderArguments` adds `--build-arg NATIVE_AOT_CONFIG=<the YAML, base64>`. The YAML is the
+  same serialisation as on the host.
+- **The builder stage** declares `ARG NATIVE_AOT_CONFIG`, empty by default. When the argument
+  is set, the Gradle `RUN` decodes it to `/tmp/nanofaas-aot-config.yaml` first, and adds the flag
+  itself, so the path is written in one place only:
+  `./gradlew "$NATIVE_TASK" $GRADLE_ARGS ${NATIVE_AOT_CONFIG:+-PnanofaasAotConfig=/tmp/nanofaas-aot-config.yaml}`.
 - **Other callers** that do not pass the argument see no difference: the release,
   `scripts/native-java-image.sh`, and nanolab.
-
-### Preview
-
-For a native control plane with a configuration, `validateRecipe` adds the line
-`AOT config: controlPlane.config`.
 
 ### Report
 
@@ -136,22 +134,18 @@ The report is unchanged. The recipe's SHA-256 already identifies the configurati
 
 ## Testing
 
-- **`RecipePluginTest`.** The fixture's control plane gains a fake `processAot` that records
-  what it received.
+- **`RecipePluginTest`**, reading the property through the fixture's existing `printRecipeProps`.
   - **Native control plane with a configuration:**
     - the project receives `nanofaasAotConfig`;
-    - the file holds the configuration and is byte-identical to the staged `config/recipe.yaml`;
-    - `writeRecipeAotConfig` runs before `processAot`.
-  - **Without a configuration, or with a JVM control plane:** no property and no task.
-  - **The preview line.**
+    - the file holds the configuration.
+  - **Without a configuration, or with a JVM control plane:** no property and no file.
   - **The rejection** of the flag passed by hand.
-- **Unit tests of `RecipeContainerBuild`:**
-  - `gradleArgs` has `-PnanofaasAotConfig=/tmp/nanofaas-aot-config.yaml` only with a
-    configuration;
-  - the command has `NATIVE_AOT_CONFIG`, which decodes to exactly the configuration;
-  - neither appears without a configuration.
-- **`scripts/tests`.** The builder stage declares `ARG NATIVE_AOT_CONFIG`, and decodes it before
-  `./gradlew` only when it is set. `docker build --check` stays clean.
+- **Unit tests of `RecipeContainerBuild`.** With a configuration, the command has
+  `NATIVE_AOT_CONFIG`, which decodes to exactly the configuration. Without one, it has no such
+  argument.
+- **`scripts/tests`.** The builder stage declares `ARG NATIVE_AOT_CONFIG`. It decodes the
+  argument and adds `-PnanofaasAotConfig` only when the argument is set. `docker build --check`
+  stays clean.
 - **Manual end-to-end.** Each run uses a recipe with a native control plane, `runtime-config` in
   its modules, and `nanofaas.admin.runtime-config.enabled: true`.
   - **On the host.** Start the staged executable with no configuration and no environment:
