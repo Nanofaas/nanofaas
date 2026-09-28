@@ -44,8 +44,10 @@ problema. Le leve efficaci sono altre --- caricare meno classi, compilare in
 anticipo, ridurre gli stack.
 
 \`E anche la giustificazione quantitativa dei flag JVM del
-\cref{cap:20-build-packaging}: \code{-Xss256k} agisce sui 23\,MB degli stack,
-\code{TieredStopAtLevel=1} sui 13{,}5\,MB della CodeHeap.
+\cref{cap:20-build-packaging}: \code{-Xss256k} agisce sui 23\,MB degli stack. Sui 13{,}5\,MB della CodeHeap
+agiva \code{TieredStopAtLevel=1}, che il default di oggi non contiene pi\`u:
+la latenza che C1 faceva perdere sul percorso caldo superava il risparmio
+(\cref{cap:20-build-packaging}).
 
 \section{Compilare nativamente}
 

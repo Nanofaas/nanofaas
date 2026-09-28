@@ -289,3 +289,87 @@ nessuno & JVM & 8\,205 & 16{,}1\,ms & 92\,ms & 1{,}8\,GiB \\
 \end{tabular}
 \end{adjustbox}
 \end{center}
+
+\section{Cambio a caldo dello scheduler}
+
+Campagna di settembre 2026; fonte: \code{docs/experiments/scheduler-switching-2026-09/}
+(\code{FINAL.md}, \code{budgets.json}, \code{raw/}). I budget sono congelati in
+\code{budgets.json} prima della misura; la tabella riporta ogni criterio con il
+valore osservato, compresi quelli non superati (analisi in
+\cref{sec:25-switch}).
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrrl@{}}
+\toprule
+\textbf{Criterio} & \textbf{Congelato} & \textbf{Osservato} & \textbf{Esito} \\
+\midrule
+pausa massima di uno switch & 250\,ms & 3{,}98\,ms & passa \\
+p99 della pausa (in processo) & 100\,ms & 0{,}266\,ms & passa \\
+p99 della pausa (timer della piattaforma) & 100\,ms & 0{,}00099\,s & passa,
+ma cieco sotto 1\,ms \\
+indici vivi & 2 & 2 & passa \\
+throughput utile & $-5\%$ & peggiore $+2{,}09\%$ & passa \\
+heap dopo GC & $+10\%$ & peggiore $+0{,}01\%$ & passa \\
+p99 in regime & $+5\%$ & peggiore $+9{,}51\%$ & oltre \\
+CPU per completamento & $+10\%$ & peggiore $+22{,}06\%$ & oltre \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\subsection{Soak del 22 settembre 2026}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lr@{}}
+\toprule
+\textbf{Campo} & \textbf{Valore} \\
+\midrule
+switch committati & 1\,000 \\
+switch rifiutati & 0 \\
+durata & 5\,394{,}6\,s \\
+indici vivi (massimo) & 2 \\
+pausa massima (driver) & 0{,}087\,ms \\
+criteri valutati / falliti & 21 / 3 \\
+criteri falliti & \code{p24-rss-return} sui tre ruoli \\
+RSS sopra la mediana di riferimento: control plane & $+1{,}6\%$ \\
+RSS sopra la mediana di riferimento: funzione Java & $+12{,}9\%$ \\
+RSS sopra la mediana di riferimento: funzione JavaScript & $+4{,}3\%$ \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\section{Backoff delle riprove}
+
+Campagna del 24 settembre 2026; fonte:
+\code{docs/experiments/retry-backoff-2026-09/} (\code{RESULTS.md}, \code{raw/},
+con \code{SHA256SUMS}). Riassunto delle fasi su VM k3s in
+\cref{sec:25-backoff}; qui il dettaglio dell'upstream controllato
+(\code{429} con \code{Retry-After: 1} per un secondo, poi \code{200};
+300 esecuzioni per revisione).
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+\textbf{Grandezza} & \textbf{Base} & \textbf{Con backoff} \\
+\midrule
+tentativi totali & 1\,195 & 600 \\
+intervalli sotto il secondo & 892 & 0 \\
+distanza minima fra tentativi & 0{,}0007\,s & 1{,}0007\,s \\
+successi (VM k3s, tre fasi da 300) & 742/900 & 900/900 \\
+riprove (VM k3s, somma delle tre fasi) & 1\,184 & 48 \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Gate prestazionale sul codice finale, p99 in regime: quattro bracci, limite
+congelato $+5\%$; il ramo \code{shared-queue} invariato risulta $+8{,}06\%$
+(mediana 2{,}571 $\to$ 2{,}779\,ms), gli altri tre $-7{,}42\%$, $-3{,}26\%$,
+$-4{,}56\%$. Tutti i confronti di CPU passano.

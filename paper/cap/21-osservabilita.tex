@@ -35,54 +35,153 @@ Sorgente della metrica \code{rps} dell'autoscaler. \\
 \code{function\_success\_total} & counter & Esiti positivi. \\
 \code{function\_error\_total} & counter & Esiti negativi. \\
 \code{function\_retry\_total} & counter & Riprove. \\
+\code{function\_timeout\_total}, \code{function\_queue\_rejected\_total} & counter &
+Scadenze e rifiuti di coda. \\
+\code{function\_admitted\_total}, \code{function\_refused\_total},
+\code{function\_replayed\_total} & counter & Per percorso di invocazione
+(etichetta di percorso): ammissioni, rifiuti, riproduzioni idempotenti. \\
 \code{function\_latency\_ms} & timer & \textbf{Tempo di servizio}: da dispatch a
-completamento. \\
-\code{function\_e2e\_latency\_ms} & timer & Tempo di sojourn: da ammissione a
-completamento. \\
-\code{function\_queue\_wait\_ms} & timer & Attesa in coda. \\
-\code{function\_cold\_start\_ms} & timer & Durata dell'inizializzazione. \\
-\code{function\_init\_duration\_ms} & timer & Come sopra, dal runtime. \\
+completamento di \emph{un} tentativo, censurato. \\
+\code{function\_e2e\_latency\_ms} & timer & Tempo di sojourn: da ammissione
+originale alla conclusione dell'invocazione, registrato esattamente una volta. \\
+\code{function\_queue\_wait\_ms} & timer & Attesa in coda, per tentativo
+dispatchato. \\
+\code{function\_init\_duration\_ms} & timer & Durata dell'inizializzazione
+riportata dal runtime. \\
+\code{function\_cold\_start\_total}, \code{function\_warm\_start\_total} & counter &
+Avvii freddi e caldi. \\
+\code{execution\_store\_size}, \code{execution\_in\_flight\_records} & gauge &
+Occupazione dell'\code{ExecutionStore}. \\
+\code{idempotency\_keys\_held}, \code{idempotency\_key\_budget\_rejections} &
+gauge, counter & Chiavi di idempotenza trattenute e rifiuti per esaurimento del
+budget. \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
 \end{center}
 
-La distinzione fra le prime tre metriche temporali \`e la pi\`u importante
-dell'intero capitolo, ed \`e il fondamento del \cref{cap:12-concurrency-control}:
+I tre timer di durata sono fra le grandezze pi\`u facili da confondere, e
+\emph{non} hanno lo stesso numero di campioni; tutti sono misurati su tempo
+monotono, cos\`i che un salto di orologio fra ammissione e completamento non
+possa fabbricare una durata.
 
-\[
-  \underbrace{\code{function\_e2e\_latency\_ms}}_{\text{sojourn}}
-  \;=\;
-  \underbrace{\code{function\_queue\_wait\_ms}}_{\text{attesa}}
-  \;+\;
-  \underbrace{\code{function\_latency\_ms}}_{\text{servizio}} .
-\]
+\begin{center}
+\small
+\begin{tabular}{@{}lp{4.3cm}p{4.6cm}@{}}
+\toprule
+\textbf{Timer} & \textbf{Intervallo} & \textbf{Registrato per} \\
+\midrule
+\code{function\_e2e\_latency\_ms} & ammissione originale $\to$ conclusione &
+ogni invocazione ammessa, \emph{esattamente una volta}, qualunque cosa
+l'abbia conclusa \\
+\code{function\_latency\_ms} & dispatch del tentativo $\to$ completamento
+osservato & solo i tentativi che hanno prodotto un completamento osservato \\
+\code{function\_queue\_wait\_ms} & accodamento del tentativo $\to$ dispatch &
+solo i tentativi dispatchati \\
+\bottomrule
+\end{tabular}
+\end{center}
 
-Che le tre esistano separatamente \`e ci\`o che ha reso possibile stabilire che
-la seconda \`e sei volte la terza sotto carico, e quindi che un controllore che
-decide dalla terza sta ottimizzando la grandezza sbagliata.
+Il timer end-to-end misura l'\emph{invocazione}: riprove e attese fra l'una e
+l'altra ne sono dentro, e l'intervallo parte dall'ammissione originale, che una
+riprova non riavvia. Viene registrato una volta su ogni conclusione: completamento
+normale, scadenza del chiamante sincrono, scadenza dell'attesa in coda, scadenza
+amministrativa, chiamata offloadata conclusa dal piano remoto, funzione rimossa
+mentre il lavoro era ancora in coda.
 
-\subsection{Code}
+Il tempo di servizio, invece, misura il \emph{tentativo} ed \`e censurato di
+proposito: un'invocazione scaduta mentre il dispatch era ancora in volo non
+registra alcun campione di servizio, perch\'e il tentativo non ne ha prodotto
+uno e un valore troncato si leggerebbe come un successo veloce. Sotto carico
+\code{function\_latency\_ms} ha dunque meno campioni di
+\code{function\_e2e\_latency\_ms}, e la differenza non \`e un difetto: \`e la
+popolazione censurata. Si legge l'end-to-end per ci\`o che il chiamante ha
+sperimentato, e il servizio solo per quanto il runtime ha impiegato sui tentativi
+che ha concluso.
+
+La distinzione fra le tre \`e la pi\`u importante dell'intero capitolo ed \`e il
+fondamento del \cref{cap:12-concurrency-control}. Ne segue una precisazione che
+la versione precedente di questo capitolo non faceva: \emph{non vale}
+l'identit\`a additiva $\text{e2e}=\text{attesa}+\text{servizio}$ campione per
+campione. Con riprove l'end-to-end contiene pi\`u attese e pi\`u tentativi;
+con la censura mancano campioni di servizio. L'identit\`a vale al pi\`u in
+media, su una popolazione senza riprove n\'e scadenze, ed \`e cos\`i che va
+letta.
+
+Che le tre grandezze esistano separatamente \`e ci\`o che ha permesso di
+stabilire, nella campagna di valutazione, che il tempo di servizio \`e solo una
+frazione di ci\`o che il chiamante sperimenta sotto carico, e quindi che un
+controllore che decide dal solo servizio sta ottimizzando la grandezza sbagliata
+(\cref{cap:25-valutazione-concorrenza}, dove le misure sono riportate).
+
+\subsection{Carico di lavoro e code}
+
+I quattro gauge per funzione del carico --- profondit\`a, in volo, concorrenza
+effettiva e backlog dispatchabile --- hanno un \emph{unico} fornitore,
+\code{EngineWorkloadMetricsSource} (\code{platform/workload-metrics}), qualunque
+sia il modulo di coda o la strategia di scheduling selezionati. Dashboard, regole
+HPA e autoscaler devono dunque usare questi nomi indipendentemente dal modulo di
+coda (\cref{sec:09-profili}); in una versione precedente ciascun modulo li
+pubblicava per conto proprio.
 
 \begin{center}
 \small
 \begin{adjustbox}{max width=\textwidth}
 \begin{tabular}{@{}llp{6.2cm}@{}}
 \toprule
-\textbf{Metrica} & \textbf{Tipo} & \textbf{Fornita da} \\
+\textbf{Metrica} & \textbf{Tipo} & \textbf{Significato} \\
 \midrule
-\code{function\_queue\_depth} & gauge & \code{async-queue} \\
-\code{function\_inFlight} & gauge & \code{async-queue} \\
-\code{function\_effective\_concurrency} & gauge & \code{async-queue} \\
-\code{sync\_queue\_depth} & gauge & \code{sync-queue}, globale e per funzione \\
-\code{sync\_queue\_wait\_seconds} & gauge & \code{sync-queue}, attesa stimata \\
-\code{sync\_queue\_admitted\_total} & counter & \code{sync-queue} \\
-\code{sync\_queue\_rejected\_total} & counter & \code{sync-queue} \\
-\code{sync\_queue\_timedout\_total} & counter & \code{sync-queue} \\
+\code{function\_queue\_depth} & gauge & Lavoro in attesa, per funzione. \\
+\code{function\_inFlight} & gauge & Richieste in volo. \\
+\code{function\_effective\_concurrency} & gauge & Concorrenza effettiva
+corrente (profilo \code{advanced}). \\
+\code{function\_dispatchable\_backlog} & gauge & Backlog realmente
+dispatchabile dato il limite corrente. \\
+\code{sync\_queue\_depth} & gauge & \code{sync-queue}: serie globale
+(\code{function=""}) e per funzione. Nel profilo \code{SYNC\_QUEUE} legge le
+prenotazioni in sospeso del motore; negli altri profili \`e zero. \\
+\code{sync\_queue\_admitted\_total}, \code{sync\_queue\_rejected\_total} &
+counter & \code{sync-queue}. \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
 \end{center}
+
+Due metriche che la versione precedente di questo capitolo elencava,
+\code{sync\_queue\_wait\_seconds} e \code{sync\_queue\_timedout\_total}, \emph{non
+esistono pi\`u}: nulla le registrava da quando la coda sincrona \`e passata nel
+motore di scheduling condiviso. Il chiamante sincrono il cui ticket supera la
+scadenza in coda riceve un \code{429} con motivo di rifiuto \code{TIMEOUT}, e
+il fenomeno si legge quindi sul contatore dei rifiuti.
+
+\subsection{Scheduler e strategia}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}llp{6.2cm}@{}}
+\toprule
+\textbf{Metrica} & \textbf{Tipo} & \textbf{Significato} \\
+\midrule
+\code{scheduler\_active} & gauge & Una serie per strategia disponibile
+(etichetta \code{strategy}): vale 1 per quella attiva, 0 per le altre. \\
+\code{scheduler\_switch\_total} & counter & Cambi di strategia, con etichetta
+\code{outcome}. \\
+\code{scheduler\_switch\_duration} & timer & Durata del cambio, senza etichetta
+di funzione; nei profili non \code{basic} ha un istogramma. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Il timer del cambio \`e la ragione per cui l'istogramma non \`e riservato ai
+timer per funzione: \`e registrato senza etichetta di funzione e c'\`e un solo
+motore per processo, quindi il suo istogramma ha un insieme fisso di secchi
+(69 classi \code{le}, misurate il 22 settembre 2026, ossia da 3 a 72 serie per
+processo) anzich\'e uno scalato dal numero di funzioni. Il budget di pausa
+congelato dalla campagna (100\,ms sul p99) nomina un percentile, e un
+percentile non ha serie senza secchi (\cref{sec:25-switch}, dove si riporta anche
+il limite di risoluzione del timer).
 
 \subsection{Politiche}
 
@@ -96,10 +195,12 @@ decide dalla terza sta ottimizzando la grandezza sbagliata.
 \code{function\_target\_inflight\_per\_pod} & gauge & \code{concurrency-control} \\
 \code{function\_concurrency\_controller\_mode} & gauge &
 \code{concurrency-control} \\
-\code{nanofaas\_offload\_total} & counter & \code{offload}, con etichetta
+\code{gateway\_service\_target\_load} & gauge & \code{advanced} (descrittiva) \\
+\code{nanofaas.offload} & counter & \code{offload}, con etichetta
 \code{trigger} \\
-\code{nanofaas\_offload\_failure\_total} & counter & \code{offload} \\
-\code{controlplane\_runtime\_config\_revision} & gauge & \code{runtime-config} \\
+\code{nanofaas.offload.failure} & counter & \code{offload} \\
+\code{controlplane\_runtime\_config\_revision}, \code{\_updates\_total},
+\code{\_apply\_duration\_seconds} & gauge, counter, timer & \code{runtime-config} \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
@@ -109,36 +210,72 @@ Nessuna di queste alimenta una decisione: sono tutte \emph{descrittive della
 decisione}. \`E una categoria che vale la pena isolare concettualmente, perch\'e
 risponde a una domanda che le metriche di stato non possono risolvere: dato un
 comportamento osservato, quale politica era attiva e che cosa aveva deciso.
+(I nomi dei contatori di offload sono quelli del codice, con i punti;
+l'esportazione Prometheus li normalizza con il suffisso \code{\_total}.)
 
-\section{I due profili}
+\section{I tre profili}
+
+Il profilo \`e scelto da \code{nanofaas.metrics.profile} ed \`e cumulativo.
 
 \begin{lstlisting}[language=Java]
 private static final Set<String> ADVANCED_METRICS = Set.of(
-        "function_cold_start_total", "function_warm_start_total",
         "function_effective_concurrency", "function_target_inflight_per_pod",
         "function_concurrency_controller_mode", "gateway_service_target_load",
         "controlplane_runtime_config_revision", ...);
 \end{lstlisting}
 
-Il profilo \code{basic} (default) esporta il nucleo. Il profilo
-\code{advanced} aggiunge le metriche descrittive delle politiche e --- pi\`u
-significativamente --- attiva gli istogrammi per percentili sui quattro timer
-per funzione.
+\begin{itemize}[leftmargin=*]
+  \item \code{basic} (default) esporta il nucleo. Il filtro nega inoltre le
+  serie \code{sync\_queue\_*} per funzione (resta la globale), i timer
+  \code{function\_queue\_wait\_ms} e \code{function\_init\_duration\_ms} e le
+  famiglie di strumentazione del percorso caldo (\code{function\_scheduler\_*},
+  durate di offerta e prelievo dalla coda, tempo di trattenimento dello slot,
+  visita e inattivit\`a dello scheduler).
+  \item \code{advanced} aggiunge le metriche descrittive delle politiche e gli
+  istogrammi per percentili sui timer per funzione e su
+  \code{scheduler\_switch\_duration}.
+  \item \code{soak} include tutto \code{advanced} pi\`u nove gauge aggregati,
+  senza etichette (cardinalit\`a 1 per processo), che nominano il proprietario di
+  ciascuna risorsa del ciclo di vita.
+\end{itemize}
 
-Il costo che i due profili arbitrano \`e quello degli istogrammi. Un timer
-Micrometer senza istogramma mantiene conteggio, somma e massimo: tre valori. Con
-gli istogrammi mantiene una serie di secchi, e ogni secchio \`e una serie
-temporale in Prometheus. Per una piattaforma con molte funzioni la differenza
-nella cardinalit\`a esportata \`e sostanziale.
+I sei gauge del control plane del profilo \code{soak} sono:
+\code{invocation\_execution\_reservations},
+\code{invocation\_canonical\_input\_bytes},
+\code{invocation\_physical\_input\_copy\_bytes},
+\code{execution\_waiters\_retained}, \code{execution\_expiry\_queue\_depth} e
+\code{function\_capacity\_retired\_generations}. Gli altri tre sono nell'SDK Java
+(\code{runtime\_active\_handlers}, \code{runtime\_pending\_callbacks},
+\code{runtime\_pending\_callback\_bytes}); l'SDK JavaScript non ne aggiunge.
+Sono registrati soltanto se il profilo \`e \code{soak}: mancano con profilo non
+impostato, \code{basic} o \code{advanced}.
+
+Il costo che i profili arbitrano \`e quello dei secchi. Un timer Micrometer
+senza istogramma mantiene conteggio, somma e massimo: tre valori. Con gli
+istogrammi mantiene una serie di secchi, e ogni secchio \`e una serie temporale
+in Prometheus. Per una piattaforma con molte funzioni la differenza nella
+cardinalit\`a esportata \`e sostanziale.
 
 La conseguenza pratica \`e che i percentili --- p95, p99 --- sono disponibili
-soltanto sotto \code{advanced}. Poich\'e i risultati della Parte V sono espressi
-prevalentemente in percentili, tutte le campagne sperimentali girano su quel
-profilo.
+soltanto sotto \code{advanced} o \code{soak}. Poich\'e i risultati della Parte V
+sono espressi prevalentemente in percentili, le campagne sperimentali girano su
+profili non \code{basic}.
 
-Il profilo \`e validato all'avvio: un valore diverso da \code{basic} o
-\code{advanced} fa fallire il contesto con un messaggio esplicito, anzich\'e
-ripiegare in silenzio su un default.
+Un vincolo di progetto va detto: il profilo \code{basic} \emph{non} nega mai i
+timer che un anello di controllo legge. I commenti del codice riportano che, fino
+al 23 agosto 2026, \code{basic} negava per errore \code{function\_latency\_ms} e
+\code{function\_e2e\_latency\_ms} da cui il governor derivava il proprio segnale,
+cos\`i che il governor sterzava silenziosamente su zero; oggi un test elenca i
+meter che un anello di controllo legge, cosicch\'e l'accoppiamento fallisce un
+test anzich\'e la produzione. (Il governor di oggi legge da
+\code{InvocationObservations}: il vincolo resta come regola per qualunque
+consumatore del registro, come l'HPA di Kubernetes.)
+
+Il profilo \`e validato all'avvio: un valore diverso da \code{basic},
+\code{advanced} o \code{soak} fa fallire il contesto con un messaggio esplicito,
+anzich\'e ripiegare in silenzio su un default. Il gauge
+\code{nanofaas\_metrics\_profile\_info}, con etichetta \code{profile}, riporta il
+profilo effettivo.
 
 \section{Le letture canoniche}
 
@@ -152,7 +289,7 @@ rate(function_error_total{function="word-stats"}[5m])
      + rate(function_error_total{function="word-stats"}[5m])) * 100
 \end{lstlisting}
 
-\begin{lstlisting}[language=bash, caption={Pressione di ammissione sincrona.}]
+\begin{lstlisting}[language=bash, caption={Pressione di ammissione sincrona (profilo \code{advanced}: la serie per funzione \`e negata in \code{basic}).}]
 rate(sync_queue_rejected_total{function="word-stats"}[5m])
   / rate(sync_queue_admitted_total{function="word-stats"}[5m])
 \end{lstlisting}
@@ -222,19 +359,35 @@ disponibili, il contesto diagnostico resta vuoto per \code{executionId}.
 Un identificatore inventato riempirebbe il campo e renderebbe la correlazione
 \emph{apparentemente} possibile ma sbagliata. Un campo vuoto \`e onesto.
 
-\subsection{La consegna delle callback \`e limitata e pu\`o essere scartata}
+\subsection{La saturazione della callback \`e un rifiuto in ammissione}
 
-Un dettaglio con conseguenze sperimentali. La consegna della callback di
-completamento dal runtime Java \`e asincrona e limitata: \code{/invoke}
-restituisce senza attenderla, e quando il dispatcher \`e saturo la callback viene
-\emph{scartata} con un avviso. Il runtime Go si comporta allo stesso modo e
-incrementa una metrica di callback scartate.
+Il contratto di saturazione dei runtime (\code{sdks/runtime-contract/README.md})
+stabilisce che l'ammissione \`e \emph{fail-fast}: prima di avviare l'handler il
+runtime riserva capacit\`a di input, di handler e di callback, e una callback
+richiesta dall'invocazione fa parte dell'ammissione. Il runtime non accetta
+lavoro per poi scartarne in silenzio la callback terminale. La saturazione della
+callback \`e quindi un \code{429} con codice \code{RUNTIME\_CALLBACK\_SATURATED}
+(quella dell'handler, \code{RUNTIME\_HANDLER\_SATURATED}; un runtime in arresto
+risponde \code{503 RUNTIME\_STOPPING}), con \code{Retry-After: 1}.
 
-Una callback scartata produce un'esecuzione che non raggiunge mai uno stato
-terminale --- esattamente il caso che il terzo orizzonte di eviction dello
-\code{ExecutionStore} deve ripulire (\cref{cap:06-nucleo}). Che il runtime Go
-esponga un contatore dedicato e quello Java soltanto un avviso nel log \`e
-un'asimmetria che rende il fenomeno misurabile su un SDK e non sull'altro.
+La differenza rispetto al comportamento precedente \`e osservabile dal control
+plane: un tempo la callback scartata produceva un'esecuzione che non raggiungeva
+mai uno stato terminale e che il terzo orizzonte di eviction dell'\code{ExecutionStore}
+doveva ripulire (\cref{cap:06-nucleo}); oggi il rifiuto arriva sulla risposta di
+\code{/invoke} ed entra nella normale gestione delle riprove del control plane,
+dove il suggerimento \code{Retry-After} fissa un minimo all'attesa
+(\cref{sec:06-riprova}). \`E il caso che la campagna sul backoff ha misurato:
+senza attesa le riprove tornavano a saturare la stessa capacit\`a di callback
+(\cref{sec:25-backoff}).
+
+Resta un caso in cui la callback pu\`o fallire \emph{dopo} la risposta di
+\code{/invoke}: l'esaurimento della consegna. Non avendo pi\`u una seconda
+risposta HTTP su cui riportarlo, il contratto richiede una metrica di errore a
+cardinalit\`a limitata e un log strutturato, e il rilascio della prenotazione di
+conteggio, byte e corpo serializzato. Nel profilo \code{soak} l'SDK Java
+espone \code{runtime\_pending\_callbacks} e \code{runtime\_pending\_callback\_bytes},
+che nominano il proprietario di quella prenotazione; il runtime Go espone anche un
+contatore dedicato di callback scartate.
 
 Le riprove della callback sono limitate ai fallimenti ritentabili: errori di
 trasporto, \code{408}, \code{429} e \code{5xx}. Gli altri \code{4xx} sono

@@ -3,8 +3,8 @@
 
 Il modulo \code{platform/common} contiene i tipi che attraversano ogni confine
 del sistema: quelli che il control plane scambia con i chiamanti, con i runtime
-delle funzioni e con gli SDK nei vari linguaggi. Sono meno di cinquecento righe
-di codice, e la loro stabilit\`a \`e ci\`o che consente ai moduli e agli SDK di
+delle funzioni e con gli SDK nei vari linguaggi. Sono circa seicento righe
+di codice Java di produzione, e la loro stabilit\`a \`e ci\`o che consente ai moduli e agli SDK di
 evolvere indipendentemente. Questo capitolo li descrive e ne discute le scelte
 non ovvie.
 
@@ -183,7 +183,11 @@ esercitando il controllo sulla risposta HTTP e quando no.
 
 Cinque enumerazioni definiscono lo spazio delle politiche configurabili. Sono
 elencate qui per completezza; ciascuna \`e trattata nel capitolo del modulo che
-la implementa.
+la implementa. Le prime quattro vivono in \code{platform/common}, perch\'e
+compaiono nella specifica di funzione; \code{SyncQueueRejectReason} vive invece
+nella libreria di contratto dei moduli \code{control-plane-spi}
+(\cref{cap:08-sistema-moduli}), perch\'e non attraversa il confine del
+control plane.
 
 \begin{center}
 \small
@@ -233,21 +237,19 @@ grandezza che l'autoscaler determina.
 
 \section{Il punto di estensione dei moduli}
 
-L'interfaccia che definisce un modulo del control plane \`e minima:
-
-\begin{lstlisting}[language=Java]
-public interface ControlPlaneModule {
-    default String name() { return getClass().getSimpleName(); }
-    Set<Class<?>> configurationClasses();
-}
-\end{lstlisting}
-
-Un modulo dichiara soltanto quali classi di configurazione Spring devono essere
-aggiunte al contesto. Non dichiara dipendenze, non dichiara un ordine, non
-espone un ciclo di vita. Tutto ci\`o che gli serve lo ottiene dal contenitore
-attraverso i punti di estensione del nucleo. Il \cref{cap:08-sistema-moduli}
-descrive il meccanismo di caricamento e discute perch\'e questa povert\`a
-dell'interfaccia sia un pregio e non una lacuna.
+\code{platform/common} non contiene pi\`u un'interfaccia di modulo. Una versione
+precedente definiva un'interfaccia \code{ControlPlaneModule} con un solo metodo
+(\code{configurationClasses()}), caricata tramite \code{ServiceLoader} da un
+selettore di importazione scritto ad hoc; il commit \code{bfe9cdd3} l'ha
+eliminata insieme al selettore. Un modulo \`e oggi una classe
+\code{@AutoConfiguration} elencata nel file
+\code{META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports}
+del proprio jar: il meccanismo standard di Spring Boot, che il nucleo non deve
+conoscere. Il modulo non dichiara ordine o ciclo di vita: ottiene ci\`o che gli
+serve dal contenitore, attraverso le porte esposte dalla libreria
+\code{control-plane-spi}. La selezione dei moduli, le loro dipendenze
+dichiarate e il modo in cui il build ne garantisce l'isolamento sono trattati
+nel \cref{cap:08-sistema-moduli}.
 
 \section{Il contratto dell'handler}
 

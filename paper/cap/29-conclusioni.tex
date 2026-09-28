@@ -23,9 +23,13 @@ ogni verifica completa, e una copertura che riguarda i soli estremi dello spazio
 delle configurazioni. La modularit\`a a costo zero sul percorso critico non \`e a
 costo zero sulla catena di integrazione.
 
-Il fatto che i nove moduli sommino 6\,836 righe contro le 5\,065 del nucleo che
-estendono \`e la misura di quanto la piattaforma sia riducibile: la maggior parte
-del suo codice \`e codice che si pu\`o non compilare.
+Le proporzioni, misurate di nuovo, non sono pi\`u quelle che questo capitolo
+riportava: i dieci moduli sommano 6\,299 righe non vuote di produzione, contro
+le 17\,334 del control plane e delle sue tre librerie obbligatorie
+(\cref{cap:01-introduzione}). La riducibilit\`a della piattaforma non \`e quindi
+la maggioranza del codice che si pu\`o non compilare, ma l'insieme delle
+politiche che si possono non compilare; \`e un'affermazione pi\`u stretta e
+verificata, non una proporzione.
 
 \subsection{RQ2 --- Da quale segnale decidere}
 
@@ -148,9 +152,9 @@ va riprodotto da capo.
 
 \section{Chiusura}
 
-\nf{} \`e piccolo di proposito. Il suo nucleo sta in cinquemila righe, il suo
-percorso critico attraversa un solo processo, e la maggior parte del suo codice
-si pu\`o non compilare. Non compete con le piattaforme mature su completezza e
+\nf{} \`e piccolo di proposito. Il suo percorso critico attraversa un solo
+processo, e le sue politiche --- code, autoscaling, controllo della concorrenza,
+offload --- si possono non compilare. Non compete con le piattaforme mature su completezza e
 non aspira a farlo.
 
 Ci\`o che ha prodotto \`e una risposta precisa a una domanda che le piattaforme

@@ -87,6 +87,9 @@ public interface ManagedDeploymentProvider {
     boolean isAvailable();
     boolean supports(FunctionSpec spec);
     ProvisionResult provision(FunctionSpec spec);
+    ProvisionResult reconcile(FunctionSpec spec, int desiredReplicas,
+                              Map<String, String> deploymentObjects);
+    default void updateSpec(FunctionSpec spec) { }
     void deprovision(String functionName);
     void setReplicas(String functionName, int replicas);
     int getReadyReplicas(String functionName);
@@ -94,12 +97,29 @@ public interface ManagedDeploymentProvider {
 }
 \end{lstlisting}
 
+L'interfaccia \`e un contratto della libreria \code{control-plane-spi}
+(\cref{cap:08-sistema-moduli}) e non del nucleo.
+
 L'interfaccia \`e piccola e i suoi primi tre metodi sono i pi\`u interessanti,
 perch\'e non riguardano il provisioning ma la \emph{selezione}. Un provider deve
 poter dichiarare di esistere (\code{backendId}), di essere utilizzabile in questo
 momento (\code{isAvailable} --- il provider Kubernetes non lo \`e senza un
 kubeconfig valido) e di poter servire una specifica particolare
 (\code{supports}).
+
+I tre metodi introdotti dopo la prima stesura rispondono a esigenze di ciclo di
+vita che \code{provision} e \code{deprovision} da soli non coprono.
+\code{reconcile} ripristina una funzione persistita dopo un riavvio del control
+plane: deve portare le risorse verso i nomi e il numero di repliche registrati,
+creando solo ci\`o che manca, senza mai delegare a \code{provision}, che
+distruggerebbe risorse sane. \code{updateSpec} propaga a un backend una modifica
+di timeout o concorrenza (una \code{PATCH}), per i backend che ne derivano
+valori conservati --- il proxy dei provider locali ne ricava timeout per salto e
+limite di ammissione (\cref{cap:15-deployment-provider}); il default \`e un
+no-op. \code{deprovision} \`e tenuto a tentare la rimozione di ogni risorsa anche
+se una fallisce, e a segnalare i resti con una
+\code{PartialDeprovisionException}: \`e il segnale con cui il control plane sa
+che la rimozione va tenuta in sospeso e ripresa, e non presentata come annullata.
 
 Il metodo \code{provision} restituisce un \code{ProvisionResult} che contiene
 l'endpoint risultante e i metadati degli oggetti creati. Il ritorno di un
@@ -129,7 +149,13 @@ return candidates.getFirst();
 \end{lstlisting}
 
 Con due provider entrambi disponibili e capaci, il resolver \textbf{fallisce}
-anzich\'e scegliere. Una piattaforma con un ordine di preferenza implicito ---
+anzich\'e scegliere. In un artefatto costruito con la selezione modulare
+(\cref{cap:08-sistema-moduli}) la condizione non si presenta: i tre provider sono
+mutuamente esclusivi a tempo di build, quindi c'\`e al pi\`u un provider gestito. La
+regola resta come difesa per chi assembli il contesto diversamente, e la
+precedenza a tre livelli ha ancora senso perch\'e con \code{default-backend}
+vuoto --- il default di \code{application.yml} --- la risoluzione implicita
+\`e quella che sceglie l'unico provider presente. Una piattaforma con un ordine di preferenza implicito ---
 ``prova Kubernetes, altrimenti Docker'' --- funzionerebbe, e produrrebbe
 deployment su un backend diverso da quello atteso ogni volta che l'ambiente
 cambia sotto i piedi dell'operatore. Un'ambiguit\`a dichiarata \`e preferibile a
@@ -171,9 +197,16 @@ public record DeploymentMetadata(
         String deploymentBackend,
         String degradationReason,
         String effectiveEndpointUrl,
-        Map<String, String> deploymentObjects
+        Map<String, String> deploymentObjects,
+        Integer desiredReplicas
 ) { ... }
 \end{lstlisting}
+
+Il campo \code{desiredReplicas} \`e l'ultimo arrivato: registra il numero di
+repliche obiettivo ed \`e valido solo per la modalit\`a effettiva
+\code{DEPLOYMENT}. \`E l'informazione che \code{reconcile} riceve dopo un
+riavvio, perch\'e il provider possa riportare il backend allo stesso numero di
+repliche invece di ripartire dal valore iniziale.
 
 L'API di ispezione della funzione restituisce entrambe le modalit\`a e la
 ragione, cos\`i che un operatore che si aspettava un deployment Kubernetes possa
@@ -191,6 +224,25 @@ Il meccanismo \`e coordinato: pi\`u invocazioni concorrenti sulla stessa funzion
 condividono la stessa attesa anzich\'e emettere ciascuna la propria richiesta di
 scale-up. \`E il minimo indispensabile per evitare che una raffica su una
 funzione fredda si traduca in una raffica di comandi al backend.
+
+Il gate non riguarda pi\`u solo lo scale-to-zero. Una prima versione entrava in
+gioco soltanto per le funzioni con scaling interno e \code{minReplicas} pari a
+zero; ma un Deployment appena creato, anche con \code{minReplicas} maggiore o
+uguale a uno, non \`e pronto per i secondi che il suo primo pod impiega ad
+avviarsi, e le invocazioni inviate in quella finestra raggiungevano un
+\code{Service} senza endpoint (``connection refused'') e consumavano i
+tentativi di retry con backoff. Oggi ogni generazione \code{DEPLOYMENT}
+registrata \`e marcata come in attesa della prima prontezza, e il gate la
+trattiene finch\'e non la osserva pronta; non emette alcun scale-up perch\'e il
+numero desiderato \`e gi\`a impostato. Dopo la prima osservazione, e dopo una
+rimozione o una nuova registrazione, la funzione segue il percorso ordinario,
+che per una funzione gi\`a vista pronta costa una ricerca in mappa e nessuna
+chiamata al provider. Il messaggio del commit (\code{083a5687}) riporta una
+misura su minikube: 40 invocazioni inviate subito dopo la registrazione hanno
+prodotto 0 retry e 40 dispatch, contro 15 retry e 55 dispatch prima della
+modifica, tutte concluse con successo dopo circa 6 secondi. \`E una misura
+singola riportata in un commit, non una campagna, e come tale non entra nei
+risultati del \cref{cap:23-prestazioni-base}.
 
 \begin{damisurare}
 La distribuzione del tempo di risveglio da zero repliche \`e strumentata

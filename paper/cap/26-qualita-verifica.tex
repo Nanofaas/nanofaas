@@ -15,17 +15,24 @@ l'apparato di verifica di \nf{}, dalle unit\`a alle regole architetturali.
 \toprule
 \textbf{Grandezza} & \textbf{Valore} \\
 \midrule
-Righe di codice di produzione (Java) & 16\,487 \\
-Righe di codice di test (Java) & 31\,664 \\
-Rapporto test / produzione & $\approx 1{,}9$ \\
-Classi di test & 235 \\
+Righe di codice di produzione (Java) & 33\,413 \\
+Righe di codice di test (Java) & 57\,856 \\
+Rapporto test / produzione & $\approx 1{,}7$ \\
+Classi di test (\code{*Test.java}) & 388 \\
 Soglia minima di copertura (JaCoCo) & 85\,\% \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
 \end{center}
 
-Quasi due righe di test per ogni riga di produzione. Il rapporto \`e alto ma non
+Le righe sono quelle \emph{non vuote} dei file \code{.java} sotto
+\code{src/main} e \code{src/test} di tutto il repository (SDK, servizi e
+funzioni Java compresi), con le directory di build e i worktree esclusi;
+misurate il 28~settembre~2026. Il perimetro e il metodo sono dichiarati perch\'e
+i valori della versione precedente di questo capitolo (16\,487, 31\,664 e 235)
+non sono riproducibili con il metodo qui descritto: il confronto con essi non
+\`e significativo, e la crescita non va letta come tale. Restano
+quasi due righe di test per ogni riga di produzione (1{,}7). Il rapporto \`e alto ma non
 sorprendente per un progetto la cui superficie \`e piccola e le cui interazioni
 --- fra moduli, fra code, fra politiche --- sono numerose: il codice combinatorio
 \`e nei test, non nella produzione.
@@ -48,7 +55,10 @@ Contratto multi-SDK & \code{functions/contract-tests/run.sh}
 (\cref{cap:18-sdk}). \\
 Watchdog & Test unitari Rust pi\`u integrazione locale per HTTP, STDIO, FILE,
 callback, metriche e ciclo di vita warm. \\
-E2E di scenario & Di propriet\`a dello strumento esterno
+Regole architetturali & ArchUnit, nel nucleo, nelle librerie di
+esecuzione e in ciascuno dei dieci moduli (\cref{sec:26-archunit}). \\
+E2E di scenario & Di propriet\`a di NanoLab, un repository separato: nessuno
+scenario E2E vive pi\`u in questo
 (\cref{cap:22-metodo-sperimentale}). \\
 \bottomrule
 \end{tabular}
@@ -59,21 +69,51 @@ Va notato che i test del watchdog non richiedono n\'e Docker n\'e una VM: bastan
 Rust, Python 3 e alcune utilit\`a a riga di comando. \`E una scelta che mantiene
 verificabile in locale il componente presente in ogni container di funzione.
 
-\section{Le due invocazioni della suite}
+\section{Le invocazioni della suite}
 
 Come discusso nel \cref{cap:16-moduli-diagnostici}, la selezione modulare \`e
 risolta a tempo di configurazione di Gradle e non pu\`o variare all'interno di
-una build. La verifica completa richiede quindi due invocazioni:
+una build. La verifica completa richiede quindi pi\`u invocazioni. La CI ne
+esegue tre:
 
 \begin{lstlisting}[language=bash]
-./gradlew test                              # default: tutti i moduli
-./gradlew test -PcontrolPlaneModules=none   # la configurazione minima
+./gradlew test --continue                     # i moduli abilitati per default
+./gradlew :control-plane:test -PcontrolPlaneModules=none --tests '*CoreOnlyApiTest'
+./gradlew :control-plane-modules:concurrency-control:test \
+          :control-plane-modules:sync-queue:test \
+          -PcontrolPlaneModules=sync-queue,concurrency-control,runtime-config
 \end{lstlisting}
 
-\section{Le regole architetturali}
+La prima \`e la suite di ci\`o che viene distribuito; \code{--continue} impedisce
+che un modulo che fallisce nasconda i risultati degli altri. La seconda esiste
+perch\'e \code{CoreOnlyApiTest} asserisce la configurazione opposta (enqueuer
+no-op, \code{501} su \code{:enqueue}) e si salta da solo ogni volta che
+\code{async-queue} \`e nel classpath. La terza esercita il modulo
+\code{concurrency-control} sull'altro provider di coda, dato che ora esso
+richiede \emph{una fra} le due code (\code{requires.oneOf}) e la suite
+principale, con \code{async-queue} attivo, non attraversa quel ramo.
 
-Il progetto codifica sei regole con ArchUnit~\cite{archunit}. Cinque riguardano
-il nucleo e una i moduli.
+Il progetto compone dieci moduli, di cui tre provider di deployment mutuamente
+esclusivi (\code{conflicts}): le scelte di provider sono quattro (nessuno o uno
+dei tre) e gli altri sette moduli sono liberi, per un limite superiore di
+$4 \cdot 2^7 = 512$ combinazioni, ridotto dai vincoli \code{requires.oneOf}. Le
+invocazioni di cui sopra ne coprono poche, il che ripropone il primo limite
+dell'ultima sezione.
+
+Una configurazione a s\'e \`e quella del provider containerd, le cui
+dipendenze non sono su Maven Central: la build e i test richiedono di averle
+preparate in un repository Maven locale
+(\code{scripts/bootstrap-containerd-dependencies.sh}), e il job Java della CI
+le costruisce da due repository con revisioni fissate prima di eseguire i test.
+
+\section{Le regole architetturali}
+\label{sec:26-archunit}
+
+Il progetto codifica le regole con ArchUnit~\cite{archunit}, su tre
+livelli: il nucleo (\code{CoreArchitectureTest}), la libreria di esecuzione
+obbligatoria (\code{RuntimeArchitectureTest}) e ciascuno dei dieci moduli
+opzionali, pi\`u la libreria del provider container. Le sei regole della prima
+edizione di questo capitolo sono diventate sette nel nucleo, pi\`u una guardia.
 
 \subsection{Le regole del nucleo}
 
@@ -104,28 +144,102 @@ noClasses().that().resideInAPackage("..controlplane..")
   gerarchia \`e \code{api} $\to$ \code{service} $\to$ \code{dispatch}, e i livelli
   bassi non risalgono.
 
+  \item[\textbf{P22 --- Un solo proprietario dello stato terminale.}] Solo il
+  package \code{execution} pu\`o chiamare \code{beginSettlement} e
+  \code{publishTerminal} su \code{ExecutionRecord}, le due chiamate che rendono
+  \emph{definitivo} un esito. Tutti gli altri --- il gestore di completamento,
+  i moduli di coda tramite \code{QueueLifecycle}, il gateway di offload, il
+  percorso di scadenza amministrativa --- lo chiedono al proprietario attraverso
+  \code{ExecutionStore.settle}. Un secondo chiamante sarebbe un secondo
+  proprietario dello stato terminale, ed \`e ci\`o che gli invarianti I1 e I3
+  vietano: due proprietari possono non concordare sull'unico risultato che
+  un'esecuzione ha diritto di avere.
+
   \item[\textbf{R6 --- Il namespace appartiene al nucleo.}] Ogni classe nel
   package \code{it.unimib.datai.nanofaas.controlplane} deve avere il proprio
-  file di classe sotto \code{platform/control-plane/}.
+  file di classe sotto \code{platform/control-plane/}, oppure sotto le due
+  librerie obbligatorie che ne sono state estratte con gli stessi nomi:
+  \code{platform/control-plane-spi/} (i contratti contro cui compilano i
+  moduli) e \code{platform/execution-runtime/} (lo store, la capacit\`a e
+  l'input).
+
+  \item[\textbf{La politica di scheduling dipende solo dall'SPI.}] Una
+  strategia di scheduling implementa una \emph{politica} e nient'altro: non
+  possiede thread, metriche, callback n\'e store, cos\`i che il motore possa
+  scambiarne una con l'altra senza che nessuna delle due parti lo sappia.
+  La regola \`e una \emph{lista bianca}, per package
+  e non per classe: ammette l'SPI di scheduling, i tipi valore che esso nomina,
+  il JDK e gli indici che una politica costruisce. Una lista bianca nota una
+  dipendenza aggiunta in seguito; una lista di nomi vietati nota solo quelle
+  che c'erano gi\`a. Vietati, in particolare, il motore e il suo store mutabile
+  (che sarebbero un ciclo appena il motore cambiasse strategia) e Spring
+  (che significherebbe una strategia registrata per scansione o riflessione
+  anzich\'e consegnata al costruttore di \code{StrategyRegistry}).
 \end{description}
 
-L'ultima \`e la pi\`u insolita e vale la pena soffermarcisi. Verifica non una
+R6 \`e la pi\`u insolita e vale la pena soffermarcisi. Verifica non una
 dipendenza ma una \emph{corrispondenza fra nome logico e collocazione fisica}:
-impedisce che un modulo dichiari una classe dentro il namespace del nucleo per
-aggirare le altre regole. Senza di essa, R3 sarebbe eludibile spostando il
-package anzich\'e la dipendenza.
-
-L'implementazione ha dovuto adattarsi a un cambiamento della libreria:
+impedisce che un modulo, un SDK o un servizio dichiari una classe dentro il
+namespace del nucleo per aggirare le altre regole. Senza di essa, R3 sarebbe
+eludibile spostando il package anzich\'e la dipendenza. Ha dovuto adattarsi a
+un cambiamento della libreria, e ad ogni estrazione di una libreria
+obbligatoria dal nucleo (prima i contratti, poi il runtime di esecuzione, sotto
+gli stessi nomi perch\'e hint AOT, \emph{reflect-config}, regole sui package e
+descrittori dei moduli continuino a indirizzarli come prima):
 
 \begin{lstlisting}[language=Java]
 // ArchUnit 1.4.1 dropped SourceCodeLocation's source-path accessor, so read the
-// source URI instead; its path points under platform/control-plane/.
-String path = item.getSource().map(Source::getUri).map(URI::getPath).orElse("");
+// source URI instead; it can point to either a classes directory or a JAR.
+URI source = item.getSource().map(Source::getUri).orElse(null);
 \end{lstlisting}
+
+Le altre due regole nuove hanno ciascuna una forma da isolare. P22 non vieta
+una dipendenza ma una \emph{chiamata}: due metodi di una classe che il resto del
+codice pu\`o continuare a usare per tutto il resto. La regola sulla politica \`e
+invece l'esempio di un problema generale delle regole ArchUnit, che nasce dalla
+loro forma.
+
+\paragraph{La regola vuota.} Una regola ArchUnit su un insieme importato vuoto
+o parziale \`e vacuamente vera: un package rinominato fuori dalla lista di
+\code{@AnalyzeClasses}, o un modulo tolto dal classpath, la lascerebbero verde
+e muta. Il progetto lo affronta in due modi. La regola sulla politica \`e
+accompagnata da una \emph{guardia sui soggetti}, che fissa non soltanto
+l'importazione ma l'elenco esatto dei tipi su cui la regola gira, per profilo di
+moduli selezionato: una strategia e l'indice che costruisce per ciascun modulo
+di coda scelto. Una strategia nuova fa fallire la guardia finch\'e non \`e
+aggiunta all'elenco, ed \`e il passo revisionabile che la guardia esiste per
+imporre. E il test della libreria di esecuzione asserisce, prima della regola,
+che i package importati contengano pi\`u di cinquanta classi e fra esse
+\code{ExecutionRecord}.
+
+\begin{lstlisting}[language=Java]
+assertThat(importedClasses)
+        .as("the execution-runtime packages must actually be on the analyzed classpath; "
+                + "an empty import makes this rule vacuously true")
+        .hasSizeGreaterThan(50);
+\end{lstlisting}
+
+\`E la stessa preoccupazione che il \cref{cap:22-metodo-sperimentale} ha per un
+gate di regressione che non pu\`o fallire: un controllo che non pu\`o dire di no
+non controlla nulla.
+
+\subsection{La libreria di esecuzione}
+
+Lo store delle esecuzioni, la capacit\`a e l'input sono stati estratti dal
+nucleo in una libreria obbligatoria, \code{execution-runtime}, che possiede il
+ciclo di vita e le risorse indipendentemente dalla strategia di scheduling
+attiva. \code{RuntimeArchitectureTest} ne fissa l'indipendenza: nessuna
+dipendenza da Spring, da Fabric8 o da qualunque modulo opzionale, cos\`i che un
+deployment minimo possa compilare ed eseguire senza di essi e che la direzione
+delle dipendenze non possa invertirsi verso il control plane da cui \`e stata
+estratta. L'eccezione \`e \emph{nominata}: tre classi di test, che eseguono la
+stessa suite di conformit\`a, di modello e di gara contro entrambe le
+strategie reali, sono le sole esentate; un test futuro che importi una classe
+di un modulo continua a fallire.
 
 \subsection{La regola dei moduli}
 
-Ciascuno dei nove moduli porta la propria classe di verifica, con la stessa
+Ciascuno dei dieci moduli porta la propria classe di verifica, con la stessa
 regola:
 
 \begin{lstlisting}[language=Java]
@@ -145,29 +259,41 @@ static final ArchRule does_not_depend_on_other_modules =
 Il divieto \`e sulle dipendenze \emph{laterali}. Dipendere dalle interfacce del
 nucleo \`e il meccanismo previsto e resta libero: \`e cos\`i che i provider di
 deployment implementano \code{ImageValidator} e che
-\code{concurrency-control} scrive attraverso \code{ScalingMetricsSource}.
+\code{concurrency-control} scrive attraverso \code{WorkloadCapacityController}.
 
 Il commento prescrive anche la procedura in caso di deroga: aggiungere una riga
 esplicita con la propria giustificazione, cos\`i che ogni eccezione sia visibile
-nel codice della regola. Al momento della stesura nessuna deroga \`e stata
-aggiunta.
+nel codice della regola. Le regole dei moduli sono l'altra met\`a di quella
+sulla politica di scheduling: il nucleo ha i moduli di coda solo nel classpath
+di \emph{runtime}, quindi non pu\`o vedere da s\'e le implementazioni che la
+regola vuole limitare, e sono gli \code{ArchitectureTest} dei moduli, che nominano
+le implementazioni del nucleo che rifiutano, a coprire quella direzione.
 
 \subsection{Che cosa questo apparato compra}
 
-Le sei regole insieme rendono \emph{eseguibile} l'architettura descritta nella
+Le regole insieme rendono \emph{eseguibile} l'architettura descritta nella
 Parte II. Il \cref{cap:08-sistema-moduli} ha osservato che il compilatore \`e gi\`a
 un esecutore parziale --- i moduli entrano come dipendenze
 \code{runtimeOnly}, quindi il nucleo non pu\`o compilare contro di essi. Le
 regole ArchUnit coprono ci\`o che il compilatore non vede: i cicli, la direzione
-dei livelli, e la corrispondenza fra namespace e modulo fisico.
+dei livelli, la proprietariet\`a dello stato terminale, e la corrispondenza fra
+namespace e modulo fisico.
 
 \section{Analisi statica}
 
 \subsection{SonarQube}
 
 L'analisi \`e su richiesta, non in integrazione continua:
-\code{scripts/sonar.sh} avvia un container SonarQube effimero, analizza Java,
-Python e Rust, e stampa il conteggio dei problemi aperti per linguaggio.
+\code{scripts/sonar.sh} avvia un container SonarQube Community effimero (immagine
+con versione fissata, su \code{127.0.0.1:9000}), analizza Java, Python e Rust
+come tre progetti distinti, e stampa il conteggio dei problemi aperti per
+gravit\`a e per linguaggio, lasciando il server acceso perch\'e si possano
+leggere i problemi nel browser. Il Java passa dal plugin Gradle
+\code{org.sonarqube} e usa come copertura i report XML di JaCoCo che il task di
+test ha gi\`a prodotto; Python e Rust sono analizzati staticamente dalla CLI
+dello scanner, senza importare la copertura, e la directory \code{experiments/}
+non \`e analizzata. Il codice di uscita \`e zero se ogni analisi richiesta \`e
+stata sottoposta, e non dipende mai dal numero di problemi.
 
 La rinuncia al \emph{quality gate} \`e argomentata esplicitamente:
 
@@ -184,10 +310,12 @@ informazione.
 disattivato, e un controllo disattivato non controlla nulla. Meglio riportare un
 numero che un verdetto inutile.
 
-La conseguenza operativa \`e che la linea di base \`e zero problemi aperti, e
-quindi \emph{qualunque} problema rilevato \`e nuovo. \`E un criterio pi\`u
-severo di un gate sul nuovo codice, e sostenibile solo perch\'e la base di
-codice \`e piccola.
+La conseguenza operativa \`e che il criterio \`e zero problemi aperti, e
+quindi \emph{qualunque} problema rilevato \`e nuovo. \`E pi\`u severo di un gate
+sul nuovo codice, e sostenibile solo perch\'e la base di codice \`e piccola. Il
+criterio ha guidato una campagna di correzione condotta per passate successive
+--- correttezza, gestione di risorse e concorrenza, struttura, poi i runtime
+Python e JavaScript --- registrata nella storia del repository.
 
 \subsection{Analisi delle dipendenze}
 
@@ -208,6 +336,35 @@ lavoro: sei archivi rimossi, di cui cinque con codice nativo per piattaforma.
 
 JaCoCo su ogni sottoprogetto, con soglia minima all'85\%. I report XML
 alimentano anche l'analisi SonarQube.
+
+\subsection{CodeQL}
+
+Accanto a SonarQube, il repository ha un workflow CodeQL (\code{codeql.yml}) che
+analizza il Java a ogni push su \code{main}, a ogni \emph{pull request} verso
+di esso e con cadenza settimanale, con la suite di query
+\code{security-and-quality}. Il risultato non \`e caricato sul \emph{code
+scanning}: \`e un report SARIF conservato quattordici giorni come artefatto del
+job. A differenza di SonarQube \`e in integrazione continua.
+
+\section{L'integrazione continua}
+
+Il workflow principale (\code{gitops.yml}) ha quattro job, uno per famiglia di
+artefatto: la suite Java (con le tre invocazioni sopra), la compilazione nativa
+del control plane con la verifica che l'artefatto sia un eseguibile
+(\cref{cap:20-build-packaging}), i test dell'SDK Python e quelli del watchdog
+(che installano soltanto \code{jq} e \code{netcat}: coerentemente con quanto detto sopra, non
+serve Docker). Nessun job costruisce o pubblica un'immagine: la costruzione delle
+immagini \`e delle ricette (\cref{cap:20-build-packaging}) e degli script di
+immagine, non della CI. La CI non esegue scenari E2E; li esegue NanoLab
+(\cref{cap:22-metodo-sperimentale}).
+
+Due dettagli riguardano la diagnosticabilit\`a. In caso di fallimento il job
+Java carica come artefatto, con ritenzione di quattordici giorni, i risultati
+XML dei test e le directory di diagnostica: come recita il commento del
+workflow, un fallimento che avviene solo in CI \`e altrimenti indiagnosticabile,
+perch\'e il log riporta soltanto la classe dell'eccezione e la riga. E i
+sorgenti delle dipendenze del provider containerd sono ricostruiti da revisioni
+fissate, invece che presi da un registro, per la ragione gi\`a vista.
 
 \section{Test di regressione strutturali}
 
@@ -257,6 +414,25 @@ registrare, perch\'e ciascuna corrisponde a una propriet\`a reale del sistema.
   \item[\textbf{Modificare i contratti condivisi richiede la suite intera.}] Una
   modifica a \code{platform/common} o a un SDK si propaga oltre il control plane;
   eseguire soltanto \code{:control-plane:test} non basta.
+
+  \item[\textbf{Un test che passa su venti core pu\`o fallire su due.}] Il
+  runner di CI di un repository privato ha due vCPU, la macchina di sviluppo ne ha
+  molte di pi\`u, e i test sensibili al tempo sul control plane si comportano
+  diversamente. Un fallimento visto soltanto in CI si riproduce vincolando
+  l'esecuzione a due core (\code{taskset -c 0,1}, con \code{--no-daemon}, altrimenti
+  il vincolo \`e nullo: il daemon Gradle e i suoi worker di test mantengono tutti
+  i core) e ripetendo il test pi\`u volte; e si prova sul \emph{merge
+  commit} della \emph{pull request}, che \`e ci\`o che la CI esegue, non sulla
+  testa del ramo.
+
+  \item[\textbf{L'asserzione subito dopo il segnale.}] Una forma ricorrente
+  di test instabile, trovata con quella riproduzione, \`e un'asserzione posta
+  subito dopo il segnale che avvia l'evento asserito, prima che l'evento sia
+  concluso: un future che si completa prima che il proprio risveglio si ritiri, un
+  thread controllato con \code{isAlive()} prima di attenderlo. Su un solo core
+  carico, uno di questi test falliva in 898 ripetizioni su 6\,000; con un'attesa
+  limitata, in 0 su 6\,000. La correzione \`e attendere l'evento, non allungare
+  una pausa.
 \end{description}
 
 \section{Limiti dell'apparato}
@@ -266,8 +442,9 @@ registrare, perch\'e ciascuna corrisponde a una propriet\`a reale del sistema.
   estremi} (\cref{cap:16-moduli-diagnostici}): \code{all} e \code{none}. Le
   configurazioni intermedie non hanno copertura dedicata.
 
-  \item \textbf{L'analisi statica non \`e in integrazione continua.} \`E su
+  \item \textbf{SonarQube non \`e in integrazione continua.} \`E su
   richiesta, quindi la sua efficacia dipende dalla disciplina di chi sviluppa.
+  CodeQL, che lo \`e, produce un report e non un criterio di zero problemi.
 
   \item \textbf{Gli scaffold generati non sono verificati end-to-end}
   (\cref{cap:19-cli-scaffolding}).

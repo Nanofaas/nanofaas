@@ -34,8 +34,10 @@ valida; \code{424} validazione immagine fallita; \code{503} nessun provider
 disponibile \\
 \code{GET} & \code{/v1/functions/\{name\}} & \code{200}; \code{404} \\
 \code{PATCH} & \code{/v1/functions/\{name\}} &
-\code{200}; \code{400} campo non modificabile o valore invalido; \code{404} \\
-\code{DELETE} & \code{/v1/functions/\{name\}} & \code{204}; \code{404} \\
+\code{200}; \code{400} campo non modificabile o valore invalido; \code{404};
+\code{409} rimozione in sospeso \\
+\code{DELETE} & \code{/v1/functions/\{name\}} & \code{204}; \code{404};
+\code{409} rimozione parziale \\
 \code{GET} & \code{/v1/functions/\{name\}/replicas} &
 \code{200}; \code{400}; \code{404}; \code{503} \\
 \code{PUT} & \code{/v1/functions/\{name\}/replicas} &
@@ -61,9 +63,11 @@ Il corpo della registrazione \`e un \code{FunctionSpec}
 \midrule
 \code{POST} & \code{/v1/functions/\{name\}:invoke} &
 \code{200} (o il codice deciso dalla funzione); \code{404}; \code{408};
-\code{429}; \code{500}; \code{502}; \code{504} \\
+\code{409}; \code{410}; \code{413}; \code{429}; \code{500}; \code{502};
+\code{504} \\
 \code{POST} & \code{/v1/functions/\{name\}:enqueue} &
-\code{202}; \code{404}; \code{429}; \code{500}; \code{501} \\
+\code{202}; \code{404}; \code{409}; \code{410}; \code{413}; \code{429};
+\code{500}; \code{501} \\
 \code{GET} & \code{/v1/executions/\{executionId\}} & \code{200}; \code{404} \\
 \code{POST} & \code{/v1/internal/executions/\{id\}:complete} & \code{204} \\
 \bottomrule
@@ -80,8 +84,29 @@ Codici con semantica specifica:
 \toprule
 \textbf{Codice} & \textbf{Condizione} \\
 \midrule
-\code{429} & Limite di frequenza globale, oppure rifiuto della coda sincrona.
-Distinguibili dagli header (sotto). \\
+\code{408} & Il budget di attesa \emph{di quel chiamante} \`e scaduto; l'esecuzione
+condivisa prosegue e un poll successivo (o il replay della stessa chiave) ne
+osserva l'esito reale, mai un \code{timeout} preso a prestito dal budget di un
+altro chiamante. \\
+\code{409} & Funzione in \emph{rimozione in sospeso}: una \code{DELETE} ha
+smontato solo parte del deployment, la voce resta nel catalogo, non ammette
+invocazioni n\'e modifiche e il corpo (\code{FUNCTION\_REMOVAL\_PENDING})
+elenca le risorse ancora possedute dal backend. Ripetere la \code{DELETE}
+riprende la pulizia. \\
+\code{410} & La chiave di idempotenza si riferisce a un'esecuzione conclusa il
+cui esito \`e stato espulso per capacit\`a prima della scadenza. La funzione
+\emph{non} viene rieseguita: la deduplicazione regge, \`e il risultato
+memorizzato a essere perso (\cref{cap:06-nucleo}). \code{X-Execution-Id}
+indica l'esecuzione. \\
+\code{413} & Il corpo supera \code{nanofaas.invocation-capacity.ingress-body-bytes}
+(1\,MiB di default), verificato prima dell'aggregazione del JSON e prima del
+replay di idempotenza. \\
+\code{429} & Limite di frequenza globale, rifiuto della coda sincrona, tetti di
+capacit\`a (esecuzioni, input, copie fisiche, attese) o budget di chiavi di
+idempotenza esaurito. I rifiuti di quota portano \code{Retry-After: 1} e un
+corpo stabile \code{\{error: invocation\_quota\_exceeded, resource:
+execution|input|input\_copy|waiter\}}; gli altri \code{429} possono non avere
+corpo. \\
 \code{501} & Il percorso asincrono richiede il modulo \code{async-queue}, assente
 in questo binario (\cref{cap:16-moduli-diagnostici}). \\
 \code{502} & L'offload verso l'istanza remota \`e fallito
@@ -136,7 +161,7 @@ visibili all'handler nel campo \code{headers} della richiesta, che viene
 deciso dall'handler (\cref{cap:17-runtime-funzione}). \\
 \code{X-NanoFaaS-Encoding} & Codifica dell'output, per esempio \code{base64}. \\
 \code{X-NanoFaaS-Offloaded} & URL dell'istanza remota che ha servito. \\
-\code{Retry-After} & Su \code{429} dalla coda sincrona. \\
+\code{Retry-After} & Sui \code{429} ritentabili: coda sincrona e rifiuti di quota. \\
 \code{X-Queue-Reject-Reason} & \code{depth}, \code{est\_wait} o \code{timeout}
 (\cref{cap:10-sync-queue}). \\
 \bottomrule
@@ -165,7 +190,10 @@ deciso dall'handler (\cref{cap:17-runtime-funzione}). \\
 \section{API di amministrazione}
 
 Attiva soltanto con \code{nanofaas.admin.runtime-config.enabled=true}; altrimenti
-i percorsi rispondono \code{404} (\cref{cap:14-runtime-config}).
+i percorsi rispondono \code{404} (\cref{cap:14-runtime-config}). La configurazione
+\`e organizzata in \emph{namespace}: \code{control-plane} (limiti di capacit\`a e
+frequenza) e, quando l'artefatto compone un motore che lo espone,
+\code{scheduler}.
 
 \begin{center}
 \small
@@ -174,16 +202,29 @@ i percorsi rispondono \code{404} (\cref{cap:14-runtime-config}).
 \toprule
 \textbf{Op.} & \textbf{Percorso} & \textbf{Esiti} \\
 \midrule
-\code{GET} & \code{/v1/admin/runtime-config} & \code{200}; \code{404} disattivata \\
-\code{POST} & \code{/v1/admin/runtime-config/validate} & \code{200};
-\code{400}; \code{422} \\
-\code{PATCH} & \code{/v1/admin/runtime-config} & \code{200}; \code{400}
-(\code{expectedRevision} mancante o durata malformata); \code{404}; \code{409}
-revisione non corrispondente; \code{422}; \code{503} applicazione fallita \\
+\code{GET} & \code{/v1/admin/runtime-config} & \code{200} istantanea con
+revisione; \code{404} disattivata \\
+\code{GET} & \code{/v1/admin/runtime-config/\{namespace\}} & \code{200};
+\code{404} \\
+\code{POST} & \code{/v1/admin/runtime-config/\{namespace\}/validate} &
+\code{200}; \code{404}; \code{422} \\
+\code{PATCH} & \code{/v1/admin/runtime-config/\{namespace\}} & \code{200};
+\code{400} (\code{expectedRevision} o \code{values} mancante); \code{404};
+\code{409} revisione non corrispondente; \code{422}; \code{503} il cambio
+non \`e stato committato \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
 \end{center}
+
+Il namespace \code{scheduler} accetta un solo campo, \code{strategy}, che deve
+essere uno degli identificatori elencati in \code{available} (\code{per-function},
+\code{shared-queue}); un altro valore d\`a \code{422}. Il cambio ha effetto
+immediato in entrambe le direzioni, senza drenare il lavoro pendente e senza
+riavvio, e la \code{200} \`e restituita solo dopo che la nuova strategia \`e
+attiva; un cambio rifiutato lascia attiva la precedente e ripetere la richiesta
+\`e sicuro. Non sopravvive a un riavvio (\code{persistence: restart}): al boot
+torna la strategia configurata (\cref{sec:09-switch}).
 
 Le durate usano il formato ISO-8601 (\code{PT5S}).
 

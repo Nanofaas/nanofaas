@@ -27,22 +27,31 @@ essere dispacciata.
 \end{figure}
 
 I quattro componenti del nucleo si dividono le responsabilit\`a nel modo
-seguente.
+seguente. Il primo e il quarto vivono in moduli diversi da quello del control
+plane (\cref{cap:08-sistema-moduli}): lo store, la macchina a stati dei
+tentativi e il motore di scheduling stanno in \code{execution-runtime}, mentre
+i contratti con cui i moduli si innestano nel nucleo (le interfacce
+\code{ControlPlaneModule}, dei provider e dei punti di estensione) stanno nella
+libreria \code{control-plane-spi}.
 
 \begin{description}[style=nextline, leftmargin=0pt]
   \item[\code{FunctionRegistry}] custodisce le specifiche delle funzioni
-  registrate. \`E una mappa concorrente; il capitolo \cref{cap:06-nucleo} ne
-  descrive la risoluzione dei default e la validazione.
+  registrate. \`E uno snapshot immutabile sostituito per intero a ogni scrittura
+  e reso durevole su file; il \cref{cap:06-nucleo} ne descrive la
+  persistenza, la risoluzione dei default e l'ordine di registrazione e
+  rimozione.
 
-  \item[\code{InvocationService}] orchestra le invocazioni: applica il limite di
-  frequenza, risolve la specifica, crea o riusa un record di esecuzione, e
-  affida il resto al coordinatore reattivo.
+  \item[\code{InvocationService}] orchestra le invocazioni: risolve la
+  specifica, crea o riusa un record di esecuzione, e affida il resto al
+  coordinatore reattivo. Il limite di frequenza non \`e pi\`u qui: sta in un
+  filtro che precede la lettura del corpo (\cref{sec:04-percorso}).
 
   \item[\code{DispatcherRouter}] sceglie il dispatcher concreto in base alla
   modalit\`a di esecuzione della funzione (\cref{cap:07-modalita-esecuzione}).
 
-  \item[\code{ExecutionStore}] mantiene il ciclo di vita delle esecuzioni e le
-  fa scadere secondo tre orizzonti distinti.
+  \item[\code{ExecutionStore}] mantiene le esecuzioni vive e gli esiti di quelle
+  concluse, in due cache con scadenza e limite propri; la transizione terminale
+  \`e di \code{ExecutionLifecycle}.
 \end{description}
 
 \section{Perch\'e reattivo}
@@ -75,33 +84,40 @@ dell'event loop. Un event loop bloccato non rallenta una richiesta, le blocca
 tutte.
 
 Nel codice di \nf{} questo vincolo compare in due punti espliciti, entrambi
-commentati come tali. Il primo \`e la preparazione dell'invocazione sincrona:
+commentati come tali. Il primo \`e la preparazione dell'invocazione sincrona, e
+la sua forma \`e cambiata in modo istruttivo:
 
-\begin{lstlisting}[language=Java, caption={Confinamento della fase preparatoria
-(\code{InvocationService}). Il commento nel sorgente spiega la ragione.}]
-return Mono.fromCallable(() -> {
-            enforceRateLimit();
-            FunctionSpec spec = functionService.get(functionName)
-                    .orElseThrow(FunctionNotFoundException::new);
-            // createOrReuseExecution may spin briefly on contended idempotency
-            // claims; it must never run on the Netty event loop.
-            return new Prepared(spec, executionFactory.createOrReuseExecution(
-                    functionName, spec, request, idempotencyKey, traceId));
-        })
-        .subscribeOn(Schedulers.boundedElastic())
-        .flatMap(prepared -> reactiveCoordinator.invoke(
-                prepared.lookup(), prepared.spec(), timeoutOverrideMs, offloadContext));
+\begin{lstlisting}[language=Java, caption={Confinamento condizionale della fase
+preparatoria (\code{InvocationService}).}]
+Mono<Prepared> prepared = Mono.fromCallable(() -> {
+    FunctionSpec spec = functionService.get(functionName)
+            .orElseThrow(FunctionNotFoundException::new);
+    refuseEarlyIfQueueFull(functionName, spec, idempotencyKey, InvocationKind.SYNC);
+    return new Prepared(spec, executionFactory.createOrReuseExecution(
+            functionName, spec, request, idempotencyKey, traceId, InvocationKind.SYNC));
+});
+// Hop only when there is something to hop for. ...
+if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+    prepared = prepared.subscribeOn(Schedulers.boundedElastic());
+}
+return prepared.flatMap(p -> reactiveCoordinator.invoke(
+        p.lookup(), p.spec(), timeoutOverrideMs, offloadContext));
 \end{lstlisting}
 
 La risoluzione dell'idempotenza usa un ciclo di \emph{compare-and-set} su una
-cache concorrente: nel caso non contesto termina in un'iterazione, ma sotto
-contesa pu\`o iterare. Un'attesa attiva anche brevissima su un event loop \`e
-inaccettabile, quindi l'intera fase preparatoria \`e confinata sullo scheduler
-elastico.
+cache concorrente, che sotto contesa pu\`o attendere. Una versione precedente
+confinava sullo scheduler elastico \emph{ogni} richiesta; il commento attuale
+spiega perch\'e non pi\`u: \code{createOrReuseExecution} sosta solo dentro quel
+ciclo e, senza chiave, ritorna al primo ramo senza toccare alcun lock, e il resto
+del blocco \`e un controllo di coda e una ricerca in mappa. Il passaggio a un
+altro thread costa 6,1~$\mu$s misurati contro 0,085~$\mu$s di lavoro, settanta
+volte ci\`o che protegge, e lo pagavano anche le richieste che sarebbero state
+rifiutate, per le quali decidere un \code{429} non dovrebbe richiedere un secondo
+thread. Oggi il salto avviene \emph{solo} se la richiesta porta una chiave.
 
 Il secondo punto \`e l'intero percorso asincrono (\code{:enqueue}), che il
-controller esegue con la stessa tecnica: l'accodamento pu\`o contendere sullo
-stato della coda della funzione, e non deve toccare l'event loop.
+controller esegue sempre sullo scheduler elastico: l'accodamento pu\`o contendere
+sullo stato della coda della funzione, e non deve toccare l'event loop.
 
 \subsection{Il completamento come futuro condiviso}
 
@@ -133,6 +149,7 @@ cancellazione \`e ci\`o che rende l'idempotenza corretta anche in presenza di
 disconnessioni.
 
 \section{Il percorso di una richiesta}
+\label{sec:04-percorso}
 
 La \cref{fig:flusso} contrappone i due percorsi. Vale la pena percorrerli in
 prosa, perch\'e l'ordine delle decisioni \`e esso stesso un elemento di
@@ -149,48 +166,64 @@ progetto.
 \subsection{Percorso sincrono}
 
 \begin{enumerate}[leftmargin=*]
-  \item Il controller riceve \code{POST /v1/functions/\{name\}:invoke}, estrae
-  gli header dedicati (chiave di idempotenza, trace id, override del timeout,
-  marcatore di salto di offload) e \textbf{ricostruisce} la richiesta con gli
-  header effettivi del chiamante.
+  \item Due filtri precedono il controller. Il primo, con precedenza massima,
+  applica il confine del corpo (\code{413}, \cref{sec:06-capacita}); il
+  secondo \`e il limitatore di frequenza globale, ristretto ai suffissi
+  \code{:invoke} e \code{:enqueue}: una richiesta respinta risponde \code{429} con
+  \code{Retry-After: 1} senza aver decodificato il JSON n\'e cercato la funzione,
+  e il suo corpo viene comunque svuotato per non impedire il riuso della
+  connessione.
 
-  \item Il servizio applica il limite di frequenza globale. \`E il primo
-  controllo, prima ancora della risoluzione del nome: una richiesta respinta per
-  frequenza non deve costare una ricerca nel registro.
+  \item Il controller estrae gli header dedicati (chiave di idempotenza, trace
+  id, override del timeout, marcatore di salto di offload) e
+  \textbf{ricostruisce} la richiesta con gli header effettivi del chiamante.
 
-  \item Il nome viene risolto nel registro; se assente, \code{404}.
+  \item Il nome viene risolto nel registro; se assente, \code{404}. Se la coda
+  della funzione \`e certamente piena e nulla pu\`o deviare la richiesta altrove, il
+  rifiuto avviene qui, prima di costruire un'esecuzione destinata a essere
+  abbandonata --- salvo quando \`e presente una chiave, perch\'e la replica di
+  un'esecuzione esistente non deve essere respinta (nel commento, 590 rifiuti al
+  secondo contro 299 dispatch).
 
-  \item Si crea o si riusa il record di esecuzione. Se la chiave di idempotenza
-  corrisponde a un'esecuzione gi\`a terminata, il suo esito viene riprodotto
-  immediatamente senza toccare la funzione (\emph{replay}).
+  \item Si crea o si riusa il record di esecuzione, dopo aver riservato le
+  quote di ammissione (\cref{sec:06-capacita}). Se la chiave di idempotenza
+  corrisponde a un'esecuzione gi\`a conclusa, l'esito viene riprodotto
+  immediatamente senza toccare la funzione (\emph{replay}); se l'esito \`e stato
+  espulso per capacit\`a, la risposta \`e \code{410}.
 
   \item \textbf{Ammissione.} \`E il punto in cui il comportamento dipende dai
   moduli presenti, e la logica \`e una catena di ripiego ordinata: se il modulo
   di offload \`e attivo e la politica della funzione impone l'offload eager, la
   richiesta parte verso l'istanza remota; altrimenti si tenta l'ammissione
-  locale, che a sua volta usa la coda sincrona se presente, la coda asincrona se
-  presente, e in ultima istanza dispaccia direttamente. Se l'ammissione locale
+  locale, che a sua volta usa la coda sincrona se presente, la coda per funzione se
+  presente, e in ultima istanza dispaccia direttamente, acquisendo un lease di
+  capacit\`a: senza spazio la risposta \`e \code{429}, mai una coda implicita. Se l'ammissione locale
   viene rifiutata per pressione (profondit\`a o attesa stimata) e l'offload
   reattivo \`e abilitato, la richiesta viene deviata anzich\'e respinta.
 
-  \item Il chiamante attende il futuro di completamento, con timeout.
+  \item Il chiamante attende il futuro di completamento, con un proprio budget
+  (\code{X-Timeout-Ms} o \code{timeoutMs} della funzione). Allo scadere risponde
+  \code{408} soltanto \emph{quel} chiamante: l'esecuzione condivisa prosegue
+  (\cref{cap:06-nucleo}).
 
   \item L'esito viene tradotto in risposta HTTP. Se la funzione ha dichiarato un
   proprio codice di stato, questo diventa il codice della risposta e viene
   segnalato dall'header \code{X-NanoFaaS-Function-Status}.
 \end{enumerate}
 
-L'ordine del punto 5 \`e la parte non ovvia. La sequenza \emph{coda sincrona
+L'ordine del punto dell'ammissione \`e la parte non ovvia. La sequenza \emph{coda sincrona
 $\to$ coda asincrona $\to$ dispatch diretto} significa che il percorso sincrono
 degrada in modo continuo al ridursi dei moduli presenti, senza che il codice
-contenga un test sulla configurazione: ciascun ripiego \`e il default no-op del
-punto di estensione precedente.
+contenga un test sul nome dei moduli: ciascun ripiego \`e il default no-op del
+punto di estensione precedente. Con un modulo di coda la scelta fra le due code
+e l'ordine di servizio sono quelle del motore di scheduling composto
+(\cref{cap:09-async-queue,cap:10-sync-queue}).
 
 \subsection{Percorso asincrono}
 
 Il percorso \code{:enqueue} \`e pi\`u corto e ha una differenza qualitativa: non
-degrada. Se il modulo \code{async-queue} non \`e presente, l'accodatore dichiara
-di essere disabilitato e l'API risponde \code{501 Not Implemented}. La scelta
+degrada. Se nessun modulo di coda fornisce l'accodamento asincrono, l'accodatore dichiara
+di non supportarlo e l'API risponde \code{501 Not Implemented}. La scelta
 \`e deliberata: un'invocazione asincrona eseguita in linea non sarebbe
 un'invocazione asincrona degradata, sarebbe una risposta scorretta al contratto,
 perch\'e il chiamante ha ricevuto un identificatore assumendo di poter
@@ -213,6 +246,7 @@ responsabilit\`a della piattaforma.
 \code{GET}    & \code{/v1/functions/\{name\}} & Ispeziona una funzione. \\
 \code{PATCH}  & \code{/v1/functions/\{name\}} & Aggiorna parzialmente la specifica. \\
 \code{DELETE} & \code{/v1/functions/\{name\}} & Rimuove funzione e risorse gestite. \\
+\code{PUT/GET} & \code{/v1/functions/\{name\}/replicas} & Imposta / legge le repliche (\code{DEPLOYMENT}). \\
 \midrule
 \code{POST} & \code{/v1/functions/\{name\}:invoke}  & Invocazione sincrona. \\
 \code{POST} & \code{/v1/functions/\{name\}:enqueue} & Invocazione asincrona. \\
@@ -223,6 +257,8 @@ Callback di completamento dal runtime. \\
 \midrule
 \code{GET} & \code{/actuator/health} \emph{(:8081)}     & Sonde di liveness/readiness. \\
 \code{GET} & \code{/actuator/prometheus} \emph{(:8081)} & Metriche. \\
+\midrule
+\code{GET/PATCH} & \code{/v1/admin/runtime-config} & Configurazione a caldo (\cref{cap:14-runtime-config}). \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
@@ -259,15 +295,27 @@ dedicato.
 
 I codici di stato che l'API produce sono pochi e ciascuno corrisponde a una
 condizione precisa; il \cref{cap:A-api} li elenca per endpoint. Vale la pena
-anticipare i due meno ovvi.
+anticipare i meno ovvi. Ogni corpo di errore generato dal gestore globale ha i
+campi in ordine fisso (\code{error}, \code{message}, poi \code{details} se
+presente): una mappa non ordinata cambia l'ordine di iterazione da una JVM
+all'altra, e un chiamante che confronta il corpo come testo lo vedrebbe cambiare.
 
-\code{429 Too Many Requests} \`e emesso sia dal limitatore di frequenza globale
-sia dal rifiuto della coda sincrona. I due casi sono distinguibili dagli header:
-il rifiuto della coda porta \code{Retry-After} e
-\code{X-Queue-Reject-Reason} con valore \code{depth}, \code{est\_wait} o
-\code{timeout}. Rendere distinguibile la causa \`e necessario perch\'e le due
-condizioni richiedono reazioni diverse dal chiamante: nel primo caso la
-piattaforma \`e globalmente satura, nel secondo lo \`e la singola funzione.
+\code{429 Too Many Requests} ha quattro origini distinguibili. Il limitatore di
+frequenza risponde senza corpo, con \code{Retry-After: 1}. Il rifiuto della coda
+sincrona porta \code{Retry-After} e \code{X-Queue-Reject-Reason} con valore
+\code{depth}, \code{est\_wait} o \code{timeout}. Il superamento di una quota di
+ammissione porta \code{Retry-After: 1} e un corpo
+\code{\{"error":"invocation\_quota\_exceeded","resource":...\}}. La coda per funzione
+piena, o l'assenza di capacit\`a nel dispatch diretto, risponde \code{429} senza
+altro. Rendere distinguibile la causa \`e necessario perch\'e le condizioni
+richiedono reazioni diverse dal chiamante: la piattaforma \`e globalmente satura,
+lo \`e la singola funzione, o \`e una risorsa di memoria a esserlo.
+
+\code{410 Gone} segnala la replica di una chiave il cui esito \`e stato espulso
+per capacit\`a, con \code{X-Execution-Id}; \code{413} un corpo oltre il confine di
+ingresso; \code{409} con codice \code{FUNCTION\_REMOVAL\_PENDING} una funzione la cui
+rimozione ha lasciato risorse (\cref{cap:06-nucleo}); \code{408} lo scadere del
+budget di un singolo chiamante sincrono.
 
 \code{502 Bad Gateway} e \code{504 Gateway Timeout} sono emessi solo dal
 percorso di offload, e segnalano che la richiesta \`e stata deviata verso
@@ -276,26 +324,38 @@ fallback locale, e il \cref{cap:13-offload} argomenta perch\'e.
 
 \section{Modello a thread}
 
-Riassumendo i thread che il processo utilizza a regime:
+Riassumendo i thread che il processo utilizza a regime. La colonna
+\emph{Presenza} distingue ci\`o che esiste sempre da ci\`o che dipende dai moduli o
+dalla configurazione.
 
 \begin{center}
 \small
 \begin{adjustbox}{max width=\textwidth}
 \begin{tabular}{@{}lll@{}}
 \toprule
-\textbf{Gruppo} & \textbf{Numerosit\`a} & \textbf{Ruolo} \\
+\textbf{Gruppo} & \textbf{Presenza} & \textbf{Ruolo} \\
 \midrule
-Event loop Netty & pari ai core disponibili & I/O HTTP in ingresso e in uscita \\
-\code{boundedElastic} & elastico, limitato & Fasi preparatorie potenzialmente contese \\
-Scheduler di coda & 1 per modulo di coda & Consumo delle code (\cref{cap:09-async-queue,cap:10-sync-queue}) \\
-Janitor dello store & 1 (daemon) & Eviction periodica delle esecuzioni \\
-Poller di scaling & 1 (schedulato) & Campionamento delle metriche di scaling \\
+Event loop Netty & sempre; pari ai core & I/O HTTP in ingresso e in uscita \\
+\code{boundedElastic} & sempre; elastico, limitato & Percorso \code{:enqueue}; invocazioni con chiave \\
+\code{execution-expiry} & sempre; 1 (daemon) & Scadenza amministrativa dei record vivi \\
+\code{nanofaas-core-retry-timer} & sempre; 1 (daemon) & Riprove ritardate del profilo diretto \\
+Timer del cancello di prontezza & sempre; 1 (daemon) & Timeout dell'attesa dei deployment \\
+\code{nanofaas-scheduler-engine} & con un modulo di coda; 1 & Motore di scheduling composto (\cref{cap:09-async-queue}) \\
+Manutenzione dello stimatore & con \code{sync-queue}; 1 & Stima dell'attesa (\cref{cap:10-sync-queue}) \\
+\code{nanofaas-internal-scaler} & con \code{autoscaler}; 1 & Campionamento e scalatura \\
+\code{nanofaas-concurrency-governor} & con \code{concurrency-control}; 1 & Controllo della concorrenza \\
+\code{nanofaas-admin-config-} & con \code{runtime-config}; 1 & Cambi di configurazione \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
 \end{center}
 
-Nella configurazione priva di moduli restano soltanto le prime due righe pi\`u
-il janitor: tre gruppi di thread per un'intera piattaforma FaaS. \`E la
-misura pi\`u compatta di che cosa significhi il vincolo di minimalit\`a
-enunciato nel \cref{cap:03-requisiti-principi}.
+Il janitor periodico dello store, che la prima versione elencava, non c'\`e pi\`u:
+la scadenza \`e affidata alle cache Caffeine (\cref{cap:06-nucleo}) e a un unico
+timer di sola pianificazione.
+Nella configurazione priva di moduli restano l'event loop, lo scheduler elastico
+e i tre timer daemon: \`e ancora un numero ridotto di gruppi per un'intera
+piattaforma FaaS, e la misura pi\`u compatta di che cosa significhi il vincolo di
+minimalit\`a enunciato nel \cref{cap:03-requisiti-principi}. Va detto per\`o che
+non tutti i gruppi sono stati verificati sul processo in esecuzione: l'elenco
+proviene dal codice dei componenti, non da un dump dei thread.

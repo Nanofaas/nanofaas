@@ -7,7 +7,7 @@ capitolo successivo: entrambi regolano la capacit\`a offerta a una funzione, ma
 agiscono su leve diverse e --- questo \`e il punto architetturale di \nf{} ---
 sono sostituibili indipendentemente.
 
-Sono 754 righe in undici classi.
+Sono circa 850 righe in undici classi.
 
 \section{Il posto dell'autoscaler nel sistema}
 
@@ -56,7 +56,13 @@ per il numero corrente di repliche.
 dove $M$ \`e l'insieme delle metriche configurate, $v_m$ il valore osservato e
 $t_m$ l'obiettivo. Con pi\`u metriche vince la pi\`u esigente: il massimo dei
 rapporti, non la media. \`E la scelta corretta per un insieme di vincoli che
-devono valere tutti.
+devono valere tutti. Un obiettivo assente o non numerico ricade su 50.
+
+Un dettaglio del codice attuale cambia il significato di $R_{\text{corr}}$: il
+moltiplicatore \`e il numero di repliche \emph{pronte} (\emph{serving}), non quello
+richiesto al deployment. Il rapporto misura quanto il carico eccede la capacit\`a
+che sta effettivamente servendo; moltiplicarlo per repliche non ancora pronte
+sovrastimerebbe la capacit\`a e frenerebbe la risposta a un picco.
 
 \subsection{Una separazione che sembra ridondante}
 
@@ -70,7 +76,9 @@ int desiredReplicas =
 \end{lstlisting}
 
 Il valore raccomandato e quello desiderato sono conservati entrambi nel record
-di decisione, anche se solo il secondo viene applicato. La ragione \`e
+di decisione, anche se solo il secondo viene applicato. Il commento del record
+lo dice esplicitamente: \`e una distinzione che l'HPA di Kubernetes non espone,
+perch\'e pubblica soltanto il valore limitato. La ragione \`e
 diagnostica: una funzione ferma a dieci repliche pu\`o esserlo perch\'e la
 domanda si \`e stabilizzata oppure perch\'e la domanda continua a crescere ma il
 tetto \`e stato raggiunto. Sono due situazioni che richiedono azioni opposte
@@ -87,62 +95,77 @@ due campi \code{requested}/\code{effective} della modalit\`a di esecuzione nel
 
 \subsection{\code{queue\_depth} e \code{in\_flight}}
 
-Entrambe sono lette da \code{ScalingMetricsSource}, quindi provengono dal modulo
-\code{async-queue}. Sono metriche di \emph{stato}: descrivono la situazione
+Entrambe sono lette da una \code{WorkloadMetricsSource}, interfaccia del progetto
+\code{workload-metrics} con quattro letture (profondit\`a, in volo, concorrenza
+effettiva, backlog smaltibile). L'implementazione non appartiene a un modulo di
+coda: \`e \code{EngineWorkloadMetricsSource}, nel control plane, sopra il motore di
+scheduling composto (\cref{cap:09-async-queue}). La profondit\`a \`e il numero di
+prenotazioni che la funzione occupa nel motore, mantenuto incrementalmente e
+letto in tempo costante, in modo che uno scrape non scandisca mai il backlog; il
+commento nel sorgente dichiara anche che differisce di al pi\`u $+1$, globalmente,
+dalla definizione ``accodato e non ancora reclamato'' dei vecchi scheduler, e che
+n\'e il rapporto dell'autoscaler n\'e la soglia del governatore possono essere spostati
+da una lettura di $\pm 1$. Il valore in volo \`e quello dei lease di capacit\`a
+della funzione. Sono metriche di \emph{stato}: descrivono la situazione
 istantanea del sistema.
 
 \subsection{\code{rps}: un caso a parte}
 
-La terza metrica non viene dalla sorgente ma da un contatore Micrometer, ed \`e
-calcolata come derivata:
+La terza metrica non viene dalla sorgente ma dalle osservazioni sulle
+invocazioni (\code{InvocationObservations}), un'interfaccia dell'SPI implementata
+da \code{Metrics}, che restituisce uno snapshot con il totale cumulativo dei
+dispatch \emph{e la generazione della funzione} a cui appartiene. La lettura la
+trasforma in derivata:
 
 \begin{lstlisting}[language=Java]
-private double readRps(String functionName) {
-    Counter counter = dispatchCounters.computeIfAbsent(functionName, fn ->
-            Counter.builder("function_dispatch_total").tag("function", fn).register(meterRegistry));
-    CounterSample current = new CounterSample(counter.count(), System.currentTimeMillis());
-    CounterSample previous = lastDispatchSamples.put(functionName, current);
-    if (previous == null) { return 0.0; }
-    double deltaCount = current.count() - previous.count();
-    long deltaMs = current.epochMs() - previous.epochMs();
-    if (deltaCount <= 0.0 || deltaMs <= 0L) { return 0.0; }
-    return deltaCount / (deltaMs / 1000.0);
-}
+var sample = observations.snapshot(functionName);
+if (sample.generation() == null) { lastDispatchSamples.remove(functionName); return 0; }
+CounterSample current = new CounterSample(sample.generation(), sample.dispatched(), now);
+CounterSample previous = lastDispatchSamples.put(functionName, current);
+if (previous == null || !previous.generation().equals(current.generation())) { return 0.0; }
+double deltaCount = current.count() - previous.count();
+long deltaMs = current.epochMs() - previous.epochMs();
+if (deltaCount <= 0.0 || deltaMs <= 0L) { return 0.0; }
+return deltaCount / (deltaMs / 1000.0);
 \end{lstlisting}
 
-Il contatore \code{function\_dispatch\_total} \`e cumulativo, e usarne il valore
-grezzo come carico sarebbe un errore --- un sistema attivo da un'ora avrebbe un
-``carico'' enorme e crescente. La lettura ne calcola quindi la differenza fra
-campioni successivi divisa per il tempo trascorso. Il primo campione restituisce
-zero, perch\'e non esiste un precedente con cui differenziare.
+Il totale \`e cumulativo, e usarne il valore grezzo come carico sarebbe un errore
+--- un sistema attivo da un'ora avrebbe un ``carico'' enorme e crescente. La
+lettura ne calcola quindi la differenza fra campioni successivi divisa per il
+tempo trascorso. Restituisce zero al primo campione, perch\'e non esiste un
+precedente, e \emph{al cambio di generazione}: una funzione cancellata e
+ri-registrata riparte con contatori nuovi, e sottrarre il totale della vecchia
+generazione da quello della nuova produrrebbe una derivata priva di senso
+(negativa, quindi azzerata, o spuria). La versione precedente leggeva un
+\code{Counter} Micrometer per nome e non aveva questo confine.
 
 La documentazione operativa del progetto lo enuncia esplicitamente: \emph{``The
 raw cumulative counter value is not used directly as load.''} \`E un'avvertenza
 che vale la pena avere scritta, perch\'e l'errore \`e comune e le sue
 conseguenze --- scale-up monotono e irreversibile --- sono spettacolari.
 
-\subsection{La degradazione senza \code{async-queue}}
+\subsection{Che cosa succede senza un modulo di coda}
 
 \begin{lstlisting}[language=Java]
-/**
- * The autoscaler is useful without a queue module — {@code rps} is read from a meter here,
- * not from the source — so a missing source is not fatal. It is fatal to {@code queue_depth}
- * and {@code in_flight}, which the no-op answers with 0 forever: the function looks idle and
- * never scales. Warn once rather than on every tick; the condition is fixed at startup.
- */
-private void warnOnceIfSourceIsBlind(String functionName) { ... }
+@ConditionalOnBean({WorkloadMetricsSource.class, FunctionCatalogView.class})
+public class AutoscalerConfiguration { ... }
 \end{lstlisting}
 
-Questo commento \`e la giustificazione, gi\`a citata nel
-\cref{cap:08-sistema-moduli}, del trattamento asimmetrico fra questo modulo e
-\code{concurrency-control}. Qui la degradazione \`e parziale --- una delle tre
-metriche continua a funzionare --- e viene segnalata. L\`a sarebbe totale e
-silenziosa, e quindi il modulo rifiuta di avviarsi.
-
-Vale la pena notare il dettaglio: l'avviso \`e emesso \emph{una sola volta},
-tramite un \code{AtomicBoolean}. La condizione \`e fissata all'avvio e non pu\`o
-cambiare; ripeterla a ogni tick significherebbe riempire il log senza aggiungere
-informazione, e --- peggio --- rendere l'avviso invisibile.
+L'autoscaler \`e condizionato all'esistenza di una \code{WorkloadMetricsSource}, e
+questa esiste solo se il motore di scheduling esiste, cio\`e se almeno un modulo di
+coda fornisce una strategia. Senza, il modulo \emph{non viene creato}, e non c'\`e pi\`u
+la degradazione parziale (``\code{rps} funziona, il resto no'') che le versioni
+precedenti segnalavano con un avviso emesso una volta. Il commento nel sorgente
+dichiara la lezione di un incidente sullo stesso meccanismo: la condizione
+elencava anche il \code{MeterRegistry}, valutata prima che la sua definizione
+esistesse, falliva e portava con s\'e l'intero modulo \emph{in silenzio} --- nessun
+bean, nessun \code{InternalScaler}, nessuna riga di log --- e una campagna ha
+proseguito con 340 richieste al secondo contro una soglia di 100 restando su una
+replica. Il registro \`e oggi iniettato nei bean e non figura nella condizione,
+cos\`i che una sua assenza sarebbe rumorosa. Resta per\`o un caso silenzioso, che
+il commento di \code{EngineWorkloadMetricsSource} nomina: senza la sorgente,
+autoscaler e governatore di concorrenza sono entrambi disattivati senza errore.
+Chi vuole l'autoscaler deve quindi selezionare almeno un modulo di coda.
 
 \section{Isteresi: i cooldown}
 
@@ -164,7 +187,9 @@ sistema sale rapidamente e scende con riluttanza --- lo stesso principio che
 governa le finestre di stabilizzazione dell'HPA di Kubernetes, dove il default di
 scale-down \`e di cinque minuti.
 
-I valori 30\,s e 60\,s sono costanti nel codice, non configurabili. \`E una
+I valori 30\,s e 60\,s sono costanti nel codice, non configurabili
+(\code{ScalingCooldownTracker}); sono configurabili solo l'intervallo di
+polling e i limiti di default di repliche (\code{nanofaas.scaling.*}). \`E una
 scelta di semplicit\`a che il progetto potrebbe voler rivedere: sono i due
 parametri che pi\`u probabilmente un esperimento vorrebbe variare.
 
@@ -176,6 +201,32 @@ release ma non la traiettoria temporale.
 \todomis{traiettoria del numero di repliche sotto carico a gradino, al variare
 dei cooldown}
 \end{damisurare}
+
+\section{Rollout in stallo e protezione dal risveglio}
+
+Il ciclo confronta la raccomandazione non con le repliche pronte ma con quelle
+\emph{gi\`a richieste} al deployment, e lo fa leggendo richieste e pronte dallo
+\emph{stesso} snapshot, perch\'e una decisione non sia presa su un target che nel
+frattempo si \`e mosso. Ne segue un problema che il codice risolve con un
+componente proprio. Se la raccomandazione scende sotto il richiesto mentre il
+rollout sta ancora raggiungendo il richiesto, tornare indietro subito
+annullerebbe uno scale-up che sta funzionando (il commento rimanda a un test di
+regressione, \code{InternalScalerDesiredVsReadyRegressionTest}); ma non pu\`o
+essere una protezione senza fine, perch\'e se alcune repliche non diventano mai
+pronte un vero scale-down resterebbe bloccato per sempre su un target fantasma.
+\code{ScalingProgressTracker} decide quando ``ancora in salita'' diventa
+``bloccato'': il rollout \`e in stallo se il richiesto non \`e raggiunto e il numero di
+pronte non \`e avanzato per una finestra intera di 60\,s.
+
+Lo scale-down segue quindi due strade: il \emph{segnale di scale-down} esplicito
+(le repliche pronte superano gi\`a ci\`o che il carico richiede, e non attende il
+completamento del rollout), oppure lo stallo. In entrambi i casi passa per
+\code{scaleDownIfUnprotected} del coordinatore di risveglio, che rifiuta se la
+generazione ha un lease di risveglio attivo (\cref{sec:06-riprova}): non si toglie
+capacit\`a a una funzione che una richiesta sta aspettando. La lettura delle
+repliche \`e un'osservazione non bloccante con tre esiti (fresca, vecchia,
+assente); senza alcuna lettura il ciclo salta la funzione, perch\'e trattarla come
+zero repliche scalerebbe un deployment sano sulla base di una GET fallita.
 
 \section{Inferenza del cold start}
 
@@ -223,16 +274,17 @@ sorgenti sulla stessa esecuzione, e non \`e stato misurato.
 \section{Il ciclo di scaling}
 
 \code{InternalScaler} \`e un \code{SmartLifecycle} con un esecutore schedulato a
-periodo fisso (default 5\,s). A ogni tick scandisce le funzioni registrate, e per
-ciascuna con strategia \code{INTERNAL} e deployment gestito calcola la decisione,
-verifica il cooldown pertinente, e comanda il nuovo numero di repliche al
-coordinatore di deployment.
+periodo fisso (default 5\,s, \code{nanofaas.scaling.poll-interval-ms}). A ogni tick
+scandisce le funzioni registrate, e per ciascuna con strategia \code{INTERNAL},
+deployment gestito e generazione corrente calcola la decisione, verifica il
+cooldown pertinente, e comanda il nuovo numero di repliche al coordinatore di
+deployment. Un'eccezione su una funzione non ferma le altre.
 
 Il modulo si disattiva completamente in assenza di un coordinatore di deployment:
 
 \begin{lstlisting}[language=Java]
 if (deploymentCoordinator == null) {
-    log.info("InternalScaler disabled: no ManagedDeploymentCoordinator available");
+    log.info("InternalScaler disabled: no ManagedReplicaControl available");
     return;
 }
 \end{lstlisting}
@@ -242,17 +294,22 @@ repliche da scalare, e un ciclo che gira senza poter agire sarebbe puro consumo.
 Anche qui la condizione \`e dichiarata nel log all'avvio anzich\'e lasciata
 dedurre.
 
-Il periodo di 5\,s \`e sostanzialmente pi\`u lungo del tick da 2\,ms dello
-scheduler sincrono, e la differenza \`e istruttiva: l'ammissione deve reagire in
-millisecondi perch\'e governa singole richieste, lo scaling reagisce in secondi
-perch\'e la sua azione --- creare un pod --- richiede secondi. Un autoscaler che
-campionasse a 2\,ms produrrebbe decisioni su uno stato che non ha ancora
-recepito l'azione precedente.
+Il periodo di 5\,s \`e sostanzialmente pi\`u lungo dei tempi dell'ammissione, e la
+differenza \`e istruttiva: l'ammissione deve reagire in millisecondi perch\'e
+governa singole richieste, lo scaling reagisce in secondi perch\'e la sua azione
+--- creare un pod --- richiede secondi. Un autoscaler che campionasse a pochi
+millisecondi produrrebbe decisioni su uno stato che non ha ancora recepito
+l'azione precedente.
 
 \section{Metriche di decisione}
 
-\code{ScalingDecisionMetrics} esporta la decisione stessa: repliche correnti,
-raccomandate, desiderate, e il rapporto massimo che le ha determinate. Rende
+\code{ScalingDecisionMetrics} esporta la decisione stessa, in quattro gauge per
+funzione: repliche raccomandate, desiderate, un indicatore di limitazione
+(\code{function\_scaling\_limited}) e il rapporto massimo moltiplicato per 1\,000
+(\code{function\_scaling\_ratio\_milli}, intero perch\'e un rapporto di 3,65 non
+sia riportato come 3 o 4). \code{TargetLoadMetrics} esporta invece gli obiettivi
+configurati (\code{gateway\_service\_target\_load}) in una forma compatibile con
+OpenFaaS. Rende
 possibile ricostruire \emph{a posteriori} perch\'e il sistema abbia scelto un
 certo numero di repliche, senza dover correlare i log con le metriche di stato.
 

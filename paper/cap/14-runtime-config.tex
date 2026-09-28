@@ -2,8 +2,8 @@
 \label{cap:14-runtime-config}
 
 Il modulo \code{runtime-config} consente di modificare a caldo un sottoinsieme
-dei parametri della piattaforma, senza riavviare il processo. Sono 540 righe in
-dieci classi.
+dei parametri della piattaforma, senza riavviare il processo. Sono 744 righe in
+undici classi.
 
 Il modulo ha una motivazione strettamente sperimentale. Un esperimento che
 confronta due configurazioni deve, per essere valido, mantenere costante tutto il
@@ -12,108 +12,167 @@ del garbage collector. Riavviare il control plane fra una configurazione e
 l'altra reintroduce esattamente le variabili che l'esperimento intende
 escludere.
 
-\section{Che cosa \`e modificabile a caldo}
+Rispetto alla prima versione di questo capitolo il modulo ha cambiato forma.
+Non gestisce pi\`u un unico record piatto di sei parametri, ma un insieme di
+\emph{namespace}, ciascuno posseduto dal componente che ne \`e responsabile. Il
+modulo non conosce pi\`u i parametri: conosce il \emph{protocollo} con cui un
+namespace viene letto, validato e cambiato.
 
-Sei parametri, esattamente:
+\section{I namespace}
+
+Un \code{RuntimeConfigExtension} \`e il contratto con cui un componente pubblica
+un namespace: un nome, un'istantanea, una validazione e un'applicazione. Le
+estensioni sono raccolte da \code{RuntimeConfigRegistry}, che le tiene in un
+\code{TreeMap} (l'ordine dell'istantanea \`e quindi deterministico) e rifiuta
+all'avvio un namespace duplicato o vuoto. Il servizio non conosce alcun
+parametro: la forma dello stato \`e la mappa di mappe degli
+namespace.
 
 \begin{lstlisting}[language=Java]
 public record RuntimeConfigSnapshot(
         long revision,
-        int rateMaxPerSecond,
-        boolean syncQueueEnabled,
-        boolean syncQueueAdmissionEnabled,
-        Duration syncQueueMaxEstimatedWait,
-        Duration syncQueueMaxQueueWait,
-        int syncQueueRetryAfterSeconds
-) { ... }
+        Map<String, Map<String, Object>> namespaces
+) { }
 \end{lstlisting}
 
-Il criterio di inclusione \`e la reversibilit\`a senza effetti sullo stato
-esistente. Il limite di frequenza \`e un intero letto a ogni richiesta:
-cambiarlo ha effetto dalla richiesta successiva e non invalida nulla. Le soglie
-della coda sincrona sono lette a ogni valutazione di ammissione (\cref{cap:10-sync-queue}):
-lo stesso.
+I namespace oggi esistenti sono tre.
 
-Sono invece esclusi \code{max-depth} della coda sincrona --- ridurla
-richiederebbe di decidere che cosa fare degli elementi in eccesso --- e la
-selezione dei moduli, che per costruzione avviene a tempo di build
-(\cref{cap:08-sistema-moduli}).
+\paragraph{\code{control-plane}} (\code{ControlPlaneRuntimeConfigExtension}) ha
+nove chiavi, tutte intere positive: la frequenza massima
+(\code{rateMaxPerSecond}) e, in coppia globale e per funzione, i limiti di
+esecuzioni, byte di input canonico, byte di copia fisica dell'input e numero di
+attese (\code{maxExecutionsGlobal}/\code{PerFunction},
+\code{maxCanonicalInputBytesGlobal}/\code{PerFunction},
+\code{maxPhysicalInputCopyBytesGlobal}/\code{PerFunction},
+\code{maxWaitersGlobal}/\code{PerFunction}). La validazione richiede che ogni
+limite per funzione non ecceda il proprio globale. La modifica passa da
+\code{AdmissionLimitsControl}, un'interfaccia del SPI: il modulo non dipende dal
+nucleo, e il nucleo espone la capacit\`a di riconfigurare i propri limiti di
+capacit\`a d'invocazione senza esporre la propria struttura interna.
 
-\section{Il meccanismo: snapshot immutabile e revisione}
+\paragraph{\code{sync-queue}} (registrato dal modulo omonimo, non da questo) ha
+cinque chiavi: \code{enabled}, \code{admissionEnabled}, \code{maxEstimatedWait} e
+\code{maxQueueWait} (stringhe di durata ISO-8601) e \code{retryAfterSeconds}. La
+regola semantica \`e che le due durate siano positive e che l'attesa stimata non
+superi quella di scadenza in coda (\cref{cap:10-sync-queue}). \code{max-depth},
+\code{throughput-window} e \code{per-function-min-samples} sono esclusi: la
+riduzione della profondit\`a richiederebbe di decidere che cosa fare degli
+elementi in eccesso, e le altre due dimensionano strutture allocate all'avvio.
 
-Lo stato \`e un unico record immutabile in un \code{AtomicReference}. Ogni
-aggiornamento ne produce uno nuovo con revisione incrementata. I consumatori
-leggono sempre l'ultimo:
+\paragraph{\code{scheduler}} (\code{SchedulerRuntimeConfigExtension}) espone
+\code{strategy}, l'identificatore della strategia attiva, \code{available}, la
+lista di quelle presenti nell'artefatto, e \code{persistence}, sempre
+\code{"restart"}. \`E l'unico campo modificabile \code{strategy}, e una patch deve
+contenere \emph{esattamente} quel campo (\cref{sec:14-scheduler}). Il namespace
+esiste solo se il nucleo ha composto un motore: un artefatto senza moduli di coda
+non lo serve, e le richieste rispondono \code{404} come per qualunque namespace
+assente.
+
+Il criterio di inclusione \`e ancora quello della reversibilit\`a senza effetti
+sullo stato esistente, ma il criterio ora si applica per namespace, e ogni
+namespace lo applica ai propri parametri. Sono esclusi, per costruzione, la
+selezione dei moduli, che avviene a tempo di build (\cref{cap:08-sistema-moduli}).
+
+\section{Il meccanismo: revisione globale e lock ottimistico}
+
+Lo stato non \`e pi\`u un record in un \code{AtomicReference}: \`e la composizione
+delle istantanee dei namespace, pi\`u una \emph{revisione globale} tenuta in un
+\code{AtomicLong}. La revisione \`e una sola per l'intero modulo, non una per
+namespace: una modifica a qualunque namespace la incrementa, e ogni chiamante
+dichiara quella che si aspetta.
 
 \begin{lstlisting}[language=Java]
-@Override
-public Duration syncQueueMaxEstimatedWait() {
-    return current.get().syncQueueMaxEstimatedWait();
-}
-\end{lstlisting}
-
-La propriet\`a che questa costruzione garantisce \`e che una singola valutazione
-di ammissione veda una configurazione \emph{coerente}: legge uno snapshot, e i
-campi di quello snapshot appartengono tutti alla stessa revisione. Con sei
-variabili volatili indipendenti, un aggiornamento concorrente potrebbe far s\`i
-che una valutazione legga la nuova soglia di attesa e il vecchio flag di
-ammissione --- una combinazione che nessuno ha mai richiesto.
-
-\subsection{Il lock ottimistico}
-
-L'aggiornamento richiede al chiamante di dichiarare la revisione che si aspetta:
-
-\begin{lstlisting}[language=Java]
-public RuntimeConfigSnapshot update(long expectedRevision, RuntimeConfigPatch patch) {
-    while (true) {
-        RuntimeConfigSnapshot snapshot = current.get();
-        if (snapshot.revision() != expectedRevision) {
-            throw new RevisionMismatchException(expectedRevision, snapshot.revision());
-        }
-        RuntimeConfigSnapshot candidate = snapshot.applyPatch(patch);
-        if (current.compareAndSet(snapshot, candidate)) {
-            return candidate;
-        }
-        // CAS failed because another thread updated; retry loop will re-check revision
+public synchronized RuntimeConfigSnapshot update(long expectedRevision,
+        String namespace, Map<String, Object> patch) {
+    long currentRevision = revision.get();
+    if (currentRevision != expectedRevision) {
+        throw new RevisionMismatchException(expectedRevision, currentRevision);
     }
+    RuntimeConfigExtension extension = extension(namespace);
+    if (extension instanceof PreparedRuntimeConfigExtension prepared) {
+        ...
+        return updatePrepared(prepared, namespace, patch, currentRevision);
+    }
+    return updateLegacy(extension, namespace, patch, currentRevision);
 }
 \end{lstlisting}
 
-\`E il pattern \emph{compare-and-swap} classico, con il controllo di revisione
-che lo trasforma in un lock ottimistico visibile al chiamante. Un aggiornamento
-basato su uno stato obsoleto riceve \code{409 Conflict} con la revisione
-corrente, anzich\'e sovrascrivere in silenzio una modifica concorrente.
+Il compare-and-swap ottimistico della prima versione \`e stato sostituito da un
+metodo \code{synchronized} sul servizio. Il cambio \`e coerente con la natura delle
+modifiche: alcune (il cambio di strategia, \cref{sec:14-scheduler}) non sono pi\`u
+un'assegnazione di un campo ma un'operazione con un punto di non ritorno, e il
+CAS proteggeva soltanto la pubblicazione dell'istantanea, non l'applicazione dei
+suoi effetti. Serializzare l'intero \code{update} garantisce che due modifiche
+concorrenti applichino i propri effetti nell'ordine in cui hanno superato il
+controllo di revisione. Il costo \`e il blocco del thread chiamante, ed \`e per
+questo che il controller non chiama pi\`u il servizio su un thread reattivo
+(\cref{sec:14-executor}).
 
-L'aggiornamento \`e un \code{PATCH} con semantica ``i campi nulli restano
-invariati''. La combinazione di patch parziale e revisione attesa \`e ci\`o che
-rende sicure due modifiche concorrenti su campi diversi: la seconda vede il
-conflitto, rilegge, e riapplica.
+Un aggiornamento basato su una revisione obsoleta riceve \code{409 Conflict} con
+la revisione corrente, anzich\'e sovrascrivere in silenzio una modifica
+concorrente. La revisione \`e globale, quindi due modifiche a namespace
+\emph{diversi} entrano comunque in conflitto: la seconda deve rileggere. \`E il
+prezzo di un solo contatore, e lo rende un ordinamento totale delle modifiche.
+
+\subsection{Due protocolli di applicazione}
+
+Un'estensione pu\`o implementare due protocolli.
+
+\begin{description}[style=nextline, leftmargin=0pt]
+  \item[\textbf{Legacy}] --- \code{apply} cambia lo stato, \code{restore} lo
+  ripristina se l'applicazione fallisce a met\`a. La revisione sale solo dopo
+  l'applicazione riuscita.
+  \item[\textbf{Preparato}] (\code{PreparedRuntimeConfigExtension}) --- il
+  cambiamento \`e scomposto in \code{validate}, \code{prepare} (che calcola
+  anche l'istantanea risultante), \code{commit} e \code{close}. Ogni passo che
+  pu\`o fallire avviene \emph{prima} del \code{commit}, che \`e il punto
+  irreversibile di attivazione e non fa altro che l'operazione finale.
+\end{description}
+
+Il protocollo preparato esiste perch\'e alcuni cambiamenti non si possono
+disfare. Dopo che il cambio di strategia \`e stato attivato non c'\`e un
+``ripristino'': il ripristino sarebbe un altro cambio, con le proprie condizioni.
+Il servizio non rilegge l'istantanea \emph{dopo} il commit, perch\'e un errore in
+quella lettura lascerebbe un cambio attivo privo di un'istantanea coerente da
+restituire; usa quella calcolata in \code{prepare}. Un errore di pulizia dopo un
+commit riuscito non trasforma il successo in fallimento. In entrambi i casi la
+revisione viene pubblicata soltanto dopo l'attivazione riuscita: \`e l'unica
+promessa che una risposta di errore pu\`o fare per ogni namespace, ed \`e il
+motivo per cui il messaggio \`e ``Apply failed; not committed'' e non ``rolled
+back''.
 
 \section{L'API di amministrazione}
 
 \begin{center}
 \small
 \begin{adjustbox}{max width=\textwidth}
-\begin{tabular}{@{}llp{6.6cm}@{}}
+\begin{tabular}{@{}llp{6.4cm}@{}}
 \toprule
 \textbf{Metodo} & \textbf{Percorso} & \textbf{Semantica} \\
 \midrule
-\code{GET} & \code{/v1/admin/runtime-config} & Snapshot corrente con revisione. \\
-\code{POST} & \code{/v1/admin/runtime-config/validate} & Prova la patch senza
-applicarla. \\
-\code{PATCH} & \code{/v1/admin/runtime-config} & Applica, con
-\code{expectedRevision} obbligatoria. \\
+\code{GET} & \code{/v1/admin/runtime-config} & Istantanea completa: revisione e
+tutti i namespace. \\
+\code{GET} & \code{/v1/admin/runtime-config/\{namespace\}} & Un namespace;
+\code{404} se ignoto. \\
+\code{POST} & \code{/v1/admin/runtime-config/\{namespace\}/validate} & Prova i valori
+senza applicarli: \code{200} \code{\{"valid":true\}}, \code{422}
+\code{\{"errors":[\ldots]\}}, \code{404}. \\
+\code{PATCH} & \code{/v1/admin/runtime-config/\{namespace\}} & Applica; il corpo
+\`e \code{\{expectedRevision, values\}}. \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
 \end{center}
 
+Il vecchio percorso senza namespace (\code{PATCH /v1/admin/runtime-config}) non
+esiste pi\`u: ogni modifica indica il namespace a cui appartiene.
+
 \subsection{L'endpoint di validazione}
 
-L'esistenza di \code{/validate} merita una nota. Applica la patch a una copia
-dello snapshot corrente, ne verifica la validit\`a e riporta gli errori, senza
-modificare nulla. \`E lo stesso codice che il \code{PATCH} esegue prima di
-applicare.
+L'endpoint \code{/validate} restituisce \code{422}, cio\`e \emph{senza
+eccezione}: \`e la risposta al quesito ``questa patch sarebbe accettata?'', e il
+contratto OpenAPI dichiara quel codice come la risposta per valori non validi. Il
+CLI lo interpreta come una risposta e non come un guasto.
 
 Il suo valore \`e per gli strumenti automatici: uno script di esperimento pu\`o
 verificare che la propria matrice di configurazioni sia interamente valida prima
@@ -125,68 +184,84 @@ verr\`a rifiutata --- avendo gi\`a consumato il tempo dei primi due.
 L'ordine delle operazioni codifica una scelta di sicurezza:
 
 \begin{enumerate}[leftmargin=*]
-  \item \code{expectedRevision} presente, altrimenti \code{400};
-  \item la patch \`e sintatticamente valida (durate parsabili, ecc.), altrimenti
-  \code{400} con nome del campo e valore offensivo;
-  \item lo snapshot risultante \`e semanticamente valido, altrimenti \code{422};
-  \item la revisione corrisponde, altrimenti \code{409} con la revisione reale;
-  \item lo snapshot viene sostituito atomicamente;
-  \item l'applicatore propaga ai componenti che hanno bisogno di essere
-  informati, con rollback in caso di fallimento (\code{503}).
+  \item \code{expectedRevision} e \code{values} presenti, altrimenti \code{400};
+  \item ammissione all'esecutore amministrativo, altrimenti \code{503}
+  (``busy'') \emph{senza} aver invocato il servizio;
+  \item revisione corrispondente, altrimenti \code{409} con \code{currentRevision};
+  \item namespace noto, altrimenti \code{404};
+  \item validazione dei valori, altrimenti \code{422} con l'elenco degli errori;
+  \item applicazione. Se fallisce, \code{503} con ``Apply failed; not committed''
+  e il dettaglio della causa;
+  \item \code{200} con \code{revision}, la configurazione effettiva, l'istante
+  (\code{appliedAt}), un identificativo del cambiamento (\code{changeId}) e
+  l'elenco degli avvisi (oggi sempre vuoto).
 \end{enumerate}
 
-La validazione precede la sostituzione: uno snapshot invalido non entra mai nello
-stato. Il rollback al punto 6 copre il caso residuo in cui la propagazione
-fallisca dopo che lo stato \`e cambiato.
+Il controllo di revisione precede sia la ricerca del namespace sia la
+validazione: un chiamante obsoleto riceve \code{409} anche se il namespace non
+esiste o la sua patch \`e invalida. La validazione precede sempre l'applicazione: un valore invalido
+non entra mai nello stato.
 
-\subsection{Il metodo sincronizzato}
-
-\begin{lstlisting}[language=Java]
-@PatchMapping
-public synchronized ResponseEntity<Object> patch(@RequestBody PatchRequest request) { ... }
-\end{lstlisting}
-
-Il metodo del controller \`e \code{synchronized}, il che serializza tutte le
-modifiche di configurazione. \`E ridondante rispetto al CAS del servizio per la
-correttezza dello stato, ma serializza anche la fase di applicazione, che il CAS
-non copre: due patch concorrenti potrebbero altrimenti propagare i propri effetti
-in ordine invertito rispetto a quello in cui hanno vinto il CAS.
-
-\`E anche una violazione del principio non bloccante del
-\cref{cap:03-requisiti-principi}, ed \`e accettabile perch\'e riguarda un
-endpoint amministrativo a bassissima frequenza. Vale la pena notare che il
-codice non lo giustifica, e che il lettore deve dedurre da s\'e che il costo \`e
-confinato.
-
-\section{L'applicatore}
-
-\code{RuntimeConfigApplier} propaga lo snapshot ai componenti mutabili in ordine
-deterministico:
+\subsection{L'esecutore amministrativo}
+\label{sec:14-executor}
 
 \begin{lstlisting}[language=Java]
-/**
- * Applies the new snapshot to all mutable runtime components.
- * Sync queue fields are read directly from {@link RuntimeConfigService} by consumers,
- * so only components with dedicated setters need explicit application here.
- */
-public void apply(RuntimeConfigSnapshot snapshot, RuntimeConfigSnapshot previous,
-                  RuntimeConfigService configService) { ... }
+new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
+        new ArrayBlockingQueue<>(1),
+        Thread.ofPlatform().name("nanofaas-admin-config-", 0).factory(),
+        new ThreadPoolExecutor.AbortPolicy());
 \end{lstlisting}
 
-Il commento rivela che esistono due modalit\`a di propagazione:
+Il vecchio metodo del controller era \code{synchronized} e girava sul thread di
+richiesta: una violazione dichiarata del principio non bloccante
+(\cref{cap:03-requisiti-principi}), accettata perch\'e riguardava un endpoint a
+bassissima frequenza. Non pi\`u: un namespace pu\`o bloccarsi fino al proprio
+punto di commit, e una risposta \code{200} non deve mai precedere quel commit. Il
+\code{PATCH} \`e quindi eseguito fuori dal ciclo degli eventi reattivo, su un
+esecutore con un thread e \emph{un solo posto in coda}, che rifiuta oltre.
+L'ammissione all'esecutore \`e verificata prima di invocare il servizio: un
+percorso amministrativo occupato fallisce subito con \code{503}, senza accodare
+all'infinito n\'e bloccare un thread reattivo. L'esecutore \`e dedicato: non \`e mai
+un bersaglio per lavoro di scheduling di funzioni.
 
-\begin{description}[style=nextline, leftmargin=0pt]
-  \item[\textbf{Pull}] --- i consumatori della coda sincrona leggono dallo
-  snapshot a ogni uso. Non c'\`e nulla da propagare; la modifica ha effetto
-  immediatamente e senza coordinamento.
-  \item[\textbf{Push}] --- il limitatore di frequenza possiede una propria
-  variabile interna, e l'applicatore deve chiamarne il setter.
-\end{description}
+Il vincolo di serializzazione resta, ma ora \`e esplicito e limitato. Il
+\code{synchronized} \`e nel servizio, dove protegge l'ordine degli effetti, e
+non nel controller, dove bloccava il thread sbagliato.
 
-La modalit\`a pull \`e evidentemente preferibile e il modulo la usa dove
-possibile; la push esiste per un componente del nucleo che \`e antecedente al
-modulo e che il modulo non deve costringere a cambiare struttura. \`E una
-concessione ragionevole al principio di non far dipendere il nucleo dai moduli.
+\section{Il namespace \code{scheduler}}
+\label{sec:14-scheduler}
+
+\begin{lstlisting}[language=bash]
+$ curl -X PATCH .../v1/admin/runtime-config/scheduler \
+    -d '{"expectedRevision": 0, "values": {"strategy": "shared-queue"}}'
+\end{lstlisting}
+
+\`E il caso che ha reso necessario il protocollo preparato. Il \code{PATCH}
+richiede un unico campo, \code{strategy}, con un identificatore fra quelli
+elencati in \code{available}; \code{validate} rifiuta ogni altro insieme di campi e
+un identificatore ignoto. Il \code{commit} del cambiamento non fa altro che
+chiamare \code{SchedulerControl.switchTo}, cio\`e il punto di linearizzazione
+descritto nel \cref{cap:09-async-queue}. Se il motore rifiuta lo scambio per il
+tetto sui ticket o per il tempo di preparazione, il \code{commit} solleva, il
+servizio lo riporta come \code{503} e la strategia precedente resta attiva e
+intatta: non c'\`e nulla da ripristinare, perch\'e \code{prepare} ha solo calcolato
+dei valori.
+
+Il campo \code{persistence: "restart"} \`e la dichiarazione esplicita che
+uno scambio confermato non sopravvive al processo. Al riavvio vale di nuovo la
+strategia scelta all'avvio (\code{nanofaas.scheduler.strategy}) e la revisione
+torna a zero. Il codice dichiara la scelta (``on restart the configured initial strategy
+wins'') ma non ne d\`a la ragione; una lettura plausibile \`e che una
+configurazione persistente in un processo che perde le code al riavvio
+aggiungerebbe uno stato da riconciliare.
+
+\begin{damisurare}
+La pausa che uno scambio impone al motore \`e stata misurata
+(\cref{cap:09-async-queue}), ma non l'effetto di uno scambio \emph{via API} sul
+tempo di risposta del \code{PATCH} in presenza di una coda profonda: la misura
+citata riguarda il motore, non la richiesta amministrativa.
+\todomis{latenza del PATCH scheduler con coda a 1000 e 10000 ticket}
+\end{damisurare}
 
 \section{Osservabilit\`a}
 
@@ -197,9 +272,9 @@ concessione ragionevole al principio di non far dipendere il nucleo dai moduli.
 \toprule
 \textbf{Metrica} & \textbf{Tipo} & \textbf{Significato} \\
 \midrule
-\code{controlplane\_runtime\_config\_revision} & gauge & Revisione corrente. \\
+\code{controlplane\_runtime\_config\_revision} & gauge & Revisione globale corrente. \\
 \code{controlplane\_runtime\_config\_updates\_total} & counter &
-Aggiornamenti, con etichetta \code{status}. \\
+Aggiornamenti, con etichette \code{status} e \code{namespace}. \\
 \code{controlplane\_runtime\_config\_apply\_duration\_seconds} & timer &
 Durata dell'applicazione. \\
 \bottomrule
@@ -211,7 +286,11 @@ Il gauge sulla revisione \`e lo strumento pi\`u utile del gruppo in contesto
 sperimentale: esportando la revisione nelle stesse serie temporali delle metriche
 di prestazione, un cambio di configurazione diventa un gradino osservabile sul
 grafico, e l'attribuzione di una variazione di latenza al cambio che l'ha causata
-non richiede di correlare a mano i log con le misure.
+non richiede di correlare a mano i log con le misure. L'etichetta
+\code{namespace} sul contatore dice \emph{quale} componente \`e stato cambiato,
+cosa che la revisione globale, per costruzione, non dice. Un fallimento di
+strumentazione (una metrica che non si lascia registrare) non modifica mai la
+semantica della transazione: un commit riuscito resta riuscito.
 
 \section{Disattivato per default}
 
@@ -227,3 +306,9 @@ L'API espone operazioni di scrittura su una piattaforma priva di autenticazione
 l'esposizione sia una decisione consapevole dell'operatore anzich\'e una
 propriet\`a ereditata dalla scelta dei moduli. \`E l'unico modulo che, pur essendo
 compilato nel binario, resta inerte finch\'e non viene attivato esplicitamente.
+
+Nei binari nativi la propriet\`a \`e congelata alla compilazione AOT: un binario
+compilato con l'API disattivata risponde \code{404} anche se all'avvio la
+propriet\`a \`e vera. Un confronto fra una JVM e un binario nativo sull'API
+amministrativa va quindi fatto fra binari costruiti con la stessa
+configurazione.

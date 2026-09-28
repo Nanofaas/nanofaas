@@ -24,6 +24,16 @@ ammissione (\cref{cap:22-metodo-sperimentale}).
 \item[\textbf{Cold start}] Ritardo dovuto all'inizializzazione di un'istanza non
 ancora pronta. Metrica \code{function\_cold\_start\_ms}.
 
+\item[\textbf{Compilazione anticipata} (\emph{AOT})] Fase di build di Spring
+che risolve i bean e le loro condizioni prima dell'esecuzione. Nell'immagine
+nativa le condizioni sulle propriet\`a sono quindi congelate al valore che
+avevano in build (\cref{cap:20-build-packaging}).
+
+\item[\textbf{Contratto di saturazione}] Politica comune con cui ogni runtime di
+funzione rifiuta il lavoro oltre limiti finiti di conteggio e di byte, con
+codici \code{429}, \code{413}, \code{500} e \code{503} e un corpus JSON
+condiviso che tutti gli SDK verificano (\cref{sec:18-saturazione}).
+
 \item[\textbf{Control plane}] Il processo che registra le funzioni, orchestra le
 invocazioni e governa le politiche. In \nf{} \`e uno solo.
 
@@ -70,8 +80,14 @@ un'istanza remota, per politica della funzione o per pressione locale
 (\cref{cap:13-offload}).
 
 \item[\textbf{Provider di deployment}] Backend che realizza l'intento
-\code{DEPLOYMENT}: Kubernetes o runtime container locale
-(\cref{cap:15-deployment-provider}).
+\code{DEPLOYMENT}: Kubernetes, runtime container locale o containerd. I tre
+moduli sono mutuamente esclusivi (\cref{cap:15-deployment-provider}).
+
+\item[\textbf{Ricetta}] File YAML versionato (schema v2) che dice quale control plane
+costruire --- moduli e modo JVM o nativo --- e quali implementazioni di funzione
+impacchettare con esso; non avvia n\'e registra nulla. Quattro comandi Gradle
+elencano il catalogo, validano, assemblano e pubblicano
+(\cref{sec:20-ricette}).
 
 \item[\textbf{Replay}] Riproduzione immediata dell'esito di un'esecuzione gi\`a
 terminata, per una richiesta con chiave di idempotenza corrispondente.
