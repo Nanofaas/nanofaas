@@ -431,6 +431,8 @@ class NanofaasRuntimeOwnershipTest {
 
             assertTrue(startReturned.await(2, TimeUnit.SECONDS),
                     "stop must release the caller blocked in start");
+            // The latch opens in the thread's finally, before the thread has terminated.
+            startThread.join(TimeUnit.SECONDS.toMillis(2));
             assertFalse(startThread.isAlive());
         } finally {
             runtime.stop();
