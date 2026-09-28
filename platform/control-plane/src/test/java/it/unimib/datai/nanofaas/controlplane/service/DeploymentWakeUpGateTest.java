@@ -684,8 +684,7 @@ class DeploymentWakeUpGateTest {
         var order = inOrder(coordinator);
         order.verify(coordinator).getFreshReplicaStatus(target);
         order.verify(coordinator).setReplicas(any(FunctionGeneration.class), eq(target), eq(1));
-        assertThat(wakeUpCoordinator.scaleDownIfUnprotected(
-                generations.activeGeneration("echo"), target, () -> true)).isTrue();
+        awaitLeaseReleased(wakeUpCoordinator, generations, target);
     }
 
     @Test
@@ -710,8 +709,14 @@ class DeploymentWakeUpGateTest {
                 new ReplicaStatus(0, 0), new ReplicaStatus(1, 1),
                 new ReplicaStatus(0, 0), new ReplicaStatus(1, 1));
 
-        DeploymentWakeUpGate gate = gate();
+        FunctionCapacityRegistry generations = generations();
+        ScheduledThreadPoolExecutor scheduler = scheduler();
+        DeploymentWakeUpCoordinator wakeUpCoordinator = new DeploymentWakeUpCoordinator(generations, scheduler);
+        DeploymentWakeUpGate gate = gate(Duration.ofSeconds(1), Duration.ofMillis(1), Runnable::run,
+                scheduler, generations, wakeUpCoordinator);
         gate.ensureReady(task).join();
+        // The first wake-up leaves inFlight just before it releases its lease; a second call before then joins it.
+        awaitLeaseReleased(wakeUpCoordinator, generations, target);
         gate.ensureReady(task).join();
 
         verify(coordinator, times(2)).setReplicas(any(FunctionGeneration.class), eq(target), eq(1));
@@ -1035,6 +1040,18 @@ class DeploymentWakeUpGateTest {
                 registered("hpa", ExecutionMode.DEPLOYMENT, "k8s", ScalingStrategy.HPA, 0),
                 registered("minimum-one", ExecutionMode.DEPLOYMENT, "k8s", ScalingStrategy.INTERNAL, 1)
         );
+    }
+
+    /**
+     * ensureReady's future completes before its wake-up retires: the completing callback is still running, and the
+     * wake-up leaves inFlight and releases its lease only once that callback returns. Waits for the release, bounded.
+     */
+    private static void awaitLeaseReleased(DeploymentWakeUpCoordinator wakeUpCoordinator,
+                                           FunctionCapacityRegistry generations,
+                                           ManagedDeploymentTarget target) {
+        org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(1)).until(() ->
+                wakeUpCoordinator.scaleDownIfUnprotected(generations.activeGeneration(target.functionName()),
+                        target, () -> true));
     }
 
     private DeploymentWakeUpGate gate() {
