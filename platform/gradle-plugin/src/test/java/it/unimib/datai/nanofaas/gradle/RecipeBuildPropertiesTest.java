@@ -41,18 +41,23 @@ class RecipeBuildPropertiesTest {
         assertThat(RecipeBuildProperties.byProject(data)).containsExactlyInAnyOrderEntriesOf(Map.of(
                 ":control-plane", Map.of("nativeOptimization", "s"),
                 ":functions:java:word-stats-lite", Map.of("nativeGc", "G1", "nativeMonitoring", "jvmstat"),
+                ":functions:java:word-stats", Map.of("nanofaasRecipeBuildMode", "jvm"),
                 ":services:java:warm-echo", Map.of("nativeOptimization", "2", "nanofaasRecipeBuildMode", "native"),
                 ":control-plane-modules:build-metadata", Map.of("nanofaasBuildOptimization", "s")));
     }
 
     @Test
-    void jvmServiceStillGetsItsMode() throws IOException {
+    void springBootComponentsGetTheirModeWithoutNativeOptions() throws IOException {
+        // assembleRecipe names no native task, so a Spring Boot function or service learns from its mode whether to
+        // run Spring AOT.
         JsonNode data = data("""
                 controlPlane: {modules: [], build: {mode: native}}
+                functions: [{name: word-stats, sdk: java, build: {mode: native}}]
                 services: [{name: warm-echo, sdk: java, build: {mode: jvm}}]
                 """);
 
         assertThat(RecipeBuildProperties.byProject(data))
+                .containsEntry(":functions:java:word-stats", Map.of("nanofaasRecipeBuildMode", "native"))
                 .containsEntry(":services:java:warm-echo", Map.of("nanofaasRecipeBuildMode", "jvm"))
                 .doesNotContainKey(":control-plane");
     }

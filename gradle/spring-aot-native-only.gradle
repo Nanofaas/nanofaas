@@ -1,0 +1,29 @@
+// Applied by the Spring Boot functions and services (not the control plane, which decides through the settings
+// plugin). Spring AOT's output is used only by a native image: nothing starts a JVM with spring.aot.enabled, so a
+// JVM build skips AOT, and its jar ships none of the generated classes.
+//
+// A recipe states the component's mode (nanofaasRecipeBuildMode): assembleRecipe and publishRecipe contain no native
+// task name, and a native component must not depend on the control plane's mode. Without a recipe, a
+// native-oriented task name decides.
+def recipeBuildMode = findProperty('nanofaasRecipeBuildMode')
+def nativeBuildRequested = recipeBuildMode != null ? recipeBuildMode == 'native' : gradle.startParameter.taskNames.any {
+    it.contains('nativeCompile') || it.contains('nativeTest')
+}
+ext.nanofaasNativeBuild = nativeBuildRequested
+
+if (!nativeBuildRequested) {
+    tasks.named('processAot') { enabled = false }
+    tasks.named('compileAotJava') { enabled = false }
+    tasks.named('processAotResources') { enabled = false }
+    tasks.named('aotClasses') { enabled = false }
+    // Disabled tasks keep their previous outputs, and bootJar still packages the aot source set:
+    // without this filter a JVM jar built after a native build carries stale AOT classes.
+    tasks.named('bootJar') {
+        // processAot writes the generated classes (CGLIB proxies) to its own classesOutput, which is on the
+        // bootJar classpath but not part of sourceSets.aot.output.
+        def aotOutputs = files(sourceSets.aot.output, tasks.named('processAot').flatMap { it.classesOutput })
+        classpath = classpath.filter { !aotOutputs.files.contains(it) }
+        doFirst { manifest.attributes.remove('Spring-Boot-Native-Processed') }
+    }
+    apply from: rootProject.file('gradle/jvm-jar-without-aot.gradle')
+}

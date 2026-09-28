@@ -53,5 +53,6 @@ tasks.withType(Test).configureEach {
     def warmEchoScript = file('../../services/java/warm-echo/build.gradle')
     inputs.file(warmEchoScript)
     inputs.file(file('../../gradle/jvm-jar-without-aot.gradle'))
+    inputs.file(file('../../gradle/spring-aot-native-only.gradle'))
     systemProperty 'nanofaas.warmEchoBuildScript', warmEchoScript.absolutePath
 }

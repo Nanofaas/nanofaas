@@ -1,3 +1,6 @@
+import base64
+import re
+import subprocess
 from pathlib import Path
 
 
@@ -230,3 +233,26 @@ def test_native_builder_hands_the_recipe_configuration_to_spring_aot():
     gradle = next(i for i, line in enumerate(stage) if "./gradlew" in line)
     assert decode < gradle
     assert "${NATIVE_AOT_CONFIG:+-PnanofaasAotConfig=/tmp/nanofaas-aot-config.yaml}" in stage[gradle]
+
+
+def test_native_builder_decodes_the_aot_configuration_byte_for_byte(tmp_path):
+    """Runs the builder's decode step and its Gradle flag expansion in sh. Quotes, $ and line breaks must come out
+    exactly as the recipe wrote them, and without the argument neither the file nor the flag appears."""
+    stage = _stage((REPO_ROOT / "deploy/native-java/Dockerfile").read_text(encoding="utf-8"), "builder")
+    start = next(i for i, line in enumerate(stage) if line.startswith('RUN if [ -n "$NATIVE_AOT_CONFIG" ]'))
+    end = next(i for i in range(start, len(stage)) if not stage[i].endswith("\\"))
+    target = tmp_path / "aot.yaml"
+    decode = "\n".join(stage[start:end + 1])[len("RUN "):].replace("/tmp/nanofaas-aot-config.yaml", str(target))
+    flag = re.search(r"\$\{NATIVE_AOT_CONFIG:\+[^}]*\}", next(line for line in stage if "./gradlew" in line)).group(0)
+    yaml = "nanofaas:\n  note: \"it's $HOME, `x` \\\\n\"\n  multi: |\n    a\n    b\n"
+
+    def run(env):
+        return subprocess.run(["sh", "-c", decode + "\nprintf '%s' " + flag], env=env, capture_output=True,
+                              text=True, check=True).stdout
+
+    assert run({"NATIVE_AOT_CONFIG": base64.b64encode(yaml.encode()).decode()}) \
+        == "-PnanofaasAotConfig=/tmp/nanofaas-aot-config.yaml"
+    assert target.read_text(encoding="utf-8") == yaml
+    target.unlink()
+    assert run({}) == ""
+    assert not target.exists()
