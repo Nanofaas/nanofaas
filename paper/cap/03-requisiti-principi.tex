@@ -147,9 +147,9 @@ Dichiara \code{enabled() == false}; il percorso asincrono risponde
 \code{SyncQueueGateway} & \code{sync-queue} &
 Nessuna ammissione: ogni richiesta sincrona procede senza controllo di
 backpressure. \\
-\code{ScalingMetricsSource} & \code{async-queue} &
-Restituisce zero per profondit\`a e richieste in volo, e dichiara di non essere
-una sorgente reale. \\
+\code{OffloadGateway} & \code{offload} &
+Nessun instradamento verso un'istanza remota: le invocazioni sincrone non
+vengono mai delegate. \\
 \code{ImageValidator} & provider di deployment &
 Accetta ogni immagine senza verificarne l'esistenza. \\
 \bottomrule
@@ -168,21 +168,32 @@ distinzione al proprio interno.
 
 \subsection{Quando un default neutro non \`e accettabile}
 
-Il principio ha un'eccezione codificata, ed \`e istruttiva. Il modulo
-\code{concurrency-control} legge profondit\`a di coda e richieste in volo da
-\code{ScalingMetricsSource}, e --- soprattutto --- \emph{riscrive} attraverso la
-stessa interfaccia i limiti che calcola. \`E quella scrittura a rendere i limiti
-effettivi. Selezionato senza \code{async-queue}, il modulo leggerebbe zeri e
-scriverebbe verso un'implementazione che scarta: girerebbe, produrrebbe metriche
-plausibili, e non governerebbe nulla.
+Il principio ha un'eccezione, ed \`e istruttiva. Il modulo
+\code{concurrency-control} legge profondit\`a di coda e richieste in volo dalla
+sorgente di metriche del carico (\code{WorkloadMetricsSource}) e \emph{scrive} i
+limiti che calcola attraverso il controllore di capacit\`a
+(\code{WorkloadCapacityController}); entrambi sono forniti dal motore di
+scheduling, che esiste solo se almeno un modulo di coda porta una strategia
+(\cref{sec:09-profili}). \`E quella scrittura a rendere i limiti effettivi.
+Senza un modulo di coda il modulo girerebbe con letture vuote e non
+governerebbe nulla.
 
-Il modulo quindi \textbf{rifiuta di avviarsi} e nomina il modulo mancante. La
-distinzione che il progetto traccia \`e fra degradazione \emph{osservabile} e
-degradazione \emph{silenziosa}: la prima \`e accettabile, la seconda no. Lo
-stesso criterio spiega perch\'e il modulo \code{autoscaler}, che legge la stessa
-sorgente ma la cui metrica principale (\code{rps}) proviene da un contatore
-indipendente, si limita invece a registrare un avviso quando una delle sue
-metriche derivate diventa cieca.
+Per questo il descrittore del modulo dichiara di richiedere almeno uno fra
+\code{async-queue} e \code{sync-queue}, e il selettore di build rifiuta la
+combinazione. Il rifiuto \`e per\`o di \emph{build}: se la combinazione arriva
+comunque al runtime, il governor non viene creato e non lo segnala. Lo stesso
+vale per l'\code{autoscaler}, che dipende dalle stesse letture. \`E una
+degradazione silenziosa, e la distinzione che il progetto traccia fra
+degradazione \emph{osservabile} e \emph{silenziosa} (la prima accettabile, la
+seconda no) la classifica come un residuo: la protezione sta nel selettore, non
+nel runtime.
+
+\begin{damisurare}
+Non \`e stato verificato se un avviso a runtime sia emesso quando le due
+condizioni beans mancano; il testo lo esclude solo per il governor e
+l'autoscaler cos\`i come risultano dalle condizioni di configurazione.
+\todomis{verificare se il modulo che non si attiva lascia una traccia nel log}
+\end{damisurare}
 
 \section{Requisiti funzionali}
 
@@ -236,10 +247,12 @@ metriche derivate diventa cieca.
   dedicati (\cref{cap:04-architettura-control-plane}).
 
   \item[\textbf{RNF4 --- Compilabilit\`a in immagine nativa.}] L'intero control
-  plane, con tutti i moduli, deve essere compilabile con GraalVM Native Image
-  senza rinunciare a funzionalit\`a, il che vincola l'uso della riflessione e
-  richiede la dichiarazione esplicita degli \emph{hint} di runtime
-  (\cref{cap:20-build-packaging}).
+  plane, con tutti i moduli, deve essere compilabile con GraalVM Native Image,
+  il che vincola l'uso della riflessione e richiede la dichiarazione esplicita
+  degli \emph{hint} di runtime. Il requisito non implica che ogni funzionalit\`a
+  sopravviva alla compilazione: le condizioni sui bean sono fissate a tempo di
+  build (\cref{cap:20-build-packaging}), sicch\'e l'immagine nativa pubblicata ha,
+  per esempio, l'API amministrativa di configurazione a caldo disattivata.
 
   \item[\textbf{RNF5 --- Riproducibilit\`a delle misure.}] Ogni numero
   prestazionale pubblicato deve essere associato a un profilo hardware

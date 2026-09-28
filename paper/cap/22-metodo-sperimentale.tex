@@ -40,10 +40,23 @@ carica, verifica --- e l'ambiente dichiara \emph{dove}.
 
 \begin{lstlisting}[language=bash]
 # esecuzione
-./nanolab.sh run scenarios-v2/validate-k8s.yaml --environment environments/multipass.yaml
+./nanolab.sh run packages/nanolab/scenarios-v2/deployment-lifecycle-k8s.yaml \
+    --environment packages/nanolab/environments/multipass.yaml
 # anteprima senza eseguire
-./nanolab.sh plan scenarios-v2/validate-k8s.yaml --environment environments/local.yaml
+./nanolab.sh plan packages/nanolab/scenarios-v2/deployment-lifecycle-k8s.yaml \
+    --environment packages/nanolab/environments/local.yaml
 \end{lstlisting}
+
+La validazione end-to-end della piattaforma appartiene a questo strumento e non
+al repository di \nf{}: la suite di quest'ultimo si ferma ai test unitari e di
+integrazione, e il ciclo di vita completo --- registrazione, invocazione,
+verifiche HTTP e Kubernetes --- \`e uno scenario
+(\cref{cap:26-qualita-verifica}). Le famiglie di scenari sono declinate per
+backend di esecuzione: lo stesso ciclo di vita esiste per il backend container,
+per containerd e per Kubernetes (\code{deployment-lifecycle-container},
+\code{-containerd}, \code{-k8s}), cos\`i che un cambiamento di backend non
+richieda di riscrivere l'esperimento; al 2026-09-28 la cartella
+\code{scenarios-v2} contiene 70 file.
 
 L'esistenza di una modalit\`a \code{plan} \`e significativa: un esperimento che
 provvisiona infrastruttura a pagamento non dovrebbe scoprire un errore di

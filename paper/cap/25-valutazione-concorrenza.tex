@@ -6,10 +6,15 @@ citati nel \cref{cap:12-concurrency-control}. \`E il capitolo pi\`u ricco di
 risultati negativi del documento, ed \`e organizzato in modo che ciascuno preceda
 la correzione che ha motivato.
 
-Tutte le misure sono di agosto 2026 e provengono dall'impianto descritto nel
-\cref{cap:22-metodo-sperimentale}. Dove un'affermazione \`e stata fatta e poi
-confutata dalla misura, il documento conserva la confutazione anzich\'e
-l'affermazione.
+Le misure dei controllori (le prime sezioni) sono di agosto 2026 e
+provengono dall'impianto descritto nel \cref{cap:22-metodo-sperimentale}. Le
+ultime due sezioni riportano invece le campagne di settembre 2026 sul
+comportamento a runtime del control plane --- il cambio manuale dello scheduler e
+il backoff delle riprove (\cref{sec:09-switch}, \cref{sec:06-riprova}) --- e
+non riguardano i controllori di concorrenza; stanno qui perch\'e condividono
+l'impianto di misura e la disciplina di riporto. Dove un'affermazione \`e stata
+fatta e poi confutata dalla misura, il documento conserva la confutazione
+anzich\'e l'affermazione.
 
 \section{Il confronto fra i due controllori per funzione}
 
@@ -93,7 +98,12 @@ controllori.
 
 \code{function\_latency\_ms} \`e misurata dal control plane fra dispatch e
 completamento: \`e il round trip, non il tempo di esecuzione interno alla
-funzione. Il governor decide da essa.
+funzione. Al momento della misura il governor decideva da essa. Nel codice
+attuale la lettura non passa pi\`u dal registro delle metriche ma da
+\code{InvocationObservations} (\cref{cap:12-concurrency-control}), che espone il
+servizio censurato per tentativo e l'end-to-end registrato una sola volta per
+invocazione (\cref{cap:21-osservabilita}); i numeri di questa sezione
+precedono quella modifica e non sono stati rimisurati.
 
 Sotto il profilo a raffica l'attesa media in coda \`e stata di \textbf{37--43\,ms}
 contro un tempo di servizio di circa \textbf{5\,ms}. La grandezza da cui il
@@ -321,6 +331,120 @@ riguarda direttamente l'interpretazione della prima sezione: l'asimmetria fra le
 due funzioni nella tabella delle concessioni \`e in larga parte questa
 differenza di runtime, non una scelta dell'allocatore.
 
+\section{Il cambio manuale dello scheduler}
+\label{sec:25-switch}
+
+La campagna di settembre 2026 sul cambio a caldo fra \code{per-function} e
+\code{shared-queue} (\cref{sec:09-switch}) ha fissato i budget prima di misurare e
+li ha riportati uno per uno, compresi quelli non superati. Fonte:
+\code{docs/experiments/scheduler-switching-2026-09/FINAL.md}.
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrrl@{}}
+\toprule
+\textbf{Budget} & \textbf{Congelato} & \textbf{Osservato} & \textbf{Esito} \\
+\midrule
+pausa massima di uno switch & 250\,ms & 3{,}98\,ms (su 1\,140 switch) & passa \\
+p99 della pausa & 100\,ms & 0{,}27\,ms (1\,000 switch) & passa \\
+indici vivi & 2 & 2 & passa \\
+throughput utile & $-5\%$ & peggiore $+2{,}09\%$ & passa \\
+heap dopo GC & $+10\%$ & peggiore $+0{,}01\%$ & passa \\
+p99 in regime & $+5\%$ & peggiore $+9{,}51\%$ & oltre il budget \\
+CPU per completamento & $+10\%$ & peggiore $+22{,}06\%$ & oltre il budget \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+I budget di meccanismo (pausa, indici, conteggio) sono rispettati di due o tre
+ordini di grandezza. I due budget di regime sono superati nel caso peggiore, ma
+il progetto riporta che nessuna delle differenze \`e \emph{separabile} dal
+rumore del disegno appaiato: la lettura corretta \`e ``non misurato'', non
+``regressione''. \`E lo stesso criterio di lettura adottato nel resto del
+capitolo, e vale la pena non attenuarlo: il budget del 5\% non \`e risolvibile
+da quell'impianto.
+
+\subsection{La soak da 60 minuti}
+
+La soak prevista dal piano \`e stata eseguita il 22 settembre 2026: 1\,000 switch
+committati in 5\,394{,}6\,s, nessuno rifiutato, al massimo due indici vivi, pausa
+massima riportata dal driver 0{,}087\,ms. L'esito complessivo \`e \textbf{FAIL} su
+3 criteri di 21, e va riportato come tale: i tre criteri falliti sono il ritorno
+dell'RSS al valore di riferimento (\code{p24-rss-return}) sui tre ruoli
+(control plane $+1{,}6\%$, funzione Java $+12{,}9\%$, funzione JavaScript
+$+4{,}3\%$), con tolleranza zero ereditata dalla politica di memoria condivisa.
+I due criteri scritti da questa campagna passano. Il progetto attribuisce il
+fallimento a una tolleranza portata in uno scenario che non chiede al heap di
+restringersi, e non a una regressione; \emph{non} rilassa la tolleranza per
+rendere verde la corsa, e la lettura di quell'attribuzione resta un giudizio
+dell'operatore, non un risultato misurato.
+
+\begin{damisurare}
+Il timer della pausa non risolve sotto 1\,ms: 999 osservazioni su 1\,000 stanno
+nella classe pi\`u fine, quindi il criterio sul p99 riporta
+\code{0{,}00099\,s} e dice solo ``sotto il millisecondo''. Per la pausa sono
+informativi i massimi, non il p99 pubblicato dal timer.
+\todomis{p99 della pausa sotto il millisecondo: serve un timer con classi pi\`u fini}
+\end{damisurare}
+
+\section{Il backoff delle riprove}
+\label{sec:25-backoff}
+
+La campagna del 24 settembre 2026 (\code{docs/experiments/retry-backoff-2026-09/})
+confronta la revisione senza backoff con quella con backoff
+(\cref{sec:06-riprova}) su una VM k3s: 300 invocazioni a concorrenza 8 per fase,
+tre fasi (subito dopo la registrazione, dopo la comparsa degli endpoint pronti,
+a caldo), stessa immagine di funzione.
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+\textbf{Fase} & \textbf{successi base} & \textbf{successi cand.} &
+\textbf{riprove base} & \textbf{riprove cand.} \\
+\midrule
+dopo la registrazione & 266/300 & 300/300 & 351 & 26 \\
+dopo endpoint pronti & 239/300 & 300/300 & 412 & 11 \\
+a caldo & 237/300 & 300/300 & 421 & 11 \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Complessivamente 900 su 900 successi contro 742 su 900. Gli errori della
+revisione di base erano \code{EXTERNAL\_ERROR} con
+\code{RUNTIME\_CALLBACK\_SATURATED}: senza attesa, le riprove tornavano a
+saturare la stessa coda di callback che le aveva rifiutate.
+
+Un secondo esperimento usa un upstream \code{EXTERNAL} controllato che risponde
+\code{429} con \code{Retry-After: 1} per un secondo e poi \code{200}. Su 300
+esecuzioni la revisione di base ha prodotto 1\,195 tentativi, 892 intervalli
+sotto il secondo e distanza minima 0{,}0007\,s; la revisione con backoff ha
+prodotto esattamente 600 tentativi (due per esecuzione) e distanza minima
+1{,}0007\,s. Sono istanti di arrivo osservati dal server, non istanti di
+schedulazione dedotti.
+
+\paragraph{Che cosa non \`e passato.} Il gate prestazionale \emph{non} \`e superato:
+sul codice finale, il p99 in regime del ramo \code{shared-queue} invariato \`e
+$+8{,}06\%$ contro un limite congelato del $+5\%$ (mediana 2{,}571 $\to$
+2{,}779\,ms), mentre gli altri tre bracci restano sotto ($-7{,}42\%$,
+$-3{,}26\%$, $-4{,}56\%$) e tutti i confronti di CPU passano. Lo stesso braccio
+era gi\`a fallito nella campagna precedente ($+6{,}02\%$) insieme a due
+confronti di CPU; il profilo diagnostico non ha individuato un punto caldo
+introdotto dalla riprova.
+
+\begin{damisurare}
+Il risultato descrive la configurazione registrata, non durate arbitrarie di
+avvio a freddo; l'origine del $+8{,}06\%$ sul braccio \code{shared-queue} non \`e
+stata isolata e nessuna ottimizzazione \`e stata tentata. La traccia per
+tentativo \`e completa soltanto per l'upstream controllato, non per ogni
+tentativo del runtime gestito.
+\todomis{causa del +8\% di p99 sul braccio shared-queue invariato}
+\end{damisurare}
+
 \section{Che cosa non \`e stabilito}
 
 Il progetto enumera esplicitamente i limiti dei propri risultati. Sono riportati
@@ -377,3 +501,9 @@ Il terzo risultato \`e il pi\`u solido dei tre, ed \`e negativo: esclude
 un'ipotesi anzich\'e stabilirne una. \`E anche il pi\`u utile per il seguito del
 lavoro, perch\'e restringe lo spazio di ricerca sul meccanismo del cross-talk al
 control plane condiviso.
+
+Le due campagne di settembre (\cref{sec:25-switch}, \cref{sec:25-backoff}) non
+rientrano nella tabella precedente perch\'e non confrontano controllori. Entrambe
+hanno un esito misto che il progetto ha lasciato tale: la prima non supera la soak
+su tre criteri di memoria ereditati, la seconda non supera il gate del p99 su un
+braccio.

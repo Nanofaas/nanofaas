@@ -3,8 +3,10 @@
 
 Tutte le metriche sono esposte su \code{/actuator/prometheus}, porta
 \code{8081}. La colonna \emph{profilo} indica se la metrica \`e presente nel
-profilo \code{basic} (default) o soltanto in \code{advanced}
-(\cref{cap:21-osservabilita}).
+profilo \code{basic} (default), soltanto in \code{advanced} (che \`e cumulativo
+e vale anche per \code{soak}) o soltanto in \code{soak}
+(\cref{cap:21-osservabilita}). Il profilo attivo \`e leggibile dal gauge
+\code{nanofaas\_metrics\_profile\_info}.
 
 \section{Nucleo, per funzione}
 
@@ -28,18 +30,45 @@ decise dall'handler \\
 dispatch $\to$ completamento \\
 \code{function\_e2e\_latency\_ms} & timer & basic & \textbf{sojourn}: ammissione
 $\to$ completamento \\
-\code{function\_queue\_wait\_ms} & timer & basic & attesa in coda \\
-\code{function\_cold\_start\_ms} & timer & basic & \\
-\code{function\_init\_duration\_ms} & timer & basic & \\
-\code{function\_cold\_start\_total} & counter & advanced & \\
-\code{function\_warm\_start\_total} & counter & advanced & \\
+\code{function\_queue\_wait\_ms} & timer & advanced & attesa in coda, per
+tentativo dispatchato \\
+\code{function\_init\_duration\_ms} & timer & advanced & inizializzazione
+riportata dal runtime \\
+\code{function\_cold\_start\_total} & counter & basic & \\
+\code{function\_warm\_start\_total} & counter & basic & \\
+\code{function\_admitted\_total}, \code{function\_refused\_total},
+\code{function\_replayed\_total} & counter & basic & per percorso di
+invocazione \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
 \end{center}
 
-Nel profilo \code{advanced} i quattro timer per funzione ricevono anche gli
-istogrammi necessari ai percentili.
+I due timer che il governatore di concorrenza legge dal registro
+(\code{function\_latency\_ms} e \code{function\_e2e\_latency\_ms}) sono
+volutamente presenti anche in \code{basic}. Nei profili non \code{basic} i
+quattro timer per funzione ricevono anche gli istogrammi necessari ai
+percentili.
+
+\section{Stato dello store e idempotenza}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lllp{4.4cm}@{}}
+\toprule
+\textbf{Metrica} & \textbf{Tipo} & \textbf{Profilo} & \textbf{Note} \\
+\midrule
+\code{execution\_store\_size} & gauge & basic & esiti trattenuti \\
+\code{execution\_in\_flight\_records} & gauge & basic & esecuzioni non
+concluse \\
+\code{idempotency\_keys\_held} & gauge & basic & chiavi (legami e lapidi) \\
+\code{idempotency\_key\_budget\_rejections} & counter & basic & nuove
+ammissioni con chiave rifiutate per budget esaurito \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
 
 \section{Code}
 
@@ -52,14 +81,35 @@ istogrammi necessari ai percentili.
 \midrule
 \code{function\_queue\_depth} & gauge & \code{async-queue} & \\
 \code{function\_inFlight} & gauge & \code{async-queue} & \\
+\code{function\_dispatchable\_backlog} & gauge & \code{async-queue} &
+backlog realmente dispatchabile dato il limite corrente \\
 \code{function\_effective\_concurrency} & gauge & \code{async-queue} &
 advanced; ci\`o che il controllore ha deciso \\
 \code{sync\_queue\_depth} & gauge & \code{sync-queue} & \code{function=""}
-per la serie globale \\
-\code{sync\_queue\_wait\_seconds} & gauge & \code{sync-queue} & attesa stimata \\
+per la serie globale; nullo fuori dal profilo \code{SYNC\_QUEUE} \\
 \code{sync\_queue\_admitted\_total} & counter & \code{sync-queue} & \\
-\code{sync\_queue\_rejected\_total} & counter & \code{sync-queue} & \\
-\code{sync\_queue\_timedout\_total} & counter & \code{sync-queue} & \\
+\code{sync\_queue\_rejected\_total} & counter & \code{sync-queue} & anche il
+timeout in coda (motivo \code{TIMEOUT}) \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\section{Scheduler}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}llp{5.6cm}@{}}
+\toprule
+\textbf{Metrica} & \textbf{Tipo} & \textbf{Note} \\
+\midrule
+\code{scheduler\_active} & gauge & una serie per strategia disponibile
+(\code{strategy}): 1 se attiva \\
+\code{scheduler\_switch\_total} & counter & cambi di strategia, per
+\code{outcome} \\
+\code{scheduler\_switch\_duration} & timer & durata del cambio; istogramma
+fuori da \code{basic} \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
@@ -79,6 +129,11 @@ per la serie globale \\
 \code{function\_concurrency\_controller\_mode} & gauge &
 \code{concurrency-control} & advanced \\
 \code{gateway\_service\_target\_load} & gauge & \code{autoscaler} & advanced \\
+\code{function\_scaling\_recommended\_replicas},
+\code{function\_scaling\_desired\_replicas},
+\code{function\_scaling\_limited}, \code{function\_scaling\_ratio\_milli} &
+gauge & \code{autoscaler} & la decisione dello scaler interno, prima e dopo il
+clamp; il rapporto \`e scalato per 1000 \\
 \code{nanofaas\_offload\_total} & counter & \code{offload} & etichette
 \code{function}, \code{trigger} \\
 \code{nanofaas\_offload\_failure\_total} & counter & \code{offload} & \\
@@ -102,8 +157,10 @@ per la serie globale \\
 \toprule
 \textbf{Metrica} & \textbf{Tipo} & \textbf{Note} \\
 \midrule
-\code{scheduler\_tick\_ms} & timer & \\
-\code{dispatcher\_k8s\_latency\_ms} & timer & \\
+\code{function\_scheduler\_*}, \code{function\_queue\_offer\_duration*},
+\code{function\_queue\_poll\_duration*}, \code{function\_dispatch\_slot\_hold\_*},
+\code{scheduler\_visit\_duration*}, \code{scheduler\_idle\_duration*} & vari &
+strumentazione diagnostica del percorso caldo: negata in \code{basic} \\
 \code{removed\_function\_*} & vari & registro separato, non esportato
 (\cref{cap:06-nucleo}) \\
 \code{jvm\_*}, \code{process\_*} & vari & standard Micrometer; sulle build
@@ -113,6 +170,18 @@ native G1 i binder del collector non riportano nulla
 \end{tabular}
 \end{adjustbox}
 \end{center}
+
+\section{Profilo \code{soak}}
+
+Solo con \code{nanofaas.metrics.profile=soak}, nove gauge aggregati senza
+etichette. Sei nel control plane:
+\code{invocation\_execution\_reservations},
+\code{invocation\_canonical\_input\_bytes},
+\code{invocation\_physical\_input\_copy\_bytes},
+\code{execution\_waiters\_retained}, \code{execution\_expiry\_queue\_depth},
+\code{function\_capacity\_retired\_generations}. Tre nell'SDK Java:
+\code{runtime\_active\_handlers}, \code{runtime\_pending\_callbacks},
+\code{runtime\_pending\_callback\_bytes}.
 
 \section{Interrogazioni di riferimento}
 
@@ -125,9 +194,9 @@ rate(function_error_total{function="F"}[5m])
 # p95 della latenza di servizio (richiede il profilo advanced)
 histogram_quantile(0.95, sum by (le) (rate(function_latency_ms_bucket{function="F"}[5m])))
 
-# durata media dell'inizializzazione a freddo
-rate(function_cold_start_ms_sum{function="F"}[1h])
-  / rate(function_cold_start_ms_count{function="F"}[1h])
+# durata media dell'inizializzazione (richiede advanced)
+rate(function_init_duration_ms_sum{function="F"}[1h])
+  / rate(function_init_duration_ms_count{function="F"}[1h])
 
 # arretrato asincrono
 function_queue_depth{function!=""}

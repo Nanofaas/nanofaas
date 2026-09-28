@@ -4,9 +4,10 @@
 Questo \`e il modulo su cui il progetto ha investito di pi\`u, ed \`e il capitolo
 con il maggior contenuto originale del documento. Il modulo decide, per ciascuna
 funzione e a intervalli regolari, quante invocazioni possono essere
-contemporaneamente in volo. \`E 1\,314 righe in quindici classi --- pi\`u di un
-quarto del codice di tutti i moduli messi insieme --- e implementa cinque
-politiche, tre delle quali adattive.
+contemporaneamente in volo. \`E il pi\`u grande dei moduli opzionali: 1\,429 righe
+in quindici classi, circa un quinto del codice di tutti i moduli messi insieme
+(conteggio di righe dei sorgenti principali), e implementa cinque politiche, tre
+delle quali adattive.
 
 Il capitolo procede cos\`i: prima il problema e la sua struttura analitica, poi
 le cinque politiche in ordine di sofisticazione crescente, infine il ciclo che
@@ -18,10 +19,14 @@ nel \cref{cap:25-valutazione-concorrenza}.
 
 \subsection{Che cosa fa un limite di concorrenza}
 
-In \nf{}, il limite di concorrenza di una funzione \`e il valore contro cui
-\code{FunctionQueueState.tryAcquireSlot()} confronta il contatore delle richieste
-in volo (\cref{cap:09-async-queue}). Una richiesta che non ottiene lo slot resta
-in coda.
+In \nf{}, il limite di concorrenza di una funzione \`e il valore contro cui lo
+stato di capacit\`a della generazione corrente (\code{FunctionCapacityState},
+nel nucleo) confronta il contatore delle richieste in volo, quando un
+\code{DispatchLease} viene acquisito (\cref{sec:09-lease}). Una richiesta che non
+ottiene lo slot resta in coda; con il profilo di ammissione \code{DIRECT}, che non
+ha coda, viene rifiutata subito (\cref{sec:09-profili}). Il modulo
+\code{concurrency-control} non applica il limite: lo \emph{scrive}, attraverso
+\code{WorkloadCapacityController.setEffectiveConcurrency}, e lo applica il nucleo.
 
 Ne segue che il limite governa due grandezze contemporaneamente, e questa
 duplicit\`a \`e la fonte di tutte le difficolt\`a che seguono.
@@ -30,10 +35,15 @@ duplicit\`a \`e la fonte di tutte le difficolt\`a che seguono.
 inattive mentre le richieste attendono. Un limite troppo alto le sovraccarica,
 allungando il tempo di servizio di ciascuna richiesta.
 
-\paragraph{Secondo: l'ammissione.} Una funzione pu\`o trattenere al pi\`u
-$C + Q$ richieste, dove $C$ \`e il limite e $Q$ la dimensione della coda; oltre
-quella soglia rifiuta. Il limite \`e quindi anche, insieme alla coda, la
-finestra di ammissione.
+\paragraph{Secondo: l'ammissione.} Con una coda per funzione, una funzione pu\`o
+trattenere al pi\`u $C + Q$ richieste, dove $C$ \`e il limite e $Q$ la dimensione
+della coda; oltre quella soglia rifiuta. Il limite \`e quindi anche, insieme alla
+coda, la finestra di ammissione. (Il ragionamento e le misure che seguono
+sono state ottenute con la coda per funzione; il comportamento del limite sotto la
+strategia \code{shared-queue} non \`e stato misurato.)
+\begin{damisurare}
+\todomis{effetto dei modi di controllo sotto la strategia shared-queue}
+\end{damisurare}
 
 La seconda propriet\`a \`e stata scoperta sperimentalmente, non progettata, ed \`e
 costata un fallimento --- descritto nella \cref{sec:sojourn} --- in cui un
@@ -85,6 +95,12 @@ somma ha un minimo interno. La \cref{fig:sojourn} illustra la relazione.
 La metrica \code{function\_latency\_ms} \`e misurata dal control plane fra
 l'istante di dispatch e quello di completamento. \`E quindi il \emph{tempo di
 servizio}, comprensivo del round trip HTTP, e non include l'attesa in coda.
+I controllori non leggono pi\`u i timer di Micrometer, ma le osservazioni
+cumulative esposte dal nucleo (\code{InvocationObservations}), che distinguono
+due durate: il \emph{servizio}, misurato sull'ultimo tentativo osservato (non sui
+precedenti, se l'invocazione \`e stata ritentata), e l'\emph{end-to-end}, dall'ammissione
+originale all'esito terminale, compresi ritentativi e attese in coda. Ogni
+istantanea appartiene a una sola generazione della funzione.
 
 La misura riportata nel \cref{cap:25-valutazione-concorrenza} quantifica lo
 scarto: sotto il profilo a raffica il tempo di attesa medio \`e stato di
@@ -123,11 +139,18 @@ predetto, orizzonte di drenaggio. & sojourn, servizio, coda & per funzione \\
 \end{tabularx}
 \end{table}
 
-Tutte le politiche sono soggette a due vincoli invalicabili, applicati a valle:
-il limite effettivo non pu\`o superare quello configurato nella specifica
-(\cref{cap:09-async-queue}), e non pu\`o scendere sotto il pavimento
-configurato. La specifica della funzione resta il tetto e il pavimento; le
-politiche si muovono all'interno.
+Tutte le politiche sono soggette a un vincolo invalicabile: il limite effettivo
+non pu\`o superare quello configurato nella specifica (\cref{sec:09-lease}); la
+specifica della funzione resta il tetto e le politiche si muovono al suo interno.
+Il pavimento, invece, ha un significato per famiglia. In \code{STATIC\_PER\_POD} e
+\code{ADAPTIVE\_PER\_POD} \code{minTargetInFlightPerPod} e
+\code{maxTargetInFlightPerPod} delimitano l'obiettivo \emph{per replica}, e il
+limite finale \`e quel valore per il numero di repliche pronte, sempre almeno 1.
+In \code{BUDGETED} e \code{SOJOURN} gli stessi campi delimitano invece il
+limite \emph{complessivo} della funzione, e le repliche non vengono lette affatto:
+il nome del campo resta quello storico e induce in errore. Anche la gauge
+\code{function\_target\_inflight\_per\_pod} riporta, per questi due modi, il
+limite complessivo e non un valore per replica.
 
 \section{\code{FIXED} e \code{STATIC\_PER\_POD}}
 
@@ -522,6 +545,19 @@ Un orizzonte pi\`u corto richiede pi\`u concorrenza per smaltire lo stesso
 arretrato. La logica \`e che l'attesa \`e l'unica parte della latenza del
 chiamante che un limite di concorrenza possa effettivamente accorciare.
 
+Il risultato \`e poi ristretto fra il pavimento e il tetto della funzione (il
+minore fra \code{maxTargetInFlightPerPod}, se dato, e la concorrenza della
+specifica). Se nell'intervallo non \`e completata alcuna invocazione il modello
+non viene consultato --- non ha dati --- ma la guardia di ammissione s\`i, e il
+limite non scende sotto quanto \`e gi\`a in volo. A differenza di \code{BUDGETED},
+il modo non ha un tetto al ginocchio: il commento di classe lo dichiara una
+semplificazione deliberata (il termine di Little chiede gi\`a non pi\`u di quanto il
+carico richieda) da aggiungere se una funzione fosse vista crescere a throughput
+piatto. Non \`e stato osservato se questo accada.
+\begin{damisurare}
+\todomis{comportamento di SOJOURN a throughput saturo, senza tetto al ginocchio}
+\end{damisurare}
+
 \subsection{La predizione del carico}
 
 La predizione $\hat{\lambda}$ \`e ci\`o che elimina il problema di attribuzione:
@@ -592,24 +628,76 @@ per modo, entrambi i sistemi in sovraccarico --- e il
 
 \code{ConcurrencyGovernor} \`e il componente che a ogni tick (default 5\,s)
 raccoglie le osservazioni, invoca la politica pertinente per ciascuna funzione, e
-pubblica i limiti attraverso \code{ScalingMetricsSource}.
+pubblica i limiti attraverso \code{WorkloadCapacityController}, la stessa
+interfaccia con cui il nucleo li applica (\cref{cap:09-async-queue}). Gira su un
+thread demone dedicato (\code{nanofaas-concurrency-governor}), ed \`e un
+\code{SmartLifecycle} avviato fra gli ultimi.
 
-Ha una struttura obbligata dalla differenza di ambito fra le politiche. I modi
+\subsection{Quando esiste}
+
+Il governor non esiste sempre. La configurazione del modulo \`e condizionata alla
+presenza dei \emph{bean} \code{WorkloadMetricsSource},
+\code{WorkloadCapacityController}, la vista del catalogo delle funzioni e
+\code{InvocationObservations}: i primi due li fornisce il motore composto,
+che nasce solo se almeno un modulo di coda porta una strategia
+(\cref{cap:09-async-queue}). Il descrittore del modulo dichiara che ne serve
+almeno uno (\code{requires.oneOf=async-queue,sync-queue}), e il selettore di
+moduli a tempo di build rifiuta una selezione che non lo rispetti. Ma se il
+modulo finisce comunque in un artefatto senza motore, a tempo di esecuzione
+nessun bean lo soddisfa e il modulo \emph{non parte, senza errore}. \`E lo stesso
+comportamento dell'autoscaler (\cref{cap:11-autoscaler}), e conta per l'operatore:
+una funzione configurata \code{BUDGETED} in un tale artefatto resta al limite
+configurato, senza alcun segnale.
+
+\subsection{La forma del ciclo}
+
+La struttura del ciclo \`e obbligata dalla differenza di ambito fra le politiche.
+Il tick legge dal registro tutte le funzioni e le smista per modo. I modi
 \code{STATIC\_PER\_POD} e \code{ADAPTIVE\_PER\_POD} decidono per funzione e sono
-gestiti da \code{ConcurrencyControlCoordinator} in un ciclo. Il modo
-\code{BUDGETED} decide su tutte le funzioni insieme e riceve quindi la lista
-completa delle osservazioni in una sola chiamata. Il modo \code{SOJOURN} torna a
-decidere per funzione, ma legge tre segnali anzich\'e uno.
+gestiti da \code{ConcurrencyControlCoordinator} in un ciclo; \code{FIXED} passa
+dallo stesso percorso e riscrive il limite configurato. Il modo \code{BUDGETED}
+decide su tutte le funzioni insieme: le osservazioni sono raccolte in una lista
+e l'allocazione avviene una volta sola, dopo che tutte le richieste sono
+arrivate. Il modo \code{SOJOURN} torna a decidere per funzione, ma legge tre
+segnali anzich\'e uno, ed \`e instradato direttamente al proprio controllore
+anzich\'e attraverso il coordinatore: allargare la firma del coordinatore avrebbe
+dato a tutti gli altri modi un ingresso da ignorare.
 
 \`E il motivo per cui l'interfaccia dei controllori non \`e uniforme: un modo che
 alloca una risorsa condivisa non pu\`o essere ricondotto alla stessa firma di uno
 che decide in isolamento senza inventare uno stato globale nascosto.
 
+\subsection{Tre garanzie del ciclo}
+
+\paragraph{Nessuna lettura di repliche, nessuna decisione.} I modi per replica
+moltiplicano un obiettivo per il numero di repliche pronte. Per una funzione
+gestita, questo numero viene dal provider di deployment; se la lettura non \`e
+disponibile in quel tick (una chiamata al provider fallita), il tick \emph{salta}
+la funzione e il limite resta quello di prima, perch\'e l'alternativa sarebbe
+inventare un numero, e inventare zero farebbe crollare il limite di una funzione
+sana per un errore del provider (invariante I9 del ciclo di vita). Per una
+funzione non gestita non ci sono repliche fra cui dividere, e il numero \`e 1. I
+modi \code{BUDGETED} e \code{SOJOURN} non leggono le repliche.
+
+\paragraph{Un guasto non costa agli altri il proprio limite.} Ogni funzione \`e
+letta e decisa in un blocco protetto: una lettura fallita esclude quella funzione
+dall'allocazione condivisa, non l'intero tick.
+
+\paragraph{Una nuova generazione azzera lo stato.} Ogni istantanea di osservazione
+porta l'identit\`a della generazione della funzione. Se cambia fra due tick (la
+funzione \`e stata cancellata e ri-registrata, o sostituita), lo stato accumulato
+--- baseline, storia dei tempi, previsione --- viene scartato: confrontare
+totali di due incarnazioni diverse produrrebbe intervalli privi di senso. La
+rimozione esplicita di una funzione fa lo stesso, ed \`e serializzata con il ciclo
+(\code{governLoop} \`e \code{synchronized}) cos\`i che un campione preso prima
+della rimozione non possa ripopolare lo stato dopo che la rimozione \`e
+tornata.
+
 \subsection{L'intervallo come unit\`a di osservazione}
 
-Tutti i controllori adattivi leggono i timer cumulativi di Micrometer e li
-convertono in medie dell'intervallo appena concluso, attraverso
-\code{LatencyIntervals}:
+Tutti i controllori adattivi ricevono totali cumulativi (conteggio e somma dei
+millisecondi) e li convertono in medie dell'intervallo appena concluso,
+attraverso \code{LatencyIntervals}:
 
 \begin{lstlisting}[language=Java]
 /**
@@ -621,12 +709,21 @@ convertono in medie dell'intervallo appena concluso, attraverso
  */
 \end{lstlisting}
 
-\`E lo stesso errore, e la stessa correzione, gi\`a incontrati per la metrica
-\code{rps} dell'autoscaler (\cref{cap:11-autoscaler}). Che il progetto abbia
-dovuto risolverlo due volte in due moduli \`e un piccolo indizio a favore di una
-astrazione condivisa che non esiste.
+Un intervallo in cui il conteggio non cresce, o il totale non cresce, vale
+``vuoto'' e non muove nulla. \`E lo stesso errore, e la stessa correzione, gi\`a
+incontrati per la metrica \code{rps} dell'autoscaler
+(\cref{cap:11-autoscaler}). Oggi i due moduli leggono la stessa sorgente
+generazionale, ma la sottrazione fra letture successive resta scritta due volte:
+un piccolo indizio a favore di un'astrazione condivisa che non esiste.
 
 \section{Configurazione}
+
+Due livelli. Le chiavi del modulo sono tre; il resto \`e nella specifica della
+funzione, dove i default sono riempiti alla registrazione da
+\code{ConcurrencyControlConfig.normalize}, che vive nel modulo comune e non nel
+modulo di controllo. \`E una scelta con una conseguenza: i default dipendono dal
+\emph{modo}, e ogni modo lascia a \code{null} i campi che non usa, cos\`i che non
+sembrino configurazione che nessuno ha scritto.
 
 \begin{center}
 \small
@@ -636,26 +733,36 @@ astrazione condivisa che non esiste.
 \textbf{Chiave} & \textbf{Default} & \textbf{Significato} \\
 \midrule
 \code{nanofaas.concurrency-control.poll-interval-ms} & 5\,000 & Periodo del tick. \\
-\code{...default-target-in-flight-per-pod} & 2 & Obiettivo iniziale. \\
+\code{...default-target-in-flight-per-pod} & 2 & Ripiego per la sola gauge
+dell'obiettivo adattivo, quando la funzione non ne ha uno. \\
 \code{...total-budget} & $\max(8, 4 \times \text{core})$ & Budget globale per
 \code{BUDGETED}. \\
 \midrule
 \multicolumn{3}{@{}l@{}}{\emph{Per funzione, in \code{scalingConfig.concurrencyControl}:}} \\
-\code{mode} & \code{FIXED} & \\
+\code{mode} & \code{FIXED} & Con \code{FIXED} tutti gli altri campi sono azzerati. \\
 \code{targetInFlightPerPod} & 2 & \code{STATIC}/\code{ADAPTIVE}. \\
-\code{minTargetInFlightPerPod} & 1 & Pavimento. \\
-\code{maxTargetInFlightPerPod} & 8 & Tetto. \\
+\code{minTargetInFlightPerPod} & 1 & Pavimento (per replica, o complessivo in
+\code{BUDGETED}/\code{SOJOURN}). \\
+\code{maxTargetInFlightPerPod} & 8 per \code{STATIC}/\code{ADAPTIVE}; nessuno per
+gli altri & Tetto (idem). In \code{BUDGETED}/\code{SOJOURN}, se assente il tetto
+\`e la concorrenza della specifica. \\
 \code{upscaleCooldownMs} & 30\,000 & \code{ADAPTIVE}. \\
 \code{downscaleCooldownMs} & 60\,000 & \code{ADAPTIVE}. \\
 \code{highLoadThreshold} & 0{,}5 & \code{ADAPTIVE}. \\
 \code{lowLoadThreshold} & 0{,}15 & \code{ADAPTIVE}. \\
 \code{targetLatencyMs} & 250 & SLO: di servizio per \code{BUDGETED},
 end-to-end per \code{SOJOURN}. \\
-\code{weight} & 1{,}0 & Peso nell'allocazione \code{BUDGETED}. \\
+\code{weight} & 1{,}0 & Peso nell'allocazione \code{BUDGETED}; ignorato da
+\code{SOJOURN}, che non ha un budget da dividere. \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
 \end{center}
+
+Il default di 250\,ms per \code{targetLatencyMs} \`e volutamente un SLO generico e
+non derivato da nulla che la piattaforma misuri: un obiettivo ricavato dalla
+latenza osservata si sposterebbe quando la funzione rallenta, che \`e l'unica cosa
+che un SLO non deve fare.
 
 Va notato che \code{targetLatencyMs} cambia significato fra i due modi che lo
 usano: in \code{BUDGETED} \`e un SLO sul tempo di servizio, in \code{SOJOURN}
@@ -683,7 +790,7 @@ ottimo interno; ignora i vicini. \\
 \code{BUDGETED} & La risorsa condivisa \`e allocata una volta sola, con
 equit\`a. & Decide ancora dal tempo di servizio. \\
 \code{SOJOURN} & Decide da ci\`o che il chiamante osserva; non confronta
-istanti. & Mai osservato fuori dal sovraccarico; guardia al 70\% non tarata. \\
+istanti. & Mai osservato fuori dal sovraccarico; guardia al 70\% non tarata; nessun tetto al ginocchio. \\
 \bottomrule
 \end{tabularx}
 \end{table}

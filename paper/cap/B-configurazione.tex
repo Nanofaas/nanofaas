@@ -3,7 +3,13 @@
 
 \section{Configurazione di piattaforma}
 
-Da \code{platform/control-plane/src/main/resources/application.yml}.
+Da \code{platform/control-plane/src/main/resources/application.yml}. Sono omessi
+l'elenco \code{spring.autoconfigure.exclude} (le auto-configurazioni di Spring
+Boot di cui il control plane non usa alcun bean: client HTTP, TLS, esecutori di
+task, multipart, sessioni, AOP, \emph{info} e spazio su disco) e il blocco
+\code{management.endpoint}, che abilita solo \code{health} con le probe e
+\code{prometheus}. Le chiavi sono raggruppate per argomento; i commenti sono
+del paper, non del file.
 
 \begin{lstlisting}[language=yamlnf]
 server:
@@ -18,17 +24,28 @@ management:
 
 nanofaas:
   metrics:
-    profile: basic              # basic | advanced
+    profile: basic              # basic | advanced | soak
   admin:
     runtime-config:
       enabled: false
+  scheduler:
+    strategy: ${NANOFAAS_SCHEDULER_STRATEGY:}   # vuoto = nessuna scelta esplicita
   deployment:
     default-backend: ""         # k8s | container-local; vuoto = risoluzione implicita
+    wakeup:
+      timeout: 30s
+      poll-interval: 250ms
+      ready-observation-max-age: 5s
+  registry:
+    path: "${NANOFAAS_REGISTRY_PATH:build/nanofaas/functions.json}"
   defaults:
     timeoutMs: 30000
     concurrency: 4
     queueSize: 100
     maxRetries: 3
+  retry:
+    initial-backoff: 100ms
+    max-backoff: 2s
   rate:
     maxPerSecond: 1000000
   k8s:
@@ -38,6 +55,29 @@ nanofaas:
     poll-interval-ms: 5000
     default-min-replicas: 1
     default-max-replicas: 10
+  execution-store:
+    ttl: 5m
+    sync-ttl: 30s
+    max-lifetime: 30m
+    max-outcomes: 100000
+    max-keys: 100000
+    max-outcome-bytes: 0        # 0 = max-outcomes x 116 byte
+  http-client:
+    max-connections: 500
+    pending-acquire-max-count: 0        # 0 = 2 x max-connections
+    pending-acquire-timeout-ms: 45000
+    max-idle-time-ms: 30000
+    max-life-time-ms: 0                 # 0 = rotazione disabilitata
+    eviction-interval-ms: 5000
+    inactive-pool-dispose-interval-ms: 5000
+    pool-inactivity-ms: 30000
+  container-local:
+    proxy:
+      max-request-bytes: 2097152
+      max-response-bytes: 4194304
+      max-buffered-bytes: 33554432
+      inbound-read-timeout: 5s
+      response-write-timeout: 5s
 
 sync-queue:
   enabled: true
@@ -50,7 +90,70 @@ sync-queue:
   per-function-min-samples: 50
 \end{lstlisting}
 
+\paragraph{Che cosa governano i blocchi nuovi.}
+\code{nanofaas.scheduler.strategy} sceglie la strategia su cui parte il motore
+composto (\code{per-function} o \code{shared-queue}, \cref{sec:09-switch}); il
+valore vuoto non \`e una terza strategia ma ``nessuna scelta esplicita'' e il
+motore deriva la mappatura dai moduli di coda presenti nell'artefatto. Un
+identificatore che nessuna strategia fornisce fa fallire l'avvio. Il cambio a
+caldo passa dall'endpoint di amministrazione (\cref{cap:A-api}); l'ordine di
+grandezza del budget di preparazione \`e una costante del motore (50\,ms), non
+una chiave, e le soglie di verifica sono congelate in
+\code{docs/experiments/scheduler-switching-2026-09/budgets.json}.
+\code{nanofaas.retry.*} governa il backoff tra i tentativi
+(\cref{sec:06-riprova}). \code{nanofaas.execution-store.*} governa la
+ritenzione degli esiti: \code{max-outcome-bytes} \`e l'unico limite che la
+cache degli esiti fa rispettare, mentre \code{max-outcomes} serve solo a
+derivarne il default; \code{max-keys} limita le chiavi di idempotenza, e a
+budget esaurito una \emph{nuova} ammissione con chiave \`e rifiutata con 429
+prima del dispatch. \code{nanofaas.http-client.*} descrive il pool di
+connessioni verso le funzioni, per destinazione concreta e non in aggregato.
+\code{nanofaas.registry.path} \`e il file su cui persiste il catalogo delle
+funzioni. \code{nanofaas.deployment.wakeup.*} regola l'attesa dell'avvio di una
+funzione scalata a zero.
+
+\subsection{Tetti di capacit\`a di invocazione}
+
+Il blocco \code{nanofaas.invocation-capacity} fissa i tetti di ci\`o che pu\`o
+essere vivo contemporaneamente: sono limiti di occupazione, non limiti di
+frequenza, e non promettono un RSS. I default sono calibrati sul minimo
+supportato dal chart, un container da 512\,MiB.
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+\textbf{Chiave} (\code{nanofaas.invocation-capacity.}) & \textbf{Globale} &
+\textbf{Per funzione} \\
+\midrule
+\code{executions-*} & 4096 & 512 \\
+\code{canonical-input-bytes-*} & 134\,217\,728 & 33\,554\,432 \\
+\code{physical-input-copy-bytes-*} & 67\,108\,864 & 16\,777\,216 \\
+\code{waiters-*} & 8192 & 1024 \\
+\midrule
+\code{ingress-body-bytes} & \multicolumn{2}{r}{1\,048\,576 (1\,MiB)} \\
+\code{max-input-references} & \multicolumn{2}{r}{64} \\
+\code{retained-input-max-depth} & \multicolumn{2}{r}{32} \\
+\code{retained-input-max-container-entries} & \multicolumn{2}{r}{16\,384} \\
+\code{retained-input-max-visited-nodes} & \multicolumn{2}{r}{65\,536} \\
+\code{retained-input-max-bytes-per-execution} & \multicolumn{2}{r}{1\,048\,576} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
 \section{Chiavi dei moduli non presenti nel file di default}
+
+Ogni modulo dichiara in \code{module.properties} se \`e abilitato di default
+(\code{defaultEnabled}). Lo \`e ogni modulo tranne i due provider di deployment
+locali, \code{container-deployment-provider} e
+\code{containerd-deployment-provider}: \code{sync-queue} \`e quindi attivo in
+ogni build che lo include, senza bisogno di impostare una chiave. Il profilo di
+ammissione (\code{nanofaas.admission.profile}: \emph{direct},
+\emph{function-queue} o \emph{sync-queue}), se non \`e dichiarato, \`e derivato
+dalle strategie presenti: \code{per-function} d\`a \emph{function-queue},
+altrimenti \code{shared-queue} d\`a \emph{sync-queue}, altrimenti \emph{direct}.
 
 \begin{center}
 \small
@@ -76,6 +179,15 @@ sync-queue:
 \code{nanofaas.container-local.network-name} & --- & \\
 \code{nanofaas.container-local.cpuset} & --- & vincola le funzioni agli stessi
 core (\cref{cap:15-deployment-provider}) \\
+\midrule
+\code{nanofaas.containerd.socket-path} & \code{\$XDG\_RUNTIME\_DIR/containerd/containerd.sock} &
+\code{containerd-deployment-provider} \\
+\code{nanofaas.containerd.namespace} & \code{nanofaas} & \\
+\code{nanofaas.containerd.runtime-binary} & \code{crun} & \\
+\code{nanofaas.containerd.snapshotter} & \code{native} & \\
+\code{nanofaas.containerd.network-name} & \code{nanofaas} & \\
+\code{nanofaas.containerd.bind-host} & \code{127.0.0.1} & \\
+\code{nanofaas.containerd.cgroups-path}, \code{cpuset}, \code{callback-url}, \code{state-directory}, \code{cni-*}, \code{readiness-*}, \code{*-timeout} & vedi codice & \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
@@ -139,10 +251,9 @@ esperimento che voglia variarli.
 \toprule
 \textbf{Costante} & \textbf{Valore} & \textbf{Dove} \\
 \midrule
-Quanto di scheduling asincrono & 2 & \code{async-queue} \\
-Tick dello scheduler sincrono & 2\,ms & \code{sync-queue} \\
-Tetto del backoff sincrono & 50\,ms & \code{sync-queue} \\
-Finestra di scansione della coda sincrona & 64 & \code{sync-queue} \\
+Batch massimo per funzione (strategia \code{per-function}) & 2 & \code{async-queue} \\
+Finestra di scansione della coda condivisa (\code{shared-queue}) & 64 & \code{sync-queue} \\
+Budget di preparazione di un cambio di scheduler & 50\,ms & motore (\code{SchedulerEngine}) \\
 Cooldown di scale-up / scale-down & 30\,s / 60\,s & \code{autoscaler} \\
 Finestra di inferenza del cold start & 30\,s & \code{autoscaler} \\
 Deriva della baseline & $1{,}002$ per tick & \code{concurrency-control} \\
@@ -153,8 +264,6 @@ Orizzonte di drenaggio & 5\,s (min 1\,s) & \code{concurrency-control} \\
 Holt: $\alpha$, $\beta$, $\phi$ & $0{,}5$, $0{,}3$, $0{,}8$ &
 \code{concurrency-control} \\
 Margine di timeout dell'offload & 50\,ms & \code{offload} \\
-TTL delle chiavi di idempotenza & 5\,min & nucleo \\
-Periodo del janitor dello store & 1\,min & nucleo \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}

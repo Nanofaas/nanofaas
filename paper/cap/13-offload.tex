@@ -7,9 +7,15 @@ Lo scenario di riferimento \`e edge$\to$cloud: un nodo periferico con capacit\`a
 limitata che, quando non riesce ad ammettere una richiesta, la delega a
 un'istanza pi\`u capiente~\cite{satya2017edge, shi2016edge}.
 
-\`E il modulo pi\`u piccolo che faccia qualcosa di sostanziale: 230 righe in
-quattro classi. La brevit\`a \`e conseguenza diretta di due rinunce, entrambe
-deliberate, che il capitolo argomenta.
+\`E fra i moduli pi\`u piccoli che facciano qualcosa di sostanziale: 470 righe in
+tre classi (configurazione, propriet\`a, gateway), di cui 411 nel gateway; una
+parte consistente di queste \`e un percorso di compatibilit\`a per i consumatori
+che forniscono un registro di metriche anzich\'e il contratto del nucleo. La
+brevit\`a \`e conseguenza diretta di due rinunce, entrambe deliberate, che il
+capitolo argomenta, e del fatto che la decisione di scaricare non vive nel
+modulo: il modulo implementa \code{OffloadGateway} (un'interfaccia del contratto
+del nucleo, con un'implementazione nulla di default) e fa la chiamata remota; chi
+decide \`e il nucleo.
 
 \begin{figure}[htbp]
   \centering
@@ -22,8 +28,11 @@ deliberate, che il capitolo argomenta.
 
 \section{Quando si scarica}
 
-L'attivazione \`e decisa in \code{ReactiveInvocationCoordinator}, sul percorso di
-ammissione (\cref{cap:04-architettura-control-plane}), e ha due innesti.
+L'attivazione \`e decisa in \code{ReactiveInvocationCoordinator}, nel nucleo, sul
+percorso di ammissione sincrona (\cref{cap:04-architettura-control-plane}), e ha
+due innesti. In entrambi i casi vale una precondizione, valutata per prima: la
+richiesta non deve provenire a sua volta da un salto di offload, e il gateway deve
+essere attivo.
 
 \subsection{Eager: la politica della funzione}
 
@@ -51,7 +60,7 @@ try {
 } catch (SyncQueueRejectedException ex) {
     OffloadTrigger trigger = pressureTrigger(ex.reason());
     if (offloadable && trigger != null && offloadGateway.shouldOffloadOnPressure(spec)) {
-        startOffload(executionRecord, spec, trigger, context, timeoutMs, offloadedTarget);
+        startOffload(executionRecord, spec, trigger, context, offloadedTarget);
         return;
     }
     throw ex;
@@ -70,6 +79,16 @@ Questa \`e la parte concettualmente interessante. La decisione di scaricare
 \emph{non} \`e presa da un modello di costo che confronti la latenza locale
 attesa con quella remota, come nella formulazione classica del problema di
 offloading. \`E presa dal \emph{rifiuto} della coda di ammissione locale.
+
+L'eccezione \code{SyncQueueRejectedException} \`e lanciata \emph{soltanto} dal
+gateway della coda sincrona. Ne segue una conseguenza pratica che il nome del
+modulo non lascia intuire: l'offload reattivo funziona solo quando l'ammissione
+sincrona passa per la coda sincrona, cio\`e nel profilo \code{SYNC\_QUEUE}
+(\cref{sec:09-profili}). Nei profili \code{FUNCTION\_QUEUE} e \code{DIRECT} una
+funzione che trova coda o slot esauriti riceve il \code{429} del nucleo e nulla
+viene scaricato: resta operativo il solo offload eager. Con entrambi i moduli di
+coda nell'artefatto il profilo derivato \`e \code{FUNCTION\_QUEUE}, quindi
+l'offload reattivo richiede in quel caso di dichiarare esplicitamente il profilo.
 
 Il vantaggio \`e che non richiede alcuna calibrazione preventiva: la coda
 sincrona sa gi\`a stimare l'attesa e sa gi\`a decidere che \`e eccessiva
@@ -162,6 +181,28 @@ quale.
 L'ordine dei rami \`e quindi essenziale: il marcatore viene consultato prima di
 qualunque diramazione sul codice di stato.
 
+\subsection{Che cosa attraversa il salto}
+
+Il gateway inoltra la richiesta originale come envelope JSON verso
+\code{/v1/functions/\{nome\}:invoke} dell'istanza remota, e vi aggiunge il
+marcatore di salto e, se presenti, gli header di tracciamento
+(\code{X-Trace-Id}, \code{traceparent}, \code{tracestate}). Il control plane
+ricevente ricostruisce gli header applicativi della richiesta dal trasporto HTTP
+del salto, quindi il gateway copia gli header applicativi del chiamante come veri
+header HTTP: senza questa copia la funzione remota li perderebbe.
+
+La copia \`e difensiva. Sono esclusi: l'inquadramento del trasporto che il client
+HTTP possiede (\code{host}, \code{content-length}, \code{transfer-encoding} e
+soprattutto \code{content-type}, che deve continuare a descrivere l'envelope JSON
+e non il corpo originale del chiamante, e con esso la negoziazione e la codifica
+del contenuto), gli header che il gateway imposta da s\'e o che il ricevente
+lega a parametri dedicati (identificativi di esecuzione e di tentativo, timeout,
+chiave di idempotenza, marcatore di salto, tracciamento), gli header
+\emph{hop-by-hop} definiti da RFC~9110 e ogni header \code{proxy-*}. L'elenco
+rispecchia di proposito quello del controller ricevente: inoltrare un nome che il
+ricevente scarterebbe non serve, e un valore applicativo non deve poter fingersi
+un header di controllo.
+
 \subsection{Il margine di timeout}
 
 \begin{lstlisting}[language=Java]
@@ -179,10 +220,37 @@ talvolta \code{504} e talvolta una risposta di timeout locale. Il margine fisso
 di 50\,ms garantisce che il timeout remoto scatti per primo, e quindi che la
 diagnosi sia deterministica.
 
+Il margine ha una condizione che il codice non enuncia: al gateway viene passato
+come budget il timeout della \emph{specifica} della funzione, mentre l'attesa
+locale usa l'eventuale timeout indicato dal chiamante per quella richiesta. Se il
+chiamante chiede un timeout inferiore a quello della specifica, l'attesa locale
+scade prima e il margine non ordina pi\`u i due eventi; la determinazione del
+\code{504} vale, in quel caso, solo per l'attesa di specifica.
+\begin{damisurare}
+\todomis{esito osservato per una richiesta offload con timeout per-richiesta inferiore a quello della specifica}
+\end{damisurare}
+
 \`E un dettaglio piccolo con una propriet\`a importante: rende \emph{riproducibile}
 un comportamento in condizioni di errore, che \`e la classe di comportamenti pi\`u
 difficile da testare e la pi\`u facile da rendere non deterministica per
 distrazione.
+
+\subsection{Chi possiede l'input}
+
+Un'esecuzione scaricata non acquisisce alcun \code{DispatchLease}, ma tiene comunque
+una risorsa: l'input fisico della richiesta. La chiamata remota ne \`e proprietaria
+fino al proprio segnale terminale, non fino a quando la vista locale \`e ancora
+annullabile. Una cancellazione amministrativa conclude soltanto la vista locale
+dell'esecuzione; il publisher della chiamata remota pu\`o ignorare la cancellazione
+e conservare la richiesta, quindi l'input viene chiuso solo quando la chiamata
+termina, in qualunque modo. \`E la stessa regola di propriet\`a che il nucleo applica
+agli altri percorsi (\cref{cap:04-architettura-control-plane}).
+
+L'esito di un'esecuzione scaricata \`e definitivo: il completamento passa per un
+percorso dedicato del nucleo che non ritenta e non rilascia slot, e un fallimento
+dell'inoltro conclude l'esecuzione con il codice \code{OFFLOAD\_FAILED} o, se
+scaduto il budget, \code{OFFLOAD\_TIMEOUT}. Il chiamante li vede come \code{502} e
+\code{504}.
 
 \section{Osservabilit\`a}
 
@@ -196,7 +264,8 @@ distrazione.
 \code{nanofaas.offload} & counter & \code{function}, \code{trigger}
 (\code{eager} / \code{depth} / \code{est\_wait}) \\
 \code{nanofaas.offload.failure} & counter & \code{function} \\
-\code{X-NanoFaaS-Offloaded} & header & URL dell'istanza remota \\
+\code{X-NanoFaaS-Offloaded} & header & URL dell'istanza remota, anche sulle
+risposte \code{502} e \code{504} \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
@@ -207,6 +276,13 @@ invisibile}: il chiamante non deve fare nulla di diverso, ma se lo desidera pu\`
 sapere che la sua richiesta \`e stata servita altrove e da chi. \`E la stessa
 distinzione fra trasparenza e opacit\`a che il \cref{cap:07-modalita-esecuzione}
 applica alla degradazione da \code{DEPLOYMENT} a \code{EXTERNAL}.
+
+I due contatori sono legati alla \emph{generazione} della funzione attiva
+all'inizio dell'offload. Il tentativo \`e contato alla sottoscrizione della
+chiamata e non quando la pipeline viene costruita, e un fallimento \`e contato solo
+per un tentativo gi\`a contato; un tentativo appartenente a una generazione ritirata
+scarta silenziosamente i propri aggiornamenti, cos\`i che una funzione cancellata
+non veda risorgere la serie (invariante I7 del ciclo di vita).
 
 L'etichetta \code{trigger} sul contatore consente di distinguere le tre cause di
 attivazione, il che \`e necessario per interpretare il dato: un'alta frequenza di

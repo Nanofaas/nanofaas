@@ -20,10 +20,11 @@ configurazione decide quali istanziare. Spring Boot lo supporta nativamente con
 presente: le sue classi sono nel classpath, le sue dipendenze transitive sono
 risolte, il suo codice \`e analizzato dall'ottimizzatore. Per la compilazione
 in immagine nativa (\cref{cap:20-build-packaging}) questo \`e sostanziale: il
-provider Kubernetes trascina il client Fabric8 e Vert.x, il provider container
-trascina il client Docker Java. Un'immagine nativa che contenga entrambi \`e
-significativamente pi\`u grande e pi\`u lenta da compilare di una che contenga
-solo ci\`o che verr\`a usato.
+provider Kubernetes trascina il client Fabric8, il provider container il
+client Docker Java, il provider containerd le librerie Java per containerd e
+CNI. Un'immagine nativa che contenga tutti e tre \`e significativamente pi\`u
+grande e pi\`u lenta da compilare di una che contenga solo ci\`o che verr\`a
+usato.
 
 \paragraph{L'onest\`a della misura.} Un esperimento che confronta il costo del
 control plane con e senza controllo di concorrenza deve confrontare due binari
@@ -41,9 +42,10 @@ non contiene un solo \code{if} che riguardi la configurazione modulare.
 
 \section{Il meccanismo}
 
-\subsection{Selezione}
+\subsection{Selezione e descrittori}
 
-La selezione avviene attraverso una propriet\`a Gradle o una variabile d'ambiente:
+La selezione avviene attraverso una propriet\`a Gradle o una variabile d'ambiente
+(quest'ultima subordinata alla prima):
 
 \begin{lstlisting}[language=bash]
 ./gradlew :control-plane:bootJar -PcontrolPlaneModules=none
@@ -52,168 +54,189 @@ La selezione avviene attraverso una propriet\`a Gradle o una variabile d'ambient
 NANOFAAS_CONTROL_PLANE_MODULES=all ./gradlew :control-plane:bootJar
 \end{lstlisting}
 
-I moduli disponibili sono scoperti scandendo le sottodirectory di
-\code{platform/modules/} che contengono uno script di build --- non esiste un
-elenco da mantenere allineato. La selezione \`e poi validata con tre regole:
+La logica che una versione precedente teneva in \code{settings.gradle} \`e oggi
+un plugin di settings, \code{it.unimib.datai.nanofaas.control-plane-modules}
+(\code{platform/gradle-plugin}). Il plugin scopre i progetti Gradle immediati
+sotto \code{platform/modules/}, legge di ciascuno un descrittore
+\code{module.properties} obbligatorio e valida la selezione prima
+dell'esecuzione di qualunque task; non esiste un elenco da mantenere
+allineato. Un descrittore ha questa forma (qui quello di
+\code{concurrency-control}, il cui vincolo \`e discusso pi\`u avanti):
 
-\begin{lstlisting}[language=Java, caption={Validazione della selezione in
-\code{settings.gradle}.}]
-if (requestedModules.contains('none')) {
-    if (requestedModules.size() > 1) {
-        throw new GradleException("Module selector 'none' cannot be combined with other values: ...")
-    }
-    requestedModules.clear()
-}
-if (requestedModules.contains('all')) {
-    requestedModules = new LinkedHashSet<String>(availableModules)
-}
-def unknownModules = requestedModules.findAll { !availableModules.contains(it) }
-if (!unknownModules.isEmpty()) {
-    throw new GradleException("Unknown control-plane modules: ${unknownModules}. Available: ${availableModules}")
-}
+\begin{lstlisting}[language=bash, caption={Descrittore di
+\code{concurrency-control}.}]
+schemaVersion=1
+id=concurrency-control
+defaultEnabled=true
+requires.strong=
+requires.oneOf=async-queue,sync-queue
+requires.weak=
+conflicts=
 \end{lstlisting}
 
-Un nome sconosciuto fa fallire la build. \`E la scelta corretta per un selettore
-di questo tipo: ignorare silenziosamente \code{-PcontrolPlaneModules=async-quee}
-produrrebbe un binario privo della coda asincrona e un operatore convinto del
-contrario.
+I campi \code{requires.strong} e \code{requires.weak} dichiarano dipendenze
+fra moduli (la prima deve essere soddisfatta, anche transitivamente; la
+seconda \`e facoltativa), \code{requires.oneOf} richiede che almeno uno di un
+insieme sia selezionato, \code{conflicts} rifiuta una coppia incompatibile. La
+classe \code{ModuleConstraintResolver} applica le regole; ne derivano tre
+comportamenti dei selettori. \code{none} non pu\`o essere combinato con altri
+valori. \code{all} seleziona ogni modulo compatibile, e quando un modulo di
+default e uno non di default sono in conflitto preferisce il primo; un conflitto
+fra moduli con lo stesso \code{defaultEnabled} \`e ambiguo e fa fallire la
+build. In assenza di selettore vengono scelti i moduli con
+\code{defaultEnabled=true}, che oggi coincidono con l'insieme scelto da
+\code{all}. Nomi sconosciuti e violazioni dei vincoli fanno fallire la build:
+ignorare silenziosamente \code{-PcontrolPlaneModules=async-quee} produrrebbe un
+binario privo della coda asincrona e un operatore convinto del contrario.
 
-I moduli selezionati entrano nel classpath come dipendenze \code{runtimeOnly}.
-La scelta \`e significativa: il codice del control plane non pu\`o compilare
-contro una classe di modulo, perch\'e a tempo di compilazione i moduli non sono
-sul suo compile classpath. Il compilatore \`e cos\`i l'esecutore della regola di
-isolamento, non un revisore.
+Con \code{-Precipe=<file>} una \emph{ricetta di distribuzione} diventa l'unica
+fonte di selezione: la propriet\`a \code{controlPlaneModules} \`e rifiutata e la
+variabile d'ambiente ignorata. La selezione risolta \`e esposta ai progetti
+Gradle come propriet\`a \code{gradle.ext.nanofaasSelectedControlPlaneModules},
+immutabile e ordinata, ed \`e l'input che il plugin usa anche per comporre
+il contratto OpenAPI dell'artefatto (\cref{cap:05-contratti-dati}).
+
+I moduli selezionati entrano nel classpath del control plane come dipendenze
+\code{runtimeOnly}, e il compilatore \`e cos\`i l'esecutore della regola di
+isolamento: il codice del nucleo non pu\`o compilare contro una classe di
+modulo, perch\'e a tempo di compilazione i moduli non sono sul suo compile
+classpath. Il plugin traduce inoltre i requisiti dichiarati in dipendenze
+Gradle fra moduli (\code{implementation} per \code{requires.strong},
+\code{compileOnly} per \code{requires.weak}).
 
 \subsection{Caricamento}
 
-A runtime, i moduli si presentano attraverso il \code{ServiceLoader} di Java.
-Ciascuno pubblica un file
-\code{META-INF/services/it.unimib.datai.nanofaas.common.controlplane.ControlPlaneModule}
-contenente il nome della propria classe di implementazione, che \`e tipicamente
-di dieci righe:
+A runtime i moduli si presentano con il meccanismo standard di Spring Boot:
+ciascuno pubblica un file
+\code{META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports}
+che elenca la propria classe di configurazione. Una versione precedente del
+sistema usava un'interfaccia \code{ControlPlaneModule} caricata con il
+\code{ServiceLoader} di Java e un \code{DeferredImportSelector} scritto ad hoc;
+sono stati eliminati (commit \code{bfe9cdd3}) perch\'e replicavano un
+meccanismo che il framework gi\`a fornisce, e con esso la necessit\`a di
+un'annotazione \code{@Import} sulla classe applicativa che garantisse il
+caricamento anche nei test che non eseguono \code{main()}.
 
-\begin{lstlisting}[language=Java]
-public final class ConcurrencyControlModule implements ControlPlaneModule {
-    @Override
-    public Set<Class<?>> configurationClasses() {
-        return Set.of(ConcurrencyControlConfiguration.class);
-    }
-}
-\end{lstlisting}
+I package dei moduli \textbf{non} sono soggetti a component scanning: ogni
+modulo registra i propri bean con \code{@Bean} espliciti nella propria classe
+di configurazione. La scansione automatica avrebbe reso il contenuto del
+contesto dipendente dai nomi dei package, che \`e esattamente il tipo di
+accoppiamento implicito che il sistema modulare vuole evitare.
 
-Il ponte fra \code{ServiceLoader} e Spring \`e un \code{DeferredImportSelector}:
+\subsection{La libreria di contratto}
 
-\begin{lstlisting}[language=Java, caption={\code{ControlPlaneModuleImportSelector}.}]
-public final class ControlPlaneModuleImportSelector implements DeferredImportSelector {
-    @Override
-    public String[] selectImports(AnnotationMetadata importingClassMetadata) {
-        ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-        Set<String> moduleConfigurations = new LinkedHashSet<>();
-        ServiceLoader.load(ControlPlaneModule.class, classLoader)
-                .forEach(module -> module.configurationClasses().stream()
-                        .filter(Objects::nonNull)
-                        .map(Class::getName)
-                        .forEach(moduleConfigurations::add));
-        return moduleConfigurations.toArray(String[]::new);
-    }
-}
-\end{lstlisting}
+Un modulo compila contro due soli progetti: \code{:common} e
+\code{:control-plane-spi}, una libreria obbligatoria --- non un modulo
+opzionale, quindi mai selezionata o deselezionata --- che contiene i contratti
+di dispatch, ammissione, capacit\`a, eventi di ciclo di vita, osservazione,
+provider e controllo delle repliche, e nient'altro: nessuno store, nessun
+record, nessun registro, nessun controller, nessun esecutore e nessuna
+autoconfigurazione, che restano nel nucleo. L'isolamento \`e imposto dal grafo di
+build e non dalla revisione: la libreria di contratto compila solo contro
+\code{:common}, \code{reactor-core} e \code{slf4j-api}, quindi un contratto non
+pu\`o nominare un'implementazione del nucleo, e un modulo che ne raggiungesse
+una non compilerebbe. I sorgenti di \emph{test} di un modulo possono invece
+usare il nucleo, perch\'e i test di integrazione di un modulo girano
+legittimamente contro il suo consumatore.
 
-Il commento nel sorgente ne spiega la ragione d'essere: \emph{``Ensures optional
-module \code{@Configuration} classes are imported for every bootstrap path,
-including tests that do not execute \code{ControlPlaneApplication.main()}.''} Un
-caricamento eseguito nel \code{main} funzionerebbe in produzione e non nei test
-di integrazione, che avviano il contesto per altra via. Legandolo a
-un'annotazione \code{@Import} sulla classe applicativa, ogni percorso di
-avvio che usi quella classe carica i moduli.
+Dove un modulo ha bisogno di qualcosa che un contratto non sa esprimere, consuma
+una fra cinque porte strette che il nucleo implementa:
+\code{FunctionCatalogView} (il catalogo delle funzioni, in sola lettura),
+\code{ManagedReplicaControl}, \code{DeploymentWakeUpControl},
+\code{OffloadMeters} e \code{AdmissionLimitsControl}. Ciascuna porta espone solo
+le operazioni dei suoi consumatori, cos\`i un anello di controllo che legge il
+catalogo non pu\`o mutarlo e un gateway di offload che conta i tentativi non pu\`o
+registrare metriche.
 
-Va notato che i package dei moduli \textbf{non} sono soggetti a component
-scanning: ogni modulo registra i propri bean con \code{@Bean} espliciti nella
-propria classe di configurazione. La scansione automatica avrebbe reso il
-contenuto del contesto dipendente dai nomi dei package, che \`e esattamente il
-tipo di accoppiamento implicito che il sistema modulare vuole evitare.
+\subsection{Le librerie obbligatorie}
+
+Oltre a \code{common} e \code{control-plane-spi} il build contiene altre due
+librerie che non sono moduli. \code{workload-metrics} definisce i due contratti
+con cui i moduli osservano e governano il carico
+(\code{WorkloadMetricsSource} e \code{WorkloadCapacityController});
+\code{execution-runtime} ospita \code{SchedulerEngine} e gli store di
+esecuzione. Questa seconda separazione \`e la modifica strutturale pi\`u
+rilevante rispetto alla prima stesura del sistema: \code{async-queue} e
+\code{sync-queue} non sono pi\`u due implementazioni parallele di uno scheduler,
+ma due \emph{strategie di schedulazione} inserite nello stesso motore. Se
+entrambe sono selezionate la strategia attiva \`e scelta all'avvio
+(\code{nanofaas.scheduler.strategy}) e pu\`o essere commutata a caldo dall'API di
+amministrazione. Il \cref{cap:09-async-queue} e il \cref{cap:10-sync-queue}
+descrivono le strategie. Una quarta libreria, \code{container-deployment-runtime},
+\`e condivisa dai due provider locali (\cref{cap:15-deployment-provider}).
 
 \section{Le dipendenze fra moduli}
 
-L'interfaccia \code{ControlPlaneModule} non consente a un modulo di dichiarare
-di averne bisogno di un altro. \`E una lacuna apparente, e il progetto l'ha
-mantenuta di proposito: l'unica dipendenza legittima fra moduli \`e attraverso
-un'interfaccia del nucleo, e in tal caso il modulo dipende dall'interfaccia,
-non dal modulo che la implementa.
+Poich\'e il grafo di build vieta a un modulo di nominarne un altro, l'unica
+dipendenza legittima fra moduli passa da un contratto: il modulo dipende
+dall'interfaccia, non dal modulo che la implementa. Rimane il caso in cui
+nessun modulo fornisce l'implementazione, e ha oggi due risposte distinte,
+una a tempo di build e una a tempo di avvio.
 
-Rimane per\`o il caso in cui l'implementazione neutra dell'interfaccia rende il
-modulo dipendente \emph{inerte}, e questo caso ha bisogno di una risposta.
+\subsection{Il vincolo a tempo di build: \code{requires.oneOf}}
 
-\subsection{Il caso fatale: \code{concurrency-control}}
+I moduli \code{concurrency-control} e \code{autoscaler} leggono lo stato delle
+code da \code{WorkloadMetricsSource} (profondit\`a, richieste in volo, concorrenza
+effettiva, backlog dispensabile); \code{concurrency-control} vi scrive anche i
+limiti calcolati attraverso \code{WorkloadCapacityController}. Entrambi i
+descrittori dichiarano \code{requires.oneOf=async-queue,sync-queue}:
+selezionare uno dei due senza almeno una strategia di schedulazione \`e una
+configurazione rifiutata dal plugin, con un errore che nomina il vincolo
+violato, prima ancora di compilare.
 
-Il modulo \code{concurrency-control} legge lo stato delle code da
-\code{ScalingMetricsSource} e vi \emph{riscrive} i limiti che calcola. Il nucleo
-registra sempre un'implementazione no-op di quell'interfaccia, quindi la
-condizione \code{@ConditionalOnBean} \`e soddisfatta anche quando nessun modulo
-ne fornisce una reale. Il costruttore della configurazione codifica quindi il
-controllo che l'annotazione non pu\`o fare:
+Il caso che una versione precedente del sistema doveva intercettare con un
+controllo nel costruttore --- un'implementazione no-op sempre registrata dal
+nucleo, indistinguibile da una reale che osserva un sistema scarico, con un
+metodo \code{enabled()} per farsi interrogare sulla propria natura --- non
+esiste pi\`u. Non c'\`e pi\`u un'implementazione no-op da confondere: esiste
+un'unica \code{WorkloadMetricsSource}, pubblicata dal motore composto e
+sostenuta dai suoi contatori di prenotazione per funzione, e le configurazioni
+dei due moduli sono condizionate con
+\code{@ConditionalOnBean(WorkloadMetricsSource.class)}. Il fallimento passa
+cos\`i da un'eccezione all'avvio a un errore di configurazione di build, ed
+\`e la stessa lezione, spostata a monte: una dipendenza necessaria dev'essere
+dichiarata, non rilevata a runtime.
 
-\begin{lstlisting}[language=Java]
-/**
- * Refuses to start when no module supplies real queue state.
- *
- * <p>{@code @ConditionalOnBean} above cannot catch this: the core always registers a no-op
- * source, so the condition holds even when nothing produces one. The governor would then run
- * against a source reporting depth 0 and in-flight 0 forever, and -- worse -- every limit it
- * computed would be written into that same no-op and enforced by nobody. The module would be
- * entirely inert while its metrics claimed otherwise.
- */
-public ConcurrencyControlConfiguration(ScalingMetricsSource metricsSource) {
-    if (!metricsSource.enabled()) {
-        throw new IllegalStateException(
-                "concurrency-control needs a module that supplies queue state (async-queue); "
-                        + "without one the governor reads zeroes and the limits it computes "
-                        + "are enforced by nothing. Add async-queue to the module selection.");
-    }
-}
-\end{lstlisting}
+Resta un residuo che il descrittore non pu\`o coprire: se la condizione sul
+bean non si verifica (per esempio in un test che non include un modulo di
+coda), il modulo semplicemente non si attiva, senza errore. Per questo i test di
+contesto dei due moduli di coda asseriscono direttamente la presenza di quel bean.
 
-Il metodo \code{enabled()} sull'interfaccia \`e ci\`o che rende possibile la
-distinzione. Un'implementazione no-op \`e indistinguibile da una reale che
-osserva un sistema scarico --- entrambe riportano zero --- a meno che non
-dichiari di essere no-op. \`E una tecnica generale: quando un default neutro
-pu\`o essere confuso con un'osservazione legittima, deve poter essere
-interrogato sulla propria natura.
+\subsection{Il vincolo di esclusione: i tre provider}
 
-Il messaggio di errore nomina il modulo mancante e l'azione correttiva. In un
-sistema in cui la configurazione avviene a tempo di build, un errore di
-configurazione si manifesta all'avvio ed \`e l'unica occasione per dire
-all'operatore che cosa fare.
-
-\subsection{Il caso non fatale: \code{autoscaler}}
-
-Lo stesso modulo \code{autoscaler} legge la stessa sorgente, ma non fallisce.
-La differenza \`e che la sua metrica principale --- \code{rps} --- proviene da
-un contatore Micrometer indipendente dalle code. Senza \code{async-queue}
-l'autoscaler resta pienamente funzionante sulla metrica di default, e sono le
-due metriche derivate dalle code (\code{queue\_depth} e \code{in\_flight}) a
-diventare cieche. Il modulo emette un avviso al primo uso di una di esse.
-
-Il criterio che distingue i due casi \`e quello enunciato nel
-\cref{cap:03-requisiti-principi}: degradazione osservabile, s\`i; degradazione
-silenziosa, no. \code{autoscaler} degrada parzialmente e lo dichiara;
-\code{concurrency-control} degraderebbe totalmente e in silenzio, quindi non
-degrada affatto.
+Il campo \code{conflicts} governa il caso opposto, quello di moduli che non
+possono coesistere. I tre provider di deployment gestito
+(\code{k8s-deployment-provider}, \code{container-deployment-provider},
+\code{containerd-deployment-provider}) sono a coppie mutuamente esclusivi:
+selezionarne due esplicitamente fa fallire la build. Solo il provider
+Kubernetes ha \code{defaultEnabled=true}, quindi \code{all} sceglie lui ed
+esclude i due locali; per ottenere il provider Docker o quello containerd
+rootless bisogna selezionarlo per nome (\cref{cap:15-deployment-provider}).
 
 \section{Isolamento verificato}
 
 La regola secondo cui un modulo non deve dipendere da un altro modulo \`e
-verificata automaticamente con ArchUnit~\cite{archunit}, e ciascuno dei nove
-moduli porta la propria classe di verifica. La regola \`e in vigore senza
-eccezioni: al momento della stesura nessun modulo dichiara una deroga.
+verificata automaticamente con ArchUnit~\cite{archunit}: ciascun modulo porta
+una propria classe \code{ArchitectureTest} con due regole. La prima
+\`e l'isolamento fra moduli. La seconda (identificata nel codice come P22) vieta
+la dipendenza dalle \emph{implementazioni} del nucleo: \`e espressa per nome
+di tipo e non per package, perch\'e il nucleo e la libreria di contratto
+condividono deliberatamente i nomi dei package (\code{controlplane.service}
+contiene sia il contratto \code{InvocationEnqueuer} sia l'implementazione
+\code{Metrics}). Il commento nel codice la dichiara come seconda linea di
+difesa: il grafo di build gi\`a impedisce quella dipendenza, e la regola
+nomina ci\`o che deve restare fuori se essa fosse mai reintrodotta. Sul
+versante opposto \code{SpiPurityTest} verifica che la libreria di contratto
+faccia riferimento solo ai propri tipi, ai modelli di wire e a due librerie
+neutre, che non porti dipendenze di framework o infrastruttura e che non dipenda
+mai dall'implementazione di un modulo opzionale.
 
-La formulazione della regola merita una nota, perch\'e definisce con precisione
-che cosa sia una dipendenza illegittima. Un modulo non pu\`o dipendere da
-\emph{altri moduli}; pu\`o invece dipendere liberamente dalle interfacce del
-nucleo, che \`e il meccanismo previsto. Cos\`i i provider di deployment
-implementano \code{ImageValidator}, dichiarata nel package \code{registry} del
-control plane (\cref{cap:15-deployment-provider}), senza violare nulla: il
-riferimento va verso il nucleo, non lateralmente.
+La formulazione della prima regola definisce con precisione che cosa sia una
+dipendenza illegittima. Un modulo non pu\`o dipendere da \emph{altri moduli};
+pu\`o invece dipendere liberamente dai contratti, che \`e il meccanismo previsto.
+Cos\`i i provider di deployment implementano \code{ImageValidator}, contratto
+della libreria \code{control-plane-spi} (\cref{cap:15-deployment-provider}),
+senza violare nulla: il riferimento va verso il contratto, non lateralmente.
 
 Il costo di questa formulazione \`e che una dipendenza fra moduli non pu\`o
 essere introdotta per errore ma pu\`o esserlo per decisione: il commento nel
@@ -224,53 +247,75 @@ la propria giustificazione. Nessuna \`e stata aggiunta finora.
 
 \begin{table}[htbp]
 \centering
-\caption{I nove moduli opzionali, con dimensione del codice di produzione e
-capitolo di riferimento.}
+\caption{I dieci moduli opzionali, con dimensione del codice Java di produzione
+(righe, \code{wc -l}, alla revisione \code{da8c768f}) e capitolo di
+riferimento.}
 \label{tab:moduli}
 \small
 \begin{tabularx}{\textwidth}{@{}lrXl@{}}
 \toprule
 \textbf{Modulo} & \textbf{LOC} & \textbf{Ruolo} & \textbf{Cap.} \\
 \midrule
-\code{async-queue} & 682 & Code per funzione e scheduler del percorso asincrono
+\code{async-queue} & 201 & Strategia per funzione del motore di schedulazione
 & \ref{cap:09-async-queue} \\
-\code{sync-queue} & 905 & Ammissione e backpressure sul percorso sincrono
-& \ref{cap:10-sync-queue} \\
-\code{autoscaler} & 754 & Scaling interno del numero di repliche
+\code{sync-queue} & 523 & Strategia a coda condivisa, ammissione e backpressure
+sul percorso sincrono & \ref{cap:10-sync-queue} \\
+\code{autoscaler} & 851 & Scaling interno del numero di repliche
 & \ref{cap:11-autoscaler} \\
-\code{concurrency-control} & 1\,314 & Governo del limite di concorrenza per
+\code{concurrency-control} & 1\,429 & Governo del limite di concorrenza per
 funzione & \ref{cap:12-concurrency-control} \\
-\code{offload} & 230 & Proxy condizionale verso un'istanza remota
+\code{offload} & 470 & Proxy condizionale verso un'istanza remota
 & \ref{cap:13-offload} \\
-\code{runtime-config} & 540 & Riconfigurazione a caldo e API di
+\code{runtime-config} & 744 & Riconfigurazione a caldo e API di
 amministrazione & \ref{cap:14-runtime-config} \\
-\code{k8s-deployment-provider} & 1\,202 & Backend di deployment Kubernetes
+\code{k8s-deployment-provider} & 1\,308 & Backend di deployment Kubernetes
 & \ref{cap:15-deployment-provider} \\
-\code{container-deployment-provider} & 1\,166 & Backend di deployment su runtime
+\code{container-deployment-provider} & 814 & Backend di deployment su runtime
 container locale & \ref{cap:15-deployment-provider} \\
-\code{build-metadata} & 43 & Endpoint diagnostico sulla build
+\code{containerd-deployment-provider} & 518 & Backend di deployment su
+containerd rootless & \ref{cap:15-deployment-provider} \\
+\code{build-metadata} & 236 & Endpoint diagnostico sulla build
 & \ref{cap:16-moduli-diagnostici} \\
 \midrule
-\textbf{Totale moduli} & \textbf{6\,836} & & \\
-\textit{Nucleo, per confronto} & \textit{5\,065} & & \\
+\textbf{Totale moduli} & \textbf{7\,094} & & \\
+\textit{Nucleo (\code{control-plane}), per confronto} & \textit{9\,855} & & \\
+\textit{Librerie obbligatorie} & \textit{10\,962} & & \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-Il rapporto fra le due ultime righe \`e l'osservazione con cui vale la pena
-chiudere il capitolo. La somma dei moduli supera il nucleo che estendono: la
-maggior parte del codice di \nf{} \`e codice che si pu\`o non compilare. Se il
-meccanismo di selezione modulare fosse mal progettato, questo sarebbe un
-problema di manutenzione; essendo verificato dal compilatore e dalle regole
-architetturali, \`e invece la misura di quanto la piattaforma sia riducibile.
+Le librerie obbligatorie sommano \code{execution-runtime} (7\,108),
+\code{control-plane-spi} (1\,633), \code{container-deployment-runtime} (1\,522,
+condivisa dai due provider locali ma compilata solo con essi), \code{common}
+(628) e \code{workload-metrics} (71).
 
-\section{Il default \`e \code{all}}
+I conteggi di questa tabella sono righe totali (\code{wc -l}); le 6\,299 e le
+17\,334 righe del \cref{cap:01-introduzione} e delle conclusioni sono righe non vuote,
+misurate il 28~settembre~2026, e non sono direttamente confrontabili con quelle
+della tabella.
+
+Il rapporto fra le righe della tabella cambia il giudizio che la prima stesura
+del capitolo dava. Allora la somma dei moduli superava il nucleo che estendono
+e ``la maggior parte del codice era codice che si pu\`o non compilare''. Oggi la
+somma dei moduli (7\,094) \`e inferiore al solo nucleo (9\,855), e il motore di
+schedulazione --- che allora viveva nei moduli di coda --- \`e una libreria
+obbligatoria di oltre settemila righe. La riduzione delle code a strategie
+(\code{async-queue} da 682 a 201 righe, \code{sync-queue} da 905 a 523) ha
+spostato codice dai moduli alla libreria \code{execution-runtime} in cambio di
+un motore unico e di una commutazione a caldo. Va anche detto che i conteggi non
+sono omogenei con quelli della prima stesura, perch\'e la ripartizione del
+codice fra nucleo, librerie e moduli \`e cambiata. La misura utile per un confronto con il
+footprint (\cref{cap:24-footprint}) non \`e la riga di codice ma il tempo e la
+dimensione del binario prodotto dalle singole selezioni.
+
+\section{Il default}
 
 Un'ultima nota, di metodo pi\`u che di architettura. In assenza di selezione
-esplicita, ogni invocazione di Gradle --- compresa quella dei test --- usa
-\code{all}. La ragione \`e che la suite di test deve esercitare la
-configurazione che viene distribuita, non una configurazione parziale che
-nessuno esegue.
+esplicita, ogni invocazione di Gradle --- compresa quella dei test --- usa i
+moduli con \code{defaultEnabled=true}: oggi tutti tranne i due provider locali,
+cio\`e lo stesso insieme che seleziona \code{all}. La ragione \`e che la suite di
+test deve esercitare la configurazione che viene distribuita, non una
+configurazione parziale che nessuno esegue.
 
 La configurazione priva di moduli non resta per\`o senza copertura: la classe
 \code{CoreOnlyApiTest} verifica le propriet\`a che valgono \emph{solo} in
@@ -278,6 +323,6 @@ assenza di moduli --- accodatore no-op, \code{501} su \code{:enqueue} --- e si
 auto-esclude quando i moduli sono presenti. Poich\'e la selezione modulare \`e
 risolta a tempo di configurazione di Gradle e non pu\`o variare all'interno di
 una singola build, quel test richiede una propria invocazione con
-\code{-PcontrolPlaneModules=none}. \`E un costo reale sulla catena di
-integrazione continua, ed \`e il prezzo diretto della scelta di selezionare a
-build time anzich\'e a runtime.
+\code{-PcontrolPlaneModules=none}, che la pipeline di integrazione continua
+esegue come passo separato. \`E un costo reale, ed \`e il prezzo diretto della
+scelta di selezionare a build time anzich\'e a runtime.

@@ -1,22 +1,65 @@
 \chapter{Il nucleo del control plane}
 \label{cap:06-nucleo}
 
-Il nucleo \`e ci\`o che resta quando si compila \nf{} senza alcun modulo: circa
-5\,000 righe di codice che implementano i quattro obblighi di una piattaforma
-FaaS enunciati nel \cref{cap:02-stato-dell-arte}. Questo capitolo lo attraversa
-componente per componente, soffermandosi sulle decisioni che il codice motiva
-esplicitamente.
+Il nucleo \`e ci\`o che resta quando si compila \nf{} senza alcun modulo di coda:
+i quattro obblighi di una piattaforma FaaS enunciati nel
+\cref{cap:02-stato-dell-arte} vi sono tutti implementati, e il modulo pu\`o solo
+aggiungere politiche. Il codice non sta pi\`u in un solo progetto: la macchina a
+stati dei tentativi, lo store delle esecuzioni e il registro della capacit\`a
+vivono in \code{platform/execution-runtime}, i contratti verso i moduli in
+\code{platform/control-plane-spi}, e il resto (registro delle funzioni, API,
+dispatcher, metriche) in \code{platform/control-plane}
+(\cref{cap:08-sistema-moduli}). Insieme alle tre librerie obbligatorie il modulo
+\code{control-plane} conta 17\,334 righe non vuote di produzione, contro le 6\,299 dei
+dieci moduli opzionali (misura del 28~settembre~2026, la stessa del
+\cref{cap:01-introduzione}). Il capitolo attraversa i componenti
+nell'ordine in cui li incontra una richiesta, soffermandosi sulle decisioni che il
+codice motiva esplicitamente. Le garanzie sul ciclo di vita, che attraversano pi\`u
+componenti, sono raccolte in un contratto scritto
+(\code{docs/architecture/0001-execution-lifecycle-contract.md}, nel seguito ADR~0001)
+che il capitolo cita per nome.
 
 \section{Registro e risoluzione della specifica}
 
-\subsection{\code{FunctionRegistry} e \code{FunctionService}}
+\subsection{\code{FunctionRegistry}, \code{FunctionService} e il catalogo persistente}
 
-Il registro \`e una \code{ConcurrentHashMap} da nome a \code{RegisteredFunction},
-dove quest'ultimo accoppia la specifica risolta con i metadati del deployment
-gestito, se esiste. Sopra il registro, \code{FunctionService} orchestra le
-operazioni che la registrazione comporta oltre alla memorizzazione: la
-risoluzione dei default, la validazione dell'immagine attraverso il validatore
-del backend attivo, e la richiesta di provisioning al provider di deployment.
+Il registro non \`e pi\`u una mappa mutabile: \code{FunctionRegistry} conserva uno
+\emph{snapshot} immutabile, sostituito per intero a ogni scrittura, con due viste
+--- quella pubblica, che le API leggono, e quella di recupero, che include anche
+le funzioni indisponibili (in rimozione parziale o non ancora ripristinate).
+La lettura non prende lock; le scritture sono \code{synchronized} e pubblicano
+lo snapshot solo dopo averlo reso durevole.
+
+La durabilit\`a \`e la novit\`a pi\`u rilevante rispetto alla prima versione del
+progetto. \code{FunctionCatalog} scrive l'intero catalogo in un file
+(\code{nanofaas.registry.path}): file temporaneo nella stessa directory, permessi
+\code{0600} sul file e \code{0700} sulla directory (in modo best-effort, perch\'e un
+volume montato da root non lo consente), \code{fsync} del file, spostamento atomico
+e \code{fsync} della directory. Il commento nel sorgente nomina il costo senza
+nasconderlo: ogni mutazione riscrive e sincronizza tutto il catalogo, serializzata
+sul monitor del registro, e la scrittura differita con flush coalescente \`e la
+via di miglioramento se la frequenza diventa un collo di bottiglia. Un catalogo
+illeggibile o con schema sconosciuto fa fallire l'avvio, anzich\'e ripartire vuoto.
+Nel chart Helm il percorso sta su un volume persistente (\code{/var/lib/nanofaas}).
+
+Sopra il registro, \code{FunctionService} orchestra le operazioni che la
+registrazione comporta oltre alla memorizzazione, tutte sotto un lock per nome
+(\code{FunctionOperationLocks}) e tutte rifiutate finch\'e il catalogo non \`e
+stato ripristinato (\code{FunctionRestoreGate}). L'ordine della registrazione
+\`e esplicito:
+
+\begin{enumerate}
+  \item risoluzione dei default (\cref{sec:06-resolver});
+  \item rifiuto se il nome \`e in rimozione parziale o gi\`a presente;
+  \item validazione dell'immagine attraverso il validatore del backend attivo;
+  \item provisioning del deployment gestito, se la modalit\`a lo prevede;
+  \item notifica ai listener di registrazione (capacit\`a, code, metriche);
+  \item commit durevole nel registro --- l'ultimo passo.
+\end{enumerate}
+
+Se un passo fallisce, i listener gi\`a notificati vengono ritirati e le risorse
+gi\`a create vengono rilasciate: la funzione non compare a met\`a. La cancellazione
+percorre l'ordine inverso e mette il commit durevole \emph{per ultimo}.
 
 La registrazione non \`e idempotente: registrare un nome gi\`a presente
 restituisce \code{409 Conflict}. La modifica avviene invece per
@@ -43,7 +86,15 @@ i quattro che governano il comportamento del control plane senza toccare il
 deployment sottostante. Il rifiuto delle propriet\`a sconosciute \`e la parte
 importante: senza di esso, un \code{PATCH} che tentasse di cambiare
 \code{image} riceverebbe \code{200} e non cambierebbe nulla, che \`e il modo
-peggiore di fallire.
+peggiore di fallire. Per una funzione gestita, l'aggiornamento raggiunge anche il
+provider: il proxy del backend container deriva dalla specifica il timeout del
+singolo salto e il limite di ammissione, e senza questo passo il deployment
+continuerebbe a imporre i valori originali mentre il chiamante crede in quelli
+modificati. Un errore di un listener dopo l'aggiornamento \emph{non} produce un
+rollback (il commento lo giustifica: il percorso di rollback della registrazione
+cancella la coda della funzione, che sarebbe peggio di un listener che manca un
+aggiornamento; i listener sono idempotenti, quindi ripetere lo stesso \code{PATCH}
+converge).
 
 Una nota sulla semantica del blocco annidato: \code{concurrencyControl} viene
 sostituito \emph{in blocco}, non fuso campo per campo. La ragione \`e che i campi
@@ -53,7 +104,24 @@ configurazioni ibride prive di senso --- per esempio una soglia di carico
 ereditata da \code{ADAPTIVE\_PER\_POD} sopravvissuta al passaggio a
 \code{BUDGETED}.
 
+\paragraph{Rimozione parziale.} Una cancellazione pu\`o finire in tre stati, e solo
+due possono essere presentati come esito affidabile. La rimozione completata
+cancella la voce dal catalogo per ultima. Se il backend segnala una
+\code{PartialDeprovisionException} --- risorse che non ha potuto liberare --- la
+funzione entra in \emph{rimozione in sospeso}: la voce resta nel catalogo (\`e ci\`o
+che tiene tracciabili i residui e fa s\`i che un \code{DELETE} ripetuto riprenda la
+pulizia invece di rispondere \code{404}), i listener \emph{non} vengono
+riattivati, e ogni via d'ingresso alla funzione --- invocazione, enqueue, patch,
+repliche, ri-registrazione --- risponde \code{409} con codice
+\code{FUNCTION\_REMOVAL\_PENDING}. Il rollback operativo \`e ammesso solo quando
+nulla di necessario \`e andato perso. La rimozione in sospeso \`e uno stato di
+processo, non persistito: dopo un riavvio la funzione viene ripristinata come
+qualunque altra, e se la pulizia \`e ancora voluta il \code{DELETE} va ripetuto
+(ADR~0001, \S 8.3). \`E una conseguenza del vincolo di un singolo pod con stato in
+memoria, non una svista.
+
 \subsection{\code{FunctionSpecResolver}: dove i default diventano valori}
+\label{sec:06-resolver}
 
 La risoluzione trasforma una specifica parzialmente compilata in una completa.
 \`E il punto in cui il modello ``\code{null} significa non specificato''
@@ -66,9 +134,11 @@ Optional.ofNullable(spec.queueSize()).orElse(defaults.queueSize()),
 Optional.ofNullable(spec.maxRetries()).orElse(defaults.maxRetries()),
 \end{lstlisting}
 
-Il resolver \`e anche il luogo in cui vivono i default delle politiche di
-concorrenza, e due di essi sono commentati in modo che vale la pena riportare
-perch\'e esprimono principi, non valori.
+I default delle politiche di concorrenza non vivono pi\`u nel resolver: il resolver
+delega a \code{ConcurrencyControlConfig.normalize}, nel progetto dei contratti
+condivisi, cos\`i che la stessa normalizzazione valga ovunque il blocco venga letto.
+Due default sono commentati in modo che vale la pena riportare perch\'e esprimono
+principi, non valori.
 
 \paragraph{Le soglie del controllore adattivo.}
 \begin{lstlisting}[language=Java]
@@ -106,12 +176,62 @@ scaling avviene solo per le funzioni in modalit\`a \code{DEPLOYMENT}: per
 \code{LOCAL} e \code{EXTERNAL} il blocco resta come fornito, perch\'e il control
 plane non gestisce repliche che non ha creato. Per \code{DEPLOYMENT} senza blocco
 esplicito il default \`e strategia \code{INTERNAL}, da una a dieci repliche,
-metrica \code{queue\_depth} con obiettivo 5.
+metrica \code{queue\_depth} con obiettivo 5. Sono validati anche i limiti
+(\code{minReplicas} non negativo, \code{maxReplicas} almeno 1, minimo non
+superiore al massimo).
 
 Le metriche ammesse per la strategia interna sono validate contro un insieme
 chiuso (\code{queue\_depth}, \code{in\_flight}, \code{rps}): una metrica
 sconosciuta fa fallire la registrazione con \code{400} anzich\'e produrre un
 autoscaler che non scala e non lo dice.
+
+\section{Capacit\`a di ammissione}
+\label{sec:06-capacita}
+
+Prima di creare un'esecuzione il nucleo riserva le risorse che essa
+tratterr\`a. Le riserve sono finite per configurazione, e i valori di default
+sono calibrati sul contenitore minimo supportato dal chart (512~MiB):
+\code{nanofaas.invocation-capacity.*}.
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Risorsa} & \textbf{Globale / per funzione} & \textbf{Che cosa conta} \\
+\midrule
+esecuzioni & 4\,096 / 512 & proprietari logici di un'esecuzione viva \\
+input canonico & 128~MiB / 32~MiB & rappresentazione Java trattenuta \\
+copie fisiche & 64~MiB / 16~MiB & materializzazioni di runtime e trasporto \\
+attese (waiter) & 8\,192 / 1\,024 & chiamanti sincroni attaccati, repliche incluse \\
+corpo in ingresso & 1~MiB (unico) & byte ricevuti prima del parsing \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+L'ordine sul percorso di una invocazione HTTP \`e fissato: confine del corpo
+(\code{413}), limitatore di frequenza, decodifica JSON e validazione, risoluzione
+della funzione, e solo poi la ricerca della chiave di idempotenza. Una \code{Content-Length}
+dichiarata oltre il limite \`e rifiutata senza nemmeno sottoscrivere il corpo; per
+un corpo a chunk, il primo buffer che supera il confine viene rilasciato e la
+sottoscrizione cancellata. Il vincolo che ne segue \`e importante: una
+\emph{replica} non pu\`o aggirare il limite del corpo, perch\'e il controllo
+precede la ricerca. Una richiesta genuinamente nuova reclama la chiave,
+canonicalizza l'input, riserva i proprietari e pubblica il record vivo \emph{prima}
+che un waiter sincrono sia ammesso; se l'ammissione del waiter fallisce,
+record, chiave e proprietari sono annullati prima del \code{429}.
+
+Una saturazione di esecuzioni, input, copie o waiter risponde \code{429} con
+\code{Retry-After: 1} e un corpo stabile,
+\code{\{"error":"invocation\_quota\_exceeded","resource":"execution|input|input\_copy|waiter"\}}.
+Un \code{413} non \`e sovraccarico. Le stime coprono gli oggetti Java trattenuti dal
+control plane, non la memoria nativa dei buffer Netty n\'e quella remota della
+funzione: sono una busta di ammissione, non una garanzia sull'RSS del processo.
+Quando il modulo \code{runtime-config} \`e attivo, le quattro coppie
+globale/per funzione sono modificabili a caldo (\cref{cap:14-runtime-config}); abbassare
+un tetto sotto l'occupazione attuale non espelle nulla, e nuove riserve sono
+rifiutate finch\'e il drenaggio non riporta l'uso entro il nuovo limite.
 
 \section{Il ciclo di vita di un'esecuzione}
 
@@ -119,10 +239,10 @@ autoscaler che non scala e non lo dice.
 
 \code{ExecutionRecord} \`e l'unica struttura mutabile significativa del nucleo.
 Contiene lo stato, i timestamp, l'esito, i flag di cold start, la busta di
-risposta, e --- centralmente --- il \code{CompletableFuture} su cui i chiamanti
-sincroni attendono.
+risposta, i proprietari delle risorse d'input e --- centralmente --- il
+\code{CompletableFuture} su cui i chiamanti sincroni attendono.
 
-La mutabilit\`a \`e governata da due invarianti dichiarati nel codice.
+La mutabilit\`a \`e governata da invarianti dichiarati nel codice.
 
 Il primo \`e che ogni transizione avviene sotto il monitor dell'oggetto e che gli
 stati terminali sono definitivi:
@@ -141,105 +261,275 @@ concorrente: se il dispatcher e la callback arrivano entrambi --- il che accade
 quando la funzione risponde \emph{e} invia la callback --- il secondo viene
 scartato invece di sovrascrivere l'esito.
 
-Il secondo invariante \`e che il futuro non viene mai completato tenendo il lock:
+Il secondo invariante \`e che il futuro non viene mai completato tenendo il lock.
+Oggi il record \emph{sceglie} la risposta terminale sotto il proprio monitor e la
+\emph{pubblica} altrove, con un metodo dedicato:
 
 \begin{lstlisting}[language=Java]
-// Future published outside the record monitor (same invariant as
-// publishFinalCompletion): synchronous waiters must not run under the lock.
-executionRecord.completion().complete(result);
+/** Publish only the selected terminal answer; callbacks run outside the monitor. */
+public void publishTerminal() {
+    ... // sotto il monitor: sceglie risultato o eccezione
+    if (failure != null) completion.completeExceptionally(failure);
+    else completion.complete(result);
+}
 \end{lstlisting}
 
 Completare un \code{CompletableFuture} esegue in linea le continuazioni dei
 sottoscrittori. Farlo sotto il monitor del record significherebbe eseguire codice
 applicativo arbitrario --- la mappatura della risposta, la scrittura sulla socket
 --- mentre si tiene un lock su cui il completamento concorrente contende.
-L'invariante \`e riportato in commento in ciascuno dei punti in cui vale, il che
-\`e la forma pi\`u pratica di documentazione per un requisito che una modifica
-distratta violerebbe.
+Separare la scelta dalla pubblicazione ha un secondo effetto: due completamenti
+concorrenti scelgono la stessa risposta, perch\'e la scelta \`e una sola.
 
-\subsection{\code{ExecutionStore}: tre orizzonti di dimenticanza}
+Due valori sono catturati \emph{una volta} alla costruzione e non riletti dal
+task corrente: se l'esecuzione sar\`a leggibile dopo la fine
+(\code{readableAfterFinishing}: vero per le asincrone e per quelle con chiave, falso
+per una sincrona semplice, la cui risposta \`e gi\`a tornata sulla connessione che il
+chiamante teneva) e la chiave di idempotenza. La ragione \`e la stessa per
+entrambi: la riprova sostituisce il task con uno privo di chiave, e rileggere il
+task dopo di essa declasserebbe proprio le esecuzioni che hanno avuto
+problemi, facendo smettere silenziosamente di funzionare l'idempotenza per esse.
 
-Lo store \`e una mappa concorrente con un thread janitor che ogni minuto elimina
-le voci scadute. La logica di eviction distingue tre casi:
+\subsection{Il proprietario della transizione terminale}
+
+Fino a un certo punto la transizione terminale era divisa fra pi\`u collaboratori:
+lo store archiviava l'esito, e lo spostamento della chiave di idempotenza verso il
+suo stato terminale era un listener in una catena best-effort. La conseguenza, nel
+sorgente, \`e chiamata per nome (\emph{review finding R2}): un esito troppo grande,
+espulso fra i due passi, lasciava una chiave ancora \code{published} che una
+replica poteva rivendicare, autorizzando una seconda esecuzione di una funzione
+gi\`a eseguita.
+
+\code{ExecutionLifecycle.settle} \`e oggi l'unico proprietario della transizione, e
+i passi hanno un ordine che nessun listener pu\`o saltare:
+
+\begin{enumerate}
+  \item \emph{protezione della chiave}: la chiave diventa non rivendicabile
+    (\code{markTerminal}) prima che l'ultimo riferimento vivo possa sparire, sotto
+    il monitor del record, lo stesso che il percorso di ammissione usa per
+    pubblicare, cos\`i che un record terminale non possa mai essere pubblicato sotto
+    una chiave rivendicabile;
+  \item \emph{pubblicazione} della risposta terminale scelta dal record;
+  \item \emph{archiviazione} dell'esito, se il suo peso rientra nel budget, e
+    rimozione del record vivo;
+  \item \emph{notifica} degli osservatori best-effort (metriche, conclusione
+    end-to-end): un listener che lancia un'eccezione non pu\`o interrompere la
+    pulizia n\'e impedire a un altro proprietario di chiudere.
+\end{enumerate}
+
+Il metodo \`e idempotente (un record non terminale \`e ignorato, uno gi\`a assestato
+non rifa nulla). Non c'\`e un lock globale sul percorso caldo: il record \`e il proprio
+monitor, e nessun listener, dispatcher o codice esterno gira mentre lo si tiene.
+\code{ExecutionStore.settle} resta come adattatore per i chiamanti dei moduli e
+fallisce esplicitamente se un record \emph{con chiave} viene assestato senza un
+proprietario collegato, anzich\'e perdere in silenzio la garanzia di deduplicazione.
+
+\subsection{Il contratto del ciclo di vita}
+
+Le regole che attraversano pi\`u componenti sono state raccolte nell'ADR~0001, con
+dieci invarianti (I1--I10). Quattro meritano di essere riportate perch\'e
+cambiano cosa un lettore pu\`o assumere.
+
+\paragraph{Il timeout di un chiamante non \`e il timeout dell'esecuzione.}
+Un waiter che scade (\code{X-Timeout-Ms}, altrimenti \code{spec.timeoutMs}) ottiene
+la propria risposta \code{408}, ma il record condiviso, la chiave, lo store, il
+lease e i contatori non cambiano: l'esecuzione prosegue, e una replica successiva
+o un polling ne osserva l'esito reale. Il codice lo rende esplicito
+sottoscrivendo il futuro condiviso con \code{suppressCancel}, cos\`i che n\'e il
+timeout n\'e la disconnessione di un singolo chiamante possano cancellare il lavoro
+condiviso. Il \code{TIMEOUT} condiviso \`e riservato alle scadenze di livello
+esecuzione, come l'attesa massima in coda (\cref{cap:10-sync-queue}).
+
+\paragraph{Quattro orologi.}
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Orologio} & \textbf{Chi lo possiede} & \textbf{Effetto alla scadenza} \\
+\midrule
+budget del waiter & il chiamante & solo quel waiter riceve \code{408} \\
+scadenza del tentativo & il dispatch (\code{timeoutMs}) & segue la politica di riprova \\
+politica di riprova & l'esecuzione & nuovo tentativo o errore terminale \\
+\code{maxLifetime} & lo store & \code{EXECUTION\_EXPIRED} fabbricato \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+\paragraph{Tentativo, lease e generazione.} Un tentativo \`e la singola
+spedizione di un'esecuzione, e possiede un \code{DispatchLease} sotto la
+\emph{generazione} corrente della funzione. Il rilascio del lease \`e idempotente
+ed \`e guidato dal futuro \emph{grezzo} del trasporto, non dallo specchio della
+scadenza: un handler LOCAL non interrompibile che continua a girare dopo la
+scadenza continua a occupare la capacit\`a che gli \`e attribuita, e questa non
+viene ceduta a un secondo tentativo. Il futuro terminale e la fine fisica del
+lavoro sono due momenti diversi e solo il primo \`e una transizione di stato.
+Una funzione rimossa e ri-registrata con lo stesso nome ha una nuova
+generazione: un lease vecchio rilascia solo lo slot della vecchia, e una
+callback tardiva non pu\`o ricreare stato n\'e toccare le metriche della nuova
+(\code{ACTIVE}$\to$\code{RETIRING}$\to$\code{CLOSED}; ADR~0001 \S 8.2).
+
+\paragraph{La cancellazione richiesta prima che esista l'handle.} Una scadenza
+amministrativa o uno shutdown possono correre contro un dispatch che non ha
+ancora restituito il proprio futuro. La richiesta viene ricordata sul record e
+applicata quando l'handle arriva; non \`e mai scartata per essere arrivata presto.
+
+\subsection{\code{ExecutionStore}: vivi e postumi}
+
+La prima versione descritta in questo capitolo era una mappa concorrente con un
+thread janitor che ogni minuto eliminava le voci scadute, con tre orizzonti
+(\code{ttl}, \code{cleanupTtl}, \code{maxLifetime}). Il sorgente attuale racconta
+perch\'e \`e stata sostituita, con due misure nel commento della classe: in una
+esecuzione a 1\,093 ammissioni al secondo, \code{function\_inFlight} ha toccato un
+massimo di \textbf{2} mentre lo store ne conteneva \textbf{165\,786}: il 99,999\%
+di ci\`o che conservava era postumo, e si portava dietro l'apparato dei vivi (il
+futuro, il task, la richiesta, l'insieme dei tentativi rilasciati): 35 oggetti
+per record, cinque milioni e ottocentomila in tutto, ciascuno da percorrere a
+ogni raccolta completa. Il janitor impiegava 12,4~ms su 166\,000 record. E la
+ritenzione era dichiarata in tempo e illimitata in numero, quindi la memoria
+cresceva con il tasso d'arrivo: il commento riporta 1,05~GB, il 50,6\% del tempo
+in GC e una probe di liveness mancata tre volte di seguito.
+
+Le due vite sono oggi due strutture, entrambe cache Caffeine.
 
 \begin{center}
 \small
 \begin{adjustbox}{max width=\textwidth}
 \begin{tabular}{@{}lll@{}}
 \toprule
-\textbf{Orizzonte} & \textbf{Si applica a} & \textbf{Effetto} \\
+\textbf{Struttura} & \textbf{Contiene} & \textbf{Scadenza e limite} \\
 \midrule
-\code{ttl} & esecuzioni terminate & Rimozione completa dalla mappa. \\
-\code{cleanupTtl} & esecuzioni terminate & \code{cleanup()}: libera il payload,
-mantiene i metadati. \\
-\code{maxLifetime} & esecuzioni \emph{non} terminate & Rimozione forzata. \\
+\code{inFlight} & \code{ExecutionRecord} mutabili &
+  \code{maxLifetime} (30~min) dalla scrittura \\
+\code{outcomes} & \code{Outcome} piatto e immutabile &
+  \code{ttl} (5~min) se leggibile, \code{sync-ttl} (30~s) altrimenti; \\
+ & & tetto in \emph{byte} (\code{max-outcome-bytes}) \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
 \end{center}
 
-Il terzo orizzonte esiste per una condizione precisa, dichiarata nel codice:
-\emph{``Stuck executions (lost dispatch, missing callback) must not leak
-forever.''} Un'esecuzione la cui callback non arriva mai non raggiunge uno stato
-terminale, quindi i primi due orizzonti --- ancorati all'istante di
-completamento --- non la toccherebbero mai. In un sistema con stato in memoria
-questa \`e la differenza fra un consumo limitato e una perdita monotona.
+Un \code{Outcome} \`e quattro oggetti e 116 byte (contro 35 oggetti e 1\,330 byte di
+un record terminale, misurati su 200\,000 record il 2026-08-26 secondo il commento),
+ed \`e esattamente ci\`o che serve a due scopi: rispondere a
+\code{GET /v1/executions/\{id\}} e servire la replica di una chiave. I tempi sono
+\code{long} e non \code{Instant} per la stessa ragione di peso.
 
-Il secondo orizzonte \`e un compromesso che vale la pena notare: dopo
-\code{cleanupTtl} il record viene alleggerito ma non rimosso, cos\`i che una
-richiesta di stato tardiva riceva ancora ``\code{succeeded}'' senza il payload,
-anzich\'e \code{404}. La distinzione fra ``non \`e mai esistito'' e ``\`e
-esistito e l'ho dimenticato'' \`e mantenuta per una finestra pi\`u lunga di
-quella in cui il risultato \`e conservato.
+Il limite \`e in byte e non in numero, perch\'e un esito leggibile trattiene il
+payload del chiamante: 20\,000 esiti da 64~KB occupano 1,28~GB (misura citata nel
+sorgente da \code{docs/experiments/control-plane-tuning-2026-09/RESULTS.md}).
+Il peso \`e una \emph{stima} conservativa calcolata una volta all'inserimento da
+\code{OutcomeWeigher}, che congela in profondit\`a il payload in una copia
+immutabile e non condivisa (cos\`i che nulla possa mutarlo, e farne crescere la
+dimensione, dopo che \`e stato pesato) e non lo riserializza mai. La visita \`e
+limitata in profondit\`a e ampiezza, ma \emph{mai} valuta zero la parte saltata:
+se la dimensione non pu\`o essere limitata --- struttura troppo profonda,
+contenitore troppo largo, ciclo, riferimento condiviso, oggetto opaco --- l'esito
+non viene ritenuto. Anche un esito che da solo supera l'intero budget \`e
+rifiutato, anzich\'e inserito per essere espulso un istante dopo. Il default di
+\code{max-outcome-bytes} \`e derivato: \code{max-outcomes} $\times$ 116 byte, cio\`e
+il budget \`e il vincolo che davvero limita lo heap.
+
+Il rifiuto di ritenere il payload non \`e la perdita della deduplicazione: il
+tombstone \`e la chiave, non il payload, ed \`e il proprietario della transizione
+a proteggerlo prima di tutto. Una replica di una chiave il cui esito \`e stato
+espulso per capacit\`a riceve \code{410 Gone} (\code{OutcomeGoneException}); la
+funzione \emph{non} viene rieseguita.
+
+La scadenza amministrativa (\code{maxLifetime}) \`e il secondo orizzonte che
+resta, e la sua condizione \`e dichiarata: un'esecuzione la cui callback non
+arriva mai non raggiunge uno stato terminale, quindi gli orizzonti ancorati
+all'istante di completamento non la toccherebbero mai. La cache dei vivi ha uno
+scheduler proprio, con la motivazione riportata nel commento: senza di esso
+Caffeine controlla la scadenza solo quando qualcosa tocca la cache, e un record
+bloccato su un dispatch perso, che nessuno rilegge pi\`u, restava scaduto ma vivo
+a tempo indeterminato --- e con esso lo slot di concorrenza che teneva.
+L'espulsione notifica i listener di scadenza amministrativa; il coordinatore dei
+tentativi fabbrica un esito \code{EXECUTION\_EXPIRED}, marcato come tale per
+distinguerlo da un errore genuino del runtime, e lo assesta.
+
+Due metriche misurano la distanza fra ci\`o che la piattaforma ricorda e ci\`o che
+sta eseguendo: \code{execution\_store\_size} (esiti archiviati) e
+\code{execution\_in\_flight\_records}. Senza la seconda, la prima potrebbe essere
+scambiata per lavoro in corso.
 
 \section{Idempotenza}
 
-L'idempotenza \`e attivata dall'header \code{Idempotency-Key} e implementata da
-\code{IdempotencyStore}, una cache Caffeine con scadenza a cinque minuti dalla
-scrittura. Il problema che risolve non \`e la deduplicazione a posteriori ma la
-\emph{corsa}: due richieste con la stessa chiave che arrivano
-contemporaneamente devono produrre una sola esecuzione.
+L'idempotenza \`e attivata dall'header \code{Idempotency-Key} ed \`e implementata
+da \code{IdempotencyStore}, una cache Caffeine. La chiave \`e composta con il nome
+della funzione: due funzioni con lo stesso valore di chiave sono associazioni
+indipendenti. Il problema che risolve non \`e la deduplicazione a posteriori ma la
+\emph{corsa}: due richieste con la stessa chiave che arrivano contemporaneamente
+devono produrre una sola esecuzione.
 
-Il meccanismo \`e una rivendicazione in due fasi. Una voce nella cache pu\`o
-essere \emph{pending} --- rivendicata da un chiamante che sta creando
-l'esecuzione, con un token che lo identifica --- oppure \emph{published},
-associata a un identificatore di esecuzione reale.
+Il meccanismo \`e una rivendicazione a fasi, e le fasi sono quattro, ciascuna con
+la propria scadenza:
 
-\begin{lstlisting}[language=Java, caption={Il ciclo di rivendicazione.}]
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Stato} & \textbf{Significato} & \textbf{Scadenza} \\
+\midrule
+\emph{pending} & rivendicata da un chiamante che sta creando l'esecuzione &
+  \code{maxLifetime} \\
+\emph{published} & associata a un'esecuzione ancora viva & \code{maxLifetime} \\
+\emph{abandoned} & pubblicata e poi esplicitamente abbandonata: l'esecuzione
+  non girer\`a mai, il legame pu\`o essere rivendicato di nuovo & --- \\
+\emph{terminal} & l'esecuzione \`e archiviata: \`e il tombstone & \code{ttl} da
+  completamento \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Solo lo stato \emph{abandoned} \`e rivendicabile: l'assenza di un record vivo o di
+un esito non \`e mai la prova che un legame pubblicato sia stato abbandonato.
+La scadenza per stato non \`e configurata a parte, ma derivata dalle proprieta'
+dello store delle esecuzioni, e la ragione \`e nel commento: una chiave \`e utile
+solo finch\'e esiste la risposta che nomina, e una chiave che scade prima del
+suo esito esegue silenziosamente due volte la funzione, che \`e esattamente il
+guasto che la chiave esiste per evitare. Il passaggio a \emph{terminal} riavvia
+l'orologio da completamento.
+
+\begin{lstlisting}[language=Java, caption={Il ciclo di rivendicazione (schema).}]
 public AcquireResult acquireOrGet(String functionName, String key) {
-    String composed = compose(functionName, key);
-    while (true) {
-        StoredKey existing = keys.get(composed);
-        if (existing == null) {
-            String token = pendingToken();
-            StoredKey pending = StoredKey.pending(token, Instant.now());
-            if (keys.putIfAbsent(composed, pending) == null) {
-                return AcquireResult.claimed(token);
-            }
-            continue;                       // qualcun altro ha rivendicato: rileggi
-        }
-        if (existing.pending()) { return AcquireResult.pending(); }
-        return AcquireResult.existing(existing.executionId());
-    }
+    ...
+    // riserva prima uno slot di budget, poi tenta putIfAbsent;
+    // se perde la corsa, restituisce la riserva
+    ... claimed(token) | pending() | existing(id, terminal) | budgetExhausted()
 }
 \end{lstlisting}
 
-I quattro esiti possibili --- \code{CLAIMED}, \code{PENDING}, \code{EXISTING},
-\code{MISSING} --- corrispondono a quattro reazioni distinte del chiamante:
-procedere alla creazione, attendere, riusare l'esecuzione esistente, ricominciare.
-La pubblicazione (\code{publishClaim}) e l'abbandono (\code{abandonClaim}) sono
-condizionati al possesso del token, cos\`i che un chiamante non possa pubblicare
-o cancellare la rivendicazione di un altro.
+Gli esiti possibili --- \code{CLAIMED}, \code{PENDING}, \code{EXISTING},
+\code{BUDGET\_EXHAUSTED}, \code{MISSING} --- corrispondono a reazioni distinte del
+chiamante: procedere alla creazione, attendere, riusare l'esecuzione esistente,
+rifiutare, ricominciare. La pubblicazione e l'abbandono sono condizionati al
+possesso del token.
 
-\`E il ciclo \code{while(true)} di questo codice che motiva il confinamento
-sullo scheduler elastico descritto nel
-\cref{cap:04-architettura-control-plane}. Nel caso non contesto termina alla
-prima iterazione; l'esistenza del ciclo \`e sufficiente a escluderne l'esecuzione
-sull'event loop.
+Il numero di chiavi \`e limitato da \code{max-keys}, e il budget \`e una
+\emph{riserva atomica}, non la lettura di una dimensione: una nuova
+rivendicazione riserva il proprio slot \emph{prima} di creare il legame, cos\`i che
+chiavi distinte non possano osservare tutte spazio disponibile e inserirsi tutte
+(\emph{finding R7}). Ogni voce possiede esattamente uno slot, legato alla
+sua identit\`a e non al suo stato, e lo restituisce una volta sola, quando la voce
+lascia la cache. Le repliche di una chiave gi\`a posseduta non toccano mai il budget,
+quindi la saturazione non le blocca, e il tetto non espelle mai una chiave viva
+per far posto a una nuova. Un ingresso rifiutato per budget esaurito \`e contato
+(\code{idempotency\_key\_budget\_rejections}) e l'occupazione \`e esposta come
+\code{idempotency\_keys\_held}, senza etichette che rivelerebbero un identificatore
+di esecuzione o una chiave dell'utente.
+
+Il ciclo di rivendicazione pu\`o attendere sotto contesa, ed \`e questo a motivare il
+confinamento sullo scheduler elastico descritto nel
+\cref{cap:04-architettura-control-plane}: una richiesta \emph{senza} chiave non lo
+attraversa e resta sull'event loop.
 
 \section{Dispatch}
 
-\subsection{Il router}
+\subsection{Il router e il trasporto}
 
 \code{DispatcherRouter} \`e volutamente banale: due metodi che delegano a
 \code{LocalDispatcher} o a \code{ExternalDispatcher}. La modalit\`a
@@ -248,14 +538,25 @@ esiste, invocarlo \`e la stessa operazione che invocare un endpoint esterno, e
 la differenza sta nel \emph{chi} ha creato l'endpoint
 (\cref{cap:07-modalita-esecuzione}).
 
+La scelta della modalit\`a non vive pi\`u nel gestore di completamento:
+\code{AttemptTransportAdapter}, nel control plane, \`e l'unico posto da cui il
+percorso del tentativo chiama il router e la condizione di prontezza. Il
+coordinatore dei tentativi, in \code{execution-runtime}, non importa n\'e l'uno n\'e
+l'altra, e il commento spiega perch\'e: il cancello del motore di scheduling aveva
+gi\`a dovuto essere indebolito una volta per prendere un lock per funzione, e una
+chiamata al provider raggiungibile dalle vicinanze del cancello sarebbe una
+classe di problema ben peggiore.
+
 \subsection{\code{ExternalDispatcher} e il contratto sul filo}
 
 Il dispatcher esterno effettua una \code{POST} verso l'endpoint della funzione,
 allegando quattro header di contesto: identificatore di esecuzione, numero di
-tentativo, trace id e chiave di idempotenza. Il timeout \`e applicato come
-\code{responseTimeout} sulla richiesta Reactor Netty sottostante, non come
-timeout del \code{Mono}: la differenza \`e che il primo interrompe effettivamente
-la connessione anzich\'e limitarsi ad abbandonare l'attesa.
+tentativo, trace id e chiave di idempotenza. Il timeout \`e applicato in due
+punti: come \code{responseTimeout} sulla richiesta Reactor Netty sottostante,
+che interrompe effettivamente la connessione anzich\'e limitarsi ad abbandonare
+l'attesa, e come timeout del \code{Mono}, che produce l'errore
+\code{EXTERNAL\_TIMEOUT}. Il secondo ha un effetto che il commento del
+\code{HttpClientConfig} nomina: cancella anche l'acquisizione pendente dal pool.
 
 Nella direzione di ritorno, il dispatcher interpreta tre header prodotti dal
 runtime:
@@ -291,60 +592,146 @@ plane non pu\`o assumere che rispetti il contratto. Un marcatore che dichiara
 ``il mio codice di stato \`e intenzionale'' accompagnato da un codice fuori
 intervallo viene trattato come errore di piattaforma, non propagato.
 
+\subsection{Il client HTTP: pool, DNS e connessioni}
+
+Il client dei dispatcher non usa il pool globale di Reactor Netty: il pool
+(\code{DispatchConnectionPool}) appartiene al contesto e ha un bilancio
+dichiarato, per \emph{destinazione}: 500 connessioni, coda di acquisizione pari
+a due volte tale valore, timeout di acquisizione 45~s, chiusura delle connessioni
+inattive dopo 30~s, e smaltimento dei pool di destinazioni inattive. Il commento
+riporta una scelta di \emph{non} adottare un timeout di acquisizione pi\`u breve:
+misurato come grande vantaggio solo in un harness che non cancellava mai, e
+senza effetto misurabile quando, come fa \code{ExternalDispatcher}, si cancella.
+
+Il client risolve il DNS a \emph{ogni} nuova connessione invece di conservarne le
+risposte (\code{NoopDnsCache}; non un TTL zero, che Netty rifiuta). La
+motivazione, nel commento, \`e un incidente: una funzione cancellata e
+ri-registrata con lo stesso nome riceve un nuovo Service con un nuovo ClusterIP;
+con la cache del record (30~s su CoreDNS di minikube) i dispatch continuavano a
+chiamare il vecchio ClusterIP, dove nulla rispondeva, e ogni connessione restava
+appesa fino al timeout di connessione pur essendo il nuovo pod Ready. Poich\'e le
+connessioni sono in pool, la risoluzione avviene solo all'apertura di una nuova.
+
 \section{Riprova}
+\label{sec:06-riprova}
 
-La riprova \`e gestita in \code{ExecutionCompletionHandler}. La regola \`e
-semplice --- si riprova finch\'e il numero di tentativo non supera
-\code{maxRetries} --- ma tre dettagli meritano nota.
+La riprova \`e gestita da \code{AttemptCoordinator}, in \code{execution-runtime};
+\code{ExecutionCompletionHandler} ne \`e oggi una facciata Spring. La regola di
+base non \`e cambiata --- si riprova finch\'e il numero di tentativo non supera
+\code{maxRetries} --- ma i dettagli s\`i.
 
+\paragraph{La riprova ha un ritardo.} Nella prima versione una riprova era
+immediata, e il suo costo era misurabile: dopo un deploy, gli errori
+\code{EXTERNAL\_ERROR} erano riprove ravvicinate contro un endpoint che non era ancora
+pronto, che si esaurivano in pochi millisecondi. Oggi \code{RetryBackoff} calcola
+l'istante di eleggibilit\`a del prossimo tentativo: la base cresce come
+$\min(\text{max},\,\text{iniziale}\cdot 2^{n-1})$ e il ritardo effettivo \`e
+campionato con \emph{jitter uguale} in $[\text{base}/2,\,\text{base}]$; il minimo
+non \`e mai zero. Un \code{Retry-After} del server a monte (accettato in secondi o
+come data, solo per \code{429} e \code{503}, e solo se coerente fra pi\`u valori) \`e un
+\emph{minimo}, non un tetto: se \`e pi\`u lontano del ritardo locale, vince.
+I default sono \code{nanofaas.retry.initial-backoff}=100~ms e
+\code{max-backoff}=2~s.
+
+Una riprova in attesa \emph{conserva la propria riserva} e non occupa capacit\`a di
+dispatch: nel profilo diretto il lavoro in attesa \`e tenuto da
+\code{ExecutorBackedInvocationEnqueuer}, con un timer e un numero massimo di lavori
+pendenti; con un modulo di coda, il biglietto rientra nel motore con \code{notBefore}
+e attende nell'insieme dei \emph{ritardati} (\cref{cap:09-async-queue}).
+
+\paragraph{Misure di riprova.} Il confronto \`e in
+\code{docs/experiments/scheduler-switching-2026-09} (base \code{a17289c2}). Nella
+riproduzione dal vivo di un deploy, la base ha completato 742 esecuzioni su 900 e il
+candidato 900 su 900. Con un \code{429} controllato e \code{Retry-After: 1}, la base
+ha tentato 1\,195 volte contro 600, ha concluso 3 esecuzioni con successo e 297 con
+errore contro 300 e 0, con un intervallo minimo di 0,000727~s contro 1,000698~s e 892
+intervalli sotto il secondo contro nessuno. Va detto che un caso su dodici del
+deploy vivo resta senza spiegazione: un timeout che i log non chiariscono.
+
+\paragraph{Il cancello di prontezza per DEPLOYMENT.} Un Deployment appena creato
+non \`e pronto per i secondi che il primo pod impiega ad avviarsi, e un dispatch
+inviato allora incontra un Service senza endpoint. Invece di spendere riprove,
+\code{DeploymentWakeUpGate} trattiene il dispatch finch\'e la generazione non \`e stata
+osservata pronta, una volta sola: la funzione gi\`a vista pronta costa una ricerca
+e nessuna chiamata al provider. L'attesa \`e cancellabile, ha un timeout
+(\code{nanofaas.deployment.wakeup.timeout}, 30~s), un intervallo di polling
+(250~ms) e un'et\`a massima dell'osservazione di pronto (5~s); la stessa attesa
+serve la scale-to-zero.
+
+\paragraph{Tre dettagli che restano.}
 Primo, il tentativo di riprova viene costruito come un \code{InvocationTask}
 nuovo, con la chiave di idempotenza \emph{azzerata}:
 
 \begin{lstlisting}[language=Java]
 InvocationTask retryTask = new InvocationTask(
         ..., null,  // No idempotency key for retry - retry is internal
-        ..., currentTask.attempt() + 1);
+        ..., currentTask.attempt() + 1, currentTask.kind());
 \end{lstlisting}
 
 La riprova \`e un'operazione interna sulla \emph{stessa} esecuzione: conservare
 la chiave farebbe s\`i che la riprova si riconosca come duplicato di se stessa e
-riproduca l'esito fallito.
+riproduca l'esito fallito. (Per questo il record ha catturato la chiave alla
+costruzione.)
 
-Secondo, il rilascio dello slot di concorrenza \`e reso idempotente per numero di
-tentativo (\code{markDispatchSlotReleased(attempt)}, con un insieme dei tentativi
-gi\`a rilasciati nel record). Senza questa protezione, un esito che arriva due
-volte --- risposta HTTP \emph{e} callback --- rilascerebbe due slot avendone
-occupato uno, e il contatore delle richieste in volo scenderebbe sotto il valore
-reale, con effetti diretti sull'autoscaler e sul controllore di concorrenza che
-leggono quel contatore.
+Secondo, il rilascio dello slot di concorrenza \`e idempotente per tentativo. Nella
+prima versione era un insieme di tentativi rilasciati nel record; oggi \`e
+\code{DispatchLease.release()}, che rilascia una volta sola. Senza questa
+protezione, un esito che arriva due volte --- risposta HTTP \emph{e} callback ---
+rilascerebbe due slot avendone occupato uno, e il contatore delle richieste in
+volo scenderebbe sotto il valore reale, con effetti diretti sull'autoscaler e sul
+controllore di concorrenza che leggono quel contatore.
 
-Terzo, la riprova pu\`o fallire per coda piena, e in tal caso l'esecuzione viene
-completata con l'errore originale anzich\'e con un errore di coda: il chiamante
-riceve la ragione per cui la funzione \`e fallita, non la ragione per cui la
-piattaforma ha rinunciato a riprovare.
+Terzo, la riprova pu\`o fallire perch\'e non c'\`e modo di ripubblicarla (coda piena,
+lavori pendenti al massimo, timer rifiutato), e in tal caso l'esecuzione viene
+completata con l'errore \emph{originale} anzich\'e con un errore di coda: il
+chiamante riceve la ragione per cui la funzione \`e fallita, non la ragione per cui
+la piattaforma ha rinunciato a riprovare. Il codice riverifica che l'esecuzione sia
+ancora parcheggiata su quel tentativo prima di concluderla, perch\'e una scadenza
+amministrativa pu\`o averla conclusa nel frattempo.
 
 \section{Limitazione di frequenza}
 
-Il limitatore \`e una finestra fissa di un secondo su due contatori atomici:
+Il limitatore \`e ancora una finestra fissa di un secondo, ma ha cambiato sia
+posizione sia realizzazione. La posizione: non \`e pi\`u chiamato da
+\code{InvocationService}, dopo la decodifica HTTP e JSON, ma da un \code{WebFilter}
+(\code{RateLimitWebFilter}) ristretto ai due suffissi \code{:invoke} e \code{:enqueue}, che
+rifiuta \emph{prima} di leggere il corpo: nel commento, ogni rifiuto pagava prima
+tutto il costo di decodifica, proprio quando la piattaforma ha meno da spendere.
+Il rifiuto svuota comunque il corpo, altrimenti Reactor Netty non riceve il segnale
+di richiesta consumata e pu\`o chiudere la connessione invece di riusarla in
+keep-alive, un costo maggiore di ci\`o che il rifiuto risparmia; risponde \code{429}
+con \code{Retry-After: 1}. La realizzazione: finestra e conteggio stanno in un \emph{unico} \code{AtomicLong}
+(33 bit per il secondo epoch, 31 per il conteggio), cos\`i che il passaggio di
+finestra e il reset del contatore siano una sola transizione CAS. La versione
+precedente, con due contatori atomici separati, aveva una corsa che il commento
+descrive: rifiutava a torto richieste della nuova finestra e permetteva a un reset
+di cancellare incrementi fatti dopo il passaggio.
 
 \begin{lstlisting}[language=Java]
 public boolean allow() {
-    long now = Instant.now().getEpochSecond();
-    long currentWindow = windowStartSecond.get();
-    if (now > currentWindow && windowStartSecond.compareAndSet(currentWindow, now)) {
-        windowCount.set(0);
+    long max = maxPerSecond;
+    long now = epochSecondSource.getAsLong();     // letto una volta per decisione
+    while (true) {
+        long state = windowAndCount.get();
+        long window = state >>> COUNT_BITS, count = state & COUNT_MASK;
+        if (now > window) {                       // nuova finestra: la reclama a 1
+            if (windowAndCount.compareAndSet(state, encode(now, 1L))) return 1L <= max;
+            continue;
+        }
+        if (count >= max) return false;
+        if (windowAndCount.compareAndSet(state, state + 1L)) return true;
     }
-    return windowCount.incrementAndGet() <= maxPerSecond;
 }
 \end{lstlisting}
 
-\`E l'algoritmo pi\`u semplice possibile e ha il difetto noto della finestra
-fissa: a cavallo del secondo pu\`o ammettere fino al doppio del limite. Un token
-bucket lo eviterebbe. La scelta \`e coerente con il ruolo che il limitatore ha
-in questo sistema --- una protezione presente sul percorso ma neutra per default
-(\cref{cap:03-requisiti-principi}) --- e la sua imprecisione \`e irrilevante a
-un milione di richieste al secondo. \`E, per\`o, un punto su cui il progetto ha
-scelto la semplicit\`a sapendo di sbagliare, e vale la pena dirlo.
+Il difetto noto della finestra fissa non \`e cambiato, e il commento della classe
+lo dichiara: a cavallo del secondo si pu\`o ammettere fino al doppio del limite, e
+non \`e un token bucket. La scelta \`e coerente con il ruolo del limitatore in
+questo sistema --- una protezione presente sul percorso ma neutra per default
+(\cref{cap:03-requisiti-principi}) --- e la sua imprecisione \`e irrilevante a un
+milione di richieste al secondo. Il limite \`e \code{volatile} e riletto a ogni
+decisione: l'endpoint di configurazione a caldo lo modifica con effetto alla
+decisione successiva, senza sincronizzazione aggiuntiva.
 
 \section{Metriche}
 
@@ -361,14 +748,35 @@ public void success(String function) {
 }
 \end{lstlisting}
 
-La rimozione dei contatori alla cancellazione della funzione evita che il
-registro Prometheus cresca indefinitamente in un sistema in cui le funzioni sono
-create e distrutte da script di test. Ha per\`o una conseguenza sperimentale che
-il progetto ha imparato per via empirica: una verifica che interroghi le
-metriche \emph{dopo} aver cancellato la funzione non trova nulla. Il
-\cref{cap:22-metodo-sperimentale} riporta come gli scenari di validazione sono
-stati corretti di conseguenza.
+Il percorso comune --- una funzione registrata e viva --- non prende lock. Lo
+prendeva sempre, ed era un monitor \emph{globale} condiviso da tutte le
+funzioni, su un percorso che ogni invocazione attraversa sei volte: il
+commento riporta 223~ns per operazione con un thread e 2\,638~ns con otto (il
+costo per operazione cresceva con i thread invece di restare piatto, che \`e la
+firma di una serializzazione). Il lock resta sul percorso lento, dove serve:
+prima registrazione e corsa con la rimozione. Un incremento che afferra i
+contatori un istante prima della rimozione va perso, ed \`e un prezzo accettato.
+
+La rimozione dei contatori alla cancellazione evita che il registro Prometheus
+cresca indefinitamente in un sistema in cui le funzioni sono create e distrutte da
+script di test. Ha per\`o una conseguenza sperimentale che il progetto ha
+imparato per via empirica: una verifica che interroghi le metriche \emph{dopo}
+aver cancellato la funzione non trova nulla. Il \cref{cap:22-metodo-sperimentale}
+riporta come gli scenari di validazione sono stati corretti di conseguenza.
+Le metriche di carico per funzione dei moduli (\code{function\_queue\_depth} e
+compagne) seguono la stessa regola, ma con \emph{drenaggio}: i contatori vengono
+rimossi solo dopo che il lavoro in volo della generazione \`e tornato
+(\cref{cap:09-async-queue}).
 
 Le esecuzioni relative a funzioni gi\`a rimosse vengono contabilizzate su un
 registro separato e non esportato (\code{removed\_function\_*}), cos\`i che la
-loro esistenza non produca n\'e serie orfane n\'e eccezioni.
+loro esistenza non produca n\'e serie orfane n\'e eccezioni. Il conteggio dei
+campioni \`e legato alla generazione: un completamento la cui funzione \`e stata
+rimossa e ri-registrata dopo l'ammissione non attribuisce il proprio campione ai
+contatori della nuova registrazione (\code{isCurrentGeneration}, I7).
+Tre contatori per percorso (\code{admitted}, \code{refused}, \code{replayed})
+distinguono la porta da cui l'invocazione \`e entrata, e sono nomi \emph{nuovi} e non
+un'etichetta sui contatori esistenti: cinque di quelli alimentano anelli di
+controllo (la latenza il governatore di concorrenza, i dispatch l'autoscaler, in
+volo e profondit\`a l'HPA di Kubernetes), e dividere una serie che un anello legge
+cambia ci\`o che l'anello vede.

@@ -41,7 +41,7 @@ Eseguire il control plane in sviluppo & Gradle / Spring Boot \\
 
 \section{La CLI}
 
-Circa 1\,460 righe, costruita su Picocli. La struttura dei comandi:
+2\,426 righe di sorgente Java (\code{wc -l} su \code{clients/cli/src/main}, 2026-09-28), costruita su Picocli. La struttura dei comandi:
 
 \begin{center}
 \small
@@ -52,7 +52,7 @@ Circa 1\,460 righe, costruita su Picocli. La struttura dei comandi:
 \midrule
 \code{fn apply} & Registra o aggiorna una funzione da un manifesto YAML. \\
 \code{fn list} / \code{fn get} / \code{fn delete} & Ciclo di vita. \\
-\code{fn test} & Invoca con un input di prova e confronta. \\
+\code{fn test} & Invoca con un input di prova e confronta output e stato HTTP atteso. \\
 \code{invoke} & Invocazione sincrona. \\
 \code{enqueue} & Invocazione asincrona. \\
 \code{exec get} & Stato di un'esecuzione. \\
@@ -97,6 +97,33 @@ produrre un binario che fallisce a runtime per una configurazione di riflessione
 mancante --- l'errore caratteristico di GraalVM
 (\cref{cap:20-build-packaging}). Un test che esercita almeno un percorso di
 serializzazione reale \`e ci\`o che distingue ``ha compilato'' da ``funziona''.
+
+Il rischio non \`e teorico. Il file di configurazione della riflessione della
+CLI nominava undici tipi, e quattro comandi si rompevano nel binario nativo
+mentre i loro test JVM passavano (\code{fn replicas get}, \code{control-plane
+info}, \code{fn update -f} e \code{--{}-config <file>}: errori di lettura o di
+serializzazione JSON e YAML). La correzione registra ogni \code{record} della CLI
+pi\`u la classe di configurazione YAML (29 voci) e, soprattutto, aggiunge un test
+(\code{NativeReflectConfigCoverageTest}) che \emph{scansiona} il codice
+compilato alla ricerca dei \code{record} invece di elencarli: un tipo nuovo non
+pu\`o pi\`u essere dimenticato. Con la vecchia configurazione il test nomina
+esattamente i tipi mancanti. Dopo la correzione, secondo il messaggio del
+commit, la CLI nativa e quella JVM producono lo stesso output per ogni comando
+esercitato.
+
+\subsection{Che cosa verifica \code{fn test}}
+
+\code{fn test} passava un caso soltanto su uno stato 2xx, quindi un input che
+descrive un percorso d'errore non poteva mai passare: un 422 deciso dalla
+funzione arriva come HTTP 422 con stato di esecuzione \code{success} e il corpo
+d'errore come output. Ogni scaffold di \code{fn-init} risponde 422 a un input
+mancante, e dunque la CLI bocciava il \code{missing-input.json} dello scaffold
+stesso appena generato. Ora un input pu\`o dichiarare \code{expectedStatusCode}
+(chiave e predefinito 200 gi\`a usati dal corpus \code{correctness.json}): il caso
+passa se lo stato HTTP coincide e l'output coincide con l'atteso, mentre un
+errore di piattaforma continua a fallire. \`E la stessa distinzione fra errore
+della funzione ed errore della piattaforma che il contratto della risposta
+(\cref{cap:17-runtime-funzione}) fissa lato runtime.
 
 \section{\code{fn-init}}
 

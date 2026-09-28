@@ -1,305 +1,462 @@
 \chapter{Il modulo \code{async-queue}}
 \label{cap:09-async-queue}
 
-\code{async-queue} \`e il modulo che rende possibile l'invocazione asincrona, e
---- meno ovviamente --- \`e anche l'unico che fornisce alla piattaforma
-un'osservazione reale dello stato delle code. Il primo ruolo \`e quello che il
-suo nome dichiara; il secondo \`e ci\`o che lo rende una dipendenza per
-\code{concurrency-control} e una dipendenza parziale per \code{autoscaler}.
+\code{async-queue} \`e il modulo che rende possibile l'invocazione asincrona.
+Il suo ruolo \`e cambiato in modo sostanziale rispetto alla prima stesura di
+questo capitolo. Un tempo il modulo possedeva le code, il ciclo di scheduling e
+il contatore delle richieste in volo, e per questo era anche l'unica sorgente di
+osservazione dello stato delle code. Oggi non possiede pi\`u nulla di tutto ci\`o:
+fornisce una \emph{politica} di selezione, \code{per-function}, e un'implementazione
+del punto di estensione con cui il nucleo accetta lavoro asincrono. Il ciclo, lo
+stato pendente e i limiti di concorrenza stanno in un progetto separato,
+\code{platform/execution-runtime}, condiviso con \code{sync-queue}
+(\cref{cap:10-sync-queue}).
 
-Sono 682 righe di codice in nove classi.
+Il modulo \`e ridotto a poche decine di righe di configurazione pi\`u la classe
+della politica (182 righe su 201 del modulo, secondo \code{wc -l}). Il resto di questo capitolo descrive quindi il
+\emph{motore} che la ospita, perch\'e \`e l\`i che vive tutto ci\`o che il
+capitolo, nella sua versione precedente, attribuiva al modulo.
 
-\section{Struttura}
+\section{Da due cicli a un motore}
 
-\begin{center}
-\small
-\begin{adjustbox}{max width=\textwidth}
-\begin{tabular}{@{}lp{9cm}@{}}
-\toprule
-\textbf{Classe} & \textbf{Ruolo} \\
-\midrule
-\code{FunctionQueueState} & Stato di una singola funzione: coda limitata,
-contatore delle richieste in volo, limiti di concorrenza. \\
-\code{QueueManager} & Mappa da nome di funzione a stato, registrazione delle
-metriche, notifica del lavoro disponibile. \\
-\code{Scheduler} & Ciclo a thread singolo che consuma dalle code e dispaccia. \\
-\code{QueueBackedEnqueuer} & Implementazione di \code{InvocationEnqueuer}. \\
-\code{QueueBackedMetricsSource} & Implementazione di \code{ScalingMetricsSource}. \\
-\code{QueueConcurrencyControlMetrics} & Metriche descrittive del controllore
-attivo per funzione. \\
-\code{WorkSignaler} & Interfaccia a un metodo per la notifica. \\
-\bottomrule
-\end{tabular}
-\end{adjustbox}
-\end{center}
+Fino al 2026-09 esistevano due scheduler indipendenti: \code{Scheduler} in
+\code{async-queue}, un ciclo a thread singolo con round-robin fra funzioni, e
+\code{SyncScheduler} in \code{sync-queue}, un ciclo con una coda FIFO condivisa e
+scansione selettiva. Due moduli, due cicli, due strutture dati, e una regola di
+esclusione reciproca: i due moduli non potevano essere compilati insieme
+(\cref{cap:08-sistema-moduli}). Il costo era duplice. La scelta della politica era
+una decisione di \emph{build}, non modificabile a caldo; e i due cicli replicavano,
+con varianti sottili, la stessa contabilit\`a (slot acquisiti, rilasciati, scadenze,
+rimozione di una funzione).
 
-\section{Lo stato di una funzione}
+La campagna documentata in
+\code{docs/experiments/scheduler-switching-2026-09} ha sostituito i due cicli con
+un unico \code{SchedulerEngine}, e ha ridotto le due politiche a due
+\emph{strategie} su un'interfaccia comune. Le due implementazioni preservano
+l'algoritmo del ciclo che sostituiscono, compresi i valori numerici (il quanto di
+2, la finestra di 64), conservando il valore misurato anzich\'e ritararlo.
+Che cosa ne resta al modulo \`e solo la strategia.
 
-\code{FunctionQueueState} incapsula quattro grandezze: la coda dei compiti
-(\code{ArrayBlockingQueue} di dimensione fissa), il contatore delle richieste in
-volo, il limite di concorrenza \emph{configurato} e il limite di concorrenza
-\emph{effettivo}.
+\section{Il contratto di una strategia}
 
-La distinzione fra i due limiti \`e la chiave dell'intero modulo. Il limite
-configurato \`e ci\`o che l'utente ha dichiarato nella specifica della funzione.
-Il limite effettivo \`e ci\`o che il modulo \code{concurrency-control}, se
-presente, ha deciso di applicare in questo momento. In assenza di quel modulo i
-due coincidono sempre.
+Il contratto sta nella libreria \code{control-plane-spi}, ed \`e minuscolo:
 
-\subsection{Acquisizione dello slot}
+\begin{lstlisting}[language=Java]
+public interface SchedulingStrategy {
+    String id();                  // "per-function", "shared-queue"
+    SchedulingIndex newIndex();   // un indice vuoto, indipendente
+}
 
-L'ammissione al dispatch \`e un'operazione atomica di test-e-incremento:
-
-\begin{lstlisting}[language=Java, caption={\code{FunctionQueueState.tryAcquireSlot()}.}]
-/**
- * Atomically checks if dispatch is allowed and increments inFlight if so.
- * This prevents race conditions where multiple threads could both pass
- * canDispatch() check and then both increment, exceeding the concurrency limit.
- */
-public boolean tryAcquireSlot() {
-    while (true) {
-        int current = inFlight.get();
-        if (current >= effectiveConcurrency) {
-            return false;
-        }
-        if (inFlight.compareAndSet(current, current + 1)) {
-            return true;
-        }
-        // CAS failed, another thread modified - retry
-    }
+public interface SchedulingIndex {
+    void add(SchedulingTicket ticket);
+    void remove(TicketId id);
+    SchedulingTicket select(Instant now, Predicate<FunctionGeneration> runnable);
+    void defer(TicketId id);
+    default void advanceScanWindow() { }
+    int size();
+    void clear();
 }
 \end{lstlisting}
 
-L'alternativa ingenua --- verificare \code{canDispatch()} e poi incrementare ---
-\`e corretta solo con un unico consumatore. Il modulo ne ha uno solo oggi (lo
-scheduler \`e a thread singolo), ma il metodo \`e esposto anche al percorso
-sincrono attraverso \code{InvocationEnqueuer.tryAcquireSlot}, che gira su thread
-arbitrari. La primitiva atomica \`e quindi necessaria, non difensiva.
+Una strategia non ha stato proprio: \`e una fabbrica di indici. Un
+\code{SchedulingIndex} contiene \emph{ticket} --- identit\`a, generazione della
+funzione, istante di eleggibilit\`a, scadenza in coda --- e nient'altro: niente
+payload, niente thread, niente metriche, niente callback. \`E confinato al gate del
+motore, che ne serializza ogni chiamata; l'indice non deve conoscere la
+concorrenza.
 
-\subsection{Il rilascio con pavimento a zero}
+Il metodo pi\`u importante \`e \code{select}, e la sua propriet\`a distintiva \`e che
+\emph{non muta nulla}: restituisce il primo ticket eseguibile senza rimuoverlo e
+senza ruotare l'ordine interno. La rotazione avviene solo nei percorsi di
+fallimento, attraverso \code{defer} (il ticket \`e stato scelto ma non ha potuto
+essere dispacciato) e \code{advanceScanWindow} (nessun candidato trovato). Il
+predicato \code{runnable} legge soltanto osservazioni gi\`a in memoria sulla
+capacit\`a della generazione, e non deve mai chiamare un provider o uno store.
 
-Il rilascio \`e simmetrico ma con una protezione aggiuntiva:
+Separare la sola \emph{politica di ordinamento} da tutto il resto \`e ci\`o che
+rende possibile la sostituzione a caldo: cambiare strategia significa costruire un
+indice nuovo e travasarvi i ticket, senza toccare lo stato delle esecuzioni.
+
+\section{Il motore}
+
+\code{SchedulerEngine} (1112 righe, in \code{execution-runtime}; il nucleo lo
+compone e lo avvia) \`e l'unico ciclo.
+Possiede lo stato del lavoro pendente (\code{PendingWorkStore}), l'indice attivo e
+la sequenza di risveglio. Un solo thread di lavoro esegue \code{tick()} in un ciclo
+e si parcheggia sul monitor del motore fra un passaggio e l'altro; tutte le
+operazioni sull'indice sono quindi serializzate senza che l'indice lo sappia.
+
+\subsection{Il lavoro pendente}
+
+\code{PendingWorkStore} \`e il registro autoritativo del lavoro pendente e delle
+\emph{prenotazioni}. Un ticket occupa esattamente una prenotazione dal momento in
+cui viene offerto al momento in cui viene rimosso o finisce di essere sottomesso: la
+prenotazione non si libera n\'e quando il ticket viene reclamato per il dispatch,
+n\'e quando entra nello stato \code{submitting}. \`E il fatto che rende sensato il
+tetto per funzione: \code{queueSize} limita le prenotazioni, non i ticket in
+attesa, quindi limita anche i tentativi in volo.
+
+Il tetto globale \`e \code{maxPending}. Vale 10\,000 nel profilo di default e
+diventa \code{sync-queue.max-depth} nel profilo \code{SYNC\_QUEUE}
+(\cref{cap:10-sync-queue}): la stessa struttura \`e quindi, a seconda del profilo,
+la coda profonda della politica per-funzione o la coda condivisa limitata della
+politica sincrona.
+
+\subsection{Un passaggio del ciclo}
+
+Ogni passaggio (\code{pass()}) \`e organizzato in fasi con un confine netto fra
+quanto avviene sotto il gate e quanto avviene fuori:
+
+\begin{enumerate}[leftmargin=*]
+  \item \emph{sotto il gate}: raccoglie le scadenze di coda dovute (al pi\`u 64 per
+  passaggio, in modo che un'ondata di scadenze non affami il dispatch), promuove i
+  ticket ritardati diventati eleggibili, e seleziona e reclama al pi\`u un ticket
+  attraverso l'indice attivo;
+  \item \emph{fuori dal gate}: acquisisce il \emph{lease} di dispatch della
+  generazione (\cref{sec:09-lease}); se non lo ottiene, la generazione viene
+  esclusa dalle selezioni fino al prossimo segnale e il reclamo viene annullato;
+  \item \emph{sotto il gate}: riconvalida il reclamo. Se nel frattempo il ticket \`e
+  stato rimosso, o l'indice \`e stato sostituito, o l'orologio ha fatto un passo
+  indietro, il reclamo \`e annullato e il lease rilasciato;
+  \item altrimenti, conferma la prenotazione come sottomessa e \emph{poi} consegna il
+  compito al dispatcher, di nuovo fuori dal gate.
+\end{enumerate}
+
+L'ordine dei lock \`e uno solo e lo dichiara la documentazione della classe: il gate
+pu\`o prendere il lock di una voce del registro di capacit\`a, mai il contrario. Il
+registro chiama le proprie callback solo dopo aver rilasciato quel lock. \`E questa
+asimmetria ad assicurare l'assenza di cicli, ed \`e ci\`o che consente a qualunque
+altro componente di chiamare \code{enqueue}, \code{remove} o \code{signal} tenendo
+il proprio lock, purch\'e non sia un lock di capacit\`a. Acquisizione del lease,
+chiamate ai provider, ispezione dei record, sottomissione e ogni notifica di
+ciclo di vita avvengono \emph{fuori} dal gate: \`e il prezzo pagato per tenere il
+gate breve, e quello che lo rende compatibile con il vincolo di non bloccare.
+
+La sosta fra passaggi \`e limitata da tre costanti. Con nulla di pendente il ciclo
+attende al pi\`u 500\,ms, con lavoro che nessuna generazione pu\`o prendere al pi\`u
+50\,ms; in entrambi i casi l'attesa \`e ulteriormente abbreviata dalla prossima
+scadenza o dal prossimo istante di eleggibilit\`a. Sono limiti di sicurezza, non
+periodi di polling: lavoro, capacit\`a e rimozioni svegliano il ciclo prima.
+
+\subsection{Ticket ritardati e contropressione}
+
+Un ticket ha un istante \code{notBefore}. Quelli con eleggibilit\`a futura non
+entrano nell'indice della strategia, che resta ignaro del tempo: vivono in una
+struttura ordinata del motore, indipendente dalla strategia scelta, e vengono
+promossi quando scade il loro istante. \`E il meccanismo su cui si appoggia il
+ritentativo con backoff (\cref{cap:06-nucleo}), e per questo \`e la strategia-agnostica:
+un tentativo in attesa di riprovare non deve dipendere da quale politica \`e attiva.
+
+Se la sottomissione fallisce per esaurimento della capacit\`a d'ingresso
+(\code{InvocationQuotaExceededException}), il lease viene rilasciato e il ticket
+torna nell'indice \emph{con la stessa prenotazione, lo stesso numero di sequenza e
+le stesse scadenze}. Una richiesta di rimozione arrivata durante la sottomissione
+viene ricordata e applicata solo se il ticket torna indietro, perch\'e a
+dispatch confermato il tentativo appartiene al ciclo di vita e non alla coda.
+
+\section{La strategia \code{per-function}}
+
+\code{PerFunctionSchedulingStrategy} implementa quanto la versione precedente di
+questo capitolo descriveva come comportamento dello scheduler: una FIFO di ticket
+per funzione, visitate in round-robin, con un numero limitato di dispatch
+consecutivi per turno.
 
 \begin{lstlisting}[language=Java]
-private void decrementInFlightNonNegative() {
-    while (true) {
-        int current = inFlight.get();
-        if (current == 0) { return; }
-        if (inFlight.compareAndSet(current, current - 1)) { return; }
-    }
-}
-\end{lstlisting}
+static final int DEFAULT_MAX_BATCH_PER_FUNCTION = 2;
 
-Un decremento su un contatore gi\`a a zero viene ignorato anzich\'e produrre un
-valore negativo. La condizione non dovrebbe verificarsi --- il
-\cref{cap:06-nucleo} descrive il meccanismo che rende idempotente il rilascio
-per tentativo --- ma se si verificasse, un contatore negativo si propagherebbe
-direttamente nella metrica \code{function\_inFlight}, che \`e la sorgente su cui
-decidono sia l'autoscaler sia il controllore di concorrenza. Un errore di
-contabilit\`a in questo punto non produce un malfunzionamento locale: produce
-decisioni di politica sbagliate a valle, per un tempo indeterminato. Il pavimento
-a zero \`e la contenzione minima di un errore che si propaga.
-
-\subsection{Interazione fra limite configurato ed effettivo}
-
-I due metodi che scrivono i limiti codificano una semantica che vale la pena
-esplicitare:
-
-\begin{lstlisting}[language=Java]
-public void concurrency(int concurrency) {
-    int previousConfigured = this.configuredConcurrency;
-    int normalized = Math.max(1, concurrency);
-    this.configuredConcurrency = normalized;
-    if (effectiveConcurrency == previousConfigured || effectiveConcurrency > normalized) {
-        // Preserve fixed-mode semantics: effective limit tracks configured limit
-        // (and clamps down on shrink).
-        effectiveConcurrency = normalized;
-    }
-}
-
-public void setEffectiveConcurrency(int effectiveConcurrency) {
-    int clamped = Math.max(1, effectiveConcurrency);
-    if (clamped > configuredConcurrency) { clamped = configuredConcurrency; }
-    this.effectiveConcurrency = clamped;
-}
-\end{lstlisting}
-
-Due invarianti emergono. Il primo: \textbf{il limite effettivo non pu\`o mai
-superare quello configurato}. Un controllore adattivo pu\`o restringere ma non
-allargare oltre ci\`o che l'utente ha autorizzato; la specifica della funzione
-resta un tetto. Il secondo: un aggiornamento del limite configurato trascina
-quello effettivo \emph{solo} se questo non era stato scostato da un controllore,
-oppure se il nuovo tetto \`e pi\`u basso. In pratica: cambiare la configurazione
-non cancella una decisione adattiva in corso, ma un abbassamento del tetto la
-vincola immediatamente.
-
-\section{Lo scheduler}
-
-Lo scheduler \`e un ciclo su thread singolo. La sua struttura \`e determinata da
-un requisito: non deve sondare le code inattive.
-
-\begin{lstlisting}[language=Java]
-private void loop() {
-    while (running.get()) {
-        String functionName = activeFunctions.poll(500, TimeUnit.MILLISECONDS);
-        if (functionName != null) {
-            enqueuedFunctions.remove(functionName);
-            processFunction(functionName);
-        }
-        ...
-    }
-}
-\end{lstlisting}
-
-La coda \code{activeFunctions} contiene i nomi delle funzioni che hanno lavoro
-pendente; l'insieme \code{enqueuedFunctions} evita che lo stesso nome vi compaia
-pi\`u volte. Un accodamento notifica lo scheduler solo se il nome non era gi\`a
-segnalato. Il risultato \`e che il costo del ciclo \`e proporzionale al numero di
-funzioni \emph{attive}, non al numero di funzioni registrate: registrare mille
-funzioni inattive non costa nulla.
-
-Il timeout di 500\,ms sulla \code{poll} \`e ci\`o che rende il ciclo terminabile:
-senza di esso l'arresto richiederebbe un'interruzione del thread bloccato.
-
-\subsection{Il batch limitato e l'equit\`a}
-
-\begin{lstlisting}[language=Java]
-private static final int MAX_BATCH_PER_FUNCTION = 2;
-
-private void processFunction(String functionName) {
+public void remove(TicketId id) {
     ...
-    int dispatched = 0;
-    while (running.get() && dispatched < MAX_BATCH_PER_FUNCTION && state.tryAcquireSlot()) {
-        InvocationTask task = state.poll();
-        if (task == null) { state.releaseSlot(); break; }
-        dispatched++;
-        SchedulerDispatchSupport.dispatchWithFailureCleanup(
-                task, () -> invocationService.dispatch(task), state::releaseSlot, log);
-    }
-    if (state.queued() > 0 && dispatched > 0) {
-        signalWork(functionName);
+    if (functionName.equals(turnFunction)) { turnCount++; }
+    else { turnFunction = functionName; turnCount = 1; }
+    boolean drained = fifo.isEmpty();
+    if (drained || turnCount >= DEFAULT_MAX_BATCH_PER_FUNCTION) {
+        activeOrder.remove(functionName);
+        if (!drained) { activeOrder.addLast(functionName); }
+        turnFunction = null; turnCount = 0;
     }
 }
 \end{lstlisting}
 
-Ogni visita a una funzione dispaccia al massimo due compiti, poi la funzione
-viene rimessa in fondo alla coda dei nomi attivi se ha ancora lavoro. \`E un
-round-robin con quanto pari a due.
+L'indice tiene una mappa da funzione a FIFO, un ordine circolare delle funzioni
+con almeno un ticket e la funzione corrente ``a met\`a turno''. Poich\'e
+\code{select} non pu\`o mutare nulla, il turno avanza in \code{remove}: quando un
+ticket lascia l'indice perch\'e \`e stato dispacciato, il contatore del turno cresce,
+e al secondo la funzione va in fondo all'ordine. \`E il round-robin con quanto pari a
+due della versione precedente, spostato da ``il ciclo consuma'' a ``la rimozione
+ruota''.
 
-Il quanto limitato \`e ci\`o che garantisce l'equit\`a fra funzioni. Senza di
-esso, una funzione con mille compiti accodati e slot disponibili terrebbe il
-thread dello scheduler finch\'e non li avesse dispacciati tutti, e una funzione
-con un solo compito accodata subito dopo attenderebbe l'intero drenaggio. Con il
-quanto, la seconda attende al pi\`u due dispatch.
+Il quanto limitato \`e ci\`o che garantisce l'equit\`a fra funzioni. Senza di esso una
+funzione con mille compiti accodati terrebbe il ciclo finch\'e non li avesse
+dispacciati tutti, e una funzione con un solo compito accodato subito dopo attenderebbe
+l'intero drenaggio. Con il quanto attende al pi\`u due dispatch. Il valore due, e non
+uno, riduce il costo di rotazione senza degradare apprezzabilmente l'equit\`a.
 
-Il valore due, e non uno, riduce il costo di rotazione --- ogni ciclo comporta
-un'operazione su due strutture concorrenti --- senza degradare
-apprezzabilmente l'equit\`a. \`E un compromesso, e il progetto non ne documenta
-una taratura sperimentale.
+\subsection{Una differenza voluta rispetto al ciclo che sostituisce}
+
+Il vecchio \code{processFunction} visitava una sola funzione per invocazione e, se il
+lease non era disponibile, chiudeva la visita e toglieva la funzione dalle attive
+finch\'e un evento esterno non la riattivava. \code{select} invece \emph{scandisce
+tutte} le funzioni attive in una chiamata, saltando quelle la cui testa non \`e
+eseguibile ora. La differenza \`e intenzionale: un indice \`e per contratto passivo e
+senza thread, e ``non eseguibile ora'' \`e per lui uno stato, non un evento. Il
+comportamento di ``lasciare la funzione in attesa di un risveglio'' appartiene al
+motore, che possiede la sequenza di risveglio.
+
+La differenza non cambia l'ordine di selezione: una funzione saltata a ogni
+scansione finch\'e non si sblocca non pu\`o cambiare quale ticket viene restituito per
+un'altra funzione nel frattempo, perch\'e la contabilit\`a del turno sta in
+\code{remove} e non \`e toccata dalle scansioni fallite. La suite di test lo verifica
+per confronto di tracce contro il ciclo originale su un corpus che copre
+pubblicazione, una funzione bloccata e poi sbloccata, dispatch intercalati su tre
+funzioni e una rimozione isolata: le due tracce sono identiche.
 
 \begin{damisurare}
-L'effetto di \code{MAX\_BATCH\_PER\_FUNCTION} sull'equit\`a fra funzioni
-co-residenti e sul throughput aggregato non \`e stato misurato. Il
-\cref{cap:25-valutazione-concorrenza} riporta misure di co-tenancy che
+L'effetto del quanto sull'equit\`a fra funzioni co-residenti e sul throughput
+aggregato non \`e stato misurato in isolamento: il valore \`e conservato, non
+tarato. Il \cref{cap:25-valutazione-concorrenza} riporta misure di co-tenancy che
 \emph{includono} l'effetto di questo parametro senza isolarlo.
 \todomis{sensibilit\`a del throughput e della latenza al quanto di scheduling}
 \end{damisurare}
 
-\subsection{Pulizia in caso di fallimento del dispatch}
+\section{Il limite di concorrenza e il lease}
+\label{sec:09-lease}
 
-Il dispatch \`e affidato a un helper del nucleo, \code{dispatchWithFailureCleanup},
-a cui viene passato il rilascio dello slot come azione di compensazione. Il
-motivo \`e che lo slot \`e stato acquisito \emph{prima} del dispatch: se il
-dispatch solleva prima di aver stabilito una catena di completamento, nessuno
-rilascer\`a lo slot, e la funzione perderebbe permanentemente una unit\`a di
-concorrenza. Ripetuto, il fenomeno porterebbe il limite effettivo a zero senza
-che alcuna metrica lo segnali come anomalia --- il contatore delle richieste in
-volo apparirebbe semplicemente sempre saturo.
+Il contatore delle richieste in volo, con i due limiti \emph{configurato} ed
+\emph{effettivo}, non appartiene pi\`u al modulo: \`e lo stato per generazione del
+registro di capacit\`a del nucleo (\code{FunctionCapacityState}). La semantica
+descritta nella prima stesura si \`e conservata, non \`e stata riscritta:
 
-\section{Le tre metriche esportate}
+\begin{itemize}[leftmargin=*]
+  \item il limite effettivo non pu\`o mai superare quello configurato: un
+  controllore adattivo restringe ma non allarga oltre ci\`o che l'utente ha
+  autorizzato;
+  \item un cambio del limite configurato trascina quello effettivo solo se questo
+  non era stato scostato da un controllore, oppure se il nuovo tetto \`e pi\`u basso;
+  \item l'acquisizione di uno slot \`e un'operazione atomica di test-e-incremento,
+  ora sotto il monitor dello stato e il protocollo di ciclo di vita di generazione.
+\end{itemize}
 
-\code{QueueManager} registra tre gauge per ciascuna funzione al momento della
-sua creazione:
+Cambia invece l'\emph{oggetto} che rappresenta uno slot. La versione precedente
+lo acquisiva e lo rilasciava per nome di funzione, e proteggeva il rilascio con un
+pavimento a zero per non far propagare un errore di contabilit\`a nelle metriche.
+Oggi l'acquisizione restituisce un \code{DispatchLease}, \emph{legato al tentativo}
+e alla \emph{generazione} della funzione sotto cui \`e stato ammesso, e il rilascio
+\`e un'operazione idempotente sul lease: un callback tardivo, un ritentativo, una
+scadenza amministrativa e il completamento normale possono correre fra loro, e lo
+slot torna indietro una volta sola. Non esiste pi\`u un rilascio per nome sul
+percorso del nucleo. Il pavimento a zero, che era una difesa \emph{a valle} di un
+errore, \`e stato sostituito da un'invariante \emph{a monte}.
+
+Una generazione attraversa tre fasi a senso unico: \code{ACTIVE}, \code{RETIRING}
+(rimossa o sostituita mentre ha ancora risorse, non ammette lavoro nuovo ma
+lascia drenare quello che tiene) e \code{CLOSED}. La voce viene scartata solo in
+quest'ultima. Conseguenza pratica: cancellare e ri-registrare una funzione con lo
+stesso nome mentre ha invocazioni in volo non fa decrementare a un vecchio lease lo
+stato della nuova incarnazione.
+
+\section{Le metriche}
+
+Le quattro gauge per funzione non sono pi\`u registrate da \code{QueueManager} ma
+da \code{WorkloadMetricsBinder}, che le espone a partire da
+\code{WorkloadMetricsSource}:
 
 \begin{center}
 \small
 \begin{adjustbox}{max width=\textwidth}
 \begin{tabular}{@{}lll@{}}
 \toprule
-\textbf{Metrica} & \textbf{Sorgente} & \textbf{Consumatore} \\
+\textbf{Metrica} & \textbf{Significato} & \textbf{Consumatore} \\
 \midrule
-\code{function\_queue\_depth} & \code{state::queued} & autoscaler,
+\code{function\_queue\_depth} & Ticket pendenti della funzione & autoscaler,
 concurrency-control, operatore \\
-\code{function\_inFlight} & \code{state::inFlight} & autoscaler,
-concurrency-control \\
-\code{function\_effective\_concurrency} & \code{state::effectiveConcurrency} &
+\code{function\_inFlight} & Slot acquisiti & autoscaler, concurrency-control \\
+\code{function\_effective\_concurrency} & Limite effettivo corrente &
 osservazione della politica \\
+\code{function\_dispatchable\_backlog} & Ticket pendenti eseguibili adesso &
+concurrency-control \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
 \end{center}
 
-La terza \`e diagnostica e non alimenta alcuna decisione: rende osservabile
-\emph{che cosa il controllore ha deciso}, distinguendolo da ci\`o che l'utente
-aveva configurato. Senza di essa, osservare l'effetto di una politica adattiva
-richiederebbe di dedurlo dal comportamento.
+La quarta \`e nuova: distingue la coda che \emph{potrebbe} servire da quella che
+attende soltanto una capacit\`a che non c'\`e, cio\`e il lavoro che un aumento del
+limite di concorrenza renderebbe subito dispacciabile. \`E la grandezza corretta
+per un controllore, e non era esprimibile finch\'e la sola misura era la profondit\`a.
 
-I meter sono rimossi quando la funzione viene rimossa, con la conseguenza gi\`a
-discussa nel \cref{cap:06-nucleo} sugli scenari di verifica che interrogano le
-metriche dopo la cancellazione.
+I meter di una funzione cancellata non vengono pi\`u rimossi subito ma \emph{dopo il drenaggio}: il motore segna la funzione come in drenaggio e notifica i listener registrati quando l'ultima prenotazione si scioglie, cos\`i la serie sopravvive finch\'e c'\`e ancora lavoro da osservare.
 
-\section{I due punti di estensione implementati}
+\section{I punti di estensione implementati}
 
-\subsection{\code{QueueBackedEnqueuer}}
+\subsection{Il ruolo del modulo verso il nucleo}
 
-Implementa \code{InvocationEnqueuer} delegando a \code{QueueManager}. La sua
-esistenza \`e ci\`o che fa passare \code{enabled()} da \code{false} a
-\code{true}, e quindi ci\`o che fa rispondere \code{202} anzich\'e \code{501} a
-\code{POST :enqueue}.
+Il modulo registra la strategia \code{per-function} e nient'altro
+(\code{AsyncQueueConfiguration} ha un solo \emph{bean}). Le implementazioni dei
+punti di estensione che un tempo portava (\code{QueueBackedEnqueuer},
+\code{QueueBackedMetricsSource}) sono state assorbite dal nucleo: la
+\code{SchedulerConfiguration} del \code{control-plane} compone \emph{un} motore
+attorno a tutte le strategie presenti nell'artefatto, e vi appoggia
+\code{EngineInvocationEnqueuer} (che realizza \code{InvocationEnqueuer}),
+\code{EngineSyncQueueGateway} ed \code{EngineWorkloadMetricsSource}. La
+configurazione si attiva solo se almeno una strategia \`e presente: senza moduli
+di coda resta il ripiego diretto del nucleo, che non accoda. Ne segue che
+\code{concurrency-control} e \code{autoscaler} non dipendono da \code{async-queue}
+in particolare, ma dall'esistenza di \emph{un} fornitore di letture del carico e di
+controllo della capacit\`a, cio\`e dal motore, qualunque modulo di coda lo abbia
+fatto nascere. La regola ``\code{concurrency-control} rifiuta di avviarsi senza
+\code{async-queue}'' della versione precedente diventa ``\ldots senza alcun modulo
+di coda''.
 
-\subsection{\code{QueueBackedMetricsSource}}
+\subsection{Che cosa cambia rispetto a \code{ScalingMetricsSource}}
 
-Implementa \code{ScalingMetricsSource}, ed \`e la classe da cui dipende l'intera
-Parte III di questo documento. Fornisce quattro operazioni: leggere la
-profondit\`a della coda, leggere le richieste in volo, \emph{scrivere} il limite
-di concorrenza effettivo, e registrare il modo del controllore attivo.
+L'interfaccia con cui una politica di concorrenza toccava il comportamento del
+sistema, scrivendo il limite effettivo, \`e stata sostituita da una coppia:
+\code{WorkloadMetricsSource} per leggere (profondit\`a, in volo, backlog
+dispacciabile) e \code{WorkloadCapacityController} per scrivere il limite. La
+separazione \`e deliberata: chi decide la scalabilit\`a legge, chi governa la
+concorrenza legge e scrive, e le due responsabilit\`a non condividono pi\`u una sola
+interfaccia. La scrittura resta l'unico punto in cui una politica di concorrenza
+modifica il sistema, e attraversa ancora il registro di capacit\`a.
 
-La terza \`e quella che conta. Un modulo di controllo della concorrenza calcola
-un limite; \`e la scrittura attraverso questa interfaccia a rendere quel limite
-effettivo, perch\'e da quel momento \code{tryAcquireSlot} lo confronta con il
-contatore delle richieste in volo. \`E letteralmente l'unico punto in cui una
-politica di concorrenza tocca il comportamento del sistema, e questo spiega
-perch\'e \code{concurrency-control} rifiuti di avviarsi senza
-\code{async-queue}: la scrittura verso un'implementazione no-op non fallisce, non
-segnala nulla, e non ha effetto.
+\section{Profili di ammissione}
+\label{sec:09-profili}
 
-Il metodo \code{enabled()} distingue questa implementazione dal no-op del nucleo,
-e nel modulo restituisce costantemente \code{true}.
+Quale coda riceve una richiesta dipende dal \emph{profilo di ammissione}, calcolato
+all'avvio da \code{SchedulerConfiguration}. Il profilo pu\`o essere dichiarato
+(\code{nanofaas.admission.profile}); altrimenti viene derivato dalle strategie
+\emph{presenti} nell'artefatto (non da quella attiva: con entrambi i moduli il
+profilo derivato \`e \code{FUNCTION\_QUEUE}, e la coda sincrona ammette solo se il
+profilo \`e dichiarato \code{SYNC\_QUEUE}):
 
-\section{Il ruolo del modulo nel percorso sincrono}
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}llp{6.2cm}@{}}
+\toprule
+\textbf{Profilo} & \textbf{Quando} & \textbf{Effetto} \\
+\midrule
+\code{FUNCTION\_QUEUE} & \code{per-function} presente & Sia \code{:invoke} sia
+\code{:enqueue} passano per la coda della funzione; tetto \code{queueSize}. \\
+\code{SYNC\_QUEUE} & solo \code{shared-queue}, o dichiarato & La coda sincrona ammette e limita;
+\code{:enqueue} risponde \code{501}. \\
+\code{DIRECT} & nessuna & Il nucleo acquisisce il lease e dispaccia inline;
+senza slot, \code{429}. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
 
-Un'ultima nota, perch\'e il nome del modulo pu\`o trarre in inganno. La catena di
-ammissione descritta nel \cref{cap:04-architettura-control-plane} usa la coda
-asincrona anche per le invocazioni \emph{sincrone}, quando la coda sincrona non
-\`e presente:
+Nel percorso sincrono la catena di ammissione del
+\cref{cap:04-architettura-control-plane} si riduce a tre rami, in ordine: il gateway
+della coda sincrona se \`e attivo (solo in \code{SYNC\_QUEUE}, e solo se
+\code{sync-queue.enabled} \`e vero), altrimenti l'accodamento sul motore in
+\code{FUNCTION\_QUEUE}, altrimenti il dispatch diretto. \`E il terzo ramo che in
+\code{DIRECT} rende il limite di concorrenza un rifiuto immediato anzich\'e
+un'attesa. Il percorso asincrono richiede invece sempre una coda: senza, la
+risposta \`e \code{501}. Una propriet\`a esplicita
+(\code{nanofaas.invocation.async-enabled}) pu\`o sovrascrivere questa derivazione.
 
-\begin{lstlisting}[language=Java]
-private void admitLocally(ExecutionRecord executionRecord) {
-    if (syncQueueGateway.enabled()) {
-        syncQueueGateway.enqueueOrThrow(executionRecord.task());
-    } else if (enqueuer.enabled()) {
-        InvocationEnqueueSupport.enqueueOrThrow(enqueuer, metrics, executionRecord);
-    } else {
-        completionHandler.dispatch(executionRecord.task());
-    }
-}
-\end{lstlisting}
+Nel profilo \code{FUNCTION\_QUEUE} una richiesta sincrona che trova piena la coda
+riceve \code{429} da \code{QueueFullException}, senza che nessuno abbia stimato
+quanto avrebbe dovuto attendere: l'ammissione con stima esiste solo nel profilo
+\code{SYNC\_QUEUE} (\cref{cap:10-sync-queue}). Il rifiuto anticipato del \code{:invoke}
+\`e inoltre saltato quando la richiesta porta una chiave di idempotenza, perch\'e in
+quel caso una richiesta ripetuta deve poter essere ricondotta all'esecuzione
+esistente anzich\'e respinta.
 
-In quella configurazione una richiesta sincrona viene accodata sulla coda della
-funzione, il chiamante attende il futuro di completamento, e lo scheduler la
-dispaccia quando uno slot si libera. Il risultato \`e che il limite di
-concorrenza per funzione \`e applicato anche al traffico sincrono, il che \`e
-esattamente ci\`o che si desidera. La differenza rispetto alla coda sincrona
-(\cref{cap:10-sync-queue}) \`e che qui non esiste ammissione: una richiesta
-sincrona che trova la coda piena riceve \code{429} da \code{QueueFullException}
-senza che nessuno abbia stimato quanto avrebbe dovuto attendere.
+\section{Cambiare strategia a caldo}
+\label{sec:09-switch}
+
+\code{SchedulerEngine.switchTo(id)} sostituisce l'indice attivo senza drenare
+nulla e senza fermare il ciclo. Il meccanismo \`e una singola sezione sotto il gate:
+
+\begin{enumerate}[leftmargin=*]
+  \item \emph{prima del gate} l'identificatore \`e risolto (\code{IllegalArgumentException}
+  se nessuna strategia con quel nome \`e nell'artefatto) e viene letto l'orologio;
+  \item \emph{sotto il gate} se la strategia richiesta \`e quella attiva l'esito \`e
+  \code{NOOP}; altrimenti \code{prepare} costruisce l'indice candidato dal lavoro
+  pendente, \emph{in ordine di sequenza}, senza mai consultarlo per il dispatch;
+  \item la pubblicazione della coppia (strategia, indice, \emph{epoca}) \`e il punto
+  di linearizzazione; l'epoca \`e incrementata di uno;
+  \item l'indice sostituito viene scartato, e \code{wake()} \`e eseguito comunque,
+  perch\'e una generazione bloccata contro l'indice vecchio non deve restare bloccata
+  contro un indice che non \`e mai stato consultato per lei.
+\end{enumerate}
+
+La correttezza dipende dal fatto che la costruzione dell'indice avvenga
+nella stessa sezione critica che serializza inserimenti e rimozioni: \emph{prima o
+dopo} sono le sole due posizioni possibili per un \code{enqueue} concorrente, e non
+serve un buffer di eventi di transizione. I ticket reclamati o in sottomissione non sono nella fotografia da cui si costruisce il candidato: restano fuori dall'indice finch\'e non atterrano, e quando lo fanno (dispatch annullato, contropressione, ritardo) rientrano nell'indice attivo \emph{in quel momento}, riconoscendo lo scambio dal confronto di epoca del reclamo con quella corrente.
+
+Il costo dello scambio \`e limitato da due tetti fissi nel codice, non da
+configurazione: al pi\`u \code{MAX\_SWITCH\_REBUILD\_TICKETS} $=$ 10\,000 ticket
+ricostruiti, e \code{SWITCH\_BUDGET\_MS} $=$ 50\,ms di budget monotono, riverificato
+prima di ogni inserimento nel candidato. Un rifiuto per superamento dei tetti ha
+come motivo \code{TEMPORARY\_CAP} (il lavoro \`e troppo, e lo scambio torna possibile
+man mano che la coda si svuota) o \code{TIMEOUT}; un fallimento nella costruzione
+dell'indice \`e \code{PREPARATION}. In tutti e tre i casi la strategia precedente
+resta attiva e intatta. Gli esiti osservabili sono \code{COMMITTED}, \code{NOOP} e
+\code{REFUSED}, riportati come metrica (\cref{cap:21-osservabilita}).
+
+Il tetto di 50\,ms \`e una costante compilata, non un parametro: le due propriet\`a
+\code{max-switch-preparation} e \code{max-switch-pause}, che il piano iniziale
+prevedeva nel namespace \code{nanofaas.scheduler.*}, sono state \emph{eliminate}
+perch\'e nessun codice le leggeva, e una chiave che nessuno legge viene letta da
+tutti come un controllo supportato. Le soglie con cui uno scambio viene verificato
+stanno invece in un file congelato, \code{budgets.json}, applicato dall'harness.
+
+L'invocazione da parte dell'operatore passa per l'API di amministrazione
+(\cref{cap:14-runtime-config}); la strategia di avvio si sceglie con
+\code{nanofaas.scheduler.strategy} (variabile \code{NANOFAAS\_SCHEDULER\_STRATEGY}).
+Un valore vuoto \emph{non} \`e una terza strategia: significa nessuna scelta
+esplicita, e la strategia viene derivata (\code{per-function} se presente,
+altrimenti la prima disponibile). Un identificatore che nessuna strategia integrata
+fornisce impedisce l'avvio, anzich\'e ripiegare in silenzio: un errore di
+battitura \`e un crash-loop che nomina gli identificatori disponibili. La scelta non
+\`e persistita: dopo un riavvio vale di nuovo quella di avvio, e la revisione della
+configurazione a caldo torna a zero.
+
+\section{Che cosa \`e stato misurato}
+
+La campagna ha prodotto due famiglie di misure, entrambe in
+\code{docs/experiments/scheduler-switching-2026-09}. Di esse si riportano soltanto
+le cifre che i documenti dichiarano e i limiti con cui le dichiarano.
+
+\paragraph{Il costo dello scambio.} Contro le soglie congelate
+(\code{budgets.json}: pausa massima 250\,ms, p99 100\,ms, preparazione 2000\,ms,
+al pi\`u due indici vivi), su 1140 scambi misurati la pausa massima \`e stata
+di 3,984\,ms, il p99 di 0,266\,ms sulla fase da 1000 scambi, e mai pi\`u di due
+indici vivi. Sono valori inferiori alle soglie di due o tre ordini di grandezza.
+I limiti sono quelli dichiarati dal documento: la pausa \`e misurata nell'harness, non
+in produzione sotto churn multi-funzione, e la metrica esportata non risolve sotto la
+sua classe pi\`u fine di 1\,ms.
+
+\paragraph{Il costo del refactoring.} Il confronto a coppie fra il vecchio ciclo e il
+nuovo motore, sugli stessi script di arrivo, non stabilisce alcuna differenza in
+heap post-GC (i medi differiscono meno di 0,25\%) n\'e nel throughput utile su quattro
+profili (fra $-0{,}02\%$ e $+0{,}03\%$). Una direzione \`e invece consistente in
+\emph{ogni} ripetizione dei profili non confusi dalla scadenza: il nuovo motore
+\emph{alloca di pi\`u} per completamento utile, da $+5{,}5\%$ (\code{churn-drain}) a
+$+27{,}8\%$ (\code{low-load}). Il caso \code{saturated} mostra una differenza
+enorme (34 completamenti utili contro 3655) ma non \`e un risultato del ciclo: \`e
+l'effetto della \emph{politica di scadenza}, che il nuovo motore possiede e il
+vecchio no, e che il confronto ha deliberatamente non equalizzato. I singoli
+scostamenti oltre budget ($+9{,}51\%$ sul p99 stazionario, $+22{,}06\%$ sulla CPU
+per completamento) sono riportati dal documento come \emph{non misurati} anzich\'e
+come regressioni: nessuno \`e separabile, e la potenza del disegno a coppie \`e
+peggiore della soglia.
+
+\paragraph{Il soak.} La prova di almeno 60 minuti \`e stata eseguita
+(5394,60\,s misurati su 5400 dichiarati, 1000 scambi committed) e ha esito
+\emph{FAIL} su 3 criteri su 21, tutti ereditati dalla politica di memoria P24 del
+soak condiviso e non scritti da questa campagna. Il documento conclude che il
+criterio ereditato \`e troppo severo, e non trasforma il fallimento in successo: lo
+riporta com'\`e.
+
+\begin{damisurare}
+La pausa dello scambio \`e stata misurata su carichi sintetici e sul soak, non in un
+deployment di produzione con churn di funzioni. Il costo dell'allocazione aggiuntiva
+del motore per completamento utile \`e misurato in byte, non tradotto in un effetto
+sulla latenza.
+\todomis{effetto dell'allocazione per completamento sulla latenza in produzione}
+\end{damisurare}

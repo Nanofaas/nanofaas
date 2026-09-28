@@ -1,22 +1,34 @@
 \chapter{I provider di deployment}
 \label{cap:15-deployment-provider}
 
-Due moduli implementano l'interfaccia \code{ManagedDeploymentProvider}
+Tre moduli implementano l'interfaccia \code{ManagedDeploymentProvider}
 (\cref{cap:07-modalita-esecuzione}) e forniscono alla modalit\`a
 \code{DEPLOYMENT} un meccanismo concreto: \code{k8s-deployment-provider}
-(1\,202 righe) e \code{container-deployment-provider} (1\,166 righe). Insieme
-sono un terzo del codice di tutti i moduli.
+(1\,308 righe), \code{container-deployment-provider} (814 righe) e
+\code{containerd-deployment-provider} (518 righe). Insieme sono circa
+un terzo del codice di tutti i moduli (\cref{tab:moduli}); i due provider
+locali condividono inoltre una libreria obbligatoria, \code{container-deployment-runtime}
+(1\,522 righe), descritta pi\`u avanti. I tre sono a coppie mutuamente esclusivi
+(\cref{cap:08-sistema-moduli}): un'istanza del control plane ha un solo backend
+gestito.
 
-Che siano due, e che siano intercambiabili, \`e la prova che l'astrazione
+Che siano tre, e che siano intercambiabili, \`e la prova che l'astrazione
 introdotta nel \cref{cap:07-modalita-esecuzione} non \`e speculativa: il progetto
-la esercita con due realizzazioni sostanzialmente diverse.
+la esercita con realizzazioni sostanzialmente diverse. Il terzo provider \`e
+la verifica pi\`u severa: \`e stato introdotto dalla PR~\#212 e le PR~\#213 e
+\#219 hanno poi fissato e aggiornato le versioni delle librerie containerd da cui
+dipende.
 
 \section{\code{k8s-deployment-provider}}
 
 Il provider Kubernetes traduce una \code{FunctionSpec} in tre oggetti: un
 \code{Deployment}, un \code{Service} e --- se la strategia di scaling \`e
 \code{HPA} --- un \code{HorizontalPodAutoscaler}. Usa il client
-Fabric8.
+Fabric8, il cui trasporto HTTP \`e quello del JDK
+(\code{kubernetes-httpclient-jdk}): una versione precedente trascinava anche
+Vert.x, rimosso dal modulo (commit \code{bd339d06}), e con esso le relative
+regole di reflection dell'immagine nativa, oggi confinate in
+\code{Fabric8RuntimeHints}.
 
 \subsection{Convenzioni di denominazione ed etichette}
 
@@ -87,8 +99,16 @@ vincoli ma si manifestano come comportamenti. Il costo dell'astrazione
 \emph{prima} che la registrazione della funzione venga accettata. Il metodo \`e
 diretto: crea un pod di prova, ne osserva lo stato del container, e cerca le
 condizioni di attesa che segnalano un fallimento di pull
-(\code{ErrImagePull}, \code{ImagePullBackOff}), con un timeout di 20 secondi e
-polling a 500\,ms.
+(\code{ErrImagePull}, \code{ImagePullBackOff}, e \code{ErrImageNeverPull}
+quando la politica \`e \code{Never} e l'immagine non \`e presente sul nodo:
+un caso in cui l'immagine non comparir\`a mai), con un timeout di 20 secondi e
+polling a 500\,ms. Il pod di prova usa la politica di pull configurata in
+\code{nanofaas.k8s.image-pull-policy} --- la stessa dei pod di funzione --- e non
+una politica fissa: una correzione (commit \code{1d1f98cb}) ha rimosso la
+discrepanza: il pod di prova imponeva sempre \code{Always}, cos\`i le immagini
+caricate direttamente sul nodo (minikube, kind, cluster senza accesso al registry)
+fallivano la validazione con \code{IMAGE\_PULL\_AUTH\_REQUIRED} bench\'e il
+Deployment le avrebbe avviate.
 
 \`E un controllo costoso --- crea e distrugge un pod --- eseguito una sola volta
 per registrazione. L'alternativa sarebbe scoprire l'immagine inesistente alla
@@ -103,6 +123,13 @@ pensato per lo sviluppo e --- soprattutto --- per gli esperimenti su una singola
 macchina, dove interporre Kubernetes fra il control plane e le funzioni
 aggiungerebbe una variabile senza aggiungere realismo.
 
+La logica del ciclo di vita non vive nel modulo. \`E in
+\code{container-deployment-runtime}, una libreria obbligatoria che contiene
+\code{LocalManagedDeploymentProvider} (598 righe), il proxy e la sonda di
+readiness, ed \`e condivisa con il provider containerd. Il modulo Docker
+fornisce quindi solo la parte che dipende dal runtime: gli adattatori, l'allocazione
+delle porte e il validatore di immagini.
+
 \subsection{Struttura}
 
 \begin{center}
@@ -112,18 +139,25 @@ aggiungerebbe una variabile senza aggiungere realismo.
 \toprule
 \textbf{Componente} & \textbf{Ruolo} \\
 \midrule
-\code{ContainerRuntimeAdapter} & Astrazione sul runtime; due implementazioni,
-via CLI e via client Docker Java. \\
+\code{LocalManagedDeploymentProvider}$^{*}$ & Ciclo di vita comune ai provider
+locali: \code{provision}, \code{reconcile}, \code{updateSpec},
+\code{deprovision}, scala. \\
+\code{ContainerRuntimeAdapter}$^{*}$ & Astrazione sul runtime: \code{pullImage},
+\code{runContainer}, \code{removeContainer}, \code{listManagedContainers}. Nel
+modulo Docker ha due implementazioni, via CLI e via client Docker Java. \\
 \code{EphemeralPortAllocator} & Assegna una porta libera dell'host a ciascun
 container. \\
-\code{HttpEndpointProbe} & Attende che il container risponda sull'endpoint di
-salute. \\
-\code{RoundRobinFunctionProxy} & Espone un endpoint stabile che bilancia sulle
-repliche. \\
-\code{DockerImageValidator} & Verifica l'esistenza dell'immagine. \\
+\code{HttpEndpointProbe}$^{*}$ & Attende che il container risponda sull'endpoint
+di salute. \\
+\code{RoundRobinFunctionProxy}$^{*}$ & Espone un endpoint stabile che bilancia
+sulle repliche. \\
+\code{DockerImageValidator} & Verifica l'immagine chiedendo al demone di
+scaricarla (\code{pullImage}). \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
+
+{\footnotesize $^{*}$ Nella libreria condivisa \code{container-deployment-runtime}.}
 \end{center}
 
 \subsection{Il proxy: perch\'e serve}
@@ -141,8 +175,35 @@ richieste sui backend correnti con round robin. L'insieme dei backend \`e un
 riferimento atomico che il provider aggiorna a ogni cambio di scala.
 
 \`E, in sostanza, una reimplementazione minimale del \code{Service} di
-Kubernetes, ed \`e la componente che rende i due provider \emph{equivalenti dal
-punto di vista del control plane}: entrambi restituiscono un URL stabile.
+Kubernetes, ed \`e la componente che rende i provider \emph{equivalenti dal
+punto di vista del control plane}: tutti restituiscono un URL stabile.
+
+Il proxy \`e stato l'oggetto di un lavoro specifico sul comportamento sotto
+carico, e il suo contratto \`e oggi pi\`u preciso di un semplice inoltro:
+\begin{itemize}
+\item \textbf{Concorrenza.} Il server gira su un esecutore a thread virtuali
+esplicito. Con l'esecutore predefinito di \code{HttpServer} ogni scambio \`e
+gestito in linea, uno alla volta, e le invocazioni concorrenti verrebbero
+serializzate sul thread del dispatcher: il difetto originario, nelle parole del
+commento nel sorgente.
+\item \textbf{Ammissione.} Un limite non bloccante sul numero di invocazioni in
+corso di inoltro. Una richiesta che lo trova esaurito riceve subito un \code{503}
+definito; non viene mai parcheggiata su un semaforo. Il limite \`e la
+concorrenza della funzione e \`e aggiornato da \code{updateLimits}. \code{/health}
+non consuma permessi.
+\item \textbf{Timeout per salto.} Non pi\`u i 30 secondi fissi di una versione
+precedente, che facevano fallire presto una funzione con timeout maggiore mentre
+il chiamante era ancora nel proprio budget, ma il timeout della funzione stessa,
+spinto dal provider al provisioning e a ogni \code{updateSpec}
+(\cref{cap:07-modalita-esecuzione}).
+\item \textbf{Limiti di dimensione.} \code{ProxySettings} fissa, con questi
+default: 2\,MiB per il corpo della richiesta, 4\,MiB per quello della risposta,
+32\,MiB di byte bufferizzati complessivi e timeout di 5 secondi per la lettura
+della richiesta e per la scrittura della risposta. Ogni superamento produce una
+risposta di errore definita, non un'esaurimento silenzioso della memoria.
+\end{itemize}
+I default sono quelli del codice; non si dichiara qui alcuna misura del loro
+effetto.
 
 \subsection{Il \code{cpuset}: una decisione derivata da una misura}
 
@@ -175,12 +236,94 @@ significative (\cref{cap:25-valutazione-concorrenza}).
 \subsection{Readiness}
 
 \code{HttpEndpointProbe} interroga l'endpoint di salute del container con un
-timeout di 20 secondi e un intervallo di 250\,ms. Un container che non diventa
+timeout di 20 secondi e un intervallo di 250\,ms (i default di
+\code{ContainerLocalProperties}, configurabili). Un container che non diventa
 pronto entro il timeout fa fallire il provisioning.
 
 I valori sono deliberatamente pi\`u aggressivi delle sonde di Kubernetes:
 l'obiettivo qui non \`e la robustezza in produzione ma il tempo di ciclo di un
 esperimento, in cui il provisioning avviene decine di volte.
+
+\subsection{Riconciliazione e rimozione parziale}
+
+Il contratto di \code{ManagedDeploymentProvider} \`e cresciuto oltre
+\code{provision} e \code{deprovision}, e i provider locali lo realizzano nella
+libreria condivisa. \code{reconcile} ripristina una funzione persistita senza
+distruggere risorse sane: ricrea soltanto ci\`o che manca e non delega mai a
+\code{provision}. Il provider ritrova i propri container dalle etichette che
+essi portano, non dallo stato del processo, ed \`e questo che consente il
+recupero dopo un riavvio del control plane. \code{updateSpec} applica al
+provider una modifica di timeout o concorrenza (\`e ci\`o che aggiorna i limiti
+del proxy). \code{deprovision} tenta di rimuovere tutte le risorse anche se una
+rimozione fallisce, e se qualcosa resta lo dichiara con una
+\code{PartialDeprovisionException} che ne nomina i resti: \`e il segnale che le
+risorse sono uscite dalla portata del control plane, e la rimozione resta in
+sospeso invece di essere presentata come annullata. Una seconda chiamata riprende la pulizia in modo idempotente.
+
+\section{\code{containerd-deployment-provider}}
+
+Il terzo provider esegue le funzioni tramite il demone containerd \emph{rootless}
+dell'utente corrente e il runtime OCI \code{crun}, senza Docker e senza
+privilegi. Il control plane entra nei namespace di utente, mount e rete di
+RootlessKit del demone; a ciascuna funzione corrisponde un namespace di rete
+CNI. Il control plane raggiunge direttamente l'indirizzo CNI della funzione, e la
+funzione raggiunge il control plane attraverso il gateway del bridge CNI
+(\code{10.90.0.1}, porta 8080), che \`e l'indirizzo di callback: il gateway non
+\`e un server DNS, che \`e invece \code{10.0.2.3} con \code{1.1.1.1}.
+
+\subsection{Struttura}
+
+Il modulo (518 righe) \`e piccolo perch\'e riusa il ciclo di vita condiviso:
+\code{ContainerdDeploymentProvider} estende
+\code{LocalManagedDeploymentProvider} con un backend \code{containerd} e con la
+derivazione del nome dei container, che sono \code{nanofaas-<slug>-<hash>-r<n>}
+(slug normalizzato a 44 caratteri al massimo, pi\`u i primi cinque byte di uno
+SHA-256 del nome per evitare collisioni fra nomi che si normalizzano allo stesso
+slug). La parte specifica \`e \code{ContainerdRuntimeAdapter}, che implementa
+\code{ContainerRuntimeAdapter} sopra le librerie Java per containerd e CNI.
+Queste non sono su Maven Central: sono costruite da revisioni registrate dei
+rispettivi repository pubblici da uno script
+(\code{scripts/bootstrap-containerd-dependencies.sh}), che scrive anche una
+ricevuta con i commit sorgente e lo SHA-256 dei tre JAR. Il build del modulo
+richiede quindi il repository Maven pre-popolato (\code{-PcontainerdMavenLocal=true}).
+
+\subsection{Limiti delle funzioni}
+
+Le richieste di risorse della funzione diventano quote CPU e riserva di memoria;
+i limiti diventano quota e periodo di cgroup (100\,ms) e byte di memoria. Con
+i cgroup di systemd il percorso del cgroup deriva dal nome di una slice padre
+(per esempio \code{user.slice}) nella forma
+\code{<slice>:nanofaas:<scope-client>-<id-container>}: distinto per replica e
+identico dopo un riavvio del control plane. Un limite di CPU positivo minore
+di 0,01 pu\`o produrre una quota inferiore a 1000 microsecondi, che il kernel
+pu\`o rifiutare; il provider non lo corregge silenziosamente. \`E disponibile
+anche l'opzione \code{cpuset}, soggetta alle CPU delegate all'utente.
+
+\subsection{Persistenza e recupero}
+
+Il catalogo persistente delle funzioni ripristina il backend \code{containerd}
+dopo un riavvio. La riconciliazione adotta soltanto i container con le
+etichette attese di gestione, backend, funzione e replica, e non tocca
+container estranei. Se una \code{DEL} CNI o la rimozione di uno snapshot
+falliscono, restano pendenti nello stato della libreria per un nuovo tentativo:
+una deprovision fallita non \`e una pulizia riuscita.
+
+\subsection{Che cosa \`e verificato}
+
+Il documento di deployment del progetto separa con cura le evidenze per
+artefatto e per scenario, e questo capitolo ne riporta i limiti. Lo scenario di
+ciclo di vita \`e passato sulla revisione \code{18d7b98f}; il recupero dopo
+riavvio sulla revisione \code{00ab7ac9}, su cui \`e terminata con successo anche
+un'esecuzione asincrona ristretta alla JVM. L'esecuzione asincrona di 18
+funzioni \`e invece fallita, dopo che i percorsi Go e Java erano passati, durante la
+serializzazione dell'output nella callback di Java-lite
+(\code{OUTPUT\_SERIALIZATION\_ERROR}); la diagnosi principale \`e l'assenza di
+metadati di reflection nativa, e non \`e stata confermata. La compilazione
+nativa \`e riuscita su Linux aarch64, ma la ricevuta registra
+\code{runtime\_verified: false}: nessun binario nativo \`e stato avviato.
+Linux amd64, CNI, callback, riavvio e pulizia in modalit\`a nativa, la matrice
+completa, i test di durata e l'iniezione di guasti non sono verificati. Non si
+deve parlare di parit\`a completa con gli altri provider.
 
 \section{Chi possiede la validazione delle immagini}
 
@@ -191,47 +334,64 @@ validatore e lo attiva quando \`e selezionato come backend.
 
 Il motivo \`e che l'operazione non \`e la stessa. Verificare un'immagine tramite
 Kubernetes significa creare un pod e osservare le condizioni di attesa del
-container; verificarla tramite un demone Docker locale significa interrogarne
-l'indice delle immagini o tentare un pull. Un modulo generico avrebbe dovuto
+container; tramite un demone Docker locale significa chiedere al demone di
+scaricarla (\code{DockerImageValidator} chiama \code{pullImage}); tramite
+containerd, chiedere a containerd di scaricarla (\code{ContainerdImageValidator}).
+Un modulo generico avrebbe dovuto
 reintrodurre al proprio interno la distinzione fra backend che l'astrazione dei
 provider esiste per eliminare, e avrebbe dovuto essere selezionato
 coerentemente con essi --- un vincolo di coerenza in pi\`u nella selezione
 modulare, per nessun guadagno.
 
-Resta il fatto che l'interfaccia \code{ImageValidator} vive nel package
-\code{registry} del control plane anzich\'e in \code{platform/common}, dove
-stanno gli altri contratti condivisi (\cref{cap:05-contratti-dati}). Non \`e una
-violazione architetturale --- i moduli possono dipendere dal nucleo, e la regola
-ArchUnit vieta soltanto le dipendenze \emph{fra} moduli
-(\cref{cap:26-qualita-verifica}) --- ma \`e una collocazione incoerente con il
-criterio dichiarato altrove, e il posto naturale dell'interfaccia \`e il modulo
-dei contratti.
+L'interfaccia \code{ImageValidator} \`e un contratto della libreria
+\code{control-plane-spi} (package \code{registry}), non del nucleo, ed \`e
+quindi legittimamente visibile ai moduli (\cref{cap:08-sistema-moduli}). Una
+versione precedente del capitolo la segnalava come collocata nel control plane,
+in modo incoerente con il criterio dichiarato altrove; con la separazione della
+libreria di contratto l'incoerenza \`e risolta.
+
+Una correzione riguarda l'attivazione. Il validatore di ciascun provider \`e
+registrato quando \code{nanofaas.deployment.default-backend} \`e vuoto oppure
+coincide con il proprio backend (commit \code{454c87a5}): il chart, \code{deploy/k8s} e
+\code{application.yml} lasciano il backend vuoto, e con quella configurazione i
+validatori Kubernetes e Docker non venivano mai creati: la registrazione di
+un'immagine inesistente restituiva \code{201}. Poich\'e i provider sono
+mutuamente esclusivi, un backend vuoto significa l'unico provider presente nel
+build, e il validatore di containerd si comportava gi\`a cos\`i.
 
 \section{Confronto}
 
 \begin{table}[htbp]
 \centering
-\caption{I due provider di deployment a confronto.}
+\caption{I tre provider di deployment a confronto.}
 \label{tab:provider}
 \small
-\begin{tabularx}{\textwidth}{@{}lXX@{}}
+\begin{tabularx}{\textwidth}{@{}lXXX@{}}
 \toprule
- & \textbf{\code{k8s}} & \textbf{\code{container-local}} \\
+ & \textbf{\code{k8s}} & \textbf{\code{container-local}} &
+\textbf{\code{containerd}} \\
 \midrule
-Backend & API Kubernetes (Fabric8) & runtime Docker-compatibile \\
-Endpoint stabile & \code{Service} & proxy round robin interno \\
+Backend & API Kubernetes (Fabric8) & runtime Docker-compatibile &
+containerd rootless, \code{crun}, CNI \\
+Endpoint stabile & \code{Service} & proxy round robin interno & proxy round
+robin interno \\
 Scaling & \code{replicas} del Deployment o HPA & creazione/distruzione
-container \\
-Validazione immagine & pod di prova, condizioni di attesa & indice del demone \\
+container & creazione/distruzione container \\
+Validazione immagine & pod di prova, condizioni di attesa, politica di pull
+configurata & \code{pullImage} sul demone & pull richiesto a containerd \\
 Isolamento CPU & \code{resources.limits} & \code{resources.limits} +
-\code{cpuset} \\
-Dipendenze pesanti & Fabric8, Vert.x & client Docker Java \\
-Uso previsto & carichi realistici su cluster & esperimenti su singola macchina \\
+\code{cpuset} & quota/periodo cgroup + \code{cpuset} opzionale \\
+Dipendenze pesanti & Fabric8 (trasporto JDK) & client Docker Java & librerie
+Java containerd e CNI, da sorgenti registrate \\
+Ciclo di vita & proprio & libreria condivisa & libreria condivisa \\
+Uso previsto & carichi realistici su cluster & esperimenti su singola
+macchina & host Linux senza demone privilegiato \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-L'ultima riga \`e la ragione per cui entrambi esistono. Il provider Kubernetes
-\`e quello che rende \nf{} una piattaforma FaaS reale; quello locale \`e quello
+L'ultima riga \`e la ragione per cui esistono. Il provider Kubernetes
+\`e quello che rende \nf{} una piattaforma FaaS reale; quello Docker \`e quello
 che rende gli esperimenti eseguibili in un ciclo abbastanza breve da poterli
-ripetere.
+ripetere; quello containerd estende la stessa idea a un host senza demone
+privilegiato, con le riserve sull'evidenza indicate sopra.

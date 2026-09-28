@@ -7,7 +7,7 @@ moduli affatto.
 
 \section{\code{build-metadata}}
 
-Poco pi\`u di duecento righe in quattro classi. Espone un endpoint,
+Poco pi\`u di duecento righe (236) in quattro classi. Espone un endpoint,
 \code{/modules/build-metadata}, che riporta l'identit\`a della build in
 esecuzione: versione, revisione git completa (i quaranta caratteri
 dell'hash, non una forma abbreviata), un flag \code{dirty} che riflette
@@ -111,7 +111,7 @@ configurazione di Gradle e non pu\`o variare all'interno di una singola build,
 quella classe richiede una propria invocazione:
 
 \begin{lstlisting}[language=bash]
-./gradlew test                                   # tutti i moduli (default: all)
+./gradlew test                                   # moduli di default (= all)
 ./gradlew test -PcontrolPlaneModules=none        # la configurazione minima
 \end{lstlisting}
 
@@ -121,24 +121,31 @@ della scelta di selezionare a build time anzich\'e a runtime
 modularit\`a a costo zero sul percorso critico non \`e a costo zero sulla catena
 di integrazione continua.
 
-\subsection{Perch\'e il default \`e \code{all}}
+\subsection{Perch\'e il default coincide con \code{all}}
 
-Ogni invocazione di Gradle priva di selezione esplicita usa \code{all}, test
-compresi. La ragione \`e che la suite deve esercitare la configurazione che viene
+Ogni invocazione di Gradle priva di selezione esplicita usa i moduli con
+\code{defaultEnabled=true} nel proprio descrittore, test compresi. Oggi sono
+tutti tranne i due provider locali, e poich\'e \code{all} preferisce a sua volta il
+provider Kubernetes, i due insiemi coincidono. La ragione \`e che la suite deve esercitare la configurazione che viene
 distribuita. Una suite che girasse per default su una configurazione parziale
 verificherebbe un artefatto che nessuno esegue, e le interazioni fra moduli ---
 che sono la parte pi\`u fragile di un sistema componibile --- resterebbero
 scoperte.
 
-La combinazione delle due scelte, default \code{all} e test dedicato per
-\code{none}, copre i due estremi dello spazio delle configurazioni. Le
-configurazioni intermedie --- per esempio \code{async-queue} senza
-\code{sync-queue} --- non hanno copertura dedicata.
+La combinazione delle due scelte, default e test dedicato per
+\code{none}, copre i due estremi dello spazio delle configurazioni. Una terza
+invocazione della pipeline di integrazione continua esercita una configurazione
+intermedia (\code{sync-queue}, \code{concurrency-control} e
+\code{runtime-config}), che serve a coprire il controllo di concorrenza sulla
+strategia a coda condivisa. Le altre configurazioni intermedie non hanno copertura
+dedicata.
 
 \begin{damisurare}
-Lo spazio delle configurazioni modulari ha $2^9 = 512$ punti, di cui alcuni non
-validi per la dipendenza fra \code{concurrency-control} e \code{async-queue}. La
-suite ne verifica due. Una verifica di costruibilit\`a su tutte le combinazioni
-valide \`e realizzabile e non \`e stata eseguita.
+Lo spazio delle configurazioni modulari ha $2^{10} = 1024$ punti. I vincoli dei
+descrittori ne escludono una parte: le coppie di provider di deployment, e
+\code{concurrency-control} o \code{autoscaler} senza almeno un modulo di coda.
+Enumerando i descrittori correnti restano 416 selezioni valide (compresa quella
+vuota). La suite ne verifica tre. Una verifica di costruibilit\`a su tutte le
+combinazioni valide \`e realizzabile e non \`e stata eseguita.
 \todomis{costruibilit\`a e avviabilit\`a di tutte le combinazioni modulari valide}
 \end{damisurare}

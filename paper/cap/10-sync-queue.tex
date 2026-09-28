@@ -13,7 +13,27 @@ posto e rifiuta quando \`e piena, il che significa che l'ultima richiesta
 accettata prima del riempimento attende quanto l'intera coda impiega a
 drenare. Con l'ammissione, il rifiuto avviene prima, sulla base di una stima.
 
-Sono 905 righe in dieci classi.
+Come \code{async-queue}, il modulo non possiede pi\`u un ciclo di scheduling, e
+nemmeno pi\`u la logica di ammissione: il controllore di ammissione e lo
+stimatore dell'attesa vivono in \code{execution-runtime}
+(\code{execution/admission}), accanto al motore. Le 523 righe in sei classi che
+restano nel modulo sono la strategia \code{shared-queue}
+(\cref{sec:10-strategia}), la configurazione dei \emph{bean}, la sorgente di
+configurazione modificabile a caldo con la sua estensione di
+\code{runtime-config}, le propriet\`a e le metriche. Il ciclo che consuma la coda
+\`e il \code{SchedulerEngine} descritto nel \cref{cap:09-async-queue}; qui si
+descrive ci\`o che \`e specifico del percorso sincrono.
+
+\begin{damisurare}
+Il modulo non \`e \emph{attivo} per il solo fatto di essere presente: la coda
+sincrona ammette soltanto nel profilo di ammissione \code{SYNC\_QUEUE}, che si
+deriva quando \code{shared-queue} \`e l'unica strategia dell'artefatto e
+altrimenti va dichiarato (\code{nanofaas.admission.profile}). Con entrambi i
+moduli il profilo derivato \`e \code{FUNCTION\_QUEUE}, e \code{shared-queue} \`e
+soltanto una strategia fra cui commutare. Le misure del
+\cref{cap:25-valutazione-concorrenza} vanno lette con questa distinzione.
+\todomis{quale profilo era attivo in ciascuna delle misure del capitolo 25}
+\end{damisurare}
 
 \section{Le due domande dell'ammissione}
 
@@ -27,14 +47,23 @@ public SyncQueueAdmissionResult evaluate(String functionName, int depth, Instant
                                                  Double.POSITIVE_INFINITY);
     }
     double estWaitSeconds = estimator.estimateWaitSeconds(functionName, depth, now);
-    long maxWaitSeconds = configSource.syncQueueMaxEstimatedWait().toSeconds();
-    if (configSource.syncQueueAdmissionEnabled()
+    var runtime = configSource.syncQueueRuntimeDefaults();
+    long maxWaitSeconds = runtime.maxEstimatedWait().toSeconds();
+    if (runtime.admissionEnabled()
             && (maxWaitSeconds == 0 || estWaitSeconds > maxWaitSeconds)) {
         return SyncQueueAdmissionResult.rejected(SyncQueueRejectReason.EST_WAIT, estWaitSeconds);
     }
     return SyncQueueAdmissionResult.accepted(estWaitSeconds);
 }
 \end{lstlisting}
+
+Rispetto alla prima versione, la lettura della configurazione \`e una sola:
+un unico oggetto immutabile, \code{SyncQueueRuntimeDefaults}, ottenuto una volta
+per valutazione. Prima l'attivazione dell'ammissione e la soglia erano due
+accessor separati, e una modifica a caldo che cadesse fra le due letture poteva
+produrre una decisione basata su una coppia di valori mai coesistita. Ora la
+sorgente sostituisce l'oggetto \emph{per intero} (un campo \code{volatile}), e ogni
+valutazione vede o il vecchio insieme o il nuovo.
 
 Le due condizioni sono qualitativamente diverse.
 
@@ -133,10 +162,33 @@ comportamento pi\`u conservativo --- pi\`u rifiuti --- nella fase iniziale. La
 direzione dell'errore \`e quindi sicura, ed \`e presumibilmente il motivo per cui
 la formulazione \`e stata mantenuta; il progetto non lo documenta esplicitamente.
 
-\section{Lo scheduler sincrono e il forward progress}
+\subsection{Memoria limitata e manutenzione}
 
-Il consumatore della coda \`e \code{SyncScheduler}, e la sua funzione
-\code{tickOnce()} risolve un problema che una coda FIFO ingenua non risolve.
+Lo stimatore conserva un istante per ogni dispatch nella finestra, e questo,
+in una versione precedente, era illimitato nel numero di campioni e nel numero
+di funzioni tracciate: un carico ad alta frequenza, o un flusso di nomi di
+funzione distinti, avrebbe fatto crescere la memoria con la sola velocit\`a di
+arrivo. La classe ora impone quattro limiti con valori di default fissati nel
+codice: 262\,144 campioni globali, 32\,768 campioni per funzione, 8\,192 funzioni
+tracciate e 262\,144 campioni per funzione in totale. Al raggiungimento di un
+limite per funzione il campione pi\`u vecchio \`e sostituito dal pi\`u recente; se
+non c'\`e posto per una nuova funzione, la stima per quella funzione ricade
+sull'\emph{attesa infinita}, cio\`e sul lato conservativo.
+
+La potatura dei campioni scaduti \`e distribuita: ogni chiamata ne fa un po' (un
+budget di sedici funzioni), ma un sistema inattivo non chiamerebbe mai lo
+stimatore, e i campioni resterebbero. Un timer daemon dedicato
+(\code{nanofaas-sync-queue-estimator-maintenance}) chiama \code{maintain} ogni
+500\,ms: \`e l'unico compito che il vecchio ciclo sincrono svolgeva per
+inerzia e che, tolto il ciclo, doveva avere un proprietario esplicito.
+
+\section{La strategia \code{shared-queue} e il forward progress}
+\label{sec:10-strategia}
+
+Il consumatore non \`e pi\`u del modulo: \`e il motore, e il modulo contribuisce
+soltanto la strategia (111 righe) che ordina i ticket sincroni. Il problema
+che la strategia risolve \`e per\`o rimasto lo stesso, ed \`e quello che una coda
+FIFO ingenua non risolve.
 
 \subsection{Il problema della testa bloccata}
 
@@ -149,82 +201,76 @@ servizio della funzione bloccante.
 
 \subsection{La soluzione: scansione selettiva}
 
-\begin{lstlisting}[language=Java, caption={Il cuore di \code{tickOnce()}.}]
-SyncQueueItem item = queue.findReadyMatching(now,
-        task -> enqueuer.hasAvailableSlot(task.functionName()));
-if (item == null) {
-    if (queue.peekReady(now) == null) {
-        blockedBackoffMs = tickMs;
-        queue.awaitWork(tickMs);          // coda vuota: attendi lavoro
-    } else {
-        queue.rotateReadyScanWindow(now); // tutti bloccati: ruota e ritenta
-        pause.accept(currentBlockedBackoff());
+\begin{lstlisting}[language=Java, caption={\code{select} della strategia \code{shared-queue}.}]
+static final int SCAN_LIMIT = 64;
+
+public SchedulingTicket select(Instant now, Predicate<FunctionGeneration> runnable) {
+    int visited = 0;
+    for (SchedulingTicket ticket : queue) {
+        if (++visited > SCAN_LIMIT) { break; }
+        if (!ticket.notBefore().isAfter(now) && runnable.test(ticket.generation())) {
+            return ticket;
+        }
     }
-    return;
-}
-String functionName = item.task().functionName();
-if (!enqueuer.tryAcquireSlot(functionName)) {
-    queue.rotateReadyItem(item, now);     // slot perso in corsa: rimetti in fondo
-    pause.accept(currentBlockedBackoff());
-    return;
-}
-...
-\end{lstlisting}
-
-Lo scheduler non prende la testa: \emph{cerca} il primo elemento la cui funzione
-ha uno slot disponibile. La ricerca \`e limitata a una finestra di 64 elementi
-(\code{POLL\_READY\_MATCHING\_SCAN\_LIMIT}), il che mantiene il costo per tick
-limitato indipendentemente dalla profondit\`a della coda.
-
-Se nessun elemento nella finestra \`e servibile, la finestra viene \emph{ruotata}
---- i suoi elementi vanno in fondo --- cos\`i che il tick successivo esamini
-elementi diversi. La rotazione \`e ci\`o che rende la scansione limitata
-comunque equa: nessun elemento resta indefinitamente fuori dalla finestra
-esaminata.
-
-Il codice tratta anche il caso di corsa: fra il momento in cui un elemento \`e
-selezionato perch\'e la sua funzione aveva uno slot e il momento in cui lo slot
-viene acquisito, un altro consumatore pu\`o averlo preso. In tal caso l'elemento
-viene ruotato anzich\'e scartato.
-
-\subsection{Il backoff}
-
-\begin{lstlisting}[language=Java]
-private volatile long tickMs = 2;
-private volatile long blockedBackoffMs = tickMs;
-
-private long currentBlockedBackoff() {
-    long current = blockedBackoffMs;
-    blockedBackoffMs = Math.min(current * 2, 50);
-    return current;
+    return null;
 }
 \end{lstlisting}
 
-Il tick base \`e di 2\,ms. Quando lo scheduler trova lavoro ma non riesce a
-dispacciarlo --- ossia quando ogni funzione in coda \`e satura --- attende con
-backoff esponenziale fino a un tetto di 50\,ms. Il backoff viene azzerato appena
-un dispatch riesce.
+La strategia non prende la testa: \emph{cerca}, entro i primi 64 ticket, il
+primo la cui funzione ha una generazione eseguibile. Il predicato
+\code{runnable} \`e fornito dal motore e legge soltanto un'osservazione gi\`a in
+memoria della capacit\`a; il limite di 64 mantiene il costo per selezione
+limitato indipendentemente dalla profondit\`a della coda (fino a 200 nel default).
 
-I due valori sono un compromesso esplicito fra reattivit\`a e consumo di CPU. A
-2\,ms il ciclo aggiunge al pi\`u due millisecondi alla latenza di una richiesta
-che attende uno slot appena liberato, il che \`e dello stesso ordine del tempo di
-servizio delle funzioni di riferimento del progetto. Senza backoff, un sistema
-saturo farebbe girare il thread dello scheduler a vuoto 500 volte al secondo.
+Due differenze rispetto alla versione precedente sono conseguenze del contratto
+\code{SchedulingIndex} (\cref{cap:09-async-queue}), non di una scelta locale.
+Primo, \code{select} \emph{non muta} la coda: nel vecchio ciclo il consumatore
+ruotava la finestra mentre la esaminava. Secondo, la rotazione avviene solo sui
+percorsi di fallimento, quando il motore chiama \code{defer} (un ticket scelto
+non ha potuto essere dispacciato) o \code{advanceScanWindow} (nessun candidato):
+in entrambi i casi il risultato \`e lo stesso, e sposta fino a 64 nodi dalla
+testa alla coda.
+
+Il caso di corsa che la versione precedente trattava esplicitamente --- fra la
+selezione e l'acquisizione dello slot un altro consumatore pu\`o averlo preso ---
+non \`e pi\`u gestito nella strategia. Il motore acquisisce il lease \emph{fuori}
+dal gate, poi riconvalida sotto il gate; se la corsa \`e stata persa, il reclamo
+viene annullato e chiama \code{defer}, che fa ruotare la finestra.
+
+\subsection{Che cosa \`e sparito: il tick e il backoff}
+
+Il vecchio ciclo sincrono aveva un tick di 2\,ms e un backoff esponenziale
+fino a 50\,ms quando ogni funzione in coda era satura. Nessuno dei due valori
+esiste pi\`u come tale. Il ciclo \`e ora guidato da eventi: una capacit\`a che si
+libera, un ticket che entra o esce, una rimozione, ciascuno sveglia il motore. Le
+uniche attese a tempo sono limiti di sicurezza --- 50\,ms quando c'\`e lavoro che
+nessuna generazione pu\`o prendere, 500\,ms quando non c'\`e nulla --- pi\`u la
+prossima scadenza o eleggibilit\`a (\cref{cap:09-async-queue}). Il costo di cui il
+\code{damisurare} della prima versione lamentava la mancata misura, il
+contributo del tick alla latenza a bassa concorrenza, \`e quindi diverso e non
+misurato in isolamento: una richiesta che attende uno slot appena liberato non
+paga pi\`u un periodo di poll, perch\'e il rilascio del lease sveglia il motore.
 
 \begin{damisurare}
-Il contributo del tick di 2\,ms alla latenza end-to-end non \`e stato isolato
-sperimentalmente. Il \cref{cap:25-valutazione-concorrenza} riporta tempi di
-attesa dell'ordine di 40\,ms contro tempi di servizio di 5\,ms, in cui il
-contributo del tick sarebbe minoritario ma non trascurabile.
-\todomis{contributo del periodo di tick alla latenza a bassa concorrenza}
+Il confronto a coppie fra il vecchio ciclo e il nuovo motore
+(\code{OLD-VS-NEW.md}) misura il profilo \code{low-load}: il p99 stazionario
+passa da 2,570 a 2,793\,ms ($+5{,}40\%$), oltre il budget del $5\%$, ma la
+risoluzione della misura \`e del $9{,}36\%$ e il documento lo classifica come non
+separabile dal rumore. L'effetto della rimozione del tick sulla latenza a bassa
+concorrenza non \`e stato quindi isolato.
+\todomis{latenza a bassa concorrenza senza il tick, con risoluzione migliore di 9\%}
 \end{damisurare}
 
 \section{Timeout in coda}
 
 Un elemento pu\`o scadere mentre attende. La scadenza \`e governata da
-\code{sync-queue.max-queue-wait} (default 2\,s) e viene verificata a ogni
-ispezione della coda: \code{peekReady}, \code{findReadyMatching} e le rotazioni
-rimuovono gli elementi scaduti e li completano con esito \code{QUEUE\_TIMEOUT}.
+\code{sync-queue.max-queue-wait} (default 2\,s). Ogni ticket sincrono porta la
+propria scadenza di coda, e il motore la tiene in un insieme ordinato: a ogni
+passaggio, sotto il gate, rimuove i ticket scaduti (al pi\`u 64 per passaggio, per
+non affamare il dispatch) e li completa con esito \code{QUEUE\_TIMEOUT}; la sosta
+del ciclo \`e abbreviata fino alla prossima scadenza. Non \`e pi\`u una verifica
+``a ogni ispezione della coda'' come nel vecchio ciclo: una scadenza scatta
+all'istante dovuto anche se nessuno ispeziona la coda.
 
 Il coordinatore reattivo traduce quell'esito in un rifiuto con ragione
 \code{TIMEOUT}:
@@ -244,34 +290,45 @@ consentita. Solo i primi due sono trattati come pressione dal modulo di offload.
 
 \section{Rimozione di una funzione}
 
-Quando una funzione viene cancellata mentre ha richieste in coda, il modulo
-esegue tre azioni: registra il nome in un insieme di funzioni rimosse, drena
-dalla coda tutti gli elementi che le appartengono completandoli con errore
-\code{FUNCTION\_REMOVED}, e cancella lo stato dell'estimatore e delle metriche.
+Quando una funzione viene cancellata mentre ha richieste in coda, il modulo non
+ha pi\`u un insieme di funzioni rimosse n\'e un proprio drenaggio. Il listener di
+registrazione del nucleo ritira la capacit\`a della generazione \emph{prima} e
+poi chiama \code{SchedulerEngine.removeAllFor}, che sotto il gate estrae tutti i
+ticket pendenti della funzione e li completa con errore
+\code{FUNCTION\_REMOVED}. L'ordine \`e importante: poich\'e il motore controlla la
+generazione di un ticket sotto il gate all'ammissione, e il drenaggio prende lo
+stesso gate, un'ammissione ordinata prima del drenaggio viene drenata e una
+ordinata dopo viene rifiutata. Drenare prima lascerebbe la generazione attiva per
+tutta la durata del drenaggio, e un'ammissione concorrente inserirebbe un ticket
+che la scansione ha gi\`a superato.
 
-L'insieme delle funzioni rimosse \`e consultato anche in ingresso, due volte: una
-prima del lock sulla coda e una dentro. La doppia verifica gestisce la corsa fra
-una registrazione in corso e una cancellazione, e ha il costo di una lettura su
-un insieme concorrente, trascurabile rispetto alla sezione critica che protegge.
+Lo stimatore ha il proprio listener (\code{removeFunctionState}), indipendente
+da quello del nucleo: il servizio delle funzioni notifica ogni listener e i due
+non si conoscono.
 
 \section{Metriche esportate}
 
 \begin{center}
 \small
 \begin{adjustbox}{max width=\textwidth}
-\begin{tabular}{@{}lll@{}}
+\begin{tabular}{@{}llp{7cm}@{}}
 \toprule
 \textbf{Metrica} & \textbf{Tipo} & \textbf{Significato} \\
 \midrule
-\code{sync\_queue\_depth} & gauge & Profondit\`a, globale (\code{function=""}) e per funzione. \\
-\code{sync\_queue\_wait\_seconds} & gauge & Attesa stimata, globale e per funzione. \\
+\code{sync\_queue\_depth} & gauge & Prenotazioni del motore (ticket pendenti, pi\`u un reclamo o una sottomissione finch\'e non si chiude), globale (\code{function=""}) e per funzione; zero fuori dal profilo \code{SYNC\_QUEUE}. \\
 \code{sync\_queue\_admitted\_total} & counter & Ammissioni. \\
-\code{sync\_queue\_rejected\_total} & counter & Rifiuti di ammissione. \\
-\code{sync\_queue\_timedout\_total} & counter & Scadenze in coda. \\
+\code{sync\_queue\_rejected\_total} & counter & Rifiuti di ammissione (\code{DEPTH}, \code{EST\_WAIT}). \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
 \end{center}
+
+Due metriche della prima versione non esistono pi\`u:
+\code{sync\_queue\_wait\_seconds} e \code{sync\_queue\_timedout\_total}. Nessun
+codice le registrava da quando la coda \`e passata nel motore condiviso, e la
+documentazione operativa le ha dichiarate rimosse anzich\'e lasciarle come serie
+sempre nulle. Una scadenza in coda resta osservabile dal lato del chiamante, come
+\code{429} con \code{X-Queue-Reject-Reason: timeout}.
 
 La documentazione operativa del progetto fornisce una regola di lettura che vale
 la pena riportare perch\'e sintetizza il rapporto fra le due grandezze:
@@ -304,9 +361,19 @@ funzione. \\
 \end{adjustbox}
 \end{center}
 
-Tutti questi parametri, tranne \code{max-depth} e i due che governano la stima,
-sono modificabili a caldo attraverso il modulo \code{runtime-config}
-(\cref{cap:14-runtime-config}): la lettura avviene infatti attraverso
-\code{SyncQueueConfigSource} anzich\'e direttamente dalle propriet\`a. \`E il
-motivo per cui \code{evaluate()} interroga il config source a ogni valutazione
-anzich\'e leggere un campo finale.
+Cinque di questi parametri --- \code{enabled}, \code{admission-enabled},
+\code{max-estimated-wait}, \code{max-queue-wait}, \code{retry-after-seconds} ---
+sono modificabili a caldo attraverso il namespace \code{sync-queue} di
+\code{runtime-config} (\cref{cap:14-runtime-config}); \code{max-depth},
+\code{throughput-window} e \code{per-function-min-samples} no, perch\'e
+dimensionano strutture allocate all'avvio. La lettura passa da
+\code{SyncQueueConfigSource}, non dalle propriet\`a, ed \`e il motivo per cui
+\code{evaluate()} interroga la sorgente a ogni valutazione. La sorgente sostituisce
+un unico oggetto immutabile, e la regola di validazione \`e che
+\code{max-estimated-wait} non superi \code{max-queue-wait} ed entrambi siano
+positivi (il codice non ne dichiara il motivo; l'effetto \`e escludere una soglia
+di ammissione che ecceda la scadenza in coda).
+
+Nel profilo \code{SYNC\_QUEUE}, \code{max-depth} \`e anche il tetto globale del
+lavoro pendente del motore (\cref{cap:09-async-queue}): \`e lo stesso numero, non
+due limiti distinti.

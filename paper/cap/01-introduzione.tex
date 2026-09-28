@@ -53,12 +53,19 @@ rumore di fondo, e che tale sistema resta abbastanza completo da eseguire
 carichi reali su Kubernetes.
 
 \nf{} \`e la realizzazione di questa tesi. \`E un control plane scritto in Java
-su Spring WebFlux, il cui nucleo conta circa 5\,000 righe di codice di
-produzione, esteso da nove moduli opzionali che ne aggiungono complessivamente
-circa 6\,800. Il rapporto fra le due cifre \`e esso stesso una scelta di
-progetto: i moduli, presi insieme, sono pi\`u grandi del nucleo che estendono,
-il che significa che la maggior parte di ci\`o che rende \nf{} interessante \`e
-anche ci\`o che si pu\`o togliere senza che smetta di funzionare.
+su Spring WebFlux. Il codice che si compila sempre --- il modulo del control
+plane pi\`u le tre librerie obbligatorie di contratti, esecuzione e tipi comuni
+--- conta 17\,334 righe non vuote di produzione; dieci moduli opzionali ne
+aggiungono complessivamente 6\,299 (misura del 28~settembre~2026, sui file
+\code{.java} sotto \code{src/main}). Il rapporto non \`e pi\`u quello con cui
+questo lavoro era stato inizialmente presentato, secondo cui i moduli, presi
+insieme, sarebbero pi\`u grandi del nucleo: l'esecuzione (lo store, la
+capacit\`a, il ciclo di vita) \`e stata portata in una libreria obbligatoria, e
+il nucleo \`e cresciuto di conseguenza. Ci\`o che resta vero \`e una
+propriet\`a diversa da una proporzione di righe: ci\`o che \`e opzionale sono le
+\emph{politiche} --- code, autoscaling, controllo della concorrenza, offload,
+configurazione a caldo --- e si pu\`o togliere senza che il resto smetta di
+funzionare.
 
 \section{Domande di ricerca}
 

@@ -8,7 +8,7 @@ progetto motiva con misure.
 
 \section{Gli assi di variazione}
 
-Un artefatto di \nf{} \`e determinato da cinque scelte indipendenti:
+Un artefatto di \nf{} \`e determinato da sette scelte indipendenti:
 
 \begin{center}
 \small
@@ -25,14 +25,21 @@ Livello di ottimizzazione nativa & \code{-Os} (dimensione) o \code{-O3}
 Garbage collector nativo & \code{serial} (default Community) o \code{G1}
 (Oracle GraalVM) \\
 Limite di memoria del container & assente o fissato \\
+Dove compila il nativo & \code{host} (GraalVM della macchina) o \code{container}
+(il builder del \code{Dockerfile} nativo) \\
+Architettura dell'immagine & \code{linux/amd64}, \code{linux/arm64}, o entrambe
+(\code{docker buildx}) \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
 \end{center}
 
-Il \cref{cap:24-footprint} misura l'effetto degli ultimi quattro. Che il
-progetto li abbia resi tutti selezionabili da riga di comando \`e la condizione
-che rende quella misura possibile.
+Il \cref{cap:24-footprint} misura l'effetto delle righe dal tipo di build al
+limite di memoria. Che il progetto le abbia rese tutte selezionabili da riga di
+comando \`e la condizione che rende quella misura possibile; le ultime due,
+pi\`u recenti, servono a produrre la stessa variante su macchine diverse
+(\cref{sec:20-ricette}). Le sette scelte non sono sette flag da ricordare: una
+\emph{ricetta} le dichiara in un unico file versionato.
 
 \section{La build JVM}
 
@@ -65,28 +72,61 @@ maggiore, e la sua comparsa gi\`a qui, in forma ridotta, \`e istruttiva.
 
 \subsection{I flag della JVM}
 
+Il \code{Dockerfile} del control plane \`e ora dichiaratamente un file per lo
+sviluppo locale in JVM: le immagini native hanno una catena propria, e nessun
+job della CI costruisce un'immagine. I flag di ottimizzazione non stanno nella
+riga di comando ma in un \emph{argfile}, \code{/app/jvm.options}, perch\'e
+l'immagine finale \`e Distroless: un \code{ENTRYPOINT} in forma exec non espande
+variabili e non c'\`e una shell che possa farlo. Il valore predefinito \`e
+soltanto \code{-XX:+UseSerialGC}; il resto \`e incondizionato:
+
 \begin{lstlisting}[language=bash]
-"-XX:+UseSerialGC", "-XX:MaxRAMPercentage=70", "-XX:TieredStopAtLevel=1",
-"-Xss256k", "-Dspring.jmx.enabled=false", ...
+"-XX:MaxRAMPercentage=70", "-Xss256k", "-Dspring.jmx.enabled=false", ...
 \end{lstlisting}
 
-Ciascuno rinuncia a qualcosa in cambio di impronta. \code{TieredStopAtLevel=1}
-ferma la compilazione JIT al primo livello: il codice risultante \`e pi\`u lento
-ma il compilatore lavora meno e la CodeHeap resta piccola. \code{-Xss256k}
-riduce lo stack per thread da 1\,MB al quarto --- con ventitr\'e thread, come
-misurato nel \cref{cap:24-footprint}, sono 17\,MB risparmiati.
+La scelta del collector seriale discende dall'assunzione che il chart di
+default sia un deployment a un solo core (l'assunzione che lo sweep di CPU del
+23~agosto~2026 ha fatto emergere). \code{-Xss256k} riduce lo stack per thread
+da 1\,MB al quarto --- con ventitr\'e thread, come misurato nel
+\cref{cap:24-footprint}, sono 17\,MB risparmiati.
 
-Va detto che questa configurazione \`e ottimizzata per l'impronta e non per il
-throughput di picco, e che le misure di throughput riportate nel
-\cref{cap:24-footprint} sono state raccolte su una configurazione diversa. \`E
-un'incoerenza da tenere presente nel leggerle.
+\paragraph{Il flag che \`e stato tolto.} Nella versione precedente di questo
+capitolo la lista conteneva \code{-XX:TieredStopAtLevel=1}, che ferma la
+compilazione JIT al primo livello, e il capitolo segnalava come \emph{non
+misurato} il suo costo in throughput. \`E stato poi misurato, e il verdetto \`e
+netto. A un core, con i quattro event loop della configurazione distribuita e
+un carico di 435 richieste al secondo, sul codice successivo alla correzione
+dell'\code{ExecutionStore} (tre ripetizioni per braccio, tutti i bracci vivi a
+fine cella; campagna \code{overload-path-2026-09}, 5~settembre~2026):
 
-\begin{damisurare}
-Il costo in throughput di \code{TieredStopAtLevel=1} sul control plane non \`e
-stato misurato. \`E l'unico flag della lista il cui effetto potrebbe essere
-sostanziale sul percorso caldo.
-\todomis{throughput con compilazione JIT completa contro C1 soltanto}
-\end{damisurare}
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+ & \textbf{p99} & \textbf{scarti} & \textbf{CPU strozzata} \\
+\midrule
+seriale, solo C1 (il default precedente) & 176{,}5\,ms & 26{,}63\% & 22{,}6\% \\
+seriale, compilazione completa & \textbf{19{,}7\,ms} & \textbf{0{,}46\%} & 5{,}5\% \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Il divario in p99 \`e di circa nove volte, quello negli scarti di oltre
+cinquanta. Il dubbio residuo era che C2 vincesse soltanto perch\'e il vecchio
+\code{ExecutionStore} produceva pressione sul collector; la misura rifatta dopo
+la correzione l'ha chiuso, perch\'e quella pressione non c'\`e pi\`u e il
+divario resta. Il default \`e quindi \emph{collector seriale e compilazione
+completa}, lo stesso di \code{deploy/compose/Dockerfile}. Chiude anche
+l'incoerenza che la versione precedente di questo capitolo segnalava: le misure
+di throughput del \cref{cap:24-footprint} erano state raccolte su una
+configurazione diversa da quella spedita, e oggi le due coincidono. \`E anche una
+correzione di rotta rispetto alla logica dell'impronta del
+\cref{cap:24-footprint}: i 13{,}5\,MB di CodeHeap che C1 risparmiava non
+compensano la latenza persa sul percorso caldo. Le due varianti con un solo
+event loop, nella stessa campagna, mostrano che i due effetti si sommano (p99 di
+5{,}4\,ms con C2 e un loop contro 72{,}7\,ms con C1 e un loop).
 
 \section{La build nativa}
 
@@ -116,29 +156,77 @@ hints} dedicate:
 \begin{center}
 \small
 \begin{adjustbox}{max width=\textwidth}
-\begin{tabular}{@{}ll@{}}
+\begin{tabular}{@{}lp{7.6cm}@{}}
 \toprule
 \textbf{Classe} & \textbf{Copre} \\
 \midrule
-\code{CaffeineRuntimeHints} & La cache di idempotenza. \\
-\code{VertxRuntimeHints} & Vert.x, trascinato dal client Fabric8. \\
-\code{DockerJavaRuntimeHints} & Il client Docker Java. \\
-\code{GcMetricsConfiguration} & I binder di metriche del collector. \\
+\code{CaffeineRuntimeHints} & Le classi di cache che Caffeine genera in funzione
+delle opzioni del builder (idempotenza). \\
+\code{NettyEpollRuntimeHints} & La libreria JNI di epoll per \code{aarch64}: i
+metadati di Netty registrano solo il nome senza suffisso e quello
+\code{x86\_64}, e su ARM il binario servirebbe in silenzio su NIO. \\
+\code{ProcessorMetricsRuntimeHints} & Il metodo riflesso
+\code{getProcessCpuTime}, letto a ogni scrape di Prometheus. \\
+\code{FunctionCatalogRuntimeHints} & Il grafo del catalogo persistito, visitato
+da Jackson attraverso i componenti dei record. \\
+\code{InvocationLifecycleRuntimeHints} & I tipi cancellati dalle firme AOT, fra cui
+la busta dell'API amministrativa di configurazione. \\
+\code{Fabric8RuntimeHints} & I modelli Kubernetes che il client raggiunge solo per
+riflessione (modulo \code{k8s-deployment-provider}). \\
+\code{DockerJavaRuntimeHints} & Il client Docker Java (modulo
+\code{container-deployment-provider}). \\
+\code{GcMetricsConfiguration} & Non \`e un hint ma il rimpiazzo dei contatori
+del collector, che sotto SubstrateVM non emette notifiche. \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
 \end{center}
 
-\`E significativo che tre delle quattro riguardino dipendenze dei \emph{moduli}
-e non del nucleo. La compilabilit\`a nativa \`e un vincolo che si propaga alle
-dipendenze transitive, ed \`e uno degli argomenti a favore della selezione
-modulare a tempo di build (\cref{cap:08-sistema-moduli}): un binario che non
-include il provider Kubernetes non ha bisogno degli hint di Vert.x.
+Rispetto alla versione precedente della tabella, due correzioni. La riga
+dedicata a Vert.x non esiste pi\`u, perch\'e non esiste pi\`u la dipendenza: il
+modulo Kubernetes usa il client HTTP del JDK e ha escluso quello basato su Vert.x
+(\code{kubernetes-httpclient-vertx}), che era un secondo stack Netty accanto a
+quello di Reactor. L'esclusione elimina alla radice la necessit\`a di quegli
+hint, che \`e la forma pi\`u economica di soluzione. E l'elenco si \`e allungato
+soprattutto sul nucleo, non sui moduli: sei righe su otto riguardano il nucleo e
+due i moduli, e due delle prime (\code{NettyEpollRuntimeHints},
+\code{ProcessorMetricsRuntimeHints}) esistono perch\'e i metadati di
+raggiungibilit\`a che le librerie distribuiscono sono incompleti per un dato
+metodo o una data architettura. Ciascuna porta nel commento la condizione
+sotto cui pu\`o essere cancellata (``\emph{drop this registrar once} \ldots'').
+
+La compilabilit\`a nativa resta un vincolo che si propaga alle dipendenze
+transitive, ed \`e uno degli argomenti a favore della selezione modulare a
+tempo di build (\cref{cap:08-sistema-moduli}): un binario che non include il
+provider Kubernetes non ha bisogno dei modelli Fabric8.
 
 Il rischio caratteristico \`e che un hint mancante non fa fallire la
 compilazione: produce un binario che fallisce a runtime, sul primo percorso che
 usa quella riflessione. \`E la ragione per cui esiste lo smoke test nativo della
-CLI (\cref{cap:19-cli-scaffolding}).
+CLI (\cref{cap:19-cli-scaffolding}). Il caso di \code{ProcessorMetricsRuntimeHints}
+ne mostra la forma pi\`u insidiosa: l'endpoint delle metriche fallisce in modo
+chiuso, Prometheus non registra alcuna serie \code{function\_*}, e
+l'applicazione sembra perfettamente sana perch\'e nient'altro tocca quel metodo.
+
+\subsection{Che cosa contiene un eseguibile nativo}
+
+C'\`e una seconda conseguenza della compilazione anticipata, meno ovvia degli
+hint: \emph{Spring AOT valuta le condizioni dei bean al momento della build}. In
+JVM, una propriet\`a come \code{nanofaas.admin.runtime-config.enabled=true} accende
+il servizio di configurazione a caldo all'avvio; in nativo la decisione \`e gi\`a
+stata presa quando l'eseguibile \`e stato prodotto, e una variabile d'ambiente a
+runtime non pu\`o pi\`u accendere o spegnere un componente. Il sintomo \`e
+un \code{404} su un endpoint che in JVM esiste, ed \`e facile scambiarlo per
+una regressione: il confronto valido \`e nativo contro nativo.
+
+Per questo la configurazione della ricetta viaggia fino a quel passo. Un
+control plane nativo costruito da ricetta passa \code{controlPlane.config} a
+Spring AOT (propriet\`a Gradle \code{-PnanofaasAotConfig=<file>}; nel builder a
+container, l'argomento di build \code{NATIVE\_AOT\_CONFIG}, in base64), e
+l'eseguibile contiene i componenti che quella configurazione seleziona. Dopo
+la build i valori possono cambiare, i componenti no: per cambiarli si assembla
+di nuovo. L'immagine nativa \emph{pubblicata} \`e costruita coi valori di
+default, quindi con l'API amministrativa spenta.
 
 \subsection{Il livello di ottimizzazione}
 
@@ -233,6 +321,221 @@ Il progetto utilizza il plugin \code{dependency-analysis} per individuare
 sistematicamente dipendenze non usate o non dichiarate
 (\cref{cap:26-qualita-verifica}).
 
+\section{Le ricette di distribuzione}
+\label{sec:20-ricette}
+
+Le sette scelte della prima sezione erano, fino a poco tempo fa, sette flag da
+comporre a mano, e la loro combinazione viveva negli script. Oggi la
+composizione \`e un dato: una \emph{ricetta} \`e un file YAML versionato che
+dichiara quale control plane costruire (moduli, JVM o nativo) e quali
+implementazioni di funzione impacchettare con esso. Una ricetta non avvia il
+control plane, non registra funzioni e non deploya nulla: produce artefatti e
+immagini, e si ferma.
+
+Lo schema corrente \`e la versione~2 (\code{recipe-v2.schema.json}); un file
+\code{schemaVersion: 1} continua a essere validato contro lo schema v1
+congelato e non pu\`o usare i campi che la v2 aggiunge. Il plugin sceglie lo
+schema che il file nomina e lo legge da una copia impacchettata: non scarica
+mai nulla.
+
+\begin{lstlisting}[language=bash, caption={I quattro comandi delle ricette.}]
+./gradlew listRecipeFunctions                              # catalogo, senza ricetta
+./gradlew validateRecipe -Precipe=recipes/local-demo.yaml  # valida e mostra l'anteprima
+./gradlew assembleRecipe -Precipe=recipes/local-demo.yaml  # artefatti + immagini, senza push
+./gradlew publishRecipe  -Precipe=recipes/local-demo.yaml  # assembla tutto, poi pubblica
+\end{lstlisting}
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lp{9cm}@{}}
+\toprule
+\textbf{Comando} & \textbf{Che cosa fa} \\
+\midrule
+\code{listRecipeFunctions} & Elenca le implementazioni presenti nel checkout:
+nome, SDK, directory sorgente e modi supportati. Un modo Java compare solo se il
+task corrispondente esiste. \\
+\code{validateRecipe} & Valida la ricetta e stampa moduli selezionati, task di
+build, directory di staging e riferimento completo di ogni immagine. Non richiede
+daemon Docker, GraalVM n\'e credenziali. \\
+\code{assembleRecipe} & Svuota \code{build/recipes/<nome>/}, costruisce
+artefatti e immagini, scrive \code{distribution.json}. Non pubblica mai. \\
+\code{publishRecipe} & Richiede una sezione \code{registry} e almeno
+un'immagine (verificato \emph{prima} di costruire); assembla tutto e solo dopo
+esegue il push. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Catalogo, anteprima e build usano lo stesso risolutore, quindi l'anteprima
+mostra esattamente ci\`o che la build user\`a.
+
+\subsection{Che cosa una ricetta possiede}
+
+La ricetta \emph{possiede} le scelte di build: con \code{-Precipe} sono
+rifiutati \code{-PnativeOptimization}, \code{-PnativeGc},
+\code{-PnativeMonitoring}, \code{-PnanofaasBuildVariant} e
+\code{-PcontrolPlaneModules}, mentre restano ammessi i flag che soltanto
+dimensionano il builder (\code{-PnativeBuildMemory}, \code{-PnativeParallelism},
+\code{-PcontainerdMavenLocal}). La selezione dei moduli \`e \emph{esatta}: niente
+\code{all} o \code{none}, nessun modulo opzionale nascosto, e i vincoli del
+\cref{cap:08-sistema-moduli} si applicano comunque. \`E la traduzione in dato
+del principio che la sezione sui buildpack enunciava a parole: i flag di
+compilazione devono essere una variabile sperimentale \emph{esplicita}.
+
+Le opzioni native stanno in \code{build.native}: \code{optimization}
+(\code{s}, da \code{0} a \code{3}; default \code{3}), \code{gc} (\code{serial} o
+\code{G1}) e \code{monitoring}. Il valore numerico \`e normalizzato (\code{3},
+\code{3.0} e \code{3e0} producono tutti \code{-O3}) e uno non intero \`e
+rifiutato. \code{G1} aggiunge \code{jfr} al monitoraggio, perch\'e G1 non ha
+MXBean del collector utilizzabili. Due componenti nativi nella stessa ricetta
+possono avere opzioni diverse, e il modo di ciascun componente \`e indipendente
+dagli altri: un control plane JVM pu\`o spedire con un \code{warm-echo} nativo,
+Spring AOT incluso, e viceversa.
+
+\paragraph{L'identit\`a della build.} \code{controlPlane.build.variant} \`e
+un'etichetta scritta in \code{META-INF/nanofaas-build.properties} e servita da
+\code{/modules/build-metadata}; l'evidenza di soak e di confronto la usa per
+dimostrare \emph{quale} build ha girato. L'ottimizzazione registrata accanto a
+essa non \`e mai dichiarata ma derivata: nel nativo \`e \code{native.optimization};
+in JVM \`e \code{c1} se l'ultimo \code{-XX:TieredStopAtLevel=} di \code{jvm.args}
+\`e~1, altrimenti \code{c2}. Richiede il modulo \code{build-metadata} fra quelli
+selezionati, e il plugin fallisce \emph{prima} di costruire invece di aggiungerlo
+di nascosto, perch\'e la selezione resta esatta.
+
+\subsection{Dove compila il nativo}
+
+\code{build.builder} sceglie dove un componente nativo viene compilato.
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lp{9cm}@{}}
+\toprule
+\textbf{Builder} & \textbf{Requisiti e conseguenze} \\
+\midrule
+\code{host} (default) & \code{nativeCompile} sulla macchina, con il suo
+GraalVM. L'eseguibile \`e copiato tale e quale in un'immagine Linux: l'host deve
+quindi essere Linux, sull'architettura dell'immagine, con una glibc non pi\`u
+recente di quella di Debian~13 (l'immagine di runtime \`e
+\code{distroless/cc-debian13}). \\
+\code{container} & Compila dentro il builder del \code{Dockerfile}
+\code{deploy/native-java}, lo stesso che usa la release. All'host basta una CLI
+compatibile con Docker con BuildKit (Docker~23 o podman); funziona quindi anche
+su macOS e Windows. Ne torna solo l'eseguibile
+(\code{docker build --target native-executable --output type=local}). \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Il builder a container installa GraalVM Community, oppure Oracle GraalVM quando
+il \code{gc} del componente \`e \code{G1}, perch\'e Community non ha G1. La
+licenza di Oracle GraalVM (GFTC) non \`e GPL, per cui chiedere G1 \`e anche una
+scelta di licenza, e il report registra la distribuzione usata. Le dipendenze
+Gradle restano in una cache di BuildKit fra una build e l'altra, montata con
+\code{sharing=locked}: build concorrenti sullo stesso builder, e le piattaforme
+di una stessa build multipiattaforma, farebbero altrimenti girare Gradle nella
+stessa home utente da namespace di rete separati, dove Gradle non sa cedere il
+lock. Il commento nel \code{Dockerfile} sull'immagine di runtime \`e un buon
+esempio di decisione documentata dal suo fallimento: l'immagine \code{base}
+falliva all'\emph{avvio} e non alla build, con
+\code{libstdc++.so.6: cannot open shared object file}, perch\'e un binario G1
+carica a runtime il collector, che \`e scritto in C++; \code{cc} porta la
+libreria, e i pochi megabyte in pi\`u per un binario seriale costano meno di due
+immagini di runtime destinate a divergere.
+
+\subsection{Immagini multi-architettura}
+
+Con \code{registry.platforms}, anche con una sola piattaforma, ogni immagine
+\`e costruita con \code{docker buildx build --platform <elenco>};
+\code{provenance: true} allega la provenienza BuildKit in modalit\`a
+\code{max}, altrimenti le immagini ne sono prive. Il vincolo che plasma il
+percorso \`e che un'immagine multi-architettura non pu\`o vivere nello store
+classico di Docker e la provenienza non sopravvive a \code{--load}:
+\code{assembleRecipe} costruisce quindi ogni piattaforma \emph{solo nella cache
+del builder}, e \code{publishRecipe} ripete ogni build con \code{--push},
+prendendola dalla cache. Prima di costruire qualunque cosa il task
+\code{checkRecipeBuilder} avvia il builder e richiede che
+\code{docker buildx inspect --bootstrap} elenchi ogni piattaforma
+richiesta. Un builder raggiunge un'altra architettura per emulazione QEMU oppure
+tramite un nodo che vi gira; il driver \code{docker} di default non costruisce
+pi\`u piattaforme insieme, e podman non \`e supportato su questo percorso.
+
+Per i componenti nativi il percorso dipende dal builder. Con
+\code{builder: container} il componente \`e compilato e impacchettato in
+un'unica build, dallo stadio \code{recipe-native} del \code{Dockerfile}, una
+volta per piattaforma: la provenienza dell'immagine nomina cos\`i lo stadio del
+builder GraalVM. Con \code{builder: host} l'eseguibile ha l'architettura
+dell'host, per cui \code{platforms} deve coincidere esattamente con essa.
+Compilare con \code{native-image} sotto emulazione \`e lentissimo: in pratica ogni
+architettura ha bisogno di un nodo nativo. Questa \`e la ragione per cui gli
+hint di \code{aarch64} della sezione precedente non sono un dettaglio: un
+binario ARM che parte e serve su NIO, senza dire nulla, \`e esattamente il
+guasto che una matrice multi-architettura rende possibile.
+
+\subsection{Il report di distribuzione}
+
+\code{assembleRecipe} scrive \code{distribution.json}, con
+\code{schemaVersion: 2} per ogni ricetta, v1 compresa (la versione~2 aggiunge
+soltanto campi, quindi un lettore dei campi v1 non vede differenze). Registra:
+nome della ricetta e SHA-256 del file; tag effettivo; revisione Git e stato
+\emph{dirty} (\code{"source": null} se Git manca); moduli risolti; per ogni
+componente tipo, SDK, modo, directory di staging e immagine; sul control plane
+\code{variant} e \code{optimization} quando la build li registra; su ogni
+componente nativo le opzioni \emph{effettive}, il builder e, per il builder a
+container, la distribuzione. Non contiene la configurazione a runtime n\'e
+variabili d'ambiente.
+
+Per ogni immagine il report registra un identificatore verificabile. Sul
+percorso classico \`e \code{id}, l'ID locale da \code{docker image inspect},
+registrato dopo la build e mantenuto dopo il push: un'immagine costruita e mai
+pubblicata pu\`o comunque essere fissata per identificatore, e se l'ispezione
+fallisce l'assemblaggio fallisce. Sul percorso buildx \`e invece la coppia
+\code{platforms}/\code{provenance} e, dopo la pubblicazione, il \code{digest}
+(l'indice multi-architettura, o il manifest stesso per una piattaforma senza
+provenienza) e \code{manifests}, che mappa ogni piattaforma sul proprio digest.
+Dopo un push, lo \code{status} di un'immagine \`e uno fra quattro:
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}lp{8.4cm}@{}}
+\toprule
+\textbf{Stato} & \textbf{Significato} \\
+\midrule
+\code{built} & Costruita dall'ultimo assemblaggio, non pubblicata. \\
+\code{published} & Pubblicata; \code{digest} \`e quello del registry, mai l'ID
+locale. \\
+\code{published-unverified} & Il push \`e riuscito ma il digest, o sul percorso
+buildx il manifest di una piattaforma, non \`e stato determinato; il task
+fallisce. \\
+\code{failed} & Il push \`e fallito; il task fallisce e nomina le immagini
+gi\`a pubblicate. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Le immagini sono pubblicate una alla volta, in ordine, e il report \`e
+riscritto dopo ogni push scrivendo un file temporaneo e spostandolo al suo posto:
+un fallimento successivo non nasconde mai un successo precedente. Non c'\`e
+ritentativo n\'e rollback, perch\'e un registry non ha transazioni fra immagini;
+un nuovo assemblaggio scarta ogni dato di pubblicazione. La firma resta
+\emph{fuori} dalla ricetta: la effettuano NanoLab e la release, sui digest che il
+report registra. Il report \`e cos\`i la risposta a una domanda che ogni
+esperimento pone (\cref{cap:22-metodo-sperimentale}): dato un risultato,
+\emph{quale artefatto} l'ha prodotto?
+
+Per confrontare varianti costruite dallo stesso sorgente si esegue un
+\code{assembleRecipe} per variante, ciascuno col proprio \code{-PrecipeOutput};
+la cache di Gradle e di Docker rende economiche le ripetizioni. Varianti che
+condividono nome e tag di immagine condividono anche il tag locale, e l'ultima
+vince: si dia a ciascuna un tag proprio (\code{-PrecipeTag}, che richiede una
+sezione \code{registry}) oppure si fissi ogni build tramite l'\code{image.id}
+del proprio report.
+
 \section{La matrice degli artefatti}
 
 \begin{center}
@@ -242,9 +545,14 @@ sistematicamente dipendenze non usate o non dichiarate
 \toprule
 \textbf{Artefatto} & \textbf{Build JVM} & \textbf{Build nativa} \\
 \midrule
-control plane & \code{Dockerfile} + Distroless & \code{native-java-image.sh control-plane} \\
-\code{warm-echo} & \code{Dockerfile} + Distroless & \code{native-java-image.sh warm-echo} \\
-funzioni Java & per funzione & \code{native-java-image.sh <nome>} \\
+control plane & \code{Dockerfile} + Distroless (sviluppo locale) o ricetta &
+\code{native-java-image.sh control-plane} o ricetta \\
+\code{warm-echo} & \code{Dockerfile} + Distroless o ricetta &
+\code{native-java-image.sh warm-echo} o ricetta \\
+funzioni Java (\code{java}, \code{java-lite}) & ricetta &
+\code{native-java-image.sh <nome>} o ricetta \\
+funzioni Python, JavaScript, Go, Bash & \code{Dockerfile} della funzione &
+--- \\
 CLI & \code{installDist} & \code{nativeCompile} \\
 watchdog & --- & Rust statico musl, \code{FROM scratch} \\
 \bottomrule
@@ -252,7 +560,7 @@ watchdog & --- & Rust statico musl, \code{FROM scratch} \\
 \end{adjustbox}
 \end{center}
 
-Un unico comando costruisce e verifica l'intera matrice nativa:
+Un unico comando costruisce la matrice nativa Java:
 
 \begin{lstlisting}[language=bash]
 scripts/native-build.sh
@@ -262,3 +570,19 @@ Le immagini native non usano i buildpack di Spring Boot ma un
 \code{Dockerfile} che copia il binario su Distroless. La scelta \`e coerente con
 il resto: un buildpack decide da s\'e i flag di compilazione, e questo progetto
 ha bisogno che quei flag siano una variabile sperimentale esplicita.
+
+\subsection{Un eseguibile, non una libreria}
+
+\`E l'ultima parte del capitolo che nasce da un guasto. Il plugin
+\code{native-build-tools} registra la convenzione ``libreria condivisa'' per ogni
+modulo che applica insieme \code{java-library} e il plugin nativo, e
+\code{nativeCompile} esce comunque con codice~0. Per 33 commit e un giorno il
+binario del percorso di release \`e stato una libreria condivisa che nulla poteva
+eseguire, perch\'e nessun job della CI compilava un'immagine nativa. Oggi il job
+di CI compila il control plane nativamente con tutti i moduli
+(\code{-PcontrolPlaneModules=all}) e poi esegue
+\code{scripts/assert-native-executable.sh}, che fallisce se l'artefatto manca o
+se \code{file} non lo descrive come eseguibile. \`E l'osservabile pi\`u economico
+che separi i due esiti, ed \`e quello che un essere umano aveva dovuto eseguire a
+mano per scoprire il problema. Un controllo di una riga, che sposta la scoperta
+dal momento del rilascio a quello del commit.

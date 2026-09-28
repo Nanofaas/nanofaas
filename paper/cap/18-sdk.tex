@@ -27,7 +27,7 @@ Ogni SDK realizza questo contratto con l'idioma del proprio linguaggio.
 
 \subsection{\code{sdks/java}}
 
-L'SDK completo (1\,140 righe) \`e costruito su Spring Boot. La dichiarazione di
+L'SDK completo (1\,607 righe) \`e costruito su Spring Boot. La dichiarazione di
 un handler \`e un'annotazione:
 
 \begin{lstlisting}[language=Java]
@@ -49,7 +49,7 @@ l'intero ecosistema Spring. Paga in impronta di memoria e tempo di avvio.
 
 \subsection{\code{sdks/java-lite}}
 
-L'SDK leggero (687 righe) rinuncia a Spring. Costruisce direttamente sul
+L'SDK leggero (1\,454 righe) rinuncia a Spring. Costruisce direttamente sul
 \code{HttpServer} del JDK, con tre gestori --- \code{InvokeHandler},
 \code{HealthHandler}, \code{MetricsHandler} --- e nessun contenitore di
 inversione del controllo.
@@ -90,7 +90,7 @@ qui perch\'e la sua scoperta ha invalidato analisi precedenti.
 
 \section{Python}
 
-L'SDK Python \`e costruito su FastAPI (circa 1\,450 righe fra runtime e SDK). La
+L'SDK Python \`e costruito su FastAPI (1\,407 righe di sorgente). La
 dichiarazione dell'handler \`e un decoratore:
 
 \begin{lstlisting}[language=Python]
@@ -110,19 +110,106 @@ tecnica.
 
 \section{Go, JavaScript, exec}
 
-L'SDK Go (circa 1\,950 righe) incorpora un runtime HTTP nel binario della
+L'SDK Go (1\,914 righe) incorpora un runtime HTTP nel binario della
 funzione ed espone un proprio endpoint \code{/metrics} Prometheus, con contatori
 lato runtime per invocazioni, durata dell'handler, cold start e callback
 asincrone scartate. \`E l'unico SDK che strumenta autonomamente il proprio lato
 del confine, il che lo rende lo strumento pi\`u diretto per separare il tempo
 speso dentro l'handler da quello speso nel trasporto.
 
-L'SDK JavaScript espone un runtime HTTP analogo per Node.
+L'SDK JavaScript (1\,531 righe di TypeScript) espone un runtime HTTP analogo per Node.
 
 L'adattatore \code{exec} non \`e un SDK ma il modo \code{STDIO} del watchdog: un
 eseguibile che legge JSON da stdin e scrive JSON su stdout \`e una funzione
 valida senza libreria alcuna. \`E la via d'accesso per gli script bash e per i
 binari preesistenti.
+
+\section{Il contratto di saturazione}
+\label{sec:18-saturazione}
+
+Un runtime che accetta lavoro senza un limite \`e un runtime che, sotto carico,
+consuma la memoria del contenitore finch\'e il kernel non lo termina. Il progetto
+ha quindi fissato, in un unico documento (\code{sdks/runtime-contract/README.md}),
+la politica con cui \emph{ogni} runtime di funzione deve rifiutare, e ne ha
+fatto un contratto verificabile allo stesso modo della parit\`a funzionale.
+
+Il contratto vale sia per le chiamate dirette a \code{POST /invoke} sia per i
+dispacci del piano di controllo. L'ammissione \`e \emph{fail-fast}: il runtime
+riserva capacit\`a di conteggio e di byte per ingresso, handler e callback
+\emph{prima} di avviare l'handler o di produrre una copia serializzata di grandi
+dimensioni. Una callback richiesta dall'invocazione fa parte dell'ammissione: un
+runtime non pu\`o accettare il lavoro e scartare in silenzio la sua callback
+terminale.
+
+\begin{center}
+\small
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{@{}llp{6.6cm}@{}}
+\toprule
+\textbf{Esito} & \textbf{Codice} & \textbf{Quando} \\
+\midrule
+429 & \code{RUNTIME\_HANDLER\_SATURATED} & ammissione dell'handler satura \\
+429 & \code{RUNTIME\_CALLBACK\_SATURATED} & capacit\`a di callback satura \\
+413 & \code{RUNTIME\_INPUT\_TOO\_LARGE} & ingresso oltre il limite di byte \\
+500 & \code{RUNTIME\_OUTPUT\_TOO\_LARGE} & uscita scoperta \emph{dopo} l'esecuzione;
+l'handler \`e partito, l'uscita non viene trattenuta e una callback d'errore
+limitata \`e comunque dovuta \\
+503 & \code{RUNTIME\_STOPPING} & richiesta accettata dopo l'inizio dell'arresto \\
+504 & \code{HANDLER\_TIMEOUT} & attesa dell'handler scaduta, a livello di
+tentativo (non il \code{408} per singolo attendente) \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{center}
+
+Gli errori hanno forma \code{\{"error":\{"code":...,"message":...\}\}} e quelli
+ritentabili portano \code{Retry-After: 1}. Tre regole completano la politica.
+Ogni attesa \`e finita e configurabile. Ogni riserva di conteggio e di byte resta
+posseduta finch\'e il lavoro rappresentato e il carico trattenuto non sono
+\emph{fisicamente} spariti: scadere l'attesa HTTP non prova che un handler non
+cooperativo si sia fermato, e per questo il runtime Go, per esempio, documenta
+che un handler scaduto continua a occupare il proprio posto. Infine i runtime non
+ridispacciano mai: la decisione di ritentare appartiene al piano di controllo
+(\cref{cap:06-nucleo}), che la esercita mantenendo stabile
+\code{X-Execution-Id} e incrementando \code{X-Dispatch-Attempt}.
+
+Il contratto \`e eseguibile. Le casistiche sono in un solo file,
+\code{saturation-wire-corpus.json}, e ciascuna implementazione ha un adattatore
+di test sottile che lo legge; un validatore Python
+(\code{validate\_saturation\_wire\_corpus.py}) verifica la coerenza interna del
+corpus --- riferimenti, azioni e barriere, esiti esatti, contatori finali a
+regime --- e ha una propria suite di mutazioni, cos\`i che il corpus non possa
+diventare un oracolo indipendente e incoerente. L'ordinamento fra azioni usa
+barriere nominate, non attese temporizzate: il tempo trascorso non \`e evidenza
+di ordine. Gli adattatori sono nella suite nativa di ciascun linguaggio; Java e
+Java-lite deserializzano il modello tipizzato completo, Go rifiuta i campi
+sconosciuti.
+
+I limiti hanno valori predefiniti finiti e sono configurabili per variabile
+d'ambiente. Il runtime Go e quello Python condividono lo stesso vocabolario
+(\code{NANOFAAS\_MAX\_CONCURRENT\_HANDLERS}, 32 predefiniti;
+\code{NANOFAAS\_MAX\_INPUT\_BYTES} e \code{NANOFAAS\_MAX\_OUTPUT\_BYTES}, 1\,MiB;
+\code{NANOFAAS\_MAX\_PENDING\_CALLBACKS}, 128;
+\code{NANOFAAS\_MAX\_CALLBACK\_PAYLOAD\_BYTES}, 2\,MiB;
+\code{NANOFAAS\_MAX\_PENDING\_CALLBACK\_BYTES}, 16\,MiB; timeout di lettura del
+corpo, di tentativo di callback e di arresto di 5\,s), e valori oltre i massimi
+di produzione ricadono sui predefiniti prima che venga allocato alcunch\'e. Un
+dettaglio che mostra il criterio: la capacit\`a di callback effettiva \`e il
+minimo fra il limite di conteggio e il rapporto fra il tetto aggregato di byte e
+il tetto per singola callback, perch\'e il runtime riserva un'intera quota di
+callback prima di avviare l'handler.
+
+\`E la stessa filosofia dell'ArchUnit del piano di controllo
+(\cref{sec:26-archunit}) applicata ai runtime: un limite che non \`e imposto e
+verificato \`e un'intenzione. Il divario iniziale era reale ---
+l'inventario del documento registra, per ciascun SDK, code e attivit\`a
+\emph{senza} un tetto di ammissione (Java e Java-lite con un thread virtuale per
+richiesta, Python con la coda illimitata di \code{to\_thread}, Go con una
+goroutine per richiesta) --- e la sua chiusura \`e avvenuta per fasi che il
+documento numera (P16a fissa politica e inventario, P16b implementa i limiti su
+tutti i runtime, P17 il tracciamento del lavoro fisico in Python, P18 le risorse
+di arresto di Java-lite). Non \`e stata misurata qui l'impronta di questi limiti
+sul percorso caldo.
 
 \section{La parit\`a fra SDK, e come viene verificata}
 
@@ -204,8 +291,9 @@ Java & \code{word-stats}, \code{json-transform}, \code{roman-numeral},
 \code{binary-envelope}, pi\`u tre varianti \code{-lite} \\
 Python & le stesse tre famiglie, pi\`u \code{qr-code},
 \code{handler-envelope}, \code{mlimage} \\
-Go, JavaScript, bash & le tre famiglie, pi\`u \code{qr-code} e
+Go, JavaScript & le tre famiglie, pi\`u \code{qr-code} e
 \code{handler-envelope} \\
+bash & le stesse cinque, pi\`u \code{figlet} \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
