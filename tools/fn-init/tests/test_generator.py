@@ -232,6 +232,20 @@ def test_generate_python_pyproject_has_function_name(tmp_path):
     assert 'name = "greet"' in content
     assert 'pythonpath = ["."]' in content
 
+def test_generate_python_image_is_alpine_in_both_stages(tmp_path):
+    """python:3.12-slim images weighed ~156 MB; alpine roughly halves them. Both stages must
+    match, since wheels built for glibc do not load on musl."""
+    out = tmp_path / "greet"
+    generate_function("greet", "python", out, vscode=False, placeholders=PYTHON_PLACEHOLDERS)
+    stages = [line for line in (out / "Dockerfile").read_text().splitlines() if line.startswith("FROM ")]
+    assert stages == [
+        "FROM docker.io/library/python:3.12-alpine AS builder",
+        "FROM docker.io/library/python:3.12-alpine",
+    ]
+    # Precompiled bytecode: without it every cold start compiles the dependencies first.
+    assert "--compile-bytecode" in (out / "Dockerfile").read_text()
+
+
 def test_generate_python_creates_payloads(tmp_path):
     out = tmp_path / "greet"
     generate_function("greet", "python", out, vscode=False, placeholders=PYTHON_PLACEHOLDERS)
