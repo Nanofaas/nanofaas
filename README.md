@@ -34,7 +34,8 @@ at build time. A build contains only the modules it needs.
 - **Native builds.** The control plane, CLI and Java example functions compile
   to GraalVM native executables; services ship on Distroless images.
 - **Any language.** Functions are HTTP services behind a small contract. There
-  are SDKs for Java and Python, and examples in Go, JavaScript and Bash.
+  are SDKs for Java, Python, Go, JavaScript and Rust, and examples in each of
+  them plus Bash.
 - **Reproducible distributions.** One versioned YAML recipe builds a control
   plane and its functions, images included.
 
@@ -226,8 +227,8 @@ build mode, and the functions to package with their images. See
 |---|---|
 | `platform/` | Shared contracts, control plane and modules |
 | `clients/cli/` | `nanofaas` command-line client |
-| `sdks/` | Java and Python function SDKs |
-| `functions/` | Example functions in Java, Python, Go, JavaScript and Bash |
+| `sdks/` | Function SDKs for Java, Python, Go, JavaScript and Rust |
+| `functions/` | Example functions in Java, Python, Go, JavaScript, Rust and Bash |
 | `runtimes/watchdog/` | Rust process supervisor for function containers |
 | `recipes/` | Distribution recipes |
 | `deploy/helm/nanofaas/` | Helm chart |

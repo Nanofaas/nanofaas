@@ -33,6 +33,7 @@ owns the lifecycle of the user process.
 |  |  - Java: Spring Boot SDK (sdks/java) on :8080         |  |
 |  |  - Python: FastAPI runtime (sdks/python) on :8080     |  |
 |  |  - Go: function-sdk-go embedded HTTP runtime on :8080 |  |
+|  |  - Rust: nanofaas-sdk (sdks/rust) on :8080            |  |
 |  |  - JS/Node: nanofaas-function-sdk HTTP runtime        |  |
 |  |  - Any binary: HTTP /invoke, or stdin/stdout (STDIO), |  |
 |  |    or file I/O (FILE)                                  |  |

@@ -13,6 +13,7 @@ differ between languages are marked accordingly.
 | nanofaas CLI (`nanofaas`) | any recent |
 | Java (SDKMAN recommended) | 25 — *Java only* |
 | Node.js + npm | 20 — *JavaScript only* |
+| Rust toolchain (rustup) | 1.85 or newer — *Rust only* |
 | Docker or compatible runtime | any recent |
 | nanofaas platform running | — |
 
@@ -54,6 +55,7 @@ greet/
 ├── src/…/GreetHandler.java   (Java)
 │   handler.py                (Python)
 │   src/index.ts              (JavaScript)
+│   src/main.rs               (Rust)
 ├── build.gradle / Dockerfile
 ├── function.yaml
 └── payloads/
@@ -67,6 +69,7 @@ For non-interactive use (CI):
 ./scripts/fn-init.sh greet --lang java --yes
 ./scripts/fn-init.sh greet --lang python --yes
 ./scripts/fn-init.sh greet --lang javascript --yes
+./scripts/fn-init.sh greet --lang rust --yes
 ```
 
 ---
@@ -115,6 +118,41 @@ export const handleGreet: Handler = async (ctx, req) => {
 };
 ```
 
+### Rust
+
+Edit `src/main.rs`: replace `Input` and `respond`, keeping `main` and `handle`
+as generated.
+
+```rust
+#[derive(Deserialize)]
+struct Input {
+    #[serde(default)]
+    name: Option<String>,
+}
+
+fn respond(input: Input) -> HandlerResponse {
+    let name = input.name.unwrap_or_else(|| "world".to_string());
+    HandlerResponse::new(json!({"greeting": format!("Hello, {name}!")}), 200)
+}
+```
+
+Then update the tests at the bottom of the file to the new input and output,
+for example:
+
+```rust
+#[test]
+fn greets_by_name() {
+    let input = Input { name: Some("Alice".into()) };
+    let expected = json!({"greeting": "Hello, Alice!"});
+    assert_eq!(respond(input), HandlerResponse::new(expected, 200));
+}
+```
+
+A Rust handler returns a `HandlerResponse`, which sets the status code (and
+optionally headers) for every outcome. CPU-heavy work belongs in
+`ctx.spawn_blocking(...)`, so that it keeps its concurrency slot until it
+really finishes.
+
 ---
 
 ## Step 3 — Update the payloads
@@ -156,6 +194,12 @@ If you want the compiled output before packaging, run:
 
 ```bash
 npm run build
+```
+
+### Rust
+
+```bash
+cargo test
 ```
 
 ---
