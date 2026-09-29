@@ -3,6 +3,7 @@
 //! `sdks/runtime-contract/README.md`.
 
 mod bounded;
+mod limits;
 mod settings;
 mod types;
 
