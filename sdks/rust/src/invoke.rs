@@ -256,6 +256,12 @@ fn conclude(
     }
 }
 
+/// Why a finished handler's output cannot be answered as a success.
+enum OutputRejection {
+    Unencodable(EncodeError),
+    InvalidStatus(u16),
+}
+
 fn succeed(
     shared: &Shared,
     produced: Produced,
@@ -263,38 +269,21 @@ fn succeed(
     identity: &Identity,
     cold_start: bool,
 ) -> Response {
-    let (body, envelope) = match produced {
-        Produced::Json(body) => (body, None),
-        Produced::Unencodable(error) => return unencodable(shared, reservation, identity, error),
-        Produced::Envelope(envelope) => {
-            let (output, status, headers, encoding) = envelope.into_parts();
-            if !is_status_code_valid(status) {
-                let message = format!("Handler returned invalid statusCode: {status}");
-                tracing::warn!(execution_id = %identity.execution_id, status, "treating an invalid statusCode as a platform error");
-                return output_failure(
-                    shared,
-                    reservation,
-                    identity,
-                    "OUTPUT_SERIALIZATION_ERROR",
-                    message,
-                );
-            }
-            match to_vec_bounded(&output, shared.settings.max_output_bytes) {
-                Ok(body) => (
-                    body,
-                    Some(Envelope {
-                        status,
-                        // A value HTTP cannot carry is dropped from the response and the
-                        // callback alike, so the two never disagree.
-                        headers: filter_allowed_headers(headers)
-                            .into_iter()
-                            .filter(|(_, value)| HeaderValue::from_str(value).is_ok())
-                            .collect(),
-                        encoding,
-                    }),
-                ),
-                Err(error) => return unencodable(shared, reservation, identity, error),
-            }
+    let (body, envelope) = match encode_output(shared, produced) {
+        Ok(encoded) => encoded,
+        Err(OutputRejection::Unencodable(error)) => {
+            return unencodable(shared, reservation, identity, error);
+        }
+        Err(OutputRejection::InvalidStatus(status)) => {
+            tracing::warn!(execution_id = %identity.execution_id, status, "treating an invalid statusCode as a platform error");
+            let message = format!("Handler returned invalid statusCode: {status}");
+            return output_failure(
+                shared,
+                reservation,
+                identity,
+                "OUTPUT_SERIALIZATION_ERROR",
+                message,
+            );
         }
     };
 
@@ -329,14 +318,54 @@ fn succeed(
         };
     }
     shared.metrics.invocation("success");
+    success_response(shared, body, envelope.as_ref(), cold_start)
+}
 
-    let status = envelope.as_ref().map_or(200, |envelope| envelope.status);
+/// The response body, plus the validated and filtered envelope when the handler returned one.
+fn encode_output(
+    shared: &Shared,
+    produced: Produced,
+) -> Result<(Vec<u8>, Option<Envelope>), OutputRejection> {
+    let envelope = match produced {
+        Produced::Json(body) => return Ok((body, None)),
+        Produced::Unencodable(error) => return Err(OutputRejection::Unencodable(error)),
+        Produced::Envelope(envelope) => envelope,
+    };
+    let (output, status, headers, encoding) = envelope.into_parts();
+    if !is_status_code_valid(status) {
+        return Err(OutputRejection::InvalidStatus(status));
+    }
+    let body = to_vec_bounded(&output, shared.settings.max_output_bytes)
+        .map_err(OutputRejection::Unencodable)?;
+    // A value HTTP cannot carry is dropped from the response and the callback alike, so the
+    // two never disagree.
+    let headers = filter_allowed_headers(headers)
+        .into_iter()
+        .filter(|(_, value)| HeaderValue::from_str(value).is_ok())
+        .collect();
+    Ok((
+        body,
+        Some(Envelope {
+            status,
+            headers,
+            encoding,
+        }),
+    ))
+}
+
+fn success_response(
+    shared: &Shared,
+    body: Vec<u8>,
+    envelope: Option<&Envelope>,
+    cold_start: bool,
+) -> Response {
+    let status = envelope.map_or(200, |envelope| envelope.status);
     let length = body.len();
     let body = CountedBody::new(Bytes::from(body), shared.limits.retain_output(length));
     let mut response = Response::new(Body::new(body));
     *response.status_mut() = StatusCode::from_u16(status).expect("validated as 200..=599");
     let headers = response.headers_mut();
-    if let Some(envelope) = &envelope {
+    if let Some(envelope) = envelope {
         for (name, value) in &envelope.headers {
             if let (Ok(name), Ok(value)) =
                 (HeaderName::try_from(name), HeaderValue::try_from(value))
