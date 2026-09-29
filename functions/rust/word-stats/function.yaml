@@ -1,0 +1,19 @@
+name: word-stats-rust
+image: nanofaas/rust-word-stats:latest
+timeoutMs: 10000
+concurrency: 2
+executionMode: DEPLOYMENT
+
+x-cli:
+  build:
+    context: ../../..
+    dockerfile: functions/rust/word-stats/Dockerfile
+    platform: linux/amd64
+    push: true
+
+catalog:
+  family: word-stats
+  runtime: rust
+  description: Rust SDK word statistics demo.
+  defaultImage: 127.0.0.1:5000/nanofaas/rust-word-stats:e2e
+  defaultPayload: word-stats-sample.json

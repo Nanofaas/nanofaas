@@ -1,0 +1,19 @@
+name: json-transform-rust
+image: nanofaas/rust-json-transform:latest
+timeoutMs: 10000
+concurrency: 2
+executionMode: DEPLOYMENT
+
+x-cli:
+  build:
+    context: ../../..
+    dockerfile: functions/rust/json-transform/Dockerfile
+    platform: linux/amd64
+    push: true
+
+catalog:
+  family: json-transform
+  runtime: rust
+  description: Rust SDK JSON transform demo.
+  defaultImage: 127.0.0.1:5000/nanofaas/rust-json-transform:e2e
+  defaultPayload: json-transform-sample.json

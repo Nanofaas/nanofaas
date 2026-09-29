@@ -1,0 +1,8 @@
+{
+  "description": "invoke roman-numeral with empty input",
+  "input": {},
+  "expected": {
+    "error": "missing required field: number"
+  },
+  "expectedStatusCode": 422
+}

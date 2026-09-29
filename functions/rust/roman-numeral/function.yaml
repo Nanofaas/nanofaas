@@ -1,0 +1,19 @@
+name: roman-numeral-rust
+image: nanofaas/rust-roman-numeral:latest
+timeoutMs: 10000
+concurrency: 2
+executionMode: DEPLOYMENT
+
+x-cli:
+  build:
+    context: ../../..
+    dockerfile: functions/rust/roman-numeral/Dockerfile
+    platform: linux/amd64
+    push: true
+
+catalog:
+  family: roman-numeral
+  runtime: rust
+  description: Rust roman numeral conversion demo.
+  defaultImage: 127.0.0.1:5000/nanofaas/rust-roman-numeral:e2e
+  defaultPayload: roman-numeral-sample.json

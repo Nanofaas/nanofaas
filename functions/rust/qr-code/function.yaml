@@ -1,0 +1,19 @@
+name: qr-code-rust
+image: nanofaas/rust-qr-code:latest
+timeoutMs: 10000
+concurrency: 2
+executionMode: DEPLOYMENT
+
+x-cli:
+  build:
+    context: ../../..
+    dockerfile: functions/rust/qr-code/Dockerfile
+    platform: linux/amd64
+    push: true
+
+catalog:
+  family: qr-code
+  runtime: rust
+  description: Rust PNG QR code generation demo.
+  defaultImage: 127.0.0.1:5000/nanofaas/rust-qr-code:e2e
+  defaultPayload: qr-code-sample.json

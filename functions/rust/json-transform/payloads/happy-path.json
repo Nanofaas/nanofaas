@@ -1,0 +1,30 @@
+{
+  "description": "averages values by group",
+  "input": {
+    "data": [
+      {
+        "dept": "eng",
+        "salary": 90000
+      },
+      {
+        "dept": "ops",
+        "salary": 70000
+      },
+      {
+        "dept": "eng",
+        "salary": 110000
+      }
+    ],
+    "groupBy": "dept",
+    "operation": "avg",
+    "valueField": "salary"
+  },
+  "expected": {
+    "groupBy": "dept",
+    "operation": "avg",
+    "groups": {
+      "eng": 100000.0,
+      "ops": 70000.0
+    }
+  }
+}

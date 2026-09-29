@@ -1,0 +1,21 @@
+[package]
+name = "qr-code"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+base64 = "0.23.1"
+nanofaas-sdk = { path = "../../../sdks/rust" }
+png = "0.18.1"
+qrcode = { version = "0.14.1", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+# Keep the default panic = "unwind": the runtime turns a handler panic into HANDLER_ERROR,
+# whereas "abort" would kill the whole process.
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

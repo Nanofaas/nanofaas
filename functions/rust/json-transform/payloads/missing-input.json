@@ -1,0 +1,10 @@
+{
+  "description": "rejects missing group field",
+  "input": {
+    "data": []
+  },
+  "expected": {
+    "error": "Fields 'data' (array) and 'groupBy' (string) are required"
+  },
+  "expectedStatusCode": 400
+}
