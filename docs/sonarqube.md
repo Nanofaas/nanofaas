@@ -42,8 +42,8 @@ What happens:
 
 1. A SonarQube Community container (`sonarqube:26.7.0.124771-community`,
    pinned) is started on `127.0.0.1:9000` and polled until ready (timeout
-   300s). A stale container from a previous run is replaced; a running one is
-   reused as-is.
+   300s). Any container left from a previous run, running or not, is
+   replaced, so every run starts from a fresh server.
 2. Java is analysed via the Gradle `org.sonarqube` plugin
    (`./gradlew test --no-parallel sonar`) — the per-module JaCoCo XML reports
    already produced by the test task feed the coverage. Python, Rust, Go and

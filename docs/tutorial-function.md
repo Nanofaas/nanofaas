@@ -13,6 +13,7 @@ differ between languages are marked accordingly.
 | nanofaas CLI (`nanofaas`) | any recent |
 | Java (SDKMAN recommended) | 25 — *Java only* |
 | Node.js + npm | 20 — *JavaScript only* |
+| Go | 1.24 — *Go only* |
 | Rust toolchain (rustup) | 1.85 or newer — *Rust only* |
 | Docker or compatible runtime | any recent |
 | nanofaas platform running | — |
@@ -55,6 +56,7 @@ greet/
 ├── src/…/GreetHandler.java   (Java)
 │   handler.py                (Python)
 │   src/index.ts              (JavaScript)
+│   main.go                   (Go)
 │   src/main.rs               (Rust)
 ├── build.gradle / Dockerfile
 ├── function.yaml
@@ -69,6 +71,7 @@ For non-interactive use (CI):
 ./scripts/fn-init.sh greet --lang java --yes
 ./scripts/fn-init.sh greet --lang python --yes
 ./scripts/fn-init.sh greet --lang javascript --yes
+./scripts/fn-init.sh greet --lang go --yes
 ./scripts/fn-init.sh greet --lang rust --yes
 ```
 
@@ -116,6 +119,37 @@ export const handleGreet: Handler = async (ctx, req) => {
     const name = typeof input.name === "string" ? input.name : "world";
     return { greeting: `Hello, ${name}!` };
 };
+```
+
+### Go
+
+Edit `main.go`: replace the generated `handleGreet`.
+
+```go
+func handleGreet(ctx context.Context, req nanofaas.InvocationRequest) (any, error) {
+	nanofaas.Logger(ctx, slog.Default()).Info("greet invoked")
+	input, _ := req.Input.(map[string]any)
+	name, _ := input["name"].(string)
+	if name == "" {
+		name = "world"
+	}
+	return map[string]any{"greeting": "Hello, " + name + "!"}, nil
+}
+```
+
+The generated `main_test.go` expects a 422 for empty input; replace that test
+with one for the new behavior, for example:
+
+```go
+func TestHandleGreetDefaultsTheName(t *testing.T) {
+	result, err := handleGreet(context.Background(), nanofaas.InvocationRequest{Input: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.(map[string]any)["greeting"] != "Hello, world!" {
+		t.Fatalf("unexpected result: %v", result)
+	}
+}
 ```
 
 ### Rust
@@ -194,6 +228,12 @@ If you want the compiled output before packaging, run:
 
 ```bash
 npm run build
+```
+
+### Go
+
+```bash
+go test ./...
 ```
 
 ### Rust
