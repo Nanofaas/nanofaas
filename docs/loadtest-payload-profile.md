@@ -2,7 +2,7 @@
 
 The function benchmarks use deterministic, repository-owned JSON corpora. The
 same inputs can therefore be replayed against Java, Java Lite, Go, Python,
-JavaScript, and exec/bash implementations without runtime-specific generators.
+JavaScript, exec/bash, and Rust implementations without runtime-specific generators.
 
 ## Corpus layout and schema
 
@@ -88,7 +88,7 @@ The benchmark validates the semantic response for the selected family, requires
 ## Full runtime matrix
 
 `experiments/k6/run-all.sh` expands the Cartesian product of three families and
-six runtimes. It runs 18 `small` benchmarks by default:
+seven runtimes. It runs 21 `small` benchmarks by default:
 
 ```bash
 NANOFAAS_URL=http://127.0.0.1:8080 experiments/k6/run-all.sh

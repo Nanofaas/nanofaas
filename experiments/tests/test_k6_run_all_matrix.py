@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 RUNNER = ROOT / "experiments" / "k6" / "run-all.sh"
 BENCHMARK = ROOT / "experiments" / "k6" / "function-benchmark.js"
 FAMILIES = ("word-stats", "json-transform", "roman-numeral")
-RUNTIMES = ("java", "java-lite", "python", "go", "javascript", "exec")
+RUNTIMES = ("java", "java-lite", "python", "go", "javascript", "exec", "rust")
 
 
 def _list_runs(profiles: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -44,7 +44,7 @@ def test_default_matrix_covers_every_function_with_small_payloads() -> None:
     assert _parse_runs(result.stdout) == expected
 
 
-def test_explicit_profiles_expand_to_54_runs() -> None:
+def test_explicit_profiles_expand_to_63_runs() -> None:
     result = _list_runs("small,medium,large")
 
     assert result.returncode == 0, result.stderr
@@ -55,7 +55,7 @@ def test_explicit_profiles_expand_to_54_runs() -> None:
         )
     }
     assert _parse_runs(result.stdout) == expected
-    assert len(expected) == 54
+    assert len(expected) == 63
 
 
 def test_runner_rejects_unknown_or_empty_profile_lists() -> None:

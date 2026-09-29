@@ -14,13 +14,15 @@ files provide static benchmark inputs and deliberately omit expected outputs.
 | Python | yes | yes | yes |
 | JavaScript | yes | yes | yes |
 | exec/bash | yes | yes | yes |
+| Rust | yes | yes | yes |
 
-Run the complete SDK and 18-function parity gate from the repository root:
+Run the complete SDK and 21-function parity gate from the repository root:
 
 ```bash
 ./functions/contract-tests/run.sh
 ```
 
 The gate runs the native contract suites for Java, Java Lite, Go, Python,
-JavaScript, and exec/bash. Benchmark matrix validation is separate because it
+JavaScript, exec/bash, and Rust (`cargo test`, which also runs the Rust SDK's
+saturation corpus and needs `python3`). Benchmark matrix validation is separate because it
 measures payload selection and load behavior rather than contract outputs.

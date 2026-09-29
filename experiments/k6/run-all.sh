@@ -24,7 +24,7 @@ log() { echo -e "${GREEN}[k6]${NC} $*"; }
 info() { echo -e "${CYAN}[k6]${NC} $*"; }
 
 FAMILIES=("word-stats" "json-transform" "roman-numeral")
-RUNTIMES=("java" "java-lite" "python" "go" "javascript" "exec")
+RUNTIMES=("java" "java-lite" "python" "go" "javascript" "exec" "rust")
 
 if [[ "${K6_PAYLOAD_PROFILES+x}" == "x" ]]; then
     profile_list="${K6_PAYLOAD_PROFILES}"

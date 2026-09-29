@@ -152,7 +152,7 @@
       "required": ["name", "sdk"],
       "properties": {
         "name": {"$ref": "#/$defs/slug"},
-        "sdk": {"enum": ["java", "java-lite", "python", "javascript", "go", "bash"]},
+        "sdk": {"enum": ["java", "java-lite", "python", "javascript", "go", "bash", "rust"]},
         "build": {"$ref": "#/$defs/javaBuild"},
         "jvm": {"$ref": "#/$defs/jvm"},
         "container": {"$ref": "#/$defs/container"}

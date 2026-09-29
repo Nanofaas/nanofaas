@@ -174,6 +174,7 @@ class RecipePluginTest {
         write("functions/bash/word-stats/Dockerfile", "FROM scratch\n");
         write("functions/python/word-stats/Dockerfile", "FROM scratch\n");
         write("functions/go/qr-code/Dockerfile", "FROM scratch\n");
+        write("functions/rust/word-stats/Dockerfile", "FROM scratch\n");
         Files.createDirectories(projectDir.resolve("functions/javascript/no-dockerfile"));
     }
 
@@ -187,7 +188,8 @@ class RecipePluginTest {
                         "qr-code", "go", "functions/go/qr-code", "container",
                         "word-stats", "java", "functions/java/word-stats", "jvm, native",
                         "word-stats", "java-lite", "functions/java/word-stats-lite", "jvm, native",
-                        "word-stats", "python", "functions/python/word-stats", "container")
+                        "word-stats", "python", "functions/python/word-stats", "container",
+                        "word-stats", "rust", "functions/rust/word-stats", "container")
                 .doesNotContain("no-dockerfile")
                 .doesNotContainPattern("word-stats-lite\\s+java\\s");
         assertThat(projectDir.resolve("markers")).doesNotExist();
@@ -469,6 +471,20 @@ class RecipePluginTest {
                         "-t", "nanofaas/demo/echo:local", root.resolve("build/recipes/demo/services/java/warm-echo").toString()),
                 List.of("build", "-f", root.resolve("runtimes/watchdog/Dockerfile").toString(),
                         "-t", "nanofaas/demo/watchdog:local", root.resolve("runtimes/watchdog").toString()));
+    }
+
+    @Test
+    void rustFunctionsBuildFromTheRepositoryRoot() throws IOException {
+        recipe(V2_HEADER + CP_JVM + """
+                functions: [{name: word-stats, sdk: rust, container: {image: ws-rust}}]
+                """);
+
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker());
+
+        Path root = projectDir.toRealPath();
+        assertThat(dockerCalls().stream().filter(call -> call.getFirst().equals("build")).toList()).containsExactly(
+                List.of("build", "-f", root.resolve("functions/rust/word-stats/Dockerfile").toString(),
+                        "-t", "nanofaas/demo/ws-rust:local", root.toString()));
     }
 
     @Test

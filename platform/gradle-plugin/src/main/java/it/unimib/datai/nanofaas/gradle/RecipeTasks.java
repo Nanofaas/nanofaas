@@ -27,7 +27,7 @@ import java.util.stream.Stream;
 final class RecipeTasks {
 
     private static final String GROUP = "distribution";
-    private static final List<String> DOCKERFILE_SDKS = List.of("bash", "go", "javascript", "python");
+    private static final List<String> DOCKERFILE_SDKS = List.of("bash", "go", "javascript", "python", "rust");
 
     /** An implementation present in this checkout; {@code projectPath} is null for Dockerfile SDKs. */
     record Implementation(String name, String sdk, Path directory, String projectPath, List<String> modes) {

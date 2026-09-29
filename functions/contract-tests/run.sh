@@ -21,6 +21,12 @@ for directory in sdks/go functions/go/word-stats functions/go/json-transform fun
   (cd "$directory" && go test ./...)
 done
 
+CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/build/cargo-target}"
+export CARGO_TARGET_DIR
+for directory in sdks/rust functions/rust/word-stats functions/rust/json-transform functions/rust/roman-numeral functions/rust/qr-code; do
+  (cd "$directory" && cargo test)
+done
+
 env PYTHONPATH=sdks/python/src uv run --project sdks/python pytest -q \
   sdks/python/tests \
   functions/python/word-stats/tests \
