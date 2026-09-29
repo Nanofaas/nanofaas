@@ -9,6 +9,7 @@ mod dispatcher;
 mod handler;
 mod limits;
 mod metrics;
+mod runtime;
 mod settings;
 mod types;
 
@@ -17,5 +18,6 @@ mod test_support;
 
 pub use context::Context;
 pub use handler::BoxError;
+pub use runtime::{Error, Runtime};
 pub use settings::RuntimeSettings;
 pub use types::HandlerResponse;
