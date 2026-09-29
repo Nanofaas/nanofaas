@@ -23,7 +23,8 @@ including a runtime adapter that executes every scenario of `saturation-wire-cor
 
 Same crates and major versions as `runtimes/watchdog`: `tokio`, `axum 0.8`, `reqwest 0.13`
 (rustls, json), `serde`/`serde_json`, `tracing`, `prometheus-client 0.25`; plus `http-body-util`
-for bounded body reads. No other runtime dependencies.
+for bounded body reads, and `hyper 1` / `hyper-util 0.1` (already in the tree through axum) to drive
+connections with a timer. No other runtime dependencies.
 
 Rejected: hyper alone (re-implements routing and graceful shutdown axum already provides); a sync
 server (incompatible with async handlers).
@@ -159,6 +160,19 @@ cancelled callbacks are reported through the metric, not the return value.
 
 `serve` may be called again on the same `Runtime` only when every counter is zero; otherwise it
 returns `Err(NotDrained)`. A bind failure also shuts the dispatcher down, so no workers leak.
+
+## Connections
+
+The runtime drives hyper's HTTP/1 connections itself instead of `axum::serve`, so every wait is
+finite as in the Go SDK's `http.Server` (`ReadHeaderTimeout`/`ReadTimeout` = body-read timeout):
+
+- hyper's header-read timeout is `NANOFAAS_BODY_READ_TIMEOUT`; it also closes idle keep-alive
+  connections after that interval, like Go's `IdleTimeout` defaulting to `ReadTimeout`.
+- A connection whose peer accepts no response bytes for `NANOFAAS_BODY_READ_TIMEOUT` is cut off.
+- The response body is handed to hyper in 64 KiB frames, so its bytes stay counted in
+  `outputBytes` until the last frame is taken, not merely until hyper buffered a single frame.
+- On stop, connections finish their in-flight request; at the shutdown deadline the remaining
+  connection tasks are aborted.
 
 ## Health and metrics
 

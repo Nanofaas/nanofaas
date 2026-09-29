@@ -659,6 +659,8 @@ dependencies = [
  "bytes",
  "http-body",
  "http-body-util",
+ "hyper",
+ "hyper-util",
  "prometheus-client",
  "reqwest",
  "serde",

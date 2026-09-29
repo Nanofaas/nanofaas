@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fmt;
-use std::future::{Future, IntoFuture};
+use std::future::Future;
 use std::net::Ipv4Addr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
@@ -14,7 +14,7 @@ use axum::routing::any;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tokio::net::TcpListener;
-use tokio::sync::{oneshot, watch};
+use tokio::sync::watch;
 use tokio::time::Instant;
 
 use crate::callback::CallbackClient;
@@ -24,13 +24,14 @@ use crate::handler::{self, BoxError, ErasedHandler};
 use crate::invoke;
 use crate::limits::Limits;
 use crate::metrics::{self, Metrics};
+use crate::server;
 use crate::settings::RuntimeSettings;
 
 #[derive(Debug)]
 pub enum Error {
     /// The listener could not bind `PORT`.
     Bind(std::io::Error),
-    /// The HTTP server failed while serving.
+    /// The connection loop panicked.
     Serve(std::io::Error),
     /// `serve` was called while running, or while an earlier run still owns callbacks.
     NotDrained,
@@ -188,11 +189,13 @@ impl Runtime {
         shared.limits.set_accepting(true);
         shared.state.send_replace(RunState::Running);
 
-        let (stop_server, server_stopped) = oneshot::channel::<()>();
-        let server = axum::serve(listener, self.router()).with_graceful_shutdown(async move {
-            let _ = server_stopped.await;
-        });
-        let mut server = tokio::spawn(server.into_future());
+        let (stop_server, server_stopped) = watch::channel(false);
+        let mut server = tokio::spawn(server::run(
+            listener,
+            self.router(),
+            shared.settings.body_read_timeout,
+            server_stopped,
+        ));
         let early_exit = tokio::select! {
             joined = &mut server => Some(joined),
             () = shutdown => None,
@@ -201,14 +204,15 @@ impl Runtime {
         shared.limits.set_accepting(false);
         shared.state.send_replace(RunState::Stopping);
         let deadline = Instant::now() + shared.settings.shutdown_timeout;
-        let _ = stop_server.send(());
+        stop_server.send_replace(true);
         let joined = match early_exit {
             Some(joined) => joined,
             None => match tokio::time::timeout_at(deadline, &mut server).await {
                 Ok(joined) => joined,
                 Err(_) => {
+                    // Dropping the connection loop aborts every connection still open.
                     server.abort();
-                    Ok(Ok(()))
+                    Ok(())
                 }
             },
         };
@@ -218,9 +222,7 @@ impl Runtime {
         shared.dispatcher.close(deadline).await;
         shared.state.send_replace(RunState::Idle);
 
-        joined
-            .unwrap_or_else(|panic| Err(std::io::Error::other(panic)))
-            .map_err(Error::Serve)?;
+        joined.map_err(|panic| Error::Serve(std::io::Error::other(panic)))?;
         if handlers_done {
             Ok(())
         } else {
@@ -303,6 +305,7 @@ mod tests {
     use super::*;
     use crate::test_support::{TestRuntime, body_json, get};
     use serde_json::{Value, json};
+    use std::time::Duration;
     use tower::ServiceExt;
 
     #[tokio::test]
@@ -375,6 +378,109 @@ mod tests {
         let shared = Arc::clone(runtime.shared());
         assert!(matches!(runtime.start().await, Err(Error::Bind(_))));
         assert!(shared.dispatcher.try_reserve().is_none());
+    }
+
+    #[tokio::test]
+    async fn a_connection_that_never_finishes_its_headers_is_closed() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let settings = RuntimeSettings {
+            body_read_timeout: Duration::from_millis(100),
+            ..RuntimeSettings::default()
+        };
+        let runtime = TestRuntime::start(settings, |rt| rt).await;
+        let mut stream = tokio::net::TcpStream::connect(runtime.addr).await.unwrap();
+        stream
+            .write_all(b"POST /invoke HTTP/1.1\r\nHost: x\r\n")
+            .await
+            .unwrap();
+        let mut received = Vec::new();
+        let closed =
+            tokio::time::timeout(Duration::from_secs(2), stream.read_to_end(&mut received));
+        assert!(
+            closed.await.is_ok(),
+            "a half-sent request kept its connection open"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_idle_keep_alive_connection_is_closed() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let settings = RuntimeSettings {
+            body_read_timeout: Duration::from_millis(100),
+            ..RuntimeSettings::default()
+        };
+        let runtime = TestRuntime::start(settings, |rt| rt).await;
+        let mut stream = tokio::net::TcpStream::connect(runtime.addr).await.unwrap();
+        stream
+            .write_all(b"GET /health HTTP/1.1\r\nHost: x\r\n\r\n")
+            .await
+            .unwrap();
+        let mut received = Vec::new();
+        let closed =
+            tokio::time::timeout(Duration::from_secs(2), stream.read_to_end(&mut received));
+        assert!(
+            closed.await.is_ok(),
+            "an idle keep-alive connection stayed open"
+        );
+        assert!(
+            received.starts_with(b"HTTP/1.1 200"),
+            "the request itself was answered"
+        );
+    }
+
+    /// A client that stops reading must neither pin its connection nor release the output
+    /// bytes while the server still holds them: the bytes stay counted until the connection is
+    /// cut for making no write progress, and only then are they released.
+    #[tokio::test]
+    async fn a_client_that_stops_reading_keeps_output_counted_until_it_is_cut_off() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        const OUTPUT: usize = 32 * 1024 * 1024;
+        let settings = RuntimeSettings {
+            body_read_timeout: Duration::from_millis(300),
+            max_output_bytes: OUTPUT + 16,
+            max_callback_payload_bytes: 48 * 1024 * 1024,
+            max_pending_callback_bytes: 48 * 1024 * 1024,
+            ..RuntimeSettings::default()
+        };
+        let runtime = TestRuntime::start(settings, |rt| {
+            rt.register("big", |_: Context, _: Value| async {
+                Ok::<_, BoxError>("x".repeat(OUTPUT))
+            })
+        })
+        .await;
+        let mut stream = tokio::net::TcpStream::connect(runtime.addr).await.unwrap();
+        let body = r#"{"input":1}"#;
+        let request = format!(
+            "POST /invoke HTTP/1.1\r\nHost: x\r\nX-Execution-Id: exec-1\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        );
+        stream.write_all(request.as_bytes()).await.unwrap();
+
+        let limits = &runtime.runtime.shared().limits;
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            limits.wait_for(|s| s.output_bytes > 0),
+        )
+        .await
+        .expect("the output was never counted");
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            limits.wait_for(|s| s.output_bytes == 0),
+        )
+        .await
+        .expect("a non-reading client pinned the output forever");
+
+        // The bytes were released: the connection must already be cut, not merely drained.
+        let mut received = Vec::new();
+        let read = tokio::time::timeout(Duration::from_secs(2), stream.read_to_end(&mut received))
+            .await
+            .expect("output was released while its connection stayed open");
+        if read.is_ok() {
+            assert!(
+                received.len() < OUTPUT,
+                "the whole response was delivered after release"
+            );
+        }
     }
 
     #[test]

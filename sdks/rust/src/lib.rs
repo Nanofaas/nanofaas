@@ -11,6 +11,7 @@ mod invoke;
 mod limits;
 mod metrics;
 mod runtime;
+mod server;
 mod settings;
 mod types;
 

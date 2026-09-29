@@ -36,8 +36,13 @@ async fn word_count(_ctx: Context, input: Input) -> Result<Output, BoxError> {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), nanofaas::Error> {
-    Runtime::from_env().register("word-count", word_count).start().await
+async fn main() {
+    let stopped = Runtime::from_env().register("word-count", word_count).start().await;
+    if let Err(error) = stopped {
+        eprintln!("{error}");
+        // Exit now: returning from main would wait for stuck spawn_blocking work (see Stopping).
+        std::process::exit(1);
+    }
 }
 ```
 
@@ -100,6 +105,19 @@ running handlers finish and queued callbacks drain, all within `NANOFAAS_SHUTDOW
 Callbacks still undelivered at the deadline are cancelled and counted in
 `nanofaas_runtime_callback_drops_total`. `start()` returns `Error::ShutdownTimedOut` if handler
 work was still running at the deadline.
+
+Returning from `main` drops the tokio runtime, which waits for every `spawn_blocking` closure to
+finish, so a closure that never returns would keep the process alive past the deadline until the
+orchestrator kills it. End the process with `std::process::exit` on `Error::ShutdownTimedOut`, as
+the example above does.
+
+## Connections
+
+Like the Go SDK's `http.Server`, every wait on a connection is bounded by
+`NANOFAAS_BODY_READ_TIMEOUT`: a client that does not finish sending its request headers or body in
+time, or that accepts no response bytes for that long, is disconnected, and an idle keep-alive
+connection is closed after the same interval. A response keeps its bytes counted in the runtime's
+output budget until the server has handed its last frame to the connection.
 
 ## Development
 

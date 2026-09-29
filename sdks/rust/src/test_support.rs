@@ -127,6 +127,8 @@ async fn receive(State(state): State<Arc<FakeState>>, request: Request) -> Statu
 pub(crate) struct TestRuntime {
     pub runtime: Arc<crate::Runtime>,
     pub callbacks: FakeCallbackServer,
+    /// Where the runtime listens, for tests that need a real TCP client.
+    pub addr: std::net::SocketAddr,
     stop: Option<tokio::sync::oneshot::Sender<()>>,
     served: Option<tokio::task::JoinHandle<Result<(), crate::Error>>>,
 }
@@ -152,6 +154,7 @@ impl TestRuntime {
         let mut started = Self {
             runtime: Arc::new(runtime),
             callbacks,
+            addr: ([127, 0, 0, 1], 0).into(),
             stop: None,
             served: None,
         };
@@ -162,6 +165,7 @@ impl TestRuntime {
     /// Serves again; the previous run must have been stopped.
     pub async fn restart(&mut self) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        self.addr = listener.local_addr().unwrap();
         let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
         let runtime = Arc::clone(&self.runtime);
         self.served = Some(tokio::spawn(async move {

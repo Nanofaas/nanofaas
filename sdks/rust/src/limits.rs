@@ -66,11 +66,16 @@ impl Limits {
 
     /// Resolves once no handler work is physically running.
     pub async fn wait_until_idle(&self) {
+        self.wait_for(|state| state.active_handlers == 0).await;
+    }
+
+    /// Resolves once `condition` holds for the counters.
+    pub async fn wait_for(&self, condition: impl Fn(&LimitSnapshot) -> bool) {
         loop {
             let notified = self.changed.notified();
             tokio::pin!(notified);
             notified.as_mut().enable();
-            if self.snapshot().active_handlers == 0 {
+            if condition(&self.snapshot()) {
                 return;
             }
             notified.await;
@@ -124,16 +129,22 @@ impl Drop for OutputGuard {
     }
 }
 
-/// A response body that keeps its bytes counted until the server drops it after writing.
+/// Frame size of a counted response. Handing hyper one frame at a time lets its write buffer
+/// apply backpressure, so the guard lives until all but the last frames have reached the socket.
+const FRAME_BYTES: usize = 64 * 1024;
+
+/// A response body that keeps its bytes counted until the server has taken the last frame.
+/// A single frame would be dropped as soon as hyper buffered it, long before a slow or stalled
+/// client received it.
 pub(crate) struct CountedBody {
-    data: Option<Bytes>,
+    data: Bytes,
     _guard: OutputGuard,
 }
 
 impl CountedBody {
     pub fn new(data: Bytes, guard: OutputGuard) -> Self {
         Self {
-            data: Some(data),
+            data,
             _guard: guard,
         }
     }
@@ -147,17 +158,23 @@ impl Body for CountedBody {
         self: Pin<&mut Self>,
         _cx: &mut std::task::Context<'_>,
     ) -> Poll<Option<Result<Frame<Bytes>, Infallible>>> {
-        Poll::Ready(self.get_mut().data.take().map(|data| Ok(Frame::data(data))))
+        let data = &mut self.get_mut().data;
+        if data.is_empty() {
+            return Poll::Ready(None);
+        }
+        let frame = data.split_to(data.len().min(FRAME_BYTES));
+        Poll::Ready(Some(Ok(Frame::data(frame))))
     }
 
     fn is_end_stream(&self) -> bool {
-        self.data.is_none()
+        self.data.is_empty()
     }
 
     fn size_hint(&self) -> SizeHint {
-        SizeHint::with_exact(self.data.as_ref().map_or(0, |data| data.len() as u64))
+        SizeHint::with_exact(self.data.len() as u64)
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
