@@ -40,11 +40,11 @@ Runtime::with_settings(RuntimeSettings)
     .start().await                         // binds PORT, stops on SIGTERM / ctrl-c
 runtime.serve(listener, shutdown).await    // explicit listener and shutdown future (tests)
 
-Context::execution_id() / trace_id()       // Option<&str>
-Context::cancelled()                       // future resolving on timeout or client disconnect
-Context::span()                            // tracing span carrying execution_id / trace_id
+Context::execution_id() / trace_id()       // &str / Option<&str>
+Context::metadata() / headers()            // the request body's `metadata` and `headers` objects
+Context::is_cancelled()                    // true once the runtime gave up (timeout or disconnect)
 Context::spawn_blocking(f)                 // blocking work that keeps the handler slot while it runs
-HandlerResponse::new(output, status).header(k, v).encoding("base64")
+HandlerResponse::new(output: serde_json::Value, status).header(k, v).encoding("base64")
 ```
 
 - `I: DeserializeOwned`, `O: Serialize + Send + 'static`, `BoxError = Box<dyn Error + Send + Sync>`.
@@ -54,6 +54,8 @@ HandlerResponse::new(output, status).header(k, v).encoding("base64")
 - `HandlerResponse` is non-generic (`output: serde_json::Value`, `status_code: u16`,
   `headers: HashMap<String, String>`, `encoding: Option<String>`). Detection is nominal: the runtime
   downcasts the returned `O` through `Any`. Any other `O` is an implicit 200 with no extra headers.
+- Every handler future runs inside a `tracing` span carrying `execution_id` and `trace_id`, so a
+  handler's own log events carry them without an explicit API.
 - Handler selection matches Go: `FUNCTION_HANDLER` if set; else the single registered handler; else
   500 `Handler not configured`.
 - `RuntimeSettings` uses Go's environment names, defaults and production maxima
@@ -62,7 +64,9 @@ HandlerResponse::new(output, status).header(k, v).encoding("base64")
 
 ## `/invoke` flow
 
-Admission order matches `sdks/go/nanofaas/http_invoke.go` so each failure yields the same code:
+Admission is closed until `serve` starts (and again once stop begins), so `/invoke` answers
+`503 RUNTIME_STOPPING` then. Otherwise the admission order matches
+`sdks/go/nanofaas/http_invoke.go` so each failure yields the same code:
 
 1. Non-POST → 405. Stopping → `503 RUNTIME_STOPPING`.
 2. No execution id (neither `X-Execution-Id` nor `EXECUTION_ID`) → 400 `Execution ID not
@@ -99,7 +103,9 @@ reservations and sends the HTTP response back through a `oneshot`.
   `INVOCATION_CANCELLED` with no HTTP response.
 - **Panic**: caught as the handler task's `JoinError` → callback `HANDLER_ERROR` + 500.
 - **Handler `Err`**: logged with execution id → callback `HANDLER_ERROR` + 500 `Handler failed`.
-- `Context::cancelled()` resolves in both timeout and disconnect cases.
+- The runtime sets the cancellation flag before dropping the handler future, so
+  `Context::is_cancelled()` is true in both cases. An async handler is dropped at that point
+  anyway; the flag is for blocking closures started with `spawn_blocking`, which cannot be dropped.
 
 ### Output
 
@@ -114,7 +120,8 @@ is exceeded, so the bound is exact and allocation stops at the limit. This repla
 - Success: serialize the callback `InvocationResult` under `max_callback_payload_bytes`; enqueue it
   with its reservation, which shrinks to the serialized size; reply 200 or the envelope status.
   Envelope headers are filtered by the allow-list mirrored from `ResponseHeaderPolicy`
-  (case-insensitive, one entry per name) and joined by `X-NanoFaaS-Function-Status: true` and, when
+  (case-insensitive, one entry per name); values HTTP cannot carry (CR/LF) are dropped from the
+  response and the callback alike. They are joined by `X-NanoFaaS-Function-Status: true` and, when
   set, `X-NanoFaaS-Encoding`. `Content-Type: application/json` unless the envelope set one.
 - First invocation adds `X-Cold-Start: true` and `X-Init-Duration-Ms`, and increments
   `nanofaas_runtime_cold_starts_total`.
@@ -144,7 +151,11 @@ All within one `shutdown_timeout` budget:
 1. Stop admission (new `/invoke` → 503).
 2. axum graceful shutdown.
 3. Wait for active handlers to reach zero.
-4. Close the callback channel and let workers drain; at the deadline, cancel in-flight deliveries.
+4. Close the callback channel and let workers drain; at the deadline, cancel in-flight and queued
+   deliveries, each counted in `nanofaas_runtime_callback_drops_total` with a warning log.
+
+`serve` returns `Err(ShutdownTimedOut)` only when handler work was still running at the deadline;
+cancelled callbacks are reported through the metric, not the return value.
 
 `serve` may be called again on the same `Runtime` only when every counter is zero; otherwise it
 returns `Err(NotDrained)`. A bind failure also shuts the dispatcher down, so no workers leak.
@@ -163,8 +174,10 @@ Ordering uses `Notify`/`oneshot` barriers, never elapsed sleeps.
 
 - **Unit**: settings parsing and clamping, header filter, callback URL, retry classification, the
   bounded writer.
-- **Integration** (`tests/`): runtime on an ephemeral port plus a fake axum callback server. Covers
+- **Runtime** (in-crate `#[cfg(test)]` modules): a served runtime plus a fake axum callback
+  server, with requests sent straight to the router (as the Go tests call `ServeHTTP`). Covers
   success, envelope, cold start, every error code, limits and admission order.
+- **Public API** (`tests/public_api.rs`): only the public API, over real TCP.
 - **Wire parity**: exact `X-NanoFaaS-Function-Status` / `X-NanoFaaS-Encoding` constants.
 - **Saturation corpus**:
   - run `validate_saturation_wire_corpus.py` with a 10 s process deadline;
@@ -173,8 +186,9 @@ Ordering uses `Notify`/`oneshot` barriers, never elapsed sleeps.
     output-too-large, callback-saturated, handler-timeout, cancellation, health-under-saturation,
     stop-with-full-queue, restart, callback-delivery-exhausted, dispatch-retry-identity) and
     asserting responses, callback requests and drained final counters.
-  - A `test-support` cargo feature exposes a counter snapshot (`activeHandlers`, `inputBytes`,
-    `outputBytes`, `pendingCallbacks`, `pendingCallbackBytes`, `serializedCallbackBytes`).
+  - The adapter is an in-crate `#[cfg(test)]` module, like Go's in-package test, so it reads the
+    counters (`activeHandlers`, `inputBytes`, `outputBytes`, `pendingCallbacks`,
+    `pendingCallbackBytes`, `serializedCallbackBytes`) without a cargo feature or public API.
 - **Quality**: `cargo clippy --all-targets --all-features -- -D warnings`, `cargo fmt --check`.
 
 ## Out of scope
