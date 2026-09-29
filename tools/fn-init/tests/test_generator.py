@@ -299,6 +299,17 @@ def test_generate_go_gomod_has_module(tmp_path):
     assert "function-sdk-go" in content
 
 
+def test_generate_go_gomod_names_a_downloadable_toolchain(tmp_path):
+    """`go 1.24` names no release (the first is go1.24.0), so an older local Go that tries
+    to switch toolchains fails with "toolchain not available"."""
+    import re
+
+    out = tmp_path / "greet"
+    generate_function("greet", "go", out, vscode=False, placeholders=GO_PLACEHOLDERS)
+    directive = re.search(r"(?m)^go (\S+)$", (out / "go.mod").read_text()).group(1)
+    assert re.fullmatch(r"\d+\.\d+\.\d+", directive), directive
+
+
 def test_generate_go_dockerfile_copies_sdk_where_gomod_replace_resolves(tmp_path):
     """The Docker SDK copy destination must match the go.mod replace path.
 
