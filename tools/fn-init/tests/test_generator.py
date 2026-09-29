@@ -310,6 +310,18 @@ def test_generate_go_gomod_names_a_downloadable_toolchain(tmp_path):
     assert re.fullmatch(r"\d+\.\d+\.\d+", directive), directive
 
 
+def test_generate_go_image_is_a_static_stripped_binary_on_scratch(tmp_path):
+    """An unstripped binary on alpine made a ~21 MB image; a static stripped one on scratch
+    needs the CA bundle copied in for HTTPS and a numeric user, since scratch has no passwd."""
+    out = tmp_path / "greet"
+    generate_function("greet", "go", out, vscode=False, placeholders=GO_PLACEHOLDERS)
+    dockerfile = (out / "Dockerfile").read_text()
+    assert 'RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/greet .' in dockerfile
+    assert dockerfile.split("\nFROM ")[-1].startswith("scratch")
+    assert "COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/" in dockerfile
+    assert "USER 65534:65534" in dockerfile
+
+
 def test_generate_go_dockerfile_copies_sdk_where_gomod_replace_resolves(tmp_path):
     """The Docker SDK copy destination must match the go.mod replace path.
 
