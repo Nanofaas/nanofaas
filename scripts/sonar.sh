@@ -149,8 +149,9 @@ run_rust() {
     run sonar-scanner \
         -Dsonar.host.url="$SONAR_HOST" -Dsonar.token="$TOKEN" \
         -Dsonar.projectKey=nanofaas-rust -Dsonar.projectName="nanofaas Rust" \
-        -Dsonar.sources=runtimes/watchdog \
-        -Dsonar.rust.cargo.manifestPaths=runtimes/watchdog/Cargo.toml
+        -Dsonar.sources=runtimes/watchdog,sdks/rust,functions/rust \
+        -Dsonar.exclusions="**/target/**" \
+        -Dsonar.rust.cargo.manifestPaths=runtimes/watchdog/Cargo.toml,sdks/rust/Cargo.toml,functions/rust/word-stats/Cargo.toml,functions/rust/json-transform/Cargo.toml,functions/rust/roman-numeral/Cargo.toml,functions/rust/qr-code/Cargo.toml
 }
 
 run_go() {

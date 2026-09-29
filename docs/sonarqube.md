@@ -1,8 +1,8 @@
 # SonarQube (Local Analysis)
 
 On-demand SonarQube analysis for the monorepo: `scripts/sonar.sh` starts an
-ephemeral SonarQube container with Docker, runs the analysis for Java + Python
-+ Rust, prints the open-issue counts per language and leaves the server up so
+ephemeral SonarQube container with Docker, runs the analysis for Java, Python,
+Rust, Go and JavaScript, prints the open-issue counts per language and leaves the server up so
 the issues can be browsed in the UI. This is **not** a CI pipeline step — the
 analysis runs only when you invoke the script.
 
@@ -31,8 +31,8 @@ persistent server — deliberately out of scope here.
 ## Usage
 
 ```bash
-./scripts/sonar.sh                          # Java + Python + Rust
-./scripts/sonar.sh --only java              # only one language (--only python|rust)
+./scripts/sonar.sh                          # Java, Python, Rust, Go and JavaScript
+./scripts/sonar.sh --only java              # only one language (--only python|rust|go|javascript)
 ./scripts/sonar.sh --rm                     # remove the container when the run finishes
 ./scripts/sonar.sh --dry-run                # print the commands without executing them
 ./scripts/sonar.sh --help
@@ -46,11 +46,15 @@ What happens:
    reused as-is.
 2. Java is analysed via the Gradle `org.sonarqube` plugin
    (`./gradlew test --no-parallel sonar`) — the per-module JaCoCo XML reports
-   already produced by the test task feed the coverage. Python and Rust are
-   analysed via the `sonar-scanner` CLI (static analysis; no coverage
-   import).
+   already produced by the test task feed the coverage. Python, Rust, Go and
+   JavaScript are analysed via the `sonar-scanner` CLI (static analysis; no
+   coverage import). The Rust project covers the watchdog, the Rust SDK and
+   the Rust functions: every tracked `Cargo.toml` is listed in
+   `sonar.rust.cargo.manifestPaths`, and `scripts/tests/test_sonar_script.py`
+   fails when a new crate is missing from that list.
 3. The script prints the open-issue counts per severity for each project
-   (`nanofaas-java`, `nanofaas-python`, `nanofaas-rust`) plus the UI URL, and
+   (`nanofaas-java`, `nanofaas-python`, `nanofaas-rust`, `nanofaas-go`,
+   `nanofaas-javascript`) plus the UI URL, and
    leaves the server running so the issue lists can be read in the browser.
 4. The exit code is 0 when every requested analysis was submitted; it is
    non-zero on infrastructure errors (Docker, readiness, token, scanner) or a
@@ -69,7 +73,7 @@ What happens:
   resets to `admin/admin`).
 - The port guard uses `lsof` (macOS); on minimal Linux builds without `lsof`
   the check is skipped and Docker's own port error surfaces instead.
-- Python/Rust coverage is not imported (only static analysis); `experiments/`
+- Python, Rust, Go and JavaScript coverage is not imported (only static analysis); `experiments/`
   is not analysed.
 
 ## Cleaning up
