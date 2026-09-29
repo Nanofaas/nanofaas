@@ -12,6 +12,8 @@ import com.github.dockerjava.api.model.ExposedPorts;
 import com.github.dockerjava.api.model.HostConfig;
 import com.github.dockerjava.api.model.PortBinding;
 import com.github.dockerjava.api.model.Ports;
+import com.github.dockerjava.api.model.PullResponseItem;
+import com.github.dockerjava.api.model.ResponseItem;
 import com.github.dockerjava.core.command.CreateContainerCmdImpl;
 import org.springframework.aot.hint.MemberCategory;
 import org.springframework.aot.hint.RuntimeHints;
@@ -28,6 +30,11 @@ final class DockerJavaRuntimeHints implements RuntimeHintsRegistrar {
             PortBinding.class,
             Ports.class,
             Ports.Binding.class,
+            PullResponseItem.class,
+            ResponseItem.class,
+            ResponseItem.ProgressDetail.class,
+            ResponseItem.ErrorDetail.class,
+            ResponseItem.AuxDetail.class,
             Container.class,
             ContainerPort.class,
             ContainerHostConfig.class,
