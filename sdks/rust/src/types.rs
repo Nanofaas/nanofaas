@@ -55,6 +55,24 @@ impl HandlerResponse {
         self
     }
 
+    pub fn output(&self) -> &Value {
+        &self.output
+    }
+
+    pub fn status_code(&self) -> u16 {
+        self.status_code
+    }
+
+    /// The headers as added, before the allow-list filter the runtime applies.
+    pub fn headers(&self) -> &[(String, String)] {
+        &self.headers
+    }
+
+    /// The value set with [`HandlerResponse::encoding`], if any.
+    pub fn encoding_marker(&self) -> Option<&str> {
+        self.encoding.as_deref()
+    }
+
     pub(crate) fn into_parts(self) -> (Value, u16, Vec<(String, String)>, Option<String>) {
         (self.output, self.status_code, self.headers, self.encoding)
     }
@@ -205,6 +223,20 @@ mod tests {
             json!({"success": true, "output": "aGk=", "error": null, "statusCode": 503,
                    "headers": {"Content-Type": "image/png"}, "encoding": "base64"})
         );
+    }
+
+    #[test]
+    fn handler_response_exposes_what_it_was_built_with() {
+        let response = HandlerResponse::new(json!({"id": 7}), 201)
+            .header("Location", "/things/7")
+            .encoding("identity");
+        assert_eq!(response.output(), &json!({"id": 7}));
+        assert_eq!(response.status_code(), 201);
+        assert_eq!(
+            response.headers(),
+            [("Location".to_string(), "/things/7".to_string())]
+        );
+        assert_eq!(response.encoding_marker(), Some("identity"));
     }
 
     #[test]
