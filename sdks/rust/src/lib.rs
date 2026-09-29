@@ -15,6 +15,8 @@ mod settings;
 mod types;
 
 #[cfg(test)]
+mod corpus_tests;
+#[cfg(test)]
 mod test_support;
 
 pub use context::Context;
