@@ -74,6 +74,12 @@ really returns, so the runtime never admits more work than `NANOFAAS_MAX_CONCURR
 Inside the closure, poll `ctx.is_cancelled()` to return early. Blocking directly inside an async
 handler stalls a tokio worker thread and delays the timeout itself.
 
+Only work that holds the `Context` counts against the handler slot. A `tokio::spawn` or
+`std::thread::spawn` that does not capture `ctx` escapes the accounting: the slot is released when
+the handler returns while that work keeps running, so the runtime may admit more concurrent work
+than `NANOFAAS_MAX_CONCURRENT_HANDLERS`. Use `ctx.spawn_blocking`, or move a clone of `ctx` into the
+task.
+
 ## Environment variables
 
 Same names, defaults and maxima as the Go SDK. Durations are milliseconds. Zero, unparsable or
@@ -107,7 +113,12 @@ On SIGTERM the runtime stops admitting invocations (new ones get `503 RUNTIME_ST
 running handlers finish and queued callbacks drain, all within `NANOFAAS_SHUTDOWN_TIMEOUT`.
 Callbacks still undelivered at the deadline are cancelled and counted in
 `nanofaas_runtime_callback_drops_total`. `start()` returns `Error::ShutdownTimedOut` if handler
-work was still running at the deadline.
+work or a connection (for example a client that stopped reading its response) was still running
+at the deadline; those connections are aborted.
+
+If you drive `serve()` yourself, dropping its future also stops the run: admission closes at once
+and handlers and callbacks drain in the background within `NANOFAAS_SHUTDOWN_TIMEOUT`, after which
+the same runtime can serve again.
 
 Returning from `main` drops the tokio runtime, which waits for every `spawn_blocking` closure to
 finish, so a closure that never returns would keep the process alive past the deadline until the

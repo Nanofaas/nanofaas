@@ -35,7 +35,8 @@ pub enum Error {
     Serve(std::io::Error),
     /// `serve` was called while running, or while an earlier run still owns callbacks.
     NotDrained,
-    /// Handler work was still running when `NANOFAAS_SHUTDOWN_TIMEOUT` expired.
+    /// Handler work or a connection was still running when `NANOFAAS_SHUTDOWN_TIMEOUT`
+    /// expired; the connections were aborted.
     ShutdownTimedOut,
 }
 
@@ -46,7 +47,7 @@ impl fmt::Display for Error {
             Self::Serve(error) => write!(f, "runtime server failed: {error}"),
             Self::NotDrained => f.write_str("runtime is running or still owns callbacks"),
             Self::ShutdownTimedOut => {
-                f.write_str("handlers were still running at the shutdown deadline")
+                f.write_str("handlers or connections were still running at the shutdown deadline")
             }
         }
     }
@@ -179,6 +180,9 @@ impl Runtime {
     /// Serves on `listener` until `shutdown` resolves. Stopping closes admission (new invocations
     /// get 503), then waits for the server, running handlers and queued callbacks, all within one
     /// `shutdown_timeout`. The same runtime may serve again once a run has fully drained.
+    ///
+    /// Dropping this future before it returns stops the run as well: admission closes at once and
+    /// the rest drains in the background within `shutdown_timeout`.
     pub async fn serve(
         &self,
         listener: TcpListener,
@@ -196,6 +200,11 @@ impl Runtime {
             shared.settings.body_read_timeout,
             server_stopped,
         ));
+        let mut guard = DroppedServe {
+            shared: Arc::clone(shared),
+            server: server.abort_handle(),
+            finished: false,
+        };
         let early_exit = tokio::select! {
             joined = &mut server => Some(joined),
             () = shutdown => None,
@@ -205,14 +214,14 @@ impl Runtime {
         shared.state.send_replace(RunState::Stopping);
         let deadline = Instant::now() + shared.settings.shutdown_timeout;
         stop_server.send_replace(true);
-        let joined = match early_exit {
-            Some(joined) => joined,
+        let (joined, connections_done) = match early_exit {
+            Some(joined) => (joined, true),
             None => match tokio::time::timeout_at(deadline, &mut server).await {
-                Ok(joined) => joined,
+                Ok(joined) => (joined, true),
                 Err(_) => {
                     // Dropping the connection loop aborts every connection still open.
                     server.abort();
-                    Ok(())
+                    (Ok(()), false)
                 }
             },
         };
@@ -221,9 +230,10 @@ impl Runtime {
             .is_ok();
         shared.dispatcher.close(deadline).await;
         shared.state.send_replace(RunState::Idle);
+        guard.finished = true;
 
         joined.map_err(|panic| Error::Serve(std::io::Error::other(panic)))?;
-        if handlers_done {
+        if handlers_done && connections_done {
             Ok(())
         } else {
             Err(Error::ShutdownTimedOut)
@@ -257,6 +267,38 @@ impl Runtime {
         let client = Arc::get_mut(&mut dispatcher.client).expect("configure before serving");
         client.retry_delays.fill(std::time::Duration::ZERO);
         self
+    }
+}
+
+/// Stops a run whose `serve` future was dropped before it finished stopping, for example by a
+/// caller's `select!`: admission closes at once, the connections are aborted, and the handlers
+/// and callbacks drain in the background within `shutdown_timeout`, after which `serve` may be
+/// called again.
+struct DroppedServe {
+    shared: Arc<Shared>,
+    server: tokio::task::AbortHandle,
+    finished: bool,
+}
+
+impl Drop for DroppedServe {
+    fn drop(&mut self) {
+        if self.finished {
+            return;
+        }
+        self.shared.limits.set_accepting(false);
+        self.shared.state.send_replace(RunState::Stopping);
+        self.server.abort();
+        // Without a tokio runtime there is nothing left to drain.
+        let Ok(handle) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
+        let shared = Arc::clone(&self.shared);
+        let deadline = Instant::now() + shared.settings.shutdown_timeout;
+        handle.spawn(async move {
+            let _ = tokio::time::timeout_at(deadline, shared.limits.wait_until_idle()).await;
+            shared.dispatcher.close(deadline).await;
+            shared.state.send_replace(RunState::Idle);
+        });
     }
 }
 
@@ -481,6 +523,86 @@ mod tests {
                 "the whole response was delivered after release"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn stop_reports_a_connection_still_writing_at_the_deadline() {
+        use tokio::io::AsyncWriteExt;
+        const OUTPUT: usize = 32 * 1024 * 1024;
+        let settings = RuntimeSettings {
+            body_read_timeout: Duration::from_secs(5),
+            shutdown_timeout: Duration::from_millis(200),
+            max_output_bytes: OUTPUT + 16,
+            max_callback_payload_bytes: 48 * 1024 * 1024,
+            max_pending_callback_bytes: 48 * 1024 * 1024,
+            ..RuntimeSettings::default()
+        };
+        let mut runtime = TestRuntime::start(settings, |rt| {
+            rt.register("big", |_: Context, _: Value| async {
+                Ok::<_, BoxError>("x".repeat(OUTPUT))
+            })
+        })
+        .await;
+        let mut stream = tokio::net::TcpStream::connect(runtime.addr).await.unwrap();
+        let body = r#"{"input":1}"#;
+        let request = format!(
+            "POST /invoke HTTP/1.1\r\nHost: x\r\nX-Execution-Id: exec-1\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        );
+        stream.write_all(request.as_bytes()).await.unwrap();
+        let limits = Arc::clone(&runtime.runtime.shared().limits);
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            limits.wait_for(|s| s.output_bytes > 0),
+        )
+        .await
+        .expect("the output was never counted");
+
+        let stopped = tokio::time::Instant::now();
+        let result = runtime.stop().await;
+        assert!(matches!(result, Err(Error::ShutdownTimedOut)), "{result:?}");
+        assert!(
+            stopped.elapsed() < Duration::from_secs(2),
+            "stop is bounded"
+        );
+        drop(stream);
+    }
+
+    #[tokio::test]
+    async fn dropping_serve_closes_admission_and_lets_the_runtime_serve_again() {
+        let settings = RuntimeSettings {
+            shutdown_timeout: Duration::from_millis(200),
+            ..RuntimeSettings::default()
+        };
+        let runtime = Arc::new(
+            Runtime::with_settings(settings)
+                .register("echo", |_: Context, input: Value| async move {
+                    Ok::<_, BoxError>(input)
+                }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let serving = tokio::spawn({
+            let runtime = Arc::clone(&runtime);
+            async move { runtime.serve(listener, std::future::pending()).await }
+        });
+        let mut state = runtime.state();
+        state.wait_for(|s| *s == RunState::Running).await.unwrap();
+
+        serving.abort();
+        let _ = serving.await;
+        let request = crate::test_support::invoke_request(r#"{"input":1}"#);
+        let response = runtime.router().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            state.wait_for(|s| *s == RunState::Idle),
+        )
+        .await
+        .expect("the dropped run never finished draining")
+        .unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        assert!(runtime.serve(listener, async {}).await.is_ok());
     }
 
     #[test]
