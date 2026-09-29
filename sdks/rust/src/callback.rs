@@ -66,7 +66,7 @@ impl CallbackClient {
     pub fn new(base_url: Option<String>, attempt_timeout: Duration, max_attempts: usize) -> Self {
         Self {
             base_url,
-            http: reqwest::Client::new(),
+            http: http_client(),
             attempt_timeout,
             retry_delays: retry_delays(max_attempts),
         }
@@ -130,6 +130,19 @@ impl CallbackClient {
             Err(_) => AttemptOutcome::Retry,
         }
     }
+}
+
+/// A client that verifies HTTPS against the system CA certificates. Without any (a `scratch`
+/// image), it falls back to no trusted roots instead of panicking: plain HTTP callbacks, the
+/// in-cluster case, still work, and HTTPS ones fail and are counted as drops.
+fn http_client() -> reqwest::Client {
+    reqwest::Client::builder().build().unwrap_or_else(|error| {
+        tracing::warn!(%error, "no system CA certificates: HTTPS callbacks will fail");
+        reqwest::Client::builder()
+            .tls_certs_only([])
+            .build()
+            .expect("a client without trusted roots reads no system state")
+    })
 }
 
 /// Resolves once `cancel` turns true; never, if its sender is gone.

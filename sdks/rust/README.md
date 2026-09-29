@@ -57,6 +57,9 @@ async fn main() {
   Every handler runs inside a `tracing` span carrying `execution_id` and `trace_id`; install any
   subscriber to see them.
 - `start()` binds `0.0.0.0:$PORT` and serves until SIGTERM or Ctrl-C.
+- The runtime starts without system CA certificates (a `scratch` image): plain HTTP callbacks,
+  the in-cluster case, work, and HTTPS callbacks are counted as drops. Ship a CA bundle, as the
+  `fn-init` Rust template does, when the function or its callbacks use HTTPS.
 
 ## Timeouts and blocking work
 
