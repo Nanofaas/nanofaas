@@ -2,9 +2,11 @@ package it.unimib.datai.nanofaas.controlplane.execution;
 
 import it.unimib.datai.nanofaas.controlplane.config.ExecutionStoreProperties;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.actuate.info.Info;
 import org.springframework.mock.env.MockEnvironment;
 
 import java.time.Duration;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -39,5 +41,21 @@ class ExecutionStoreBindingTest {
                 .withProperty("nanofaas.execution-store.max-outcome-bytes", "4096");
         assertThat(new ExecutionExpiryConfiguration().executionStoreProperties(env)
                 .maxOutcomeBytes()).isEqualTo(4096);
+    }
+
+    @Test
+    void infoReportsNormalizedRetention() {
+        var configuration = new ExecutionExpiryConfiguration();
+        var properties = configuration.executionStoreProperties(new MockEnvironment()
+                .withProperty("nanofaas.execution-store.ttl", "10s")
+                .withProperty("nanofaas.execution-store.sync-ttl", "20s"));
+        var builder = new Info.Builder();
+
+        configuration.executionStoreInfoContributor(properties).contribute(builder);
+
+        assertThat(builder.build().getDetails()).containsEntry("executionStore", Map.of(
+                "ttl", "PT10S",
+                "syncTtl", "PT10S",
+                "maxLifetime", "PT30M"));
     }
 }

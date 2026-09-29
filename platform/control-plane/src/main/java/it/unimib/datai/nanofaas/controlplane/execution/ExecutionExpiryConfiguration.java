@@ -5,11 +5,13 @@ import io.micrometer.core.instrument.MeterRegistry;
 import it.unimib.datai.nanofaas.controlplane.config.ExecutionStoreProperties;
 import org.springframework.aot.hint.annotation.RegisterReflectionForBinding;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.actuate.info.InfoContributor;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 
+import java.util.Map;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 
 /**
@@ -53,6 +55,15 @@ public class ExecutionExpiryConfiguration {
     public ExecutionStoreProperties executionStoreProperties(Environment environment) {
         return Binder.get(environment).bindOrCreate(
                 "nanofaas.execution-store", ExecutionStoreProperties.class);
+    }
+
+    /** Report the normalized retention values that the stores actually use. */
+    @Bean
+    public InfoContributor executionStoreInfoContributor(ExecutionStoreProperties properties) {
+        return builder -> builder.withDetail("executionStore", Map.of(
+                "ttl", properties.ttl().toString(),
+                "syncTtl", properties.syncTtl().toString(),
+                "maxLifetime", properties.maxLifetime().toString()));
     }
 
     /** Explicit construction: {@link ExecutionStore} carries no Spring annotations of its own. */
