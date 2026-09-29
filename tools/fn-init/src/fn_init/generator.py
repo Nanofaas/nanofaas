@@ -34,6 +34,13 @@ GO_FILE_MAP: dict[str, str] = {
     "function.yaml.tmpl": "function.yaml",
 }
 
+RUST_FILE_MAP: dict[str, str] = {
+    "src/main.rs.tmpl": "src/main.rs",
+    "Cargo.toml.tmpl": "Cargo.toml",
+    "Dockerfile.tmpl": "Dockerfile",
+    "function.yaml.tmpl": "function.yaml",
+}
+
 JAVASCRIPT_FILE_MAP: dict[str, str] = {
     "package.json.tmpl": "package.json",
     "tsconfig.json.tmpl": "tsconfig.json",
@@ -63,6 +70,7 @@ FILE_MAPS: dict[str, dict[str, str]] = {
     "go": GO_FILE_MAP,
     "javascript": JAVASCRIPT_FILE_MAP,
     "bash": BASH_FILE_MAP,
+    "rust": RUST_FILE_MAP,
 }
 
 
@@ -274,6 +282,15 @@ def generate_function(
             )
         except (subprocess.CalledProcessError, FileNotFoundError):
             pass
+
+    # Seed Cargo.lock from the SDK's so the function builds offline with the SDK's vetted
+    # dependency versions; cargo adds the function's own entry on the first build.
+    if lang == "rust":
+        monorepo_root = detect_monorepo_root(output_dir)
+        sdk_lock = monorepo_root / "sdks" / "rust" / "Cargo.lock" if monorepo_root else None
+        if sdk_lock is not None and sdk_lock.exists():
+            shutil.copyfile(sdk_lock, output_dir / "Cargo.lock")
+            created.append(output_dir / "Cargo.lock")
 
     if vscode:
         vscode_dir = TEMPLATES_DIR / "vscode" / lang

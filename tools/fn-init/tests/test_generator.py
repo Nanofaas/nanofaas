@@ -1,5 +1,7 @@
 # tools/fn-init/tests/test_generator.py
 import json
+import os
+import shutil
 import subprocess
 import pytest
 from pathlib import Path
@@ -324,6 +326,112 @@ def test_generate_go_dockerfile_copies_sdk_where_gomod_replace_resolves(tmp_path
     )
 
 
+def test_generate_go_vscode(tmp_path):
+    """Regression: the Go VS Code templates lived under templates/go/vscode, where the
+    generator never looks, so `fn-init --lang go --vscode` crashed with FileNotFoundError."""
+    out = tmp_path / "greet"
+    generate_function("greet", "go", out, vscode=True, placeholders=GO_PLACEHOLDERS)
+    assert "golang.go" in (out / ".vscode" / "extensions.json").read_text()
+    assert (out / ".vscode" / "launch.json").exists()
+    assert (out / ".vscode" / "settings.json").exists()
+
+
+# --- generate_function (Rust) ---
+
+RUST_PLACEHOLDERS = {
+    "FUNCTION_NAME": "greet",
+    "CLASS_NAME": "Greet",
+    "PACKAGE": "it.unimib.datai.nanofaas.examples.greet",
+    "PACKAGE_PATH": "it/unimib/datai/nanofaas/functions/greet",
+    "IMAGE_TAG": "nanofaas/rust-greet:latest",
+    "LANG": "rust",
+}
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def test_generate_rust_creates_sources(tmp_path):
+    out = tmp_path / "greet"
+    generate_function("greet", "rust", out, vscode=False, placeholders=RUST_PLACEHOLDERS)
+    main = (out / "src" / "main.rs").read_text()
+    assert "Runtime::from_env()" in main
+    assert '.register("greet", handle)' in main
+    assert "fn returns_the_result_for_text" in main
+    for name in ("Cargo.toml", "Dockerfile", "function.yaml"):
+        assert (out / name).exists(), name
+
+
+def test_generate_rust_cargo_toml_names_the_package_and_the_sdk(tmp_path):
+    out = tmp_path / "greet"
+    generate_function("greet", "rust", out, vscode=False, placeholders=RUST_PLACEHOLDERS)
+    cargo = (out / "Cargo.toml").read_text()
+    assert 'name = "greet"' in cargo
+    assert 'nanofaas-sdk = { path = "../../../sdks/rust" }' in cargo
+    assert 'panic = "abort"' not in cargo, "the runtime turns handler panics into HANDLER_ERROR"
+
+
+def test_generate_rust_dockerfile_copies_sdk_where_the_cargo_path_resolves(tmp_path):
+    """The Docker SDK copy destination must match the Cargo.toml path dependency, resolved
+    from the build WORKDIR, as for Go's go.mod replace directive."""
+    import posixpath
+    import re
+
+    out = tmp_path / "greet"
+    generate_function("greet", "rust", out, vscode=False, placeholders=RUST_PLACEHOLDERS)
+    cargo = (out / "Cargo.toml").read_text()
+    dockerfile = (out / "Dockerfile").read_text()
+
+    sdk_rel = re.search(r'nanofaas-sdk\s*=\s*\{\s*path\s*=\s*"([^"]+)"', cargo).group(1)
+    workdir = re.search(r"(?m)^WORKDIR\s+(/src/functions/rust/\S+)", dockerfile).group(1)
+    resolved = posixpath.normpath(posixpath.join(workdir, sdk_rel))
+    copy_dest = re.search(r"(?m)^COPY\s+sdks/rust\s+(\S+)", dockerfile).group(1)
+    assert copy_dest == resolved
+    assert "COPY functions/rust/greet /src/functions/rust/greet" in dockerfile
+
+
+def test_generate_rust_image_ships_ca_certificates(tmp_path):
+    """The runtime image is `scratch`: without a CA bundle, any HTTPS call the handler makes
+    (and HTTPS callbacks) cannot verify certificates."""
+    out = tmp_path / "greet"
+    generate_function("greet", "rust", out, vscode=False, placeholders=RUST_PLACEHOLDERS)
+    dockerfile = (out / "Dockerfile").read_text()
+    assert "COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/" in dockerfile
+
+
+def test_generate_rust_seeds_the_lockfile_from_the_sdk_inside_the_monorepo(tmp_path):
+    (tmp_path / "settings.gradle").write_text("")
+    sdk = tmp_path / "sdks" / "rust"
+    sdk.mkdir(parents=True)
+    (sdk / "Cargo.lock").write_text("# sdk lock\n")
+    out = tmp_path / "functions" / "rust" / "greet"
+    generate_function("greet", "rust", out, vscode=False, placeholders=RUST_PLACEHOLDERS)
+    assert (out / "Cargo.lock").read_text() == "# sdk lock\n"
+
+
+def test_generate_rust_vscode(tmp_path):
+    out = tmp_path / "greet"
+    generate_function("greet", "rust", out, vscode=True, placeholders=RUST_PLACEHOLDERS)
+    assert "rust-lang.rust-analyzer" in (out / ".vscode" / "extensions.json").read_text()
+    assert "greet" in (out / ".vscode" / "launch.json").read_text()
+    assert (out / ".vscode" / "settings.json").exists()
+
+
+@pytest.mark.skipif(shutil.which("cargo") is None, reason="cargo is not installed")
+def test_generated_rust_function_passes_its_own_tests(tmp_path):
+    """Generates into a monorepo-shaped directory whose sdks/rust is the real SDK, then runs
+    the scaffold's own tests. Offline: the lockfile is seeded from the SDK's."""
+    (tmp_path / "settings.gradle").write_text("")
+    (tmp_path / "sdks").mkdir()
+    (tmp_path / "sdks" / "rust").symlink_to(REPO_ROOT / "sdks" / "rust")
+    out = tmp_path / "functions" / "rust" / "greet"
+    generate_function("greet", "rust", out, vscode=False, placeholders=RUST_PLACEHOLDERS)
+    env = {**os.environ, "CARGO_TARGET_DIR": str(REPO_ROOT / "sdks" / "rust" / "target")}
+    result = subprocess.run(
+        ["cargo", "test", "--offline", "--quiet"], cwd=out, env=env, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "2 passed" in result.stdout
+
 # --- generate_function (JavaScript) ---
 
 def test_generate_javascript_creates_sources(tmp_path):
@@ -402,6 +510,7 @@ def test_generate_bash_creates_build_files(tmp_path):
         ("python", PYTHON_PLACEHOLDERS, "handler.py", ("HandlerResponse({\"error\": \"Field 'text' is required and must be non-empty\"}, 422)",)),
         ("go", GO_PLACEHOLDERS, "main.go", ("nanofaas.NewHandlerResponse(map[string]any{\"error\": \"Field 'text' is required and must be non-empty\"}, 422)",)),
         ("javascript", JAVASCRIPT_PLACEHOLDERS, "src/handler.ts", ("new HandlerResponse({ error: \"Field 'text' is required and must be non-empty\" }, 422)",)),
+        ("rust", RUST_PLACEHOLDERS, "src/main.rs", ('HandlerResponse::new(json!({"error": "Field \'text\' is required and must be non-empty"}), 422)',)),
         ("bash", BASH_PLACEHOLDERS, "handler.sh", ("\"__nanofaas_envelope__\":true", "Field '\"'\"'text'\"'\"' is required and must be non-empty", "\"statusCode\":422")),
     ],
 )
@@ -458,3 +567,8 @@ def test_show_next_steps_for_javascript_mentions_npm_commands(capsys):
     assert "npm run build" in captured
     assert "nanofaas invoke greet -d '{\"key\":\"value\"}'" in captured
     assert "@payloads/happy-path.json" not in captured
+
+
+def test_show_next_steps_for_rust_mentions_cargo_test(capsys):
+    wizard.show_next_steps("greet", "rust", Path("/tmp/greet"))
+    assert "cargo test" in capsys.readouterr().out

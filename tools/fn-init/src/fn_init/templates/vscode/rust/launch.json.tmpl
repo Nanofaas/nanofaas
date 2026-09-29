@@ -1,0 +1,13 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "name": "Run {{FUNCTION_NAME}}",
+            "request": "launch",
+            "cargo": {
+                "args": ["build", "--bin={{FUNCTION_NAME}}"]
+            }
+        }
+    ]
+}

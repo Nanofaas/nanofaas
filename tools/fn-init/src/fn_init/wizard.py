@@ -36,7 +36,7 @@ def ask_name() -> str:
 
 
 def ask_lang() -> str:
-    return Prompt.ask("[bold]Language[/]", choices=["java", "python", "go", "javascript", "bash"], default="java")
+    return Prompt.ask("[bold]Language[/]", choices=["java", "python", "go", "javascript", "bash", "rust"], default="java")
 
 
 def ask_out(default: str | None) -> Path | None:
@@ -81,6 +81,10 @@ def show_summary(output_dir: Path, lang: str, vscode: bool) -> None:
         tree.add("package.json")
         tree.add("tsconfig.json")
         tree.add("Dockerfile")
+    elif lang == "rust":
+        tree.add("[dim]src/[/]main.rs")
+        tree.add("Cargo.toml")
+        tree.add("Dockerfile")
     elif lang == "bash":
         tree.add("handler.sh")
         tree.add("[dim]tests/[/]test_handler.sh")
@@ -108,6 +112,7 @@ def show_next_steps(name: str, lang: str, output_dir: Path) -> None:
         "go": "go mod tidy && go test ./...",
         "javascript": "npm install\nnpm test\nnpm run build",
         "bash": "bash tests/test_handler.sh",
+        "rust": "cargo test",
     }[lang]
     console.print(Panel(
         f"[dim]cd[/] {output_dir}\n\n"

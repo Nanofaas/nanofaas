@@ -1,0 +1,19 @@
+name: {{FUNCTION_NAME}}
+image: {{IMAGE_TAG}}
+timeoutMs: 10000
+concurrency: 2
+executionMode: DEPLOYMENT
+
+x-cli:
+  build:
+    context: ../../..
+    dockerfile: functions/rust/{{FUNCTION_NAME}}/Dockerfile
+    platform: linux/amd64
+    push: true
+
+catalog:
+  family: {{FAMILY}}
+  runtime: {{RUNTIME}}
+  description: {{DESCRIPTION}}
+  defaultImage: {{DEFAULT_IMAGE}}
+  defaultPayload: {{DEFAULT_PAYLOAD}}

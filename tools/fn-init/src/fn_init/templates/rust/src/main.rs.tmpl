@@ -1,0 +1,51 @@
+use nanofaas::{BoxError, Context, HandlerResponse, Runtime};
+use serde::Deserialize;
+use serde_json::json;
+
+#[derive(Deserialize)]
+struct Input {
+    #[serde(default)]
+    text: String,
+}
+
+#[tokio::main]
+async fn main() {
+    let stopped = Runtime::from_env()
+        .register("{{FUNCTION_NAME}}", handle)
+        .start()
+        .await;
+    if let Err(error) = stopped {
+        eprintln!("{error}");
+        // Exit now: returning from main would wait for stuck spawn_blocking work.
+        std::process::exit(1);
+    }
+}
+
+async fn handle(_ctx: Context, input: Input) -> Result<HandlerResponse, BoxError> {
+    Ok(respond(input))
+}
+
+fn respond(input: Input) -> HandlerResponse {
+    if input.text.is_empty() {
+        return HandlerResponse::new(json!({"error": "Field 'text' is required and must be non-empty"}), 422);
+    }
+    // TODO: implement handler logic
+    HandlerResponse::new(json!({"result": "ok"}), 200)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn returns_the_result_for_text() {
+        let input = Input { text: "hello".into() };
+        assert_eq!(respond(input), HandlerResponse::new(json!({"result": "ok"}), 200));
+    }
+
+    #[test]
+    fn rejects_empty_text_with_422() {
+        let expected = json!({"error": "Field 'text' is required and must be non-empty"});
+        assert_eq!(respond(Input { text: String::new() }), HandlerResponse::new(expected, 422));
+    }
+}

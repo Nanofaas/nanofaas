@@ -14,14 +14,14 @@ from fn_init import generator, wizard
 app = typer.Typer(add_completion=False, help="Scaffold a new nanofaas function project.")
 console = Console(force_terminal=sys.stdout.isatty())
 DEFAULT_JAVASCRIPT_SDK_VERSION = "0.22.0"
-_RUNTIME = {"java": "java", "python": "python", "go": "go", "javascript": "javascript", "bash": "exec"}
-_RUNTIME_PREFIX = {"java": "java-", "python": "", "go": "go-", "javascript": "javascript-", "bash": "bash-"}
+_RUNTIME = {"java": "java", "python": "python", "go": "go", "javascript": "javascript", "bash": "exec", "rust": "rust"}
+_RUNTIME_PREFIX = {"java": "java-", "python": "", "go": "go-", "javascript": "javascript-", "bash": "bash-", "rust": "rust-"}
 
 
 @app.command()
 def main(
     name: Optional[str] = typer.Argument(None, help="Function name (lowercase, alphanumeric + hyphens)"),
-    lang: str = typer.Option("java", "--lang", help="Language: java, python, go, javascript, or bash"),
+    lang: str = typer.Option("java", "--lang", help="Language: java, python, go, javascript, bash, or rust"),
     out: Optional[Path] = typer.Option(None, "--out", help="Parent output directory"),
     vscode: bool = typer.Option(False, "--vscode", help="Generate VS Code project files"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompts"),
@@ -41,8 +41,8 @@ def main(
         console.print(f"[red]Error:[/] invalid function name {escape(name)!r} — use lowercase letters, digits, and hyphens only")
         raise typer.Exit(1)
 
-    if lang not in ("java", "python", "go", "javascript", "bash"):
-        console.print(f"[red]Error:[/] unsupported language {escape(lang)!r}. Choose java, python, go, javascript, or bash.")
+    if lang not in ("java", "python", "go", "javascript", "bash", "rust"):
+        console.print(f"[red]Error:[/] unsupported language {escape(lang)!r}. Choose java, python, go, javascript, bash, or rust.")
         raise typer.Exit(1)
 
     class_name = generator.to_class_name(name)
