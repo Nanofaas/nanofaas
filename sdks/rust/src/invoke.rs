@@ -1207,35 +1207,49 @@ mod execution_tests {
     }
 
     #[tokio::test]
-    async fn a_burst_above_the_handler_cap_gets_only_ok_or_429_and_drains() {
+    async fn a_burst_above_the_handler_cap_admits_exactly_the_cap_and_drains() {
         let settings = RuntimeSettings {
             max_concurrent_handlers: 4,
             ..settings()
         };
-        let runtime = TestRuntime::start(settings, |rt| {
-            rt.register("slow", |_: Context, input: Value| async move {
-                tokio::time::sleep(Duration::from_millis(20)).await;
-                Ok::<_, BoxError>(input)
+        let (release, released) = tokio::sync::watch::channel(false);
+        let runtime = TestRuntime::start(settings, move |rt| {
+            rt.register("held", move |_: Context, input: Value| {
+                let mut released = released.clone();
+                async move {
+                    let _ = released.wait_for(|open| *open).await;
+                    Ok::<_, BoxError>(input)
+                }
             })
         })
         .await;
         let router = runtime.runtime.router();
-        let burst: Vec<_> = (0..32)
-            .map(|i| {
-                let request = invoke_request(format!(r#"{{"input":{i}}}"#));
-                tokio::spawn(router.clone().oneshot(request))
-            })
-            .collect();
-        let mut succeeded = 0;
-        for request in burst {
-            let response = request.await.unwrap().unwrap();
-            match response.status() {
-                StatusCode::OK => succeeded += 1,
-                StatusCode::TOO_MANY_REQUESTS => {}
-                other => panic!("unexpected status {other}"),
-            }
+        let mut burst = tokio::task::JoinSet::new();
+        for i in 0..32 {
+            burst.spawn(
+                router
+                    .clone()
+                    .oneshot(invoke_request(format!(r#"{{"input":{i}}}"#))),
+            );
         }
-        assert!(succeeded >= 1);
+        // The four admitted handlers hold their slots until released, so every response that
+        // arrives first is a rejection.
+        let rejections = async {
+            for _ in 0..28 {
+                let response = burst.join_next().await.unwrap().unwrap().unwrap();
+                assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+            }
+        };
+        tokio::time::timeout(Duration::from_secs(5), rejections)
+            .await
+            .expect("more than four requests were admitted");
+        release.send_replace(true);
+        let mut succeeded = 0;
+        while let Some(response) = burst.join_next().await {
+            assert_eq!(response.unwrap().unwrap().status(), StatusCode::OK);
+            succeeded += 1;
+        }
+        assert_eq!(succeeded, 4);
         assert_drained(&runtime).await;
     }
 

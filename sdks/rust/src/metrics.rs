@@ -11,7 +11,8 @@ const DEFAULT_BUCKETS: [f64; 11] = [
 
 pub(crate) const CONTENT_TYPE: &str = "application/openmetrics-text; version=1.0.0; charset=utf-8";
 
-/// The Go SDK's runtime metrics, under the same names.
+/// The Go SDK's runtime metrics, under the same names. Help strings carry no final period:
+/// prometheus-client appends one.
 pub(crate) struct Metrics {
     registry: Registry,
     invocations: Family<Vec<(String, String)>, Counter>,
@@ -26,25 +27,25 @@ impl Metrics {
         let invocations = Family::<Vec<(String, String)>, Counter>::default();
         registry.register(
             "nanofaas_runtime_invocations",
-            "Total runtime invocations by status.",
+            "Total runtime invocations by status",
             invocations.clone(),
         );
         let handler_duration = Histogram::new(DEFAULT_BUCKETS);
         registry.register(
             "nanofaas_runtime_handler_duration_seconds",
-            "Handler execution duration.",
+            "Handler execution duration",
             handler_duration.clone(),
         );
         let callback_drops = Counter::default();
         registry.register(
             "nanofaas_runtime_callback_drops",
-            "Callbacks rejected or exhausted before successful delivery.",
+            "Callbacks rejected or exhausted before successful delivery",
             callback_drops.clone(),
         );
         let cold_starts = Counter::default();
         registry.register(
             "nanofaas_runtime_cold_starts",
-            "Total cold starts observed by the runtime.",
+            "Total cold starts observed by the runtime",
             cold_starts.clone(),
         );
         Self {
@@ -94,6 +95,10 @@ mod tests {
         metrics.callback_drop();
         metrics.cold_start();
         let text = metrics.render();
+        assert!(
+            !text.contains(".."),
+            "prometheus-client adds its own period: {text}"
+        );
         assert!(
             text.contains(r#"nanofaas_runtime_invocations_total{status="success"} 1"#),
             "{text}"
