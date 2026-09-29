@@ -7,6 +7,7 @@ mod callback;
 mod context;
 mod dispatcher;
 mod handler;
+mod invoke;
 mod limits;
 mod metrics;
 mod runtime;

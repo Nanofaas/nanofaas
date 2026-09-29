@@ -21,6 +21,7 @@ use crate::callback::CallbackClient;
 use crate::context::Context;
 use crate::dispatcher::Dispatcher;
 use crate::handler::{self, BoxError, ErasedHandler};
+use crate::invoke;
 use crate::limits::Limits;
 use crate::metrics::{self, Metrics};
 use crate::settings::RuntimeSettings;
@@ -229,6 +230,7 @@ impl Runtime {
 
     pub(crate) fn router(&self) -> Router {
         Router::new()
+            .route("/invoke", any(invoke::invoke))
             .route("/health", any(health))
             .route("/metrics", any(render_metrics))
             .layer(DefaultBodyLimit::disable())
