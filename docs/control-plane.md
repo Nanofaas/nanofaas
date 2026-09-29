@@ -520,6 +520,11 @@ Relevant settings under `nanofaas.execution-store`:
 | `max-outcome-bytes` | `0` | Outcome byte budget (capacity eviction); `0` = derived from `max-outcomes` |
 | `max-keys` | `100000` | Key/tombstone budget (refuses new keyed admissions when exhausted) |
 
+When the Actuator `info` endpoint is enabled, `/actuator/info` reports the
+effective `ttl`, `syncTtl`, and `maxLifetime` under `executionStore`. These are
+the normalized values used by the running stores, including the clamp that
+keeps `syncTtl` at or below `ttl`.
+
 ## Build metadata
 
 `GET /modules/build-metadata` (module `build-metadata`, see
