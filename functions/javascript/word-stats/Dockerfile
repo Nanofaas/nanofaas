@@ -1,4 +1,4 @@
-FROM docker.io/library/node:20-alpine AS build
+FROM docker.io/library/node:24-alpine AS build
 WORKDIR /src
 
 COPY sdks/javascript ./sdks/javascript
@@ -16,11 +16,12 @@ RUN npm prune --omit=dev
 # The function's prebuild reinstalls the SDK with its dev dependencies: prune them last.
 RUN npm --prefix /src/sdks/javascript prune --omit=dev
 
-# Only the node binary: npm, yarn and corepack stay in the build stage.
-FROM docker.io/library/alpine:3.22
-RUN apk add --no-cache libstdc++ && \
+# Alpine's nodejs package links system libraries, so it weighs far less than the official
+# binary; icu-data-full keeps Intl identical to it for every locale. npm, yarn and corepack
+# stay in the build stage.
+FROM docker.io/library/alpine:3.23
+RUN apk add --no-cache nodejs icu-data-full && \
     addgroup -g 1000 node && adduser -u 1000 -G node -s /bin/sh -D node
-COPY --from=build /usr/local/bin/node /usr/local/bin/node
 WORKDIR /app
 
 # The SDK's runtime files only: its sources, tests and development dependencies stay behind.

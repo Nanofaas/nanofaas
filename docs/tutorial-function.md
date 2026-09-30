@@ -12,7 +12,7 @@ differ between languages are marked accordingly.
 |---|---|
 | nanofaas CLI (`nanofaas`) | any recent |
 | Java (SDKMAN recommended) | 25 — *Java only* |
-| Node.js + npm | 20 — *JavaScript only* |
+| Node.js + npm | 24 — *JavaScript only* |
 | Go | 1.24 — *Go only* |
 | Rust toolchain (rustup) | 1.85 or newer — *Rust only* |
 | Docker or compatible runtime | any recent |

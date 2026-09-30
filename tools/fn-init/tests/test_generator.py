@@ -471,13 +471,26 @@ def test_generated_rust_function_passes_its_own_tests(tmp_path):
 
 # --- generate_function (JavaScript) ---
 
-def test_generate_javascript_runtime_image_carries_only_the_node_binary(tmp_path):
-    """node:20-alpine as the runtime image also shipped npm, yarn and corepack (~24 MB)."""
+def test_generate_javascript_targets_node_24(tmp_path):
+    """Node 20 left support in April 2026; the scaffold builds, types and declares Node 24 LTS."""
+    out = tmp_path / "greet"
+    generate_function("greet", "javascript", out, vscode=False, placeholders=JAVASCRIPT_PLACEHOLDERS)
+    assert (out / "Dockerfile").read_text().startswith("FROM docker.io/library/node:24-alpine AS build")
+    package = json.loads((out / "package.json").read_text())
+    assert package["engines"]["node"] == ">=24"
+    assert package["devDependencies"]["@types/node"].startswith("^24.")
+
+
+def test_generate_javascript_runtime_image_is_alpine_nodejs_with_full_icu(tmp_path):
+    """node:*-alpine as the runtime image also ships npm, yarn and corepack, and the official
+    Node 24 binary alone is ~128 MB. Alpine's nodejs package links system libraries instead;
+    icu-data-full keeps Intl identical to the official build for every locale."""
     out = tmp_path / "greet"
     generate_function("greet", "javascript", out, vscode=False, placeholders=JAVASCRIPT_PLACEHOLDERS)
     runtime = (out / "Dockerfile").read_text().split("\nFROM ")[-1]
-    assert runtime.startswith("docker.io/library/alpine:3.22")
-    assert "COPY --from=build /usr/local/bin/node /usr/local/bin/node" in runtime
+    assert runtime.startswith("docker.io/library/alpine:3.23")
+    assert "apk add --no-cache nodejs icu-data-full" in runtime
+    assert "/usr/local/bin/node" not in runtime
     assert "USER node" in runtime
 
 

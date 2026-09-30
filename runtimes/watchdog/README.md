@@ -246,7 +246,7 @@ echo "$RESULT" > "$OUTPUT_FILE"
 
 ```dockerfile
 FROM nanofaas/watchdog:latest AS watchdog
-FROM node:20-alpine
+FROM node:24-alpine
 
 COPY --from=watchdog /watchdog /usr/local/bin/watchdog
 COPY handler.js /app/handler.js
