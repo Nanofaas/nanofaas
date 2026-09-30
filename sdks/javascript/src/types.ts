@@ -70,6 +70,11 @@ export type RuntimeOptions = {
     callbackMaxAttempts?: number;
     shutdownTimeoutMs?: number;
     functionHandler?: string;
+    /**
+     * Stop gracefully and exit on SIGTERM or SIGINT (default true). Set it to false when the
+     * runtime is embedded in an application that owns the process signals.
+     */
+    handleSignals?: boolean;
 };
 
 export interface Runtime {

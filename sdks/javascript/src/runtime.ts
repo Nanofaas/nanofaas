@@ -1182,6 +1182,16 @@ export function createRuntime(options: RuntimeOptions = {}): Runtime {
         stopPromise: undefined,
     };
 
+    // Node ignores SIGTERM as a container's PID 1 unless a handler exists, so without one every
+    // stop waited for the orchestrator's timeout and ended in SIGKILL, skipping the drain below.
+    let onSignal: (() => void) | undefined;
+    const removeSignalHandlers = (): void => {
+        if (!onSignal) return;
+        process.off("SIGTERM", onSignal);
+        process.off("SIGINT", onSignal);
+        onSignal = undefined;
+    };
+
     const runtime: Runtime = {
         register(name: string, handler: Handler): Runtime {
             state.handlers.set(name, handler);
@@ -1206,6 +1216,13 @@ export function createRuntime(options: RuntimeOptions = {}): Runtime {
                         throw new Error("Runtime did not bind to a TCP port");
                     }
                     state.port = address.port;
+                    if (options.handleSignals !== false && !onSignal) {
+                        onSignal = () => {
+                            void runtime.stop().finally(() => process.exit(0));
+                        };
+                        process.on("SIGTERM", onSignal);
+                        process.on("SIGINT", onSignal);
+                    }
                 } catch (error) {
                     state.server = undefined;
                     state.port = undefined;
@@ -1222,6 +1239,8 @@ export function createRuntime(options: RuntimeOptions = {}): Runtime {
         },
         async stop(): Promise<void> {
             if (state.stopPromise) return state.stopPromise;
+            // A second signal during the drain then takes the default action (a forced exit).
+            removeSignalHandlers();
             state.stopping = true;
             state.callbackController.abort();
             for (const controller of state.requestControllers) controller.abort();

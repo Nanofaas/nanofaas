@@ -61,6 +61,16 @@ active handler, retained input/output byte, and pending/serialized callback gaug
 has a 132-byte minimum; configuration below either canonical-envelope bound is
 rejected when the runtime is created.
 
+## Stopping
+
+`start()` installs SIGTERM and SIGINT handlers: on either signal the runtime runs `stop()`
+(new invocations get `503 RUNTIME_STOPPING`, running handlers and pending callbacks settle
+within `shutdownTimeoutMs`) and then exits with code 0. Without them, Node as a container's
+PID 1 ignores SIGTERM, so every stop would wait for the orchestrator's timeout and end in
+SIGKILL. `stop()` removes the handlers, and a second signal during the drain takes the default
+action. Pass `handleSignals: false` to `createRuntime` when the runtime is embedded in an
+application that handles process signals itself.
+
 ## Development
 
 ```bash
