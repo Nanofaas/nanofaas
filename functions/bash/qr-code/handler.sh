@@ -13,5 +13,5 @@ size="$(jq -r '.size // 256' <<<"$input")"
 [[ "$(jq -r '(.size // 256) | type' <<<"$input")" == "number" && "$size" =~ ^[0-9]+$ && "$size" -ge 128 && "$size" -le 1024 ]] || { error "field 'size' must be an integer between 128 and 1024"; exit; }
 
 scale=$((size / 32))
-png="$(qrencode -t PNG -s "$scale" -o - -- "$text" | convert png:- -resize "${size}x${size}!" png:- | base64 | tr -d '\n')"
+png="$(qrencode -t PNG -s "$scale" -o - -- "$text" | magick png:- -resize "${size}x${size}!" png:- | base64 | tr -d '\n')"
 jq -n --arg output "$png" '{__nanofaas_envelope__:true,output:$output,statusCode:200,headers:{"Content-Type":"image/png"},encoding:"base64"}'
