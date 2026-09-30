@@ -10,7 +10,11 @@ RUN npm install
 RUN npm run build
 RUN npm prune --omit=dev
 
-FROM docker.io/library/node:20-alpine
+# Only the node binary: npm, yarn and corepack stay in the build stage.
+FROM docker.io/library/alpine:3.22
+RUN apk add --no-cache libstdc++ && \
+    addgroup -g 1000 node && adduser -u 1000 -G node -s /bin/sh -D node
+COPY --from=build /usr/local/bin/node /usr/local/bin/node
 WORKDIR /app
 
 {{DOCKER_FINAL_SDK_COPY}}
@@ -19,4 +23,5 @@ COPY --from=build {{DOCKER_APP_DIR}}/node_modules ./node_modules
 COPY --from=build {{DOCKER_APP_DIR}}/dist ./dist
 
 EXPOSE 8080
+USER node
 CMD ["node", "dist/src/index.js"]

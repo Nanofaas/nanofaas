@@ -471,6 +471,16 @@ def test_generated_rust_function_passes_its_own_tests(tmp_path):
 
 # --- generate_function (JavaScript) ---
 
+def test_generate_javascript_runtime_image_carries_only_the_node_binary(tmp_path):
+    """node:20-alpine as the runtime image also shipped npm, yarn and corepack (~24 MB)."""
+    out = tmp_path / "greet"
+    generate_function("greet", "javascript", out, vscode=False, placeholders=JAVASCRIPT_PLACEHOLDERS)
+    runtime = (out / "Dockerfile").read_text().split("\nFROM ")[-1]
+    assert runtime.startswith("docker.io/library/alpine:3.22")
+    assert "COPY --from=build /usr/local/bin/node /usr/local/bin/node" in runtime
+    assert "USER node" in runtime
+
+
 def test_generate_javascript_creates_sources(tmp_path):
     out = tmp_path / "greet"
     generate_function("greet", "javascript", out, vscode=False, placeholders=JAVASCRIPT_PLACEHOLDERS)
