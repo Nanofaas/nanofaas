@@ -41,7 +41,7 @@ class RepositoryModuleDescriptorsTest {
         assertThat(moduleIds).containsExactlyInAnyOrder(
                 "async-queue", "autoscaler", "build-metadata", "concurrency-control",
                 "container-deployment-provider", "containerd-deployment-provider", "k8s-deployment-provider", "offload",
-                "runtime-config", "sync-queue");
+                "p2p-discovery", "runtime-config", "sync-queue");
 
         for (ModuleDescriptor descriptor : descriptors) {
             java.util.stream.Stream.of(

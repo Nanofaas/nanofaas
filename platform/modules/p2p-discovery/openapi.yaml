@@ -1,0 +1,280 @@
+paths:
+  /v1/admin/p2p/state:
+    get:
+      summary: Read P2P participation state
+      description: Available only when both the P2P module and its admin API are enabled.
+      responses:
+        '200':
+          description: Current runtime participation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/P2pState'
+        '404':
+          description: P2P module or admin API is disabled
+    put:
+      summary: Change P2P participation state
+      description: 'ACTIVE resumes or rejoins. ISOLATED drops all P2P traffic without
+        announcing departure,
+
+        so peers detect failure through SWIM. LEFT announces departure and closes
+        the transport.
+
+        Transitions are idempotent and retain identity, configuration and peer modes.
+
+        HTTP stays available. State is runtime only; restarting follows deployment
+        configuration.
+
+        '
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/P2pState'
+      responses:
+        '200':
+          description: Transition completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/P2pState'
+        '400':
+          description: Invalid state or unexpected fields
+        '404':
+          description: P2P module or admin API is disabled
+        '409':
+          description: Service is unavailable or the transition failed
+  /v1/admin/p2p/peers:
+    get:
+      summary: List the peers known to the p2p-discovery module
+      description: Available only when `nanofaas.p2p.enabled=true` and `nanofaas.p2p.admin.enabled=true`.
+      operationId: listP2pPeers
+      responses:
+        '200':
+          description: Known peers with their latency, coordinates and whether they
+            are active neighbors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/P2pPeer'
+        '404':
+          description: p2p admin API is disabled
+  /v1/admin/p2p/peers/{id}:
+    put:
+      summary: Set how a peer is treated (AUTO, FORCE_ACTIVE, EXCLUDED)
+      description: 'Available only when `nanofaas.p2p.enabled=true` and `nanofaas.p2p.admin.enabled=true`.
+
+        The peer does not need to be known yet. `AUTO` removes a previous runtime
+        mode.
+
+        When a `state-file` is configured, the change is written to it (asynchronously,
+        shortly after the response).
+
+        '
+      operationId: setP2pPeerMode
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/P2pPeerModeRequest'
+      responses:
+        '200':
+          description: Mode applied
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  mode:
+                    $ref: '#/components/schemas/P2pPeerMode'
+        '400':
+          description: Missing or unknown mode
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/P2pError'
+        '404':
+          description: p2p admin API is disabled
+  /v1/admin/p2p/config:
+    get:
+      summary: Get the effective neighbor-selection settings and the runtime overrides
+      description: Available only when `nanofaas.p2p.enabled=true` and `nanofaas.p2p.admin.enabled=true`.
+      operationId: getP2pConfig
+      responses:
+        '200':
+          description: Effective settings and overrides
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/P2pConfigView'
+        '404':
+          description: p2p admin API is disabled
+    patch:
+      summary: Override neighbor-selection settings at runtime
+      description: 'Available only when `nanofaas.p2p.enabled=true` and `nanofaas.p2p.admin.enabled=true`.
+
+        A key set to `null` means "not applied" (for example `maxLatencyMs: null`
+        removes the latency threshold).
+
+        Overrides win over the state file''s `config` section and over `application.yml`,
+        and, when a `state-file` is configured, are written to it (asynchronously,
+        shortly after the response).
+
+        '
+      operationId: patchP2pConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/P2pConfigPatch'
+      responses:
+        '200':
+          description: Settings applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/P2pConfigView'
+        '400':
+          description: Unknown key, or `maxNeighbors` not an integer >= 0, or `maxLatencyMs`
+            not a number > 0
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/P2pError'
+        '404':
+          description: p2p admin API is disabled
+  /v1/admin/p2p/overrides:
+    delete:
+      summary: Drop every runtime override (settings and per-peer modes set through
+        the API)
+      description: Available only when `nanofaas.p2p.enabled=true` and `nanofaas.p2p.admin.enabled=true`.
+      operationId: clearP2pOverrides
+      responses:
+        '200':
+          description: Overrides cleared; the file `config` and `application.yml`
+            apply again
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/P2pConfigView'
+        '404':
+          description: p2p admin API is disabled
+components:
+  schemas:
+    P2pState:
+      type: object
+      additionalProperties: false
+      required:
+      - state
+      properties:
+        state:
+          type: string
+          enum:
+          - ACTIVE
+          - ISOLATED
+          - LEFT
+    P2pPeerMode:
+      type: string
+      enum:
+      - AUTO
+      - FORCE_ACTIVE
+      - EXCLUDED
+    P2pPeerModeRequest:
+      type: object
+      required:
+      - mode
+      properties:
+        mode:
+          $ref: '#/components/schemas/P2pPeerMode'
+    P2pPeer:
+      type: object
+      required:
+      - id
+      - address
+      - mode
+      - active
+      - reason
+      properties:
+        id:
+          type: string
+        address:
+          type: string
+          description: host:port of the peer's cluster transport
+        mode:
+          $ref: '#/components/schemas/P2pPeerMode'
+        rttMs:
+          type: number
+          nullable: true
+          description: Median measured round-trip time; a value restored from the
+            state file is shown until the first fresh measurement
+        coord:
+          type: array
+          items:
+            type: number
+          minItems: 3
+          maxItems: 3
+          description: Vivaldi coordinates of the peer
+        active:
+          type: boolean
+        reason:
+          type: string
+          enum:
+          - selected
+          - forced
+          - excluded
+          - latency
+          - no-measurement
+          - over-max-neighbors
+          - unavailable
+    P2pConfigPatch:
+      type: object
+      description: Only `maxNeighbors` and `maxLatencyMs` are accepted; a key set
+        to null means "not applied".
+      properties:
+        maxNeighbors:
+          type: integer
+          minimum: 0
+          nullable: true
+        maxLatencyMs:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          nullable: true
+    P2pConfigView:
+      type: object
+      required:
+      - effective
+      - overrides
+      properties:
+        effective:
+          type: object
+          properties:
+            maxNeighbors:
+              type: integer
+              nullable: true
+            maxLatencyMs:
+              type: number
+              nullable: true
+        overrides:
+          type: object
+          additionalProperties: true
+    P2pError:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: string

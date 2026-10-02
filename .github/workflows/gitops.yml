@@ -58,6 +58,9 @@ jobs:
       - name: Run Tests
         run: ./gradlew test --continue
 
+      - name: Run P2P Tests
+        run: ./gradlew :control-plane-modules:p2p-discovery:test -PcontrolPlaneModules=all
+
       # The suite above now runs with every optional module loaded, which is what
       # ships. CoreOnlyApiTest asserts the opposite configuration — no-op enqueuer,
       # 501 on :enqueue — and self-skips whenever async-queue is on the classpath,

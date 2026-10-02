@@ -1,0 +1,106 @@
+{
+  "comment": [
+    "scalecube-cluster exchanges its SWIM messages with JDK serialization (Message/Member are Externalizable).",
+    "Types listed are the ones observed by the GraalVM tracing agent running a 3-node cluster (join, ping, gossip, leave).",
+    "The p2p file/state records are bound reflectively by Jackson YAML."
+  ],
+  "reflection": [
+    {
+      "type": "it.unimib.datai.nanofaas.modules.p2pdiscovery.P2pFile",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "it.unimib.datai.nanofaas.modules.p2pdiscovery.P2pFile$Config",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "it.unimib.datai.nanofaas.modules.p2pdiscovery.P2pFile$PeerEntry",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "it.unimib.datai.nanofaas.modules.p2pdiscovery.P2pFile$KnownPeer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "it.unimib.datai.nanofaas.modules.p2pdiscovery.P2pFile$State",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "it.unimib.datai.nanofaas.modules.p2pdiscovery.PeerMode",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "it.unimib.datai.nanofaas.modules.p2pdiscovery.P2pAdminController$PeerView",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "io.scalecube.cluster.Member",
+      "serializable": true
+    },
+    {
+      "type": "io.scalecube.cluster.fdetector.PingData",
+      "serializable": true
+    },
+    {
+      "type": "io.scalecube.cluster.fdetector.PingData$AckType",
+      "serializable": true
+    },
+    {
+      "type": "io.scalecube.cluster.gossip.Gossip",
+      "serializable": true
+    },
+    {
+      "type": "io.scalecube.cluster.gossip.GossipRequest",
+      "serializable": true
+    },
+    {
+      "type": "io.scalecube.cluster.membership.MemberStatus",
+      "serializable": true
+    },
+    {
+      "type": "io.scalecube.cluster.membership.MembershipRecord",
+      "serializable": true
+    },
+    {
+      "type": "io.scalecube.cluster.membership.SyncData",
+      "serializable": true
+    },
+    {
+      "type": "io.scalecube.cluster.metadata.GetMetadataRequest",
+      "serializable": true
+    },
+    {
+      "type": "io.scalecube.cluster.metadata.GetMetadataResponse",
+      "serializable": true
+    },
+    {
+      "type": "io.scalecube.cluster.transport.api.Message",
+      "serializable": true
+    },
+    {
+      "type": "io.scalecube.transport.netty.TransportImpl",
+      "fields": [
+        {
+          "name": "loopResources"
+        },
+        {
+          "name": "connections"
+        }
+      ]
+    }
+  ]
+}
