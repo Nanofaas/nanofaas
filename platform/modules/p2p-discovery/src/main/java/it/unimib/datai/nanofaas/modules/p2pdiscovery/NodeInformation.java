@@ -12,6 +12,7 @@ public record NodeInformation(int schemaVersion, String nodeId, Instant sampledA
 
     public record Category<T>(Status status, Instant collectedAt, String source, String scope,
                               String reasonCode, T data, long ageMillis) {
+        @SuppressWarnings("unchecked")
         public Category {
             if (status == null || ageMillis < 0) throw new IllegalArgumentException("invalid category metadata");
             boolean available = status == Status.AVAILABLE || status == Status.PARTIAL;
@@ -19,6 +20,7 @@ public record NodeInformation(int schemaVersion, String nodeId, Instant sampledA
                 throw new IllegalArgumentException("observations require data and source metadata");
             }
             if (!available && data != null) throw new IllegalArgumentException("unavailable category cannot carry data");
+            if (data instanceof List<?> list) data = (T) List.copyOf(list);
         }
 
         public static <T> Category<T> disabled() {

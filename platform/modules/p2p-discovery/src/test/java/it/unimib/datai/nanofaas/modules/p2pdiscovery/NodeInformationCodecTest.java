@@ -9,6 +9,17 @@ import static org.assertj.core.api.Assertions.*;
 import static it.unimib.datai.nanofaas.modules.p2pdiscovery.NodeInformation.*;
 
 class NodeInformationCodecTest {
+    @Test void boundsCategoryBytesAndRejectsDeepAdditiveFields() {
+        var functions = java.util.stream.IntStream.range(0, 100)
+                .mapToObj(i -> new FunctionInfo("fn" + i, "LOCAL", "x".repeat(4000), null)).toList();
+        assertThat(codec.decode(codec.encode(snapshot(functions)), "a").functions().reasonCode()).isEqualTo("LIMIT_EXCEEDED");
+        String json = new String(codec.encode(snapshot(List.of())), StandardCharsets.UTF_8);
+        String deep = "{\"future\":" + "[".repeat(18) + "0" + "]".repeat(18) + "," + json.substring(1);
+        assertThatThrownBy(() -> codec.decode(deep.getBytes(StandardCharsets.UTF_8), "a"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new ResourceInfo(Double.NaN, null, null, null, null, null, List.of()))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
     private final NodeInformationCodec codec = new NodeInformationCodec();
 
     static NodeInformation snapshot(List<FunctionInfo> functions) {

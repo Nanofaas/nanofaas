@@ -65,6 +65,16 @@ public class P2pAdminController {
                 .toList());
     }
 
+    @GetMapping("/information")
+    public ResponseEntity<NodeInformation> information() {
+        return ResponseEntity.ok(service.localInformation());
+    }
+
+    @GetMapping("/peers/{id}/information")
+    public ResponseEntity<NodeInformationExchange.RemoteInformation> peerInformation(@PathVariable("id") String id) {
+        return service.peerInformation(id).map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
     @PutMapping("/peers/{id}")
     public ResponseEntity<Object> putPeer(@PathVariable("id") String id, @RequestBody Map<String, Object> body) {
         PeerMode mode;
@@ -91,6 +101,7 @@ public class P2pAdminController {
             return ResponseEntity.badRequest().body(Map.of(ERROR_KEY, e.getMessage()));
         }
         table.recompute();
+        service.informationSettingsChanged();
         service.requestPersist();
         return ResponseEntity.ok(view());
     }
@@ -99,6 +110,7 @@ public class P2pAdminController {
     public ResponseEntity<Object> deleteOverrides() {
         settings.clearOverrides();
         table.loadApiModes(Map.of());
+        service.informationSettingsChanged();
         service.requestPersist();
         return ResponseEntity.ok(view());
     }

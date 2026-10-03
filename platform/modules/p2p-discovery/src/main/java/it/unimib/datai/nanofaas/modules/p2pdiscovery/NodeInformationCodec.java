@@ -44,7 +44,7 @@ public final class NodeInformationCodec {
         }
     }
 
-    private <T> Category<T> bounded(Category<T> category) {
+    <T> Category<T> bounded(Category<T> category) {
         try {
             validate(category);
             return category;
@@ -57,7 +57,7 @@ public final class NodeInformationCodec {
         if (category == null || count(category.data()) > MAX_ENTRIES) {
             throw new IllegalArgumentException("invalid category or entry limit exceeded");
         }
-        write(category, CATEGORY_BYTES);
+        mapper.readTree(write(category, CATEGORY_BYTES));
     }
 
     private static int count(Object data) {
