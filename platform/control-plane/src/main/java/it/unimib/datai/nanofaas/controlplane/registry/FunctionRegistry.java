@@ -88,11 +88,12 @@ public class FunctionRegistry implements FunctionCatalogView {
 
     synchronized RegisteredFunction detach(String name) {
         RegistrySnapshot currentSnapshot = functions;
-        Map<String, RegisteredFunction> next = new HashMap<>(currentSnapshot.recovery());
-        RegisteredFunction detached = next.remove(name);
+        RegisteredFunction detached = currentSnapshot.recovery().get(name);
         Map<String, RegisteredFunction> publicNext = new HashMap<>(currentSnapshot.publicView());
         publicNext.remove(name);
-        functions = snapshot(next, publicNext);
+        // Hide ongoing teardown from callers, but keep its recovery record until the
+        // named durable delete commits. Unrelated mutations save this same recovery map.
+        functions = snapshot(currentSnapshot.recovery(), publicNext);
         return detached;
     }
 

@@ -41,12 +41,31 @@ spec:
                 exit 1
               fi
 
+              response_file=$(mktemp)
+              trap 'rm -f "$response_file"' EXIT
               echo "Registering demo functions..."
               {{- range $f := .Values.demos.functions }}
               echo "  - {{ $f.name }}"
-              curl -fsS -X POST "${CP_API}/v1/functions" \
+              status=$(curl -sS -o "$response_file" -w '%{http_code}' -X POST "${CP_API}/v1/functions" \
                 -H 'Content-Type: application/json' \
-                -d '{{- toJson $f -}}' >/dev/null
+                --data-binary @- <<'NANOFAAS_DEMO_SPEC'
+              {{ toJson $f }}
+              NANOFAAS_DEMO_SPEC
+              )
+              case "$status" in
+                2??) ;;
+                409)
+                  # Preserve existing demos, including user edits. Confirm that this
+                  # conflict refers to a readable function, rather than swallowing it.
+                  curl -fsS "${CP_API}/v1/functions/{{ $f.name }}" >/dev/null
+                  echo "    already registered; preserving existing function"
+                  ;;
+                *)
+                  echo "Demo {{ $f.name }} registration failed: HTTP $status" >&2
+                  cat "$response_file" >&2
+                  exit 1
+                  ;;
+              esac
               {{- end }}
 
               echo "Done"

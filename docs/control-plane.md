@@ -548,6 +548,15 @@ startup.
 
 ## Persistent function catalog
 
+Removal hides a function from public lookup while teardown runs, but retains its
+recovery record until that function's durable deletion commits. A concurrent
+registration, update or removal of another function cannot save a snapshot that
+prematurely drops it. A failed catalog save leaves the recovery record intact;
+rollback restores public availability only when the backend can be reconciled.
+A crash before the final delete commit can therefore cause restoration of the
+old desired deployment on restart, even if teardown had already completed.
+
+
 The control plane persists its function catalog to a JSON file and restores
 it at startup. The path is configured with `nanofaas.registry.path`
 (environment variable `NANOFAAS_REGISTRY_PATH`); the default is

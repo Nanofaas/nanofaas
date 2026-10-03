@@ -478,10 +478,12 @@ async fn run_stdio_warm(
     execution_id: &str,
     trace_id: Option<&str>,
 ) -> Result<serde_json::Value, String> {
+    let deadline = Instant::now() + Duration::from_millis(config.timeout_ms);
     if config.command.is_empty() {
         return Err("No command specified".to_string());
     }
-
+    let payload_str = serde_json::to_string(payload)
+        .map_err(|e| format!("Failed to serialize payload: {e}"))?;
     let (program, args) = config.command.split_first().unwrap();
     info!(command = %program, mode = "STDIO", "Running function");
 
@@ -493,58 +495,43 @@ async fn run_stdio_warm(
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
         .process_group(0);
-    let mut child = command
-        .spawn()
-        .map_err(|e| format!("Failed to spawn process: {}", e))?;
+    let mut child = command.spawn().map_err(|e| format!("Failed to spawn process: {e}"))?;
+    // Child::id becomes None after wait completes. Descendants may still hold pipes,
+    // so retain the group id until the entire exchange has finished.
+    let process_group = Pid::from_raw(child.id().unwrap() as i32);
+    let mut stdin = child.stdin.take().ok_or("Failed to capture process stdin")?;
+    let stdout = child.stdout.take().ok_or("Failed to capture process stdout")?;
+    let stderr = child.stderr.take().ok_or("Failed to capture process stderr")?;
 
-    // Write payload to stdin
-    let payload_str = serde_json::to_string(payload)
-        .map_err(|e| format!("Failed to serialize payload: {}", e))?;
-
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(payload_str.as_bytes()).await
-            .map_err(|e| format!("Failed to write to stdin: {}", e))?;
-        // Close stdin to signal EOF
-        drop(stdin);
-    }
-
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| "Failed to capture process stdout".to_string())?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| "Failed to capture process stderr".to_string())?;
-    let stdout_reader = tokio::spawn(read_pipe(stdout));
-    let stderr_reader = tokio::spawn(read_pipe(stderr));
-
-    let status = match timeout(Duration::from_millis(config.timeout_ms), child.wait()).await {
-        Ok(status) => status.map_err(|e| format!("Process error: {e}"))?,
-        Err(_) => {
-            terminate_process_group(&mut child).await;
-            let _ = stdout_reader.await;
-            let _ = stderr_reader.await;
-            return Err("Process timed out".to_string());
+    let exchange = async {
+        let write_input = async {
+            stdin.write_all(payload_str.as_bytes()).await
+                .map_err(|e| format!("Failed to write to stdin: {e}"))?;
+            drop(stdin); // EOF lets a child reading the whole request proceed.
+            Ok::<(), String>(())
+        };
+        let wait = async { child.wait().await.map_err(|e| format!("Process error: {e}")) };
+        tokio::try_join!(write_input, wait, read_pipe(stdout), read_pipe(stderr))
+    };
+    // No spawned I/O tasks: dropping the timed-out exchange closes all pipes.
+    let (_, status, stdout, stderr) = match tokio::time::timeout_at(deadline, exchange).await {
+        Ok(Ok(output)) => output,
+        failure => {
+            let _ = signal::killpg(process_group, Signal::SIGKILL);
+            let _ = child.wait().await;
+            return Err(match failure {
+                Ok(Err(error)) => error,
+                Err(_) => "Process timed out".to_string(),
+                Ok(Ok(_)) => unreachable!(),
+            });
         }
     };
-    let stdout = stdout_reader
-        .await
-        .map_err(|e| format!("Failed to join stdout reader: {e}"))??;
-    let stderr = stderr_reader
-        .await
-        .map_err(|e| format!("Failed to join stderr reader: {e}"))??;
 
     if !status.success() {
-        return Err(format!(
-            "Process exited with {}: {}",
-            status,
-            String::from_utf8_lossy(&stderr)
-        ));
+        return Err(format!("Process exited with {}: {}", status, String::from_utf8_lossy(&stderr)));
     }
-
-    // Parse stdout as JSON
     let stdout = String::from_utf8_lossy(&stdout);
     serde_json::from_str(&stdout).map_err(|e| format!("Invalid JSON output: {} (raw: {})", e, stdout.trim()))
 }
@@ -1323,6 +1310,122 @@ mod tests {
         )
         .await
         .into_response()
+    }
+
+    fn stdio_deadline_config(script: &str) -> Config {
+        let mut config = stdio_config(serde_json::Value::Null);
+        config.timeout_ms = 200;
+        config.command = vec!["python3".into(), "-c".into(), script.into()];
+        config
+    }
+
+    async fn assert_stdio_deadline_in_both_modes(script: &str, payload: serde_json::Value) {
+        let config = stdio_deadline_config(script);
+        let start = Instant::now();
+        let result = execute_stdio_mode(&config, &payload).await;
+        assert!(start.elapsed() < Duration::from_millis(700), "one-shot deadline excluded I/O");
+        assert!(!result.success);
+        assert_eq!(result.error.unwrap().code, "TIMEOUT");
+
+        let state = WarmAppState {
+            config: Arc::new(config),
+            invoke_lock: Arc::new(Mutex::new(())),
+            metrics: Arc::new(WatchdogMetrics::new()),
+            function_name: "deadline".into(),
+        };
+        let mut headers = HeaderMap::new();
+        headers.insert("x-execution-id", "blocked".parse().unwrap());
+        let start = Instant::now();
+        let response = warm_invoke(State(state.clone()), headers, Json(payload)).await;
+        assert!(start.elapsed() < Duration::from_millis(700), "warm deadline excluded I/O");
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        assert!(String::from_utf8_lossy(&body).contains("Process timed out"));
+        assert!(state.invoke_lock.try_lock().is_ok(), "timeout retained warm invocation lock");
+
+        let mut headers = HeaderMap::new();
+        headers.insert("x-execution-id", "next".parse().unwrap());
+        let response = warm_invoke(State(state), headers, Json(serde_json::json!({"input":"ok"}))).await;
+        assert_eq!(response.status(), StatusCode::OK, "next warm invocation did not recover");
+    }
+
+    #[tokio::test]
+    async fn stdio_deadline_includes_blocked_stdin_in_both_modes() {
+        assert_stdio_deadline_in_both_modes(
+            r#"import os,sys,time
+if os.environ.get("EXECUTION_ID") == "next":
+    sys.stdin.read()
+    print("null")
+else:
+    time.sleep(1)
+    print("null")
+"#,
+            serde_json::json!({"input": "x".repeat(1_000_000)}),
+        ).await;
+    }
+
+    #[tokio::test]
+    async fn stdio_drains_output_before_child_reads_input_in_both_modes() {
+        let config = stdio_deadline_config(
+            "import sys,json,signal; signal.alarm(2); sys.stdout.write(json.dumps('x'*262144)); sys.stdout.flush(); sys.stderr.write('e'*262144); sys.stderr.flush(); sys.stdin.read()",
+        );
+        let payload = serde_json::json!({"input": "x".repeat(1_000_000)});
+        let result = execute_stdio_mode(&config, &payload).await;
+        assert!(result.success, "one-shot pipe deadlock: {:?}", result.error);
+        assert_eq!(result.output.unwrap().as_str().unwrap().len(), 262144);
+
+        let state = WarmAppState {
+            config: Arc::new(config),
+            invoke_lock: Arc::new(Mutex::new(())),
+            metrics: Arc::new(WatchdogMetrics::new()),
+            function_name: "pipes".into(),
+        };
+        let mut headers = HeaderMap::new();
+        headers.insert("x-execution-id", "pipes".parse().unwrap());
+        assert_eq!(warm_invoke(State(state), headers, Json(payload)).await.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn stdio_deadline_includes_readers_after_leader_exits_in_both_modes() {
+        assert_stdio_deadline_in_both_modes(
+            r#"import os,sys,subprocess
+sys.stdin.read()
+if os.environ.get("EXECUTION_ID") != "next":
+    subprocess.Popen([sys.executable,"-c","import signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); time.sleep(1)"])
+print("null")
+"#,
+            serde_json::json!({"input":"small"}),
+        ).await;
+    }
+
+    #[tokio::test]
+    async fn stdio_timeout_kills_descendant_after_leader_exits() {
+        let pid_file = std::env::temp_dir().join(format!("nanofaas-watchdog-descendant-{}.pid", std::process::id()));
+        let mut config = stdio_deadline_config(r#"import sys,subprocess
+sys.stdin.read()
+child = subprocess.Popen([sys.executable,"-c","import signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); time.sleep(2)"])
+with open(sys.argv[1], "w") as f:
+    f.write(str(child.pid))
+print("null")
+"#);
+        config.command.push(pid_file.to_string_lossy().into_owned());
+        let result = execute_stdio_mode(&config, &serde_json::Value::Null).await;
+        let pid = fs::read_to_string(&pid_file).await.unwrap().parse::<i32>().unwrap();
+        let _ = fs::remove_file(&pid_file).await;
+        let mut running = true;
+        for _ in 0..20 {
+            let status = std::process::Command::new("ps")
+                .args(["-o", "stat=", "-p", &pid.to_string()]).output().unwrap();
+            let state = String::from_utf8_lossy(&status.stdout);
+            if state.trim().is_empty() || state.trim().starts_with('Z') {
+                running = false;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        let _ = signal::kill(Pid::from_raw(pid), Signal::SIGKILL); // clean up even when assertion fails
+        assert_eq!(result.error.unwrap().code, "TIMEOUT");
+        assert!(!running, "timed-out descendant survived after its leader was reaped");
     }
 
     async fn spawn_stub_runtime(status: StatusCode, envelope: bool) -> String {
