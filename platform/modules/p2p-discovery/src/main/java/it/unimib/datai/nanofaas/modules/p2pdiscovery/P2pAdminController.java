@@ -108,6 +108,10 @@ public class P2pAdminController {
         Map<String, Object> effective = new HashMap<>();
         effective.put("maxNeighbors", e.maxNeighbors());
         effective.put("maxLatencyMs", e.maxLatencyMs());
+        P2pSettings.Sharing sharing = settings.sharing();
+        effective.put("shareFunctions", sharing.functions());
+        effective.put("shareImages", sharing.images());
+        effective.put("shareResources", sharing.resources());
         return Map.of("effective", effective, "overrides", settings.overrides());
     }
 }

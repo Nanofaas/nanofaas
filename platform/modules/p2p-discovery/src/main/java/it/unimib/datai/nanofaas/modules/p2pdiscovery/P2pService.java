@@ -210,6 +210,10 @@ public class P2pService implements SmartLifecycle {
     /** Precedence: state overrides > file config > application.yml. */
     private void applyFileConfig(P2pFile file) {
         var fc = file.config();
+        settings.setBaseSharing(new P2pSettings.Sharing(
+                fc.shareFunctions() == null ? props.shareFunctions() : fc.shareFunctions(),
+                fc.shareImages() == null ? props.shareImages() : fc.shareImages(),
+                fc.shareResources() == null ? props.shareResources() : fc.shareResources()));
         try {
             settings.setBase(fc.maxNeighbors() != null ? fc.maxNeighbors() : props.maxNeighbors(),
                     fc.maxLatencyMs() != null ? fc.maxLatencyMs() : props.maxLatencyMs());

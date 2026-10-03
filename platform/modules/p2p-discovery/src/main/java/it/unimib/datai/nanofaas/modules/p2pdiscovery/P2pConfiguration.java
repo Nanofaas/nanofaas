@@ -12,7 +12,8 @@ public class P2pConfiguration {
 
     @Bean
     P2pSettings p2pSettings(P2pProperties props) {
-        return new P2pSettings(props.maxNeighbors(), props.maxLatencyMs());
+        return new P2pSettings(props.maxNeighbors(), props.maxLatencyMs(),
+                new P2pSettings.Sharing(props.shareFunctions(), props.shareImages(), props.shareResources()));
     }
 
     @Bean
