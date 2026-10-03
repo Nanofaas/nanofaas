@@ -17,6 +17,12 @@ import org.springframework.context.annotation.Bean;
 @EnableConfigurationProperties(ContainerdProperties.class)
 public class ContainerdDeploymentProviderConfiguration {
 
+    @Bean
+    it.unimib.datai.nanofaas.controlplane.deployment.ImageInventorySource containerdImageInventorySource(
+            ContainerdClient client) {
+        return new ContainerdImageInventorySource(client);
+    }
+
     @Bean(destroyMethod = "close")
     @ConditionalOnMissingBean(ContainerdClient.class)
     ContainerdClient containerdClient(ContainerdProperties properties) {

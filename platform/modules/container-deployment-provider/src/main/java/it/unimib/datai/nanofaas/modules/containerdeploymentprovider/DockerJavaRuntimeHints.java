@@ -22,6 +22,7 @@ import org.springframework.aot.hint.RuntimeHintsRegistrar;
 final class DockerJavaRuntimeHints implements RuntimeHintsRegistrar {
 
     private static final Class<?>[] JACKSON_TYPES = {
+            com.github.dockerjava.api.model.Image.class,
             CreateContainerCmdImpl.class,
             CreateContainerResponse.class,
             HostConfig.class,

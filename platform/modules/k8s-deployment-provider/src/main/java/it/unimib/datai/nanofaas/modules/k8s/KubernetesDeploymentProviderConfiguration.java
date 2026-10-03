@@ -9,4 +9,9 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 @ComponentScan(basePackageClasses = KubernetesDeploymentProviderConfiguration.class)
 @EnableConfigurationProperties(KubernetesProperties.class)
 public class KubernetesDeploymentProviderConfiguration {
+    @org.springframework.context.annotation.Bean
+    it.unimib.datai.nanofaas.controlplane.deployment.ImageInventorySource kubernetesImageInventorySource(
+            io.fabric8.kubernetes.client.KubernetesClient client) {
+        return new KubernetesImageInventorySource(client);
+    }
 }
