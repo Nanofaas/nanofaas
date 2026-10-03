@@ -2,7 +2,7 @@
 
 Date: 2026-10-03
 
-Status: proposed specification, awaiting review. The user approved use of the existing P2P messaging transport; implementation has not started.
+Status: approved by the user on 2026-10-03. Implementation has not started.
 
 Base: `origin/main` at `ef856960e99a6c56b93be6a978965535f7a3eba7`, which includes P2P discovery and runtime participation controls. The original local `main` was behind this revision. Work takes place in the attached `p2p-node-information` worktree.
 
@@ -12,7 +12,7 @@ Each NanoFaaS instance must exchange its actual registered functions, available 
 
 The agreed transport is `PeerMessaging`. This design uses periodic request/response exchanges on that transport: each node polls its active neighbors, and each responder returns its current local snapshot. This gives bounded refresh and direct attribution without introducing another HTTP transport or placing inventories in SWIM membership metadata. Periodic broadcasts would also work, but require additional ordering and restart bookkeeping; embedding inventories in discovery would couple application data size to membership traffic.
 
-The following interpretations are proposed for review:
+The approved interpretations are:
 
 - Images means images actually present in the configured deployment runtime, including cached images not currently used by a registered function. A registry reference in a function definition is not proof of local availability.
 - Resources means measured CPU/memory for the environment visible to NanoFaaS and the existing NanoFaaS workload measurements. CPU/memory per function container is outside this first extension.
@@ -49,7 +49,7 @@ Publish resource values with units, source and scope. Use existing Micrometer CP
 
 Use `WorkloadMetricsSource` for per-function in-flight count, effective concurrency, queue depth and dispatchable backlog, preserving its current definitions. In particular, engine queue depth counts reservations, not strictly only waiting requests. Collection may read function names internally when function publication is disabled; the functions category remains unpublished. Resource publication itself includes per-function names alongside workload measurements.
 
-Only the visible environment and local NanoFaaS workload are covered. This feature does not introduce Kubernetes Metrics Server, Prometheus scraping, a per-container statistics loop or host agents. A deployment whose control plane cannot observe execution-host CPU/RAM must expose that limitation rather than claiming to measure that host. This boundary is a review point for the intended experiments.
+Only the visible environment and local NanoFaaS workload are covered. This feature does not introduce Kubernetes Metrics Server, Prometheus scraping, a per-container statistics loop or host agents. A deployment whose control plane cannot observe execution-host CPU/RAM must expose that limitation rather than claiming to measure that host.
 
 ## Snapshot contract
 
