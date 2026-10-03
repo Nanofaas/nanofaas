@@ -28,6 +28,12 @@ spec:
             - containerPort: 8080
             - containerPort: 8081
           env:
+            - name: NANOFAAS_P2P_SHAREFUNCTIONS
+              value: "false"
+            - name: NANOFAAS_P2P_SHAREIMAGES
+              value: "false"
+            - name: NANOFAAS_P2P_SHARERESOURCES
+              value: "false"
             - name: POD_NAMESPACE
               valueFrom:
                 fieldRef:

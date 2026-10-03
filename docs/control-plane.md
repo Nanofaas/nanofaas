@@ -1,5 +1,13 @@
 # Control-plane operation
 
+The optional `p2p-discovery` module exchanges registered functions, backend image
+inventories and scoped resource observations with direct active neighbors.
+Its three sharing flags are independently mutable through `PATCH /v1/admin/p2p/config`;
+inspection is available at `/v1/admin/p2p/information` and
+`/v1/admin/p2p/peers/{id}/information` when both P2P and its admin API are enabled.
+See [the module guide](../platform/modules/p2p-discovery/README.md#node-information)
+for defaults, freshness, units, deployment variables and optional Kubernetes node-inventory RBAC.
+
 The Java control plane is built directly with Gradle. Kubernetes deployments
 use Helm:
 

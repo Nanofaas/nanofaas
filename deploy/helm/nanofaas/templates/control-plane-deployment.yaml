@@ -35,6 +35,12 @@ spec:
             - containerPort: {{ .Values.controlPlane.service.ports.http }}
             - containerPort: {{ .Values.controlPlane.service.ports.actuator }}
           env:
+            - name: NANOFAAS_P2P_SHAREFUNCTIONS
+              value: {{ .Values.controlPlane.p2p.shareFunctions | quote }}
+            - name: NANOFAAS_P2P_SHAREIMAGES
+              value: {{ .Values.controlPlane.p2p.shareImages | quote }}
+            - name: NANOFAAS_P2P_SHARERESOURCES
+              value: {{ .Values.controlPlane.p2p.shareResources | quote }}
             - name: POD_NAMESPACE
               valueFrom:
                 fieldRef:

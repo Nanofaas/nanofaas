@@ -2,9 +2,25 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
+    "rbac": {
+      "type": "object",
+      "properties": {
+        "create": {"type": "boolean"},
+        "nodeImageInventory": {"type": "boolean", "default": false}
+      }
+    },
     "controlPlane": {
       "type": "object",
       "properties": {
+        "p2p": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "shareFunctions": {"type": "boolean", "default": false},
+            "shareImages": {"type": "boolean", "default": false},
+            "shareResources": {"type": "boolean", "default": false}
+          }
+        },
         "invocationCapacity": {
           "type": "object",
           "additionalProperties": false,

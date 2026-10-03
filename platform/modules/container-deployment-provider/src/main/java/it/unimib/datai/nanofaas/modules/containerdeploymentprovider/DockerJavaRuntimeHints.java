@@ -22,6 +22,8 @@ import org.springframework.aot.hint.RuntimeHintsRegistrar;
 final class DockerJavaRuntimeHints implements RuntimeHintsRegistrar {
 
     private static final Class<?>[] JACKSON_TYPES = {
+            com.github.dockerjava.core.DockerConfigFile.class,
+            com.github.dockerjava.api.model.AuthConfig.class,
             com.github.dockerjava.api.model.Image.class,
             CreateContainerCmdImpl.class,
             CreateContainerResponse.class,
@@ -47,6 +49,9 @@ final class DockerJavaRuntimeHints implements RuntimeHintsRegistrar {
 
     @Override
     public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
+        // Jackson binds the package-private currentContext setter when an existing config file is present.
+        hints.reflection().registerType(com.github.dockerjava.core.DockerConfigFile.class,
+                MemberCategory.INVOKE_DECLARED_METHODS);
         for (Class<?> type : JACKSON_TYPES) {
             hints.reflection().registerType(
                     type,
