@@ -1,6 +1,6 @@
 # Issue #237 verification
 
-Verified on 2026-10-03 against implementation commit `b659ae15d99866c9ba53beca447afda8e63a2159`, based on `ef856960e99a6c56b93be6a978965535f7a3eba7`. Subsequent changes to this report and the completed plan are documentation only.
+Verified on 2026-10-03 against implementation commit `b659ae15d99866c9ba53beca447afda8e63a2159`, based on `ef856960e99a6c56b93be6a978965535f7a3eba7`. This records the original, pre-rebase verification. Post-rebase verification is recorded below.
 
 All six findings in [issue #237](https://github.com/miciav/nanofaas/issues/237) have regression coverage and passing acceptance checks. The original checkout and its existing local changes were preserved; implementation is on `codex/issue-237` in a managed worktree.
 
@@ -58,3 +58,18 @@ The VM and all its cluster/image resources were removed after verification. Nano
 GitNexus upstream impact was checked before symbol edits. FunctionRegistry had CRITICAL shared impact, and run_stdio_warm had HIGH impact; both were reported before editing and their dependent paths were tested. Duplicate `applyEnvelope` symbols and chart filenames required file-specific context plus source inspection because name-only impact resolution was ambiguous. Pre-commit change detection covered the expected 19 files and reported medium overall risk, with no partial/truncated result. The index was refreshed after the implementation commit without changing generated project instructions.
 
 A fresh-context independent reviewer inspected the complete branch diff, plan, tests and concurrency/failure boundaries. Verdict: approved, with no actionable Critical, Important or Minor findings. Its outstanding request for live B4/B5 acceptance evidence is fulfilled above. No review findings are deferred.
+
+## Integration refresh after PR #241
+
+Rebased the two issue commits onto `origin/main` at `0628bf8d` (PR #241). The implementation commit is now `8f750729`. The only conflict was the Helm Deployment env block: all three new P2P sharing variables were retained alongside the two listening-port variables. Range-diff confirms unchanged Java, Go and Rust issue patches; other differences are surrounding chart context.
+
+Post-rebase results:
+
+- Full Java platform/provider/SDK/function/service/CLI suite: **2,355 passed, 6 skipped**, no failures/errors, with `./gradlew test -x :gradle-plugin:test -PcontainerdMavenLocal=true -Dmaven.repo.local=/private/tmp/nanofaas-p2p-m2 --console=plain`. The skips are the six composition-specific cases listed above. This includes all 138 P2P tests and the provider image-inventory tests introduced by PR #241.
+- Full Gradle plugin suite: **231 passed, no skips** in an isolated Linux Java 25 container with git installed. The container used unchanged plugin sources, Gradle 9.7.1 and the real module descriptors/build files. Initial macOS execution had 19 failures in native-image and publication fixtures: native images require Linux, and their shell stubs invoke `sha256sum`, absent on this macOS host. Linux verification resolves those host restrictions without source edits.
+- Python scripts/scaffolder: **163 passed**; Helm lint passed.
+- Additional rendered Deployment check enabled all three P2P sharing flags with ports 18080/18081 and asserted all five env values plus Recreate coexist.
+
+The containerd provider uses the temporary local Maven repository already built and documented by PR #241. Initial offline attempts stopped on its uncached artifact and a missing Spring test jar; the final successful command uses the existing local repository and permits downloading the missing public test dependency. No containerd daemon was exercised.
+
+The original live Kubernetes checks preceded this rebase. They were not repeated after adding upstream P2P changes; the merged chart configuration and new P2P code were verified by rendering and the suites above. The isolated Linux plugin container was removed after completion. No production source changes were needed beyond retaining both env blocks in the conflict resolution.
