@@ -28,6 +28,10 @@ import java.util.Map;
 final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter, AutoCloseable {
 
     private final DockerClient client;
+
+    it.unimib.datai.nanofaas.controlplane.deployment.ImageInventorySource imageInventorySource() {
+        return new DockerImageInventorySource(client);
+    }
     private final String networkName;
     private final String cpuset;
     private final String bindHost;

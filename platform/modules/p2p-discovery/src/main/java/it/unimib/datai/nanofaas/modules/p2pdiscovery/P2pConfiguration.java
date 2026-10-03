@@ -12,7 +12,8 @@ public class P2pConfiguration {
 
     @Bean
     P2pSettings p2pSettings(P2pProperties props) {
-        return new P2pSettings(props.maxNeighbors(), props.maxLatencyMs());
+        return new P2pSettings(props.maxNeighbors(), props.maxLatencyMs(),
+                new P2pSettings.Sharing(props.shareFunctions(), props.shareImages(), props.shareResources()));
     }
 
     @Bean
@@ -22,8 +23,14 @@ public class P2pConfiguration {
 
     @Bean
     P2pService p2pService(P2pProperties props, PeerTable table, P2pSettings settings,
-                          ObjectProvider<MeterRegistry> meters) {
-        return new P2pService(props, table, settings, meters.getIfAvailable(io.micrometer.core.instrument.simple.SimpleMeterRegistry::new));
+                          ObjectProvider<MeterRegistry> meters,
+                          ObjectProvider<it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogView> catalog,
+                          ObjectProvider<it.unimib.datai.nanofaas.workloadmetrics.WorkloadMetricsSource> workloads,
+                          ObjectProvider<it.unimib.datai.nanofaas.controlplane.deployment.ImageInventorySource> images) {
+        MeterRegistry registry = meters.getIfAvailable(io.micrometer.core.instrument.simple.SimpleMeterRegistry::new);
+        var collector = new NodeInformationCollector(catalog.getIfAvailable(), workloads.getIfAvailable(),
+                images.getIfAvailable(), registry, java.time.Clock.systemUTC(), NodeInformationCollector::visibleMemory);
+        return new P2pService(props, table, settings, registry, collector);
     }
 
     @Bean

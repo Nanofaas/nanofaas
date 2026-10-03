@@ -13,7 +13,11 @@ public record P2pFile(Config config, State state) {
 
     public record PeerEntry(String id, PeerMode mode) {}
 
-    public record Config(List<String> seeds, Integer maxNeighbors, Double maxLatencyMs, List<PeerEntry> peers) {
+    public record Config(List<String> seeds, Integer maxNeighbors, Double maxLatencyMs, List<PeerEntry> peers,
+                         Boolean shareFunctions, Boolean shareImages, Boolean shareResources) {
+        public Config(List<String> seeds, Integer maxNeighbors, Double maxLatencyMs, List<PeerEntry> peers) {
+            this(seeds, maxNeighbors, maxLatencyMs, peers, null, null, null);
+        }
         public Config {
             seeds = seeds == null ? List.of() : List.copyOf(seeds);
             peers = peers == null ? List.of() : List.copyOf(peers);

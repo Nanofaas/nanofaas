@@ -26,12 +26,14 @@ public final class PeerTable {
         Double hintMs;
         Coord coord = new Coord(0, 0, 0);
         boolean active;
+        long generation;
         String reason = "new";
     }
 
     private final Supplier<NeighborSelector.Settings> settings;
     private final NeighborSelector selector = new NeighborSelector();
     private boolean available = true;
+    private long nextGeneration;
     private final Map<String, State> peers = new LinkedHashMap<>();
     private final Map<String, PeerMode> operatorModes = new HashMap<>();
     private final Map<String, PeerMode> apiModes = new HashMap<>();
@@ -41,7 +43,9 @@ public final class PeerTable {
     }
 
     public synchronized void upsert(String id, String address) {
-        peers.computeIfAbsent(id, k -> new State()).address = address;
+        State s = peers.computeIfAbsent(id, k -> new State());
+        if (!java.util.Objects.equals(s.address, address)) s.generation = ++nextGeneration;
+        s.address = address;
         recompute();
     }
 
@@ -68,6 +72,7 @@ public final class PeerTable {
 
     public synchronized void restore(String id, String address, Double rttHintMs, Coord coord) {
         State s = peers.computeIfAbsent(id, k -> new State());
+        if (!java.util.Objects.equals(s.address, address)) s.generation = ++nextGeneration;
         s.address = address;
         s.hintMs = rttHintMs;
         s.coord = coord;
@@ -114,6 +119,12 @@ public final class PeerTable {
         return s != null && s.active;
     }
 
+    /** Changes on address or participation transitions, including exclusion followed by reactivation. */
+    public synchronized long activationGeneration(String id) {
+        State s = peers.get(id);
+        return s != null && s.active ? s.generation : -1;
+    }
+
     /** The address when the peer is an active neighbor, in one step (no gap between "is active" and "where"). */
     public synchronized Optional<String> activeAddressOf(String id) {
         State s = peers.get(id);
@@ -141,7 +152,10 @@ public final class PeerTable {
 
     public synchronized void recompute() {
         if (!available) {
-            peers.values().forEach(s -> { s.active = false; s.reason = "unavailable"; });
+            peers.values().forEach(s -> {
+                if (s.active) s.generation = ++nextGeneration;
+                s.active = false; s.reason = "unavailable";
+            });
             return;
         }
         List<Candidate> cands = new ArrayList<>();
@@ -149,6 +163,7 @@ public final class PeerTable {
         Map<String, Decision> decisions = selector.select(cands, settings.get());
         decisions.forEach((id, d) -> {
             State s = peers.get(id);
+            if (s.active != d.active()) s.generation = ++nextGeneration;
             s.active = d.active();
             s.reason = d.reason();
         });

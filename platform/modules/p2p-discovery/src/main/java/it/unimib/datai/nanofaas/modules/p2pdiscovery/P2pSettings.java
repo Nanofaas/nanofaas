@@ -17,11 +17,28 @@ public final class P2pSettings {
 
     private Integer baseMaxNeighbors;
     private Double baseMaxLatencyMs;
+    public record Sharing(boolean functions, boolean images, boolean resources) {}
+    private Sharing baseSharing = new Sharing(false, false, false);
     private final Map<String, Object> overrides = new HashMap<>();
 
     /** @throws IllegalArgumentException for a negative maxNeighbors or a non-positive maxLatencyMs */
     public P2pSettings(Integer maxNeighbors, Double maxLatencyMs) {
         setBase(maxNeighbors, maxLatencyMs);
+    }
+
+    public P2pSettings(Integer maxNeighbors, Double maxLatencyMs, Sharing sharing) {
+        this(maxNeighbors, maxLatencyMs);
+        baseSharing = sharing;
+    }
+
+    public synchronized void setBaseSharing(Sharing sharing) {
+        baseSharing = sharing;
+    }
+
+    public synchronized Sharing sharing() {
+        return new Sharing((Boolean) overrides.getOrDefault("shareFunctions", baseSharing.functions()),
+                (Boolean) overrides.getOrDefault("shareImages", baseSharing.images()),
+                (Boolean) overrides.getOrDefault("shareResources", baseSharing.resources()));
     }
 
     /** Same checks as the constructor; on rejection the previous base stays in place. */
@@ -74,12 +91,14 @@ public final class P2pSettings {
 
     private static void validate(String key, Object v) {
         boolean valid = switch (key) {
+            case "shareFunctions", "shareImages", "shareResources" -> v instanceof Boolean;
             case MAX_NEIGHBORS -> v == null || isNonNegativeInt(v);
             case MAX_LATENCY_MS -> v == null || isPositive(v);
             default -> false;
         };
         if (!valid) {
             throw new IllegalArgumentException(switch (key) {
+                case "shareFunctions", "shareImages", "shareResources" -> key + " must be a boolean";
                 case MAX_NEIGHBORS -> "maxNeighbors must be an integer >= 0 or null";
                 case MAX_LATENCY_MS -> "maxLatencyMs must be a number > 0 or null";
                 default -> "unknown setting: " + key;

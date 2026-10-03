@@ -10,6 +10,26 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class P2pSettingsTest {
     @Test
+    void publicationSwitchesAreIndependentAtomicAndResettable() {
+        P2pSettings s = new P2pSettings(null, null);
+        assertThat(s.sharing()).isEqualTo(new P2pSettings.Sharing(false, false, false));
+        for (int mask = 0; mask < 8; mask++) {
+            s.patch(Map.of("shareFunctions", (mask & 1) != 0,
+                    "shareImages", (mask & 2) != 0, "shareResources", (mask & 4) != 0));
+            assertThat(s.sharing().functions()).isEqualTo((mask & 1) != 0);
+            assertThat(s.sharing().images()).isEqualTo((mask & 2) != 0);
+            assertThat(s.sharing().resources()).isEqualTo((mask & 4) != 0);
+        }
+        assertThatThrownBy(() -> s.patch(Map.of("shareFunctions", false, "shareImages", "yes")))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(s.sharing().functions()).isTrue();
+        Map<String, Object> invalid = new HashMap<>();
+        invalid.put("shareResources", null);
+        assertThatThrownBy(() -> s.patch(invalid)).isInstanceOf(IllegalArgumentException.class);
+        s.clearOverrides();
+        assertThat(s.sharing()).isEqualTo(new P2pSettings.Sharing(false, false, false));
+    }
+    @Test
     void overrideBeatsBaseAndNullClearsTheThreshold() {
         P2pSettings s = new P2pSettings(4, 80.0);
         s.patch(Map.of("maxNeighbors", 6));

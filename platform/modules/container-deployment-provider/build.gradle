@@ -17,6 +17,7 @@ dependencies {
     implementation project(':control-plane-spi')
 
     implementation 'org.springframework.boot:spring-boot-starter'
+    implementation 'tools.jackson.core:jackson-databind'
     implementation 'com.github.docker-java:docker-java-core:3.7.1'
     implementation 'com.github.docker-java:docker-java-transport-zerodep:3.7.1'
 

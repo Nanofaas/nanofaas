@@ -32,11 +32,68 @@ nanofaas:
     ping-interval: 1s
     ping-timeout: 2s
     state-file: /var/lib/nanofaas/p2p.yaml   # unset = nothing is persisted
+    share-functions: false     # collect and publish registered function summaries
+    share-images: false        # query the selected backend's actual image inventory
+    share-resources: false     # collect and publish observed utilization and workload
     admin:
       enabled: false            # exposes /v1/admin/p2p/**
 ```
 
 Node ids must be **unique and stable**: peer modes and saved peers are keyed by id.
+
+## Node information
+
+Active neighbors request snapshots directly on `nanofaas.node-info.v1` every 5 seconds.
+The three sharing flags default to false and independently control collection and publication.
+Receiving works with all three false. Information is never relayed through other nodes.
+
+```bash
+curl -X PATCH localhost:8080/v1/admin/p2p/config -H 'content-type: application/json' -d '{"shareFunctions":true,"shareImages":true,"shareResources":true}'
+curl localhost:8080/v1/admin/p2p/information
+curl localhost:8080/v1/admin/p2p/peers/edge-2/information
+curl -X PATCH localhost:8080/v1/admin/p2p/config -H 'content-type: application/json' -d '{"shareImages":false}'
+curl -X DELETE localhost:8080/v1/admin/p2p/overrides
+```
+
+PATCH requires Boolean sharing flags and validates the whole patch before changing settings.
+Disabling immediately removes local category data; neighbors observe the mask on their next successful poll.
+When a state file is configured, `state.overrides` wins over
+`config.shareFunctions/shareImages/shareResources`, which wins over startup properties.
+DELETE restores the base settings and existing peer modes.
+
+Each category has `status` (AVAILABLE, PARTIAL, DISABLED or UNAVAILABLE),
+`collectedAt`, `source`, `scope`, `reasonCode`, `ageMillis` and `data`.
+DISABLED and UNAVAILABLE carry null data. A measured empty inventory is different from a missing backend.
+Function summaries expose name, effective execution mode, image and backend, excluding environment and endpoints.
+
+Docker Java and Docker-compatible CLI query the local engine cache, retaining untagged image identities.
+Containerd lists the configured client's namespace. Kubernetes reads `Node.status.images` with node IDs;
+it always reports PARTIAL and SOURCE_AGE_UNKNOWN because query time does not establish kubelet data age.
+It needs cluster-wide `list nodes`: use Helm `rbac.nodeImageInventory=true`, or adapt
+`deploy/k8s/p2p-image-inventory-rbac.yaml`. Permission is independent of startup sharing flags,
+allowing later runtime enablement. A denied query makes only images UNAVAILABLE.
+
+Resources describe the control-plane-visible environment, process CPU, JVM heap and
+per-function queue/in-flight/concurrency/backlog from existing sources. CPU values are ratios [0,1];
+memory values are bytes. These are observations, not configured limits or per-container statistics.
+Missing measurements stay null with PARTIAL/UNAVAILABLE. JVM heap and environment memory are separate scopes.
+
+Collection and requests have a 2-second publication deadline. At most one actual backend call
+per category and four peer requests run concurrently; uninterruptible calls retain their guard until they exit.
+Source observations and remote receipts expire after 15 seconds of monotonic age.
+Repeated replies cannot renew old source data. Envelopes are limited to 1 MiB,
+categories to 300 KiB and entries to 5,000. Invalid/version-mismatched responses are ignored.
+
+Peer inspection reports CURRENT, NOT_RECEIVED, STALE or INACTIVE; only CURRENT carries information.
+A current envelope can contain an expired source category. Unknown IDs return 404.
+Isolation/leaving stops exchange and collection and clears usable remote data.
+Late responses are fenced across participation, configuration and peer reactivation.
+Legacy peers without the topic time out without changing their membership.
+
+Startup variables are `NANOFAAS_P2P_SHAREFUNCTIONS`, `NANOFAAS_P2P_SHAREIMAGES`,
+`NANOFAAS_P2P_SHARERESOURCES`; Helm exposes matching
+`controlPlane.p2p.shareFunctions/shareImages/shareResources`.
+Include the P2P module in the artifact and enable its master/admin switches to use these APIs.
 
 ## Which peers are active
 
