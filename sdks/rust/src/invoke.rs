@@ -114,13 +114,26 @@ async fn admit(shared: &Arc<Shared>, request: Request) -> Result<Admitted, Respo
     let Some(callback_reservation) = shared.dispatcher.try_reserve() else {
         return Err(callback_saturated());
     };
-    let Some(handler_reservation) = shared.limits.try_reserve_handler() else {
+    let Some(mut handler_reservation) = shared.limits.try_reserve_handler() else {
         return Err(if shared.limits.snapshot().accepting {
             handler_saturated()
         } else {
             stopping()
         });
     };
+    if identity.execution_id.len() > 256
+        || !handler_reservation.track(
+            Arc::clone(&shared.occupancy),
+            identity.execution_id.clone(),
+            identity.dispatch_attempt.clone(),
+        )
+    {
+        return Err(runtime_error(
+            StatusCode::TOO_MANY_REQUESTS,
+            "EXECUTION_ACTIVE",
+            "Execution identity is invalid or already active",
+        ));
+    }
     let handler_reservation = Arc::new(handler_reservation);
 
     let body = read_body(body, &parts.headers, shared).await?;
@@ -191,6 +204,7 @@ async fn run(shared: Arc<Shared>, admitted: Admitted, mut reply: oneshot::Sender
     let started = Instant::now();
     // The task owns the handler slot as well as the context does: a handler that ignores its
     // context must not release the slot before its work is gone.
+    let occupancy_started = handler_reservation.started();
     let mut handle: JoinHandle<Result<Produced, BoxError>> = tokio::spawn(
         async move {
             let _reservation = handler_reservation;
@@ -203,6 +217,16 @@ async fn run(shared: Arc<Shared>, admitted: Admitted, mut reply: oneshot::Sender
         () = tokio::time::sleep(shared.settings.handler_timeout) => Finished::TimedOut,
         () = reply.closed() => Finished::Cancelled,
     };
+    shared.occupancy.response_at(
+        &identity.execution_id,
+        occupancy_started,
+        match &finished {
+            Finished::Done(Ok(Ok(_))) => "success",
+            Finished::Done(_) => "error",
+            Finished::TimedOut => "timeout",
+            Finished::Cancelled => "cancelled",
+        },
+    );
     if !matches!(finished, Finished::Done(_)) {
         cancelled.store(true, Ordering::Release);
         handle.abort();
@@ -1226,11 +1250,14 @@ mod execution_tests {
         let router = runtime.runtime.router();
         let mut burst = tokio::task::JoinSet::new();
         for i in 0..32 {
-            burst.spawn(
-                router
-                    .clone()
-                    .oneshot(invoke_request(format!(r#"{{"input":{i}}}"#))),
-            );
+            burst.spawn(router.clone().oneshot({
+                let mut request = invoke_request(format!(r#"{{"input":{i}}}"#));
+                request.headers_mut().insert(
+                    "x-execution-id",
+                    axum::http::HeaderValue::from_str(&format!("burst-{i}")).unwrap(),
+                );
+                request
+            }));
         }
         // The four admitted handlers hold their slots until released, so every response that
         // arrives first is a rejection.

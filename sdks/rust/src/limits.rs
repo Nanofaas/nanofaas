@@ -53,6 +53,8 @@ impl Limits {
         Some(HandlerReservation {
             limits: Arc::clone(self),
             input_bytes: AtomicUsize::new(0),
+            occupancy: None,
+            started: std::time::Instant::now(),
         })
     }
 
@@ -98,9 +100,28 @@ impl Limits {
 pub(crate) struct HandlerReservation {
     limits: Arc<Limits>,
     input_bytes: AtomicUsize,
+    started: std::time::Instant,
+    occupancy: Option<(Arc<crate::occupancy::Occupancy>, String, std::time::Instant)>,
 }
 
 impl HandlerReservation {
+    pub fn track(
+        &mut self,
+        tracker: Arc<crate::occupancy::Occupancy>,
+        id: String,
+        attempt: Option<String>,
+    ) -> bool {
+        let Some(started) = tracker.start_attempt(&id, attempt, self.started) else {
+            return false;
+        };
+        self.occupancy = Some((tracker, id, started));
+        true
+    }
+
+    pub fn started(&self) -> std::time::Instant {
+        self.started
+    }
+
     pub fn retain_input(&self, bytes: usize) {
         self.input_bytes.fetch_add(bytes, Ordering::Relaxed);
         self.limits.update(|state| state.input_bytes += bytes);
@@ -109,6 +130,9 @@ impl HandlerReservation {
 
 impl Drop for HandlerReservation {
     fn drop(&mut self) {
+        if let Some((tracker, id, started)) = &self.occupancy {
+            tracker.release(id, *started);
+        }
         let bytes = *self.input_bytes.get_mut();
         self.limits.update(|state| {
             state.active_handlers -= 1;

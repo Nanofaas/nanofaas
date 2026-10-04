@@ -1,6 +1,7 @@
 use prometheus_client::encoding::text::encode;
 use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::family::Family;
+use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::metrics::histogram::Histogram;
 use prometheus_client::registry::Registry;
 
@@ -15,6 +16,8 @@ pub(crate) const CONTENT_TYPE: &str = "application/openmetrics-text; version=1.0
 /// prometheus-client appends one.
 pub(crate) struct Metrics {
     registry: Registry,
+    pub(crate) active_handlers: Gauge,
+    pub(crate) occupancy_duration: Histogram,
     invocations: Family<Vec<(String, String)>, Counter>,
     handler_duration: Histogram,
     pub(crate) callback_drops: Counter,
@@ -24,6 +27,18 @@ pub(crate) struct Metrics {
 impl Metrics {
     pub fn new() -> Self {
         let mut registry = Registry::default();
+        let active_handlers = Gauge::default();
+        registry.register(
+            "nanofaas_runtime_active_handlers",
+            "Physically occupied handler reservations",
+            active_handlers.clone(),
+        );
+        let occupancy_duration = Histogram::new(DEFAULT_BUCKETS);
+        registry.register(
+            "nanofaas_runtime_replica_occupancy_seconds",
+            "Physical handler reservation occupancy",
+            occupancy_duration.clone(),
+        );
         let invocations = Family::<Vec<(String, String)>, Counter>::default();
         registry.register(
             "nanofaas_runtime_invocations",
@@ -50,6 +65,8 @@ impl Metrics {
         );
         Self {
             registry,
+            active_handlers,
+            occupancy_duration,
             invocations,
             handler_duration,
             callback_drops,

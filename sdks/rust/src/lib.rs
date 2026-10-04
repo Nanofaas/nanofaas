@@ -10,6 +10,8 @@ mod handler;
 mod invoke;
 mod limits;
 mod metrics;
+mod occupancy;
+
 mod runtime;
 mod server;
 mod settings;
