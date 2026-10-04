@@ -15,3 +15,12 @@ Terminal records default to 10000 entries and ten minutes, configurable by
 Prometheus exports physical occupancy without execution IDs as labels.
 This workload supports NanoFaaS validation and later environment-specific calibration;
 it is not itself a calibrated scientific service profile.
+
+For a managed container function, set `NANOFAAS_ONE_SHOT_PROFILE=true` in its environment,
+function concurrency to 1 and `NANOFAAS_MAX_CONCURRENT_HANDLERS=1`.
+The managed proxy checks `/runtime/status` before admitting a backend. It retains
+occupied slots after response timeout or disconnect and polls bounded per-execution
+proofs. Uncertain/expired observations quarantine the slot. Downscale first excludes
+the backend from dispatch, then waits for physical drain; failure retains the container.
+Recovery refuses to adopt or delete a one-shot container whose physical idleness
+cannot be positively established.

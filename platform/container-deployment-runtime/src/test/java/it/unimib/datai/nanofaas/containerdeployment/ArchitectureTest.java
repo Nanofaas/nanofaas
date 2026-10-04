@@ -13,9 +13,9 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
         importOptions = ImportOption.DoNotIncludeTests.class)
 class ArchitectureTest {
     @ArchTest
-    static final ArchRule runtime_depends_only_on_jdk_logging_common_and_deployment_contracts = classes()
+    static final ArchRule runtime_depends_only_on_jdk_logging_json_common_and_deployment_contracts = classes()
             .should().onlyDependOnClassesThat(resideInAnyPackage("java..", "com.sun.net.httpserver..",
-                    "org.slf4j..", "it.unimib.datai.nanofaas.common..",
+                    "org.slf4j..", "tools.jackson..", "it.unimib.datai.nanofaas.common..",
                     "it.unimib.datai.nanofaas.containerdeployment..")
                     .or(equivalentTo(it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentProvider.class))
                     .or(equivalentTo(it.unimib.datai.nanofaas.controlplane.deployment.PartialDeprovisionException.class))

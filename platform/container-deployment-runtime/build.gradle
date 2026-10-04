@@ -13,6 +13,7 @@ dependencies {
     api project(':common')
     api project(':control-plane-spi')
     implementation 'org.slf4j:slf4j-api'
+    implementation 'tools.jackson.core:jackson-databind'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.0'

@@ -22,6 +22,11 @@ public interface ManagedFunctionProxy extends AutoCloseable {
     default void updateLimits(int maxInFlight, Duration singleHopTimeout) {
     }
 
+    default void enablePhysicalSlots() { throw new UnsupportedOperationException("Physical replica slots unsupported"); }
+    default boolean backendReady(String backendId) { return true; }
+    default void beginDrain(String backendId) { }
+    default boolean awaitDrained(String backendId, Duration timeout) { return true; }
+
     @Override
     void close();
 }
