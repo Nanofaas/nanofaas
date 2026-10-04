@@ -79,3 +79,24 @@ The observation contains function, local generation, UTC arrival instant and a f
 request correlation ID, never input or handler headers. Without the optional provider,
 the observer is a no-op. A re-registered function gets a new generation and cannot
 inherit windows attributed to the previous one.
+
+## Java solver boundary
+
+The offload module's `LocalReplicaSolver` supports the base LSP and LSPr_x models
+on ordered, distinct function IDs with integer flow-unit loads, positive integer
+MiB requirements and a nonnegative integer MiB budget. Its default work bound is
+2000000 state/level combinations, workspace estimate 64 MiB, and an explicit
+monotonic deadline. Estimates conservatively include backtracking and result copies.
+Callers choose the duration; no MILP fallback exists. Failure statuses carry empty
+allocation arrays and no usable objective. Numeric ranges that cannot preserve a
+finite objective return UNSUPPORTED, not INFEASIBLE. Deadline checks extend through
+construction of the immutable result.
+
+Memory uses an exact GCD reduction, two primitive cost vectors and primitive integer
+backtracking rows. LSPr_x computes minimum replicas directly with fixed local and
+outbound quantities and inbound commitments. `FlowUnits` converts decimal rates
+without binary floor errors: an oracle rate must lie exactly on q; EWMA may retain a
+fractional remainder for terminal-cloud policy. Loads and service demand scale
+jointly while normalized utility coefficients remain unchanged. Java regression
+tests compare every allocation against the 80 frozen cases, independently enumerate
+small optima and verify tie order, resource limits, overflow and mid-solve deadlines.
