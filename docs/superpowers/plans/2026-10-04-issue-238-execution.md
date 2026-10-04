@@ -5,6 +5,16 @@ Base: `ef856960e99a6c56b93be6a978965535f7a3eba7`.
 Branch locale: `codex/issue-238-publication-readiness`.
 Worktree: `/private/tmp/nanofaas-238`.
 
+## Correzione successiva: timeout TCP Java-lite
+
+Dopo la pubblicazione del branch, l'utente ha autorizzato la correzione del difetto TCP qui identificato. Il limite descritto nel record storico sotto è quindi superato dalla correzione successiva.
+
+Il vecchio thread di deadline chiamava `InputStream.close()`, che in JDK HttpServer può attendere/drainare il corpo incompleto. Il nuovo reader virtuale esegue lettura e parsing con un'attesa limitata; alla deadline il runtime invia e fa flush del JSON 408 con `Connection: close`, interrompe il reader per chiudere il SocketChannel bloccato e ne attende il ritorno prima di liberare la riserva di ammissione. Anche la chiusura dello stream appartiene al reader: una chiusura sul coordinatore poteva introdurre una race prima dell’ingresso nella lettura del socket. Non si usa reflection né si modificano timeout globali del server. La lettura dispone di un reader virtuale per richiesta ammessa, limitata dalla capacità callback già prenotata.
+
+La regressione TCP ha fallito contro il codice originale con `SocketTimeoutException` per Content-Length e chunked. Copre ora sei combinazioni: framing fisso/chunked e corpo vuoto, JSON parziale o JSON completo in upload non completato. Ogni combinazione verifica tre timeout consecutivi, corpo 408 completo, EOF causato dal server prima della chiusura del client, nessun avvio della funzione, capacità drenata e successiva invocazione valida. L'adattatore condiviso Java-lite esegue adesso il vero caso TCP con la deadline della fixture.
+
+Verifica macOS Java 25: 97 test Java-lite eseguiti, zero failure/error/skip; SpotBugs verde. Log RED: `/private/tmp/nanofaas-238-tcp-red.log`; suite: `/private/tmp/nanofaas-238-tcp-suite.log`. Il gate completo Linux `test releaseChecks` è verde (239 task, ultima esecuzione 39s, log `/private/tmp/nanofaas-238-tcp-linux-final.log`). La revisione indipendente ha individuato la race di pulizia sul coordinatore: un test deterministico con reader ritardato e chiusura idempotente rileva la regressione con TimeoutException, e la pulizia sul solo reader la elimina. Anche il rilievo minore sull’uso incompleto della fixture è corretto: il helper TCP usa status, errorCode, contatori e deadline del corpus. Il record storico sotto conserva le limitazioni osservate prima del fix.
+
 ## Modifiche consegnate
 
 - Gate aggregato che rifiuta job falliti, saltati o cancellati; gate degli strumenti, dipendenze native riproducibili, Python 3.12 esplicito, composizioni core-only/P07, sync e async.

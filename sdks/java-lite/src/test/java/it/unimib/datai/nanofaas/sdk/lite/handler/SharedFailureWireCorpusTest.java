@@ -82,7 +82,7 @@ class SharedFailureWireCorpusTest {
             try {
                 int status; JsonNode body;
                 if (name.equals("ingress-io-timeout")) {
-                    new InvokeHandlerBodyDeadlineTest().stalledRequestBodyGetsFiniteCanonicalTimeout();
+                    new InvokeHandlerTcpBodyDeadlineTest().assertPartialTcpUpload(false, "partial", corpus);
                     return;
                 } else {
                     var response = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + ingress.getAddress().getPort() + "/invoke"))

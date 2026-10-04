@@ -48,7 +48,7 @@ The historical P16a inventory is preserved in [ADR 238](../../docs/architecture/
 | Runtime | Envelope failure | Callback rejection / I/O deadline | Ingress deadline |
 | --- | --- | --- | --- |
 | Java | Throwing output getter through InvokeController | Real JDK transport and CallbackDispatcher | Blocking servlet stream through RuntimePayloadLimitFilter; stream released |
-| Java-lite | Throwing output getter through InvokeHandler | Real JDK transport and InvokeHandler on HttpServer | Blocking HttpExchange stream; TCP limitation below |
+| Java-lite | Throwing output getter through InvokeHandler | Real JDK transport and InvokeHandler on HttpServer | Real partial TCP upload through HttpServer; fixed-length/chunked regression coverage |
 | Python | Unserializable HandlerResponse output | Real HTTP callback endpoint through runtime.invoke | Pending ASGI body stream |
 | Go | Unserializable HandlerResponse output | Real HTTP callback endpoint through Runtime.Handler | Blocking request body through Runtime.Handler |
 | JavaScript | Circular HandlerResponse output | Real HTTP callback endpoint through createRuntime | Partial TCP upload with no body completion |
@@ -58,6 +58,6 @@ Rust's public envelope contains only serde_json::Value, so an arbitrary unserial
 
 Known differences are explicit fixture data, validated and applied by the named adapter: Python and JavaScript classify output encoding exceptions as `RUNTIME_OUTPUT_TOO_LARGE`; Java-lite classifies its normalization exception as `HANDLER_ERROR`; JavaScript uses `RUNTIME_BODY_TIMEOUT` for ingress. These are preserved public behaviors, not claims of cross-runtime code equality. Reclassification requires a separate compatibility change.
 
-A real partial TCP upload to Java-lite revealed that closing the JDK HttpServer request stream can block the deadline path. The blocking-stream test proves its runtime logic but does not establish a finite TCP ingress deadline. This remains an explicit conformance gap requiring a transport fix; it is not silently skipped or counted as TCP conformance.
+Java-lite reads and parses on a bounded virtual reader thread. At the body deadline it flushes the canonical 408 response with `Connection: close`, then interrupts the reader to close the blocked JDK SocketChannel. The admission reservation remains held until that physical reader returns. Real TCP tests cover fixed-length and chunked uploads with empty, partial and complete JSON in unfinished HTTP bodies, repeated timeouts, closed connections and a healthy subsequent invocation. The shared failure adapter now executes the real TCP ingress case.
 
 Run schema/mutation tests with `python -m pytest sdks/runtime-contract`; runtime tests run with each SDK's normal test command. Java and Java-lite use SharedFailureWireCorpusTest; Python test_failure_wire_corpus.py; Go TestSharedFailureWireCorpus; JavaScript runtime-failure-corpus.test.ts; Rust failure_corpus_tests. Resources without a corresponding SDK aggregate counter are checked through their owner (handler/callback reservations or closed ingress stream), not invented gauges.

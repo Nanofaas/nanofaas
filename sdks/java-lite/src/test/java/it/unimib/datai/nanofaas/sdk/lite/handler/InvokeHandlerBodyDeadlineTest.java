@@ -59,20 +59,77 @@ class InvokeHandlerBodyDeadlineTest {
         }
     }
 
+    @Test
+    void timeoutCleanupDoesNotDrainTheInputOnTheCoordinatorThread() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        var limits = new RuntimeLimits(1, 1, 2048, 1024, 1024, 1024, 40, 100, 1, 1000);
+        var callbacks = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(1));
+        var handler = new InvokeHandler(request -> { throw new AssertionError("handler must not start"); },
+                new CallbackClient(mapper, null), new RuntimeMetrics("cleanup-race"), mapper, "cleanup-race", callbacks, 1000, limits);
+        var exchange = new BlockingExchange(true);
+        var invocation = new java.util.concurrent.FutureTask<Void>(() -> { handler.handle(exchange); return null; });
+        Thread coordinator = Thread.ofVirtual().start(invocation);
+        try {
+            assertTrue(exchange.readerInterrupted.await(1, TimeUnit.SECONDS));
+            // Give an erroneous coordinator-side close the chance to claim the
+            // stream before the delayed reader can enter socket I/O/cleanup.
+            exchange.coordinatorCloseEntered.await(100, TimeUnit.MILLISECONDS);
+            exchange.allowReaderCleanup.countDown();
+            invocation.get(2, TimeUnit.SECONDS);
+            assertEquals(408, exchange.status);
+            assertEquals(0, limits.pendingCallbacks());
+            assertEquals(0, exchange.release.getCount());
+        } finally {
+            exchange.coordinatorCloseRelease.countDown(); exchange.allowReaderCleanup.countDown(); exchange.release.countDown();
+            coordinator.join(2000); handler.shutdown(java.time.Duration.ofSeconds(1)); callbacks.shutdownNow();
+        }
+    }
+
     private static final class BlockingExchange extends HttpExchange {
         private final Headers requestHeaders = new Headers();
         private final Headers responseHeaders = new Headers();
         private final CountDownLatch release = new CountDownLatch(1);
         private final ByteArrayOutputStream body = new ByteArrayOutputStream();
         private int status;
+        private final boolean blockExternalClose;
+        private final CountDownLatch coordinatorCloseRelease = new CountDownLatch(1);
+        private volatile Thread reader;
+        private final CountDownLatch readerInterrupted = new CountDownLatch(1);
+        private final CountDownLatch allowReaderCleanup = new CountDownLatch(1);
+        private final CountDownLatch coordinatorCloseEntered = new CountDownLatch(1);
+        private final java.util.concurrent.atomic.AtomicBoolean streamClosed = new java.util.concurrent.atomic.AtomicBoolean();
         private final InputStream requestBody = new InputStream() {
             @Override public int read() throws IOException {
+                // Before any socket I/O: interruption here does not close a channel.
+                reader = Thread.currentThread();
                 try { release.await(); return -1; }
-                catch (InterruptedException ex) { Thread.currentThread().interrupt(); throw new IOException(ex); }
+                catch (InterruptedException ex) {
+                    if (blockExternalClose) {
+                        readerInterrupted.countDown();
+                        boolean waiting = true;
+                        while (waiting) {
+                            try { allowReaderCleanup.await(); waiting = false; }
+                            catch (InterruptedException _) { /* preserve interruption after the staging barrier */ }
+                        }
+                    }
+                    Thread.currentThread().interrupt(); throw new IOException(ex);
+                }
             }
-            @Override public void close() { release.countDown(); }
+            @Override public void close() throws IOException {
+                if (!streamClosed.compareAndSet(false, true)) return;
+                if (blockExternalClose && Thread.currentThread() != reader) {
+                    coordinatorCloseEntered.countDown();
+                    try { coordinatorCloseRelease.await(); }
+                    catch (InterruptedException ex) { Thread.currentThread().interrupt(); throw new IOException(ex); }
+                }
+                release.countDown();
+            }
         };
-        private BlockingExchange() { requestHeaders.set("X-Execution-Id", "execution"); }
+        private BlockingExchange() { this(false); }
+        private BlockingExchange(boolean blockExternalClose) {
+            this.blockExternalClose = blockExternalClose;
+            requestHeaders.set("X-Execution-Id", "execution");
+        }
         @Override public Headers getRequestHeaders() { return requestHeaders; }
         @Override public Headers getResponseHeaders() { return responseHeaders; }
         @Override public URI getRequestURI() { return URI.create("/invoke"); }
