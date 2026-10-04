@@ -160,7 +160,7 @@ jobs:
       - name: Run SDK and Example Tests
         run: |
           cd sdks/python
-          uv run --extra test --with-editable . python -m pytest tests/
+          uv run --python 3.12 --extra test --with-editable . python -m pytest tests/
 
   test-watchdog:
     runs-on: ubuntu-latest

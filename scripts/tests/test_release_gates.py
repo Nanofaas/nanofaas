@@ -47,3 +47,8 @@ def test_core_only_gate_includes_configured_http_calibration():
     steps = workflow()['jobs']['test-java']['steps']
     core = next(step['run'] for step in steps if step.get('name') == 'Run Core-Only Tests')
     assert '*P07ConfiguredHttpCalibrationTest' in core
+
+
+def test_python_sdk_gate_selects_the_installed_interpreter():
+    commands = '\n'.join(step.get('run', '') for step in workflow()['jobs']['test-python']['steps'])
+    assert 'uv run --python 3.12 --extra test --with-editable .' in commands
