@@ -63,7 +63,7 @@ subprojects {
 
     spotbugs {
         toolVersion = spotbugsVersion
-        ignoreFailures = true
+        ignoreFailures = false
         excludeFilter = rootProject.file('config/spotbugs/exclude.xml')
     }
 
@@ -72,6 +72,7 @@ subprojects {
     }
 
     tasks.matching { it.name == 'spotbugsMain' }.configureEach {
+        baselineFile = rootProject.file('config/spotbugs/baseline.xml')
         reports {
             html.required = true
             xml.required = true
@@ -231,4 +232,12 @@ tasks.named('build') {
 // test task builds its jar but would never run its tests without this edge.
 tasks.named('test') {
     dependsOn gradle.includedBuild('gradle-plugin').task(':test')
+}
+
+// Static analysis covers the full project graph, including optional modules.
+tasks.register('releaseChecks') {
+    group = 'verification'
+    description = 'Run mandatory version and static-analysis checks for the full project graph.'
+    dependsOn 'verifyHelmVersionSync'
+    dependsOn subprojects.collect { it.tasks.named('spotbugsMain') }
 }

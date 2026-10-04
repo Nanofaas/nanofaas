@@ -58,6 +58,9 @@ jobs:
       - name: Run Tests
         run: ./gradlew test --continue
 
+      - name: Run release checks
+        run: ./gradlew releaseChecks -PcontrolPlaneModules=all --continue
+
       - name: Run P2P Tests
         run: ./gradlew :control-plane-modules:p2p-discovery:test -PcontrolPlaneModules=all
 
@@ -67,7 +70,7 @@ jobs:
       # so it needs its own invocation. Module selection happens at configuration
       # time and cannot be varied inside a single build.
       - name: Run Core-Only Tests
-        run: ./gradlew :control-plane:test -PcontrolPlaneModules=none --tests '*CoreOnlyApiTest'
+        run: ./gradlew :control-plane:test -PcontrolPlaneModules=none --tests '*CoreOnlyApiTest' --tests '*P07ConfiguredHttpCalibrationTest'
 
       # concurrency-control now supports either queue provider (requires.oneOf).
       # sync-queue is defaultEnabled=false, so the main suite only ever exercises
@@ -77,13 +80,14 @@ jobs:
 
       # CI-only failures are otherwise undiagnosable: the log carries only the exception class and line.
       - name: Upload test reports
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: test-java-reports-${{ github.run_attempt }}
           path: |
             **/build/test-results/test/*.xml
             **/build/test-diagnostics/
+            **/build/reports/spotbugs/
           retention-days: 14
 
   # No other job here compiles a native image, and that silence is what let a three-commit-old
@@ -127,10 +131,34 @@ jobs:
             "$(sed -n 's/^graalvmJavaVersion=//p' gradle.properties)" community
           echo "JAVA_HOME=/opt/graalvm" >> "$GITHUB_ENV"
           echo "/opt/graalvm/bin" >> "$GITHUB_PATH"
+      - name: Read containerd dependency revisions
+        id: containerd-dependencies
+        run: |
+          source deploy/containerd-rootless/dependencies.env
+          printf 'libcni=%s\ncontainerd=%s\n' "$LIBCNI_JAVA_REV" "$CONTAINERD_JAVA_REV" >> "$GITHUB_OUTPUT"
+      - name: Check out libcni-java
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Nanofaas/libcni-java
+          ref: ${{ steps.containerd-dependencies.outputs.libcni }}
+          path: .gradle/ci-sources/libcni-java
+      - name: Check out containerd-java
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Nanofaas/containerd-java
+          ref: ${{ steps.containerd-dependencies.outputs.containerd }}
+          path: .gradle/ci-sources/containerd-java
+      - name: Build containerd dependencies
+        run: bash scripts/bootstrap-containerd-dependencies.sh .gradle/ci-sources/libcni-java .gradle/ci-sources/containerd-java
       - name: Compile the control plane natively
         run: ./gradlew :control-plane:nativeCompile -PcontrolPlaneModules=all
+        env:
+          ORG_GRADLE_PROJECT_containerdMavenLocal: 'true'
+          GRADLE_OPTS: -Dmaven.repo.local=${{ github.workspace }}/.gradle/containerd-m2
       - name: Assert the native artifact is an executable
         run: scripts/assert-native-executable.sh platform/control-plane/build/native/nativeCompile/control-plane
+      - name: Verify native HTTP management errors
+        run: python3 scripts/assert-native-api-errors.py platform/control-plane/build/native/nativeCompile/control-plane
 
   test-python:
     runs-on: ubuntu-latest
@@ -233,3 +261,47 @@ jobs:
           for directory in functions/javascript/*/; do
             (cd "$directory" && npm ci && npm test)
           done
+
+  test-tools:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.18.4
+      - name: Run scripts and experiments tests
+        run: uv run --python 3.12 --with pytest --with pyyaml python -m pytest scripts/tests experiments/tests sdks/runtime-contract -ra --junitxml=build/test-results/tools.xml
+      - name: Run scaffolder tests
+        run: uv run --python 3.12 --project tools/fn-init --group dev python -m pytest tools/fn-init/tests -ra --junitxml=build/test-results/scaffolder.xml
+      - name: Upload tool test reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: test-tools-reports
+          path: build/test-results/*.xml
+          if-no-files-found: error
+          retention-days: 14
+
+  release-gate:
+    if: ${{ always() }}
+    needs: [test-java, test-native-artifact, test-python, test-watchdog, test-rust-sdk, test-go, test-javascript, test-tools]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every verification job to succeed
+        env:
+          JOB_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          results = json.loads(os.environ['JOB_RESULTS'])
+          unsuccessful = {name: job['result'] for name, job in results.items() if job['result'] != 'success'}
+          if not results or unsuccessful:
+              print(f'Required verification jobs did not succeed: {unsuccessful}', file=sys.stderr)
+              sys.exit(1)
+          PY
