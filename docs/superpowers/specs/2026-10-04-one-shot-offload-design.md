@@ -1,0 +1,234 @@
+# One-shot decentralizzato per NanoFaaS
+
+Data: 2026-10-04
+
+Stato: specifica proposta per revisione. Le scelte discusse sono raccolte qui; l'implementazione e il relativo piano non sono ancora avviati.
+
+Base NanoFaaS: `a62a743f16205b3d4d3ce2945f857a88c559d83e` (`origin/main` osservato durante la progettazione).
+
+Riferimento algoritmico: branch `feat/uv-migration-and-extended-tests` di DFaaSOptimizer, commit `71899f7`. Il riferimento non è il suo branch `main`. Le campagne devono registrare il commit completo di entrambi i progetti.
+
+## 1. Obiettivo e decisioni concordate
+
+Implementare su nodi NanoFaaS reali l'asta one-shot del branch di DFaaSOptimizer, usando una previsione del traffico in ingresso per decidere repliche ed esecuzione locale, inoltro ai vicini oppure invio al cloud. Il primo confronto deve isolare l'asta senza ricerca locale PG; quest'ultima sarà un'estensione successiva dello stesso solver locale.
+
+Sono decisioni concordate:
+
+- Estendere il modulo `offload` e usare `p2p-discovery` per discovery e messaggi tra vicini.
+- Operare quasi sincronicamente, con epoche configurabili, per esempio di un minuto. Un'epoca contiene più round d'asta: one-shot non significa un solo messaggio o un solo round.
+- Aggiungere un modulo di previsione del carico con un metodo semplice e un provider esterno. Negli esperimenti il provider esterno riceve il carico futuro dalla traccia che alimenta il generatore.
+- Imporre il vincolo one-hop, riprendendo gli header DFaaS.
+- Assumere un cloud raggiungibile, con capacità sufficiente e funzioni disponibili.
+- Allocare memoria per replica e mantenere una sola esecuzione attiva per istanza. Il numero delle repliche è controllato dall'algoritmo.
+- Usare funzioni sperimentali warm in Rust, con lavoro CPU/memoria significativo e risultati verificabili. Rust è una scelta di deployment, non una soluzione provvisoria in attesa di migrazione.
+- Portare il solver locale DP in Java; usare Python come riferimento di correttezza.
+- Calibrare prima degli esperimenti one-shot. Calibrazione e campagne sono workflow distinti NanoLab, composti da task Sonata, eseguiti su Azure.
+
+Le regole operative nelle sezioni successive completano queste scelte e sono proposte da approvare con questa specifica. In particolare, la granularità dei flussi, la transizione tra epoche e il comportamento degradato non erano stati ancora fissati nella discussione.
+
+## 2. Ambito e separazione del lavoro
+
+Questa è la specifica di integrazione: definisce contratti e criteri di accettazione comuni a NanoFaaS, NanoLab e alle funzioni sperimentali. Il piano di implementazione dovrà separare solver e previsione, protocollo e attuazione, calibrazione e campagna, conservando questi contratti.
+
+La prima versione copre invocazioni sincrone di funzioni gestite, disponibili sui nodi abilitati e sul cloud. Le modalità asincrone, la distribuzione automatica di nuove funzioni, aste gerarchiche, previsioni CPU/memoria e ricerca locale PG sono fuori ambito. Le modalità di offload esistenti restano disponibili per le funzioni non gestite da one-shot.
+
+Il protocollo non introduce un coordinatore globale dell'ottimizzazione. NanoLab coordina gli esperimenti e raccoglie i risultati; ciascun nodo decide usando parametri locali e informazioni dei vicini. Le assunzioni di fiducia del P2P esistente restano valide: gli header non costituiscono autenticazione.
+
+## 3. Modello, unità e invarianti
+
+Per nodo `i` e funzione `f`:
+
+| Simbolo | Significato | Unità |
+| --- | --- | --- |
+| `lambda[i,f]` | Carico esterno previsto al nodo di origine | richieste/s |
+| `D[i,f]` | Tempo medio di servizio calibrato per replica | secondi/richiesta |
+| `U[f]` | Utilizzazione massima ammessa dal modello | rapporto in `(0,1]` |
+| `M[f]` | Memoria allocata a ciascuna replica | MiB interi positivi |
+| `B[i]` | Budget utilizzabile dalle repliche sul nodo | MiB |
+| `r[i,f]` | Repliche pronte assegnate alla funzione | intero non negativo |
+| `x[i,f]` | Traffico esterno eseguito all'origine | richieste/s |
+| `y[i,j,f]` | Traffico inviato direttamente dall'origine `i` al vicino `j` | richieste/s |
+| `z[i,f]` | Traffico inviato direttamente dall'origine al cloud | richieste/s |
+
+Per il piano applicato valgono:
+
+```text
+lambda[i,f] = x[i,f] + sum_j y[i,j,f] + z[i,f]
+x[i,f] + sum_j y[j,i,f] <= r[i,f] * U[f] / D[i,f]
+sum_f r[i,f] * M[f] <= B[i]
+```
+
+La notazione runtime distingue il cloud dagli scarti/errori osservati. DFaaSOptimizer usa anche variabili intermedie come `omega` e `z` con significati legati al sottoproblema: il porting deve conservare quei significati internamente e documentare la mappatura verso il piano runtime. Non si deve cambiare l'obiettivo rinominando una variabile intermedia come flusso cloud.
+
+I coefficienti dell'obiettivo, i costi e le regole d'asta vengono dal branch fissato. Non si sostituisce l'utilità locale con un obiettivo globale. Gli header, il ledger e l'esecuzione devono impedire che `y[j,i,f]` diventi nuovo traffico da inoltrare.
+
+`B[i]` esclude sistema operativo, control plane, trasporto, telemetria e margine operativo. La memoria configurata è un vincolo di allocazione, non una promessa sul RSS misurato. La capacità lineare in `r` è una previsione del modello valida solo nell'intervallo verificato dalla calibrazione: contention CPU e co-locazione vanno misurate.
+
+### Flussi frazionari
+
+Il backend DP Python supporta domini interi per le variabili decisionali previste dai suoi modelli. Non deve ricevere tassi frazionari arrotondati implicitamente.
+
+Si propone una granularità di campagna esplicita `q`, espressa in richieste/s per unità intera del solver. Per conservare il modello si convertono insieme carico e capacità: `lambda_solver = lambda/q`, `D_solver = D*q`; in uscita si moltiplicano i flussi per `q`. I coefficienti monetari o di utilità per unità, dove presenti, devono essere trasformati coerentemente e verificati per modello; non basta scalare il solo carico.
+
+La campagna oracle deve generare tassi rappresentabili sulla griglia scelta. Per EWMA si propone di ottimizzare `floor(lambda/q)` unità e destinare il resto previsto direttamente al cloud all'origine, rendendo visibile tale quantità nelle metriche. La proprietà di ottimalità riguarda il problema discretizzato, non il problema continuo. Dimensione di `q`, trasformazioni e errore di discretizzazione sono salvati nel manifest e coperti da test di equivalenza; non sono parametri impliciti del codice.
+
+## 4. Componenti e confini
+
+| Componente | Responsabilità |
+| --- | --- |
+| Modulo `forecasting` proposto | Snapshot di carico futuro da EWMA o provider esterno |
+| Modulo `offload` esteso | Epoche, asta, ledger, solver, costruzione e applicazione dei piani |
+| Modulo `p2p-discovery` | Identità e vicini attivi, trasporto dei messaggi |
+| `control-plane-spi` | Contratti minimi tra moduli e accesso al controllo delle repliche |
+| Runtime gestito e SDK | Readiness, dispatch verso slot disponibili, concorrenza fisica per replica |
+| NanoLab e Sonata | Provisioning Azure, calibrazione, carico, verifiche, raccolta e cleanup |
+
+Non sono consentite dipendenze dirette tra moduli opzionali. Il P2P deve esporre tramite SPI la primitiva minima necessaria per identificare vicini e inviare/ricevere payload; offload non deve importare i suoi dettagli interni. Il contratto di previsione deve essere consumabile tramite SPI senza imporre una dipendenza sul modulo che lo implementa.
+
+Solver e negoziazione lavorano fuori dal percorso delle richieste e dagli event loop di trasporto, con esecuzione e memoria limitate. Il percorso HTTP legge un piano immutabile e gestisce ammissione, routing e contatori.
+
+Abilitare one-shot richiede P2P attivo, forecasting disponibile, profilo di calibrazione compatibile, destinazione cloud e supporto al controllo delle repliche. Configurazioni incomplete devono essere rifiutate esplicitamente.
+
+## 5. Previsione e sorgente oracle
+
+Ogni snapshot contiene origine, funzione e sua generazione, inizio/fine intervallo, tasso, provider, revisione e istante di produzione. Un valore assente o scaduto non equivale a zero.
+
+Il provider EWMA usa esclusivamente gli arrivi esterni originali. Sono esclusi gli arrivi inoltrati dai peer e i tentativi interni dovuti a retry. Il contatore di dispatch esistente non è quindi una sorgente sufficiente. Coefficiente EWMA, finestra osservata e periodo previsto sono espliciti e riproducibili.
+
+Il provider esterno accetta la traccia futura generata per gli esperimenti, con le stesse origini, funzioni e finestre del generatore. Un aggiornamento produce una nuova revisione; non modifica lo snapshot già congelato per un'asta. Si propone di caricare la traccia tramite un endpoint amministrativo del modulo, con caricamento e lettura della revisione corrente, limiti dimensionali e validazione atomica. La forma API precisa sarà definita nel piano, mantenendo questi requisiti.
+
+Il piano registra la revisione effettivamente utilizzata. Si misurano separatamente carico programmato, carico realmente emesso dal generatore e arrivi osservati al gateway: conoscere la traccia non garantisce che il generatore riesca a emetterla nei tempi previsti.
+
+## 6. Solver locale Java
+
+Il riferimento è `models/local_sp.py`, con il kernel `minimize_replica_costs` in `plasma/core/sbm.py`. Il primo costruisce alternative e costi per funzione; il secondo risolve il multiple-choice knapsack sul budget RAM. I cicli principali sono Python, anche se usano array NumPy: non è necessario un binding a un kernel nativo esterno.
+
+Il solver Java usa array primitivi e un contratto puro: input locale immutabile, risultato con allocazioni, repliche, obiettivo, stato e diagnostica di lavoro/tempo. Non legge il registro delle funzioni né invia messaggi. Deve preservare:
+
+- obiettivi e domini dei modelli effettivamente usati da one-shot;
+- carico in ingresso già impegnato, limiti di offload e repliche fissate;
+- tolleranze numeriche, ordine delle funzioni e delle alternative, gestione deterministica dei pareggi;
+- calcolo diretto per `LSPr_x` e casi con repliche fissate;
+- riduzione esatta degli stati RAM tramite massimo comune divisore delle memorie, senza arrotondamenti arbitrari.
+
+Il nucleo DP usa due vettori dei costi e le scelte necessarie per ricostruire la soluzione. Il lavoro cresce con budget RAM ridotto e numero di livelli di replica; la memoria di ricostruzione cresce anche con il numero di funzioni. Prima delle allocazioni si verificano overflow, dimensione massima degli stati e budget di lavoro. Durante il calcolo si verifica cooperativamente la scadenza.
+
+Gli stati distinguono almeno soluzione ottima, problema non ammissibile, input non supportato, limite di dimensione e scadenza. Non si restituisce una soluzione incompleta come ottima. La configurazione della campagna deve rientrare nel dominio supportato; non è previsto un fallback MILP nel deployment iniziale. Python/Pyomo rimangono strumenti offline di verifica.
+
+Il core può essere condiviso con PG in futuro, ma questa versione implementa e valida soltanto le varianti necessarie all'asta senza ricerca locale. Compatibilità JVM e immagine GraalVM sono requisiti: le prestazioni devono essere misurate sul formato effettivamente usato in campagna.
+
+## 7. Epoche e protocollo d'asta
+
+Il periodo di controllo è configurabile, con un minuto come scenario iniziale. La finestra di previsione deve essere disponibile abbastanza presto da includere negoziazione, avvio e readiness delle repliche prima dell'attivazione. L'anticipo viene dimensionato usando la calibrazione dei tempi di avvio, non sottraendo implicitamente tali tempi alla durata utile dell'epoca.
+
+Ogni nodo attraversa preparazione, negoziazione, finalizzazione, attivazione e drenaggio. I messaggi contengono versione di schema, identità e incarnazione del mittente, epoca, round, ID idempotente, funzione/generazione, revisione del piano e intervallo di validità. La revisione della previsione è locale e non deve coincidere tra nodi.
+
+Lo snapshot delle funzioni, dei parametri e della previsione rimane stabile durante l'asta. Le risposte con epoca, incarnazione o revisione incompatibili sono scartate. I deadline si misurano con clock monotono; gli intervalli condivisi usano il clock sincronizzato delle VM. Il manifest fissa uno skew massimo ammesso e un margine di attivazione; il workflow verifica lo skew prima della campagna e lo monitora. Superare la soglia impedisce di attivare nuove assegnazioni peer: il nodo drena quelle già ammesse e usa la modalità degradata descritta sotto, marcando il run come non conforme alle assunzioni temporali.
+
+Si riproducono le fasi del branch: pianificazione locale iniziale, capacità residua, offerte, bid, assegnazione e aggiornamento delle repliche con i flussi fissati. Per la variante one-shot si mantiene la politica del branch che non rimpiazza assegnazioni esistenti nei round successivi. Le funzioni Python che leggono array globali del simulatore devono essere tradotte in decisioni locali e messaggi; non diventano chiamate a un servizio centrale.
+
+Il venditore è autorità sulla propria capacità: registra ogni assegnazione prima di confermarla e non vende due volte lo stesso budget. Ritrasmettere un bid o una conferma non aggiunge una seconda assegnazione. Una conferma persa può lasciare capacità inutilizzata, ma non autorizza il compratore a inviare traffico senza conferma.
+
+Ogni round ha una finestra e un termine espliciti; messaggi tardivi non modificano round chiusi. Il primo protocollo usa un massimo di round e un deadline di epoca comuni, senza introdurre un algoritmo aggiuntivo di terminazione globale. Un nodo senza nuovi bid continua a rispondere fino alla chiusura. Terminazione per deadline e convergenza naturale devono essere distinguibili nei risultati.
+
+Le assegnazioni negoziate sono provvisorie fino alla conferma finale di capacità pronta. Non confermare capacità basandosi solo su repliche richieste. In finalizzazione ciascun venditore conferma i propri impegni sostenibili; gli impegni non confermati non entrano nel piano applicato. Il compratore invia il residuo al cloud. La politica di riduzione in caso di readiness parziale deve essere deterministica e registrata; questa è una degradazione operativa, non un risultato dell'asta ideale.
+
+## 8. Transizione tra epoche e guasti
+
+Non si assume un cutover atomico globale. Ogni richiesta inoltrata porta epoca e assegnazione; il destinatario verifica che siano ancora accettabili. Le regole one-hop rimangono indipendenti dalla validità dell'assegnazione.
+
+Si propone una transizione conservativa: la nuova ammissione usa il nuovo piano soltanto nell'intervallo concordato; le richieste già ammesse del vecchio piano terminano mantenendo le risorse necessarie. La preparazione deve verificare il massimo uso simultaneo di memoria tra vecchie repliche mantenute e nuove repliche in avvio. Non si assume che il solo rispetto dei due budget, separatamente, renda ammissibile la sovrapposizione.
+
+Se manca spazio per preparare tutto il nuovo piano, si procede con drenaggio e attivazione parziale; all'origine, il traffico non ancora assegnabile va direttamente al cloud. Non si eliminano istanze occupate per far coincidere forzatamente il sistema con il nuovo piano. Il tempo e la quota di traffico in transizione sono risultati sperimentali da misurare.
+
+Offerte e conferme scadute non si riutilizzano nell'epoca successiva. In caso di previsione mancante, solver fallito o pianificazione incompleta, si propone una modalità esplicita cloud per il nuovo traffico esterno non coperto da capacità locale verificata. Restano da onorare e drenare gli impegni già ammessi. Perdita di peer, riavvio o isolamento invalidano le nuove assegnazioni pertinenti; un riavvio cambia incarnazione e non ricostruisce un ledger da vecchi messaggi.
+
+Un errore dopo l'inoltro non autorizza un secondo invio a un'altra destinazione: potrebbe duplicare un'esecuzione già avvenuta. I retry preesistenti devono mantenere destinazione, origine e marcatura one-hop, ed essere contati separatamente. Il timeout del chiamante non libera uno slot se l'handler sta ancora eseguendo.
+
+## 9. Routing, quote e one-hop
+
+Una quota è una capacità di ammissione per origine, destinazione, funzione e intervallo; non è una nuova replica né una promessa di latenza. Il piano contiene destinazioni confermate, tassi assegnati e limiti di burst. Si propone un routing deterministico pesato con ammissione per destinazione; il limite del venditore fa comunque autorità, perché un tasso medio da solo non impedisce burst o superamento della concorrenza.
+
+L'eccedenza rispetto alle quote è inviata al cloud dall'origine prima di qualsiasi invio a un peer. I parametri di burst fanno parte del manifest. Il venditore riserva la capacità locale e applica i limiti dei singoli impegni in ingresso, evitando che il proprio traffico consumi senza controllo gli slot promessi ai vicini. Un peer che non può ammettere una richiesta restituisce un errore esplicito, senza inoltrarla. La prima versione non promette che l'asta elimini code, errori o variabilità stocastica del carico.
+
+Compatibilità DFaaS:
+
+- `DFaaS-Node-ID` nella richiesta identifica il nodo che ha effettuato l'inoltro. La sua presenza marca la richiesta come già inoltrata, anche se il valore è malformato o sconosciuto: tali casi si rifiutano, non si riclassificano come traffico esterno.
+- `DFaaS-Node-ID` nella risposta identifica il nodo di esecuzione; `X-Server` conserva il ruolo di identificazione del server previsto dagli esperimenti DFaaS.
+- `X-NanoFaaS-Offload-Hop` resta compatibile: la presenza di uno qualsiasi dei marcatori attiva lo stesso vincolo interno. Marcatori contraddittori si rifiutano.
+- Gli identificatori di epoca/assegnazione sono metadati aggiuntivi versionati; non sostituiscono gli header DFaaS.
+
+Sono ammessi `A -> B` e `A -> cloud`. Sono vietati `A -> B -> C` e `A -> B -> cloud`. Il destinatario esegue localmente oppure restituisce errore. Il cloud non partecipa all'asta come venditore edge ed è destinazione terminale.
+
+## 10. Repliche, risorse e concorrenza
+
+Si usano le risorse già presenti in `FunctionSpec` e il controllo delle repliche esposto da `ManagedReplicaControl`, con fencing sulla generazione della funzione. L'API esistente `PUT /v1/functions/{name}/replicas` è utile per strumenti e verifiche; il modulo usa il contratto interno, senza chiamate HTTP a sé stesso.
+
+Per gli esperimenti si configurano richieste e limiti di memoria coerenti, normalmente uguali al taglio del modello, insieme a quote CPU esplicite. One-shot è l'unico proprietario delle decisioni sulle repliche per le funzioni selezionate: autoscaler interni, HPA o scritture concorrenti devono essere esclusi o rifiutati finché questa proprietà è attiva.
+
+`FunctionSpec.concurrency` è un tetto per funzione sul nodo, non per replica. Impostarlo a uno limiterebbe anche molte repliche a una sola invocazione complessiva. La configurazione prevista usa `STATIC_PER_POD`, `targetInFlightPerPod=1`, un tetto di funzione sufficiente e `NANOFAAS_MAX_CONCURRENT_HANDLERS=1` nel runtime. La capacità utile dipende dalle repliche pronte e dai loro slot liberi; zero repliche pronte significa zero capacità locale ammissibile.
+
+La selezione del backend deve conoscere gli slot occupati. Il round robin attuale del proxy container locale, da solo, può scegliere una replica occupata mentre un'altra è libera e non soddisfa il requisito. Il backend scelto per la campagna deve dimostrare concorrenza massima uno per replica e utilizzazione delle repliche libere, anche con tempi di servizio diversi. La prima integrazione sperimentale propone `container-local` su VM Azure, per associare esplicitamente nodo logico, budget e pool di istanze; altri backend richiedono la stessa verifica prima di essere confrontati.
+
+## 11. Calibrazione su Azure
+
+Il workflow di calibrazione è precedente e indipendente dalla campagna one-shot. NanoLab esegue provisioning, deployment e raccolta tramite task Sonata con cleanup anche in caso di fallimento.
+
+Per ogni profilo funzione/nodo, il workflow prepara immagine e input, attende readiness, esegue warmup e misura lavoro reale CPU/memoria con output verificato. Un semplice sleep non rappresenta il carico principale delle funzioni sperimentali. Si ripetono le prove per stimare media, dispersione, quantili e incertezza, con un criterio dichiarato di numerosità/stabilità.
+
+Si distinguono:
+
+- tempo dell'handler e tempo durante il quale la replica rimane occupata;
+- attesa nel gateway e nel runtime;
+- rete e latenza end-to-end;
+- cold start e tempo necessario a rendere pronta una replica;
+- timeout, cancellazioni ed esecuzioni ancora attive dopo la risposta al chiamante.
+
+`D[i,f]` deve rappresentare l'occupazione media warm della replica che limita la capacità. Una misura dispatch-completion del control plane o un timer che termina al timeout del chiamante non sono automaticamente questa quantità. Campioni censurati e errori si riportano separatamente, senza attribuire loro durata nulla o successo.
+
+La calibrazione verifica anche capacità e contention con più repliche e mix di funzioni. Il profilo dichiara l'intervallo di configurazioni in cui `r*U/D` è un modello accettabile e il relativo errore. Una campagna fuori da tale intervallo richiede nuova calibrazione o un modello rivisto.
+
+L'artefatto risultante è immutabile e identificato da hash. Contiene commit e digest delle immagini, SDK/runtime, input, tipo VM e CPU, quote CPU, memoria, backend, numero di repliche, co-locazioni, condizioni di warmup, statistiche, campioni e unità. Le latenze tra nodi sono misurate separatamente dal servizio.
+
+## 12. Campagna one-shot su Azure
+
+Un secondo workflow NanoLab/Sonata consuma un profilo esistente e ne verifica la compatibilità prima di avviare il carico. Non esegue una ricalibrazione implicita e non aggiorna `D` durante il confronto. Continua a raccogliere misure per evidenziare deriva e violazioni del profilo.
+
+La topologia proposta usa una VM per nodo edge logico, una destinazione cloud distinta e sufficientemente dimensionata, e generatori separati quando necessario a non contaminare le misure. Tutto viene eseguito su Azure. Collocare tutte le VM nello stesso datacenter non crea automaticamente una rete edge-cloud realistica: posizione, RTT, banda ed eventuale emulazione di rete vanno dichiarati e verificati.
+
+Il manifest fissa topologia, funzioni, immagini, profilo, coefficienti del modello, epoche, anticipo, round e deadline, granularità dei flussi, burst, forecast, trace hash, seed, ripetizioni e warmup. La previsione oracle e il generatore condividono traccia e riferimento temporale.
+
+Il confronto iniziale include una baseline locale con residuo al cloud e one-shot senza PG; oracle ed EWMA sono confronti separati sullo stesso carico. La successiva aggiunta di PG mantiene invariati profili e scenari per isolare il suo effetto.
+
+Si raccolgono welfare calcolato con la stessa convenzione del riferimento, flussi previsti ed effettivi, traffico cloud, errori, latenza, code, repliche desiderate/pronte/occupate, RAM e CPU, tempo/memoria del solver, messaggi, round, scadenze e durata delle transizioni. Ogni invocazione originale è correlabile ai suoi eventuali tentativi e alla destinazione terminale. La verifica di conservazione distingue richieste originali, tentativi, completamenti ed errori, senza doppi conteggi.
+
+Sonata gestisce dipendenze tra task, risorse e rilascio; NanoLab conserva manifest, log e risultati anche nei run falliti. Non si introduce un orchestratore shell parallelo al workflow.
+
+## 13. Criteri di accettazione
+
+1. **Solver:** su fixture del branch e istanze generate ammissibili, Java e Python concordano su vincoli, obiettivo e scelta deterministica; il confronto con Pyomo ammette allocazioni diverse a parità di ottimo. Inclusi carico nullo, RAM insufficiente, input invalido, impegni in ingresso, pareggi, limite degli stati e scadenza. Le trasformazioni delle unità hanno test dedicati.
+2. **Asta:** su trascrizioni deterministiche, le decisioni coincidono con one-shot Python senza PG, salvo degradazioni operative esplicitamente etichettate. Duplicati, riordino, perdita di messaggi e conferme tardive non sovrallocano capacità.
+3. **Forecast:** oracle ed EWMA usano arrivi esterni; caricamenti atomici, revisione congelata, assenza/scadenza e discrepanze tra carico programmato ed emesso sono verificati.
+4. **One-hop:** i due marcatori, compresi valori invalidi o contraddittori, non consentono alcun secondo inoltro. Le risposte riportano la destinazione effettiva.
+5. **Repliche:** sotto carico e durante scaling, ciascuna replica esegue al massimo un handler; repliche libere sono utilizzabili, readiness precede la capacità annunciata, il budget RAM include la transizione e nessun altro scaler modifica il piano.
+6. **Guasti:** solver scaduto, peer perso, riavvio, clock fuori soglia e readiness parziale producono comportamento esplicito senza riuso di assegnazioni scadute né inoltri aggiuntivi.
+7. **Calibrazione:** workflow Azure completabile separatamente, artefatto verificabile e rifiuto di profili incompatibili. Tempi di servizio, coda e rete non vengono confusi.
+8. **Campagna:** workflow Azure riproducibile tramite NanoLab/Sonata, conservazione verificata, risorse rilasciate anche su errore, risultati confrontabili a parità di trace e profilo. Il budget temporale dell'intera pianificazione include solver, rete e preparazione delle repliche, non solo il kernel DP.
+
+## 14. Riferimenti di implementazione
+
+Percorsi NanoFaaS relativi al repository:
+
+- `platform/modules/offload/` e `platform/modules/p2p-discovery/`.
+- `platform/control-plane-spi/`, in particolare i contratti `OffloadGateway`, `ManagedReplicaControl` e `InvocationObservations`.
+- `platform/common/`, modelli `FunctionSpec`, `ResourceSpec`, `ScalingConfig`.
+- `platform/modules/concurrency-control/` e `platform/container-deployment-runtime/`.
+- `sdks/rust/` e `openapi/core.yaml`.
+
+Riferimenti esterni consultati, da fissare nel manifest delle verifiche:
+
+- DFaaSOptimizer, branch e commit indicati in apertura: `decentralized_auction.py`, `one_shot_pg.py`, `models/local_sp.py`, `models/sp.py`, `plasma/core/sbm.py`, `run_faasmacro.py` e `tests/test_local_sp.py`.
+- PDF di riferimento: `Decentralized_FaaS_coordination.pdf`, bozza fornita dall'utente. È contesto scientifico; in caso di differenza, il comportamento da riprodurre è quello del branch fissato.
+- DFaaS: `dfaasagent/agent/loadbalancer/haproxycfgstatic.tmpl`, `haproxycfgnms.tmpl` e configurazioni correlate per gli header.
+- NanoLab: `packages/nanolab/src/nanolab/plans/offload_loadtest.py`, `packages/nanolab/src/nanolab/tasks/offload_loadtest.py` e gli scenari `scenarios-v2` come punti d'integrazione, non come workflow one-shot già esistenti.
+- Sonata: contratti `Task`, `TaskInputs`, `TaskOutcome`, `Workflow` e risorse con cleanup.
