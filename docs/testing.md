@@ -94,3 +94,5 @@ The native job bootstraps the same pinned containerd dependencies before compila
 The reproducible reference environment is Linux, Node 24, Go 1.24 and Java 25. macOS's IPv4/IPv6 bind semantics can invalidate the Go bind-failure test; host-built native recipe tests require Linux. Node 26 also changes the existing shutdown test behavior. Run the exact CI toolchains/container environment before classifying these as production regressions; do not suppress the tests. Runtime conformance differences and the Java-lite TCP ingress gap are listed in the [runtime contract](../sdks/runtime-contract/README.md).
 
 The tool gate installs k6 2.3.0 from its pinned Grafana release with SHA-256 verification. The benchmark semantic-threshold test executes `k6 inspect` and requires the actual binary; it is not skipped when the dependency is absent.
+
+Before the scaffolder suite, the tool gate selects the Rust toolchain and fetches the SDK's locked dependencies. The generated Rust function test then runs Cargo offline, including on runners with an initially empty registry cache.

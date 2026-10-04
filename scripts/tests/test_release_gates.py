@@ -22,6 +22,15 @@ def test_required_tool_suites_are_scheduled():
     assert './gradlew releaseChecks -PcontrolPlaneModules=all' in commands
 
 
+def test_scaffolder_prepares_rust_dependencies_before_offline_tests():
+    steps = workflow()['jobs']['test-tools']['steps']
+    scaffold = next(i for i, step in enumerate(steps) if step.get('name') == 'Run scaffolder tests')
+    setup = next(i for i, step in enumerate(steps) if step.get('uses', '').startswith('dtolnay/rust-toolchain@'))
+    fetch = next(i for i, step in enumerate(steps)
+                 if 'cargo fetch --locked --manifest-path sdks/rust/Cargo.toml' in step.get('run', ''))
+    assert setup < fetch < scaffold
+
+
 @pytest.mark.parametrize('result', ['success', 'failure', 'cancelled', 'skipped'])
 def test_aggregate_gate_rejects_unsuccessful_jobs(result):
     jobs = workflow()['jobs']
