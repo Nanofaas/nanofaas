@@ -57,6 +57,12 @@ public final class DefaultPeerTransport implements PeerTransport, SmartLifecycle
                 && current.messaging() == expected.messaging();
     }
 
+    @Override public synchronized java.util.Optional<PeerEndpoint> localEndpoint() {
+        Session session = sessions.get();
+        if(stopped || session==null || invocationUri==null) return java.util.Optional.empty();
+        return java.util.Optional.of(new PeerEndpoint(session.nodeId(),session.incarnation(),invocationUri));
+    }
+
     @Override public synchronized List<PeerEndpoint> activeNeighbors() {
         if (stopped || sessions.get() == null) return List.of();
         endpoints.entrySet().removeIf(e -> e.getValue().generation() != table.activationGeneration(e.getKey())

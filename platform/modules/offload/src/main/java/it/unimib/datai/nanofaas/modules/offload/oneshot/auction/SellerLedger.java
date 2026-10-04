@@ -4,6 +4,7 @@ public final class SellerLedger {
     private AuctionSnapshot state;
     private final OneShotAuctionEngine engine;
     public SellerLedger(AuctionSnapshot state, OneShotAuctionEngine.Options options) { this.state = state; engine = new OneShotAuctionEngine(options); }
+    public SellerLedger(AuctionSnapshot state, OneShotAuctionEngine engine) { this.state=state; this.engine=engine; }
     public synchronized AuctionTransition apply(AuctionMessage message) {
         AuctionTransition transition = engine.advance(state, message);
         state = transition.state();

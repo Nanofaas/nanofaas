@@ -70,5 +70,11 @@ class DefaultPeerTransportTest {
         assertThatThrownBy(() -> handler.onMessage("a:7000", new byte[0]).block()).isInstanceOf(PeerCluster.Dropped.class);
         assertThat(calls.get()).isZero();
         assertThatThrownBy(() -> transport.request("a", "one-shot", new byte[0], Duration.ofSeconds(1)).block()).isInstanceOf(IllegalStateException.class);
+    }    @Test void localEndpointUsesCurrentTransportIncarnationAndDisappearsOnStop() {
+        assertThat(transport.localEndpoint().orElseThrow().incarnation()).isEqualTo("run1");
+        session.set(new DefaultPeerTransport.Session("self","run2",messaging));
+        assertThat(transport.localEndpoint().orElseThrow().incarnation()).isEqualTo("run2");
+        transport.stop(); assertThat(transport.localEndpoint()).isEmpty();
     }
+
 }

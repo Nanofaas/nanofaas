@@ -18,12 +18,31 @@ public final class OneShotAuctionEngine {
     }
     public record BidProposal(String target, AuctionMessage.Bid bid) {}
     private static final int MAX_MESSAGES = 10_000;
+    private final java.util.function.Consumer<LocalSolution> solverObserver;
     private final Options options;
     private final LocalReplicaSolver solver;
     private final Supplier<SolveLimits> limits;
     public OneShotAuctionEngine(Options options) { this(options, new LocalReplicaSolver(), () -> SolveLimits.forDuration(Duration.ofSeconds(2))); }
     public OneShotAuctionEngine(Options options, LocalReplicaSolver solver, Supplier<SolveLimits> limits) {
+        this(options,solver,limits,result -> {});
+    }
+    public OneShotAuctionEngine(Options options, LocalReplicaSolver solver, Supplier<SolveLimits> limits, java.util.function.Consumer<LocalSolution> observer) {
+        this.solverObserver=Objects.requireNonNull(observer);
         this.options = Objects.requireNonNull(options); this.solver = Objects.requireNonNull(solver); this.limits = Objects.requireNonNull(limits);
+    }
+
+    private LocalSolution solve(LocalProblem problem,SolveLimits limits) {
+        var result=solver.solve(problem,limits); solverObserver.accept(result); return result;
+    }
+    private static String stableId(String... parts) {
+        try {
+            var hash=java.security.MessageDigest.getInstance("SHA-256");
+            for(var part:parts) {
+                byte[] bytes=part.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                hash.update(java.nio.ByteBuffer.allocate(4).putInt(bytes.length).array()); hash.update(bytes);
+            }
+            return java.util.HexFormat.of().formatHex(hash.digest());
+        } catch(java.security.NoSuchAlgorithmException unavailable) { throw new IllegalStateException(unavailable); }
     }
 
     public List<BidProposal> defineBids(String function, String version, long generation, long wanted, double gamma, List<AuctionMessage.Offer> offers) {
@@ -147,13 +166,13 @@ public final class OneShotAuctionEngine {
             var bid = message.bid(); long quantity = Math.min(capacity.getOrDefault(bid.function(), 0L), bid.quantity());
             if (quantity == 0) continue;
             var identity = state.identities().get(bid.function()); var e = message.envelope();
-            String id = state.incarnation() + ":" + state.epoch() + ":" + state.round() + ":" + e.senderId() + ":" + e.messageId();
+            String id = stableId(state.incarnation(),Long.toString(state.epoch()),Integer.toString(state.round()),e.senderId(),e.messageId());
             var assignment = new Assignment(id, e.senderId(), e.incarnation(), state.nodeId(), state.incarnation(), bid.function(),
                     bid.version(), identity.generation(), bid.buyerGeneration(), state.epoch(), quantity, false);
             assignments.put(id, assignment);
             capacity.put(bid.function(), capacity.get(bid.function()) - quantity);
             minBid.merge(bid.function(), bid.price(), Math::min);
-            emits.add(new AuctionMessage(envelope(state, "grant:" + e.senderId() + ":" + e.messageId()), AuctionMessage.Kind.GRANT,
+            emits.add(new AuctionMessage(envelope(state, "grant:"+id), AuctionMessage.Kind.GRANT,
                     e.senderId(), null, null, assignment));
         }
         for (var offer : localOffers(state)) {
@@ -176,7 +195,7 @@ public final class OneShotAuctionEngine {
                 rows.add(new LocalProblem.Function(f.id(), f.load(), f.demandSeconds(), f.utilization(), f.memoryMiB(),
                         f.alpha(), f.delta(), f.gamma(), 0, f.fixedLocal(), out, in));
             }
-            var fixed = solver.solve(new LocalProblem(LocalProblem.Model.LSPr_x, state.baseProblem().memoryCapacityMiB(), rows), limits.get());
+            var fixed = solve(new LocalProblem(LocalProblem.Model.LSPr_x, state.baseProblem().memoryCapacityMiB(), rows), limits.get());
             if (fixed.status() != LocalSolution.Status.OPTIMAL) {
                 // A failed recomputation cannot create observable new seller promises.
                 return transition(state, state.desiredReplicas(), state.prices(), state.offers(), state.pendingBids(), state.assignments(), seen, true,
@@ -192,7 +211,7 @@ public final class OneShotAuctionEngine {
         var rows = new ArrayList<LocalProblem.Function>();
         for (var f : state.baseProblem().functions()) rows.add(new LocalProblem.Function(f.id(), f.load(), f.demandSeconds(), f.utilization(),
                 f.memoryMiB(), f.alpha(), f.delta(), f.gamma(), 0, f.fixedLocal(), outbound(state, f.id()), inbound(state, f.id())));
-        var result = solver.solve(new LocalProblem(LocalProblem.Model.LSPr_x, state.baseProblem().memoryCapacityMiB(), rows), limits.get());
+        var result = solve(new LocalProblem(LocalProblem.Model.LSPr_x, state.baseProblem().memoryCapacityMiB(), rows), limits.get());
         if (result.status() != LocalSolution.Status.OPTIMAL)
             return transition(state, state.desiredReplicas(), state.prices(), state.offers(), state.pendingBids(), state.assignments(), state.seen(),
                     true, "SOLVER_" + result.status(), List.of());
