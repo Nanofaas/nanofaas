@@ -56,6 +56,7 @@ public class P2pService implements SmartLifecycle {
     private final AtomicReference<PeerMessaging> messaging = new AtomicReference<>();
     private final AtomicReference<P2pStateFile> stateFile = new AtomicReference<>();
     private volatile String nodeId;
+    private volatile String incarnation;
     private final Object persistLock = new Object();
     private volatile boolean persistFailing;
     private Disposable pings;
@@ -108,6 +109,7 @@ public class P2pService implements SmartLifecycle {
     }
 
     private void join() {
+        incarnation = java.util.UUID.randomUUID().toString();
         PeerCluster c = cluster.get();
         c.setIsolated(false);
         table.clearPeers();
@@ -348,6 +350,12 @@ public class P2pService implements SmartLifecycle {
                 reportPersistFailure(e);
             }
         }
+    }
+
+    public DefaultPeerTransport.Session transportSession() {
+        PeerMessaging m = messaging.get();
+        return running && state == State.ACTIVE && m != null
+                ? new DefaultPeerTransport.Session(nodeId, incarnation, m) : null;
     }
 
     public PeerMessaging messaging() {

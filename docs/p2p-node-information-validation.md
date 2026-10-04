@@ -54,3 +54,20 @@ Native Docker startup with an existing config required reflection for DockerConf
 and its package-private currentContext setter; these are covered by the hints test.
 The final Docker/P2P native executable starts with the existing Docker configuration,
 exchanges 15 real images and preserves functions when images are disabled and re-enabled.
+
+## Application transport and one-shot endpoints
+
+The `p2p-api` library exposes active neighbors, bounded request/reply and closable
+subscriptions without depending on the discovery implementation. Configure
+`nanofaas.p2p.invocation-uri` with the explicit control-plane HTTP base URI that
+neighbors can reach. An absent URI leaves discovery enabled but makes the node
+ineligible as a one-shot execution destination. HTTP ports are never inferred from
+transport addresses.
+
+Peers negotiate identity, participation incarnation and URI on
+`nanofaas.endpoint.v1`. Old peers that do not support this topic remain discoverable.
+Announcements expire after 15 seconds and are invalidated when participation changes.
+Application messages are limited to 1 MiB; outgoing requests are bounded by
+`nanofaas.p2p.max-concurrent-requests` (default 4) and a positive caller timeout.
+Closing a subscription disables retained wire callbacks. Stopping the transport or
+changing the local participation incarnation fences old callbacks and responses.
