@@ -52,3 +52,8 @@ def test_core_only_gate_includes_configured_http_calibration():
 def test_python_sdk_gate_selects_the_installed_interpreter():
     commands = '\n'.join(step.get('run', '') for step in workflow()['jobs']['test-python']['steps'])
     assert 'uv run --python 3.12 --extra test --with-editable .' in commands
+
+
+def test_async_governor_composition_is_scheduled():
+    commands = '\n'.join(step.get('run', '') for step in workflow()['jobs']['test-java']['steps'])
+    assert ':control-plane-modules:concurrency-control:test -PcontrolPlaneModules=async-queue,concurrency-control,runtime-config' in commands

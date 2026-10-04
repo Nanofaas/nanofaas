@@ -47,6 +47,7 @@ def test_shared_failure_case(case, monkeypatch):
     monkeypatch.setenv('NANOFAAS_CALLBACK_ATTEMPT_TIMEOUT', str(config['callbackAttemptTimeoutMs']))
     monkeypatch.setenv('NANOFAAS_BODY_READ_TIMEOUT', str(config['bodyReadTimeoutMs']))
     runtime = importlib.reload(runtime_app)
+    failures_before = runtime.RUNTIME_CALLBACK_DELIVERY_FAILURES_TOTAL.labels(function=runtime.FUNCTION_NAME)._value.get()
     started = []
 
     @decorator.nanofaas_function
@@ -78,6 +79,7 @@ def test_shared_failure_case(case, monkeypatch):
             await runtime._runtime_work.shutdown(config['deadlineMs'] / 1000)
             snapshot = runtime._runtime_work.snapshot()
             assert snapshot.pending_callbacks == snapshot.pending_callback_bytes == snapshot.active_handlers == snapshot.active_callback_workers == 0
+            assert runtime.RUNTIME_CALLBACK_DELIVERY_FAILURES_TOTAL.labels(function=runtime.FUNCTION_NAME)._value.get() - failures_before == int(expected['callbackAttempts'] > 0 and not expected['callbackDelivered'])
             assert len(calls) == expected['callbackAttempts']
             for payload, attempt, trace, path in calls:
                 assert config['executionId'] in path

@@ -85,7 +85,8 @@ class SharedFailureWireCorpusTest {
                 CallbackClient client = new CallbackClient(transport.restClient(http), settings, MAPPER, 4096, config.path("callbackMaxAttempts").asInt()) {
                     @Override protected void sleepBeforeRetry(int attemptIndex) { }
                 };
-                CallbackDispatcher dispatcher = new CallbackDispatcher(client, 1);
+                var metrics = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+                CallbackDispatcher dispatcher = new CallbackDispatcher(client, new RuntimeMetricsFilter(metrics), 1, 4, 8192, 4096);
                 HandlerExecutor executor = new HandlerExecutor(1000, 1);
                 FunctionHandler handler = _ -> {
                     started.set(true);
@@ -103,6 +104,8 @@ class SharedFailureWireCorpusTest {
                     assertEquals(corpus.path("finalCounters").path("pendingCallbacks").asInt(), dispatcher.pendingCallbackCount());
                     assertEquals(corpus.path("finalCounters").path("pendingCallbackBytes").asLong(), dispatcher.pendingCallbackBytes());
                     assertEquals(corpus.path("finalCounters").path("activeHandlers").asInt(), executor.activeHandlerCount());
+                    assertEquals(attempts > 0 && !expected.path("callbackDelivered").asBoolean() ? 1.0 : 0.0,
+                            metrics.get("runtime_callback_failures").counter().count());
                     assertEquals(attempts + 1, server.getRequestCount());
                     for (int i = 0; i < attempts; i++) {
                         var callback = server.takeRequest(1, TimeUnit.SECONDS);

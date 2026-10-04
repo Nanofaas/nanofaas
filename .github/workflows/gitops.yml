@@ -72,9 +72,11 @@ jobs:
       - name: Run Core-Only Tests
         run: ./gradlew :control-plane:test -PcontrolPlaneModules=none --tests '*CoreOnlyApiTest' --tests '*P07ConfiguredHttpCalibrationTest'
 
-      # concurrency-control now supports either queue provider (requires.oneOf).
-      # sync-queue is defaultEnabled=false, so the main suite only ever exercises
-      # async-queue; SyncConcurrencyControlE2eTest self-skips there.
+      # Both queues are enabled by default; concurrency-control selects sync
+      # when both are present. Run each provider explicitly to cover both governors.
+      - name: Run Async-Queue Concurrency Tests
+        run: ./gradlew :control-plane-modules:concurrency-control:test -PcontrolPlaneModules=async-queue,concurrency-control,runtime-config
+
       - name: Run Sync-Queue Concurrency Tests
         run: ./gradlew :control-plane-modules:concurrency-control:test :control-plane-modules:sync-queue:test -PcontrolPlaneModules=sync-queue,concurrency-control,runtime-config
 

@@ -73,10 +73,11 @@ class SharedFailureWireCorpusTest {
         try (HttpClient http = HttpClient.newHttpClient()) {
             http.send(HttpRequest.newBuilder(URI.create(callbackUrl + "/warmup")).build(), HttpResponse.BodyHandlers.discarding());
             var client = CorpusCallbackClientFactory.create(http, mapper, callbackUrl, config.path("callbackAttemptTimeoutMs").asLong(), config.path("callbackMaxAttempts").asInt());
+            RuntimeMetrics metrics = new RuntimeMetrics("failure");
             InvokeHandler handler = new InvokeHandler(_ -> {
                 started.set(true);
                 return name.equals("envelope-serialization-failure") ? new HandlerResponse(new Unserializable(), 201, Map.of(), null) : corpus.path("successOutput");
-            }, client, new RuntimeMetrics("failure"), mapper, "failure", delivery, 1000, limits);
+            }, client, metrics, mapper, "failure", delivery, 1000, limits);
             ingress.createContext("/invoke", handler); ingress.start();
             try {
                 int status; JsonNode body;
@@ -97,6 +98,10 @@ class SharedFailureWireCorpusTest {
                 assertEquals(corpus.path("finalCounters").path("activeHandlers").asInt(), limits.activeHandlers());
                 assertEquals(corpus.path("finalCounters").path("pendingCallbacks").asInt(), limits.pendingCallbacks());
                 assertEquals(corpus.path("finalCounters").path("pendingCallbackBytes").asLong(), limits.pendingCallbackBytes());
+                var scrape = new java.io.ByteArrayOutputStream();
+                new io.prometheus.metrics.expositionformats.PrometheusTextFormatWriter(true).write(scrape, metrics.getRegistry().scrape());
+                double failures = expected.path("callbackAttempts").asInt() > 0 && !expected.path("callbackDelivered").asBoolean() ? 1.0 : 0.0;
+                assertTrue(scrape.toString().contains("runtime_callback_failures_total{function=\"failure\"} " + failures), scrape.toString());
                 assertEquals(expected.path("callbackAttempts").asInt(), calls.size());
                 for (Callback call : calls) {
                     assertTrue(call.path().contains(config.path("executionId").asText()));

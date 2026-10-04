@@ -125,6 +125,13 @@ async fn executes_shared_failure_lifecycles() {
             shared.dispatcher.snapshot(),
             crate::dispatcher::CallbackSnapshot::default()
         );
+        let failed = expected["callbackAttempts"].as_u64().unwrap() > 0
+            && !expected["callbackDelivered"].as_bool().unwrap();
+        assert_eq!(
+            shared.metrics.callback_drops.get(),
+            if failed { 1 } else { 0 },
+            "{name}: delivery outcome"
+        );
         let calls = runtime.callbacks.received();
         assert_eq!(
             calls.len() as u64,

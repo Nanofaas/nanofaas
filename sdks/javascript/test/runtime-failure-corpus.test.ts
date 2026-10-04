@@ -9,7 +9,7 @@ import { HandlerResponse, createRuntime, type RuntimeOptions, type JsonValue } f
 execFileSync("python3", [resolve("..", "runtime-contract", "validate_saturation_wire_corpus.py"), resolve("..", "runtime-contract", "failure-wire-corpus.json")], { timeout: 10000 });
 const corpus = JSON.parse(await readFile(resolve("..", "runtime-contract", "failure-wire-corpus.json"), "utf8"));
 for (const [name, definition] of Object.entries(corpus.contractDefinitions)) {
-    const expected = { ...definition as object, ...corpus.knownDifferences.javascript?.[name] } as { httpStatus: number; errorCode: string | null; handlerStarted: boolean; callbackAttempts: number; callbackStatus: number | null };
+    const expected = { ...definition as object, ...corpus.knownDifferences.javascript?.[name] } as { httpStatus: number; errorCode: string | null; handlerStarted: boolean; callbackDelivered: boolean; callbackAttempts: number; callbackStatus: number | null };
     test(`shared failure: ${name}`, { timeout: corpus.config.deadlineMs }, async () => {
         const callbacks: { payload: unknown; path: string; attempt: string | undefined; trace: string | undefined }[] = [];
         const server = createServer(async (req, res) => {
@@ -58,7 +58,11 @@ for (const [name, definition] of Object.entries(corpus.contractDefinitions)) {
                     const metric = `runtime_${key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)}`;
                     return Number(metrics.match(new RegExp(`^${metric} (\\d+)$`, "m"))?.[1]) === value;
                 });
-                if (drained) break;
+                if (drained) {
+                    const failures = Number(metrics.match(/^runtime_callback_failures (\d+)$/m)?.[1]);
+                    assert.equal(failures, expected.callbackAttempts > 0 && !expected.callbackDelivered ? 1 : 0);
+                    break;
+                }
                 assert.ok(Date.now() < deadline, "callback resources did not drain");
                 await new Promise<void>((resolve) => setTimeout(resolve, 1));
             }

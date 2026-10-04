@@ -25,11 +25,12 @@ func TestSharedFailureWireCorpus(t *testing.T) {
 			ExecutionID, TraceID                                                                          string
 		}
 		ContractDefinitions map[string]struct {
-			HTTPStatus       int
-			ErrorCode        *string
-			HandlerStarted   bool
-			CallbackAttempts int
-			CallbackStatus   *int
+			HTTPStatus        int
+			ErrorCode         *string
+			HandlerStarted    bool
+			CallbackDelivered bool
+			CallbackAttempts  int
+			CallbackStatus    *int
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -128,6 +129,25 @@ func TestSharedFailureWireCorpus(t *testing.T) {
 			callbackSnap := rt.callbackDispatcher.snapshot()
 			if callbackSnap.pendingCallbackBytes != 0 || callbackSnap.serializedCallbackBytes != 0 {
 				t.Fatalf("retained callback resources=%+v", callbackSnap)
+			}
+			families, err := rt.metrics.registry.Gather()
+			if err != nil {
+				t.Fatal(err)
+			}
+			failures := float64(0)
+			for _, family := range families {
+				if family.GetName() == "nanofaas_runtime_callback_drops_total" {
+					for _, metric := range family.Metric {
+						failures += metric.GetCounter().GetValue()
+					}
+				}
+			}
+			wantFailures := float64(0)
+			if expected.CallbackAttempts > 0 && !expected.CallbackDelivered {
+				wantFailures = 1
+			}
+			if failures != wantFailures {
+				t.Fatalf("delivery failures=%v want=%v", failures, wantFailures)
 			}
 			mu.Lock()
 			defer mu.Unlock()
