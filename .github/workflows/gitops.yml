@@ -262,6 +262,12 @@ jobs:
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v3.18.4
+      - name: Install k6
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/k6.deb" https://github.com/grafana/k6/releases/download/v2.3.0/k6-v2.3.0-linux-amd64.deb
+          printf '%s  %s\n' e6540ad879fe7ad01ddfe2288d54ef842848a7c31efff1d92a9e07be80e702bc "$RUNNER_TEMP/k6.deb" | sha256sum --check
+          sudo dpkg -i "$RUNNER_TEMP/k6.deb"
+          k6 version
       - name: Run scripts and experiments tests
         run: uv run --python 3.12 --with pytest --with pyyaml python -m pytest scripts/tests experiments/tests sdks/runtime-contract -ra --junitxml=build/test-results/tools.xml
       - name: Run scaffolder tests

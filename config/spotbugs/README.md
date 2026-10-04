@@ -13,3 +13,5 @@ new report; do not refresh hashes merely to obtain a green gate.
 
 The baseline retains class/method/field identifiers for review. The full-composition inventory includes two containerd findings from unchanged
 source after the pinned dependency bootstrap.
+
+The live `MeterRegistry`, `P2pSettings` and `PeerTable` collaborators introduced by node-information exchange are intentionally shared. Their constructor-field `EI_EXPOSE_REP2` matches are narrowly excluded in `exclude.xml`; this does not baseline or suppress synchronization findings. Polling acquires its messaging transport under the instance monitor and retains it for deferred subscriptions in that round.

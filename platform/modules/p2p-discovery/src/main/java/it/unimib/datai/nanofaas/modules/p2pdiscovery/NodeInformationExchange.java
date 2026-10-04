@@ -206,9 +206,11 @@ public final class NodeInformationExchange implements AutoCloseable {
         polling = true;
         long version = epoch;
         var targets = table.active();
+        // Deferred subscriptions in this round retain the transport acquired under the monitor.
+        PeerMessaging transport = messaging;
         round = Flux.fromIterable(targets).flatMap(peer -> {
             long generation = table.activationGeneration(peer.id());
-            return messaging.request(peer.id(), TOPIC, new byte[0], DEADLINE).timeout(DEADLINE)
+            return transport.request(peer.id(), TOPIC, new byte[0], DEADLINE).timeout(DEADLINE)
                     .doOnNext(bytes -> accept(peer.id(), generation, version, bytes))
                     .onErrorResume(e -> Mono.empty());
         }, 4).doFinally(signal -> {

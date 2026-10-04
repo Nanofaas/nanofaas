@@ -22,4 +22,18 @@
         <Method name="parseDirty"/>
         <Bug pattern="NP_BOOLEAN_RETURN_NULL"/>
     </Match>
+    <!-- These are injected live collaborators, not owned value objects. Copying them
+         would detach resource observations, runtime settings and peer membership. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.modules.p2pdiscovery.NodeInformationCollector"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="meters"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.modules.p2pdiscovery.NodeInformationExchange"/>
+        <Method name="&lt;init&gt;"/>
+        <Or><Field name="settings"/><Field name="table"/></Or>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
 </FindBugsFilter>
