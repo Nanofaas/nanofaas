@@ -26,6 +26,14 @@ import java.time.Duration;
 public class ContainerDeploymentProviderConfiguration {
 
     @Bean
+    it.unimib.datai.nanofaas.controlplane.deployment.ImageInventorySource imageInventorySource(
+            ContainerRuntimeAdapter adapter, ContainerLocalProperties properties) {
+        return adapter instanceof DockerJavaContainerRuntimeAdapter docker
+                ? docker.imageInventorySource()
+                : new CliImageInventorySource(properties.runtimeAdapter(), new ImageInventoryCommand());
+    }
+
+    @Bean
     CliCommandExecutor cliCommandExecutor() {
         return new ProcessCliCommandExecutor();
     }

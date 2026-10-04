@@ -1,4 +1,35 @@
 paths:
+  /v1/admin/p2p/information:
+    get:
+      summary: Read the local node information snapshot
+      description: Cached observations, with sharing flags applied immediately. Requires P2P and admin enablement.
+      responses:
+        '200':
+          description: Local snapshot with explicit per-category status and source age
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/P2pNodeInformation'
+        '404':
+          description: P2P or its admin API is disabled
+  /v1/admin/p2p/peers/{id}/information:
+    get:
+      summary: Read information received directly from a known neighbor
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: CURRENT, NOT_RECEIVED, STALE or INACTIVE; only CURRENT carries a snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/P2pRemoteInformation'
+        '404':
+          description: Unknown peer, or P2P or its admin API is disabled
   /v1/admin/p2p/state:
     get:
       summary: Read P2P participation state
@@ -174,6 +205,115 @@ paths:
           description: p2p admin API is disabled
 components:
   schemas:
+    P2pNodeInformation:
+      type: object
+      required: [schemaVersion, nodeId, sampledAt, functions, images, resources]
+      properties:
+        schemaVersion: {type: integer, enum: [1]}
+        nodeId: {type: string}
+        sampledAt: {type: string, format: date-time}
+        functions:
+          allOf:
+            - $ref: '#/components/schemas/P2pInformationCategory'
+            - type: object
+              properties:
+                data:
+                  type: array
+                  nullable: true
+                  maxItems: 5000
+                  items:
+                    $ref: '#/components/schemas/P2pFunctionInformation'
+        images:
+          allOf:
+            - $ref: '#/components/schemas/P2pInformationCategory'
+            - type: object
+              properties:
+                data:
+                  allOf:
+                    - $ref: '#/components/schemas/P2pImageInventory'
+                  nullable: true
+        resources:
+          allOf:
+            - $ref: '#/components/schemas/P2pInformationCategory'
+            - type: object
+              properties:
+                data:
+                  allOf:
+                    - $ref: '#/components/schemas/P2pResourceInformation'
+                  nullable: true
+    P2pInformationCategory:
+      type: object
+      description: At most 300 KiB encoded. DISABLED and UNAVAILABLE have null data;
+        AVAILABLE and PARTIAL include source metadata. Samples expire at 15000 ms of monotonic source age.
+      required: [status, ageMillis]
+      properties:
+        status: {type: string, enum: [AVAILABLE, PARTIAL, DISABLED, UNAVAILABLE]}
+        collectedAt: {type: string, format: date-time, nullable: true}
+        source: {type: string, nullable: true}
+        scope: {type: string, nullable: true}
+        reasonCode: {type: string, nullable: true}
+        ageMillis: {type: integer, format: int64, minimum: 0}
+    P2pFunctionInformation:
+      type: object
+      required: [name, executionMode]
+      properties:
+        name: {type: string}
+        executionMode: {type: string, enum: [LOCAL, EXTERNAL, DEPLOYMENT]}
+        image: {type: string, nullable: true}
+        backend: {type: string, nullable: true}
+    P2pImageInventory:
+      type: object
+      required: [backend, scope, collectedAt, status, entries]
+      properties:
+        backend: {type: string}
+        scope: {type: string}
+        collectedAt: {type: string, format: date-time}
+        status: {type: string, enum: [AVAILABLE, PARTIAL, UNAVAILABLE]}
+        reasonCode: {type: string, nullable: true}
+        entries:
+          type: array
+          maxItems: 5000
+          items:
+            type: object
+            required: [references]
+            properties:
+              nodeId: {type: string, nullable: true}
+              references: {type: array, items: {type: string}}
+              digest: {type: string, nullable: true}
+              imageId: {type: string, nullable: true}
+    P2pResourceInformation:
+      type: object
+      description: Observed control-plane-visible environment, process, JVM heap and per-function workload.
+        Missing measurements remain null. CPU ratios are in [0,1], memory values are bytes.
+      properties:
+        environmentCpuRatio: {type: number, minimum: 0, maximum: 1, nullable: true}
+        environmentMemoryUsedBytes: {type: integer, format: int64, minimum: 0, nullable: true}
+        environmentMemoryTotalBytes: {type: integer, format: int64, minimum: 0, nullable: true}
+        processCpuRatio: {type: number, minimum: 0, maximum: 1, nullable: true}
+        jvmHeapUsedBytes: {type: integer, format: int64, minimum: 0, nullable: true}
+        jvmHeapMaxBytes: {type: integer, format: int64, minimum: 0, nullable: true}
+        functions:
+          type: array
+          maxItems: 5000
+          items:
+            type: object
+            required: [name, queueDepth, inFlight, effectiveConcurrency, dispatchableBacklog]
+            properties:
+              name: {type: string}
+              queueDepth: {type: integer, minimum: 0}
+              inFlight: {type: integer, minimum: 0}
+              effectiveConcurrency: {type: integer, minimum: 0}
+              dispatchableBacklog: {type: integer, minimum: 0}
+    P2pRemoteInformation:
+      type: object
+      required: [nodeId, state]
+      properties:
+        nodeId: {type: string}
+        state: {type: string, enum: [CURRENT, NOT_RECEIVED, STALE, INACTIVE]}
+        information:
+          allOf:
+            - $ref: '#/components/schemas/P2pNodeInformation'
+          nullable: true
     P2pState:
       type: object
       additionalProperties: false
@@ -241,9 +381,15 @@ components:
           - unavailable
     P2pConfigPatch:
       type: object
-      description: Only `maxNeighbors` and `maxLatencyMs` are accepted; a key set
-        to null means "not applied".
+      description: Neighbor limits and three independent sharing flags. Sharing flags require booleans;
+        numeric limit nulls retain their existing meaning. Patches are atomic.
       properties:
+        shareFunctions:
+          type: boolean
+        shareImages:
+          type: boolean
+        shareResources:
+          type: boolean
         maxNeighbors:
           type: integer
           minimum: 0
@@ -262,6 +408,12 @@ components:
         effective:
           type: object
           properties:
+            shareFunctions:
+              type: boolean
+            shareImages:
+              type: boolean
+            shareResources:
+              type: boolean
             maxNeighbors:
               type: integer
               nullable: true

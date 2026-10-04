@@ -220,7 +220,7 @@ func (r *Runtime) handleInvokeResult(w http.ResponseWriter, output any, handlerE
 	callbackResult := Success(output)
 	status := http.StatusOK
 	if isEnvelope {
-		outputForWire, status, callbackResult = applyEnvelope(w, envelope)
+		outputForWire, status, callbackResult = applyEnvelope(envelope)
 	}
 
 	body, err := encodeJSONBounded(outputForWire, r.settings.MaxOutputBytes)
@@ -237,6 +237,15 @@ func (r *Runtime) handleInvokeResult(w http.ResponseWriter, output any, handlerE
 		return r.handleCallbackSubmitFailure(w, err, callbackReservation, runtimeContext, dispatchAttempt)
 	}
 
+	if isEnvelope {
+		for key, value := range callbackResult.Headers {
+			w.Header().Set(key, value)
+		}
+		w.Header().Set("X-NanoFaaS-Function-Status", "true")
+		if envelope.Encoding != "" {
+			w.Header().Set("X-NanoFaaS-Encoding", envelope.Encoding)
+		}
+	}
 	r.markInvocation("success")
 	r.setSuccessHeaders(w, isColdStart)
 	w.WriteHeader(status)
@@ -246,17 +255,10 @@ func (r *Runtime) handleInvokeResult(w http.ResponseWriter, output any, handlerE
 	return true
 }
 
-// applyEnvelope writes a HandlerResponse's allowed headers and returns its wire output,
-// status and callback result.
-func applyEnvelope(w http.ResponseWriter, envelope HandlerResponse) (any, int, InvocationResult) {
+// applyEnvelope prepares wire output and callback metadata without publishing headers.
+// Headers become visible only after output encoding and callback acceptance succeed.
+func applyEnvelope(envelope HandlerResponse) (any, int, InvocationResult) {
 	allowed := FilterAllowedHeaders(envelope.Headers)
-	for key, value := range allowed {
-		w.Header().Set(key, value)
-	}
-	w.Header().Set("X-NanoFaaS-Function-Status", "true")
-	if envelope.Encoding != "" {
-		w.Header().Set("X-NanoFaaS-Encoding", envelope.Encoding)
-	}
 	return envelope.Output, envelope.StatusCode,
 		SuccessWithEnvelope(envelope.Output, envelope.StatusCode, allowed, envelope.Encoding)
 }

@@ -277,7 +277,7 @@ public class FunctionService {
                     managedDeploymentCoordinator.deprovision(existing.managedDeploymentTarget().orElseThrow());
                     deprovisioned = true;
                 }
-                registry.persistCurrentSnapshot(); // durable delete commit happens last
+                registry.removeRegistered(name); // commit only this durable delete, after teardown
                 // A retry that finally emptied the backend ends the pending state.
                 applicationState.clearFunction(name);
                 return Optional.of(existing.spec());

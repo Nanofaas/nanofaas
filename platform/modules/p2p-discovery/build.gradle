@@ -10,6 +10,8 @@ dependencyManagement {
 }
 
 dependencies {
+    implementation project(':control-plane-spi')
+    implementation project(':workload-metrics')
     implementation 'org.springframework.boot:spring-boot-starter'
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
     implementation 'io.micrometer:micrometer-core'

@@ -1,0 +1,29 @@
+package it.unimib.datai.nanofaas.modules.containerdeploymentprovider;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.aot.hint.RuntimeHints;
+import org.springframework.aot.hint.predicate.RuntimeHintsPredicates;
+import static org.assertj.core.api.Assertions.*;
+
+class ImageInventoryNativeHintsTest {
+    @Test void nativeClientCanReadAnExistingDockerConfigurationFile() throws Exception {
+        var hints = new RuntimeHints();
+        new DockerJavaRuntimeHints().registerHints(hints, getClass().getClassLoader());
+        for (Class<?> type : new Class<?>[]{com.github.dockerjava.core.DockerConfigFile.class,
+                com.github.dockerjava.api.model.AuthConfig.class}) {
+            assertThat(RuntimeHintsPredicates.reflection().onConstructorInvocation(type.getDeclaredConstructor()))
+                    .accepts(hints);
+        }
+        assertThat(RuntimeHintsPredicates.reflection().onMethodInvocation(
+                com.github.dockerjava.core.DockerConfigFile.class.getDeclaredMethod("setCurrentContext", String.class)))
+                .accepts(hints);
+    }
+    @Test void registersTheDockerImageDeserializationDto() throws Exception {
+        var hints = new RuntimeHints();
+        new DockerJavaRuntimeHints().registerHints(hints, getClass().getClassLoader());
+        assertThat(RuntimeHintsPredicates.reflection().onType(com.github.dockerjava.api.model.Image.class))
+                .accepts(hints);
+        assertThat(RuntimeHintsPredicates.reflection().onConstructorInvocation(
+                com.github.dockerjava.api.model.Image.class.getDeclaredConstructor())).accepts(hints);
+    }
+}

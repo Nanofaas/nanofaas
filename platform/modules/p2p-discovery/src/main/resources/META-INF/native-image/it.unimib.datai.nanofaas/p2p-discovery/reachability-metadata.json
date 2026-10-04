@@ -6,6 +6,66 @@
   ],
   "reflection": [
     {
+      "type": "it.unimib.datai.nanofaas.modules.p2pdiscovery.NodeInformation",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "it.unimib.datai.nanofaas.modules.p2pdiscovery.NodeInformation$Category",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "it.unimib.datai.nanofaas.modules.p2pdiscovery.NodeInformation$Status",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "it.unimib.datai.nanofaas.modules.p2pdiscovery.NodeInformation$FunctionInfo",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "it.unimib.datai.nanofaas.modules.p2pdiscovery.NodeInformation$ResourceInfo",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "it.unimib.datai.nanofaas.modules.p2pdiscovery.NodeInformation$FunctionLoad",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "it.unimib.datai.nanofaas.modules.p2pdiscovery.NodeInformationExchange$RemoteInformation",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "it.unimib.datai.nanofaas.controlplane.deployment.ImageInventory",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "it.unimib.datai.nanofaas.controlplane.deployment.ImageInventory$Entry",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "it.unimib.datai.nanofaas.controlplane.deployment.ImageInventory$Status",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
       "type": "it.unimib.datai.nanofaas.modules.p2pdiscovery.P2pFile",
       "allDeclaredConstructors": true,
       "allDeclaredMethods": true,

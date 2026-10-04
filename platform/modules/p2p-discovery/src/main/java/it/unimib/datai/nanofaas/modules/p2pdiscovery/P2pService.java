@@ -38,6 +38,8 @@ public class P2pService implements SmartLifecycle {
     private final PeerTable table;
     private final P2pSettings settings;
     private final MeterRegistry meters;
+    private final NodeInformationCollector informationCollector;
+    private volatile NodeInformationExchange information;
     private final Vivaldi vivaldi = new Vivaldi(System.nanoTime());
     private final AtomicBoolean dirty = new AtomicBoolean();
     private final Map<String, Meter.Id> peerGauges = new ConcurrentHashMap<>();
@@ -65,12 +67,25 @@ public class P2pService implements SmartLifecycle {
         this(props, table, settings, meters, PERSIST_EVERY, HINT_TTL);
     }
 
+    public P2pService(P2pProperties props, PeerTable table, P2pSettings settings, MeterRegistry meters,
+                      NodeInformationCollector collector) {
+        this(props, table, settings, meters, PERSIST_EVERY, HINT_TTL, collector);
+    }
+
     P2pService(P2pProperties props, PeerTable table, P2pSettings settings, MeterRegistry meters,
                Duration persistEvery, Duration hintTtl) {
+        this(props, table, settings, meters, persistEvery, hintTtl,
+                new NodeInformationCollector(null, null, null, meters, java.time.Clock.systemUTC(),
+                        NodeInformationCollector::visibleMemory));
+    }
+
+    private P2pService(P2pProperties props, PeerTable table, P2pSettings settings, MeterRegistry meters,
+                       Duration persistEvery, Duration hintTtl, NodeInformationCollector collector) {
         this.props = props;
         this.table = table;
         this.settings = settings;
         this.meters = meters;
+        this.informationCollector = collector;
         this.persistEvery = persistEvery;
         this.hintTtl = hintTtl;
     }
@@ -84,6 +99,7 @@ public class P2pService implements SmartLifecycle {
             generated = props.nodeId() == null && file.state().nodeId() == null;
             nodeId = resolveNodeId(file);
             applyFileConfig(file);
+            information = new NodeInformationExchange(nodeId, settings, table, informationCollector, System::nanoTime);
             cluster.set(new PeerCluster(nodeId, props.port(), props.externalHost(), seedsFor(file)));
         }
         join();
@@ -100,6 +116,7 @@ public class P2pService implements SmartLifecycle {
             c.start().block(Duration.ofSeconds(15));
             wireUp(c);
             state = State.ACTIVE;
+            information.activate(messaging.get(), true);
             log.info("p2p-discovery started: node {} at {}", nodeId, c.address());
         } catch (RuntimeException e) {
             disposeLoops();
@@ -126,6 +143,7 @@ public class P2pService implements SmartLifecycle {
         PeerCluster c = cluster.get();
         if (target == State.ISOLATED) {
             if (state == State.LEFT) join();
+            information.deactivate();
             c.setIsolated(true);
             pings.dispose();
             table.setAvailable(false);
@@ -210,6 +228,10 @@ public class P2pService implements SmartLifecycle {
     /** Precedence: state overrides > file config > application.yml. */
     private void applyFileConfig(P2pFile file) {
         var fc = file.config();
+        settings.setBaseSharing(new P2pSettings.Sharing(
+                fc.shareFunctions() == null ? props.shareFunctions() : fc.shareFunctions(),
+                fc.shareImages() == null ? props.shareImages() : fc.shareImages(),
+                fc.shareResources() == null ? props.shareResources() : fc.shareResources()));
         try {
             settings.setBase(fc.maxNeighbors() != null ? fc.maxNeighbors() : props.maxNeighbors(),
                     fc.maxLatencyMs() != null ? fc.maxLatencyMs() : props.maxLatencyMs());
@@ -280,6 +302,7 @@ public class P2pService implements SmartLifecycle {
     }
 
     private void disposeLoops() {
+        if (information != null) information.deactivate();
         for (Disposable d : new Disposable[]{pings, events, persister, refresher}) {
             if (d != null) {
                 d.dispose();
@@ -290,6 +313,19 @@ public class P2pService implements SmartLifecycle {
     /** Writes the state file from another thread; for callers (the admin API) that run on the event loop. */
     public void requestPersist() {
         Schedulers.boundedElastic().schedule(this::persistNow);
+    }
+
+    public void informationSettingsChanged() {
+        NodeInformationExchange exchange = information;
+        if (exchange != null) exchange.settingsChanged();
+    }
+
+    public NodeInformation localInformation() {
+        return information.local();
+    }
+
+    public java.util.Optional<NodeInformationExchange.RemoteInformation> peerInformation(String id) {
+        return information.remote(id);
     }
 
     public void persistNow() {

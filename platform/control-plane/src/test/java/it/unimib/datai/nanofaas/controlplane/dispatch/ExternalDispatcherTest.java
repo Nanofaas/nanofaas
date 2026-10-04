@@ -122,6 +122,26 @@ class ExternalDispatcherTest {
         }
     }
 
+    @Test
+    void sdkRuntimeFailuresWithoutEnvelopeMarkerRemainDispatchFailures() throws Exception {
+        for (String code : List.of("RUNTIME_OUTPUT_TOO_LARGE", "OUTPUT_SERIALIZATION_ERROR", "RUNTIME_STOPPING")) {
+            MockWebServer server = new MockWebServer();
+            server.enqueue(new MockResponse().setResponseCode(code.equals("RUNTIME_STOPPING") ? 503 : 500)
+                    .addHeader("Content-Type", "application/json")
+                    .setBody("{\"error\":{\"code\":\"" + code + "\",\"message\":\"Runtime failed\"}}"));
+            server.start();
+            try {
+                DispatchResult result = new ExternalDispatcher(WebClient.create())
+                        .dispatch(taskFor(server)).get(5, TimeUnit.SECONDS);
+                assertFalse(result.result().success(), code);
+                assertEquals("EXTERNAL_ERROR", result.result().error().code());
+                assertNull(result.result().statusCode());
+            } finally {
+                server.shutdown();
+            }
+        }
+    }
+
     private static InvocationTask taskFor(MockWebServer server) {
         FunctionSpec spec = new FunctionSpec("retry-fn", "image", null, Map.of(), null, 1000,
                 1, 10, 3, server.url("/invoke").toString(), ExecutionMode.EXTERNAL, null, null, null);

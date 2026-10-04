@@ -11,7 +11,13 @@ controlPlane:
   #     value: "100ms"
   #   - name: NANOFAAS_RETRY_MAX_BACKOFF
   #     value: "2s"
+  # Only one control plane is supported. The chart rejects other counts and
+  # uses Recreate during upgrades, accepting downtime to avoid overlapping owners.
   replicaCount: 1
+  p2p:
+    shareFunctions: false
+    shareImages: false
+    shareResources: false
   # The scheduling strategy the composed engine starts on. Empty is the default and
   # means "no explicit selection": the engine derives the legacy mapping from the
   # queue modules baked into the image (both, or async only -> per-function;
@@ -39,6 +45,8 @@ controlPlane:
   service:
     name: control-plane
     type: ClusterIP
+    # These are both the Service ports and Spring's listening ports. Do not set
+    # SERVER_PORT or MANAGEMENT_SERVER_PORT in extraEnv; the chart owns them.
     ports:
       http: 8080
       actuator: 8081
@@ -114,6 +122,8 @@ controlPlane:
       failureThreshold: 6
 
 rbac:
+  # Grants list on cluster Nodes for kubelet image inventory, including runtime enablement.
+  nodeImageInventory: false
   create: true
 
 serviceAccount:

@@ -1,0 +1,22 @@
+# Optional: apply when using the k8s provider's image inventory. Change the SA namespace to match deployment.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nanofaas-p2p-image-inventory
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: nanofaas-p2p-image-inventory
+subjects:
+  - kind: ServiceAccount
+    name: nanofaas-control-plane
+    namespace: nanofaas
+roleRef:
+  kind: ClusterRole
+  name: nanofaas-p2p-image-inventory
+  apiGroup: rbac.authorization.k8s.io

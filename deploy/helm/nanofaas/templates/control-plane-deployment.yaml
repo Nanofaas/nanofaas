@@ -1,3 +1,11 @@
+{{- if ne (toString .Values.controlPlane.replicaCount) "1" -}}
+{{- fail "controlPlane.replicaCount must be 1: the control plane owns in-memory execution state" -}}
+{{- end -}}
+{{- range .Values.controlPlane.extraEnv -}}
+{{- if or (eq .name "SERVER_PORT") (eq .name "MANAGEMENT_SERVER_PORT") -}}
+{{- fail "configure listening ports with controlPlane.service.ports; SERVER_PORT and MANAGEMENT_SERVER_PORT are chart-owned" -}}
+{{- end -}}
+{{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -7,6 +15,8 @@ metadata:
     {{- include "nanofaas.controlPlane.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.controlPlane.replicaCount }}
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "nanofaas.controlPlane.selectorLabels" . | nindent 6 }}
@@ -35,6 +45,16 @@ spec:
             - containerPort: {{ .Values.controlPlane.service.ports.http }}
             - containerPort: {{ .Values.controlPlane.service.ports.actuator }}
           env:
+            - name: NANOFAAS_P2P_SHAREFUNCTIONS
+              value: {{ .Values.controlPlane.p2p.shareFunctions | quote }}
+            - name: NANOFAAS_P2P_SHAREIMAGES
+              value: {{ .Values.controlPlane.p2p.shareImages | quote }}
+            - name: NANOFAAS_P2P_SHARERESOURCES
+              value: {{ .Values.controlPlane.p2p.shareResources | quote }}
+            - name: SERVER_PORT
+              value: {{ .Values.controlPlane.service.ports.http | quote }}
+            - name: MANAGEMENT_SERVER_PORT
+              value: {{ .Values.controlPlane.service.ports.actuator | quote }}
             - name: POD_NAMESPACE
               valueFrom:
                 fieldRef:

@@ -1,5 +1,13 @@
 # Control-plane operation
 
+The optional `p2p-discovery` module exchanges registered functions, backend image
+inventories and scoped resource observations with direct active neighbors.
+Its three sharing flags are independently mutable through `PATCH /v1/admin/p2p/config`;
+inspection is available at `/v1/admin/p2p/information` and
+`/v1/admin/p2p/peers/{id}/information` when both P2P and its admin API are enabled.
+See [the module guide](../platform/modules/p2p-discovery/README.md#node-information)
+for defaults, freshness, units, deployment variables and optional Kubernetes node-inventory RBAC.
+
 The Java control plane is built directly with Gradle. Kubernetes deployments
 use Helm:
 
@@ -539,6 +547,15 @@ nullable; missing data is JSON `null`, never a sentinel, and never blocks
 startup.
 
 ## Persistent function catalog
+
+Removal hides a function from public lookup while teardown runs, but retains its
+recovery record until that function's durable deletion commits. A concurrent
+registration, update or removal of another function cannot save a snapshot that
+prematurely drops it. A failed catalog save leaves the recovery record intact;
+rollback restores public availability only when the backend can be reconciled.
+A crash before the final delete commit can therefore cause restoration of the
+old desired deployment on restart, even if teardown had already completed.
+
 
 The control plane persists its function catalog to a JSON file and restores
 it at startup. The path is configured with `nanofaas.registry.path`

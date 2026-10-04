@@ -62,6 +62,11 @@ management:
         enabled: true
 
 nanofaas:
+  p2p:
+    # These affect publication; receiving active-neighbor observations remains enabled.
+    share-functions: ${NANOFAAS_P2P_SHAREFUNCTIONS:false}
+    share-images: ${NANOFAAS_P2P_SHAREIMAGES:false}
+    share-resources: ${NANOFAAS_P2P_SHARERESOURCES:false}
   retry:
     initial-backoff: 100ms
     max-backoff: 2s

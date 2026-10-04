@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.modules.p2pdiscovery;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 import java.time.Duration;
 import java.util.List;
@@ -27,8 +28,17 @@ public record P2pProperties(
         Duration pingInterval,
         Duration pingTimeout,
         String stateFile,
-        Admin admin
+        Admin admin,
+        Boolean shareFunctions,
+        Boolean shareImages,
+        Boolean shareResources
 ) {
+    public P2pProperties(Boolean enabled, String nodeId, Integer port, String externalHost, List<String> seeds,
+                         Integer maxNeighbors, Double maxLatencyMs, Duration pingInterval, Duration pingTimeout,
+                         String stateFile, Admin admin) {
+        this(enabled, nodeId, port, externalHost, seeds, maxNeighbors, maxLatencyMs,
+                pingInterval, pingTimeout, stateFile, admin, false, false, false);
+    }
     public record Admin(Boolean enabled) {
         public Admin {
             if (enabled == null) {
@@ -37,7 +47,11 @@ public record P2pProperties(
         }
     }
 
+    @ConstructorBinding
     public P2pProperties {
+        shareFunctions = Boolean.TRUE.equals(shareFunctions);
+        shareImages = Boolean.TRUE.equals(shareImages);
+        shareResources = Boolean.TRUE.equals(shareResources);
         if (enabled == null) {
             enabled = false;
         }
