@@ -185,3 +185,11 @@ def test_small_reference_cases_match_independent_exhaustive_enumeration():
         else:
             assert expected['status'] == 'OPTIMAL', problem['id']
             assert expected['objective'] == pytest.approx(min(feasible), abs=1e-9), problem['id']
+
+
+def test_memory_replica_planning_transcript_is_frozen():
+    directory = ROOT / 'platform/modules/offload/src/test/resources/one-shot/reference'
+    cases = json.loads((directory / 'auction-transcripts.json').read_text())
+    memory = next(case for case in cases if case['id'] == 'proportional-memory-requests')
+    assert memory['additionalReplicas'][1] == [1, 1]
+    assert memory['remainingMemory'][1] == 0

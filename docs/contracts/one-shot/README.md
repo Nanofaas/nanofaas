@@ -100,3 +100,21 @@ fractional remainder for terminal-cloud policy. Loads and service demand scale
 jointly while normalized utility coefficients remain unchanged. Java regression
 tests compare every allocation against the 80 frozen cases, independently enumerate
 small optima and verify tie order, resource limits, overflow and mid-solve deadlines.
+
+## Pure auction transitions
+
+`SellerLedger` installs immutable transitions before exposing outgoing messages.
+Offers, bids and provisional grants are scoped to node incarnation, epoch, round,
+function version and each node's own registration generation. Round close sorts the
+complete input by price and stable identity; delayed or duplicate inputs cannot
+replace an incumbent. Buyer utility ties use descending stable seller ID.
+Memory proposals use exact proportional fractions and stable function IDs for
+residual ties. They never authorize routing. Readiness confirmation can only reduce
+a grant; final restricted optimization removes unused proposals.
+
+The engine has no network or replica lifecycle effects. The coordinator enforces
+wall-clock validity and auction deadlines. The base engine performs no PG search,
+hierarchy or incumbent replacement. A deterministic three-edge simulation verifies
+memory and CPU feasibility at every transition and accounts for terminal-cloud
+residual traffic after readiness reduction. The frozen Python helpers additionally
+cover bid order, quantities, prices and proportional memory allocation.

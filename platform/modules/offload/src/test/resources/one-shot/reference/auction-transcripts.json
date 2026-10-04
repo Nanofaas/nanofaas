@@ -162,5 +162,48 @@
         ]
       ]
     ]
+  },
+  {
+    "id": "proportional-memory-requests",
+    "memoryRequests": [
+      {
+        "i": 0,
+        "j": 1,
+        "f": 0
+      },
+      {
+        "i": 0,
+        "j": 1,
+        "f": 1
+      }
+    ],
+    "memoryMiB": [
+      128,
+      256
+    ],
+    "availableMemory": [
+      0,
+      384,
+      0
+    ],
+    "additionalReplicas": [
+      [
+        0.0,
+        0.0
+      ],
+      [
+        1.0,
+        1.0
+      ],
+      [
+        0.0,
+        0.0
+      ]
+    ],
+    "remainingMemory": [
+      0,
+      0,
+      0
+    ]
   }
 ]

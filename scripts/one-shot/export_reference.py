@@ -103,7 +103,7 @@ def _cases() -> list[dict]:
 
 def _auction_transcripts() -> list[dict]:
     import numpy as np
-    from run_faasmadea import compute_residual_capacity, define_bids, evaluate_bids
+    from run_faasmadea import compute_residual_capacity, define_bids, evaluate_bids, start_additional_replicas
 
     # These are actual base-auction helpers, with replacement and tentative
     # starts disabled exactly as in decentralized_auction.run.
@@ -141,10 +141,17 @@ def _auction_transcripts() -> list[dict]:
         omega = np.maximum(0, np.array([[3.0], [0.0], [0.0]]) - y.sum(axis=1))
         if not omega.any():
             break
+    import pandas as pd
+    memory_requests = pd.DataFrame([{"i": 0, "j": 1, "f": 0}, {"i": 0, "j": 1, "f": 1}])
+    additional, remaining = start_additional_replicas(memory_requests, np.zeros((3, 2), dtype=int),
+            {None: {"memory_requirement": {1: 128, 2: 256}}}, np.array([0, 384, 0]))
     return [{"id": "three-node-aggregate-bids", "parameters": {"nodes": n,
              "functions": nf, "local": x.tolist(), "replicas": r.tolist(),
              "residualLoad": [[3.0], [0.0], [0.0]], "auctionOptions": options},
-             "rounds": rounds, "finalAssignments": y.tolist()}]
+             "rounds": rounds, "finalAssignments": y.tolist()},
+            {"id": "proportional-memory-requests", "memoryRequests": memory_requests.to_dict(orient="records"),
+             "memoryMiB": [128, 256], "availableMemory": [0, 384, 0],
+             "additionalReplicas": additional.tolist(), "remainingMemory": remaining.tolist()}]
 
 
 def export_reference(repo: Path, output: Path) -> None:

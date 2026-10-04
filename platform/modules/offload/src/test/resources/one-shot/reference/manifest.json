@@ -11,6 +11,6 @@
   },
   "fixtures": {
     "local-problems.json": "sha256:e446a718edcf2c2ebfe51bebabc135af39fa33fb013663275abdbba729933be7",
-    "auction-transcripts.json": "sha256:642f3431f5cfdeb664a500e04d0fd03e2103d6cbeb8827efa6986708fbb59bb0"
+    "auction-transcripts.json": "sha256:2577e2e2683b54a21cb625b505cc4ba3ed0c2f9122f1bb772432add898862c78"
   }
 }
