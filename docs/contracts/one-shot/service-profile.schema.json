@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nanofaas:one-shot:service-profile:v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "profileId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "provider": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "purpose": {
+      "enum": [
+        "workflow-validation",
+        "scientific-experiment"
+      ]
+    },
+    "synthetic": {
+      "type": "boolean"
+    },
+    "sourceCommit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "environmentFingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "functions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "function": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "imageDigest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "runtime": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "backend": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "inputHash": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "cpuQuota": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "memoryMiB": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "replicas": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "coLocation": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "minItems": 0,
+            "maxItems": 100000
+          },
+          "serviceSeconds": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "statistics": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "sampleCount": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "meanSeconds": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "stddevSeconds": {
+                "type": "number",
+                "minimum": 0
+              },
+              "p95Seconds": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": [
+              "sampleCount",
+              "meanSeconds",
+              "stddevSeconds",
+              "p95Seconds"
+            ]
+          },
+          "validity": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "minReplicas": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "maxReplicas": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "maxRelativeCapacityError": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "minReplicas",
+              "maxReplicas",
+              "maxRelativeCapacityError"
+            ]
+          },
+          "measurement": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "warmupInvocations": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "includesColdStarts": {
+                "const": false
+              },
+              "occupancy": {
+                "const": "physical-handler"
+              },
+              "rawSamplesHash": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            },
+            "required": [
+              "warmupInvocations",
+              "includesColdStarts",
+              "occupancy",
+              "rawSamplesHash"
+            ]
+          }
+        },
+        "required": [
+          "function",
+          "imageDigest",
+          "runtime",
+          "backend",
+          "inputHash",
+          "cpuQuota",
+          "memoryMiB",
+          "replicas",
+          "coLocation",
+          "serviceSeconds",
+          "statistics",
+          "validity",
+          "measurement"
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 100000
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "host": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "vm": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "os": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "architecture": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "cpu": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "host",
+        "vm",
+        "os",
+        "architecture",
+        "cpu"
+      ]
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "profileId",
+    "provider",
+    "purpose",
+    "synthetic",
+    "sourceCommit",
+    "environmentFingerprint",
+    "functions",
+    "environment"
+  ]
+}

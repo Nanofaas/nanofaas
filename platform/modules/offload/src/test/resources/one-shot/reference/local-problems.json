@@ -1,0 +1,4047 @@
+[
+  {
+    "input": {
+      "id": "LSP-0",
+      "model": "LSP",
+      "memoryCapacityMiB": 9,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 5,
+          "demandSeconds": 1.0,
+          "utilization": 0.8,
+          "memoryMiB": 1,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 0.0,
+          "price": 3.0,
+          "fixedLocal": 0,
+          "fixedOffload": 4,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": 0.0,
+      "local": [
+        0
+      ],
+      "replicas": [
+        0
+      ],
+      "rejected": [
+        5
+      ],
+      "offload": [
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-1",
+      "model": "LSP",
+      "memoryCapacityMiB": 5,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 0,
+          "demandSeconds": 0.25,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 1.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 1.0,
+          "fixedLocal": 0,
+          "fixedOffload": 0,
+          "inbound": 0
+        },
+        {
+          "id": "f1",
+          "load": 3,
+          "demandSeconds": 0.1,
+          "utilization": 0.8,
+          "memoryMiB": 2,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 1.0,
+          "price": 3.0,
+          "fixedLocal": 3,
+          "fixedOffload": 0,
+          "inbound": 0
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": 0.0,
+      "local": [
+        0,
+        3
+      ],
+      "replicas": [
+        0,
+        1
+      ],
+      "rejected": [
+        0,
+        0
+      ],
+      "offload": [
+        0,
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-2",
+      "model": "LSP",
+      "memoryCapacityMiB": 10,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 1,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 9.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 3.0,
+          "fixedLocal": 0,
+          "fixedOffload": 1,
+          "inbound": 1
+        },
+        {
+          "id": "f1",
+          "load": 4,
+          "demandSeconds": 0.25,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 0.0,
+          "delta": 0.9,
+          "gamma": 1.0,
+          "price": 3.0,
+          "fixedLocal": 2,
+          "fixedOffload": 0,
+          "inbound": 2
+        },
+        {
+          "id": "f2",
+          "load": 6,
+          "demandSeconds": 0.5,
+          "utilization": 0.8,
+          "memoryMiB": 1,
+          "alpha": 9.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 3.0,
+          "fixedLocal": 2,
+          "fixedOffload": 1,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -18.0,
+      "local": [
+        1,
+        4,
+        6
+      ],
+      "replicas": [
+        1,
+        1,
+        4
+      ],
+      "rejected": [
+        0,
+        0,
+        0
+      ],
+      "offload": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-3",
+      "model": "LSP",
+      "memoryCapacityMiB": 5,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 8,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 9.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 4,
+          "fixedOffload": 3,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -4.5,
+      "local": [
+        4
+      ],
+      "replicas": [
+        2
+      ],
+      "rejected": [
+        0
+      ],
+      "offload": [
+        4
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-4",
+      "model": "LSP",
+      "memoryCapacityMiB": 6,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 6,
+          "demandSeconds": 0.25,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 1.0,
+          "delta": 2.0,
+          "gamma": 0.0,
+          "price": 0.0,
+          "fixedLocal": 1,
+          "fixedOffload": 4,
+          "inbound": 1
+        },
+        {
+          "id": "f1",
+          "load": 5,
+          "demandSeconds": 0.25,
+          "utilization": 0.8,
+          "memoryMiB": 1,
+          "alpha": 9.0,
+          "delta": 0.9,
+          "gamma": 1.0,
+          "price": 0.0,
+          "fixedLocal": 0,
+          "fixedOffload": 2,
+          "inbound": 0
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -11.0,
+      "local": [
+        0,
+        5
+      ],
+      "replicas": [
+        0,
+        2
+      ],
+      "rejected": [
+        0,
+        0
+      ],
+      "offload": [
+        6,
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-5",
+      "model": "LSP",
+      "memoryCapacityMiB": 0,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 7,
+          "demandSeconds": 0.1,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 0.0,
+          "delta": 0.9,
+          "gamma": 1.0,
+          "price": 3.0,
+          "fixedLocal": 2,
+          "fixedOffload": 1,
+          "inbound": 1
+        },
+        {
+          "id": "f1",
+          "load": 3,
+          "demandSeconds": 1.0,
+          "utilization": 0.8,
+          "memoryMiB": 4,
+          "alpha": 1.0,
+          "delta": 2.0,
+          "gamma": 0.0,
+          "price": 1.0,
+          "fixedLocal": 3,
+          "fixedOffload": 0,
+          "inbound": 0
+        },
+        {
+          "id": "f2",
+          "load": 6,
+          "demandSeconds": 0.1,
+          "utilization": 0.8,
+          "memoryMiB": 2,
+          "alpha": 9.0,
+          "delta": 2.0,
+          "gamma": 0.0,
+          "price": 1.0,
+          "fixedLocal": 2,
+          "fixedOffload": 0,
+          "inbound": 0
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -1.0,
+      "local": [
+        0,
+        0,
+        0
+      ],
+      "replicas": [
+        0,
+        0,
+        0
+      ],
+      "rejected": [
+        7,
+        0,
+        0
+      ],
+      "offload": [
+        0,
+        3,
+        6
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-6",
+      "model": "LSP",
+      "memoryCapacityMiB": 9,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 7,
+          "demandSeconds": 0.1,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 9.0,
+          "delta": 0.0,
+          "gamma": 1.0,
+          "price": 0.0,
+          "fixedLocal": 1,
+          "fixedOffload": 6,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -9.0,
+      "local": [
+        7
+      ],
+      "replicas": [
+        1
+      ],
+      "rejected": [
+        0
+      ],
+      "offload": [
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-7",
+      "model": "LSP",
+      "memoryCapacityMiB": 5,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 0,
+          "demandSeconds": 0.1,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 1.0,
+          "delta": 2.0,
+          "gamma": 1.0,
+          "price": 1.0,
+          "fixedLocal": 0,
+          "fixedOffload": 0,
+          "inbound": 0
+        },
+        {
+          "id": "f1",
+          "load": 2,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 0.0,
+          "price": 1.0,
+          "fixedLocal": 0,
+          "fixedOffload": 0,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": 0.0,
+      "local": [
+        0,
+        0
+      ],
+      "replicas": [
+        0,
+        0
+      ],
+      "rejected": [
+        0,
+        2
+      ],
+      "offload": [
+        0,
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-8",
+      "model": "LSP",
+      "memoryCapacityMiB": 4,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 8,
+          "demandSeconds": 0.25,
+          "utilization": 0.8,
+          "memoryMiB": 1,
+          "alpha": 1.0,
+          "delta": 0.0,
+          "gamma": 0.0,
+          "price": 0.0,
+          "fixedLocal": 8,
+          "fixedOffload": 0,
+          "inbound": 2
+        },
+        {
+          "id": "f1",
+          "load": 8,
+          "demandSeconds": 0.1,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 1.0,
+          "delta": 2.0,
+          "gamma": 0.0,
+          "price": 1.0,
+          "fixedLocal": 5,
+          "fixedOffload": 3,
+          "inbound": 0
+        },
+        {
+          "id": "f2",
+          "load": 7,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 9.0,
+          "delta": 0.0,
+          "gamma": 0.0,
+          "price": 3.0,
+          "fixedLocal": 4,
+          "fixedOffload": 3,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -3.5714285714285716,
+      "local": [
+        0,
+        0,
+        2
+      ],
+      "replicas": [
+        0,
+        0,
+        1
+      ],
+      "rejected": [
+        8,
+        0,
+        5
+      ],
+      "offload": [
+        0,
+        8,
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-9",
+      "model": "LSP",
+      "memoryCapacityMiB": 10,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 8,
+          "demandSeconds": 0.1,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 1.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 8,
+          "fixedOffload": 0,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -1.0,
+      "local": [
+        8
+      ],
+      "replicas": [
+        1
+      ],
+      "rejected": [
+        0
+      ],
+      "offload": [
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-10",
+      "model": "LSP",
+      "memoryCapacityMiB": 0,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 4,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 0.0,
+          "delta": 2.0,
+          "gamma": 0.0,
+          "price": 3.0,
+          "fixedLocal": 3,
+          "fixedOffload": 0,
+          "inbound": 2
+        },
+        {
+          "id": "f1",
+          "load": 8,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 9.0,
+          "delta": 2.0,
+          "gamma": 1.0,
+          "price": 1.0,
+          "fixedLocal": 6,
+          "fixedOffload": 0,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -1.0,
+      "local": [
+        0,
+        0
+      ],
+      "replicas": [
+        0,
+        0
+      ],
+      "rejected": [
+        4,
+        0
+      ],
+      "offload": [
+        0,
+        8
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-11",
+      "model": "LSP",
+      "memoryCapacityMiB": 10,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 4,
+          "demandSeconds": 0.5,
+          "utilization": 0.8,
+          "memoryMiB": 1,
+          "alpha": 9.0,
+          "delta": 0.9,
+          "gamma": 0.0,
+          "price": 1.0,
+          "fixedLocal": 0,
+          "fixedOffload": 1,
+          "inbound": 0
+        },
+        {
+          "id": "f1",
+          "load": 2,
+          "demandSeconds": 0.25,
+          "utilization": 0.8,
+          "memoryMiB": 2,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 3.0,
+          "fixedLocal": 0,
+          "fixedOffload": 0,
+          "inbound": 0
+        },
+        {
+          "id": "f2",
+          "load": 5,
+          "demandSeconds": 1.0,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 9.0,
+          "delta": 2.0,
+          "gamma": 0.0,
+          "price": 0.0,
+          "fixedLocal": 5,
+          "fixedOffload": 0,
+          "inbound": 0
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -15.100000000000001,
+      "local": [
+        4,
+        0,
+        3
+      ],
+      "replicas": [
+        3,
+        0,
+        3
+      ],
+      "rejected": [
+        0,
+        2,
+        0
+      ],
+      "offload": [
+        0,
+        0,
+        2
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-12",
+      "model": "LSP",
+      "memoryCapacityMiB": 7,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 6,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 9.0,
+          "delta": 0.9,
+          "gamma": 1.0,
+          "price": 1.0,
+          "fixedLocal": 1,
+          "fixedOffload": 1,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -9.0,
+      "local": [
+        6
+      ],
+      "replicas": [
+        3
+      ],
+      "rejected": [
+        0
+      ],
+      "offload": [
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-13",
+      "model": "LSP",
+      "memoryCapacityMiB": 8,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 4,
+          "demandSeconds": 0.1,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 9.0,
+          "delta": 2.0,
+          "gamma": 0.1,
+          "price": 1.0,
+          "fixedLocal": 4,
+          "fixedOffload": 0,
+          "inbound": 1
+        },
+        {
+          "id": "f1",
+          "load": 7,
+          "demandSeconds": 0.25,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 9.0,
+          "delta": 0.0,
+          "gamma": 0.0,
+          "price": 0.0,
+          "fixedLocal": 2,
+          "fixedOffload": 2,
+          "inbound": 0
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -14.142857142857142,
+      "local": [
+        4,
+        4
+      ],
+      "replicas": [
+        1,
+        1
+      ],
+      "rejected": [
+        0,
+        3
+      ],
+      "offload": [
+        0,
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-14",
+      "model": "LSP",
+      "memoryCapacityMiB": 8,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 7,
+          "demandSeconds": 0.1,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 9.0,
+          "delta": 2.0,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 4,
+          "fixedOffload": 1,
+          "inbound": 1
+        },
+        {
+          "id": "f1",
+          "load": 5,
+          "demandSeconds": 1.0,
+          "utilization": 0.8,
+          "memoryMiB": 2,
+          "alpha": 9.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 3.0,
+          "fixedLocal": 2,
+          "fixedOffload": 0,
+          "inbound": 1
+        },
+        {
+          "id": "f2",
+          "load": 2,
+          "demandSeconds": 0.25,
+          "utilization": 0.8,
+          "memoryMiB": 2,
+          "alpha": 1.0,
+          "delta": 0.0,
+          "gamma": 0.0,
+          "price": 0.0,
+          "fixedLocal": 2,
+          "fixedOffload": 0,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -10.72,
+      "local": [
+        7,
+        1,
+        0
+      ],
+      "replicas": [
+        1,
+        2,
+        0
+      ],
+      "rejected": [
+        0,
+        4,
+        2
+      ],
+      "offload": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-15",
+      "model": "LSP",
+      "memoryCapacityMiB": 10,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 4,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 3,
+          "fixedOffload": 1,
+          "inbound": 0
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": 0.0,
+      "local": [
+        0
+      ],
+      "replicas": [
+        0
+      ],
+      "rejected": [
+        0
+      ],
+      "offload": [
+        4
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-16",
+      "model": "LSP",
+      "memoryCapacityMiB": 4,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 6,
+          "demandSeconds": 0.25,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 0.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 1.0,
+          "fixedLocal": 3,
+          "fixedOffload": 0,
+          "inbound": 0
+        },
+        {
+          "id": "f1",
+          "load": 5,
+          "demandSeconds": 1.0,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 9.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 1.0,
+          "fixedLocal": 4,
+          "fixedOffload": 0,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -1.62,
+      "local": [
+        0,
+        1
+      ],
+      "replicas": [
+        0,
+        1
+      ],
+      "rejected": [
+        0,
+        4
+      ],
+      "offload": [
+        6,
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-17",
+      "model": "LSP",
+      "memoryCapacityMiB": 12,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 4,
+          "demandSeconds": 0.25,
+          "utilization": 0.8,
+          "memoryMiB": 1,
+          "alpha": 9.0,
+          "delta": 0.9,
+          "gamma": 1.0,
+          "price": 3.0,
+          "fixedLocal": 4,
+          "fixedOffload": 0,
+          "inbound": 2
+        },
+        {
+          "id": "f1",
+          "load": 4,
+          "demandSeconds": 0.1,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 1,
+          "fixedOffload": 3,
+          "inbound": 2
+        },
+        {
+          "id": "f2",
+          "load": 4,
+          "demandSeconds": 0.1,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 1.0,
+          "delta": 2.0,
+          "gamma": 0.1,
+          "price": 1.0,
+          "fixedLocal": 3,
+          "fixedOffload": 1,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -10.0,
+      "local": [
+        4,
+        0,
+        0
+      ],
+      "replicas": [
+        2,
+        0,
+        0
+      ],
+      "rejected": [
+        0,
+        0,
+        0
+      ],
+      "offload": [
+        0,
+        4,
+        4
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-18",
+      "model": "LSP",
+      "memoryCapacityMiB": 12,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 8,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 9.0,
+          "delta": 0.0,
+          "gamma": 1.0,
+          "price": 0.0,
+          "fixedLocal": 1,
+          "fixedOffload": 2,
+          "inbound": 0
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -9.0,
+      "local": [
+        8
+      ],
+      "replicas": [
+        4
+      ],
+      "rejected": [
+        0
+      ],
+      "offload": [
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-19",
+      "model": "LSP",
+      "memoryCapacityMiB": 10,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 5,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 1.0,
+          "delta": 0.9,
+          "gamma": 1.0,
+          "price": 3.0,
+          "fixedLocal": 3,
+          "fixedOffload": 1,
+          "inbound": 0
+        },
+        {
+          "id": "f1",
+          "load": 7,
+          "demandSeconds": 0.25,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 1.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 5,
+          "fixedOffload": 1,
+          "inbound": 0
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -1.5571428571428572,
+      "local": [
+        4,
+        4
+      ],
+      "replicas": [
+        2,
+        1
+      ],
+      "rejected": [
+        1,
+        0
+      ],
+      "offload": [
+        0,
+        3
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-20",
+      "model": "LSP",
+      "memoryCapacityMiB": 11,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 1,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 9.0,
+          "delta": 0.0,
+          "gamma": 1.0,
+          "price": 3.0,
+          "fixedLocal": 1,
+          "fixedOffload": 0,
+          "inbound": 0
+        },
+        {
+          "id": "f1",
+          "load": 8,
+          "demandSeconds": 0.25,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 9.0,
+          "delta": 0.0,
+          "gamma": 1.0,
+          "price": 3.0,
+          "fixedLocal": 2,
+          "fixedOffload": 3,
+          "inbound": 0
+        },
+        {
+          "id": "f2",
+          "load": 6,
+          "demandSeconds": 0.5,
+          "utilization": 0.8,
+          "memoryMiB": 4,
+          "alpha": 0.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 1,
+          "fixedOffload": 2,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -18.9,
+      "local": [
+        1,
+        8,
+        0
+      ],
+      "replicas": [
+        1,
+        2,
+        0
+      ],
+      "rejected": [
+        0,
+        0,
+        0
+      ],
+      "offload": [
+        0,
+        0,
+        6
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-21",
+      "model": "LSP",
+      "memoryCapacityMiB": 6,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 2,
+          "demandSeconds": 1.0,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 0.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 0,
+          "fixedOffload": 0,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -0.9,
+      "local": [
+        0
+      ],
+      "replicas": [
+        0
+      ],
+      "rejected": [
+        0
+      ],
+      "offload": [
+        2
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-22",
+      "model": "LSP",
+      "memoryCapacityMiB": 3,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 3,
+          "demandSeconds": 0.25,
+          "utilization": 0.8,
+          "memoryMiB": 1,
+          "alpha": 9.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 3.0,
+          "fixedLocal": 0,
+          "fixedOffload": 2,
+          "inbound": 2
+        },
+        {
+          "id": "f1",
+          "load": 6,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 1.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 1,
+          "fixedOffload": 1,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -9.933333333333334,
+      "local": [
+        3,
+        2
+      ],
+      "replicas": [
+        1,
+        1
+      ],
+      "rejected": [
+        0,
+        0
+      ],
+      "offload": [
+        0,
+        4
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-23",
+      "model": "LSP",
+      "memoryCapacityMiB": 8,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 6,
+          "demandSeconds": 0.5,
+          "utilization": 0.8,
+          "memoryMiB": 2,
+          "alpha": 9.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 3.0,
+          "fixedLocal": 4,
+          "fixedOffload": 2,
+          "inbound": 2
+        },
+        {
+          "id": "f1",
+          "load": 1,
+          "demandSeconds": 0.1,
+          "utilization": 0.8,
+          "memoryMiB": 2,
+          "alpha": 9.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 3.0,
+          "fixedLocal": 1,
+          "fixedOffload": 0,
+          "inbound": 2
+        },
+        {
+          "id": "f2",
+          "load": 6,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 1.0,
+          "price": 1.0,
+          "fixedLocal": 1,
+          "fixedOffload": 5,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -13.966666666666665,
+      "local": [
+        4,
+        1,
+        0
+      ],
+      "replicas": [
+        3,
+        1,
+        0
+      ],
+      "rejected": [
+        2,
+        0,
+        6
+      ],
+      "offload": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-24",
+      "model": "LSP",
+      "memoryCapacityMiB": 10,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 8,
+          "demandSeconds": 1.0,
+          "utilization": 0.8,
+          "memoryMiB": 2,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 1.0,
+          "price": 0.0,
+          "fixedLocal": 7,
+          "fixedOffload": 0,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": 0.0,
+      "local": [
+        0
+      ],
+      "replicas": [
+        0
+      ],
+      "rejected": [
+        0
+      ],
+      "offload": [
+        8
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-25",
+      "model": "LSP",
+      "memoryCapacityMiB": 2,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 0,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 1.0,
+          "delta": 0.0,
+          "gamma": 0.0,
+          "price": 0.0,
+          "fixedLocal": 0,
+          "fixedOffload": 0,
+          "inbound": 0
+        },
+        {
+          "id": "f1",
+          "load": 4,
+          "demandSeconds": 0.25,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 1.0,
+          "delta": 2.0,
+          "gamma": 0.0,
+          "price": 3.0,
+          "fixedLocal": 2,
+          "fixedOffload": 2,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -1.0,
+      "local": [
+        0,
+        4
+      ],
+      "replicas": [
+        0,
+        1
+      ],
+      "rejected": [
+        0,
+        0
+      ],
+      "offload": [
+        0,
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-26",
+      "model": "LSP",
+      "memoryCapacityMiB": 5,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 2,
+          "demandSeconds": 0.25,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 0,
+          "fixedOffload": 0,
+          "inbound": 0
+        },
+        {
+          "id": "f1",
+          "load": 1,
+          "demandSeconds": 0.1,
+          "utilization": 0.8,
+          "memoryMiB": 4,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 1.0,
+          "price": 1.0,
+          "fixedLocal": 1,
+          "fixedOffload": 0,
+          "inbound": 1
+        },
+        {
+          "id": "f2",
+          "load": 3,
+          "demandSeconds": 0.25,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 1.0,
+          "price": 3.0,
+          "fixedLocal": 0,
+          "fixedOffload": 2,
+          "inbound": 0
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": 1.0,
+      "local": [
+        0,
+        1,
+        0
+      ],
+      "replicas": [
+        0,
+        1,
+        0
+      ],
+      "rejected": [
+        0,
+        0,
+        3
+      ],
+      "offload": [
+        2,
+        0,
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-27",
+      "model": "LSP",
+      "memoryCapacityMiB": 4,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 4,
+          "demandSeconds": 1.0,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 0.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 3.0,
+          "fixedLocal": 0,
+          "fixedOffload": 4,
+          "inbound": 0
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": 0.07500000000000001,
+      "local": [
+        1
+      ],
+      "replicas": [
+        1
+      ],
+      "rejected": [
+        3
+      ],
+      "offload": [
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-28",
+      "model": "LSP",
+      "memoryCapacityMiB": 8,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 5,
+          "demandSeconds": 0.1,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 0.0,
+          "delta": 0.9,
+          "gamma": 0.0,
+          "price": 0.0,
+          "fixedLocal": 4,
+          "fixedOffload": 0,
+          "inbound": 0
+        },
+        {
+          "id": "f1",
+          "load": 2,
+          "demandSeconds": 1.0,
+          "utilization": 0.8,
+          "memoryMiB": 4,
+          "alpha": 1.0,
+          "delta": 2.0,
+          "gamma": 1.0,
+          "price": 1.0,
+          "fixedLocal": 1,
+          "fixedOffload": 0,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -1.9,
+      "local": [
+        0,
+        0
+      ],
+      "replicas": [
+        0,
+        0
+      ],
+      "rejected": [
+        0,
+        0
+      ],
+      "offload": [
+        5,
+        2
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-29",
+      "model": "LSP",
+      "memoryCapacityMiB": 5,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 4,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 1.0,
+          "delta": 2.0,
+          "gamma": 0.1,
+          "price": 3.0,
+          "fixedLocal": 1,
+          "fixedOffload": 0,
+          "inbound": 1
+        },
+        {
+          "id": "f1",
+          "load": 7,
+          "demandSeconds": 0.1,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 1.0,
+          "price": 1.0,
+          "fixedLocal": 4,
+          "fixedOffload": 1,
+          "inbound": 0
+        },
+        {
+          "id": "f2",
+          "load": 2,
+          "demandSeconds": 0.1,
+          "utilization": 0.8,
+          "memoryMiB": 1,
+          "alpha": 0.0,
+          "delta": 2.0,
+          "gamma": 0.1,
+          "price": 3.0,
+          "fixedLocal": 1,
+          "fixedOffload": 0,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": 0.1,
+      "local": [
+        0,
+        7,
+        2
+      ],
+      "replicas": [
+        0,
+        1,
+        1
+      ],
+      "rejected": [
+        4,
+        0,
+        0
+      ],
+      "offload": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-30",
+      "model": "LSP",
+      "memoryCapacityMiB": 9,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 2,
+          "demandSeconds": 1.0,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 1.0,
+          "delta": 0.9,
+          "gamma": 1.0,
+          "price": 0.0,
+          "fixedLocal": 1,
+          "fixedOffload": 1,
+          "inbound": 0
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -1.0,
+      "local": [
+        2
+      ],
+      "replicas": [
+        2
+      ],
+      "rejected": [
+        0
+      ],
+      "offload": [
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-31",
+      "model": "LSP",
+      "memoryCapacityMiB": 4,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 4,
+          "demandSeconds": 0.25,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 1.0,
+          "delta": 2.0,
+          "gamma": 0.1,
+          "price": 1.0,
+          "fixedLocal": 0,
+          "fixedOffload": 4,
+          "inbound": 1
+        },
+        {
+          "id": "f1",
+          "load": 7,
+          "demandSeconds": 0.25,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 1.0,
+          "delta": 0.9,
+          "gamma": 1.0,
+          "price": 3.0,
+          "fixedLocal": 5,
+          "fixedOffload": 1,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -2.0,
+      "local": [
+        0,
+        7
+      ],
+      "replicas": [
+        0,
+        2
+      ],
+      "rejected": [
+        0,
+        0
+      ],
+      "offload": [
+        4,
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-32",
+      "model": "LSP",
+      "memoryCapacityMiB": 1,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 4,
+          "demandSeconds": 0.5,
+          "utilization": 0.8,
+          "memoryMiB": 4,
+          "alpha": 9.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 1.0,
+          "fixedLocal": 3,
+          "fixedOffload": 0,
+          "inbound": 2
+        },
+        {
+          "id": "f1",
+          "load": 7,
+          "demandSeconds": 0.5,
+          "utilization": 0.8,
+          "memoryMiB": 4,
+          "alpha": 9.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 1.0,
+          "fixedLocal": 2,
+          "fixedOffload": 4,
+          "inbound": 1
+        },
+        {
+          "id": "f2",
+          "load": 1,
+          "demandSeconds": 0.1,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 9.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 1.0,
+          "fixedLocal": 1,
+          "fixedOffload": 0,
+          "inbound": 0
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": 0.29999999999999993,
+      "local": [
+        0,
+        0,
+        0
+      ],
+      "replicas": [
+        0,
+        0,
+        0
+      ],
+      "rejected": [
+        0,
+        7,
+        0
+      ],
+      "offload": [
+        4,
+        0,
+        1
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-33",
+      "model": "LSP",
+      "memoryCapacityMiB": 7,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 8,
+          "demandSeconds": 1.0,
+          "utilization": 0.8,
+          "memoryMiB": 1,
+          "alpha": 9.0,
+          "delta": 0.0,
+          "gamma": 0.0,
+          "price": 0.0,
+          "fixedLocal": 7,
+          "fixedOffload": 0,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -5.625,
+      "local": [
+        5
+      ],
+      "replicas": [
+        7
+      ],
+      "rejected": [
+        3
+      ],
+      "offload": [
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-34",
+      "model": "LSP",
+      "memoryCapacityMiB": 3,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 0,
+          "demandSeconds": 0.1,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 9.0,
+          "delta": 2.0,
+          "gamma": 1.0,
+          "price": 3.0,
+          "fixedLocal": 0,
+          "fixedOffload": 0,
+          "inbound": 2
+        },
+        {
+          "id": "f1",
+          "load": 8,
+          "demandSeconds": 0.1,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 0.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 0,
+          "fixedOffload": 4,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -0.9,
+      "local": [
+        0,
+        0
+      ],
+      "replicas": [
+        0,
+        0
+      ],
+      "rejected": [
+        0,
+        0
+      ],
+      "offload": [
+        0,
+        8
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-35",
+      "model": "LSP",
+      "memoryCapacityMiB": 11,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 7,
+          "demandSeconds": 1.0,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 0.0,
+          "price": 3.0,
+          "fixedLocal": 2,
+          "fixedOffload": 3,
+          "inbound": 0
+        },
+        {
+          "id": "f1",
+          "load": 0,
+          "demandSeconds": 1.0,
+          "utilization": 0.8,
+          "memoryMiB": 1,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 0.0,
+          "price": 3.0,
+          "fixedLocal": 0,
+          "fixedOffload": 0,
+          "inbound": 0
+        },
+        {
+          "id": "f2",
+          "load": 0,
+          "demandSeconds": 1.0,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 9.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 0,
+          "fixedOffload": 0,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": 0.0,
+      "local": [
+        0,
+        0,
+        0
+      ],
+      "replicas": [
+        0,
+        0,
+        0
+      ],
+      "rejected": [
+        7,
+        0,
+        0
+      ],
+      "offload": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-36",
+      "model": "LSP",
+      "memoryCapacityMiB": 3,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 5,
+          "demandSeconds": 0.25,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 9.0,
+          "delta": 2.0,
+          "gamma": 0.1,
+          "price": 3.0,
+          "fixedLocal": 0,
+          "fixedOffload": 5,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -7.18,
+      "local": [
+        4
+      ],
+      "replicas": [
+        1
+      ],
+      "rejected": [
+        1
+      ],
+      "offload": [
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-37",
+      "model": "LSP",
+      "memoryCapacityMiB": 2,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 3,
+          "demandSeconds": 1.0,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 9.0,
+          "delta": 0.9,
+          "gamma": 1.0,
+          "price": 0.0,
+          "fixedLocal": 1,
+          "fixedOffload": 2,
+          "inbound": 1
+        },
+        {
+          "id": "f1",
+          "load": 6,
+          "demandSeconds": 0.5,
+          "utilization": 0.8,
+          "memoryMiB": 4,
+          "alpha": 0.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 6,
+          "fixedOffload": 0,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -7.2,
+      "local": [
+        2,
+        0
+      ],
+      "replicas": [
+        2,
+        0
+      ],
+      "rejected": [
+        0,
+        0
+      ],
+      "offload": [
+        1,
+        6
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-38",
+      "model": "LSP",
+      "memoryCapacityMiB": 3,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 4,
+          "demandSeconds": 0.25,
+          "utilization": 0.8,
+          "memoryMiB": 2,
+          "alpha": 0.0,
+          "delta": 0.9,
+          "gamma": 0.0,
+          "price": 1.0,
+          "fixedLocal": 0,
+          "fixedOffload": 0,
+          "inbound": 2
+        },
+        {
+          "id": "f1",
+          "load": 5,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 9.0,
+          "delta": 2.0,
+          "gamma": 1.0,
+          "price": 0.0,
+          "fixedLocal": 0,
+          "fixedOffload": 4,
+          "inbound": 0
+        },
+        {
+          "id": "f2",
+          "load": 3,
+          "demandSeconds": 1.0,
+          "utilization": 0.8,
+          "memoryMiB": 1,
+          "alpha": 1.0,
+          "delta": 2.0,
+          "gamma": 1.0,
+          "price": 3.0,
+          "fixedLocal": 1,
+          "fixedOffload": 1,
+          "inbound": 0
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -8.0,
+      "local": [
+        0,
+        5,
+        0
+      ],
+      "replicas": [
+        0,
+        3,
+        0
+      ],
+      "rejected": [
+        4,
+        0,
+        3
+      ],
+      "offload": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSP-39",
+      "model": "LSP",
+      "memoryCapacityMiB": 2,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 7,
+          "demandSeconds": 0.5,
+          "utilization": 0.8,
+          "memoryMiB": 2,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 7,
+          "fixedOffload": 0,
+          "inbound": 0
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": 0.0,
+      "local": [
+        0
+      ],
+      "replicas": [
+        0
+      ],
+      "rejected": [
+        0
+      ],
+      "offload": [
+        7
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-0",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 4,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 7,
+          "demandSeconds": 0.1,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 1.0,
+          "delta": 2.0,
+          "gamma": 1.0,
+          "price": 3.0,
+          "fixedLocal": 7,
+          "fixedOffload": 0,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -1.0,
+      "local": [
+        7
+      ],
+      "replicas": [
+        1
+      ],
+      "rejected": [
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-1",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 5,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 3,
+          "demandSeconds": 0.25,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 1.0,
+          "delta": 0.9,
+          "gamma": 0.0,
+          "price": 0.0,
+          "fixedLocal": 0,
+          "fixedOffload": 3,
+          "inbound": 2
+        },
+        {
+          "id": "f1",
+          "load": 2,
+          "demandSeconds": 1.0,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 9.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 3.0,
+          "fixedLocal": 0,
+          "fixedOffload": 0,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "INFEASIBLE"
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-2",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 1,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 2,
+          "demandSeconds": 0.5,
+          "utilization": 0.8,
+          "memoryMiB": 2,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 1.0,
+          "price": 0.0,
+          "fixedLocal": 0,
+          "fixedOffload": 2,
+          "inbound": 1
+        },
+        {
+          "id": "f1",
+          "load": 7,
+          "demandSeconds": 0.5,
+          "utilization": 0.8,
+          "memoryMiB": 1,
+          "alpha": 0.0,
+          "delta": 2.0,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 5,
+          "fixedOffload": 1,
+          "inbound": 1
+        },
+        {
+          "id": "f2",
+          "load": 4,
+          "demandSeconds": 1.0,
+          "utilization": 0.8,
+          "memoryMiB": 2,
+          "alpha": 1.0,
+          "delta": 0.9,
+          "gamma": 0.0,
+          "price": 1.0,
+          "fixedLocal": 1,
+          "fixedOffload": 3,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "INFEASIBLE"
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-3",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 11,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 1,
+          "demandSeconds": 1.0,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 9.0,
+          "delta": 2.0,
+          "gamma": 1.0,
+          "price": 0.0,
+          "fixedLocal": 1,
+          "fixedOffload": 0,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -9.0,
+      "local": [
+        1
+      ],
+      "replicas": [
+        2
+      ],
+      "rejected": [
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-4",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 12,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 3,
+          "demandSeconds": 1.0,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 0.0,
+          "delta": 2.0,
+          "gamma": 0.1,
+          "price": 3.0,
+          "fixedLocal": 0,
+          "fixedOffload": 0,
+          "inbound": 1
+        },
+        {
+          "id": "f1",
+          "load": 2,
+          "demandSeconds": 0.1,
+          "utilization": 0.8,
+          "memoryMiB": 2,
+          "alpha": 9.0,
+          "delta": 2.0,
+          "gamma": 0.1,
+          "price": 1.0,
+          "fixedLocal": 0,
+          "fixedOffload": 0,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": 0.2,
+      "local": [
+        0,
+        0
+      ],
+      "replicas": [
+        1,
+        1
+      ],
+      "rejected": [
+        3,
+        2
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-5",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 7,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 3,
+          "demandSeconds": 1.0,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 1.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 1.0,
+          "fixedLocal": 3,
+          "fixedOffload": 0,
+          "inbound": 0
+        },
+        {
+          "id": "f1",
+          "load": 3,
+          "demandSeconds": 0.5,
+          "utilization": 0.8,
+          "memoryMiB": 4,
+          "alpha": 1.0,
+          "delta": 2.0,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 1,
+          "fixedOffload": 0,
+          "inbound": 0
+        },
+        {
+          "id": "f2",
+          "load": 6,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 1.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 1,
+          "fixedOffload": 3,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "INFEASIBLE"
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-6",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 8,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 5,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 9.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 5,
+          "fixedOffload": 0,
+          "inbound": 0
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -9.0,
+      "local": [
+        5
+      ],
+      "replicas": [
+        3
+      ],
+      "rejected": [
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-7",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 1,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 4,
+          "demandSeconds": 0.25,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 0.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 4,
+          "fixedOffload": 0,
+          "inbound": 2
+        },
+        {
+          "id": "f1",
+          "load": 6,
+          "demandSeconds": 0.1,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 1.0,
+          "delta": 2.0,
+          "gamma": 1.0,
+          "price": 0.0,
+          "fixedLocal": 5,
+          "fixedOffload": 1,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "INFEASIBLE"
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-8",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 9,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 2,
+          "demandSeconds": 0.5,
+          "utilization": 0.8,
+          "memoryMiB": 2,
+          "alpha": 1.0,
+          "delta": 0.0,
+          "gamma": 1.0,
+          "price": 1.0,
+          "fixedLocal": 0,
+          "fixedOffload": 0,
+          "inbound": 1
+        },
+        {
+          "id": "f1",
+          "load": 8,
+          "demandSeconds": 1.0,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 1.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 6,
+          "fixedOffload": 2,
+          "inbound": 0
+        },
+        {
+          "id": "f2",
+          "load": 3,
+          "demandSeconds": 0.25,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 0.0,
+          "delta": 2.0,
+          "gamma": 0.0,
+          "price": 0.0,
+          "fixedLocal": 2,
+          "fixedOffload": 0,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "INFEASIBLE"
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-9",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 7,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 3,
+          "demandSeconds": 0.5,
+          "utilization": 0.8,
+          "memoryMiB": 1,
+          "alpha": 1.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 1.0,
+          "fixedLocal": 1,
+          "fixedOffload": 0,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -0.26666666666666666,
+      "local": [
+        1
+      ],
+      "replicas": [
+        2
+      ],
+      "rejected": [
+        2
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-10",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 4,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 6,
+          "demandSeconds": 0.1,
+          "utilization": 0.8,
+          "memoryMiB": 1,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 0.0,
+          "price": 3.0,
+          "fixedLocal": 0,
+          "fixedOffload": 5,
+          "inbound": 1
+        },
+        {
+          "id": "f1",
+          "load": 0,
+          "demandSeconds": 1.0,
+          "utilization": 0.8,
+          "memoryMiB": 1,
+          "alpha": 0.0,
+          "delta": 2.0,
+          "gamma": 1.0,
+          "price": 1.0,
+          "fixedLocal": 0,
+          "fixedOffload": 0,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": 0.0,
+      "local": [
+        0,
+        0
+      ],
+      "replicas": [
+        1,
+        2
+      ],
+      "rejected": [
+        1,
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-11",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 3,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 0,
+          "demandSeconds": 0.25,
+          "utilization": 0.8,
+          "memoryMiB": 1,
+          "alpha": 1.0,
+          "delta": 2.0,
+          "gamma": 1.0,
+          "price": 3.0,
+          "fixedLocal": 0,
+          "fixedOffload": 0,
+          "inbound": 0
+        },
+        {
+          "id": "f1",
+          "load": 7,
+          "demandSeconds": 0.5,
+          "utilization": 0.8,
+          "memoryMiB": 2,
+          "alpha": 1.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 3.0,
+          "fixedLocal": 0,
+          "fixedOffload": 1,
+          "inbound": 0
+        },
+        {
+          "id": "f2",
+          "load": 2,
+          "demandSeconds": 0.1,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 9.0,
+          "delta": 0.9,
+          "gamma": 0.0,
+          "price": 3.0,
+          "fixedLocal": 2,
+          "fixedOffload": 0,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -8.914285714285715,
+      "local": [
+        0,
+        0,
+        2
+      ],
+      "replicas": [
+        0,
+        0,
+        1
+      ],
+      "rejected": [
+        0,
+        6,
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-12",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 5,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 7,
+          "demandSeconds": 0.5,
+          "utilization": 0.8,
+          "memoryMiB": 2,
+          "alpha": 9.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 1.0,
+          "fixedLocal": 6,
+          "fixedOffload": 0,
+          "inbound": 0
+        }
+      ]
+    },
+    "expected": {
+      "status": "INFEASIBLE"
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-13",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 9,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 7,
+          "demandSeconds": 1.0,
+          "utilization": 0.8,
+          "memoryMiB": 4,
+          "alpha": 0.0,
+          "delta": 0.9,
+          "gamma": 0.0,
+          "price": 0.0,
+          "fixedLocal": 5,
+          "fixedOffload": 1,
+          "inbound": 2
+        },
+        {
+          "id": "f1",
+          "load": 5,
+          "demandSeconds": 0.1,
+          "utilization": 0.8,
+          "memoryMiB": 4,
+          "alpha": 1.0,
+          "delta": 0.9,
+          "gamma": 1.0,
+          "price": 1.0,
+          "fixedLocal": 3,
+          "fixedOffload": 2,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "INFEASIBLE"
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-14",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 0,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 1,
+          "demandSeconds": 0.5,
+          "utilization": 0.8,
+          "memoryMiB": 4,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 1.0,
+          "price": 1.0,
+          "fixedLocal": 1,
+          "fixedOffload": 0,
+          "inbound": 2
+        },
+        {
+          "id": "f1",
+          "load": 1,
+          "demandSeconds": 1.0,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 1.0,
+          "delta": 2.0,
+          "gamma": 0.1,
+          "price": 3.0,
+          "fixedLocal": 1,
+          "fixedOffload": 0,
+          "inbound": 0
+        },
+        {
+          "id": "f2",
+          "load": 1,
+          "demandSeconds": 1.0,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 9.0,
+          "delta": 2.0,
+          "gamma": 1.0,
+          "price": 1.0,
+          "fixedLocal": 1,
+          "fixedOffload": 0,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "INFEASIBLE"
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-15",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 7,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 6,
+          "demandSeconds": 0.1,
+          "utilization": 0.8,
+          "memoryMiB": 1,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 0.0,
+          "price": 3.0,
+          "fixedLocal": 1,
+          "fixedOffload": 1,
+          "inbound": 0
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": 0.0,
+      "local": [
+        1
+      ],
+      "replicas": [
+        1
+      ],
+      "rejected": [
+        4
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-16",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 11,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 4,
+          "demandSeconds": 0.5,
+          "utilization": 0.8,
+          "memoryMiB": 4,
+          "alpha": 1.0,
+          "delta": 0.9,
+          "gamma": 1.0,
+          "price": 0.0,
+          "fixedLocal": 2,
+          "fixedOffload": 0,
+          "inbound": 1
+        },
+        {
+          "id": "f1",
+          "load": 0,
+          "demandSeconds": 0.1,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 0.0,
+          "delta": 2.0,
+          "gamma": 1.0,
+          "price": 3.0,
+          "fixedLocal": 0,
+          "fixedOffload": 0,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "INFEASIBLE"
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-17",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 1,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 6,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 0.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 1.0,
+          "fixedLocal": 2,
+          "fixedOffload": 1,
+          "inbound": 1
+        },
+        {
+          "id": "f1",
+          "load": 7,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 1.0,
+          "delta": 0.0,
+          "gamma": 1.0,
+          "price": 3.0,
+          "fixedLocal": 1,
+          "fixedOffload": 3,
+          "inbound": 1
+        },
+        {
+          "id": "f2",
+          "load": 2,
+          "demandSeconds": 1.0,
+          "utilization": 0.8,
+          "memoryMiB": 2,
+          "alpha": 1.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 0,
+          "fixedOffload": 2,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "INFEASIBLE"
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-18",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 2,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 2,
+          "demandSeconds": 0.25,
+          "utilization": 0.8,
+          "memoryMiB": 4,
+          "alpha": 0.0,
+          "delta": 0.9,
+          "gamma": 0.0,
+          "price": 3.0,
+          "fixedLocal": 2,
+          "fixedOffload": 0,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "INFEASIBLE"
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-19",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 2,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 1,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 9.0,
+          "delta": 0.0,
+          "gamma": 1.0,
+          "price": 0.0,
+          "fixedLocal": 1,
+          "fixedOffload": 0,
+          "inbound": 1
+        },
+        {
+          "id": "f1",
+          "load": 0,
+          "demandSeconds": 1.0,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 1.0,
+          "delta": 0.9,
+          "gamma": 0.0,
+          "price": 3.0,
+          "fixedLocal": 0,
+          "fixedOffload": 0,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "INFEASIBLE"
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-20",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 6,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 7,
+          "demandSeconds": 0.25,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 7,
+          "fixedOffload": 0,
+          "inbound": 1
+        },
+        {
+          "id": "f1",
+          "load": 2,
+          "demandSeconds": 1.0,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 9.0,
+          "delta": 0.9,
+          "gamma": 0.0,
+          "price": 0.0,
+          "fixedLocal": 2,
+          "fixedOffload": 0,
+          "inbound": 2
+        },
+        {
+          "id": "f2",
+          "load": 8,
+          "demandSeconds": 0.1,
+          "utilization": 0.8,
+          "memoryMiB": 4,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 6,
+          "fixedOffload": 0,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "INFEASIBLE"
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-21",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 12,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 2,
+          "demandSeconds": 1.0,
+          "utilization": 0.8,
+          "memoryMiB": 4,
+          "alpha": 0.0,
+          "delta": 0.9,
+          "gamma": 0.0,
+          "price": 0.0,
+          "fixedLocal": 2,
+          "fixedOffload": 0,
+          "inbound": 0
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": 0.0,
+      "local": [
+        2
+      ],
+      "replicas": [
+        3
+      ],
+      "rejected": [
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-22",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 10,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 0,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 0.0,
+          "delta": 2.0,
+          "gamma": 0.0,
+          "price": 1.0,
+          "fixedLocal": 0,
+          "fixedOffload": 0,
+          "inbound": 2
+        },
+        {
+          "id": "f1",
+          "load": 8,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 9.0,
+          "delta": 0.9,
+          "gamma": 0.0,
+          "price": 3.0,
+          "fixedLocal": 2,
+          "fixedOffload": 3,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -2.5875,
+      "local": [
+        0,
+        2
+      ],
+      "replicas": [
+        1,
+        2
+      ],
+      "rejected": [
+        0,
+        3
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-23",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 11,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 6,
+          "demandSeconds": 0.25,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 1.0,
+          "delta": 0.9,
+          "gamma": 0.0,
+          "price": 3.0,
+          "fixedLocal": 1,
+          "fixedOffload": 1,
+          "inbound": 0
+        },
+        {
+          "id": "f1",
+          "load": 6,
+          "demandSeconds": 1.0,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 1.0,
+          "delta": 2.0,
+          "gamma": 1.0,
+          "price": 1.0,
+          "fixedLocal": 6,
+          "fixedOffload": 0,
+          "inbound": 0
+        },
+        {
+          "id": "f2",
+          "load": 0,
+          "demandSeconds": 0.1,
+          "utilization": 0.8,
+          "memoryMiB": 4,
+          "alpha": 9.0,
+          "delta": 2.0,
+          "gamma": 1.0,
+          "price": 3.0,
+          "fixedLocal": 0,
+          "fixedOffload": 0,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "INFEASIBLE"
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-24",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 1,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 5,
+          "demandSeconds": 0.25,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 0.0,
+          "delta": 2.0,
+          "gamma": 1.0,
+          "price": 1.0,
+          "fixedLocal": 3,
+          "fixedOffload": 2,
+          "inbound": 0
+        }
+      ]
+    },
+    "expected": {
+      "status": "INFEASIBLE"
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-25",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 4,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 4,
+          "demandSeconds": 0.25,
+          "utilization": 0.8,
+          "memoryMiB": 2,
+          "alpha": 1.0,
+          "delta": 2.0,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 4,
+          "fixedOffload": 0,
+          "inbound": 1
+        },
+        {
+          "id": "f1",
+          "load": 3,
+          "demandSeconds": 1.0,
+          "utilization": 0.8,
+          "memoryMiB": 4,
+          "alpha": 0.0,
+          "delta": 0.9,
+          "gamma": 1.0,
+          "price": 1.0,
+          "fixedLocal": 3,
+          "fixedOffload": 0,
+          "inbound": 0
+        }
+      ]
+    },
+    "expected": {
+      "status": "INFEASIBLE"
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-26",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 4,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 8,
+          "demandSeconds": 1.0,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 9.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 6,
+          "fixedOffload": 0,
+          "inbound": 2
+        },
+        {
+          "id": "f1",
+          "load": 7,
+          "demandSeconds": 0.25,
+          "utilization": 0.8,
+          "memoryMiB": 4,
+          "alpha": 9.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 1.0,
+          "fixedLocal": 0,
+          "fixedOffload": 4,
+          "inbound": 2
+        },
+        {
+          "id": "f2",
+          "load": 7,
+          "demandSeconds": 0.25,
+          "utilization": 0.8,
+          "memoryMiB": 2,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 0.0,
+          "price": 3.0,
+          "fixedLocal": 3,
+          "fixedOffload": 2,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "INFEASIBLE"
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-27",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 9,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 5,
+          "demandSeconds": 0.1,
+          "utilization": 0.8,
+          "memoryMiB": 1,
+          "alpha": 1.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 3.0,
+          "fixedLocal": 2,
+          "fixedOffload": 2,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -0.38,
+      "local": [
+        2
+      ],
+      "replicas": [
+        1
+      ],
+      "rejected": [
+        1
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-28",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 4,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 3,
+          "demandSeconds": 0.5,
+          "utilization": 0.8,
+          "memoryMiB": 4,
+          "alpha": 0.0,
+          "delta": 2.0,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 2,
+          "fixedOffload": 1,
+          "inbound": 0
+        },
+        {
+          "id": "f1",
+          "load": 5,
+          "demandSeconds": 0.1,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 1.0,
+          "delta": 0.0,
+          "gamma": 0.0,
+          "price": 0.0,
+          "fixedLocal": 1,
+          "fixedOffload": 4,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "INFEASIBLE"
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-29",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 9,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 7,
+          "demandSeconds": 0.1,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 1.0,
+          "delta": 2.0,
+          "gamma": 0.0,
+          "price": 0.0,
+          "fixedLocal": 3,
+          "fixedOffload": 2,
+          "inbound": 1
+        },
+        {
+          "id": "f1",
+          "load": 3,
+          "demandSeconds": 0.25,
+          "utilization": 0.8,
+          "memoryMiB": 4,
+          "alpha": 9.0,
+          "delta": 2.0,
+          "gamma": 0.1,
+          "price": 1.0,
+          "fixedLocal": 1,
+          "fixedOffload": 0,
+          "inbound": 2
+        },
+        {
+          "id": "f2",
+          "load": 6,
+          "demandSeconds": 0.1,
+          "utilization": 0.8,
+          "memoryMiB": 1,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 5,
+          "fixedOffload": 1,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -3.9333333333333336,
+      "local": [
+        3,
+        1,
+        5
+      ],
+      "replicas": [
+        1,
+        1,
+        1
+      ],
+      "rejected": [
+        2,
+        2,
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-30",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 6,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 4,
+          "demandSeconds": 0.1,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 0.0,
+          "delta": 2.0,
+          "gamma": 0.0,
+          "price": 1.0,
+          "fixedLocal": 3,
+          "fixedOffload": 0,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": 0.0,
+      "local": [
+        3
+      ],
+      "replicas": [
+        1
+      ],
+      "rejected": [
+        1
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-31",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 4,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 2,
+          "demandSeconds": 0.1,
+          "utilization": 0.8,
+          "memoryMiB": 4,
+          "alpha": 1.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 3.0,
+          "fixedLocal": 1,
+          "fixedOffload": 1,
+          "inbound": 1
+        },
+        {
+          "id": "f1",
+          "load": 4,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 9.0,
+          "delta": 2.0,
+          "gamma": 0.1,
+          "price": 1.0,
+          "fixedLocal": 1,
+          "fixedOffload": 1,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "INFEASIBLE"
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-32",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 8,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 0,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 9.0,
+          "delta": 0.9,
+          "gamma": 0.0,
+          "price": 0.0,
+          "fixedLocal": 0,
+          "fixedOffload": 0,
+          "inbound": 2
+        },
+        {
+          "id": "f1",
+          "load": 2,
+          "demandSeconds": 0.1,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 0.0,
+          "price": 3.0,
+          "fixedLocal": 0,
+          "fixedOffload": 0,
+          "inbound": 2
+        },
+        {
+          "id": "f2",
+          "load": 3,
+          "demandSeconds": 0.1,
+          "utilization": 0.8,
+          "memoryMiB": 2,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 1.0,
+          "fixedLocal": 2,
+          "fixedOffload": 1,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": 0.0,
+      "local": [
+        0,
+        0,
+        2
+      ],
+      "replicas": [
+        1,
+        1,
+        1
+      ],
+      "rejected": [
+        0,
+        2,
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-33",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 11,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 5,
+          "demandSeconds": 0.25,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 9.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 3.0,
+          "fixedLocal": 2,
+          "fixedOffload": 0,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -3.54,
+      "local": [
+        2
+      ],
+      "replicas": [
+        1
+      ],
+      "rejected": [
+        3
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-34",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 1,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 2,
+          "demandSeconds": 0.25,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 1.0,
+          "price": 1.0,
+          "fixedLocal": 0,
+          "fixedOffload": 2,
+          "inbound": 1
+        },
+        {
+          "id": "f1",
+          "load": 8,
+          "demandSeconds": 1.0,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 9.0,
+          "delta": 2.0,
+          "gamma": 0.0,
+          "price": 0.0,
+          "fixedLocal": 7,
+          "fixedOffload": 1,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "INFEASIBLE"
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-35",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 0,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 3,
+          "demandSeconds": 1.0,
+          "utilization": 0.8,
+          "memoryMiB": 1,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 3,
+          "fixedOffload": 0,
+          "inbound": 1
+        },
+        {
+          "id": "f1",
+          "load": 2,
+          "demandSeconds": 0.1,
+          "utilization": 0.8,
+          "memoryMiB": 2,
+          "alpha": 9.0,
+          "delta": 2.0,
+          "gamma": 1.0,
+          "price": 0.0,
+          "fixedLocal": 1,
+          "fixedOffload": 0,
+          "inbound": 0
+        },
+        {
+          "id": "f2",
+          "load": 6,
+          "demandSeconds": 0.1,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 9.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 1.0,
+          "fixedLocal": 6,
+          "fixedOffload": 0,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "INFEASIBLE"
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-36",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 8,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 6,
+          "demandSeconds": 0.25,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 0.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 1.0,
+          "fixedLocal": 5,
+          "fixedOffload": 1,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -0.15,
+      "local": [
+        5
+      ],
+      "replicas": [
+        2
+      ],
+      "rejected": [
+        0
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-37",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 7,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 3,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 2,
+          "alpha": 0.0,
+          "delta": 0.0,
+          "gamma": 0.0,
+          "price": 0.0,
+          "fixedLocal": 1,
+          "fixedOffload": 2,
+          "inbound": 2
+        },
+        {
+          "id": "f1",
+          "load": 2,
+          "demandSeconds": 0.5,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 1.0,
+          "delta": 2.0,
+          "gamma": 0.1,
+          "price": 1.0,
+          "fixedLocal": 1,
+          "fixedOffload": 0,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "INFEASIBLE"
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-38",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 2,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 7,
+          "demandSeconds": 0.1,
+          "utilization": 0.8,
+          "memoryMiB": 1,
+          "alpha": 9.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 0.0,
+          "fixedLocal": 3,
+          "fixedOffload": 1,
+          "inbound": 2
+        },
+        {
+          "id": "f1",
+          "load": 5,
+          "demandSeconds": 0.1,
+          "utilization": 0.8,
+          "memoryMiB": 1,
+          "alpha": 9.0,
+          "delta": 0.0,
+          "gamma": 0.1,
+          "price": 3.0,
+          "fixedLocal": 2,
+          "fixedOffload": 2,
+          "inbound": 1
+        },
+        {
+          "id": "f2",
+          "load": 6,
+          "demandSeconds": 1.0,
+          "utilization": 1.0,
+          "memoryMiB": 1,
+          "alpha": 9.0,
+          "delta": 0.9,
+          "gamma": 0.1,
+          "price": 1.0,
+          "fixedLocal": 6,
+          "fixedOffload": 0,
+          "inbound": 2
+        }
+      ]
+    },
+    "expected": {
+      "status": "INFEASIBLE"
+    }
+  },
+  {
+    "input": {
+      "id": "LSPr_x-39",
+      "model": "LSPr_x",
+      "memoryCapacityMiB": 7,
+      "functions": [
+        {
+          "id": "f0",
+          "load": 3,
+          "demandSeconds": 0.25,
+          "utilization": 1.0,
+          "memoryMiB": 4,
+          "alpha": 1.0,
+          "delta": 0.0,
+          "gamma": 0.0,
+          "price": 3.0,
+          "fixedLocal": 2,
+          "fixedOffload": 0,
+          "inbound": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": "OPTIMAL",
+      "objective": -0.6666666666666666,
+      "local": [
+        2
+      ],
+      "replicas": [
+        1
+      ],
+      "rejected": [
+        1
+      ]
+    }
+  }
+]

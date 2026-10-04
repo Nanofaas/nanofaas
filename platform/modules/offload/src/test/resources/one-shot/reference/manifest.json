@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "commit": "71899f720a4ffffd070ebf7ddc5b74afddfde9c5",
+  "sources": {
+    "models/local_sp.py": "sha256:1aa863f5ef9388550f317630348554998adf79c7314fd3c4d410d02c441f8f18",
+    "models/sp.py": "sha256:8e4225847f453d82a918e3788a1107e6db034d51eb7d21f2c65985d61198c259",
+    "plasma/core/sbm.py": "sha256:e5f5d9e675d8d1913201e357f29104ab7acf0eea36d9ca2672520f205b15da3c",
+    "decentralized_auction.py": "sha256:d9075fe328612b8344c205ca6ae8bb14413804cff297e07d798fe88d472f825e",
+    "run_faasmadea.py": "sha256:3257bc74650edbf8da7885e35f60d0fcc374d77ef8b4ddc77e3dde054e247bd3",
+    "run_faasmacro.py": "sha256:fa08f99ecdbee8f6de88c07d9b58e7c0e54009d95f0fc2661cd928aba496c0bb"
+  },
+  "fixtures": {
+    "local-problems.json": "sha256:e446a718edcf2c2ebfe51bebabc135af39fa33fb013663275abdbba729933be7",
+    "auction-transcripts.json": "sha256:642f3431f5cfdeb664a500e04d0fd03e2103d6cbeb8827efa6986708fbb59bb0"
+  }
+}
