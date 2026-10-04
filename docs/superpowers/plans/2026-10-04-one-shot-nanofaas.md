@@ -53,7 +53,7 @@ Comando unitario dei task Java: `./gradlew :<progetto>:test -PcontrolPlaneModule
 
 **File:** creare `docs/contracts/one-shot/{forecast,service-profile,run-events}.schema.json`, `docs/contracts/one-shot/README.md`, `platform/modules/offload/src/test/resources/one-shot/reference/manifest.json`, fixture JSON nella stessa directory, `scripts/one-shot/export_reference.py`, `scripts/tests/test_one_shot_contracts.py`.
 
-**Interfacce:** gli schemi v1 fissano unità, identificatori, versioni e hash. Forecast: origine, funzione, generazione locale, intervallo `[start,end)`, rate, revisione. Service profile: fingerprint di immagine/runtime/backend/input/CPU/memoria/co-locazione, distribuzione warm, `D`, intervallo di validità del modello, `synthetic` e provenienza. Eventi: nodo/incarnazione, epoca/round, tipo, offset monotono locale, tempo UTC, stato, censura e ID di correlazione. Hash SHA-256 dei byte immutabili, senza includere il proprio hash nel contenuto. Le generazioni delle funzioni sono locali: peer con contatori diversi possono eseguire la stessa funzione/versione; un assignment conserva la generazione del venditore senza richiederne l'uguaglianza con quella del compratore.
+**Interfacce:** gli schemi v1 fissano unità, identificatori, versioni e hash. Forecast: origine, funzione, generazione locale, intervallo `[start,end)`, rate, revisione. Service profile: fingerprint di immagine/runtime/backend/input/CPU/memoria/co-locazione e ambiente host/VM, provider, finalità `workflow-validation` o `scientific-experiment`, distribuzione warm, `D`, intervallo di validità del modello, `synthetic` e provenienza. Profili locali misurati e fixture sintetiche rimangono distinti. Eventi: nodo/incarnazione, epoca/round, tipo, offset monotono locale, tempo UTC, stato, censura e ID di correlazione. Hash SHA-256 dei byte immutabili, senza includere il proprio hash nel contenuto. Le generazioni delle funzioni sono locali: peer con contatori diversi possono eseguire la stessa funzione/versione; un assignment conserva la generazione del venditore senza richiederne l'uguaglianza con quella del compratore.
 
 - [ ] Scrivere `test_one_shot_contracts.py`: fixture completa valida; `NaN`, durata negativa, campo richiesto assente e versione sconosciuta rifiutati. L'exporter deve fallire se il checkout non corrisponde al commit richiesto.
 - [ ] Eseguire `python3 -m pytest scripts/tests/test_one_shot_contracts.py -q` e verificare RED per schemi/exporter assenti.
@@ -175,7 +175,7 @@ Comando unitario dei task Java: `./gradlew :<progetto>:test -PcontrolPlaneModule
 
 **Interfacce:** `PUT /v1/admin/offload/one-shot/config` sostituzione atomica con revisione attesa; `PUT .../profiles/{profileId}`, `GET .../status`, `GET .../epochs/{epoch}/events`, `PUT .../clock-health` (prefisso comune `/v1/admin/offload/one-shot`). Config contiene funzioni/generazioni, cloud URI, budget MiB, profilo, q, periodo/anticipo/deadline, limiti round/burst/skew e limiti solver. Eventi paginati e retention bounded; ID ad alta cardinalità nei log/eventi, non nelle label metriche.
 
-- [ ] Test: forecast/P2P assente → attivazione rifiutata; profilo con digest sbagliato → rifiuto; profilo sintetico senza opzione esplicita di test → rifiuto; aggiornamento durante asta vale dalla prossima epoca. Deadline troncata produce `censored=true`, non durata qualificata. Clock update vecchio non rinfresca la validità.
+- [ ] Test: forecast/P2P assente → attivazione rifiutata; profilo con digest sbagliato → rifiuto; profilo sintetico senza opzione esplicita di test → rifiuto; profilo realmente misurato su Multipass accettato per verifica locale compatibile, non per un target/finalità diversi. Aggiornamento durante asta vale dalla prossima epoca. Deadline troncata produce `censored=true`, non durata qualificata. Clock update vecchio non rinfresca la validità.
 - [ ] Eseguire RED con i tre test offload.
 - [ ] Implementare validazione schema A1 e fingerprint, stati diagnostici e metriche aggregate; schemaVersion e hash in ogni esportazione. Fornire endpoint di trigger manuale `POST .../epochs/{epoch}/prepare` solo quando modalità scheduled disabilitata, per prove riproducibili senza doppia asta. Nessuna API fa diventare un profilo sintetico reale. Pubblicare esempi test e produzione distinti.
 - [ ] Eseguire GREEN e verifica copertura/composizione OpenAPI esistente. Verificare che disabilitare one-shot conservi l'offload ordinario e che fallback cloud abbia una ragione osservabile.
@@ -227,7 +227,7 @@ Comando unitario dei task Java: `./gradlew :<progetto>:test -PcontrolPlaneModule
 | 7–8: asta, epoche, guasti | A6, A9–A11 |
 | 9: routing e one-hop | A12–A13 |
 | 10: repliche/concorrenza | A7–A8, A10 |
-| 11–12: strumenti necessari agli esperimenti | A1, A7, A11, A13–A14; esecuzione Azure solo fase B |
-| 13: criteri di accettazione | A14 e gate; criteri scientifici Azure rinviati esplicitamente a B |
+| 11–12: strumenti necessari agli esperimenti | A1, A7, A11, A13–A14; workflow Multipass fase B, esperimenti Azure nel lavoro futuro C |
+| 13: criteri di accettazione | A14 e gate; verifica dei workflow in B, criteri scientifici Azure rinviati esplicitamente a C |
 
-Dopo A14 fermarsi al passaggio di consegne: nessun avvio automatico di VM Azure. La fase B è un lavoro separato nel repository NanoLab.
+Dopo A14 fermarsi al passaggio di consegne. La fase B è un lavoro separato nel repository NanoLab, con VM Multipass; nessun avvio automatico di risorse Azure, riservate al futuro lavoro sperimentale C.

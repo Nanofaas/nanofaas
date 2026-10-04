@@ -23,7 +23,7 @@ Sono decisioni concordate:
 - Allocare memoria per replica e mantenere una sola esecuzione attiva per istanza. Il numero delle repliche è controllato dall'algoritmo.
 - Usare funzioni sperimentali warm in Rust, con lavoro CPU/memoria significativo e risultati verificabili. Rust è una scelta di deployment, non una soluzione provvisoria in attesa di migrazione.
 - Portare il solver locale DP in Java; usare Python come riferimento di correttezza.
-- Calibrare prima degli esperimenti one-shot. Calibrazione e campagne sono workflow distinti NanoLab, composti da task Sonata, eseguiti su Azure.
+- Calibrare prima degli esperimenti one-shot. Calibrazione e campagne sono workflow distinti NanoLab, composti da task Sonata: si sviluppano e verificano prima su Multipass; gli esperimenti finali Azure sono un lavoro successivo separato.
 
 Le regole operative nelle sezioni successive completano queste scelte, comprese granularità dei flussi, transizione tra epoche e comportamento degradato. I dettagli di implementazione sono sviluppati nei piani collegati.
 
@@ -31,7 +31,9 @@ Le regole operative nelle sezioni successive completano queste scelte, comprese 
 
 Questa è la specifica di integrazione: definisce contratti e criteri di accettazione comuni a NanoFaaS, NanoLab e alle funzioni sperimentali. Il piano di implementazione dovrà separare solver e previsione, protocollo e attuazione, calibrazione e campagna, conservando questi contratti.
 
-L'esecuzione è divisa in due fasi ordinate: prima tutta l'implementazione NanoFaaS, inclusi test unitari, integrazione, prove distribuite locali, funzioni sperimentali e telemetria; solo dopo i workflow NanoLab/Sonata e le prove Azure. La prima fase deve poter essere verificata senza NanoLab e senza account cloud, usando fixture esplicitamente sintetiche al posto dei profili calibrati. Questo non sostituisce la calibrazione reale né dimostra la validità scientifica delle campagne. Il punto di passaggio e i due piani sono descritti in [One-shot implementation plan](../plans/2026-10-04-one-shot-implementation.md).
+L'esecuzione è divisa in tre fasi ordinate: A, tutta l'implementazione NanoFaaS, inclusi test unitari, integrazione, prove distribuite locali, funzioni sperimentali e telemetria; B, sviluppo e verifica dei workflow NanoLab/Sonata su VM locali Multipass; C, esperimenti finali Azure come lavoro successivo separato. Il piano di implementazione attuale copre A e B, non l'esecuzione di C. La fase A deve poter essere verificata senza NanoLab, usando fixture esplicitamente sintetiche al posto dei profili calibrati. La fase B deve eseguire realmente i workflow su VM Multipass e non limitarsi a mock o dry-run. Nessuna delle due richiede un account cloud. I punti di passaggio e i due piani sono descritti in [One-shot implementation plan](../plans/2026-10-04-one-shot-implementation.md).
+
+Misure e calibrazioni ottenute su Multipass sono reali ma valide solo per l'ambiente locale misurato. Devono dichiarare provider, fingerprint di host/VM e finalità di verifica dei workflow; non si trasferiscono a una campagna Azure cambiando un'etichetta. La fase C ripeterà calibrazione e qualificazione temporale sul target prima dei confronti finali.
 
 La prima versione copre invocazioni sincrone di funzioni gestite, disponibili sui nodi abilitati e sul cloud. Le modalità asincrone, la distribuzione automatica di nuove funzioni, aste gerarchiche, previsioni CPU/memoria e ricerca locale PG sono fuori ambito. Le modalità di offload esistenti restano disponibili per le funzioni non gestite da one-shot.
 
@@ -86,7 +88,7 @@ La campagna oracle deve generare tassi rappresentabili sulla griglia scelta. Per
 | Libreria `forecasting-api` proposta | Contratto di lettura degli snapshot di previsione e relativi tipi pubblici |
 | `control-plane-spi` | Contratti propri del control plane, inclusi accesso al catalogo e controllo delle repliche |
 | Runtime gestito e SDK | Readiness, dispatch verso slot disponibili, concorrenza fisica per replica |
-| NanoLab e Sonata | Provisioning Azure, calibrazione, carico, verifiche, raccolta e cleanup |
+| NanoLab e Sonata | Provisioning Multipass e verifica locale dei workflow; calibrazione, carico, raccolta e cleanup. Impiego Azure nel lavoro sperimentale successivo |
 
 Non sono consentite dipendenze dirette tra le implementazioni dei moduli opzionali. I contratti condivisi sono organizzati per funzionalità, senza far confluire tutte le interfacce in `control-plane-spi`:
 
@@ -189,11 +191,13 @@ Per gli esperimenti si configurano richieste e limiti di memoria coerenti, norma
 
 `FunctionSpec.concurrency` è un tetto per funzione sul nodo, non per replica. Impostarlo a uno limiterebbe anche molte repliche a una sola invocazione complessiva. La configurazione prevista usa `STATIC_PER_POD`, `targetInFlightPerPod=1`, un tetto di funzione sufficiente e `NANOFAAS_MAX_CONCURRENT_HANDLERS=1` nel runtime. La capacità utile dipende dalle repliche pronte e dai loro slot liberi; zero repliche pronte significa zero capacità locale ammissibile.
 
-La selezione del backend deve conoscere gli slot occupati. Il round robin attuale del proxy container locale, da solo, può scegliere una replica occupata mentre un'altra è libera e non soddisfa il requisito. Il backend scelto per la campagna deve dimostrare concorrenza massima uno per replica e utilizzazione delle repliche libere, anche con tempi di servizio diversi. La prima integrazione sperimentale propone `container-local` su VM Azure, per associare esplicitamente nodo logico, budget e pool di istanze; altri backend richiedono la stessa verifica prima di essere confrontati.
+La selezione del backend deve conoscere gli slot occupati. Il round robin attuale del proxy container locale, da solo, può scegliere una replica occupata mentre un'altra è libera e non soddisfa il requisito. Il backend scelto deve dimostrare concorrenza massima uno per replica e utilizzazione delle repliche libere, anche con tempi di servizio diversi. La prima integrazione propone `container-local`, prima su VM Multipass per verificare i workflow e successivamente su VM Azure per gli esperimenti finali, associando esplicitamente nodo logico, budget e pool di istanze; altri backend richiedono la stessa verifica prima di essere confrontati.
 
-## 11. Calibrazione su Azure
+## 11. Workflow di calibrazione: Multipass prima, Azure nel lavoro finale
 
 Il workflow di calibrazione è precedente e indipendente dalla campagna one-shot. NanoLab esegue provisioning, deployment e raccolta tramite task Sonata con cleanup anche in caso di fallimento.
+
+La fase B implementa e verifica questo workflow su Multipass, comprese prove di errore, artefatti, riuso e invalidazione. Le VM edge e la VM che rappresenta il cloud sono nodi logici locali; condividere l'host fisico va dichiarato nelle evidenze. Nella fase C lo stesso workflow sarà configurato e verificato sul target Azure e produrrà una nuova calibrazione per quel target. Non è richiesta la verifica Azure per completare B.
 
 Per ogni profilo funzione/nodo, il workflow prepara immagine e input, attende readiness, esegue warmup e misura lavoro reale CPU/memoria con output verificato. Un semplice sleep non rappresenta il carico principale delle funzioni sperimentali. Si ripetono le prove per stimare media, dispersione, quantili e incertezza, con un criterio dichiarato di numerosità/stabilità.
 
@@ -209,15 +213,17 @@ Si distinguono:
 
 La calibrazione verifica anche capacità e contention con più repliche e mix di funzioni. Il profilo dichiara l'intervallo di configurazioni in cui `r*U/D` è un modello accettabile e il relativo errore. Una campagna fuori da tale intervallo richiede nuova calibrazione o un modello rivisto.
 
-L'artefatto risultante è immutabile e identificato da hash. Contiene commit e digest delle immagini, SDK/runtime, input, tipo VM e CPU, quote CPU, memoria, backend, numero di repliche, co-locazioni, condizioni di warmup, statistiche, campioni e unità. Le latenze tra nodi sono misurate separatamente dal servizio.
+L'artefatto risultante è immutabile e identificato da hash. Contiene commit e digest delle immagini, SDK/runtime, input, provider e fingerprint dell'ambiente, finalità (`workflow-validation` oppure `scientific-experiment`), tipo VM e CPU, quote CPU, memoria, backend, numero di repliche, co-locazioni, condizioni di warmup, statistiche, campioni e unità. Le latenze tra nodi sono misurate separatamente dal servizio. Un profilo Multipass misurato non è sintetico, ma la sua finalità e il suo fingerprint ne impediscono il riuso per qualificare Azure.
 
-## 12. Campagna one-shot su Azure
+## 12. Verifica dei workflow e successiva campagna Azure
 
 Un secondo workflow NanoLab/Sonata consuma un profilo esistente e ne verifica la compatibilità prima di avviare il carico. Non esegue una ricalibrazione implicita e non aggiorna `D` durante il confronto. Continua a raccogliere misure per evidenziare deriva e violazioni del profilo.
 
-Prima dei confronti one-shot si eseguono prove preliminari su Azure, sempre tramite task Sonata in NanoLab, per qualificare i tempi dell'asta distribuita e della preparazione del piano. Queste prove consumano la calibrazione delle funzioni già disponibile e producono un artefatto separato con distribuzioni temporali, condizioni misurate e scelta motivata di periodo, anticipo e deadline. Non modificano il profilo di servizio. La campagna di confronto richiede entrambi gli artefatti compatibili e mantiene fissi i parametri temporali scelti; cambiamenti a solver, protocollo, dimensione dello scenario o condizioni operative richiedono di verificarne nuovamente la validità.
+In fase B tutti i percorsi del workflow vengono verificati su Multipass con piccoli scenari: baseline, oracle, EWMA, raccolta, report, fallimenti e cleanup. Il report dichiara la finalità di verifica locale; non deve dimostrare il vantaggio scientifico dell'algoritmo per considerare implementato il workflow. Dimensionamento e avvio dei confronti finali Azure appartengono a un successivo piano sperimentale.
 
-La topologia proposta usa una VM per nodo edge logico, una destinazione cloud distinta e sufficientemente dimensionata, e generatori separati quando necessario a non contaminare le misure. Tutto viene eseguito su Azure. Collocare tutte le VM nello stesso datacenter non crea automaticamente una rete edge-cloud realistica: posizione, RTT, banda ed eventuale emulazione di rete vanno dichiarati e verificati.
+Prima dei confronti si eseguono prove preliminari per qualificare i tempi dell'asta distribuita e della preparazione del piano: su Multipass per verificare il workflow in fase B, poi nuovamente su Azure per la campagna finale C. Queste prove consumano la calibrazione delle funzioni già disponibile sullo stesso target e producono un artefatto separato con distribuzioni temporali, condizioni misurate e scelta motivata di periodo, anticipo e deadline. Non modificano il profilo di servizio. Ogni confronto richiede entrambi gli artefatti compatibili e mantiene fissi i parametri temporali scelti; cambiamenti a solver, protocollo, dimensione dello scenario o condizioni operative richiedono di verificarne nuovamente la validità. Il periodo locale non diventa automaticamente il periodo degli esperimenti Azure.
+
+La topologia proposta usa una VM per nodo edge logico, una destinazione cloud distinta e sufficientemente dimensionata, e generatori separati quando necessario a non contaminare le misure. I test dei workflow usano VM Multipass dimensionate rispetto alle risorse dell'host; gli esperimenti finali useranno Azure. Collocare tutte le VM nello stesso host o datacenter non crea automaticamente una rete edge-cloud realistica: posizione, RTT, banda, risorse condivise ed eventuale emulazione di rete vanno dichiarati e verificati.
 
 Il manifest fissa topologia, funzioni, immagini, profilo di servizio, artefatto di qualificazione temporale, coefficienti del modello, periodo `T`, quantile/margine ed `epsilon_asta`, anticipo, round e deadline, granularità dei flussi, burst, forecast, trace hash, seed, ripetizioni e warmup. La previsione oracle e il generatore condividono traccia e riferimento temporale.
 
@@ -237,8 +243,8 @@ Il controllo architetturale deve verificare che `offload` consumi P2P e previsio
 4. **One-hop:** il marcatore nativo e la validazione dei metadati NanoFaaS impediscono qualsiasi secondo inoltro, anche in caso di valori invalidi, incoerenti o metadati one-shot mancanti. Il normale offload conserva il proprio comportamento one-hop. Le risposte riportano il nodo effettivo di esecuzione quando l'esecuzione è avvenuta; gli errori precedenti non inventano una destinazione di esecuzione. I test non richiedono supporto agli header DFaaS.
 5. **Repliche:** sotto carico e durante scaling, ciascuna replica esegue al massimo un handler; repliche libere sono utilizzabili, readiness precede la capacità annunciata, il budget RAM include la transizione e nessun altro scaler modifica il piano.
 6. **Guasti:** solver scaduto, peer perso, riavvio, clock fuori soglia e readiness parziale producono comportamento esplicito senza riuso di assegnazioni scadute né inoltri aggiuntivi.
-7. **Calibrazione:** workflow Azure completabile separatamente, artefatto verificabile e rifiuto di profili incompatibili. Tempi di servizio, coda e rete non vengono confusi.
-8. **Campagna:** workflow Azure riproducibile tramite NanoLab/Sonata, conservazione verificata, risorse rilasciate anche su errore, risultati confrontabili a parità di trace e profilo. Il budget temporale dell'intera pianificazione include solver, rete e preparazione delle repliche, non solo il kernel DP.
+7. **Calibrazione:** workflow completabile separatamente e verificato su Multipass in fase B, artefatto verificabile e rifiuto di profili incompatibili. Tempi di servizio, coda e rete non vengono confusi. Calibrazione Azure richiesta per gli esperimenti finali C, non per chiudere B.
+8. **Campagna:** workflow riproducibile tramite NanoLab/Sonata, verificato su Multipass con conservazione, rilascio risorse anche su errore e confronti a parità di trace e profilo. Il budget temporale dell'intera pianificazione include solver, rete e preparazione delle repliche, non solo il kernel DP. Validazione scientifica finale e run Azure sono criteri della fase C separata.
 9. **Separazione temporale:** periodo scelto sulla base delle prove preliminari, con durata dell'asta di molto inferiore a `T` secondo il rapporto dichiarato, anticipo sufficiente alla capacità pronta e risoluzione coerente con la traccia. Timeout e limite dei round non valgono come evidenza di completamento; gli sforamenti osservati nei confronti sono riportati e non nascosti modificando `T` in corso di esecuzione.
 
 ## 14. Riferimenti di implementazione
