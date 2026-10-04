@@ -21,13 +21,9 @@ allprojects {
     group = 'it.unimib.datai.nanofaas'
     version = '0.22.0'
 
-    // Reactor Netty stays on 1.3.6 (reactor-bom 2025.0.6, not Spring Boot 4.1.1's 2025.0.7): from 1.3.7
-    // an :enqueue under load can go unanswered, which P07ConfiguredHttpCalibrationTest hits on 2 CPUs
-    // (about 1 run in 4 on 1.3.7, 5 in 8 on 1.3.8-SNAPSHOT; never on 1.3.6). That stall is NOT
-    // reactor/reactor-netty#4361 (a keep-alive connection that stops reading after a queued request
-    // completes synchronously): 1.3.6 has #4361 too, its reproducer fails there, and it is what hangs the
-    // scheduler-switch HTTP tests on CI. 1.3.8 fixes #4361 only. Move past 1.3.6 once a release passes P07
-    // on 2 pinned CPUs (taskset -c 0,1 with --no-daemon).
+    // Keep Reactor Netty 1.3.6 until the configured HTTP calibration passes on two pinned CPUs.
+    // Newer versions can leave :enqueue unanswered; the keep-alive fix alone is insufficient.
+    // Evidence and upgrade condition: docs/architecture/adr-238-engine-boundaries.md.
     ext['reactor-bom.version'] = '2025.0.6'
 
     repositories {
@@ -107,24 +103,11 @@ subprojects {
     pluginManager.withPlugin('org.graalvm.buildtools.native') {
         project.extensions.configure('graalvmNative') { nativeExtension ->
             nativeExtension.binaries.configureEach { binary ->
-                // -O3 optimises for speed and -Os for binary size; the levels choose what
-                // to spend rather than how much to optimise. Measured on an isolated bench
-                // with memory to spare, 3 against s gave 9,251 requests per second against
-                // 8,398 (+10%), started in 0.068s against 0.173s and held 39 MiB at rest
-                // against 121 MiB. The image doubles, 195MB to 397MB, because -O3 inlines:
-                // the code area triples from FEWER compilation units, each carrying copies
-                // of what it absorbed. That cost lands on the registry, not the node — with
-                // a heap ceiling in place both builds peaked at the same 744 MiB, since the
-                // code is mapped from the file rather than copied into the heap.
-                //
-                // The gain is conditional and worth stating: under a 1GB limit the two were
-                // identical at ~3,490 requests per second, because there the bottleneck is
-                // collection rather than code quality.
+                // Default to speed optimization; nativeOptimization=s selects smaller images.
+                // Comparative measurements: docs/architecture/adr-238-engine-boundaries.md.
                 binary.buildArgs.add("-O${project.findProperty('nativeOptimization') ?: '3'}")
                 // -PnativeGc=G1 needs Oracle GraalVM on Linux; Community offers only
                 // 'serial' and 'epsilon', and rejects anything else at build time.
-                // Measured motivation: the serial collector spent 32% of wall-clock
-                // time collecting under sustained load, with pauses reaching 1.9s.
                 if (project.hasProperty('nativeGc')) {
                     binary.buildArgs.add("--gc=${project.property('nativeGc')}")
                 }
@@ -138,13 +121,8 @@ subprojects {
                 if (!nativeMonitoring.isEmpty()) {
                     binary.buildArgs.add("--enable-monitoring=${nativeMonitoring.join(',')}")
                 }
-                // -PnativeBuildMemory=6g bounds the BUILDER's heap, not the built
-                // image's. native-image sizes its own heap from the memory it can
-                // see, which is the whole machine even when most of it is already
-                // spoken for: on a 12GB VM also running k3s, a control plane and
-                // Prometheus, it was SIGKILLed by the OOM killer after 9m50s of
-                // work. A build that dies that way wastes the ten minutes and says
-                // "exit 137"; one that is told its budget either fits or fails fast.
+                // nativeBuildMemory caps the builder heap independently of the built image.
+                // Budget it alongside other services to fail fast rather than exhaust the host.
                 if (project.hasProperty('nativeBuildMemory')) {
                     binary.buildArgs.add("-J-Xmx${project.property('nativeBuildMemory')}")
                 }

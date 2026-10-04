@@ -36,11 +36,9 @@ import org.slf4j.LoggerFactory;
  *
  * <p>This class never calls a dispatcher or a readiness gate directly: {@link #transport} is the
  * only door to the outside world, so mode selection and any wake-up wait live entirely on the
- * control plane's side of that boundary (the {@code AttemptTransportAdapter}, wired in step 4).
- * Metrics recording also moves out, behind {@link #observer} — the generation fencing that used
- * to live in {@code Metrics.isCurrentGeneration} is reproduced here directly against {@link
- * #capacity}, since this class, not the observer, is what must decide whether a notification is
- * even worth sending.
+ * control plane's side of that boundary (the {@code AttemptTransportAdapter}).
+ * Metrics recording stays behind {@link #observer}. This class fences notifications against
+ * {@link #capacity}, since it owns the generation decision before notifying the observer.
  */
 @SuppressWarnings("FutureReturnValueIgnored") // Callback stages complete lifecycle-owned futures.
 public final class AttemptCoordinator {
@@ -287,7 +285,7 @@ public final class AttemptCoordinator {
     /**
      * Marker the transport adapter wraps a deployment wake-up failure in, so this class can tell
      * "the managed deployment never scaled up" apart from an ordinary transport failure without
-     * knowing anything about how wake-up works. Public: the adapter that constructs it (step 4)
+     * knowing anything about how wake-up works. Public: the adapter that constructs it
      * lives in the control plane, a different module.
      */
     public static final class DeploymentWakeUpException extends RuntimeException {

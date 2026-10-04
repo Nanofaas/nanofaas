@@ -90,22 +90,8 @@ jobs:
             **/build/reports/spotbugs/
           retention-days: 14
 
-  # No other job here compiles a native image, and that silence is what let a three-commit-old
-  # `.so` sit in the release path (issue #208; `docs/experiments/scheduler-switching-2026-09/
-  # FINAL.md` §7.3). native-image build-tools registers
-  # `options.getSharedLibrary().convention(true)` for any module applying BOTH `java-library` and
-  # `org.graalvm.buildtools.native`, and `nativeCompile` still exits 0 — so the artifact type is
-  # the only thing that distinguishes a shipping binary from one nothing can execute, and `file`
-  # is the cheapest way to read it. This job would have failed at d456915f, when the breakage
-  # arrived, instead of surfacing 33 commits later.
-  #
-  # It intentionally asserts `:control-plane` only: that is the binary the release path and
-  # `scripts/native-java-image.sh` ship. `:sdks:java-lite` carries the same latent `.so` (it is a
-  # `java-library` declaring a `main` binary and sets no `sharedLibrary`), but nothing in the
-  # release path builds or consumes its native image, so asserting it here would mean either
-  # failing this job for an unused artifact or weakening the check; resolving which artefact kind
-  # that SDK's image should be is its own follow-up, recorded in §7.3. The script takes several
-  # paths, so adding it afterwards is one argument.
+  # The released control-plane native artifact must be an executable, not a shared library.
+  # Java-lite's unused native target has a separate artifact decision. See ADR 238.
   test-native-artifact:
     runs-on: ubuntu-latest
     timeout-minutes: 45
