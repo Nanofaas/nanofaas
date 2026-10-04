@@ -25,3 +25,6 @@ pub use handler::BoxError;
 pub use runtime::{Error, Runtime};
 pub use settings::RuntimeSettings;
 pub use types::HandlerResponse;
+
+#[cfg(test)]
+mod failure_corpus_tests;

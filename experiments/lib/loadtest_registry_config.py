@@ -13,12 +13,6 @@ _PRESET_STAGE_SEQUENCES = {
     "stress": "20s:10,60s:20,60s:35,60s:35,20s:0",
 }
 
-_PRESET_STAGE_TARGETS = {
-    "quick": [3, 8, 12, 0],
-    "standard": [5, 10, 20, 20, 0],
-    "stress": [10, 20, 35, 35, 0],
-}
-
 _PAYLOAD_MODES = {"legacy-random", "pool-sequential", "pool-random"}
 
 
@@ -92,17 +86,6 @@ def resolve_invocation_modes(value: str) -> list[str]:
     raise ValueError(f"invalid invocation mode: {value}")
 
 
-def _build_custom_sequence(custom_total_seconds: int) -> str:
-    if custom_total_seconds < 30:
-        raise ValueError("custom_total_seconds must be >= 30")
-    ramp_up = max(5, custom_total_seconds * 10 // 100)
-    steady_1 = max(10, custom_total_seconds * 30 // 100)
-    steady_2 = max(10, custom_total_seconds * 40 // 100)
-    sustain = max(5, custom_total_seconds * 15 // 100)
-    ramp_down = max(5, custom_total_seconds - (ramp_up + steady_1 + steady_2 + sustain))
-    return f"{ramp_up}s:5,{steady_1}s:10,{steady_2}s:20,{sustain}s:20,{ramp_down}s:0"
-
-
 def _validate_max_vus(max_vus: int | None) -> int | None:
     if max_vus is None:
         return None
@@ -122,7 +105,7 @@ def _scale_targets(base_targets: list[int], peak: int) -> list[int]:
     return scaled
 
 
-def _build_custom_sequence_with_peak(custom_total_seconds: int, peak_vus: int) -> str:
+def _build_custom_sequence(custom_total_seconds: int, peak_vus: int = 20) -> str:
     if custom_total_seconds < 30:
         raise ValueError("custom_total_seconds must be >= 30")
     ramp_up = max(5, custom_total_seconds * 10 // 100)
@@ -145,16 +128,14 @@ def build_stage_sequence(
     if normalized_profile == "custom":
         if custom_total_seconds is None:
             raise ValueError("custom_total_seconds is required for custom profile")
-        if validated_peak is not None:
-            return _build_custom_sequence_with_peak(custom_total_seconds, validated_peak)
-        return _build_custom_sequence(custom_total_seconds)
-    if normalized_profile not in _PRESET_STAGE_TARGETS:
+        return _build_custom_sequence(custom_total_seconds, validated_peak if validated_peak is not None else 20)
+    if normalized_profile not in _PRESET_STAGE_SEQUENCES:
         raise ValueError(f"invalid profile: {profile}")
     if validated_peak is None:
         return _PRESET_STAGE_SEQUENCES[normalized_profile]
-    base_targets = _PRESET_STAGE_TARGETS[normalized_profile]
-    scaled = _scale_targets(base_targets, validated_peak)
-    durations = [segment.split(":")[0] for segment in _PRESET_STAGE_SEQUENCES[normalized_profile].split(",")]
+    stages = [segment.split(":") for segment in _PRESET_STAGE_SEQUENCES[normalized_profile].split(",")]
+    scaled = _scale_targets([int(target) for _, target in stages], validated_peak)
+    durations = [duration for duration, _ in stages]
     parts = [f"{dur}:{target}" for dur, target in zip(durations, scaled, strict=True)]
     return ",".join(parts)
 

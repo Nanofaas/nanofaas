@@ -1,0 +1,85 @@
+{
+  "schemaVersion": "nanofaas.runtime-failures/v1",
+  "contractDefinitions": {
+    "envelope-serialization-failure": {
+      "httpStatus": 500,
+      "errorCode": "OUTPUT_SERIALIZATION_ERROR",
+      "handlerStarted": true,
+      "callbackRequired": true,
+      "callbackAttempts": 1,
+      "callbackDelivered": true,
+      "callbackStatus": null
+    },
+    "callback-http-rejected": {
+      "httpStatus": 200,
+      "errorCode": null,
+      "handlerStarted": true,
+      "callbackRequired": true,
+      "callbackAttempts": 2,
+      "callbackDelivered": false,
+      "callbackStatus": 503
+    },
+    "ingress-io-timeout": {
+      "httpStatus": 408,
+      "errorCode": "RUNTIME_BODY_READ_TIMEOUT",
+      "handlerStarted": false,
+      "callbackRequired": false,
+      "callbackAttempts": 0,
+      "callbackDelivered": false,
+      "callbackStatus": null
+    },
+    "callback-io-timeout": {
+      "httpStatus": 200,
+      "errorCode": null,
+      "handlerStarted": true,
+      "callbackRequired": true,
+      "callbackAttempts": 2,
+      "callbackDelivered": false,
+      "callbackStatus": null
+    }
+  },
+  "config": {
+    "deadlineMs": 3000,
+    "bodyReadTimeoutMs": 40,
+    "callbackAttemptTimeoutMs": 40,
+    "callbackMaxAttempts": 2,
+    "executionId": "failure-contract",
+    "dispatchAttempt": 7,
+    "traceId": "failure-trace"
+  },
+  "finalCounters": {
+    "activeHandlers": 0,
+    "inputBytes": 0,
+    "outputBytes": 0,
+    "pendingCallbacks": 0,
+    "pendingCallbackBytes": 0,
+    "serializedCallbackBytes": 0
+  },
+  "knownDifferences": {
+    "python": {
+      "envelope-serialization-failure": {
+        "errorCode": "RUNTIME_OUTPUT_TOO_LARGE",
+        "reason": "Existing Python _build_success_response groups encoding TypeError/ValueError with byte-limit errors. Preserve behavior; resolve in a separate bug fix."
+      }
+    },
+    "javascript": {
+      "envelope-serialization-failure": {
+        "errorCode": "RUNTIME_OUTPUT_TOO_LARGE",
+        "reason": "Existing bounded serializer catch classifies encoding errors as output limits; preserve behavior for a separate bug fix."
+      },
+      "ingress-io-timeout": {
+        "errorCode": "RUNTIME_BODY_TIMEOUT",
+        "reason": "Existing JavaScript ingress deadline uses this public error code."
+      }
+    },
+    "java-lite": {
+      "envelope-serialization-failure": {
+        "errorCode": "HANDLER_ERROR",
+        "reason": "Existing Java-lite output normalization reaches the generic handler-failure catch for a getter encoding exception; preserve behavior for a separate bug fix."
+      }
+    }
+  },
+  "successOutput": {
+    "result": "ok"
+  }
+}

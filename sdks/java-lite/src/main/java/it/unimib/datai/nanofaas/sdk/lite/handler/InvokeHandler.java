@@ -24,7 +24,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.RejectedExecutionException;
@@ -261,27 +260,43 @@ public final class InvokeHandler implements HttpHandler {
 
     private ReadRequestResult readRequest(HttpExchange exchange, RuntimeLimits.Reservation callbackReservation,
                                           String executionId, String traceId,
-                                          String dispatchAttempt) throws IOException {
+                                          String dispatchAttempt) throws IOException, InterruptedException {
         InputStream requestBody = exchange.getRequestBody();
-        CountDownLatch finished = new CountDownLatch(1);
-        AtomicBoolean timedOut = new AtomicBoolean();
-        Thread deadline = Thread.ofVirtual().name("nanofaas-lite-body-deadline")
-                .start(() -> enforceBodyDeadline(finished, timedOut, requestBody));
-        try { // NOSONAR (java:S2093): readValue closes the source stream
-            return new ReadRequestResult(objectMapper.readValue(
-                    new LimitedInputStream(requestBody, limits.maxInputBytes), InvocationRequest.class), false);
+        FutureTask<InvocationRequest> read = new FutureTask<>(() -> {
+            try {
+                return objectMapper.readValue(new LimitedInputStream(requestBody, limits.maxInputBytes), InvocationRequest.class);
+            } finally {
+                // Cleanup must run on the interrupted reader: coordinator-side close
+                // can drain an upload before the reader has reached socket I/O.
+                closeQuietly(requestBody);
+            }
+        });
+        Thread reader = Thread.ofVirtual().name("nanofaas-lite-body-reader").start(read);
+        boolean timedOut = false;
+        try {
+            try {
+                return new ReadRequestResult(read.get(limits.bodyReadTimeoutMs, TimeUnit.MILLISECONDS), false);
+            } catch (ExecutionException ex) {
+                if (ex.getCause() instanceof IOException io) throw io;
+                if (ex.getCause() instanceof RuntimeException runtime) throw runtime;
+                throw new IOException("Runtime request body read failed", ex.getCause());
+            }
+        } catch (TimeoutException _) {
+            timedOut = true;
+            // HttpServer input close can drain an incomplete upload. Flush the response
+            // first, then interrupt the reader to close its blocking SocketChannel.
+            // Keep the admission reservation until the physical reader has returned.
+            exchange.getResponseHeaders().set("Connection", "close");
+            byte[] bytes = objectMapper.writeValueAsBytes(Map.of(ERROR_KEY, Map.of(
+                    "code", "RUNTIME_BODY_READ_TIMEOUT", MESSAGE_KEY, "Runtime request body read timed out")));
+            sendJsonBytes(exchange, 408, bytes, false);
+            return new ReadRequestResult(null, false);
         } catch (PayloadTooLargeException _) {
             sendJson(exchange, 413, Map.of(ERROR_KEY, Map.of(
                     "code", "RUNTIME_INPUT_TOO_LARGE",
                     MESSAGE_KEY, "Runtime input exceeds configured byte limit")));
             return new ReadRequestResult(null, false);
         } catch (JsonProcessingException _) {
-            if (timedOut.get()) {
-                sendJson(exchange, 408, Map.of(ERROR_KEY, Map.of(
-                        "code", "RUNTIME_BODY_READ_TIMEOUT",
-                        MESSAGE_KEY, "Runtime request body read timed out")));
-                return new ReadRequestResult(null, false);
-            }
             metrics.recordInvocation(functionName);
             metrics.recordError(functionName);
             dispatchCallback(callbackReservation, executionId,
@@ -290,15 +305,10 @@ public final class InvokeHandler implements HttpHandler {
             sendJson(exchange, 400, Map.of(
                     ERROR_KEY, Map.of("code", "INVALID_JSON", MESSAGE_KEY, "Request body must be valid JSON")));
             return new ReadRequestResult(null, true);
-        } catch (IOException ex) {
-            if (!timedOut.get()) throw ex;
-            sendJson(exchange, 408, Map.of(ERROR_KEY, Map.of(
-                    "code", "RUNTIME_BODY_READ_TIMEOUT",
-                    MESSAGE_KEY, "Runtime request body read timed out")));
-            return new ReadRequestResult(null, false);
         } finally {
-            finished.countDown();
-            deadline.interrupt();
+            reader.interrupt();
+            reader.join();
+            if (timedOut) exchange.close();
         }
     }
 
@@ -474,13 +484,18 @@ public final class InvokeHandler implements HttpHandler {
     }
 
     private void sendJsonBytes(HttpExchange exchange, int status, byte[] bytes) throws IOException {
+        sendJsonBytes(exchange, status, bytes, true);
+    }
+
+    private void sendJsonBytes(HttpExchange exchange, int status, byte[] bytes, boolean closeExchange) throws IOException {
         // A Content-Type chosen by a HandlerResponse wins; the body stays the JSON serialization.
         if (!exchange.getResponseHeaders().containsKey("Content-Type")) {
             exchange.getResponseHeaders().set("Content-Type", "application/json");
         }
         exchange.sendResponseHeaders(status, bytes.length);
         exchange.getResponseBody().write(bytes);
-        exchange.close();
+        if (closeExchange) exchange.close();
+        else exchange.getResponseBody().flush();
     }
 
     private void sendCallbackHandoffFailure(HttpExchange exchange, CallbackHandoff handoff) throws IOException {
@@ -557,22 +572,11 @@ public final class InvokeHandler implements HttpHandler {
         exchange.getResponseHeaders().set("X-Init-Duration-Ms", String.valueOf(initDurationMs));
     }
 
-    private void enforceBodyDeadline(CountDownLatch finished, AtomicBoolean timedOut, InputStream requestBody) {
-        try {
-            if (!finished.await(limits.bodyReadTimeoutMs, TimeUnit.MILLISECONDS)) {
-                timedOut.set(true);
-                closeQuietly(requestBody);
-            }
-        } catch (InterruptedException _) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
     private static void closeQuietly(InputStream stream) {
         try {
             stream.close();
         } catch (IOException _) {
-            // Best effort: closing only unblocks a reader stuck past its deadline.
+            // Best effort on the reader: cancellation may already have closed the channel.
         }
     }
 

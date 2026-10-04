@@ -375,7 +375,59 @@ def apply_size_relation(size: int, limit: int, relation: str,
         fail(path, f"does not satisfy referenced {operator} relation")
 
 
+def validate_failure_document(document: Any) -> None:
+    finite_json(document, "$")
+    root = exact_keys(document, {"schemaVersion", "contractDefinitions", "config", "finalCounters", "knownDifferences", "successOutput"}, "$")
+    if root["successOutput"] != {"result": "ok"}:
+        fail("$/successOutput", "contradicts the shared success output")
+    config = exact_keys(root["config"], {"deadlineMs", "bodyReadTimeoutMs", "callbackAttemptTimeoutMs",
+        "callbackMaxAttempts", "executionId", "dispatchAttempt", "traceId"}, "$/config")
+    for key in ("deadlineMs", "bodyReadTimeoutMs", "callbackAttemptTimeoutMs", "callbackMaxAttempts", "dispatchAttempt"):
+        integer(config[key], f"$/config/{key}", minimum=1)
+    for key in ("executionId", "traceId"):
+        string(config[key], f"$/config/{key}")
+    if config["deadlineMs"] <= config["callbackAttemptTimeoutMs"] * config["callbackMaxAttempts"]:
+        fail("$/config/deadlineMs", "must allow all finite callback attempts")
+    expected = {
+        "envelope-serialization-failure": (500, "OUTPUT_SERIALIZATION_ERROR", True, True, 1, True, None),
+        "callback-http-rejected": (200, None, True, True, config["callbackMaxAttempts"], False, 503),
+        "ingress-io-timeout": (408, "RUNTIME_BODY_READ_TIMEOUT", False, False, 0, False, None),
+        "callback-io-timeout": (200, None, True, True, config["callbackMaxAttempts"], False, None),
+    }
+    definitions = exact_keys(root["contractDefinitions"], set(expected), "$/contractDefinitions")
+    keys = ("httpStatus", "errorCode", "handlerStarted", "callbackRequired", "callbackAttempts", "callbackDelivered", "callbackStatus")
+    for name, values in expected.items():
+        definition = exact_keys(definitions[name], set(keys), f"$/contractDefinitions/{name}")
+        integer(definition["httpStatus"], f"$/contractDefinitions/{name}/httpStatus", minimum=100)
+        integer(definition["callbackAttempts"], f"$/contractDefinitions/{name}/callbackAttempts", minimum=0)
+        if definition["callbackStatus"] is not None:
+            integer(definition["callbackStatus"], f"$/contractDefinitions/{name}/callbackStatus", minimum=100)
+        for key in ("handlerStarted", "callbackRequired", "callbackDelivered"):
+            boolean(definition[key], f"$/contractDefinitions/{name}/{key}")
+        for key, value in zip(keys, values, strict=True):
+            if definition[key] != value:
+                fail(f"$/contractDefinitions/{name}/{key}", "contradicts the failure lifecycle")
+    differences = exact_keys(root["knownDifferences"], {"python", "javascript", "java-lite"}, "$/knownDifferences")
+    known = {"java-lite": {"envelope-serialization-failure": "HANDLER_ERROR"}, "python": {"envelope-serialization-failure": "RUNTIME_OUTPUT_TOO_LARGE"},
+             "javascript": {"envelope-serialization-failure": "RUNTIME_OUTPUT_TOO_LARGE",
+                            "ingress-io-timeout": "RUNTIME_BODY_TIMEOUT"}}
+    for runtime, cases in known.items():
+        overrides = exact_keys(differences[runtime], set(cases), f"$/knownDifferences/{runtime}")
+        for case, code in cases.items():
+            difference = exact_keys(overrides[case], {"errorCode", "reason"}, f"$/knownDifferences/{runtime}/{case}")
+            if difference["errorCode"] != code:
+                fail(f"$/knownDifferences/{runtime}/{case}", "must characterize the existing error classification")
+            string(difference["reason"], f"$/knownDifferences/{runtime}/{case}/reason")
+    names = ("activeHandlers", "inputBytes", "outputBytes", "pendingCallbacks", "pendingCallbackBytes", "serializedCallbackBytes")
+    counters = validate_counters(root["finalCounters"], list(names), "$/finalCounters")
+    if any(counters.values()):
+        fail("$/finalCounters", "physical ownership must drain")
+
+
 def validate_document(document: Any) -> None:
+    if isinstance(document, dict) and document.get("schemaVersion") == "nanofaas.runtime-failures/v1":
+        validate_failure_document(document)
+        return
     finite_json(document, "$")
     root = exact_keys(
         document,

@@ -118,3 +118,21 @@ def test_resolve_payload_pool_size_requires_positive_integer():
             assert "payload pool size" in str(exc)
         else:
             raise AssertionError(f"Expected ValueError for payload pool size={value!r}")
+
+
+def test_custom_profile_preserves_minimum_durations_and_default_peak():
+    assert build_stage_sequence('custom', 30) == '5s:5,10s:10,12s:20,5s:20,5s:0'
+    assert build_stage_sequence('custom', 31) == '5s:5,10s:10,12s:20,5s:20,5s:0'
+    assert build_stage_sequence('custom', 120, 20) == '12s:5,36s:10,48s:20,18s:20,6s:0'
+    assert build_stage_sequence('custom', 30, 1) == '5s:1,10s:1,12s:1,5s:1,5s:0'
+    assert build_stage_sequence(' STANDARD ', max_vus=30) == '10s:8,30s:15,30s:30,30s:30,10s:0'
+
+
+def test_custom_profile_rejects_short_or_missing_duration():
+    import pytest
+    with pytest.raises(ValueError, match='>= 30'):
+        build_stage_sequence('custom', 29)
+    with pytest.raises(ValueError, match='required'):
+        build_stage_sequence('custom')
+    with pytest.raises(ValueError, match='invalid profile'):
+        build_stage_sequence('missing')

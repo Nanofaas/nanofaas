@@ -39,12 +39,34 @@ paths:
                 $ref: '#/components/schemas/FunctionResponse'
         '422':
           description: Image not found in registry
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
         '424':
           description: Image pull authentication required (configure imagePullSecrets)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
         '503':
           description: Registry unavailable during image validation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '400':
+          description: Invalid registration or request validation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
         '409':
           description: Function already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /v1/functions/{name}:
     get:
       summary: Get a function
@@ -60,6 +82,10 @@ paths:
                 $ref: '#/components/schemas/FunctionResponse'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
     patch:
       summary: Update the mutable settings of a function
       operationId: updateFunction
@@ -84,8 +110,16 @@ paths:
                 $ref: '#/components/schemas/FunctionResponse'
         '400':
           description: Invalid value, or an attempt to change an immutable field
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
         '404':
           description: Function not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
     delete:
       summary: Delete a function
       operationId: deleteFunction
@@ -105,11 +139,19 @@ paths:
           description: Deleted
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
         '409':
           description: |
             The deletion removed only part of the deployment. The function is in pending removal
             until a retried DELETE succeeds; the body carries `FUNCTION_REMOVAL_PENDING` and the
             resources still owned by the backend.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
 
   /v1/functions/{name}/replicas:
     get:
@@ -126,10 +168,22 @@ paths:
                 $ref: '#/components/schemas/ReplicaStatusResponse'
         '400':
           description: The function does not use a managed deployment backend
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
         '404':
           description: Function not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
         '503':
           description: The deployment backend could not report replica status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
     put:
       summary: Set the desired replica count of a function
       operationId: setFunctionReplicas
@@ -150,10 +204,22 @@ paths:
                 $ref: '#/components/schemas/ReplicaResponse'
         '400':
           description: Invalid replica count or unmanaged function
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
         '404':
           description: Function not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
         '503':
           description: The deployment backend could not set the replica count
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
 
   /v1/functions/{name}:invoke:
     post:
@@ -377,6 +443,19 @@ components:
       description: Max time in milliseconds for sync invocation.
 
   schemas:
+    ApiError:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: Stable control-plane error code (not an execution result).
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            type: string
     ReplicaRequest:
       type: object
       required: [replicas]

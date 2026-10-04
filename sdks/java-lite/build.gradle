@@ -20,6 +20,10 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    inputs.files(rootProject.files('sdks/runtime-contract/saturation-wire-corpus.json',
+            'sdks/runtime-contract/failure-wire-corpus.json',
+            'sdks/runtime-contract/validate_saturation_wire_corpus.py'))
+            .withPropertyName('sharedRuntimeContracts')
 }
 
 graalvmNative {

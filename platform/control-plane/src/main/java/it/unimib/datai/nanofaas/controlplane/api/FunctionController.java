@@ -43,21 +43,24 @@ public class FunctionController {
         try {
             return functionService.register(spec)
                     .map(registered -> ResponseEntity.status(HttpStatus.CREATED).<Object>body(FunctionResponse.from(registered)))
-                    .orElse(ResponseEntity.status(HttpStatus.CONFLICT).build());
+                    .orElse(ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponses.body(
+                            "FUNCTION_ALREADY_EXISTS", "Function already exists")));
         } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(ex.getMessage());
+            return ResponseEntity.badRequest().body(ApiErrorResponses.body("BAD_REQUEST", ex.getMessage()));
         } catch (IllegalStateException ex) {
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ex.getMessage());
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(ApiErrorResponses.body("SERVICE_UNAVAILABLE", ex.getMessage()));
         }
     }
 
     @GetMapping("/{name}")
-    public ResponseEntity<FunctionResponse> get(
+    public ResponseEntity<Object> get(
             @PathVariable @NotBlank(message = "Function name is required") String name) {
         return functionService.getRegistered(name)
                 .map(FunctionResponse::from)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+                .map(response -> ResponseEntity.<Object>ok(response))
+                .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                        ApiErrorResponses.body("FUNCTION_NOT_FOUND", "Function not found")));
     }
 
     @PatchMapping("/{name}")
@@ -67,11 +70,12 @@ public class FunctionController {
         try {
             Optional<RegisteredFunction> updated = functionService.update(name, request);
             if (updated.isEmpty()) {
-                return ResponseEntity.notFound().build();
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                        ApiErrorResponses.body("FUNCTION_NOT_FOUND", "Function not found"));
             }
             return ResponseEntity.status(HttpStatus.OK).<Object>body(FunctionResponse.from(updated.get()));
         } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(ex.getMessage());
+            return ResponseEntity.badRequest().body(ApiErrorResponses.body("BAD_REQUEST", ex.getMessage()));
         }
     }
 
@@ -82,13 +86,15 @@ public class FunctionController {
         try {
             Optional<Integer> replicas = functionService.setReplicas(name, request.replicas());
             if (replicas.isEmpty()) {
-                return ResponseEntity.notFound().build();
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                        ApiErrorResponses.body("FUNCTION_NOT_FOUND", "Function not found"));
             }
             return ResponseEntity.status(HttpStatus.OK).<Object>body(new ReplicaResponse(name, replicas.get()));
         } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(ex.getMessage());
+            return ResponseEntity.badRequest().body(ApiErrorResponses.body("BAD_REQUEST", ex.getMessage()));
         } catch (IllegalStateException ex) {
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ex.getMessage());
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(ApiErrorResponses.body("SERVICE_UNAVAILABLE", ex.getMessage()));
         }
     }
 
@@ -98,7 +104,8 @@ public class FunctionController {
         try {
             Optional<ReplicaStatus> status = functionService.getReplicaStatus(name);
             if (status.isEmpty()) {
-                return ResponseEntity.notFound().build();
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                        ApiErrorResponses.body("FUNCTION_NOT_FOUND", "Function not found"));
             }
             return ResponseEntity.status(HttpStatus.OK).<Object>body(new ReplicaStatusResponse(
                     name,
@@ -106,17 +113,19 @@ public class FunctionController {
                     status.get().readyReplicas()
             ));
         } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(ex.getMessage());
+            return ResponseEntity.badRequest().body(ApiErrorResponses.body("BAD_REQUEST", ex.getMessage()));
         } catch (IllegalStateException ex) {
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ex.getMessage());
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(ApiErrorResponses.body("SERVICE_UNAVAILABLE", ex.getMessage()));
         }
     }
 
     @DeleteMapping("/{name}")
-    public ResponseEntity<Void> delete(
+    public ResponseEntity<Object> delete(
             @PathVariable @NotBlank(message = "Function name is required") String name) {
         if (functionService.remove(name).isEmpty()) {
-            return ResponseEntity.notFound().build();
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                        ApiErrorResponses.body("FUNCTION_NOT_FOUND", "Function not found"));
         }
         return ResponseEntity.noContent().build();
     }

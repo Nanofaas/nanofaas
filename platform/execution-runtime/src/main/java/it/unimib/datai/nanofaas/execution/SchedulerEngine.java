@@ -33,6 +33,8 @@ import java.util.function.LongSupplier;
 import java.util.function.Predicate;
 
 /**
+ * Responsibility and extraction decision: {@code docs/architecture/adr-238-engine-boundaries.md}.
+ *
  * The single scheduling loop. It owns the pending work, the active {@link SchedulingIndex} and
  * the wake sequence; the index owns nothing but ticket order. One worker thread runs
  * {@link #tick()} in a loop and parks on the engine's own monitor between passes, so every

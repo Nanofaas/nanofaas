@@ -53,7 +53,9 @@ class FunctionControllerReplicaTest {
         webClient.get()
                 .uri("/v1/functions/nonexistent/replicas")
                 .exchange()
-                .expectStatus().isNotFound();
+                .expectStatus().isNotFound().expectHeader().contentType(MediaType.APPLICATION_JSON)
+                .expectBody().jsonPath("$.error").isEqualTo("FUNCTION_NOT_FOUND")
+                .jsonPath("$.message").isEqualTo("Function not found");
     }
 
     @Test
@@ -64,7 +66,9 @@ class FunctionControllerReplicaTest {
         webClient.get()
                 .uri("/v1/functions/echo/replicas")
                 .exchange()
-                .expectStatus().isBadRequest();
+                .expectStatus().isBadRequest().expectHeader().contentType(MediaType.APPLICATION_JSON)
+                .expectBody().jsonPath("$.error").isEqualTo("BAD_REQUEST")
+                .jsonPath("$.message").isEqualTo("Function 'echo' is not in DEPLOYMENT mode");
     }
 
     @Test
@@ -93,7 +97,9 @@ class FunctionControllerReplicaTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(new ReplicaRequest(3))
                 .exchange()
-                .expectStatus().isNotFound();
+                .expectStatus().isNotFound().expectHeader().contentType(MediaType.APPLICATION_JSON)
+                .expectBody().jsonPath("$.error").isEqualTo("FUNCTION_NOT_FOUND")
+                .jsonPath("$.message").isEqualTo("Function not found");
     }
 
     @Test
@@ -106,7 +112,9 @@ class FunctionControllerReplicaTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(new ReplicaRequest(3))
                 .exchange()
-                .expectStatus().isBadRequest();
+                .expectStatus().isBadRequest().expectHeader().contentType(MediaType.APPLICATION_JSON)
+                .expectBody().jsonPath("$.error").isEqualTo("BAD_REQUEST")
+                .jsonPath("$.message").isEqualTo("Function 'echo' is not in DEPLOYMENT mode");
     }
 
     @Test

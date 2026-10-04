@@ -61,6 +61,41 @@ class NodeInformationExchangeTest {
             assertThat(exchange.local().functions().data()).isNull();
         }
     }
+    @Test void pollingRoundKeepsItsTransportWhenActivationReplacesIt() {
+        var settings = new P2pSettings(8, 1000.0);
+        var table = new PeerTable(settings::effective);
+        for (int i = 0; i < 5; i++) {
+            table.upsert("peer-" + i, "address-" + i);
+            table.setApiMode("peer-" + i, PeerMode.FORCE_ACTIVE);
+        }
+        var originalRequests = new java.util.concurrent.atomic.AtomicInteger();
+        var replacementRequests = new java.util.concurrent.atomic.AtomicInteger();
+        var pending = Sinks.<byte[]>one();
+        var original = new PeerMessaging.Wire() {
+            public Mono<Void> send(String a, String t, byte[] p) { return Mono.empty(); }
+            public Mono<byte[]> request(String a, String t, byte[] p, Duration d) {
+                originalRequests.incrementAndGet(); return pending.asMono();
+            }
+            public void handle(String t, PeerCluster.Handler h) {}
+        };
+        var replacement = new PeerMessaging.Wire() {
+            public Mono<Void> send(String a, String t, byte[] p) { return Mono.empty(); }
+            public Mono<byte[]> request(String a, String t, byte[] p, Duration d) {
+                replacementRequests.incrementAndGet(); return Mono.empty();
+            }
+            public void handle(String t, PeerCluster.Handler h) {}
+        };
+        try (var exchange = new NodeInformationExchange("local", settings, table, collector(), System::nanoTime)) {
+            exchange.activate(new PeerMessaging(original, table), false);
+            exchange.poll();
+            assertThat(originalRequests).hasValue(4);
+            exchange.activate(new PeerMessaging(replacement, table), false);
+            assertThat(pending.tryEmitValue(new byte[0])).isEqualTo(Sinks.EmitResult.OK);
+            assertThat(originalRequests).hasValue(5);
+            assertThat(replacementRequests).hasValue(0);
+        }
+    }
+
     @Test void limitsPeerConcurrencyAndDoesNotOverlapPollingRounds() {
         var settings = new P2pSettings(null, null);
         var table = new PeerTable(settings::effective);

@@ -595,3 +595,22 @@ can leave a catalog entry whose backing resources were never created (an
 orphan). Restoration only reconciles the functions recorded in the catalog;
 unrelated residual Kubernetes resources or containers left over from an
 earlier run are not swept at startup.
+
+### Function-management error responses
+
+Function registration, lookup, update, deletion and replica operations return
+JSON errors with `error` (a stable string code) and `message`; validation failures
+also include `details` as an array of strings. Codes include `BAD_REQUEST`,
+`SERVICE_UNAVAILABLE`, `FUNCTION_NOT_FOUND` and `FUNCTION_ALREADY_EXISTS`.
+Existing image-validation and pending-removal/application codes are preserved.
+See `ApiError` in the core OpenAPI contract.
+
+Compatibility: management errors that formerly returned a plain string or an
+empty 404/409 body now return this JSON object. Status codes and successful
+responses are unchanged; successful deletion remains 204 with no body. Consumers
+should branch on the status/code and may display the message. The CLI already
+preserves the server body in its error diagnostics and requires no parser change.
+
+Runtime `/invoke` errors and execution/callback result envelopes are distinct:
+their error value remains an object with `code` and `message`. Application output
+and function-selected status codes are not converted to a management error.
