@@ -80,3 +80,12 @@ cd function-sdk-go
 go mod tidy
 go test ./...
 ```
+
+### Function response headers and runtime failures
+
+A `HandlerResponse` publishes its allowed headers, status and encoding marker
+only after the runtime has serialized the output within its byte limit and
+accepted the terminal callback. Serialization errors, oversized output/callbacks
+and rejected callbacks return runtime errors without the function-result marker
+or handler headers. A valid function response may still use a non-2xx status:
+its marker lets the control plane distinguish it from a dispatch failure.

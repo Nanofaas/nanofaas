@@ -71,6 +71,64 @@ class FunctionRegistryPersistenceTest {
         assertEquals(0, new FunctionRegistry(catalog).listRegisteredForRecovery().iterator().next().desiredReplicas());
     }
 
+    @Test
+    void unrelatedCommitRetainsDetachedFunctionForRecoveryAndRollback() {
+        FunctionCatalog catalog = catalog("functions.json");
+        FunctionRegistry registry = new FunctionRegistry(catalog);
+        registry.put(spec("a", ExecutionMode.LOCAL, null));
+        RegisteredFunction detached = registry.detach("a");
+        assertTrue(registry.get("a").isEmpty());
+
+        registry.put(spec("b", ExecutionMode.LOCAL, null));
+        assertEquals(java.util.Set.of("a", "b"), new FunctionRegistry(catalog).listRegisteredForRecovery()
+                .stream().map(RegisteredFunction::name).collect(java.util.stream.Collectors.toSet()));
+
+        registry.restoreDetached(detached);
+        assertTrue(registry.get("a").isPresent());
+        assertTrue(new FunctionRegistry(catalog).get("a").isPresent());
+    }
+
+    @Test
+    void committingOneRemovalRetainsOtherDetachedRecoveryRecords() {
+        FunctionCatalog catalog = catalog("functions.json");
+        FunctionRegistry registry = new FunctionRegistry(catalog);
+        registry.put(spec("a", ExecutionMode.LOCAL, null));
+        registry.put(spec("b", ExecutionMode.LOCAL, null));
+        registry.detach("a");
+        RegisteredFunction b = registry.detach("b");
+
+        registry.removeRegistered("a");
+        assertEquals(List.of("b"), new FunctionRegistry(catalog).listRegisteredForRecovery()
+                .stream().map(RegisteredFunction::name).toList());
+        assertTrue(registry.get("b").isEmpty());
+        registry.restoreDetached(b);
+        assertTrue(registry.get("b").isPresent());
+        registry.removeRegistered("b");
+        assertTrue(new FunctionRegistry(catalog).listRegisteredForRecovery().isEmpty());
+    }
+
+    @Test
+    void failedRemovalCommitRetainsRecoveryAndAllowsMemoryRollback() {
+        java.util.concurrent.atomic.AtomicBoolean fail = new java.util.concurrent.atomic.AtomicBoolean();
+        FunctionCatalog catalog = new FunctionCatalog(new FunctionCatalogProperties(tempDir.resolve("functions.json")),
+                objectMapper, validator, (source, target) -> {
+                    if (fail.get()) {
+                        throw new IOException("move failed");
+                    }
+                    java.nio.file.Files.move(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                });
+        FunctionRegistry registry = new FunctionRegistry(catalog);
+        registry.put(spec("a", ExecutionMode.LOCAL, null));
+        RegisteredFunction a = registry.detach("a");
+        fail.set(true);
+
+        assertThrows(IllegalStateException.class, () -> registry.removeRegistered("a"));
+        assertEquals(List.of("a"), registry.listRegisteredForRecovery().stream().map(RegisteredFunction::name).toList());
+        registry.restoreDetached(a);
+        assertTrue(registry.get("a").isPresent());
+        assertTrue(new FunctionRegistry(catalog).get("a").isPresent());
+    }
+
     private FunctionCatalog catalog(String name) {
         return new FunctionCatalog(new FunctionCatalogProperties(tempDir.resolve(name)), objectMapper, validator);
     }

@@ -349,3 +349,13 @@ docker build -t nanofaas/watchdog:latest .
 | Release + strip | ~2 MB |
 
 Performance characteristics depend on the function runtime, image, host, and configured limits. Measure the complete deployment with a reproducible benchmark before using latency or memory figures for capacity planning.
+
+### STDIO invocation deadline
+
+`TIMEOUT_MS` bounds the complete STDIO exchange in warm and one-shot modes:
+stdin delivery, process completion, and draining both output pipes. Input and
+output run concurrently, so a handler can emit output before consuming a large
+request. On timeout or I/O failure the watchdog kills the invocation's process
+group and reaps the leader. Pipe reads are canceled with the exchange, including
+when a descendant holds a pipe open after the leader exits. A warm invocation
+releases its lock before the next request is admitted.

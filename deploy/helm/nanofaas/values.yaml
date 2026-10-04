@@ -11,6 +11,8 @@ controlPlane:
   #     value: "100ms"
   #   - name: NANOFAAS_RETRY_MAX_BACKOFF
   #     value: "2s"
+  # Only one control plane is supported. The chart rejects other counts and
+  # uses Recreate during upgrades, accepting downtime to avoid overlapping owners.
   replicaCount: 1
   p2p:
     shareFunctions: false
@@ -43,6 +45,8 @@ controlPlane:
   service:
     name: control-plane
     type: ClusterIP
+    # These are both the Service ports and Spring's listening ports. Do not set
+    # SERVER_PORT or MANAGEMENT_SERVER_PORT in extraEnv; the chart owns them.
     ports:
       http: 8080
       actuator: 8081

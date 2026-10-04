@@ -432,6 +432,38 @@ class FunctionServiceConcurrencyTest {
         verify(localProvider).deprovision("tear-fn");
     }
 
+    @Test
+    void failedRemovalWithUnrelatedCommitKeepsDurableCatalog() {
+        FunctionCatalog catalog = new FunctionCatalog(
+                new FunctionCatalogProperties(tempDir.resolve("functions.json")),
+                new ObjectMapper(), Validation.buildDefaultValidatorFactory().getValidator());
+        FunctionRegistry localRegistry = new FunctionRegistry(catalog);
+        FunctionSpec a = new FunctionSpec("a", "img:latest", null, null, null, null, null,
+                null, null, null, ExecutionMode.LOCAL, null, null, null);
+        FunctionSpec b = new FunctionSpec("b", "img:latest", null, null, null, null, null,
+                null, null, null, ExecutionMode.LOCAL, null, null, null);
+        FunctionRegistrationListener listener = new FunctionRegistrationListener() {
+            @Override
+            public void onRegister(FunctionSpec spec) { }
+
+            @Override
+            public void onRemove(String name) {
+                localRegistry.put(b);
+                assertThat(new FunctionRegistry(catalog).get("a")).isPresent();
+                throw new IllegalStateException("teardown failed");
+            }
+        };
+        FunctionService localService = new FunctionService(localRegistry,
+                new FunctionDefaults(30000, 4, 100, 3), ImageValidator.noOp(), List.of(listener),
+                new DeploymentProviderResolver(List.of(), new DeploymentProperties(null)));
+        assertThat(localService.register(a)).isPresent();
+
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> localService.remove("a"));
+        assertThat(localService.get("a")).isPresent();
+        assertThat(new FunctionRegistry(catalog).listRegisteredForRecovery())
+                .extracting(RegisteredFunction::name).containsExactlyInAnyOrder("a", "b");
+    }
+
     private static ManagedDeploymentProvider provider() {
         ManagedDeploymentProvider provider = mock(ManagedDeploymentProvider.class);
         when(provider.backendId()).thenReturn("k8s");

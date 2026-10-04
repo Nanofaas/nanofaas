@@ -29,7 +29,9 @@ func TestRuntimeExposesHealthAndMetricsEndpoints(t *testing.T) {
 }
 
 func TestRuntimeStartCleansOwnedDispatcherAfterBindFailure(t *testing.T) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	// Occupy the same wildcard address Start uses. An IPv4-only listener may
+	// leave the IPv6 wildcard bind available on macOS and hang this test.
+	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatal(err)
 	}
