@@ -5,7 +5,6 @@ import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpContext;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpPrincipal;
-import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.sdk.lite.callback.CallbackClient;
 import it.unimib.datai.nanofaas.sdk.lite.metrics.RuntimeMetrics;
 import org.junit.jupiter.api.Test;
@@ -16,7 +15,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -29,20 +27,31 @@ class InvokeHandlerBodyDeadlineTest {
     @Test
     void stalledRequestBodyGetsFiniteCanonicalTimeout() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
+        var corpus = mapper.readTree(java.nio.file.Files.readAllBytes(
+                SharedFailureWireCorpusTest.find("sdks/runtime-contract/failure-wire-corpus.json")));
+        var config = corpus.path("config");
+        var expected = corpus.path("contractDefinitions").path("ingress-io-timeout");
         RuntimeLimits limits = new RuntimeLimits(1, 1, 2_048, 1_024, 1_024, 1_024,
-                40, 40, 3, 100);
+                config.path("bodyReadTimeoutMs").asInt(), config.path("callbackAttemptTimeoutMs").asInt(),
+                config.path("callbackMaxAttempts").asInt(), config.path("deadlineMs").asInt());
         ThreadPoolExecutor callbacks = new ThreadPoolExecutor(
                 1, 1, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(1));
-        InvokeHandler handler = new InvokeHandler(InvocationRequest::input, new CallbackClient(mapper, null),
+        java.util.concurrent.atomic.AtomicBoolean called = new java.util.concurrent.atomic.AtomicBoolean();
+        InvokeHandler handler = new InvokeHandler(request -> { called.set(true); return request.input(); }, new CallbackClient(mapper, null),
                 new RuntimeMetrics("body-deadline"), mapper, "body-deadline", callbacks, 1_000, limits);
         BlockingExchange exchange = new BlockingExchange();
         long started = System.nanoTime();
         try {
             handler.handle(exchange);
 
-            assertEquals(408, exchange.status);
-            assertTrue(exchange.body.toString(StandardCharsets.UTF_8).contains("RUNTIME_BODY_READ_TIMEOUT"));
-            assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) < 500);
+            assertEquals(expected.path("httpStatus").asInt(), exchange.status);
+            assertEquals(expected.path("handlerStarted").asBoolean(), called.get());
+            assertEquals(expected.path("errorCode").asText(), mapper.readTree(exchange.body.toByteArray()).path("error").path("code").asText());
+            assertEquals(0, exchange.release.getCount(), "physical input stream released");
+            assertEquals(corpus.path("finalCounters").path("pendingCallbacks").asInt(), limits.pendingCallbacks());
+            assertEquals(corpus.path("finalCounters").path("pendingCallbackBytes").asLong(), limits.pendingCallbackBytes());
+            assertEquals(corpus.path("finalCounters").path("activeHandlers").asInt(), limits.activeHandlers());
+            assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) < config.path("deadlineMs").asLong());
         } finally {
             exchange.release.countDown();
             handler.shutdown(java.time.Duration.ofMillis(100));

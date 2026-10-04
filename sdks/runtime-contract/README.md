@@ -1,4 +1,4 @@
-# SDK runtime saturation and memory contract
+# SDK runtime saturation and failure contracts
 
 This contract applies to direct `POST /invoke` calls as well as control-plane dispatches. The
 machine-readable cases are in `saturation-wire-corpus.json`; every SDK has a thin adapter test that
@@ -39,68 +39,25 @@ The corpus `deadlineMs` values are finite harness deadlines, not production defa
 actions use named barriers; P16b/P17/P18 runtime harnesses must implement them with latches,
 events, contexts or abort signals. Elapsed sleep is not ordering evidence.
 
-## Retained-resource inventory at P16a
+## Runtime execution and failure coverage
 
-“Bound” below means an enforced retention bound, not a worker-count assumption.
+The historical P16a inventory is preserved in [ADR 238](../../docs/architecture/adr-238-engine-boundaries.md#historical-p16a-inventory). Its parser-only descriptions are not statements about the current runtimes. The saturation adapters now execute production runtime paths, including the existing callback saturation and exhaustion scenarios.
 
-| Runtime | Retained queues/tasks and actual count bounds | Input/output/callback bytes | Owner and release/stop path | Gap owner |
-| --- | --- | --- | --- | --- |
-| Java | `HandlerExecutor` uses a virtual-thread-per-task executor: no admission/queue count cap. `CallbackDispatcher` has 2 workers by default plus an `ArrayBlockingQueue(128)`, so up to 130 active/queued callback jobs; worker count is configurable, queue capacity is fixed. | Spring request decoding has no SDK byte cap or runtime-owned finite body-read deadline. Handler output is normalized to a `JsonNode` before callback admission; queued jobs retain it and `CallbackClient` later serializes another `byte[]`. | Spring owns both executors through `@PreDestroy`. Callback shutdown waits 5 s then interrupts; handler shutdown interrupts without observable drain. Callback connect/read limits are 5 s/10 s. | P16b for admission, bytes, ingress deadline and physical handler accounting; P18 verifies Spring HTTP-client ownership. |
-| Java-lite | `HttpServer` uses an unreferenced virtual-thread-per-task executor, and each invoke starts another virtual thread: neither has admission count bounds. Callback executor defaults to 2 workers plus `ArrayBlockingQueue(128)` (130 active/queued), both configurable. | Request decode has neither a byte cap nor an application-owned finite body-read deadline. Response/callback serialization has no payload or aggregate byte cap. | `stop()` does not retain/close the server executor or HTTP client and does not await callback drain. Callback connect timeout is 5 s; request/read timeout is absent. | P18 for executor/client/start-stop ownership; P16b for quotas and body/callback request deadlines. |
-| Python | Each request is an ASGI task. Sync handlers use `asyncio.to_thread`: default worker count is not a queue bound and its executor queue is unbounded. `BoundedSemaphore(128)` caps callback coroutines; Starlette background tasks and callback `to_thread` calls use externally owned/default executors. | `request.json()` has no SDK byte cap or runtime-owned finite body-read deadline. Handler output, response and callback dictionaries have no byte caps. | ASGI owns request/background tasks; the SDK owns no explicit handler/callback executor. Callback attempts have a 5 s timeout and three attempts; lifespan has no stop/drain cleanup. Timed-out sync work can retain payloads. | P17 for physical work/executor/shutdown truth; P16b for byte/direct admission and ingress deadline. |
-| Go | `net/http` request goroutines and per-invoke handler goroutines have no admission cap; handler timeout does not stop non-cooperative work. Callback capacity is exactly `queueSize` buffered plus `workerCount` active (defaults 128 + 2). | Streaming decode has no max body and the server has no `ReadTimeout`/`ReadHeaderTimeout`. Callback jobs retain objects; active delivery retains one marshalled body across retries. | Dispatcher workers start in `NewRuntime`. If `ListenAndServe` returns a bind error, `Start` returns without dispatcher shutdown, leaking those workers. Cancellation shutdown can also return before workers are observed drained. | P16b owns bind-failure cleanup, ingress deadlines, quotas, physical handlers and bounded stop. |
-| JavaScript | Node owns one request task per connection with no invoke cap. `callbacks: Set<Promise>` is an aggregate active-callback cap, but `callbackQueueSize` accepts zero, negatives, `NaN` and `Infinity`; non-finite values can disable the intended bound. Handler promises can outlive `Promise.race`. | `readJson` buffers all chunks with no byte cap or request-body deadline. Response and callback each `JSON.stringify` without byte caps. | Runtime owns the server, callback abort controller and callback set. Callback fetch and server close lack independent finite deadlines. | P16b owns finite positive config validation, ingress/callback/stop deadlines, quotas and physical handlers. |
+`failure-wire-corpus.json` is a companion to saturation/v3. Its `contractDefinitions` supply the four named lifecycles; `config` supplies deadlines, callback attempts and stable execution/dispatch/trace identities; `finalCounters` requires physical drain. The same validator validates both documents. Test adapters execute the fixture explicitly with real callback servers returning 503 or holding their responses. They assert HTTP outcome, callback payload/identity, attempt count and physical resource release before shutdown. The control plane remains the sole redispatch owner.
 
-Worker count alone is never recorded as a queue bound. Count limits that already exist (Java,
-Java-lite, Python, Go and JavaScript callback admission) should be reused by P16b rather than
-replaced merely for API uniformity.
+| Runtime | Envelope failure | Callback rejection / I/O deadline | Ingress deadline |
+| --- | --- | --- | --- |
+| Java | Throwing output getter through InvokeController | Real JDK transport and CallbackDispatcher | Blocking servlet stream through RuntimePayloadLimitFilter; stream released |
+| Java-lite | Throwing output getter through InvokeHandler | Real JDK transport and InvokeHandler on HttpServer | Blocking HttpExchange stream; TCP limitation below |
+| Python | Unserializable HandlerResponse output | Real HTTP callback endpoint through runtime.invoke | Pending ASGI body stream |
+| Go | Unserializable HandlerResponse output | Real HTTP callback endpoint through Runtime.Handler | Blocking request body through Runtime.Handler |
+| JavaScript | Circular HandlerResponse output | Real HTTP callback endpoint through createRuntime | Partial TCP upload with no body completion |
+| Rust | Invalid envelope status through production encoding rejection | Real HTTP callback endpoint through TestRuntime | Pending body through production router |
 
-## What executes in P16a
+Rust's public envelope contains only serde_json::Value, so an arbitrary unserializable envelope output cannot be constructed. Its invalid-status case proves the real rejection/callback/drain path; existing typed-output serialization tests cover serialization outside an envelope. No production fault-injection API is introduced.
 
-The v3 `contractDefinitions` object is the only policy authority. Scenarios reference its
-vocabularies, actor/action permissions, size operators, handler- and callback-behavior lifecycle
-maps, exact wire outcomes, callback transport template and payload envelopes, identity and
-cross-field rules, observation sets, and final-counter rule. Scenario response and callback
-projections are executable fixture data: the validator requires them to equal the referenced
-definition, so they cannot become an independent policy oracle.
+Known differences are explicit fixture data, validated and applied by the named adapter: Python and JavaScript classify output encoding exceptions as `RUNTIME_OUTPUT_TOO_LARGE`; Java-lite classifies its normalization exception as `HANDLER_ERROR`; JavaScript uses `RUNTIME_BODY_TIMEOUT` for ingress. These are preserved public behaviors, not claims of cross-runtime code equality. Reclassification requires a separate compatibility change.
 
-`validate_saturation_wire_corpus.py` implements only schema mechanics, reference resolution and
-generic operators. It checks finite configurations/deadlines, required fields, action/barrier
-references, behavior/lifecycle compatibility, callback-URL requirement, exact response status,
-content type, body/error/message/headers, exact callback method/URL/headers/payload, callback
-required/attempted/delivered/count relations, P01 identity projections, observations and drained
-final counters. Declarative maps also connect handler lifecycle to wire outcome and wire outcome
-to callback envelope, while declarative action and cardinality rules require request-bearing
-actions to name a request and require one dispatch-attempt entry per callback delivery attempt.
-The embedded mutation suite includes the seven round-two contradictions plus broken-reference and
-projection-drift probes. Standalone tests additionally reject the reviewed coordinated changes
-across size relation, lifecycle, outcome, envelope, scenario kind and request/action role. Exact
-per-kind action, actor, request-target, barrier and ordered outcome sequences anchor causal phases
-such as capacity fill, stop, restart and control-plane redispatch. Per-kind barrier declarations
-and initial states plus handler/callback producer sequences connect backend signals to those
-action waits. Request order is canonical per kind, and backend plus expected collections must
-follow it, binding dispatch metadata and ordered outcomes to the request IDs targeted by actions.
-Each kind also fixes its dispatch-attempt sequence, including `[1, 2]` for control-plane retry and
-`[2]` for the standalone second-attempt callback-delivery scenario.
+A real partial TCP upload to Java-lite revealed that closing the JDK HttpServer request stream can block the deadline path. The blocking-stream test proves its runtime logic but does not establish a finite TCP ingress deadline. This remains an explicit conformance gap requiring a transport fix; it is not silently skipped or counted as TCP conformance.
 
-Each language adapter runs that validator with a finite 10 s process deadline and then parses the
-same JSON source. Java and Java-lite deserialize the complete typed model; Go disallows unknown
-fields and uses pointer booleans for presence; Python and JavaScript presence-check every scenario
-section and meaningfully project definitions, requests, actions, lifecycle references, exact
-callback requests, observations, identities and counters. The adapters prove validator execution,
-single-source parsability and typed/presence-safe consumption. They do not independently prove the
-policy values and they do not execute a runtime.
-
-These are **policy-schema and semantic-model assertions**, not timed runtime conformance. No
-adapter in P16a starts a language runtime, fills a real queue, transfers payload bytes, measures
-live counters, or proves a real deadline. P16b must interpret the action vocabulary against direct
-runtime invocations; P17/P18 provide the owned lifecycle primitives required by those tests.
-
-| Scenario | Current nonconformance owner |
-| --- | --- |
-| `success-drain`, `input-too-large`, `output-too-large`, `callback-saturated` | P16b in every runtime. |
-| `handler-timeout`, `cancellation` | P17 for Python physical work, P18 for Java-lite ownership, P16b for wire/counters and other runtimes. |
-| `health-under-saturation` | P17/P18 for their isolation/ownership prerequisites; P16b for cross-runtime conformance. |
-| `stop-with-full-queue`, `restart` | P17 for Python shutdown truth, P18 for Java-lite lifecycle, P16b for Go/JavaScript/Java and common wire/counters. |
-| `callback-delivery-exhausted` | P17 for Python callback executor/drain, P18 for Java-lite client/executor shutdown, P16b for delivery bounds/observation elsewhere. |
-| `dispatch-retry-identity` | P16b for all runtime wire conformance; the control plane remains the sole redispatch owner. |
+Run schema/mutation tests with `python -m pytest sdks/runtime-contract`; runtime tests run with each SDK's normal test command. Java and Java-lite use SharedFailureWireCorpusTest; Python test_failure_wire_corpus.py; Go TestSharedFailureWireCorpus; JavaScript runtime-failure-corpus.test.ts; Rust failure_corpus_tests. Resources without a corresponding SDK aggregate counter are checked through their owner (handler/callback reservations or closed ingress stream), not invented gauges.

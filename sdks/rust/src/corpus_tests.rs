@@ -308,7 +308,7 @@ struct ExpectedIdentity {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn consumes_the_shared_runtime_saturation_wire_contract() {
     let path = corpus_path();
-    run_shared_validator(&path);
+    run_shared_validator(&path, true);
     let corpus: Corpus = serde_json::from_slice(&std::fs::read(&path).unwrap())
         .expect("the corpus parses into the typed model");
     let definitions = &corpus.contract_definitions[&corpus.policy.definitions_ref];
@@ -342,11 +342,14 @@ fn corpus_path() -> PathBuf {
 }
 
 /// Runs the language-neutral validator (schema, references, mutations) with a 10 s deadline.
-fn run_shared_validator(corpus: &Path) {
+pub(crate) fn run_shared_validator(corpus: &Path, mutations: bool) {
     let validator = corpus.with_file_name("validate_saturation_wire_corpus.py");
-    let mut child = Command::new("python3")
-        .arg(&validator)
-        .arg("--run-mutations")
+    let mut command = Command::new("python3");
+    command.arg(&validator);
+    if mutations {
+        command.arg("--run-mutations");
+    }
+    let mut child = command
         .arg(corpus)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
