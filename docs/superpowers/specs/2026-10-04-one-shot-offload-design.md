@@ -15,6 +15,7 @@ Implementare su nodi NanoFaaS reali l'asta one-shot del branch di DFaaSOptimizer
 Sono decisioni concordate:
 
 - Estendere il modulo `offload` e usare `p2p-discovery` per discovery e messaggi tra vicini.
+- Separare i contratti P2P e di previsione nelle librerie `p2p-api` e `forecasting-api`; mantenere in `control-plane-spi` i contratti propri del control plane.
 - Operare quasi sincronicamente, con epoche configurabili, per esempio di un minuto. Un'epoca contiene più round d'asta: one-shot non significa un solo messaggio o un solo round.
 - Aggiungere un modulo di previsione del carico con un metodo semplice e un provider esterno. Negli esperimenti il provider esterno riceve il carico futuro dalla traccia che alimenta il generatore.
 - Imporre il vincolo one-hop, riprendendo gli header DFaaS.
@@ -79,11 +80,19 @@ La campagna oracle deve generare tassi rappresentabili sulla griglia scelta. Per
 | Modulo `forecasting` proposto | Snapshot di carico futuro da EWMA o provider esterno |
 | Modulo `offload` esteso | Epoche, asta, ledger, solver, costruzione e applicazione dei piani |
 | Modulo `p2p-discovery` | Identità e vicini attivi, trasporto dei messaggi |
-| `control-plane-spi` | Contratti minimi tra moduli e accesso al controllo delle repliche |
+| Libreria `p2p-api` proposta | Contratti pubblici minimi per conoscere i vicini e inviare/ricevere payload |
+| Libreria `forecasting-api` proposta | Contratto di lettura degli snapshot di previsione e relativi tipi pubblici |
+| `control-plane-spi` | Contratti propri del control plane, inclusi accesso al catalogo e controllo delle repliche |
 | Runtime gestito e SDK | Readiness, dispatch verso slot disponibili, concorrenza fisica per replica |
 | NanoLab e Sonata | Provisioning Azure, calibrazione, carico, verifiche, raccolta e cleanup |
 
-Non sono consentite dipendenze dirette tra moduli opzionali. Il P2P deve esporre tramite SPI la primitiva minima necessaria per identificare vicini e inviare/ricevere payload; offload non deve importare i suoi dettagli interni. Il contratto di previsione deve essere consumabile tramite SPI senza imporre una dipendenza sul modulo che lo implementa.
+Non sono consentite dipendenze dirette tra le implementazioni dei moduli opzionali. I contratti condivisi sono organizzati per funzionalità, senza far confluire tutte le interfacce in `control-plane-spi`:
+
+- `p2p-discovery` implementa i contratti di `p2p-api`; `offload` dipende da questa libreria per conoscere i vicini e scambiare payload, senza importare le classi interne del P2P.
+- `forecasting` implementa il contratto di `forecasting-api`; `offload` dipende da questa libreria per leggere le previsioni, senza conoscere EWMA, caricamento oracle o altri dettagli del provider.
+- Per catalogo, capacità e controllo delle repliche si continuano a usare i contratti pertinenti di `control-plane-spi`, incluso `ManagedReplicaControl`.
+
+`p2p-api` e `forecasting-api` sono piccole librerie Java, non servizi o nuovi processi. Contengono soltanto interfacce e tipi pubblici necessari ai consumatori; non contengono connessioni, thread, stato operativo, algoritmi o autoconfigurazione Spring. Non dipendono dalle implementazioni opzionali né dall'implementazione del control plane. La selezione dei moduli e il wiring collegano i contratti ai provider disponibili: one-shot richiede entrambi i provider, mentre il normale offload non deve richiederli per funzionare.
 
 Solver e negoziazione lavorano fuori dal percorso delle richieste e dagli event loop di trasporto, con esecuzione e memoria limitate. Il percorso HTTP legge un piano immutabile e gestisce ammissione, routing e contatori.
 
@@ -206,6 +215,8 @@ Sonata gestisce dipendenze tra task, risorse e rilascio; NanoLab conserva manife
 
 ## 13. Criteri di accettazione
 
+Il controllo architetturale deve verificare che `offload` consumi P2P e previsioni tramite `p2p-api` e `forecasting-api`, che le due librerie non dipendano dalle implementazioni e che i contratti specifici di queste funzionalità non vengano aggiunti a `control-plane-spi`. Un profilo con il normale offload deve funzionare senza i provider P2P e forecasting; l'attivazione di one-shot senza tali provider deve essere rifiutata esplicitamente.
+
 1. **Solver:** su fixture del branch e istanze generate ammissibili, Java e Python concordano su vincoli, obiettivo e scelta deterministica; il confronto con Pyomo ammette allocazioni diverse a parità di ottimo. Inclusi carico nullo, RAM insufficiente, input invalido, impegni in ingresso, pareggi, limite degli stati e scadenza. Le trasformazioni delle unità hanno test dedicati.
 2. **Asta:** su trascrizioni deterministiche, le decisioni coincidono con one-shot Python senza PG, salvo degradazioni operative esplicitamente etichettate. Duplicati, riordino, perdita di messaggi e conferme tardive non sovrallocano capacità.
 3. **Forecast:** oracle ed EWMA usano arrivi esterni; caricamenti atomici, revisione congelata, assenza/scadenza e discrepanze tra carico programmato ed emesso sono verificati.
@@ -220,6 +231,7 @@ Sonata gestisce dipendenze tra task, risorse e rilascio; NanoLab conserva manife
 Percorsi NanoFaaS relativi al repository:
 
 - `platform/modules/offload/` e `platform/modules/p2p-discovery/`.
+- Nuove librerie previste: `platform/p2p-api/` e `platform/forecasting-api/`, con i soli contratti delle rispettive funzionalità.
 - `platform/control-plane-spi/`, in particolare i contratti `OffloadGateway`, `ManagedReplicaControl` e `InvocationObservations`.
 - `platform/common/`, modelli `FunctionSpec`, `ResourceSpec`, `ScalingConfig`.
 - `platform/modules/concurrency-control/` e `platform/container-deployment-runtime/`.
