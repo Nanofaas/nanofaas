@@ -74,7 +74,7 @@ def test_complete_contract_documents_are_accepted(name, document):
     exporter().validate_contract(name, document)
 
 
-@pytest.mark.parametrize("mutation", ["nan", "negative", "missing", "version", "interval"])
+@pytest.mark.parametrize("mutation", ["nan", "negative", "missing", "version", "interval", "generation"])
 def test_invalid_forecasts_are_rejected(mutation):
     document = forecast()
     if mutation == "nan":
@@ -85,6 +85,8 @@ def test_invalid_forecasts_are_rejected(mutation):
         del document["nodeId"]
     elif mutation == "version":
         document["schemaVersion"] = 2
+    elif mutation == "generation":
+        document["entries"][0]["generation"] = 0
     else:
         document["entries"][0]["end"] = document["entries"][0]["start"]
     with pytest.raises(ValueError):

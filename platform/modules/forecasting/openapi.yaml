@@ -1,0 +1,63 @@
+paths:
+  /v1/admin/forecasting/trace:
+    get:
+      operationId: getForecastTraceSummary
+      summary: Inspect the installed external-arrival forecast trace
+      responses:
+        '200':
+          description: Revision and entry count, with origin and production time when installed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForecastTraceSummary'
+    put:
+      operationId: replaceForecastTrace
+      summary: Atomically replace a version 1 future external-arrival trace
+      description: Available when forecasting is enabled. Maximum 8 MiB and 100000 entries. Rates are requests/s. Reject overlaps, nonfinite numbers, missing fields and unknown versions; the old trace remains installed on failure.
+      parameters:
+        - in: header
+          name: If-Match
+          required: true
+          description: Expected current revision, zero before the first upload
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForecastTrace'
+      responses:
+        '200':
+          description: Installed revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForecastTraceSummary'
+        '400':
+          description: Invalid or unsupported trace, or missing expected revision
+        '409':
+          description: Expected revision does not match the currently installed trace
+        '413':
+          description: Trace exceeds 8 MiB
+components:
+  schemas:
+    ForecastTraceSummary:
+      type: object
+      required: [revision, entryCount]
+      properties:
+        revision:
+          type: integer
+          format: int64
+        entryCount:
+          type: integer
+        nodeId:
+          type: string
+          nullable: true
+        producedAt:
+          type: string
+          nullable: true
+          format: date-time
+    ForecastTrace: {"type": "object", "additionalProperties": false, "properties": {"schemaVersion": {"enum": [1]}, "nodeId": {"type": "string", "minLength": 1, "maxLength": 256}, "revision": {"type": "integer", "minimum": 0}, "provider": {"type": "string", "enum": ["oracle"]}, "producedAt": {"type": "string", "format": "date-time"}, "entries": {"type": "array", "items": {"type": "object", "additionalProperties": false, "properties": {"function": {"type": "string", "minLength": 1, "maxLength": 256}, "generation": {"type": "integer", "minimum": 1}, "start": {"type": "string", "format": "date-time"}, "end": {"type": "string", "format": "date-time"}, "rate": {"type": "number", "minimum": 0}, "unit": {"enum": ["requests/s"]}}, "required": ["function", "generation", "start", "end", "rate", "unit"]}, "minItems": 0, "maxItems": 100000}}, "required": ["schemaVersion", "nodeId", "revision", "provider", "producedAt", "entries"]}

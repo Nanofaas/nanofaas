@@ -1,0 +1,15 @@
+plugins {
+    id 'java-library'
+    id 'io.spring.dependency-management'
+}
+dependencyManagement { imports { mavenBom "org.springframework.boot:spring-boot-dependencies:${springBootVersion}" } }
+dependencies {
+    api project(':forecasting-api')
+    implementation project(':control-plane-spi')
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-webtestclient'
+    testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+tasks.named('test') { useJUnitPlatform() }

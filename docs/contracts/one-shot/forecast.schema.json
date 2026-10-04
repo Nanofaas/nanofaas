@@ -39,7 +39,7 @@
           },
           "generation": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 1
           },
           "start": {
             "type": "string",
