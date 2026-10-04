@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "profileId": "profile",
+  "provider": "synthetic-example",
+  "purpose": "workflow-validation",
+  "synthetic": true,
+  "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "environmentFingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "environment": {
+    "host": "local",
+    "vm": "multipass",
+    "os": "linux",
+    "architecture": "aarch64",
+    "cpu": "test-cpu"
+  },
+  "functions": [
+    {
+      "function": "f",
+      "imageDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "runtime": "HTTP",
+      "backend": "local",
+      "inputHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "cpuQuota": 1,
+      "memoryMiB": 128,
+      "replicas": 1,
+      "coLocation": [],
+      "serviceSeconds": 1,
+      "statistics": {
+        "sampleCount": 100,
+        "meanSeconds": 1,
+        "stddevSeconds": 0.1,
+        "p95Seconds": 1.2
+      },
+      "validity": {
+        "minReplicas": 1,
+        "maxReplicas": 8,
+        "maxRelativeCapacityError": 0.1
+      },
+      "measurement": {
+        "warmupInvocations": 10,
+        "includesColdStarts": false,
+        "occupancy": "physical-handler",
+        "rawSamplesHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    }
+  ]
+}

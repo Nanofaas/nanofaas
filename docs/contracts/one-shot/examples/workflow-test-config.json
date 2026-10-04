@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "profileId": "profile",
+  "environmentFingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "purpose": "workflow-validation",
+  "allowSynthetic": true,
+  "cloudUri": "http://cloud:8080",
+  "memoryCapacityMiB": 1024,
+  "flowQuantum": 1,
+  "period": "PT5M",
+  "leadTime": "PT20S",
+  "scheduled": false,
+  "anchor": "2026-10-04T10:00:00Z",
+  "preparationBudget": "PT2S",
+  "maxOperationalFraction": 0.1,
+  "burst": 1,
+  "functions": {
+    "f": {
+      "generation": 3,
+      "imageDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "inputHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "utilization": 0.8,
+      "alpha": 1,
+      "delta": 0.9,
+      "gamma": 0.1
+    }
+  },
+  "negotiation": {
+    "auctionBudget": "PT5S",
+    "peerTimeout": "PT1S",
+    "solverBudget": "PT1S",
+    "maxRounds": 100,
+    "parallelism": 4,
+    "queueCapacity": 64,
+    "maxPeers": 16,
+    "maxAuctionFraction": 0.1
+  },
+  "maxSolverStates": 2000000,
+  "maxSolverBytes": 67108864
+}

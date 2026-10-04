@@ -47,6 +47,42 @@ public class OffloadConfiguration {
         return new it.unimib.datai.nanofaas.modules.offload.oneshot.coordination.EpochCoordinator(peers,(epoch,from,until)->inputs.getObject().freeze(epoch,from,until),settings,health);
     }
 
+    @org.springframework.context.annotation.Configuration(proxyBeanMethods=false)
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(prefix="nanofaas.offload.one-shot",name="enabled",havingValue="true")
+    static class OneShotAdministration {
+        @Bean it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotConfigurationStore oneShotConfigs(
+                ObjectProvider<it.unimib.datai.nanofaas.p2papi.PeerTransport> peers,ObjectProvider<it.unimib.datai.nanofaas.forecastingapi.ForecastSource> forecasts) {
+            return new it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotConfigurationStore(()->peers.getIfAvailable()!=null,()->forecasts.getIfAvailable()!=null);
+        }
+        @Bean it.unimib.datai.nanofaas.modules.offload.oneshot.api.ServiceProfileStore oneShotProfiles() { return new it.unimib.datai.nanofaas.modules.offload.oneshot.api.ServiceProfileStore(); }
+        @Bean it.unimib.datai.nanofaas.modules.offload.oneshot.api.EpochEventStore oneShotEvents() { return new it.unimib.datai.nanofaas.modules.offload.oneshot.api.EpochEventStore(10000); }
+        @Bean it.unimib.datai.nanofaas.modules.offload.oneshot.api.ProfileEpochInputFactory oneShotInputs(
+            it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotConfigurationStore configs,it.unimib.datai.nanofaas.modules.offload.oneshot.api.ServiceProfileStore profiles,
+            it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogView catalog,it.unimib.datai.nanofaas.controlplane.registry.ManagedReplicaControl control,
+            it.unimib.datai.nanofaas.p2papi.PeerTransport peers,it.unimib.datai.nanofaas.forecastingapi.ForecastSource forecasts) {
+            return new it.unimib.datai.nanofaas.modules.offload.oneshot.api.ProfileEpochInputFactory(configs,profiles,catalog,control,peers,forecasts);
+        }
+        @Bean(destroyMethod="close") it.unimib.datai.nanofaas.modules.offload.oneshot.actuation.ReplicaPlanActuator oneShotActuator(
+            it.unimib.datai.nanofaas.controlplane.registry.ManagedReplicaControl control,it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogView catalog,
+            it.unimib.datai.nanofaas.p2papi.PeerTransport peers,it.unimib.datai.nanofaas.modules.offload.oneshot.coordination.ClockHealth health,
+            @org.springframework.beans.factory.annotation.Value("${nanofaas.offload.one-shot.preparation-budget}") java.time.Duration budget,
+            @org.springframework.beans.factory.annotation.Value("${nanofaas.offload.one-shot.drain-grace:30s}") java.time.Duration grace) {
+            return new it.unimib.datai.nanofaas.modules.offload.oneshot.actuation.ReplicaPlanActuator(control,catalog,peers,java.time.Instant::now,health::healthy,budget,grace);
+        }
+        @Bean(destroyMethod="close") it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotOperations oneShotOperations(
+            it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotConfigurationStore configs,it.unimib.datai.nanofaas.modules.offload.oneshot.api.ServiceProfileStore profiles,
+            it.unimib.datai.nanofaas.modules.offload.oneshot.api.ProfileEpochInputFactory inputs,it.unimib.datai.nanofaas.modules.offload.oneshot.coordination.EpochCoordinator coordinator,
+            it.unimib.datai.nanofaas.modules.offload.oneshot.actuation.ReplicaPlanActuator actuator,it.unimib.datai.nanofaas.modules.offload.oneshot.api.EpochEventStore events,
+            it.unimib.datai.nanofaas.modules.offload.oneshot.coordination.EpochSettings bounds,it.unimib.datai.nanofaas.p2papi.PeerTransport peers,io.micrometer.core.instrument.MeterRegistry meters) {
+            return new it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotOperations(configs,profiles,inputs,coordinator,actuator,events,bounds,peers,meters);
+        }
+        @Bean it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotController oneShotController(
+            it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotOperations operations,it.unimib.datai.nanofaas.modules.offload.oneshot.api.ServiceProfileStore profiles,
+            it.unimib.datai.nanofaas.modules.offload.oneshot.api.EpochEventStore events,it.unimib.datai.nanofaas.modules.offload.oneshot.coordination.ClockHealth health) {
+            return new it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotController(operations,profiles,events,health);
+        }
+    }
+
     @Bean
     OffloadGateway moduleOffloadGateway(OffloadProperties properties,
                                         ObjectProvider<WebClient> webClient,

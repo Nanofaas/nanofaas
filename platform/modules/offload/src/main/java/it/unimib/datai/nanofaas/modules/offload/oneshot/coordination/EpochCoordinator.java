@@ -27,7 +27,7 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
         final AtomicReference<CompletableFuture<?>> exchange=new AtomicReference<>();
         final AtomicLong solverNanos=new AtomicLong();
         volatile boolean cancelled, closed; volatile int round;
-        SellerLedger ledger; EpochInput input;
+        SellerLedger ledger; EpochInput input; EpochSettings settings;
         Run(PeerEndpoint local,Map<String,PeerEndpoint> peers,long epoch,Instant from,Instant until,long started,long deadline,int bound) {
             this.local=local; this.peers=Map.copyOf(peers); this.epoch=epoch; this.from=from; this.until=until;
             this.started=started; this.deadline=deadline; inbox=new ArrayBlockingQueue<>(bound); pending=new Semaphore(bound);
@@ -71,17 +71,22 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
                 return Mono.just(failure(epoch,started,"inactive coordinator, window or clock invalid"));
             var local=transport.localEndpoint().orElse(null);
             if(local==null) return Mono.just(failure(epoch,started,"local P2P endpoint unavailable"));
+            if(!now.get().isBefore(startsAt)) return Mono.just(failure(epoch,started,"preparation must precede epoch start"));
+            EpochInput frozen;
+            try { frozen=inputs.freeze(epoch,startsAt,endsAt); } catch(RuntimeException error) { return Mono.just(failure(epoch,started,"input freeze failed: "+error.getMessage())); }
+            var selected=frozen.negotiation()==null?settings:frozen.negotiation();
             var period=Duration.between(startsAt,endsAt);
-            if(period.compareTo(Duration.ofDays(1))>0 || startsAt.isAfter(now.get().plus(Duration.ofDays(1))) || settings.auctionBudget().toNanos()>period.toNanos()*settings.maxAuctionFraction())
+            if(period.compareTo(Duration.ofDays(1))>0 || startsAt.isAfter(now.get().plus(Duration.ofDays(1))) || selected.auctionBudget().toNanos()>period.toNanos()*selected.maxAuctionFraction())
                 return Mono.just(failure(epoch,started,"auction budget too large for period"));
             long untilStart=Duration.between(now.get(),startsAt).toNanos();
-            if(untilStart<=0) return Mono.just(failure(epoch,started,"preparation must precede epoch start"));
+            if(untilStart<=0) return Mono.just(new EpochOutcome(epoch,EpochOutcome.Status.DEADLINE,null,System.nanoTime()-started,0,0,"epoch started during input freeze"));
             var peers=new LinkedHashMap<String,PeerEndpoint>();
             for(var peer:transport.activeNeighbors()) if(!peer.peerId().equals(local.peerId())) {
                 if(peers.put(peer.peerId(),peer)!=null) return Mono.just(failure(epoch,started,"duplicate peer identity"));
             }
-            if(peers.size()>settings.maxPeers()) return Mono.just(failure(epoch,started,"peer bound exceeded"));
-            var run=new Run(local,peers,epoch,startsAt,endsAt,started,started+Math.min(untilStart,settings.auctionBudget().toNanos()),settings.queueCapacity());
+            if(peers.size()>selected.maxPeers()) return Mono.just(failure(epoch,started,"peer bound exceeded"));
+            var run=new Run(local,peers,epoch,startsAt,endsAt,started,started+Math.min(untilStart,selected.auctionBudget().toNanos()),selected.queueCapacity());
+            run.input=frozen;run.settings=selected;
             if(!active.compareAndSet(null,run)) return Mono.just(failure(epoch,started,"negotiation already active"));
             if(epoch<=lastEpoch.get()) { active.compareAndSet(run,null); return Mono.just(failure(epoch,started,"epoch is not monotonic")); }
             lastEpoch.set(epoch);
@@ -134,19 +139,19 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
     }
     private static final class Deadline extends RuntimeException {}
     private SolveLimits limits(Run run) {
-        check(run); return new SolveLimits(2_000_000,64L*1024*1024,Math.min(run.deadline,System.nanoTime()+settings.solverBudget().toNanos()));
+        check(run); return new SolveLimits(run.input.maxSolverStates(),run.input.maxSolverBytes(),Math.min(run.deadline,System.nanoTime()+run.settings.solverBudget().toNanos()));
     }
     private EpochOutcome execute(Run run) {
         int rounds=0;
         try {
-            check(run); var input=inputs.freeze(run.epoch,run.from,run.until); run.input=input; validateInput(run,input);
+            check(run); var input=run.input; validateInput(run,input);
             var solver=new LocalReplicaSolver(); var initial=solver.solve(input.problem(),limits(run)); run.solverNanos.addAndGet(initial.durationNanos());
             if(initial.status()!=LocalSolution.Status.OPTIMAL) throw new IllegalStateException("initial solver: "+initial.status());
             var peers=new LinkedHashMap<String,String>(); run.peers.values().forEach(p->peers.put(p.peerId(),p.incarnation()));
             var engine=new OneShotAuctionEngine(options,solver,()->limits(run),result->run.solverNanos.addAndGet(result.durationNanos()));
             run.ledger=new SellerLedger(AuctionSnapshot.open(run.local.peerId(),run.local.incarnation(),run.epoch,0,input.revision(),run.from,run.until,input.problem(),initial,input.identities(),peers),engine);
             hello(run);
-            for(int round=0;round<settings.maxRounds();round++) {
+            for(int round=0;round<run.settings.maxRounds();round++) {
                 run.round=round; check(run); var before=run.ledger.snapshot();
                 var offers=engine.localOffers(before);
                 exchange(run,AuctionCodec.Phase.OFFERS,peer -> offers.stream().map(o->new AuctionMessage(envelope(run),AuctionMessage.Kind.OFFER,peer,o,null,null)).toList(),false);
@@ -175,7 +180,7 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
                     return outcome(run,EpochOutcome.Status.CONVERGED,rounds,"all peer round closures received; no changes");
                 }
                 run.accepted.keySet().removeIf(key->key.round()<run.round);
-                if(round+1<settings.maxRounds()) run.ledger.nextRound();
+                if(round+1<run.settings.maxRounds()) run.ledger.nextRound();
             }
             return outcome(run,EpochOutcome.Status.ROUND_LIMIT,rounds,"round limit is censored, not convergence");
         } catch(Deadline expired) { return outcome(run,EpochOutcome.Status.DEADLINE,rounds,"auction deadline");
@@ -208,14 +213,14 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
             if(!missing.isEmpty()) Thread.sleep(10);
         }
     }
-    private Duration peerTimeout(Run run) { return Duration.ofNanos(Math.max(1,Math.min(settings.peerTimeout().toNanos(),run.deadline-System.nanoTime()))); }
+    private Duration peerTimeout(Run run) { return Duration.ofNanos(Math.max(1,Math.min(run.settings.peerTimeout().toNanos(),run.deadline-System.nanoTime()))); }
     private void exchange(Run run,AuctionCodec.Phase phase,java.util.function.Function<String,List<AuctionMessage>> messages,boolean changed) throws Exception {
         check(run);
         var request=Flux.fromIterable(run.peers.keySet()).flatMap(peer->{
             var batch=new AuctionCodec.Batch(1,run.local.peerId(),run.local.incarnation(),run.epoch,run.round,phase,run.from,run.until,changed,messages.apply(peer));
             byte[] bytes=codec.encode(batch);
             return Mono.defer(()->transport.request(peer,TOPIC,bytes,peerTimeout(run))).flatMap(reply->reply.length==1 && reply[0]==1?Mono.just(true):Mono.error(new IllegalStateException("peer did not accept closed phase"))).retry(1);
-        },settings.parallelism()).collectList().toFuture();
+        },run.settings.parallelism()).collectList().toFuture();
         run.exchange.set(request);
         try { request.get(Math.max(1,run.deadline-System.nanoTime()),TimeUnit.NANOSECONDS); }
         finally { run.exchange.compareAndSet(request,null); if(!request.isDone()) request.cancel(true); }

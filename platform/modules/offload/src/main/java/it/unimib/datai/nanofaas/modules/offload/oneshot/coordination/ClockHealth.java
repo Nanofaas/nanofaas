@@ -10,7 +10,11 @@ public final class ClockHealth {
         if(threshold.isNegative() || maxAge.isNegative() || maxAge.isZero()) throw new IllegalArgumentException("invalid clock bounds");
         this.threshold=threshold; this.maxAge=maxAge; this.now=now;
     }
-    public void sample(Duration offset,Instant measuredAt) { sample=new Sample(java.util.Objects.requireNonNull(offset),java.util.Objects.requireNonNull(measuredAt)); }
+    public synchronized void sample(Duration offset,Instant measuredAt) {
+        java.util.Objects.requireNonNull(offset);java.util.Objects.requireNonNull(measuredAt);
+        if(measuredAt.isAfter(now.get()) || (sample!=null && measuredAt.isBefore(sample.at()))) throw new IllegalArgumentException("clock measurement must advance without future dating");
+        sample=new Sample(offset,measuredAt);
+    }
     public boolean healthy() {
         var reading=sample; var time=now.get();
         return reading!=null && reading.offset().compareTo(threshold.negated())>=0 && reading.offset().compareTo(threshold)<=0

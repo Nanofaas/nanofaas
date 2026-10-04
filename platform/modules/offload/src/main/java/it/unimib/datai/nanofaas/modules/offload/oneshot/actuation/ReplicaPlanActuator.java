@@ -71,7 +71,9 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
         var local=peers.localEndpoint().orElseThrow();if(!local.peerId().equals(p.snapshot.nodeId()) || !local.incarnation().equals(p.snapshot.incarnation())) throw new IllegalStateException("local incarnation changed");
         p.snapshot.identities().forEach((name,id)-> { if(!generation(name,id.generation())) throw new IllegalStateException("function generation changed"); });
     }
-    public Mono<PlanActivation> prepare(EpochOutcome outcome) {
+    public Mono<PlanActivation> prepare(EpochOutcome outcome) { return prepare(outcome,preparationBudget); }
+    public Mono<PlanActivation> prepare(EpochOutcome outcome,Duration budget) {
+        if(budget==null || budget.isZero() || budget.isNegative() || budget.compareTo(Duration.ofHours(1))>0) throw new IllegalArgumentException("invalid preparation budget");
         return Mono.defer(()-> {
             if(outcome.status()!=EpochOutcome.Status.CONVERGED || outcome.snapshot()==null || outcome.input()==null) return Mono.just(failed("only converged frozen input can prepare"));
             activePlan();
@@ -79,7 +81,7 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
             if((current!=null && outcome.snapshot().validFrom().isBefore(current.endsAt())) || outcome.snapshot().validFrom().isBefore(reservedUntil.get())) return Mono.just(failed("epoch windows overlap reserved commitments"));
             var waiting=pending.get();if(waiting!=null && now.get().isBefore(waiting.endsAt())) return Mono.just(failed("a prepared plan already exists"));
             long until=Duration.between(now.get(),outcome.snapshot().validFrom()).toNanos();
-            var p=new Preparation(outcome,System.nanoTime()+Math.min(preparationBudget.toNanos(),Math.max(0,until)));
+            var p=new Preparation(outcome,System.nanoTime()+Math.min(budget.toNanos(),Math.max(0,until)));
             if(!preparing.compareAndSet(null,p)) return Mono.just(failed("preparation already active"));
             receiving.set(p);
             return Mono.fromCallable(()->apply(p)).subscribeOn(scheduler).doFinally(signal->preparing.compareAndSet(p,null));
@@ -87,6 +89,8 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
     }
     private PlanActivation failed(String reason) { return new PlanActivation(PlanActivation.Status.FAILED,null,Map.of(),Map.of(),reason,now.get()); }
     private void validate(Preparation p) {
+        var selected=p.snapshot.identities().keySet();
+        if(!selected.containsAll(leases.keySet())) throw new IllegalArgumentException("drain removed functions before changing scope");
         for(var row:p.snapshot.baseProblem().functions()) {
             var f=function(row.id());var spec=f.spec();var cc=spec.scalingConfig()==null?null:spec.scalingConfig().concurrencyControl();
             if((spec.concurrency()==null || spec.concurrency()<p.snapshot.desiredReplicas().getOrDefault(row.id(),0)) || spec.env()==null || !"true".equals(spec.env().get("NANOFAAS_ONE_SHOT_PROFILE")) || !"1".equals(spec.env().get("NANOFAAS_MAX_CONCURRENT_HANDLERS"))
@@ -220,6 +224,7 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
         }
         return false;
     }
+    public Set<String> ownedFunctions() { return Set.copyOf(leases.keySet()); }
     public Mono<Boolean> drainAndRelease() {
         return Mono.fromCallable(()-> {
             if(now.get().isBefore(reservedUntil.get())) return false;
