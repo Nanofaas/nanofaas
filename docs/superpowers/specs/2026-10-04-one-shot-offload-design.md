@@ -16,7 +16,7 @@ Sono decisioni concordate:
 
 - Estendere il modulo `offload` e usare `p2p-discovery` per discovery e messaggi tra vicini.
 - Separare i contratti P2P e di previsione nelle librerie `p2p-api` e `forecasting-api`; mantenere in `control-plane-spi` i contratti propri del control plane.
-- Operare quasi sincronicamente, con epoche configurabili, per esempio di un minuto. Un'epoca contiene più round d'asta: one-shot non significa un solo messaggio o un solo round.
+- Operare quasi sincronicamente, con periodi configurabili scelti dopo aver misurato la durata dell'asta, che deve essere di molto inferiore al periodo. Un minuto non è un valore predefinito né un requisito. Un'asta contiene più round: one-shot non significa un solo messaggio o un solo round.
 - Aggiungere un modulo di previsione del carico con un metodo semplice e un provider esterno. Negli esperimenti il provider esterno riceve il carico futuro dalla traccia che alimenta il generatore.
 - Imporre il vincolo one-hop, riprendendo e adattando le idee di DFaaS ai meccanismi nativi di NanoFaaS, senza richiedere compatibilità con header o protocollo DFaaS.
 - Assumere un cloud raggiungibile, con capacità sufficiente e funzioni disponibili.
@@ -128,7 +128,17 @@ Il core può essere condiviso con PG in futuro, ma questa versione implementa e 
 
 ## 7. Epoche e protocollo d'asta
 
-Il periodo di controllo è configurabile, con un minuto come scenario iniziale. La finestra di previsione deve essere disponibile abbastanza presto da includere negoziazione, avvio e readiness delle repliche prima dell'attivazione. L'anticipo viene dimensionato usando la calibrazione dei tempi di avvio, non sottraendo implicitamente tali tempi alla durata utile dell'epoca.
+Il periodo di controllo `T` è la durata dell'intervallo di carico per cui si applica un piano. Si sceglie dopo aver misurato l'asta distribuita sulle configurazioni sperimentali previste, non fissandolo a un minuto. Il requisito è `T_asta << T`; completare appena prima della fine del periodo non è sufficiente.
+
+`T_asta` comprende pianificazione locale iniziale, tutti i round, ricalcoli, scambio di messaggi, attese del protocollo e chiusura delle decisioni negoziate. Si misura per nodo con clock monotono; per ogni esecuzione si riporta anche la durata complessiva dall'avvio concordato all'ultima chiusura richiesta, tenendo conto dello skew misurato. Non si usa la somma dei tempi CPU dei nodi né soltanto il tempo del kernel DP. Se il protocollo aspetta una finestra fissa anche dopo l'ultimo bid utile, quell'attesa fa parte del tempo operativo dell'asta.
+
+Prima dei confronti si misura la distribuzione di `T_asta` con ripetizioni, variando almeno numero di nodi e funzioni, topologia, intensità/sbilanciamento del carico e condizioni di rete. Si includono le condizioni di contesa con l'esecuzione delle funzioni. Il manifest dichiara un quantile alto da usare per il dimensionamento, un margine e una frazione massima piccola `epsilon_asta`. Il criterio è `quantile(T_asta) + margine <= epsilon_asta * T`. Per esempio, una soglia del 5% richiederebbe un periodo almeno venti volte il tempo dimensionante: è un esempio di rapporto, non una soglia già concordata. Si riportano anche massimi, numerosità dei campioni e sforamenti, senza presentare il quantile come un limite garantito.
+
+La durata viene misurata prima di scegliere `T`; tagliare artificialmente l'asta a `epsilon_asta*T` non dimostra che il requisito sia soddisfatto. Le esecuzioni interrotte per deadline sono campioni censurati e degradazioni, non completamenti rapidi. Il deadline operativo è distinto da `T` e viene dimensionato usando le misure, rimanendo una piccola parte del periodo. Gli sforamenti in campagna sono registrati e gestiti con la modalità degradata, senza allungare automaticamente il periodo durante un confronto.
+
+Si misura separatamente anche il tempo dalla preparazione del piano fino alla capacità pronta per l'attivazione, includendo negoziazione, eventuale drenaggio, avvio e readiness delle repliche. Le attività sovrapposte non si sommano due volte. La finestra di previsione deve essere disponibile con un anticipo sufficiente a questo tempo complessivo più il margine operativo. Un'asta breve non dimostra da sola che le repliche possano essere preparate in tempo. Nel profilo iniziale non si sovrappongono negoziazioni di epoche diverse sullo stesso nodo.
+
+La scelta di `T` deve inoltre restare significativa per la dinamica della traccia: non si allunga il periodo fino a nascondere variazioni di carico importanti. Se non esiste un periodo che rispetti sia il rapporto temporale sia la risoluzione del carico richiesta, la configurazione sperimentale non è qualificata e va rivista.
 
 Ogni nodo attraversa preparazione, negoziazione, finalizzazione, attivazione e drenaggio. I messaggi contengono versione di schema, identità e incarnazione del mittente, epoca, round, ID idempotente, funzione/generazione, revisione del piano e intervallo di validità. La revisione della previsione è locale e non deve coincidere tra nodi.
 
@@ -138,7 +148,7 @@ Si riproducono le fasi del branch: pianificazione locale iniziale, capacità res
 
 Il venditore è autorità sulla propria capacità: registra ogni assegnazione prima di confermarla e non vende due volte lo stesso budget. Ritrasmettere un bid o una conferma non aggiunge una seconda assegnazione. Una conferma persa può lasciare capacità inutilizzata, ma non autorizza il compratore a inviare traffico senza conferma.
 
-Ogni round ha una finestra e un termine espliciti; messaggi tardivi non modificano round chiusi. Il primo protocollo usa un massimo di round e un deadline di epoca comuni, senza introdurre un algoritmo aggiuntivo di terminazione globale. Un nodo senza nuovi bid continua a rispondere fino alla chiusura. Terminazione per deadline e convergenza naturale devono essere distinguibili nei risultati.
+Ogni round ha una finestra e un termine espliciti; messaggi tardivi non modificano round chiusi. Il primo protocollo usa un massimo di round e un deadline d'asta comuni, distinti dalla durata del periodo, senza introdurre un algoritmo aggiuntivo di terminazione globale. Un nodo senza nuovi bid continua a rispondere fino alla chiusura. Terminazione per deadline, limite dei round e convergenza naturale devono essere distinguibili nei risultati.
 
 Le assegnazioni negoziate sono provvisorie fino alla conferma finale di capacità pronta. Non confermare capacità basandosi solo su repliche richieste. In finalizzazione ciascun venditore conferma i propri impegni sostenibili; gli impegni non confermati non entrano nel piano applicato. Il compratore invia il residuo al cloud. La politica di riduzione in caso di readiness parziale deve essere deterministica e registrata; questa è una degradazione operativa, non un risultato dell'asta ideale.
 
@@ -203,13 +213,15 @@ L'artefatto risultante è immutabile e identificato da hash. Contiene commit e d
 
 Un secondo workflow NanoLab/Sonata consuma un profilo esistente e ne verifica la compatibilità prima di avviare il carico. Non esegue una ricalibrazione implicita e non aggiorna `D` durante il confronto. Continua a raccogliere misure per evidenziare deriva e violazioni del profilo.
 
+Prima dei confronti one-shot si eseguono prove preliminari su Azure, sempre tramite task Sonata in NanoLab, per qualificare i tempi dell'asta distribuita e della preparazione del piano. Queste prove consumano la calibrazione delle funzioni già disponibile e producono un artefatto separato con distribuzioni temporali, condizioni misurate e scelta motivata di periodo, anticipo e deadline. Non modificano il profilo di servizio. La campagna di confronto richiede entrambi gli artefatti compatibili e mantiene fissi i parametri temporali scelti; cambiamenti a solver, protocollo, dimensione dello scenario o condizioni operative richiedono di verificarne nuovamente la validità.
+
 La topologia proposta usa una VM per nodo edge logico, una destinazione cloud distinta e sufficientemente dimensionata, e generatori separati quando necessario a non contaminare le misure. Tutto viene eseguito su Azure. Collocare tutte le VM nello stesso datacenter non crea automaticamente una rete edge-cloud realistica: posizione, RTT, banda ed eventuale emulazione di rete vanno dichiarati e verificati.
 
-Il manifest fissa topologia, funzioni, immagini, profilo, coefficienti del modello, epoche, anticipo, round e deadline, granularità dei flussi, burst, forecast, trace hash, seed, ripetizioni e warmup. La previsione oracle e il generatore condividono traccia e riferimento temporale.
+Il manifest fissa topologia, funzioni, immagini, profilo di servizio, artefatto di qualificazione temporale, coefficienti del modello, periodo `T`, quantile/margine ed `epsilon_asta`, anticipo, round e deadline, granularità dei flussi, burst, forecast, trace hash, seed, ripetizioni e warmup. La previsione oracle e il generatore condividono traccia e riferimento temporale.
 
 Il confronto iniziale include una baseline locale con residuo al cloud e one-shot senza PG; oracle ed EWMA sono confronti separati sullo stesso carico. La successiva aggiunta di PG mantiene invariati profili e scenari per isolare il suo effetto.
 
-Si raccolgono welfare calcolato con la stessa convenzione del riferimento, flussi previsti ed effettivi, traffico cloud, errori, latenza, code, repliche desiderate/pronte/occupate, RAM e CPU, tempo/memoria del solver, messaggi, round, scadenze e durata delle transizioni. Ogni invocazione originale è correlabile ai suoi eventuali tentativi e alla destinazione terminale. La verifica di conservazione distingue richieste originali, tentativi, completamenti ed errori, senza doppi conteggi.
+Si raccolgono welfare calcolato con la stessa convenzione del riferimento, flussi previsti ed effettivi, traffico cloud, errori, latenza, code, repliche desiderate/pronte/occupate, RAM e CPU, tempo/memoria del solver, messaggi, round, durata dell'asta e rapporto `T_asta/T`, scadenze, tempo complessivo di preparazione e durata delle transizioni. Ogni invocazione originale è correlabile ai suoi eventuali tentativi e alla destinazione terminale. La verifica di conservazione distingue richieste originali, tentativi, completamenti ed errori, senza doppi conteggi.
 
 Sonata gestisce dipendenze tra task, risorse e rilascio; NanoLab conserva manifest, log e risultati anche nei run falliti. Non si introduce un orchestratore shell parallelo al workflow.
 
@@ -225,6 +237,7 @@ Il controllo architetturale deve verificare che `offload` consumi P2P e previsio
 6. **Guasti:** solver scaduto, peer perso, riavvio, clock fuori soglia e readiness parziale producono comportamento esplicito senza riuso di assegnazioni scadute né inoltri aggiuntivi.
 7. **Calibrazione:** workflow Azure completabile separatamente, artefatto verificabile e rifiuto di profili incompatibili. Tempi di servizio, coda e rete non vengono confusi.
 8. **Campagna:** workflow Azure riproducibile tramite NanoLab/Sonata, conservazione verificata, risorse rilasciate anche su errore, risultati confrontabili a parità di trace e profilo. Il budget temporale dell'intera pianificazione include solver, rete e preparazione delle repliche, non solo il kernel DP.
+9. **Separazione temporale:** periodo scelto sulla base delle prove preliminari, con durata dell'asta di molto inferiore a `T` secondo il rapporto dichiarato, anticipo sufficiente alla capacità pronta e risoluzione coerente con la traccia. Timeout e limite dei round non valgono come evidenza di completamento; gli sforamenti osservati nei confronti sono riportati e non nascosti modificando `T` in corso di esecuzione.
 
 ## 14. Riferimenti di implementazione
 
