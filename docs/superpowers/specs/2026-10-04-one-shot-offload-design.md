@@ -2,7 +2,7 @@
 
 Data: 2026-10-04
 
-Stato: specifica proposta per revisione. Le scelte discusse sono raccolte qui; l'implementazione e il relativo piano non sono ancora avviati.
+Stato: specifica approvata per la stesura del piano il 2026-10-04, comprese le revisioni su librerie API, assenza di compatibilità DFaaS e dimensionamento temporale. Implementazione non avviata.
 
 Base NanoFaaS: `a62a743f16205b3d4d3ce2945f857a88c559d83e` (`origin/main` osservato durante la progettazione).
 
@@ -25,11 +25,13 @@ Sono decisioni concordate:
 - Portare il solver locale DP in Java; usare Python come riferimento di correttezza.
 - Calibrare prima degli esperimenti one-shot. Calibrazione e campagne sono workflow distinti NanoLab, composti da task Sonata, eseguiti su Azure.
 
-Le regole operative nelle sezioni successive completano queste scelte e sono proposte da approvare con questa specifica. In particolare, la granularità dei flussi, la transizione tra epoche e il comportamento degradato non erano stati ancora fissati nella discussione.
+Le regole operative nelle sezioni successive completano queste scelte, comprese granularità dei flussi, transizione tra epoche e comportamento degradato. I dettagli di implementazione sono sviluppati nei piani collegati.
 
 ## 2. Ambito e separazione del lavoro
 
 Questa è la specifica di integrazione: definisce contratti e criteri di accettazione comuni a NanoFaaS, NanoLab e alle funzioni sperimentali. Il piano di implementazione dovrà separare solver e previsione, protocollo e attuazione, calibrazione e campagna, conservando questi contratti.
+
+L'esecuzione è divisa in due fasi ordinate: prima tutta l'implementazione NanoFaaS, inclusi test unitari, integrazione, prove distribuite locali, funzioni sperimentali e telemetria; solo dopo i workflow NanoLab/Sonata e le prove Azure. La prima fase deve poter essere verificata senza NanoLab e senza account cloud, usando fixture esplicitamente sintetiche al posto dei profili calibrati. Questo non sostituisce la calibrazione reale né dimostra la validità scientifica delle campagne. Il punto di passaggio e i due piani sono descritti in [One-shot implementation plan](../plans/2026-10-04-one-shot-implementation.md).
 
 La prima versione copre invocazioni sincrone di funzioni gestite, disponibili sui nodi abilitati e sul cloud. Le modalità asincrone, la distribuzione automatica di nuove funzioni, aste gerarchiche, previsioni CPU/memoria e ricerca locale PG sono fuori ambito. Le modalità di offload esistenti restano disponibili per le funzioni non gestite da one-shot.
 
