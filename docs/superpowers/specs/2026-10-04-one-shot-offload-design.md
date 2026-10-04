@@ -18,7 +18,7 @@ Sono decisioni concordate:
 - Separare i contratti P2P e di previsione nelle librerie `p2p-api` e `forecasting-api`; mantenere in `control-plane-spi` i contratti propri del control plane.
 - Operare quasi sincronicamente, con epoche configurabili, per esempio di un minuto. Un'epoca contiene più round d'asta: one-shot non significa un solo messaggio o un solo round.
 - Aggiungere un modulo di previsione del carico con un metodo semplice e un provider esterno. Negli esperimenti il provider esterno riceve il carico futuro dalla traccia che alimenta il generatore.
-- Imporre il vincolo one-hop, riprendendo gli header DFaaS.
+- Imporre il vincolo one-hop, riprendendo e adattando le idee di DFaaS ai meccanismi nativi di NanoFaaS, senza richiedere compatibilità con header o protocollo DFaaS.
 - Assumere un cloud raggiungibile, con capacità sufficiente e funzioni disponibili.
 - Allocare memoria per replica e mantenere una sola esecuzione attiva per istanza. Il numero delle repliche è controllato dall'algoritmo.
 - Usare funzioni sperimentali warm in Rust, con lavoro CPU/memoria significativo e risultati verificabili. Rust è una scelta di deployment, non una soluzione provvisoria in attesa di migrazione.
@@ -160,12 +160,12 @@ Una quota è una capacità di ammissione per origine, destinazione, funzione e i
 
 L'eccedenza rispetto alle quote è inviata al cloud dall'origine prima di qualsiasi invio a un peer. I parametri di burst fanno parte del manifest. Il venditore riserva la capacità locale e applica i limiti dei singoli impegni in ingresso, evitando che il proprio traffico consumi senza controllo gli slot promessi ai vicini. Un peer che non può ammettere una richiesta restituisce un errore esplicito, senza inoltrarla. La prima versione non promette che l'asta elimini code, errori o variabilità stocastica del carico.
 
-Compatibilità DFaaS:
+DFaaS è un riferimento per le idee di marcatura dell'inoltro, distinzione tra traffico esterno e ricevuto dai peer e identificazione del nodo di esecuzione. Non è richiesta interoperabilità con DFaaS: non si introducono alias, traduzioni o supporto ai suoi header `DFaaS-Node-ID` e `X-Server`. Questo non modifica il riferimento algoritmico a DFaaSOptimizer indicato in apertura.
 
-- `DFaaS-Node-ID` nella richiesta identifica il nodo che ha effettuato l'inoltro. La sua presenza marca la richiesta come già inoltrata, anche se il valore è malformato o sconosciuto: tali casi si rifiutano, non si riclassificano come traffico esterno.
-- `DFaaS-Node-ID` nella risposta identifica il nodo di esecuzione; `X-Server` conserva il ruolo di identificazione del server previsto dagli esperimenti DFaaS.
-- `X-NanoFaaS-Offload-Hop` resta compatibile: la presenza di uno qualsiasi dei marcatori attiva lo stesso vincolo interno. Marcatori contraddittori si rifiutano.
-- Gli identificatori di epoca/assegnazione sono metadati aggiuntivi versionati; non sostituiscono gli header DFaaS.
+- Si riusa `X-NanoFaaS-Offload-Hop` come marcatore nativo della richiesta già inoltrata, mantenendo il vincolo anche nel normale offload. Una marcatura presente ma invalida non può essere rimossa o interpretata come nuovo traffico esterno per consentire un ulteriore inoltro.
+- Origine, epoca e assegnazione sono metadati NanoFaaS versionati, validati insieme alla marcatura di inoltro. Nella modalità one-shot, metadati mancanti, incoerenti o non validi causano un rifiuto esplicito, senza riclassificare la richiesta come traffico esterno. La loro assenza non rende invalide le richieste del normale offload, che continuano a usare il proprio contratto e a rispettare one-hop.
+- Le risposte devono rendere identificabile il nodo di esecuzione attraverso metadati propri di NanoFaaS, preservati nel ritorno attraverso il nodo di origine. Nomi e formato saranno definiti nel contratto API e non sono vincolati a quelli DFaaS.
+- Generatori di carico e verifiche NanoLab consumano il contratto NanoFaaS, senza adattatori di compatibilità DFaaS.
 
 Sono ammessi `A -> B` e `A -> cloud`. Sono vietati `A -> B -> C` e `A -> B -> cloud`. Il destinatario esegue localmente oppure restituisce errore. Il cloud non partecipa all'asta come venditore edge ed è destinazione terminale.
 
@@ -220,7 +220,7 @@ Il controllo architetturale deve verificare che `offload` consumi P2P e previsio
 1. **Solver:** su fixture del branch e istanze generate ammissibili, Java e Python concordano su vincoli, obiettivo e scelta deterministica; il confronto con Pyomo ammette allocazioni diverse a parità di ottimo. Inclusi carico nullo, RAM insufficiente, input invalido, impegni in ingresso, pareggi, limite degli stati e scadenza. Le trasformazioni delle unità hanno test dedicati.
 2. **Asta:** su trascrizioni deterministiche, le decisioni coincidono con one-shot Python senza PG, salvo degradazioni operative esplicitamente etichettate. Duplicati, riordino, perdita di messaggi e conferme tardive non sovrallocano capacità.
 3. **Forecast:** oracle ed EWMA usano arrivi esterni; caricamenti atomici, revisione congelata, assenza/scadenza e discrepanze tra carico programmato ed emesso sono verificati.
-4. **One-hop:** i due marcatori, compresi valori invalidi o contraddittori, non consentono alcun secondo inoltro. Le risposte riportano la destinazione effettiva.
+4. **One-hop:** il marcatore nativo e la validazione dei metadati NanoFaaS impediscono qualsiasi secondo inoltro, anche in caso di valori invalidi, incoerenti o metadati one-shot mancanti. Il normale offload conserva il proprio comportamento one-hop. Le risposte riportano il nodo effettivo di esecuzione quando l'esecuzione è avvenuta; gli errori precedenti non inventano una destinazione di esecuzione. I test non richiedono supporto agli header DFaaS.
 5. **Repliche:** sotto carico e durante scaling, ciascuna replica esegue al massimo un handler; repliche libere sono utilizzabili, readiness precede la capacità annunciata, il budget RAM include la transizione e nessun altro scaler modifica il piano.
 6. **Guasti:** solver scaduto, peer perso, riavvio, clock fuori soglia e readiness parziale producono comportamento esplicito senza riuso di assegnazioni scadute né inoltri aggiuntivi.
 7. **Calibrazione:** workflow Azure completabile separatamente, artefatto verificabile e rifiuto di profili incompatibili. Tempi di servizio, coda e rete non vengono confusi.
@@ -241,6 +241,6 @@ Riferimenti esterni consultati, da fissare nel manifest delle verifiche:
 
 - DFaaSOptimizer, branch e commit indicati in apertura: `decentralized_auction.py`, `one_shot_pg.py`, `models/local_sp.py`, `models/sp.py`, `plasma/core/sbm.py`, `run_faasmacro.py` e `tests/test_local_sp.py`.
 - PDF di riferimento: `Decentralized_FaaS_coordination.pdf`, bozza fornita dall'utente. È contesto scientifico; in caso di differenza, il comportamento da riprodurre è quello del branch fissato.
-- DFaaS: `dfaasagent/agent/loadbalancer/haproxycfgstatic.tmpl`, `haproxycfgnms.tmpl` e configurazioni correlate per gli header.
+- DFaaS: `dfaasagent/agent/loadbalancer/haproxycfgstatic.tmpl`, `haproxycfgnms.tmpl` e configurazioni correlate, come riferimento per le idee di one-hop e attribuzione del traffico, non come contratto di compatibilità.
 - NanoLab: `packages/nanolab/src/nanolab/plans/offload_loadtest.py`, `packages/nanolab/src/nanolab/tasks/offload_loadtest.py` e gli scenari `scenarios-v2` come punti d'integrazione, non come workflow one-shot già esistenti.
 - Sonata: contratti `Task`, `TaskInputs`, `TaskOutcome`, `Workflow` e risorse con cleanup.
