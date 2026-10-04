@@ -16,11 +16,8 @@ import org.springframework.web.bind.support.WebExchangeBindException;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.server.ServerWebInputException;
 
-import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.SequencedMap;
 
 /**
  * Global exception handler for consistent error responses across all controllers.
@@ -44,7 +41,7 @@ public class GlobalExceptionHandler {
                 .toList();
 
         log.debug("Validation failed: {}", errors);
-        return ResponseEntity.badRequest().body(validationErrorBody(errors));
+        return ResponseEntity.badRequest().body(ApiErrorResponses.validationBody(errors));
     }
 
     /**
@@ -65,14 +62,14 @@ public class GlobalExceptionHandler {
                 .toList();
 
         log.debug("Constraint violation: {}", errors);
-        return ResponseEntity.badRequest().body(validationErrorBody(errors));
+        return ResponseEntity.badRequest().body(ApiErrorResponses.validationBody(errors));
     }
 
     @ExceptionHandler(ServerWebInputException.class)
     public ResponseEntity<Map<String, Object>> handleServerWebInputException(
             ServerWebInputException ex) {
         log.debug("Bad request: {}", ex.getMessage());
-        return ResponseEntity.badRequest().body(errorBody(
+        return ResponseEntity.badRequest().body(ApiErrorResponses.body(
                 "BAD_REQUEST",
                 ex.getReason() != null ? ex.getReason() : "Invalid request"
         ));
@@ -82,7 +79,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleResponseStatusException(
             ResponseStatusException ex) {
         log.debug("Response status exception: {} {}", ex.getStatusCode(), ex.getReason());
-        return ResponseEntity.status(ex.getStatusCode()).body(errorBody(
+        return ResponseEntity.status(ex.getStatusCode()).body(ApiErrorResponses.body(
                 ex.getStatusCode().toString(),
                 ex.getReason() != null ? ex.getReason() : "Request error"
         ));
@@ -99,14 +96,14 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleInvocationInputRejected(
             InvocationInputRejectedException ex) {
         log.debug("Bad request: {}", ex.getMessage());
-        return ResponseEntity.badRequest().body(errorBody("BAD_REQUEST", ex.getMessage()));
+        return ResponseEntity.badRequest().body(ApiErrorResponses.body("BAD_REQUEST", ex.getMessage()));
     }
 
     @ExceptionHandler(ImageValidationException.class)
     public ResponseEntity<Map<String, Object>> handleImageValidationException(
             ImageValidationException ex) {
         log.debug("Image validation failed: {} {}", ex.errorCode(), ex.getMessage());
-        return ResponseEntity.status(ex.status()).body(errorBody(ex.errorCode(), ex.getMessage()));
+        return ResponseEntity.status(ex.status()).body(ApiErrorResponses.body(ex.errorCode(), ex.getMessage()));
     }
 
     /**
@@ -119,14 +116,14 @@ public class GlobalExceptionHandler {
             FunctionRemovalPendingException ex) {
         log.warn("Function '{}' is in pending removal: {}", ex.functionName(), ex.remainingResources());
         return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(errorBody(FunctionRemovalPendingException.ERROR_CODE, ex.getMessage()));
+                .body(ApiErrorResponses.body(FunctionRemovalPendingException.ERROR_CODE, ex.getMessage()));
     }
 
     @ExceptionHandler(FunctionApplicationPendingException.class)
     public ResponseEntity<Map<String, Object>> handleFunctionApplicationPending(
             FunctionApplicationPendingException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(errorBody(FunctionApplicationPendingException.ERROR_CODE, ex.getMessage()));
+                .body(ApiErrorResponses.body(FunctionApplicationPendingException.ERROR_CODE, ex.getMessage()));
     }
 
     /**
@@ -136,22 +133,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleGenericException(Exception ex) {
         log.error("Unexpected error: {}", ex.getMessage(), ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(errorBody("INTERNAL_ERROR", "An unexpected error occurred"));
+                .body(ApiErrorResponses.body("INTERNAL_ERROR", "An unexpected error occurred"));
     }
 
-    // Ordered, unlike Map.of, whose iteration order changes from one JVM to the next.
-    private static Map<String, Object> validationErrorBody(List<String> errors) {
-        SequencedMap<String, Object> body = new LinkedHashMap<>();
-        body.put("error", "VALIDATION_ERROR");
-        body.put("message", "Request validation failed");
-        body.put("details", errors);
-        return Collections.unmodifiableSequencedMap(body);
-    }
-
-    private static Map<String, Object> errorBody(String error, String message) {
-        SequencedMap<String, Object> body = new LinkedHashMap<>();
-        body.put("error", error);
-        body.put("message", message);
-        return Collections.unmodifiableSequencedMap(body);
-    }
 }

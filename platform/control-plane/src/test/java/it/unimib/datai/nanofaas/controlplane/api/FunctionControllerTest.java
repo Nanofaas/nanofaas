@@ -71,7 +71,8 @@ class FunctionControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .exchange()
-                .expectStatus().isEqualTo(409);
+                .expectStatus().isEqualTo(409)
+                .expectBody().jsonPath("$.error").isEqualTo("FUNCTION_ALREADY_EXISTS");
     }
 
     @Test
@@ -98,7 +99,8 @@ class FunctionControllerTest {
         webClient.get()
                 .uri("/v1/functions/missing")
                 .exchange()
-                .expectStatus().isNotFound();
+                .expectStatus().isNotFound()
+                .expectBody().jsonPath("$.error").isEqualTo("FUNCTION_NOT_FOUND");
     }
 
     @Test
@@ -108,7 +110,8 @@ class FunctionControllerTest {
         webClient.delete()
                 .uri("/v1/functions/missing")
                 .exchange()
-                .expectStatus().isNotFound();
+                .expectStatus().isNotFound()
+                .expectBody().jsonPath("$.error").isEqualTo("FUNCTION_NOT_FOUND");
     }
 
     @Test
@@ -132,8 +135,10 @@ class FunctionControllerTest {
                 .bodyValue(new ReplicaRequest(3))
                 .exchange()
                 .expectStatus().isEqualTo(503)
-                .expectBody(String.class)
-                .isEqualTo("Scaler unavailable");
+                .expectHeader().contentTypeCompatibleWith(MediaType.APPLICATION_JSON)
+                .expectBody()
+                .jsonPath("$.error").isEqualTo("SERVICE_UNAVAILABLE")
+                .jsonPath("$.message").isEqualTo("Scaler unavailable");
     }
 
     @Test
@@ -235,8 +240,10 @@ class FunctionControllerTest {
                 .bodyValue(spec("echo"))
                 .exchange()
                 .expectStatus().isEqualTo(503)
-                .expectBody(String.class)
-                .isEqualTo("No managed deployment provider available");
+                .expectHeader().contentTypeCompatibleWith(MediaType.APPLICATION_JSON)
+                .expectBody()
+                .jsonPath("$.error").isEqualTo("SERVICE_UNAVAILABLE")
+                .jsonPath("$.message").isEqualTo("No managed deployment provider available");
     }
 
     @Test
@@ -249,8 +256,10 @@ class FunctionControllerTest {
                 .bodyValue(spec("echo"))
                 .exchange()
                 .expectStatus().isBadRequest()
-                .expectBody(String.class)
-                .isEqualTo("maxReplicas must be >= 1");
+                .expectHeader().contentTypeCompatibleWith(MediaType.APPLICATION_JSON)
+                .expectBody()
+                .jsonPath("$.error").isEqualTo("BAD_REQUEST")
+                .jsonPath("$.message").isEqualTo("maxReplicas must be >= 1");
     }
 
     @Test
@@ -326,7 +335,8 @@ class FunctionControllerTest {
                         {"concurrency": 16}
                         """)
                 .exchange()
-                .expectStatus().isNotFound();
+                .expectStatus().isNotFound()
+                .expectBody().jsonPath("$.error").isEqualTo("FUNCTION_NOT_FOUND");
     }
 
     @Test
