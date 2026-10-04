@@ -66,3 +66,16 @@ prefer larger x, then the first minimum-memory budget during backtracking. Indep
 enumeration/MILP may return a different allocation at the same objective; objective
 parity alone does not establish DP tie-break parity. LSPr_x fixes origin x and outbound
 commitments, includes inbound load and chooses the minimum feasible replica count.
+
+## Arrival observation at the HTTP boundary
+
+The core observes valid invocation/enqueue HTTP requests for a currently registered
+function once, before subscribing to the execution service. Presence of the native
+`X-NanoFaaS-Offload-Hop` header excludes forwarded traffic. Internal execution retries
+and resubscription do not produce HTTP arrivals. Each client repeat is a new arrival,
+even with the same idempotency key; replay outcome handling and arrival counting are
+separate. Experiment clients disable automatic retries or correlate them explicitly.
+The observation contains function, local generation, UTC arrival instant and a fresh
+request correlation ID, never input or handler headers. Without the optional provider,
+the observer is a no-op. A re-registered function gets a new generation and cannot
+inherit windows attributed to the previous one.

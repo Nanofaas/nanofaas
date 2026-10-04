@@ -21,6 +21,7 @@ if (selectedOptionalControlPlaneModuleNames.contains('containerd-deployment-prov
 dependencies {
     implementation project(':common')
     implementation project(':control-plane-spi')
+    implementation project(':forecasting-api')
     // api, not implementation (Task 10 step 4, issue #208): control-plane's own PUBLIC types
     // (ExecutionCompletionHandler, InvocationExecutionFactory, ...) reference ExecutionRecord,
     // ExecutionStore and friends directly, so execution-runtime is part of this module's ABI.
