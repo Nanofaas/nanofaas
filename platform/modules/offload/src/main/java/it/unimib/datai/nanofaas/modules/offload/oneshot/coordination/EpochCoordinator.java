@@ -27,7 +27,7 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
         final AtomicReference<CompletableFuture<?>> exchange=new AtomicReference<>();
         final AtomicLong solverNanos=new AtomicLong();
         volatile boolean cancelled, closed; volatile int round;
-        SellerLedger ledger;
+        SellerLedger ledger; EpochInput input;
         Run(PeerEndpoint local,Map<String,PeerEndpoint> peers,long epoch,Instant from,Instant until,long started,long deadline,int bound) {
             this.local=local; this.peers=Map.copyOf(peers); this.epoch=epoch; this.from=from; this.until=until;
             this.started=started; this.deadline=deadline; inbox=new ArrayBlockingQueue<>(bound); pending=new Semaphore(bound);
@@ -95,6 +95,7 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
         if(!running) return new byte[]{0};
         AuctionCodec.Batch batch;
         try { batch=codec.decode(payload); } catch(IllegalArgumentException invalid) { return new byte[]{0}; }
+        if(batch.phase()==AuctionCodec.Phase.READY || batch.phase()==AuctionCodec.Phase.READY_ACK) return new byte[]{0};
         var run=active.get();
         if(run==null || run.epoch!=batch.epoch()) run=lastClosed.get();
         if(run==null) return new byte[]{0};
@@ -138,7 +139,7 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
     private EpochOutcome execute(Run run) {
         int rounds=0;
         try {
-            check(run); var input=inputs.freeze(run.epoch,run.from,run.until); validateInput(run,input);
+            check(run); var input=inputs.freeze(run.epoch,run.from,run.until); run.input=input; validateInput(run,input);
             var solver=new LocalReplicaSolver(); var initial=solver.solve(input.problem(),limits(run)); run.solverNanos.addAndGet(initial.durationNanos());
             if(initial.status()!=LocalSolution.Status.OPTIMAL) throw new IllegalStateException("initial solver: "+initial.status());
             var peers=new LinkedHashMap<String,String>(); run.peers.values().forEach(p->peers.put(p.peerId(),p.incarnation()));
@@ -188,7 +189,7 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
                 || forecast.query().generation()!=identity.generation() || !forecast.query().function().equals(f.id()) || !forecast.query().start().equals(run.from) || !forecast.query().end().equals(run.until)) throw new IllegalArgumentException("forecast missing or incompatible");
         }
     }
-    private EpochOutcome outcome(Run run,EpochOutcome.Status status,int rounds,String reason) { run.closed=true; if(running && active.get()==run && !run.cancelled) lastClosed.set(run); run.inbox.clear(); run.waiting.clear(); return new EpochOutcome(run.epoch,status,run.ledger==null?null:run.ledger.snapshot(),System.nanoTime()-run.started,run.solverNanos.get(),rounds,reason); }
+    private EpochOutcome outcome(Run run,EpochOutcome.Status status,int rounds,String reason) { run.closed=true; if(running && active.get()==run && !run.cancelled) lastClosed.set(run); run.inbox.clear(); run.waiting.clear(); return new EpochOutcome(run.epoch,status,run.ledger==null?null:run.ledger.snapshot(),System.nanoTime()-run.started,run.solverNanos.get(),rounds,reason,run.input); }
     private AuctionMessage.Envelope envelope(Run run) { return new AuctionMessage.Envelope(1,run.local.peerId(),run.local.incarnation(),run.epoch,run.round,UUID.randomUUID().toString(),run.ledger.snapshot().revision(),run.from,run.until); }
     private void hello(Run run) throws Exception {
         var missing=new HashSet<>(run.peers.keySet());

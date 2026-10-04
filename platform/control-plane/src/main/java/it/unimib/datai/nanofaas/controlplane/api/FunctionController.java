@@ -47,6 +47,8 @@ public class FunctionController {
                             "FUNCTION_ALREADY_EXISTS", "Function already exists")));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiErrorResponses.body("BAD_REQUEST", ex.getMessage()));
+        } catch (it.unimib.datai.nanofaas.controlplane.registry.ReplicaOwnershipException ex) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponses.body("REPLICA_CONTROL_OWNED",ex.getMessage()));
         } catch (IllegalStateException ex) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                     .body(ApiErrorResponses.body("SERVICE_UNAVAILABLE", ex.getMessage()));
@@ -74,6 +76,8 @@ public class FunctionController {
                         ApiErrorResponses.body("FUNCTION_NOT_FOUND", "Function not found"));
             }
             return ResponseEntity.status(HttpStatus.OK).<Object>body(FunctionResponse.from(updated.get()));
+        } catch (it.unimib.datai.nanofaas.controlplane.registry.ReplicaOwnershipException ex) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponses.body("REPLICA_CONTROL_OWNED",ex.getMessage()));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiErrorResponses.body("BAD_REQUEST", ex.getMessage()));
         }
@@ -92,6 +96,8 @@ public class FunctionController {
             return ResponseEntity.status(HttpStatus.OK).<Object>body(new ReplicaResponse(name, replicas.get()));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiErrorResponses.body("BAD_REQUEST", ex.getMessage()));
+        } catch (it.unimib.datai.nanofaas.controlplane.registry.ReplicaOwnershipException ex) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponses.body("REPLICA_CONTROL_OWNED",ex.getMessage()));
         } catch (IllegalStateException ex) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                     .body(ApiErrorResponses.body("SERVICE_UNAVAILABLE", ex.getMessage()));
@@ -114,6 +120,8 @@ public class FunctionController {
             ));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiErrorResponses.body("BAD_REQUEST", ex.getMessage()));
+        } catch (it.unimib.datai.nanofaas.controlplane.registry.ReplicaOwnershipException ex) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponses.body("REPLICA_CONTROL_OWNED",ex.getMessage()));
         } catch (IllegalStateException ex) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                     .body(ApiErrorResponses.body("SERVICE_UNAVAILABLE", ex.getMessage()));

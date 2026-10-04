@@ -8,7 +8,7 @@ import tools.jackson.core.StreamReadConstraints;
 import tools.jackson.core.json.JsonFactory;
 /** One bounded batch is also the explicit closure barrier for its round phase. */
 public final class AuctionCodec {
-    public enum Phase { HELLO,OFFERS,BIDS,GRANTS,CHECK }
+    public enum Phase { HELLO,OFFERS,BIDS,GRANTS,CHECK,READY,READY_ACK }
     public record Batch(int schemaVersion,String senderId,String incarnation,long epoch,int round,Phase phase,Instant startsAt,Instant endsAt,boolean changed,List<AuctionMessage> messages) {
         public Batch {
             bounded(senderId); bounded(incarnation);
@@ -16,7 +16,7 @@ public final class AuctionCodec {
             messages=List.copyOf(messages);
             for(var message:messages) {
                 if((phase==Phase.OFFERS && message.kind()!=AuctionMessage.Kind.OFFER) || (phase==Phase.BIDS && message.kind()!=AuctionMessage.Kind.BID)
-                    || (phase==Phase.GRANTS && message.kind()!=AuctionMessage.Kind.GRANT) || phase==Phase.HELLO || phase==Phase.CHECK) throw new IllegalArgumentException("message does not match phase");
+                    || (phase==Phase.GRANTS && message.kind()!=AuctionMessage.Kind.GRANT) || ((phase==Phase.READY || phase==Phase.READY_ACK) && message.kind()!=AuctionMessage.Kind.READY_CONFIRM) || phase==Phase.HELLO || phase==Phase.CHECK) throw new IllegalArgumentException("message does not match phase");
                 validate(message,senderId,incarnation,epoch,round,startsAt,endsAt);
             }
         }

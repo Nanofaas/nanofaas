@@ -332,6 +332,10 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
         }
     }
 
+    @Override public boolean supportsPhysicalReplicaControl(String functionName) {
+        var state=states.get(functionName); return state!=null && !state.pendingRemoval && isOneShot(state.spec);
+    }
+
     @Override
     public void setReplicas(String functionName, int replicas) {
         ReentrantLock lock = locks.get(functionName);
@@ -406,12 +410,12 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
      */
     private void pushProxyConfig(FunctionState state) {
         if(isOneShot(state.spec)) {
-            if(!Integer.valueOf(1).equals(state.spec.concurrency()) || !"1".equals(state.spec.env().get("NANOFAAS_MAX_CONCURRENT_HANDLERS")))
-                throw new IllegalArgumentException("One-shot requires concurrency=1 and NANOFAAS_MAX_CONCURRENT_HANDLERS=1");
+            if((state.spec.concurrency()==null || state.spec.concurrency()<1) || !"1".equals(state.spec.env().get("NANOFAAS_MAX_CONCURRENT_HANDLERS")))
+                throw new IllegalArgumentException("One-shot requires a positive function concurrency cap and NANOFAAS_MAX_CONCURRENT_HANDLERS=1");
             state.proxy.enablePhysicalSlots();
         }
         state.proxy.updateBackends(state.replicas.values().stream().map(ReplicaState::baseUrl).toList());
-        int perReplicaConcurrency = state.spec.concurrency() == null
+        int perReplicaConcurrency = isOneShot(state.spec) ? 1 : state.spec.concurrency() == null
                 ? DEFAULT_CONCURRENCY
                 : Math.max(1, state.spec.concurrency());
         int maxInFlight = Math.max(1, state.replicas.size() * perReplicaConcurrency);

@@ -392,5 +392,11 @@ class FunctionControllerTest {
                 spec,
                 new DeploymentMetadata(requested, effective, backend, degradationReason)
         );
+    }    @Test void ownedReplicaControlReturnsConflictForManualScalingAndPatch() {
+        when(functionService.setReplicas("echo",2)).thenThrow(new it.unimib.datai.nanofaas.controlplane.registry.ReplicaOwnershipException("echo"));
+        webClient.put().uri("/v1/functions/echo/replicas").bodyValue(java.util.Map.of("replicas",2)).exchange().expectStatus().isEqualTo(409).expectBody().jsonPath("$.error").isEqualTo("REPLICA_CONTROL_OWNED");
+        when(functionService.update(org.mockito.ArgumentMatchers.eq("echo"),org.mockito.ArgumentMatchers.any())).thenThrow(new it.unimib.datai.nanofaas.controlplane.registry.ReplicaOwnershipException("echo"));
+        webClient.patch().uri("/v1/functions/echo").bodyValue(java.util.Map.of("concurrency",2)).exchange().expectStatus().isEqualTo(409);
     }
+
 }

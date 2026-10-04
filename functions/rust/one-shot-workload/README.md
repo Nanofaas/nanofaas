@@ -17,7 +17,9 @@ This workload supports NanoFaaS validation and later environment-specific calibr
 it is not itself a calibrated scientific service profile.
 
 For a managed container function, set `NANOFAAS_ONE_SHOT_PROFILE=true` in its environment,
-function concurrency to 1 and `NANOFAAS_MAX_CONCURRENT_HANDLERS=1`.
+the function concurrency cap high enough for all ready replicas, use
+`STATIC_PER_POD` with `targetInFlightPerPod=1`, and set
+`NANOFAAS_MAX_CONCURRENT_HANDLERS=1` in each replica.
 The managed proxy checks `/runtime/status` before admitting a backend. It retains
 occupied slots after response timeout or disconnect and polls bounded per-execution
 proofs. Uncertain/expired observations quarantine the slot. Downscale first excludes

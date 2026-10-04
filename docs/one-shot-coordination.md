@@ -38,3 +38,23 @@ are retained. Different repeated content is rejected. A new P2P incarnation,
 expired clock-health sample, stop, deadline or concurrent preparation invalidates
 the run. No old callback can install a new active run. Three real local P2P services
 and disturbed in-memory transport tests verify the wire boundary and these cases.
+
+Physical preparation owns a generation-fenced replica lease. Every other replica
+writer and function PATCH receives an ownership conflict while this lease exists.
+Renewal changes the capability token; expiry invalidates mutations and never frees
+occupied resources. Only a positive physical drain to zero releases ownership.
+
+The function concurrency setting is a node-wide ceiling sufficient for all ready
+replicas. Each physical replica uses SDK `NANOFAAS_MAX_CONCURRENT_HANDLERS=1` and
+`STATIC_PER_POD` with `targetInFlightPerPod=1`. The lease holder sets effective
+admission from fresh ready counts. A zero-ready plan provides no local capacity,
+independently of the ordinary admission state's legacy minimum of one.
+
+The actuator reduces old replicas only after physical drain, and keeps capacity
+reserved by still-valid commitments. It accounts existing replicas before adding
+new ones, so adjacent windows cannot oversubscribe memory during preparation.
+Desired replicas never constitute readiness. READY subsets may only reduce
+provisional assignments; the buyer installs a grant after the seller acknowledges
+READY_ACK. Lost replies retain seller reservations until window expiry and drain.
+The immutable routing plan activates at the agreed UTC start, provided clock,
+incarnation and generations remain valid. Unready capacity becomes cloud residual.

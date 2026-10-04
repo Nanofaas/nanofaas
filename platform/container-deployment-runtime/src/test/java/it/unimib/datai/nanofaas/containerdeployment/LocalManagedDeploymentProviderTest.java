@@ -80,7 +80,7 @@ class LocalManagedDeploymentProviderTest {
         when(adapter.runContainer(any())).thenReturn(new ManagedContainer("nanofaas-echo-r1",1,"http://127.0.0.1:1234",true));
         when(proxy.endpointUrl()).thenReturn("http://127.0.0.1:19090/invoke");
         var base=spec();
-        var spec=new FunctionSpec(base.name(),base.image(),base.command(),Map.of("NANOFAAS_ONE_SHOT_PROFILE","true","NANOFAAS_MAX_CONCURRENT_HANDLERS","1"),base.resources(),base.timeoutMs(),1,base.queueSize(),base.maxRetries(),null,base.executionMode(),base.runtimeMode(),null,base.scalingConfig());
+        var spec=new FunctionSpec(base.name(),base.image(),base.command(),Map.of("NANOFAAS_ONE_SHOT_PROFILE","true","NANOFAAS_MAX_CONCURRENT_HANDLERS","1"),base.resources(),base.timeoutMs(),4,base.queueSize(),base.maxRetries(),null,base.executionMode(),base.runtimeMode(),null,base.scalingConfig());
         var provider=new LocalManagedDeploymentProvider("test-runtime",new LocalDeploymentSettings(null,Duration.ofMillis(100),Duration.ofMillis(10)),adapter,probe,factoryReturning(proxy));
         provider.provision(spec);
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> provider.setReplicas("echo",0)).isInstanceOf(IllegalStateException.class);
