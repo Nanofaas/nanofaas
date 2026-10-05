@@ -44,3 +44,7 @@ include 'functions:java:figlet'
 include 'functions:java:qr-code'
 include 'functions:java:handler-envelope'
 include 'functions:java:binary-envelope'
+
+include('p2p-api'); project(':p2p-api').projectDir = file('platform/p2p-api')
+
+include('forecasting-api'); project(':forecasting-api').projectDir = file('platform/forecasting-api')

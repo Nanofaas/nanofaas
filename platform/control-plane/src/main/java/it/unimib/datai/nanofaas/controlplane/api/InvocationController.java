@@ -1,5 +1,12 @@
 package it.unimib.datai.nanofaas.controlplane.api;
 
+import it.unimib.datai.nanofaas.forecastingapi.ExternalArrivalObserver;
+import it.unimib.datai.nanofaas.forecastingapi.ExternalArrival;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionCapacityRegistry;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
+import java.time.Instant;
+import java.util.UUID;
 import it.unimib.datai.nanofaas.common.model.ExecutionStatus;
 import it.unimib.datai.nanofaas.common.model.InvocationRequest;
 import it.unimib.datai.nanofaas.common.model.InvocationResponse;
@@ -52,9 +59,34 @@ public class InvocationController {
             "x-nanofaas-offload-hop", "idempotency-key", "traceparent", "tracestate");
 
     private final InvocationService invocationService;
+    private final ExternalArrivalObserver arrivalObserver;
+    private final FunctionCapacityRegistry capacity;
 
     public InvocationController(InvocationService invocationService) {
+        this(invocationService, ExternalArrivalObserver.noOp(), null);
+    }
+
+    @Autowired
+    public InvocationController(InvocationService invocationService,
+            ObjectProvider<ExternalArrivalObserver> observer,
+            ObjectProvider<FunctionCapacityRegistry> capacity) {
+        this(invocationService, observer.getIfAvailable(ExternalArrivalObserver::noOp), capacity.getIfAvailable());
+    }
+
+    public InvocationController(InvocationService invocationService,
+            ExternalArrivalObserver observer,
+            FunctionCapacityRegistry capacity) {
         this.invocationService = invocationService;
+        this.arrivalObserver = observer;
+        this.capacity = capacity;
+    }
+
+    private void observeExternalArrival(String name, boolean forwarded) {
+        if (forwarded || capacity == null) return;
+        var generation = capacity.activeGeneration(name);
+        if (generation == null) return;
+        arrivalObserver.record(new ExternalArrival(
+                name, generation.id(), Instant.now(), UUID.randomUUID().toString()));
     }
 
     /**
@@ -76,7 +108,7 @@ public class InvocationController {
                 return;
             }
             String key = name.toLowerCase(Locale.ROOT);
-            if (!EXCLUDED_REQUEST_HEADERS.contains(key) && !connectionNominated.contains(key)) {
+            if (!key.startsWith("x-nanofaas-offload-") && !key.equals("x-nanofaas-execution-node") && !EXCLUDED_REQUEST_HEADERS.contains(key) && !connectionNominated.contains(key)) {
                 // Application headers stay single-valued, as they were: the first value wins.
                 // Only the Connection nominations need every occurrence, and they are read above.
                 filtered.put(key, values.getFirst());
@@ -130,11 +162,14 @@ public class InvocationController {
             @RequestHeader(value = "traceparent", required = false) String traceparent,
             @RequestHeader(value = "tracestate", required = false) String tracestate,
             @RequestHeader MultiValueMap<String, String> allHeaders) {
-        OffloadContext offloadContext = new OffloadContext(offloadHop != null, traceparent, tracestate);
+        OffloadContext offloadContext = OffloadContext.fromHttp(offloadHop,traceparent,tracestate,allHeaders);
+        if(offloadContext.invalidMetadata()) return Mono.just(ResponseEntity.badRequest().body(Map.of("error","INVALID_ONE_SHOT_METADATA")));
         InvocationRequest requestWithHeaders = withCallerHeaders(request, allHeaders);
+        observeExternalArrival(name, offloadContext.offloadedHop());
         // defer: a synchronously thrown service exception must flow through onErrorResume
         return Mono.defer(() -> invocationService.invokeSyncReactive(name, requestWithHeaders, idempotencyKey, traceId, timeoutMs, offloadContext))
                 .map(InvocationController::toResponse)
+                .onErrorResume(it.unimib.datai.nanofaas.controlplane.offload.PlannedRouteRejectedException.class, ex -> Mono.just(ResponseEntity.status(429).body(Map.of("error","ONE_SHOT_ADMISSION_REJECTED","message",ex.getMessage()))))
                 .onErrorResume(FunctionNotFoundException.class, ex ->
                         Mono.just(ResponseEntity.notFound().<Object>build()))
                 .onErrorResume(SyncQueueRejectedException.class, ex ->
@@ -188,6 +223,7 @@ public class InvocationController {
         if (invocation.offloadedTarget() != null) {
             builder.header("X-NanoFaaS-Offloaded", invocation.offloadedTarget());
         }
+        if(invocation.executionNode()!=null) builder.header(it.unimib.datai.nanofaas.common.runtime.ResponseHeaderPolicy.EXECUTION_NODE_HEADER,invocation.executionNode());
         return builder.body(response);
     }
 
@@ -200,6 +236,8 @@ public class InvocationController {
             @RequestHeader(value = "X-Trace-Id", required = false) String traceId,
             @RequestHeader MultiValueMap<String, String> allHeaders) {
         InvocationRequest requestWithHeaders = withCallerHeaders(request, allHeaders);
+        boolean forwarded = allHeaders.keySet().stream().anyMatch("X-NanoFaaS-Offload-Hop"::equalsIgnoreCase);
+        observeExternalArrival(name, forwarded);
         return Mono.fromCallable(() -> invocationService.invokeAsync(name, requestWithHeaders, idempotencyKey, traceId))
                 .subscribeOn(Schedulers.boundedElastic())
                 .map(response -> ResponseEntity.status(HttpStatus.ACCEPTED).<Object>body(response))

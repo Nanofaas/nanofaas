@@ -67,7 +67,7 @@ class InternalScalerTargetAwareScalingTest {
         clock = new MutableClock(START_EPOCH_MS);
         lenient().when(deploymentCoordinator.generationOf(any())).thenAnswer(invocation ->
                 wakeUpResources.generation(invocation.getArgument(0, RegisteredFunction.class).name()));
-        lenient().when(deploymentCoordinator.setReplicas(any(), any(), anyInt())).thenReturn(true);
+        lenient().when(deploymentCoordinator.setReplicas(any(FunctionGeneration.class), any(), anyInt())).thenReturn(true);
     }
 
     @AfterEach
@@ -111,7 +111,7 @@ class InternalScalerTargetAwareScalingTest {
         // Round 1: 5 ready -> recommended ceil(2*5)=10, scale up to 10.
         when(deploymentCoordinator.observeReplicaStatus(target)).thenReturn(observed(5, 5));
         scaler.scalingLoop();
-        verify(deploymentCoordinator).setReplicas(any(), eq(target), eq(10));
+        verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target), eq(10));
 
         // Round 2 (cooldown elapsed): rollout at 2 ready, pressure unchanged -> recommendation 4.
         clock.advanceMillis(31_000);
@@ -119,7 +119,7 @@ class InternalScalerTargetAwareScalingTest {
         scaler.scalingLoop();
 
         // No further command: the already-requested 10 is not walked back to 4.
-        verify(deploymentCoordinator, times(1)).setReplicas(any(), any(), anyInt());
+        verify(deploymentCoordinator, times(1)).setReplicas(any(FunctionGeneration.class), any(), anyInt());
     }
 
     @Test
@@ -146,7 +146,7 @@ class InternalScalerTargetAwareScalingTest {
         when(deploymentCoordinator.observeReplicaStatus(target)).thenReturn(observed(10, 5));
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator, never()).setReplicas(any(), any(), anyInt());
+        verify(deploymentCoordinator, never()).setReplicas(any(FunctionGeneration.class), any(), anyInt());
     }
 
     @Test
@@ -163,7 +163,7 @@ class InternalScalerTargetAwareScalingTest {
 
         scaler().scalingLoop();
 
-        verify(deploymentCoordinator).setReplicas(any(), eq(target), eq(0));
+        verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target), eq(0));
     }
 
     @Test
@@ -181,12 +181,12 @@ class InternalScalerTargetAwareScalingTest {
 
         InternalScaler scaler = scaler();
         scaler.scalingLoop();
-        verify(deploymentCoordinator, never()).setReplicas(any(), any(), anyInt());
+        verify(deploymentCoordinator, never()).setReplicas(any(FunctionGeneration.class), any(), anyInt());
 
         clock.advanceMillis(ScalingProgressTracker.PROGRESS_WINDOW_MS + 1);
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator).setReplicas(any(), eq(target), eq(2));
+        verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target), eq(2));
     }
 
     @Test
@@ -199,11 +199,11 @@ class InternalScalerTargetAwareScalingTest {
         when(deploymentCoordinator.observeReplicaStatus(target)).thenReturn(observed(1, 1));
         when(metricsReader.readMetric("echo", scaling.metrics().get(0))).thenReturn(15.0);
         // The function is removed between the scaler's lookup and the apply: setReplicas no-ops.
-        when(deploymentCoordinator.setReplicas(any(), eq(target), eq(3))).thenReturn(false);
+        when(deploymentCoordinator.setReplicas(any(FunctionGeneration.class), eq(target), eq(3))).thenReturn(false);
 
         assertThatCode(() -> scaler().scalingLoop()).doesNotThrowAnyException();
 
-        verify(deploymentCoordinator).setReplicas(any(), eq(target), eq(3));
+        verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target), eq(3));
     }
 
     @Test
@@ -222,7 +222,7 @@ class InternalScalerTargetAwareScalingTest {
 
         scaler().scalingLoop();
 
-        verify(deploymentCoordinator, never()).setReplicas(any(), eq(target), eq(0));
+        verify(deploymentCoordinator, never()).setReplicas(any(FunctionGeneration.class), eq(target), eq(0));
     }
 
     @Test
@@ -244,7 +244,7 @@ class InternalScalerTargetAwareScalingTest {
         clock.advanceMillis(ScalingProgressTracker.PROGRESS_WINDOW_MS + 1);
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator, never()).setReplicas(any(), any(), anyInt());
+        verify(deploymentCoordinator, never()).setReplicas(any(FunctionGeneration.class), any(), anyInt());
     }
     /** A fresh observation carrying the replica counts the periodic path would read. */
     private static ReplicaObservation observed(int desiredReplicas, int readyReplicas) {

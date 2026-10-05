@@ -7,6 +7,9 @@ import it.unimib.datai.nanofaas.containerdeployment.LocalManagedDeploymentProvid
 import it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxyFactory;
 
 public class ContainerLocalDeploymentProvider extends LocalManagedDeploymentProvider {
+    private final String namespace;
+    @Override protected String containerNamePrefix(String function) { return namespace==null?super.containerNamePrefix(function):namespace+"-"+super.containerNamePrefix(function); }
+    @Override protected String containerFunctionLabel(String function) { return namespace==null?function:namespace+"/"+function; }
     static final String BACKEND_ID = "container-local";
 
     public ContainerLocalDeploymentProvider(ContainerRuntimeAdapter adapter,
@@ -16,5 +19,6 @@ public class ContainerLocalDeploymentProvider extends LocalManagedDeploymentProv
         super(BACKEND_ID, new LocalDeploymentSettings(properties.callbackUrl(),
                 properties.readinessTimeout(), properties.readinessPollInterval()),
                 adapter, endpointProbe, proxyFactory);
+        namespace=properties.namespace();
     }
 }

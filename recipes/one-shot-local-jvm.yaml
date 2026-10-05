@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=../platform/gradle-plugin/src/main/resources/recipes/recipe-v2.schema.json
+schemaVersion: 2
+name: one-shot-local-jvm
+controlPlane:
+  modules: [offload, forecasting, p2p-discovery, container-deployment-provider, build-metadata]
+  build: {mode: jvm}
+  jvm: {args: ["-XX:+UseSerialGC", "-Xmx256m"]}
+  container: {image: control-plane-one-shot-jvm}
+  config:
+    nanofaas:
+      deployment: {default-backend: container-local}
+      container-local: {runtime-adapter: docker-java}
+      forecasting: {enabled: true, node-id: configure-per-node, provider: ORACLE, window: 1s, max-age: 5m}
+      p2p: {enabled: true, admin: {enabled: true}}
+      offload:
+        one-shot: {enabled: true, auction-budget: 5s, peer-timeout: 500ms, solver-budget: 1s, preparation-budget: 5s, clock-threshold: 100ms, clock-max-age: 5m}
+functions:
+  - name: one-shot-workload
+    sdk: rust
+    container: {image: nanofaas-one-shot-workload}

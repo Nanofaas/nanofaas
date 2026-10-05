@@ -11,6 +11,7 @@ dependencyManagement {
 
 dependencies {
     implementation project(':control-plane-spi')
+    api project(':p2p-api')
     implementation project(':workload-metrics')
     implementation 'org.springframework.boot:spring-boot-starter'
     implementation 'org.springframework.boot:spring-boot-starter-webflux'

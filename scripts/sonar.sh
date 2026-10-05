@@ -151,7 +151,7 @@ run_rust() {
         -Dsonar.projectKey=nanofaas-rust -Dsonar.projectName="nanofaas Rust" \
         -Dsonar.sources=runtimes/watchdog,sdks/rust,functions/rust \
         -Dsonar.exclusions="**/target/**" \
-        -Dsonar.rust.cargo.manifestPaths=runtimes/watchdog/Cargo.toml,sdks/rust/Cargo.toml,functions/rust/word-stats/Cargo.toml,functions/rust/json-transform/Cargo.toml,functions/rust/roman-numeral/Cargo.toml,functions/rust/qr-code/Cargo.toml
+        -Dsonar.rust.cargo.manifestPaths=runtimes/watchdog/Cargo.toml,sdks/rust/Cargo.toml,functions/rust/word-stats/Cargo.toml,functions/rust/json-transform/Cargo.toml,functions/rust/roman-numeral/Cargo.toml,functions/rust/qr-code/Cargo.toml,functions/rust/one-shot-workload/Cargo.toml
 }
 
 run_go() {

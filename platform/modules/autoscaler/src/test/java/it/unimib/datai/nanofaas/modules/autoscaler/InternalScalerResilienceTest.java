@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.modules.autoscaler;
 
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
+
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.RuntimeMode;
@@ -53,7 +55,7 @@ class InternalScalerResilienceTest {
         );
         lenient().when(deploymentCoordinator.generationOf(any())).thenAnswer(invocation ->
                 wakeUpResources.generation(invocation.getArgument(0, RegisteredFunction.class).name()));
-        lenient().when(deploymentCoordinator.setReplicas(any(), any(), anyInt())).thenReturn(true);
+        lenient().when(deploymentCoordinator.setReplicas(any(FunctionGeneration.class), any(), anyInt())).thenReturn(true);
     }
 
     @AfterEach
@@ -90,7 +92,7 @@ class InternalScalerResilienceTest {
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator).setReplicas(any(), eq(target(healthy)), eq(3));
+        verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target(healthy)), eq(3));
     }
 
     @Test
@@ -113,10 +115,10 @@ class InternalScalerResilienceTest {
         scaler.scalingLoop();
 
         // No decision at all for the unreadable one: not a scale to zero, not a scale to anything.
-        verify(deploymentCoordinator, never()).setReplicas(any(), eq(target(unreadable)), anyInt());
+        verify(deploymentCoordinator, never()).setReplicas(any(FunctionGeneration.class), eq(target(unreadable)), anyInt());
         verify(metricsReader, never()).readMetric(eq("unreadable"), any());
         // ... and the loop still visits the function behind it in the same pass.
-        verify(deploymentCoordinator).setReplicas(any(), eq(target(healthy)), eq(3));
+        verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target(healthy)), eq(3));
     }
 
     @Test
@@ -138,8 +140,8 @@ class InternalScalerResilienceTest {
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator, never()).setReplicas(any(), eq(target(broken)), anyInt());
-        verify(deploymentCoordinator).setReplicas(any(), eq(target(healthy)), eq(3));
+        verify(deploymentCoordinator, never()).setReplicas(any(FunctionGeneration.class), eq(target(broken)), anyInt());
+        verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target(healthy)), eq(3));
     }
 
     private RegisteredFunction spec(String name, ScalingConfig scalingConfig) {

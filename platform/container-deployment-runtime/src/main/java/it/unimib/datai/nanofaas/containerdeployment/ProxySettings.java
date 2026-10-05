@@ -30,6 +30,8 @@ public record ProxySettings(
                 responseWriteTimeout, DEFAULT_RESPONSE_WRITE_TIMEOUT, "responseWriteTimeout");
     }
 
+    public Duration executionProbeTimeout() { return Duration.ofSeconds(2); }
+    public Duration executionProbeRetention() { return Duration.ofMinutes(10); }
     public static ProxySettings defaults() {
         return new ProxySettings(0, 0, 0, null, null);
     }

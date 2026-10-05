@@ -7,8 +7,13 @@ public record DispatchResult(
         InvocationResult result,
         boolean coldStart,
         Long initDurationMs,
-        Instant retryNotBefore
+        Instant retryNotBefore,
+        boolean handlerExecuted
 ) {
+    public DispatchResult(InvocationResult result, boolean coldStart, Long initDurationMs, Instant retryNotBefore) {
+        this(result, coldStart, initDurationMs, retryNotBefore, false);
+    }
+
     public DispatchResult(InvocationResult result, boolean coldStart, Long initDurationMs) {
         this(result, coldStart, initDurationMs, null);
     }

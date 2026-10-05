@@ -39,7 +39,7 @@ final class OutcomeWeigher {
      * Payload, key and container backing storage are counted separately. The legacy
      * COMPACT_OUTCOME_BYTES setting calibrates a default budget, not an object size.
      */
-    private static final int FIXED_OVERHEAD_BYTES = 128;
+    private static final int FIXED_OVERHEAD_BYTES = 136;
     private static final int REFERENCE_BYTES = 16;
     private static final int MAX_DEPTH = 4;
     private static final int MAX_ELEMENTS = 256;
@@ -145,6 +145,7 @@ final class OutcomeWeigher {
             Object output = walk(outcome.output(), 0);
             Object headers = walk(outcome.headers(), 0);
             walk(outcome.encoding(), 0);
+            walk(outcome.executionNode(), 0);
             if (outcome.error() != null) {
                 walk(outcome.error().code(), 0);
                 walk(outcome.error().message(), 0);
@@ -164,7 +165,8 @@ final class OutcomeWeigher {
                     outcome.statusCode(),
                     outcome.initDurationMs(),
                     outcome.coldStart(),
-                    outcome.readable()
+                    outcome.readable(),
+                    outcome.executionNode()
             );
         }
 

@@ -8,6 +8,7 @@ import java.time.Duration;
 import java.util.Map;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -42,6 +43,7 @@ import org.springframework.test.web.reactive.server.WebTestClient;
                 "nanofaas.scheduler.strategy=per-function"
         })
 @AutoConfigureWebTestClient
+@ExtendWith(ThreadDumpOnTimeout.class)
 class SchedulerSwitchInvocationEquivalenceTest {
 
     @Autowired

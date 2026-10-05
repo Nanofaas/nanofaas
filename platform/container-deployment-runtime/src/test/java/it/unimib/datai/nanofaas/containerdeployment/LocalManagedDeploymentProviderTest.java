@@ -74,6 +74,22 @@ class LocalManagedDeploymentProviderTest {
         verify(proxy).updateBackends(List.of("http://10.90.0.5:8080"));
     }
 
+    @Test
+    void oneShotDownscaleCannotRemoveContainerWithoutPhysicalDrain() {
+        var adapter=mock(ContainerRuntimeAdapter.class); var probe=mock(EndpointProbe.class); var proxy=mock(ManagedFunctionProxy.class);
+        when(adapter.runContainer(any())).thenReturn(new ManagedContainer("nanofaas-echo-r1",1,"http://127.0.0.1:1234",true));
+        when(proxy.endpointUrl()).thenReturn("http://127.0.0.1:19090/invoke");
+        var base=spec();
+        var spec=new FunctionSpec(base.name(),base.image(),base.command(),Map.of("NANOFAAS_ONE_SHOT_PROFILE","true","NANOFAAS_MAX_CONCURRENT_HANDLERS","1"),base.resources(),base.timeoutMs(),4,base.queueSize(),base.maxRetries(),null,base.executionMode(),base.runtimeMode(),null,base.scalingConfig());
+        var provider=new LocalManagedDeploymentProvider("test-runtime",new LocalDeploymentSettings(null,Duration.ofMillis(100),Duration.ofMillis(10)),adapter,probe,factoryReturning(proxy));
+        provider.provision(spec);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> provider.setReplicas("echo",0)).isInstanceOf(IllegalStateException.class);
+        verify(proxy).beginDrain("http://127.0.0.1:1234");
+        verify(adapter,org.mockito.Mockito.never()).removeContainer(anyString());
+        when(proxy.awaitDrained(anyString(),any())).thenReturn(true);
+        provider.setReplicas("echo",0); verify(adapter).removeContainer("nanofaas-echo-r1");
+    }
+
     private static FunctionSpec spec() {
         return new FunctionSpec("echo", "img:latest", List.of(), Map.of(), null,
                 30_000, 4, 100, 3, null, ExecutionMode.DEPLOYMENT, RuntimeMode.HTTP, null,

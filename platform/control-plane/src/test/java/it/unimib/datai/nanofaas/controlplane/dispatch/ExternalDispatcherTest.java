@@ -142,6 +142,24 @@ class ExternalDispatcherTest {
         }
     }
 
+    @Test
+    void onlyPhysicalManagedProxyCanAttachExecutionEvidenceToAnError() throws Exception {
+        for(boolean physical:List.of(true,false)) {
+            try(var server=new MockWebServer()) {
+                server.enqueue(new MockResponse().setResponseCode(500)
+                        .addHeader("X-NanoFaaS-Handler-Executed","true")
+                        .setBody("{\"error\":{\"code\":\"HANDLER_ERROR\",\"message\":\"failed\"}}"));
+                server.start();
+                var spec=new FunctionSpec("fn","image",null,physical?Map.of("NANOFAAS_ONE_SHOT_PROFILE","true"):Map.of(),null,1000,1,10,0,
+                        server.url("/invoke").toString(),ExecutionMode.DEPLOYMENT,null,null,null);
+                var task=new InvocationTask("physical-error","fn",spec,new InvocationRequest("input",null),null,null,RETRY_NOW,1,InvocationKind.SYNC);
+                var result=new ExternalDispatcher(WebClient.create()).dispatch(task).get(5,TimeUnit.SECONDS);
+                assertFalse(result.result().success());
+                assertEquals(physical,result.handlerExecuted());
+            }
+        }
+    }
+
     private static InvocationTask taskFor(MockWebServer server) {
         FunctionSpec spec = new FunctionSpec("retry-fn", "image", null, Map.of(), null, 1000,
                 1, 10, 3, server.url("/invoke").toString(), ExecutionMode.EXTERNAL, null, null, null);

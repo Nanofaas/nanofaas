@@ -13,6 +13,8 @@ const MAXIMUM_CALLBACK_ATTEMPTS: usize = 10;
 /// Durations are read from the environment as milliseconds.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RuntimeSettings {
+    pub occupancy_max_terminal_records: usize,
+    pub occupancy_retention: Duration,
     pub port: u16,
     pub execution_id: Option<String>,
     pub trace_id: Option<String>,
@@ -34,6 +36,8 @@ pub struct RuntimeSettings {
 impl Default for RuntimeSettings {
     fn default() -> Self {
         Self {
+            occupancy_max_terminal_records: 10_000,
+            occupancy_retention: Duration::from_secs(600),
             port: 8080,
             execution_id: None,
             trace_id: None,
@@ -70,6 +74,8 @@ impl RuntimeSettings {
             Duration::from_millis(text(name).and_then(|v| v.parse().ok()).unwrap_or(0))
         };
         Self {
+            occupancy_max_terminal_records: count("NANOFAAS_OCCUPANCY_MAX_TERMINAL_RECORDS"),
+            occupancy_retention: millis("NANOFAAS_OCCUPANCY_RETENTION"),
             port: text("PORT").and_then(|v| v.parse().ok()).unwrap_or(0),
             execution_id: text("EXECUTION_ID"),
             trace_id: text("TRACE_ID"),
@@ -107,6 +113,16 @@ impl RuntimeSettings {
         )
         .min(max_pending_callback_bytes);
         Self {
+            occupancy_max_terminal_records: bounded(
+                self.occupancy_max_terminal_records,
+                d.occupancy_max_terminal_records,
+                100_000,
+            ),
+            occupancy_retention: bounded(
+                self.occupancy_retention,
+                d.occupancy_retention,
+                Duration::from_secs(3600),
+            ),
             port,
             handler_timeout: bounded(
                 self.handler_timeout,

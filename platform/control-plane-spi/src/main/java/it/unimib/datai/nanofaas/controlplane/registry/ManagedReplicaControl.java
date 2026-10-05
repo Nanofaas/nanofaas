@@ -18,6 +18,15 @@ import it.unimib.datai.nanofaas.controlplane.deployment.ReplicaObservation;
  */
 public interface ManagedReplicaControl {
 
+    default java.util.Optional<ReplicaControlLease> acquireReplicaLease(FunctionGeneration generation,String owner,java.time.Duration ttl) { return java.util.Optional.empty(); }
+    default java.util.Optional<ReplicaControlLease> renewReplicaLease(ReplicaControlLease lease,java.time.Duration ttl) { return java.util.Optional.empty(); }
+    default boolean setReplicas(ReplicaControlLease lease,ManagedDeploymentTarget target,int replicas) { return false; }
+    default boolean drainAndReleaseReplicaLease(ReplicaControlLease lease,ManagedDeploymentTarget target) { return false; }
+    /** Sets the node-wide admission cap from physically ready replicas, under the same generation fence. */
+    default boolean setReadyConcurrency(ReplicaControlLease lease,int readyReplicas) { return false; }
+    default boolean ownsReplicaLease(ReplicaControlLease lease) { return false; }
+    default boolean supportsPhysicalReplicaControl(ManagedDeploymentTarget target) { return false; }
+
     /** The latest observation for {@code target}: fresh, stale, or explicitly unavailable. */
     ReplicaObservation observeReplicaStatus(ManagedDeploymentTarget target);
 

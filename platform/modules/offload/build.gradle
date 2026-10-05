@@ -13,12 +13,16 @@ dependencies {
     // P21: contract library only; the core implementation stays on the test classpath.
     implementation project(':common')
     implementation project(':control-plane-spi')
+    implementation project(':p2p-api')
+    implementation project(':forecasting-api')
 
     implementation 'org.springframework.boot:spring-boot-starter'
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
     implementation 'io.micrometer:micrometer-core'
 
     testImplementation project(':control-plane')
+    testImplementation project(':container-deployment-runtime')
+    testImplementation project(':control-plane-modules:p2p-discovery')
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.0'
     testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
@@ -32,5 +36,21 @@ dependencies {
 }
 
 tasks.named('test') {
-    useJUnitPlatform()
+    useJUnitPlatform { excludeTags "one-shot-e2e" }
+}
+
+// The cluster test is explicit: missing Docker/image/native binary is a failed prerequisite.
+tasks.register('oneShotE2e', Test) {
+    description = 'Verify real three-edge and terminal-cloud one-shot processes with Rust containers'
+    group = 'verification'
+    dependsOn testClasses, ':control-plane:bootJar'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform { includeTags 'one-shot-e2e' }
+    maxParallelForks = 1
+    maxHeapSize = '768m'
+    systemProperty 'oneShot.repoRoot', rootProject.projectDir.absolutePath
+    systemProperty 'oneShot.controlPlaneBinary', System.getProperty('oneShot.controlPlaneBinary', '')
+    systemProperty 'oneShot.workloadImage', System.getProperty('oneShot.workloadImage', 'nanofaas-one-shot-workload')
+    outputs.upToDateWhen { false }
 }

@@ -70,6 +70,10 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
 
     @Override
     public void pullImage(String image) {
+        if(image.matches("sha256:[0-9a-f]{64}")) {
+            if(!image.equals(client.inspectImageCmd(image).exec().getId())) throw new IllegalStateException("local immutable image ID mismatch");
+            return;
+        }
         try {
             client.pullImageCmd(image).exec(new PullImageResultCallback()).awaitCompletion();
         } catch (InterruptedException _) {

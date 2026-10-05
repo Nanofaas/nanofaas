@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.modules.autoscaler;
 
 import it.unimib.datai.nanofaas.common.model.*;
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
 import it.unimib.datai.nanofaas.controlplane.registry.ManagedDeploymentCoordinator;
 import it.unimib.datai.nanofaas.controlplane.deployment.ManagedDeploymentTarget;
 import it.unimib.datai.nanofaas.controlplane.deployment.DeploymentWakeUpCoordinator;
@@ -60,7 +61,7 @@ class InternalScalerTest {
         wakeUpCoordinator = wakeUpResources.coordinator();
         lenient().when(deploymentCoordinator.generationOf(any())).thenAnswer(invocation ->
                 wakeUpResources.generation(invocation.getArgument(0, RegisteredFunction.class).name()));
-        lenient().when(deploymentCoordinator.setReplicas(any(), any(), anyInt())).thenReturn(true);
+        lenient().when(deploymentCoordinator.setReplicas(any(FunctionGeneration.class), any(), anyInt())).thenReturn(true);
         scaler = new InternalScaler(registry, metricsReader, deploymentCoordinator, PROPS, coldStartTracker, wakeUpCoordinator);
     }
 
@@ -108,7 +109,7 @@ class InternalScalerTest {
         scaler.scalingLoop();
 
         verify(deploymentCoordinator).observeReplicaStatus(target(spec));
-        verify(deploymentCoordinator).setReplicas(any(), eq(target(spec)), eq(3));
+        verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target(spec)), eq(3));
     }
 
     @Test
@@ -121,7 +122,7 @@ class InternalScalerTest {
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator, never()).setReplicas(any(), any(), anyInt());
+        verify(deploymentCoordinator, never()).setReplicas(any(FunctionGeneration.class), any(), anyInt());
         verify(deploymentCoordinator, never()).observeReplicaStatus(any());
     }
 
@@ -134,7 +135,7 @@ class InternalScalerTest {
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator, never()).setReplicas(any(), any(), anyInt());
+        verify(deploymentCoordinator, never()).setReplicas(any(FunctionGeneration.class), any(), anyInt());
     }
 
     @Test
@@ -145,7 +146,7 @@ class InternalScalerTest {
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator, never()).setReplicas(any(), any(), anyInt());
+        verify(deploymentCoordinator, never()).setReplicas(any(FunctionGeneration.class), any(), anyInt());
         verify(deploymentCoordinator, never()).observeReplicaStatus(any());
     }
 
@@ -159,7 +160,7 @@ class InternalScalerTest {
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator, never()).setReplicas(any(), any(), anyInt());
+        verify(deploymentCoordinator, never()).setReplicas(any(FunctionGeneration.class), any(), anyInt());
     }
 
     @Test
@@ -175,7 +176,7 @@ class InternalScalerTest {
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator, never()).setReplicas(any(), any(), anyInt());
+        verify(deploymentCoordinator, never()).setReplicas(any(FunctionGeneration.class), any(), anyInt());
     }
 
     @Test
@@ -191,7 +192,7 @@ class InternalScalerTest {
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator).setReplicas(any(), eq(target(spec)), eq(5));
+        verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target(spec)), eq(5));
     }
 
     @Test
@@ -208,7 +209,7 @@ class InternalScalerTest {
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator).setReplicas(any(), eq(target(spec)), eq(2));
+        verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target(spec)), eq(2));
     }
 
     @Test
@@ -224,7 +225,7 @@ class InternalScalerTest {
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator).setReplicas(any(), eq(target(spec)), eq(0));
+        verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target(spec)), eq(0));
     }
 
     @Test
@@ -240,7 +241,7 @@ class InternalScalerTest {
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator, never()).setReplicas(any(), eq(target(spec)), eq(0));
+        verify(deploymentCoordinator, never()).setReplicas(any(FunctionGeneration.class), eq(target(spec)), eq(0));
     }
 
     @Test
@@ -257,7 +258,7 @@ class InternalScalerTest {
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator).setReplicas(any(), eq(target(spec)), eq(0));
+        verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target(spec)), eq(0));
     }
 
     @Test
@@ -283,7 +284,7 @@ class InternalScalerTest {
                 await(releaseZero);
             }
             return true;
-        }).when(deploymentCoordinator).setReplicas(any(), eq(target), anyInt());
+        }).when(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target), anyInt());
 
         DeploymentWakeUpGate gate = new DeploymentWakeUpGate(
                 registry, deploymentCoordinator, wakeUpResources.generations(),
@@ -299,8 +300,8 @@ class InternalScalerTest {
         }
 
         var order = inOrder(deploymentCoordinator);
-        order.verify(deploymentCoordinator).setReplicas(any(), eq(target), eq(0));
-        order.verify(deploymentCoordinator).setReplicas(any(), eq(target), eq(1));
+        order.verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target), eq(0));
+        order.verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target), eq(1));
     }
 
     @Test
@@ -323,7 +324,7 @@ class InternalScalerTest {
 
         scaler.scalingLoop();
         scaler.scalingLoop();
-        verify(deploymentCoordinator, times(1)).setReplicas(any(), eq(target(spec)), eq(3));
+        verify(deploymentCoordinator, times(1)).setReplicas(any(FunctionGeneration.class), eq(target(spec)), eq(3));
 
         Method removeFunctionState = InternalScaler.class.getDeclaredMethod("removeFunctionState", String.class);
         removeFunctionState.setAccessible(true);
@@ -331,7 +332,7 @@ class InternalScalerTest {
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator, times(2)).setReplicas(any(), eq(target(spec)), eq(3));
+        verify(deploymentCoordinator, times(2)).setReplicas(any(FunctionGeneration.class), eq(target(spec)), eq(3));
     }
     private static ManagedDeploymentTarget target(RegisteredFunction function) {
         return new ManagedDeploymentTarget(function.name(), function.deploymentMetadata().deploymentBackend());

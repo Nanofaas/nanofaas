@@ -24,7 +24,7 @@ import java.time.InstantSource;
  * distinguishes a fresh reading from a stale one from none at all; wake-up and lifecycle paths force
  * a fresh read through {@link #getFreshReplicaStatus}.</p>
  */
-public class ManagedDeploymentCoordinator implements ManagedReplicaControl, AutoCloseable {
+public final class ManagedDeploymentCoordinator implements ManagedReplicaControl, AutoCloseable {
 
     private final DeploymentProviderResolver deploymentProviderResolver;
     private final FunctionRegistry registry;
@@ -32,6 +32,8 @@ public class ManagedDeploymentCoordinator implements ManagedReplicaControl, Auto
     private final FunctionCapacityRegistry generations;
     private final ReplicaStatusSnapshot snapshot;
     private final boolean ownsSnapshot;
+    private java.util.function.LongSupplier nanoTime=System::nanoTime;
+    private final java.util.Map<String,ReplicaControlLease> replicaOwners=new java.util.concurrent.ConcurrentHashMap<>();
 
     @Autowired
     public ManagedDeploymentCoordinator(DeploymentProviderResolver deploymentProviderResolver,
@@ -72,6 +74,80 @@ public class ManagedDeploymentCoordinator implements ManagedReplicaControl, Auto
         this.generations = generations;
         this.snapshot = snapshot;
         this.ownsSnapshot = ownsSnapshot;
+    }
+
+    public ManagedDeploymentCoordinator(DeploymentProviderResolver resolver,FunctionRegistry registry,FunctionOperationLocks locks,
+            FunctionCapacityRegistry generations,ReplicaStatusSnapshot snapshot,java.util.function.LongSupplier nanoTime) {
+        this(resolver,registry,locks,generations,snapshot,false); this.nanoTime=java.util.Objects.requireNonNull(nanoTime);
+    }
+    private ReplicaControlLease ownerOf(String function) {
+        var lease=replicaOwners.get(function);
+        if(lease!=null && !lease.generation().equals(generations.activeGeneration(function))) {
+            replicaOwners.remove(function,lease); return null;
+        }
+        return lease;
+    }
+    public void requireReplicaControlUnowned(String function) {
+        locks.withLock(function,()-> { if(ownerOf(function)!=null) throw new ReplicaOwnershipException(function); return null; });
+    }
+    private long leaseDeadline(java.time.Duration ttl) {
+        if(ttl==null || ttl.isZero() || ttl.isNegative() || ttl.compareTo(java.time.Duration.ofDays(1))>0) throw new IllegalArgumentException("positive lease TTL up to one day required");
+        return nanoTime.getAsLong()+ttl.toNanos();
+    }
+    @Override public java.util.Optional<ReplicaControlLease> acquireReplicaLease(FunctionGeneration expected,String owner,java.time.Duration ttl) {
+        long deadline=leaseDeadline(ttl);
+        return locks.withLock(expected.functionName(),()-> {
+            var function=registry.getRegistered(expected.functionName()).orElse(null);
+            if(!expected.equals(generations.activeGeneration(expected.functionName())) || function==null || function.managedDeploymentTarget().isEmpty() || ownerOf(expected.functionName())!=null) return java.util.Optional.empty();
+            registry.applicationState().requireAvailable(expected.functionName());
+            var lease=new ReplicaControlLease(expected,java.util.UUID.randomUUID().toString(),owner,deadline);
+            replicaOwners.put(expected.functionName(),lease); return java.util.Optional.of(lease);
+        });
+    }
+    @Override public java.util.Optional<ReplicaControlLease> renewReplicaLease(ReplicaControlLease lease,java.time.Duration ttl) {
+        long deadline=leaseDeadline(ttl);
+        return locks.withLock(lease.generation().functionName(),()-> {
+            if(!lease.equals(ownerOf(lease.generation().functionName())) || nanoTime.getAsLong()>=lease.deadlineNanos()) return java.util.Optional.empty();
+            var renewed=new ReplicaControlLease(lease.generation(),java.util.UUID.randomUUID().toString(),lease.owner(),deadline);
+            replicaOwners.put(lease.generation().functionName(),renewed); return java.util.Optional.of(renewed);
+        });
+    }
+    @Override public boolean setReplicas(ReplicaControlLease lease,ManagedDeploymentTarget target,int replicas) {
+        if(replicas<0 || !lease.generation().functionName().equals(target.functionName())) throw new IllegalArgumentException("invalid leased target");
+        return locks.withLock(target.functionName(),()-> {
+            if(!lease.equals(ownerOf(target.functionName())) || nanoTime.getAsLong()>=lease.deadlineNanos()) return false;
+            return setReplicasLocked(target,replicas,lease);
+        });
+    }
+    @Override public boolean drainAndReleaseReplicaLease(ReplicaControlLease lease,ManagedDeploymentTarget target) {
+        if(!lease.generation().functionName().equals(target.functionName())) throw new IllegalArgumentException("invalid leased target");
+        return locks.withLock(target.functionName(),()-> {
+            if(!lease.equals(replicaOwners.get(target.functionName()))) return false;
+            if(!lease.generation().equals(generations.activeGeneration(target.functionName()))) {
+                replicaOwners.remove(target.functionName(),lease); return true;
+            }
+            // The expired owner may drain, but cannot grow or reuse the expired capability.
+            if(!setReplicasLocked(target,0,lease)) return false;
+            var status=getFreshReplicaStatus(target);
+            if(status.desiredReplicas()!=0 || status.readyReplicas()!=0) return false;
+            replicaOwners.remove(target.functionName(),lease); return true;
+        });
+    }
+    @Override public boolean setReadyConcurrency(ReplicaControlLease lease,int readyReplicas) {
+        if(readyReplicas<0) throw new IllegalArgumentException("negative ready replicas");
+        var name=lease.generation().functionName();
+        return locks.withLock(name,()-> {
+            if(!lease.equals(ownerOf(name)) || nanoTime.getAsLong()>=lease.deadlineNanos() || readyReplicas>generations.configuredConcurrency(name)) return false;
+            // Zero remains closed by the active routing plan; the legacy admission state has a minimum of one.
+            generations.setEffectiveConcurrency(name,Math.max(1,readyReplicas));
+            return true;
+        });
+    }
+    @Override public boolean ownsReplicaLease(ReplicaControlLease lease) {
+        return locks.withLock(lease.generation().functionName(),()->lease.equals(ownerOf(lease.generation().functionName())) && nanoTime.getAsLong()<lease.deadlineNanos());
+    }
+    @Override public boolean supportsPhysicalReplicaControl(ManagedDeploymentTarget target) {
+        return requireProvider(target).supportsPhysicalReplicaControl(target.functionName());
     }
 
     /**
@@ -149,7 +225,10 @@ public class ManagedDeploymentCoordinator implements ManagedReplicaControl, Auto
         });
     }
 
-    private boolean setReplicasLocked(ManagedDeploymentTarget target, int replicas) {
+    private boolean setReplicasLocked(ManagedDeploymentTarget target,int replicas) { return setReplicasLocked(target,replicas,null); }
+    private boolean setReplicasLocked(ManagedDeploymentTarget target, int replicas,ReplicaControlLease caller) {
+        var owner=ownerOf(target.functionName());
+        if(owner!=null && !owner.equals(caller)) throw new ReplicaOwnershipException(target.functionName());
         FunctionApplicationState applicationState = registry.applicationState();
         applicationState.requireAvailable(target.functionName());
         RegisteredFunction existing = registry.getRegistered(target.functionName()).orElse(null);

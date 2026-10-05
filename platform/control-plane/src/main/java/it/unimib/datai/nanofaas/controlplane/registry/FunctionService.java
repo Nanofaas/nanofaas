@@ -174,6 +174,7 @@ public class FunctionService {
                 return Optional.empty();
             }
 
+            managedDeploymentCoordinator.requireReplicaControlUnowned(name);
             FunctionSpec updatedSpec = resolver.resolve(request.applyTo(existing.spec()));
             RegisteredFunction updated = new RegisteredFunction(updatedSpec, existing.deploymentMetadata());
             boolean applicationPending = applicationState.isUpdatePending(updated);

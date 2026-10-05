@@ -70,6 +70,10 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
     private static final byte[] RESPONSE_TOO_LARGE = "Proxy response body exceeds the configured limit".getBytes(StandardCharsets.UTF_8);
     private static final byte[] BUFFER_CAPACITY_EXHAUSTED = "Proxy buffer capacity exhausted".getBytes(StandardCharsets.UTF_8);
 
+    private final ReplicaSlots replicaSlots = new ReplicaSlots();
+    private final java.util.Map<String,String> runtimeIncarnations = new java.util.concurrent.ConcurrentHashMap<>();
+    private final AtomicBoolean physicalSlots = new AtomicBoolean();
+    private final RuntimeExecutionProbe executionProbe;
     private final String bindHost;
     private final HttpServer server;
     private final ExecutorService executor;
@@ -145,6 +149,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
         this.httpClient = httpClient == null
                 ? HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()
                 : httpClient;
+        this.executionProbe = new HttpRuntimeExecutionProbe(this.httpClient, proxyProperties.executionProbeTimeout());
         try {
             this.server = HttpServer.create(new InetSocketAddress(this.bindHost, 0), 0);
         } catch (IOException e) {
@@ -166,7 +171,44 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
 
     @Override
     public void updateBackends(List<String> backendBaseUrls) {
-        backends.set(backendBaseUrls == null ? List.of() : List.copyOf(backendBaseUrls));
+        var ready = backendBaseUrls == null ? List.<String>of() : List.copyOf(backendBaseUrls);
+        if(physicalSlots.get()) {
+            var incarnations = new java.util.LinkedHashMap<String,String>();
+            for(var backend:ready) incarnations.put(backend, runtimeIncarnations.computeIfAbsent(backend, id -> executionProbe.eligibleIncarnation(URI.create(id))));
+            replicaSlots.update(incarnations);
+            var occupiedBackends=replicaSlots.occupied().stream().map(ReplicaLease::backend).collect(java.util.stream.Collectors.toSet());
+            runtimeIncarnations.keySet().removeIf(id -> !ready.contains(id) && !occupiedBackends.contains(id));
+        }
+        backends.set(ready);
+    }
+
+    @Override
+    public synchronized void enablePhysicalSlots() {
+        if(physicalSlots.get()) return;
+        var incarnations = new java.util.LinkedHashMap<String,String>();
+        for(var backend:backends.get()) incarnations.put(backend, executionProbe.eligibleIncarnation(URI.create(backend)));
+        runtimeIncarnations.putAll(incarnations); replicaSlots.update(incarnations); physicalSlots.set(true);
+    }
+    @Override public boolean backendReady(String backendId) { return !physicalSlots.get() || replicaSlots.routable(backendId); }
+    @Override public void beginDrain(String backendId) { if(physicalSlots.get()) replicaSlots.beginDrain(backendId); }
+    @Override public boolean awaitDrained(String backendId, Duration timeout) {
+        if(!physicalSlots.get()) return true;
+        long deadline=System.nanoTime()+timeout.toNanos();
+        do {
+            for(var lease:replicaSlots.occupied()) if(lease.backend().equals(backendId))
+                lease.markReleased(executionProbe.observe(URI.create(lease.backend()),lease.executionId()));
+            if(replicaSlots.drained(backendId)) return true;
+            try { Thread.sleep(50); } catch(InterruptedException interrupted) { Thread.currentThread().interrupt(); return false; }
+        } while(System.nanoTime()<deadline);
+        return false;
+    }
+    private void observeUntilReleased(ReplicaLease lease) {
+        long deadline=System.nanoTime()+proxyProperties.executionProbeRetention().toNanos();
+        while(!closed.get() && System.nanoTime()<deadline) {
+            if(lease.markReleased(executionProbe.observe(URI.create(lease.backend()),lease.executionId()))) return;
+            try { Thread.sleep(100); } catch(InterruptedException interrupted) { Thread.currentThread().interrupt(); return; }
+        }
+        // Uncertain executions remain quarantined. Retention expiry is not evidence of release.
     }
 
     @Override
@@ -265,8 +307,19 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
                 send(exchange, 503, BUSY);
                 return;
             }
+            ReplicaLease lease = null;
             try {
-                forward(exchange, selectBackend(currentBackends));
+                String backend;
+                if(physicalSlots.get()) {
+                    String id=exchange.getRequestHeaders().getFirst("X-Execution-Id");
+                    if(id==null || id.isBlank() || id.length()>256) { send(exchange,400,"Execution identity required".getBytes(StandardCharsets.UTF_8)); return; }
+                    String attempt=exchange.getRequestHeaders().getFirst("X-Dispatch-Attempt");
+                    if(attempt==null) { attempt=java.util.UUID.randomUUID().toString(); exchange.getRequestHeaders().set("X-Dispatch-Attempt",attempt); }
+                    lease=replicaSlots.tryAcquire(id,attempt).orElse(null);
+                    if(lease==null) { send(exchange,503,BUSY); return; }
+                    backend=lease.backend();
+                } else backend=selectBackend(currentBackends);
+                forward(exchange, backend, lease);
             } catch (InboundReadTimeoutException _) {
                 send(exchange, 408, REQUEST_TIMEOUT);
             } catch (BodyLimitExceededException e) {
@@ -286,6 +339,13 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
             } catch (IOException | RuntimeException e) { // NOSONAR (java:S2147): the connect-timeout catch must precede HttpTimeoutException
                 send(exchange, 502, proxyError(e));
             } finally {
+                if(lease!=null && !lease.cancelBeforeDispatch()) {
+                    var observationLease=lease;
+                    try { executor.execute(() -> observeUntilReleased(observationLease)); }
+                    catch(java.util.concurrent.RejectedExecutionException shutdown) {
+                        // Shutdown preserves the occupied lease; no timer or rejected probe releases it.
+                    }
+                }
                 inFlight.decrementAndGet();
             }
         } finally {
@@ -319,7 +379,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
         return true;
     }
 
-    private void forward(HttpExchange exchange, String backend) throws IOException, InterruptedException {
+    private void forward(HttpExchange exchange, String backend, ReplicaLease lease) throws IOException, InterruptedException {
         BufferedBody requestBody = readInboundBody(exchange);
         try {
             URI target = URI.create(backend + exchange.getRequestURI().getPath()
@@ -330,7 +390,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
             // Keep both physical-byte leases until the helper's whole request/response graph can
             // become unreachable; publisher content is the request array, not a third byte owner.
             try (var _ = bufferBudget.reserve(requestBody.length())) {
-                forwardRetainingRequestGraph(exchange, target, requestBody);
+                forwardRetainingRequestGraph(exchange, target, requestBody, lease);
             }
         } finally {
             requestBody.close();
@@ -339,7 +399,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
 
     private void forwardRetainingRequestGraph(HttpExchange exchange,
                                               URI target,
-                                              BufferedBody requestBody)
+                                              BufferedBody requestBody, ReplicaLease lease)
             throws IOException, InterruptedException {
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(target)
                 .timeout(singleHopTimeout.get())
@@ -347,9 +407,10 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
                         requestBody.bytes(), 0, requestBody.length()));
         copyRequestHeaders(exchange, requestBuilder);
 
+        if(lease!=null) lease.markDispatched();
         BackendResponse backendResponse = readBackendResponse(requestBuilder.build());
         try (BufferedBody responseBody = backendResponse.body()) {
-            writeBackendResponse(exchange, backendResponse.response(), responseBody);
+            writeBackendResponse(exchange, backendResponse.response(), responseBody, lease);
         }
     }
 
@@ -410,8 +471,15 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
 
     private void writeBackendResponse(HttpExchange exchange,
                                       HttpResponse<InputStream> response,
-                                      BufferedBody body) throws IOException {
+                                      BufferedBody body, ReplicaLease lease) throws IOException {
         copyResponseHeaders(response, exchange);
+        if(lease!=null && response.statusCode()>=400) {
+            var proof=executionProbe.observe(URI.create(lease.backend()),lease.executionId());
+            if(lease.hasExecutionEvidence(proof)) {
+                exchange.getResponseHeaders().set(it.unimib.datai.nanofaas.common.runtime.ResponseHeaderPolicy.HANDLER_EXECUTED_HEADER,"true");
+            }
+            lease.markReleased(proof);
+        }
         try (Deadline deadline = deadline(
                 proxyProperties.responseWriteTimeout(), exchange::close)) {
             try {
@@ -686,7 +754,8 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
 
     private static void copyResponseHeaders(HttpResponse<?> response, HttpExchange exchange) {
         for (Map.Entry<String, List<String>> entry : response.headers().map().entrySet()) {
-            if ("content-length".equalsIgnoreCase(entry.getKey())
+            if (it.unimib.datai.nanofaas.common.runtime.ResponseHeaderPolicy.HANDLER_EXECUTED_HEADER.equalsIgnoreCase(entry.getKey())
+                    || "content-length".equalsIgnoreCase(entry.getKey())
                     || "connection".equalsIgnoreCase(entry.getKey())
                     || "transfer-encoding".equalsIgnoreCase(entry.getKey())) {
                 continue;

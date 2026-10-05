@@ -36,4 +36,108 @@
         <Or><Field name="settings"/><Field name="table"/></Or>
         <Bug pattern="EI_EXPOSE_REP2"/>
     </Match>
+
+    <!-- Injected live collaborators; copying would detach catalog, observations or shared state. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.controlplane.api.InvocationController"/>
+        <Field name="capacity"/>
+        <Method name="&lt;init&gt;"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+    <!-- Injected live collaborators; copying would detach catalog, observations or shared state. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.modules.p2pdiscovery.DefaultPeerTransport"/>
+        <Field name="table"/>
+        <Method name="&lt;init&gt;"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+    <!-- Injected live collaborators; copying would detach catalog, observations or shared state. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.modules.forecasting.ForecastController"/>
+        <Field name="store"/>
+        <Method name="&lt;init&gt;"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+    <!-- Injected live collaborators; copying would detach catalog, observations or shared state. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.modules.forecasting.ForecastObservationLifecycle"/>
+        <Field name="replicas"/>
+        <Method name="&lt;init&gt;"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+    <!-- Injected live collaborators; copying would detach catalog, observations or shared state. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.modules.offload.oneshot.actuation.ReplicaPlanActuator"/>
+        <Field name="control"/>
+        <Method name="&lt;init&gt;"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+    <!-- Injected live collaborators; copying would detach catalog, observations or shared state. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotController"/>
+        <Or><Field name="operations"/><Field name="profiles"/></Or>
+        <Method name="&lt;init&gt;"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+    <!-- Injected live collaborators; copying would detach catalog, observations or shared state. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotOperations"/>
+        <Or><Field name="configs"/><Field name="meters"/><Field name="profiles"/></Or>
+        <Method name="&lt;init&gt;"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+    <!-- Injected live collaborators; copying would detach catalog, observations or shared state. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.modules.offload.oneshot.api.ProfileEpochInputFactory"/>
+        <Or><Field name="configs"/><Field name="control"/><Field name="profiles"/></Or>
+        <Method name="&lt;init&gt;"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+    <!-- Constructor takes defensive immutable copies, including insertion-ordered snapshot maps. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.modules.forecasting.OracleForecastStore$Trace"/>
+        <Field name="entries"/>
+        <Method name="entries"/>
+        <Bug pattern="EI_EXPOSE_REP"/>
+    </Match>
+    <!-- Constructor takes defensive immutable copies, including insertion-ordered snapshot maps. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.modules.offload.oneshot.solver.LocalProblem"/>
+        <Field name="functions"/>
+        <Method name="functions"/>
+        <Bug pattern="EI_EXPOSE_REP"/>
+    </Match>
+    <!-- Constructor takes defensive immutable copies, including insertion-ordered snapshot maps. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.modules.offload.oneshot.auction.AuctionSnapshot"/>
+        <Or><Field name="assignments"/><Field name="desiredReplicas"/><Field name="identities"/><Field name="offers"/><Field name="peerIncarnations"/><Field name="prices"/></Or>
+        <Or><Method name="assignments"/><Method name="desiredReplicas"/><Method name="identities"/><Method name="offers"/><Method name="peerIncarnations"/><Method name="prices"/></Or>
+        <Bug pattern="EI_EXPOSE_REP"/>
+    </Match>
+    <!-- These fields use the same instance monitor as all existing execution state transitions. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord"/>
+        <Or><Method name="pinPlannedRoute"/><Method name="plannedRoute"/><Method name="attributeExecutionNode"/><Method name="executionNode"/></Or>
+        <Bug pattern="USO_UNSAFE_METHOD_SYNCHRONIZATION"/>
+    </Match>
+    <!-- All increments hold the instance monitor; volatile permits fenced callback reads. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.modules.offload.oneshot.actuation.ReplicaPlanActuator"/>
+        <Field name="lifecycle"/>
+        <Or><Method name="start"/><Method name="stop"/></Or>
+        <Bug pattern="VO_VOLATILE_INCREMENT"/>
+    </Match>
+    <!-- All increments hold the instance monitor; volatile permits fenced callback reads. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.modules.offload.oneshot.coordination.EpochCoordinator"/>
+        <Field name="lifecycle"/>
+        <Or><Method name="start"/><Method name="stop"/></Or>
+        <Bug pattern="VO_VOLATILE_INCREMENT"/>
+    </Match>
+    <!-- RAM divided by per-replica RAM intentionally floors physical integer capacity before curve bounds. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.modules.offload.oneshot.solver.LocalReplicaSolver"/>
+        <Method name="solve"/>
+        <Bug pattern="ICAST_IDIV_CAST_TO_DOUBLE"/>
+    </Match>
 </FindBugsFilter>

@@ -102,8 +102,7 @@ public final class ReactiveInvocationCoordinator {
         // ExecutionRecord.toOutcome() keeps the payload for keyed executions.
         Outcome settled = lookup.settledOutcome();
         if (settled != null) {
-            return Mono.just(SyncInvocation.local(
-                    responseMapper.terminalResponse(lookup.settledExecutionId(), settled)));
+            return Mono.just(new SyncInvocation(responseMapper.terminalResponse(lookup.settledExecutionId(),settled),null,settled.executionNode()));
         }
 
         // The execution concluded but its outcome payload was evicted: the replay does
@@ -116,7 +115,7 @@ public final class ReactiveInvocationCoordinator {
         ExecutionRecord executionRecord = lookup.executionRecord();
         InvocationResponse replay = responseMapper.terminalResponse(executionRecord);
         if (replay != null) {
-            return Mono.just(SyncInvocation.local(replay));
+            return Mono.just(new SyncInvocation(replay,null,executionRecord.executionNode()));
         }
 
         int timeoutMs = timeoutOverrideMs == null ? spec.timeoutMs() : timeoutOverrideMs;
@@ -140,7 +139,7 @@ public final class ReactiveInvocationCoordinator {
                     if (result.error() != null && "QUEUE_TIMEOUT".equals(result.error().code())) {
                         throw new SyncQueueRejectedException(SyncQueueRejectReason.TIMEOUT, syncQueueGateway.retryAfterSeconds());
                     }
-                    return new SyncInvocation(responseMapper.toResponse(executionRecord, result), offloadedTarget.get());
+                    return new SyncInvocation(responseMapper.toResponse(executionRecord, result), offloadedTarget.get(),executionRecord.executionNode());
                 })
                 .onErrorResume(java.util.concurrent.TimeoutException.class, ex -> {
                     // Per-waiter timeout (ADR 0001 §5, invariant I1): this waiter's own budget
@@ -175,6 +174,30 @@ public final class ReactiveInvocationCoordinator {
                        FunctionSpec spec,
                        OffloadContext context,
                        AtomicReference<String> offloadedTarget) {
+        it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute route;
+        if (offloadGateway.hasPlannedRouting(spec)) {
+            // Calibration hashes describe dispatch JSON, not the retained array tree.
+            // Account for this temporary representation through the existing input lease.
+            try (var input = executionRecord.openPhysicalInput(executionRecord.task())) {
+                route = offloadGateway.planRoute(input.task(), context);
+            }
+        } else {
+            route = offloadGateway.planRoute(executionRecord.task(), context);
+        }
+        // Existing external gateways and Mockito mocks may have no planned decision.
+        if(route!=null && route.kind()!=it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.LEGACY) {
+            executionRecord.pinPlannedRoute(route);
+            switch(route.kind()) {
+                case REJECT -> throw new it.unimib.datai.nanofaas.controlplane.offload.PlannedRouteRejectedException(route.reason());
+                case LOCAL -> admitLocally(executionRecord);
+                case REMOTE -> {
+                    if(context.offloadedHop()) throw new it.unimib.datai.nanofaas.controlplane.offload.PlannedRouteRejectedException("second hop forbidden");
+                    startOffload(executionRecord,spec,OffloadTrigger.EAGER,context,offloadedTarget);
+                }
+                default -> throw new IllegalStateException("unexpected planned route");
+            }
+            return;
+        }
         boolean offloadable = !context.offloadedHop() && offloadGateway.enabled();
         if (offloadable && offloadGateway.shouldOffloadEagerly(spec)) {
             startOffload(executionRecord, spec, OffloadTrigger.EAGER, context, offloadedTarget);
@@ -201,7 +224,7 @@ public final class ReactiveInvocationCoordinator {
      * async queue never throws.
      */
     public boolean queueFullMeansRefusal(FunctionSpec spec) {
-        if (syncQueueGateway.enabled() || enqueuer.queueStrategy() != InvocationEnqueuer.QueueStrategy.FUNCTION_QUEUE) {
+        if (offloadGateway.hasPlannedRouting(spec) || syncQueueGateway.enabled() || enqueuer.queueStrategy() != InvocationEnqueuer.QueueStrategy.FUNCTION_QUEUE) {
             return false;
         }
         return !offloadGateway.enabled() || !offloadGateway.shouldOffloadEagerly(spec);
@@ -231,7 +254,8 @@ public final class ReactiveInvocationCoordinator {
                               OffloadTrigger trigger,
                               OffloadContext context,
                               AtomicReference<String> offloadedTarget) {
-        String target = offloadGateway.targetUrl(spec);
+        var route=executionRecord.plannedRoute();
+        String target = route!=null && route.kind()==it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.REMOTE?route.targetUrl():offloadGateway.targetUrl(spec);
         offloadedTarget.set(target);
         // Bypasses the local queue entirely: no local concurrency slots are consumed,
         // so completion goes through the offload-specific path (no slot release, no retry).
@@ -244,8 +268,12 @@ public final class ReactiveInvocationCoordinator {
         }
         java.util.concurrent.CompletableFuture<InvocationResult> remote;
         try {
-            remote = offloadGateway.invokeRemote(
-                    physicalInput.task(), trigger, context, spec.timeoutMs()).toFuture();
+            remote = route!=null && route.kind()==it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.REMOTE
+                ?offloadGateway.invokePlannedRemote(physicalInput.task(),route,context,spec.timeoutMs()).map(answer->{
+                    if(route.executionNode().equals(answer.executionNode())) executionRecord.attributeExecutionNode(answer.executionNode());
+                    return answer.result();
+                }).toFuture()
+                :offloadGateway.invokeRemote(physicalInput.task(),trigger,context,spec.timeoutMs()).toFuture();
         } catch (RuntimeException | Error failure) { // NOSONAR (java:S1181): owned resources must be released or failed on an Error too
             physicalInput.close();
             throw failure;

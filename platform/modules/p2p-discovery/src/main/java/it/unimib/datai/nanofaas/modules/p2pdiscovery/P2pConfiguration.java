@@ -34,6 +34,14 @@ public class P2pConfiguration {
     }
 
     @Bean
+    DefaultPeerTransport peerTransport(PeerTable table, P2pService service,
+            @org.springframework.beans.factory.annotation.Value("${nanofaas.p2p.invocation-uri:}") String uri,
+            @org.springframework.beans.factory.annotation.Value("${nanofaas.p2p.max-concurrent-requests:4}") int concurrency) {
+        return new DefaultPeerTransport(table, service::transportSession,
+                uri.isBlank() ? null : java.net.URI.create(uri), concurrency);
+    }
+
+    @Bean
     P2pAdminGate p2pAdminGate(P2pProperties props) {
         return new P2pAdminGate(props);
     }

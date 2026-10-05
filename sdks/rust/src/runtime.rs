@@ -95,6 +95,7 @@ impl ColdStart {
 }
 
 pub(crate) struct Shared {
+    pub occupancy: Arc<crate::occupancy::Occupancy>,
     pub settings: RuntimeSettings,
     pub handlers: HashMap<String, ErasedHandler>,
     pub limits: Arc<Limits>,
@@ -136,6 +137,12 @@ impl Runtime {
         let dispatcher = Dispatcher::new(&settings, client, metrics.callback_drops.clone());
         Self {
             shared: Arc::new(Shared {
+                occupancy: crate::occupancy::Occupancy::new(
+                    settings.occupancy_max_terminal_records,
+                    settings.occupancy_retention,
+                    metrics.active_handlers.clone(),
+                    metrics.occupancy_duration.clone(),
+                ),
                 limits: Limits::new(settings.max_concurrent_handlers),
                 settings,
                 handlers: HashMap::new(),
@@ -242,6 +249,11 @@ impl Runtime {
 
     pub(crate) fn router(&self) -> Router {
         Router::new()
+            .route(
+                "/runtime/executions/{executionId}",
+                axum::routing::get(execution_status),
+            )
+            .route("/runtime/status", axum::routing::get(runtime_status))
             .route("/invoke", any(invoke::invoke))
             .route("/health", any(health))
             .route("/metrics", any(render_metrics))
@@ -342,6 +354,35 @@ async fn shutdown_signal() {
         () = terminate => {}
     }
 }
+async fn execution_status(
+    State(shared): State<Arc<Shared>>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Response {
+    match shared.occupancy.get(&id) {
+        Some(status) => json_response(
+            StatusCode::OK,
+            &serde_json::to_value(status).expect("finite execution status"),
+        ),
+        None => json_response(
+            StatusCode::NOT_FOUND,
+            &serde_json::json!({"state": "UNKNOWN"}),
+        ),
+    }
+}
+
+async fn runtime_status(State(shared): State<Arc<Shared>>) -> Response {
+    json_response(
+        StatusCode::OK,
+        &serde_json::json!({
+            "schemaVersion": 1, "incarnation": shared.occupancy.incarnation,
+            "physicalReleaseProof": true, "maxConcurrentHandlers": shared.settings.max_concurrent_handlers,
+            "activeHandlers": shared.limits.snapshot().active_handlers,
+            "maxTerminalRecords": shared.settings.occupancy_max_terminal_records,
+            "retentionMs": shared.settings.occupancy_retention.as_millis()
+        }),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

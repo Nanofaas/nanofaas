@@ -54,6 +54,9 @@ public interface ManagedDeploymentProvider {
      */
     void deprovision(String functionName);
 
+    /** True only for deployments enforcing one physical handler per replica with positive release proof. */
+    default boolean supportsPhysicalReplicaControl(String functionName) { return false; }
+
     void setReplicas(String functionName, int replicas);
 
     int getReadyReplicas(String functionName);

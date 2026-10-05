@@ -36,6 +36,7 @@ where
 {
     Arc::new(move |ctx, input_json, max_output_bytes| {
         let input: I = serde_json::from_str(input_json)?;
+        ctx.mark_handler_started();
         let output = handler(ctx, input);
         Ok(Box::pin(async move {
             Ok(produce(output.await?, max_output_bytes))

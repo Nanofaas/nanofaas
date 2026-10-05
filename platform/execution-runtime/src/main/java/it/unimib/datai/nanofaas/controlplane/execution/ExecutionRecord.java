@@ -68,6 +68,17 @@ public class ExecutionRecord {
     private Integer statusCode;
     private Map<String, String> headers;
     private String encoding;
+    private it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute plannedRoute;
+    private String executionNode;
+    public synchronized void pinPlannedRoute(it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute route) {
+        if(plannedRoute!=null && !plannedRoute.equals(route)) throw new IllegalStateException("execution route already pinned");plannedRoute=route;
+    }
+    public synchronized it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute plannedRoute() { return plannedRoute; }
+    public synchronized String executionNode() { return executionNode; }
+    public synchronized void attributeExecutionNode(String node) {
+        if(node!=null && !node.isBlank() && node.length()<=256 && !isTerminal()) executionNode=node;
+    }
+
 
     /**
      * The capacity lease the current attempt owns, set at dispatch and released exactly once
@@ -225,7 +236,8 @@ public class ExecutionRecord {
                 statusCode == null ? Outcome.NO_STATUS : statusCode,
                 initDurationMs == null ? Outcome.NO_INIT : initDurationMs,
                 coldStart,
-                readableAfterFinishing
+                readableAfterFinishing,
+                executionNode
         );
     }
 
@@ -275,6 +287,7 @@ public class ExecutionRecord {
         if (!canTransition(ExecutionState.SUCCESS)) {
             return;
         }
+        if(plannedRoute!=null && plannedRoute.kind()==it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.LOCAL) executionNode=plannedRoute.executionNode();
         this.state = ExecutionState.SUCCESS;
         this.finishedAt = timeSource.instant();
         this.finishedAtNanos = timeSource.nanoTime();

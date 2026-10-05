@@ -16,6 +16,8 @@ public final class PeerMessaging {
         Mono<byte[]> request(String address, String topic, byte[] payload, Duration timeout);
 
         void handle(String topic, PeerCluster.Handler handler);
+
+        default void unhandle(String topic, PeerCluster.Handler handler) { }
     }
 
     @FunctionalInterface
@@ -34,6 +36,7 @@ public final class PeerMessaging {
             public Mono<Void> send(String a, String t, byte[] p) { return c.send(a, t, p); }
             public Mono<byte[]> request(String a, String t, byte[] p, Duration d) { return c.request(a, t, p, d); }
             public void handle(String t, PeerCluster.Handler h) { c.handle(t, h); }
+            public void unhandle(String t, PeerCluster.Handler h) { c.unhandle(t, h); }
         };
     }
 
@@ -71,14 +74,20 @@ public final class PeerMessaging {
     }
 
     public void subscribe(String topic, Receiver receiver) {
+        subscribeScoped(topic,receiver);
+    }
+
+    public it.unimib.datai.nanofaas.p2papi.PeerSubscription subscribeScoped(String topic,Receiver receiver) {
         checkTopic(topic);
-        wire.handle(topic, (senderAddress, payload) -> {
+        PeerCluster.Handler handler=(senderAddress, payload) -> {
             String id = table.idOf(senderAddress).orElse(null);
             if (id == null || !table.isActive(id)) {
                 return Mono.error(new PeerCluster.Dropped());   // not an active neighbor: no reply, nothing logged
             }
             return receiver.onMessage(id, payload);
-        });
+        };
+        wire.handle(topic,handler);
+        return () -> wire.unhandle(topic,handler);
     }
 
     private Mono<String> activeAddress(String peerId) {

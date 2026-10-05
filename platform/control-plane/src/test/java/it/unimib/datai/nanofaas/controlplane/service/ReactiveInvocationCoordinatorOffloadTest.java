@@ -72,6 +72,35 @@ class ReactiveInvocationCoordinatorOffloadTest {
         }).when(completionHandler).failOffloadedExecution(anyString(), any(OffloadFailedException.class));
     }
 
+    @Test void plannedRemoteFailurePinsDestinationAndNeverFallsBack() {
+        var spec=spec("fn-fail",null);var lookup=lookup(spec);wireOffloadCompletion(lookup);
+        var route=new it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute(it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.REMOTE,"http://b:8080","b",1,"grant",Map.of(),null);
+        when(offloadGateway.planRoute(any(),any())).thenReturn(route);
+        when(offloadGateway.invokePlannedRemote(any(),eq(route),any(),anyInt())).thenReturn(Mono.error(new OffloadFailedException(route.targetUrl(),false,"sent then disconnected")));
+        assertThatThrownBy(()->coordinator(null).invoke(lookup,spec,1000).block()).isInstanceOf(OffloadFailedException.class);
+        assertThat(lookup.executionRecord().plannedRoute()).isEqualTo(route);
+        verify(offloadGateway,org.mockito.Mockito.times(1)).invokePlannedRemote(any(),eq(route),any(),anyInt());
+        verify(offloadGateway,never()).invokeRemote(any(),any(),any(),anyInt());verify(completionHandler,never()).dispatch(any());
+        assertThat(lookup.executionRecord().executionNode()).isNull();
+    }
+    @Test void plannedRemoteTrustedNodeIsRetainedSeparatelyFromFunctionHeaders() {
+        var spec=spec("fn-eager",null);var lookup=lookup(spec);wireOffloadCompletion(lookup);
+        var route=new it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute(it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.REMOTE,TARGET,"b",1,"grant",Map.of(),null);
+        when(offloadGateway.planRoute(any(),any())).thenReturn(route);
+        var result=InvocationResult.successWithEnvelope("out",200,Map.of("X-NanoFaaS-Execution-Node","fake"),null);
+        when(offloadGateway.invokePlannedRemote(any(),eq(route),any(),anyInt())).thenReturn(Mono.just(new it.unimib.datai.nanofaas.controlplane.offload.PlannedRemoteResult(result,"b")));
+        var response=coordinator(null).invoke(lookup,spec,1000).block();assertThat(response.executionNode()).isEqualTo("b");
+        assertThat(lookup.executionRecord().toOutcome().executionNode()).isEqualTo("b");
+    }
+    @Test void plannedInboundLocalNeverUsesPressureOffload() {
+        var spec=spec("fn-hop",new OffloadPolicy(null,null,"always"));var lookup=lookup(spec);
+        when(offloadGateway.planRoute(any(),any())).thenReturn(it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.local("b"));
+        var queue=mock(SyncQueueGateway.class);when(queue.enabled()).thenReturn(true);
+        org.mockito.Mockito.doThrow(new SyncQueueRejectedException(SyncQueueRejectReason.DEPTH,1)).when(queue).enqueueOrThrow(any());
+        when(offloadGateway.enabled()).thenReturn(true);when(offloadGateway.shouldOffloadOnPressure(spec)).thenReturn(true);
+        assertThatThrownBy(()->coordinator(queue).invoke(lookup,spec,1000,new OffloadContext(true,null,null)).block()).isInstanceOf(SyncQueueRejectedException.class);
+        verify(offloadGateway,never()).invokeRemote(any(),any(),any(),anyInt());verify(offloadGateway,never()).invokePlannedRemote(any(),any(),any(),anyInt());
+    }
     @Test
     void eagerPolicyOffloadsAndReturnsRemoteResult() {
         FunctionSpec spec = spec("fn-eager", new OffloadPolicy(null, null, "always"));

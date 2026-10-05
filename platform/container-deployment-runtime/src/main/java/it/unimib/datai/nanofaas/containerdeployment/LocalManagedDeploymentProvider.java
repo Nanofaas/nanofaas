@@ -124,10 +124,19 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
         lock.lock();
         try {
             String prefix = requirePersistedPrefix(spec.name(), deploymentObjects);
-            List<ManagedContainer> discovered = adapter.listManagedContainers(spec.name()).stream()
+            List<ManagedContainer> discovered = adapter.listManagedContainers(containerFunctionLabel(spec.name())).stream()
                     .sorted(Comparator.comparingInt(ManagedContainer::replicaIndex))
                     .toList();
             validateReplicaIndexes(spec.name(), prefix, discovered);
+            if(isOneShot(spec)) {
+                try(var client=java.net.http.HttpClient.newHttpClient()) {
+                    var physicalProbe=new HttpRuntimeExecutionProbe(client,Duration.ofSeconds(2));
+                    for(var container:discovered) {
+                        if(!adoptable(container)) throw new IllegalStateException("Cannot prove recovered one-shot replica is idle");
+                        physicalProbe.eligibleIncarnation(java.net.URI.create(container.baseUrl()));
+                    }
+                }
+            }
 
             ManagedFunctionProxy proxy = proxyFactory.create(spec.name());
             FunctionState state = new FunctionState(spec, proxy);
@@ -238,6 +247,14 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
         if (state != null) {
             // Marked before anything is touched: from here the state exists only to be cleaned up.
             state.pendingRemoval = true;
+            if(isOneShot(state.spec)) {
+                state.replicas.values().forEach(replica -> state.proxy.beginDrain(replica.baseUrl()));
+                for(var replica:state.replicas.values()) {
+                    if(!state.proxy.awaitDrained(replica.baseUrl(),settings.readinessTimeout()))
+                        throw new PartialDeprovisionException(functionName,backendId(),List.of(replica.containerName()),
+                            List.of(new IllegalStateException("Physical drain not proven")));
+                }
+            }
             try {
                 state.proxy.close();
             } catch (RuntimeException proxyFailure) {
@@ -282,7 +299,7 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
             }
         }
         try {
-            adapter.listManagedContainers(functionName)
+            adapter.listManagedContainers(containerFunctionLabel(functionName))
                     .forEach(container -> containerNames.add(container.name()));
         } catch (RuntimeException discoveryFailure) {
             failures.add(discoveryFailure);
@@ -313,6 +330,10 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
         for (FunctionState state : states.values()) {
             safeClose(state.proxy);
         }
+    }
+
+    @Override public boolean supportsPhysicalReplicaControl(String functionName) {
+        var state=states.get(functionName); return state!=null && !state.pendingRemoval && isOneShot(state.spec);
     }
 
     @Override
@@ -357,7 +378,7 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
                 return new ReplicaStatus(0, 0);
             }
             int readyReplicas = (int) state.replicas.values().stream()
-                    .filter(replica -> endpointProbe.isReady(replica.baseUrl()))
+                    .filter(replica -> (!isOneShot(state.spec) || state.proxy.backendReady(replica.baseUrl())) && endpointProbe.isReady(replica.baseUrl()))
                     .count();
             return new ReplicaStatus(state.replicas.size(), readyReplicas);
         } finally {
@@ -388,8 +409,13 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
      * short by a smaller fixed value. Health checks are not governed by this bound.
      */
     private void pushProxyConfig(FunctionState state) {
+        if(isOneShot(state.spec)) {
+            if((state.spec.concurrency()==null || state.spec.concurrency()<1) || !"1".equals(state.spec.env().get("NANOFAAS_MAX_CONCURRENT_HANDLERS")))
+                throw new IllegalArgumentException("One-shot requires a positive function concurrency cap and NANOFAAS_MAX_CONCURRENT_HANDLERS=1");
+            state.proxy.enablePhysicalSlots();
+        }
         state.proxy.updateBackends(state.replicas.values().stream().map(ReplicaState::baseUrl).toList());
-        int perReplicaConcurrency = state.spec.concurrency() == null
+        int perReplicaConcurrency = isOneShot(state.spec) ? 1 : state.spec.concurrency() == null
                 ? DEFAULT_CONCURRENCY
                 : Math.max(1, state.spec.concurrency());
         int maxInFlight = Math.max(1, state.replicas.size() * perReplicaConcurrency);
@@ -408,7 +434,7 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
                 state.spec.resources(),
                 Map.of(
                         MANAGED_LABEL, "true",
-                        FUNCTION_LABEL, state.spec.name(),
+                        FUNCTION_LABEL, containerFunctionLabel(state.spec.name()),
                         REPLICA_LABEL, Integer.toString(replicaIndex))
         );
 
@@ -431,6 +457,11 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
         ReplicaState replica = state.replicas.get(replicaIndex);
         if (replica == null) {
             return;
+        }
+        if(isOneShot(state.spec)) {
+            state.proxy.beginDrain(replica.baseUrl());
+            if(!state.proxy.awaitDrained(replica.baseUrl(),settings.readinessTimeout()))
+                throw new IllegalStateException("Replica still physically occupied or quarantined: "+replica.containerName());
         }
         adapter.removeContainer(replica.containerName());
         state.replicas.remove(replicaIndex);
@@ -489,6 +520,10 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
         return Math.max(0, scalingConfig.minReplicas());
     }
 
+    private static boolean isOneShot(FunctionSpec spec) {
+        return spec.env()!=null && "true".equals(spec.env().get("NANOFAAS_ONE_SHOT_PROFILE"));
+    }
+
     private Map<String, String> buildEnv(FunctionSpec spec) {
         LinkedHashMap<String, String> env = new LinkedHashMap<>();
         env.put("FUNCTION_NAME", spec.name());
@@ -517,6 +552,8 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
     private Map<String, String> deploymentObjects(String functionName) {
         return Map.of(ProvisionResult.CONTAINER_NAME_PREFIX, containerNamePrefix(functionName));
     }
+
+    protected String containerFunctionLabel(String functionName) { return functionName; }
 
     protected String containerNamePrefix(String functionName) {
         return "nanofaas-" + normalizeName(functionName);

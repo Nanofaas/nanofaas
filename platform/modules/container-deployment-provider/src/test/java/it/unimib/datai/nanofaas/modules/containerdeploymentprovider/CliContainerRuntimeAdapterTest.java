@@ -17,6 +17,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class CliContainerRuntimeAdapterTest {
 
+    @Test void immutableLocalImageNeverFallsBackToMutablePull() {
+        String id="sha256:"+"a".repeat(64);
+        var executor=new RecordingCliCommandExecutor().withResult(ExecutionResult.success(id+"\n")).withResult(ExecutionResult.success("sha256:"+"b".repeat(64)));
+        var adapter=new CliContainerRuntimeAdapter("docker",executor,null,"127.0.0.1",()->18080);
+        adapter.pullImage(id);
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->adapter.pullImage(id)).isInstanceOf(IllegalStateException.class);
+        assertThat(executor.commands()).containsExactly(List.of("docker","image","inspect","--format","{{.Id}}",id),List.of("docker","image","inspect","--format","{{.Id}}",id));
+    }
+
     @Test
     void isAvailable_returnsFalseWhenVersionCommandFails() {
         RecordingCliCommandExecutor executor = new RecordingCliCommandExecutor()
