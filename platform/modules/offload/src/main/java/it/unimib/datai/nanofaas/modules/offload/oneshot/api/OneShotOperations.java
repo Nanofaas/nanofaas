@@ -41,7 +41,7 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
     public Optional<OneShotSettings> settingsFor(long revision) { return Optional.ofNullable(preparedSettings.get(revision)); }
     private String key(OneShotSettings s) { return key(s,profiles.compatible(s).contentHash()); }
     private String key(OneShotSettings s,String hash) {
-        return hash+":"+s.environmentFingerprint()+":"+s.functions()+":"+s.memoryCapacityMiB()+":"+s.flowQuantum()+":"+peers.activeNeighbors().stream().map(p->p.peerId()+":"+p.incarnation()).sorted().toList();
+        return hash+":"+s.environmentFingerprint()+":"+s.functions()+":"+s.memoryCapacityMiB()+":"+s.flowQuantum()+":"+s.negotiation()+":"+s.maxSolverStates()+":"+s.maxSolverBytes()+":"+s.preparationBudget()+":"+peers.activeNeighbors().stream().map(p->p.peerId()+":"+p.incarnation()).sorted().toList();
     }
     private synchronized boolean qualified(OneShotSettings s) {
         if(!key(s).equals(qualificationKey) || qualified.size()<20) return false;

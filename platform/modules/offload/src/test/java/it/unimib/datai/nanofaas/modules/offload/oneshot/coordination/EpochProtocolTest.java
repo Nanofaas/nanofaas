@@ -91,4 +91,24 @@ class EpochProtocolTest {
         }
     }
 
+    @Test void sharedFractionalGridConvergesButMismatchedPeerUnitsFailClosed() {
+        for(boolean mixed:List.of(false,true)) {
+            var network=new ConcurrentHashMap<String,Fake>();
+            var transports=List.of(new Fake("a",network),new Fake("b",network));
+            var nodes=transports.stream().map(t->new EpochCoordinator(t,(epoch,from,until)-> {
+                var base=input(t.id,epoch,from,until);double q=mixed && t.id.equals("a")?1:.5;
+                var rows=base.problem().functions().stream().map(f->new LocalProblem.Function(f.id(),f.load()/q,f.demandSeconds()*q,f.utilization(),f.memoryMiB(),f.alpha(),f.delta(),f.gamma(),f.price(),0,0,0)).toList();
+                return new EpochInput(new LocalProblem(LocalProblem.Model.LSP,base.problem().memoryCapacityMiB(),rows),base.identities(),base.forecasts(),1,q);
+            },settings(10),health())).toList();
+            nodes.forEach(EpochCoordinator::start);
+            try {
+                var from=Instant.now().plusSeconds(10);
+                var results=Mono.zip(nodes.stream().map(n->n.prepare(1,from,from.plusSeconds(300))).toList(),objects->Arrays.stream(objects).map(o->(EpochOutcome)o).toList()).block(Duration.ofSeconds(5));
+                assertThat(results).allSatisfy(r->{
+                    if(mixed) { assertThat(r.status()).isNotEqualTo(EpochOutcome.Status.CONVERGED);assertThat(r.censored()).isTrue(); }
+                    else assertThat(r.status()).withFailMessage(r.reason()).isEqualTo(EpochOutcome.Status.CONVERGED);
+                });
+            } finally { nodes.forEach(EpochCoordinator::close); }
+        }
+    }
 }

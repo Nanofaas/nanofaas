@@ -13,4 +13,16 @@ class OneShotHeaderTest {
         assertThat(cloud.invalidMetadata()).isFalse();assertThat(OffloadGateway.noOp().planRoute(null,cloud).kind()).isEqualTo(PlannedInvocationRoute.Kind.LOCAL);
         assertThat(OffloadContext.fromHttp("bad",null,null,Map.of()).offloadedHop()).isTrue();
     }
+    @Test void differentlyCasedDuplicateHopFieldsCannotBecomeValidNativeMetadata() {
+        var headers=new LinkedHashMap<String,List<String>>();
+        headers.put("X-NanoFaaS-Offload-Version",List.of("1"));
+        headers.put("X-NanoFaaS-Offload-Origin",List.of("a@inc"));
+        headers.put("X-NanoFaaS-Offload-Epoch",List.of("2"));
+        headers.put("X-NanoFaaS-Offload-Assignment",List.of("grant"));
+        headers.put("X-NanoFaaS-Offload-Hop",List.of("1","1"));
+        headers.put("x-nanofaas-offload-hop",List.of("1"));
+        assertThat(OffloadContext.fromHttp("1",null,null,headers).invalidMetadata()).isTrue();
+        headers.put("X-NanoFaaS-Offload-Hop",List.of("1"));
+        assertThat(OffloadContext.fromHttp("1",null,null,headers).invalidMetadata()).isTrue();
+    }
 }

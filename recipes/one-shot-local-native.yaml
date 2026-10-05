@@ -8,6 +8,7 @@ controlPlane:
   config:
     nanofaas:
       deployment: {default-backend: container-local}
+      container-local: {runtime-adapter: docker-java}
       forecasting: {enabled: true, node-id: configure-per-node, provider: ORACLE, window: 1s, max-age: 5m}
       p2p: {enabled: true, admin: {enabled: true}}
       offload:

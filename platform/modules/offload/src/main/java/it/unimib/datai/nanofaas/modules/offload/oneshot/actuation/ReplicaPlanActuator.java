@@ -23,7 +23,7 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
         final EpochOutcome outcome; final AuctionSnapshot snapshot; final long deadline;
         final Map<String,Assignment> received=new ConcurrentHashMap<>(),acknowledged=new ConcurrentHashMap<>();
         final Map<String,Assignment> committedInbound=new ConcurrentHashMap<>();
-        volatile Map<String,Assignment> localReady=Map.of(); volatile boolean closed,failed,announced;
+        volatile Map<String,Assignment> localReady=Map.of(); volatile boolean closed,failed;
         final Set<String> receivedClosures=ConcurrentHashMap.newKeySet();
         Preparation(EpochOutcome outcome,long deadline) { this.outcome=outcome; snapshot=outcome.snapshot();this.deadline=deadline; }
     }
@@ -169,7 +169,7 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
             }
             p.localReady=Map.copyOf(localReady);
             if(localReady.values().stream().anyMatch(a->a.quantity()>0)) {
-                p.announced=true; reservedUntil.accumulateAndGet(p.snapshot.validUntil(),(a,b)->a.isAfter(b)?a:b);
+                 reservedUntil.accumulateAndGet(p.snapshot.validUntil(),(a,b)->a.isAfter(b)?a:b);
             }
             boolean degraded=!desired.equals(p.snapshot.desiredReplicas());
             for(var peer:p.snapshot.peerIncarnations().keySet()) {
@@ -195,14 +195,14 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
             var plan=new ActiveRoutingPlan(p.snapshot.nodeId(),p.snapshot.incarnation(),p.snapshot.epoch(),p.snapshot.revision(),p.snapshot.validFrom(),p.snapshot.validUntil(),quantum,plans);
             pending.set(plan);p.closed=true;
             return new PlanActivation(degraded?PlanActivation.Status.DEGRADED:PlanActivation.Status.PREPARED,plan,desired,ready,"ready subset; unacknowledged outbound goes to terminal cloud",now.get());
-        } catch(Exception failure) { p.failed=true;p.closed=true;return new PlanActivation(PlanActivation.Status.FAILED,null,desired,ready,failure.getMessage(),now.get()); }
+        } catch(InterruptedException | RuntimeException failure) { if(failure instanceof InterruptedException) Thread.currentThread().interrupt(); p.failed=true;p.closed=true;return new PlanActivation(PlanActivation.Status.FAILED,null,desired,ready,failure.getMessage(),now.get()); }
     }
     private boolean receivedForSeller(Preparation p,String peer) { return p.receivedClosures.contains(peer); }
     private byte[] receive(String sender,byte[] bytes) {
         var p=receiving.get();if(p==null || !clockHealthy.getAsBoolean()) return new byte[]{0};
         AuctionCodec.Batch batch;try { batch=codec.decode(bytes); } catch(IllegalArgumentException invalid) { return new byte[]{0}; }
         if(!Objects.equals(p.snapshot.peerIncarnations().get(sender),batch.incarnation()) || !sender.equals(batch.senderId()) || batch.epoch()!=p.snapshot.epoch() || batch.round()!=p.snapshot.round()
-            || !batch.startsAt().equals(p.snapshot.validFrom()) || !batch.endsAt().equals(p.snapshot.validUntil()) || !now.get().isBefore(p.snapshot.validFrom()) || p.failed) return new byte[]{0};
+            || Double.compare(batch.flowQuantum(),p.outcome.input().flowQuantum())!=0 || !batch.startsAt().equals(p.snapshot.validFrom()) || !batch.endsAt().equals(p.snapshot.validUntil()) || !now.get().isBefore(p.snapshot.validFrom()) || p.failed) return new byte[]{0};
         synchronized(p) {
             for(var message:batch.messages()) {
                 var a=message.assignment();if(a==null || !a.readyConfirmed() || !message.target().equals(p.snapshot.nodeId())) return new byte[]{0};
@@ -220,7 +220,7 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
     }
     private boolean send(Preparation p,String peer,AuctionCodec.Phase phase,List<Assignment> assignments) throws InterruptedException {
         var messages=assignments.stream().map(a->new AuctionMessage(new AuctionMessage.Envelope(1,p.snapshot.nodeId(),p.snapshot.incarnation(),p.snapshot.epoch(),p.snapshot.round(),phase+":"+a.id(),p.snapshot.revision(),p.snapshot.validFrom(),p.snapshot.validUntil()),AuctionMessage.Kind.READY_CONFIRM,peer,null,null,a)).toList();
-        byte[] bytes=codec.encode(new AuctionCodec.Batch(1,p.snapshot.nodeId(),p.snapshot.incarnation(),p.snapshot.epoch(),p.snapshot.round(),phase,p.snapshot.validFrom(),p.snapshot.validUntil(),false,messages));
+        byte[] bytes=codec.encode(new AuctionCodec.Batch(1,p.snapshot.nodeId(),p.snapshot.incarnation(),p.snapshot.epoch(),p.snapshot.round(),phase,p.snapshot.validFrom(),p.snapshot.validUntil(),false,messages,p.outcome.input().flowQuantum()));
         long sendDeadline=Math.min(p.deadline-Math.min(Duration.ofMillis(100).toNanos(),preparationBudget.toNanos()/10),System.nanoTime()+Duration.ofMillis(500).toNanos());
         while(System.nanoTime()<sendDeadline && now.get().isBefore(p.snapshot.validFrom())) {
             check(p);var timeout=Duration.ofNanos(Math.max(1,Math.min(Duration.ofMillis(200).toNanos(),sendDeadline-System.nanoTime())));

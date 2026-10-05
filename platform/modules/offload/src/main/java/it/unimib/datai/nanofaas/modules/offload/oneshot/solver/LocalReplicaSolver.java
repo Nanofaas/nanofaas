@@ -98,7 +98,7 @@ public final class LocalReplicaSolver {
         for (int i = 0; i < nf; i++) {
             work.checkDeadline(); work.visited++;
             var f = p.functions().get(i);
-            if (!integer(f.fixedLocal()) || f.fixedLocal() < 0 || f.fixedOffload() < 0 || f.fixedOffload() > f.load())
+            if (!integer(f.fixedLocal()) || f.fixedLocal() < 0 || !integer(f.fixedOffload()) || !integer(f.inbound()) || f.fixedOffload() < 0 || f.fixedOffload() > f.load())
                 return failure(UNSUPPORTED, started, work);
             x[i] = f.fixedLocal(); omega[i] = f.fixedOffload(); z[i] = f.load() - x[i] - omega[i];
             if (z[i] < -EPS) return failure(INFEASIBLE, started, work);
@@ -126,7 +126,7 @@ public final class LocalReplicaSolver {
         for (var f : p.functions()) {
             if (f.id() == null || f.id().isBlank() || !names.add(f.id()) || f.memoryMiB() < 1 || f.load() < 0
                     || !integer(f.load()) || !Double.isFinite(f.demandSeconds()) || f.demandSeconds() <= 0
-                    || !Double.isFinite(f.utilization()) || f.utilization() <= 0 || !Double.isFinite(capacity(f)) || capacity(f) <= 0) return false;
+                    || !Double.isFinite(f.utilization()) || f.utilization() <= 0 || f.utilization() > 1 || !Double.isFinite(capacity(f)) || capacity(f) <= 0 || capacity(f) >= 1 / EPS) return false;
             for (double value : new double[]{f.alpha(), f.delta(), f.gamma(), f.price(), f.fixedLocal(), f.fixedOffload(), f.inbound()})
                 if (!Double.isFinite(value) || value < 0) return false;
         }

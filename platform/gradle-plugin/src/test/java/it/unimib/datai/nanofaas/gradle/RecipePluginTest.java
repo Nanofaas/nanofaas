@@ -527,6 +527,21 @@ class RecipePluginTest {
     }
 
     @Test
+    void unchangedRecipeStillCleansAndPreservesOwnershipDuringRestaging() throws IOException {
+        recipe(HEADER + CP_JVM);
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker());
+        Path out = projectDir.resolve("build/recipes/demo");
+        Files.writeString(out.resolve("stale.txt"), "previous assembly");
+        BuildResult second = run("assembleRecipe", "-Precipe=recipe.yaml", docker());
+        assertThat(second.task(":cleanRecipe").getOutcome()).isEqualTo(TaskOutcome.SUCCESS);
+        assertThat(out.resolve("stale.txt")).doesNotExist();
+        assertThat(out.resolve("control-plane/app.jar")).isRegularFile();
+        assertThat(Files.readString(out.resolve(".nanofaas-recipe-output")))
+                .isEqualTo("nanofaas-recipe-output-v1\n");
+        assertThat(out.resolve("distribution.json")).isRegularFile();
+    }
+
+    @Test
     void refusesOutputsItDoesNotOwn() throws IOException {
         recipe(HEADER + CP_JVM);
         Path unrelated = Files.createDirectories(outsideDir.resolve("unrelated"));

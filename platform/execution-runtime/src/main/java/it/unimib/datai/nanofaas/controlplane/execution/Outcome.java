@@ -32,6 +32,8 @@ public record Outcome(
         boolean readable,
         String executionNode
 ) {
+    public Outcome { headers = headers == null ? null : Map.copyOf(headers); }
+
     public Outcome(ExecutionState state,long started,long finished,Object output,ErrorInfo error,Map<String,String> headers,String encoding,int status,long init,boolean cold,boolean readable) {
         this(state,started,finished,output,error,headers,encoding,status,init,cold,readable,null);
     }

@@ -24,7 +24,7 @@ import java.time.InstantSource;
  * distinguishes a fresh reading from a stale one from none at all; wake-up and lifecycle paths force
  * a fresh read through {@link #getFreshReplicaStatus}.</p>
  */
-public class ManagedDeploymentCoordinator implements ManagedReplicaControl, AutoCloseable {
+public final class ManagedDeploymentCoordinator implements ManagedReplicaControl, AutoCloseable {
 
     private final DeploymentProviderResolver deploymentProviderResolver;
     private final FunctionRegistry registry;

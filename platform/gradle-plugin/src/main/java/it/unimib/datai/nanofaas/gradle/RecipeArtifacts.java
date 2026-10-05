@@ -87,6 +87,10 @@ final class RecipeArtifacts {
 
         TaskProvider<Task> clean = root.getTasks().register("cleanRecipe", task -> {
             task.setDescription("Empties the recipe output directory it owns and marks it; refuses any other directory.");
+            // Gradle's stale-output cleanup must know that this marker belongs to cleanRecipe.
+            task.getOutputs().file(output.resolve(RecipeOutput.MARKER));
+            // Every assembly starts from an empty owned directory, even when inputs are unchanged.
+            task.getOutputs().upToDateWhen(ignored -> false);
             task.doLast(ignored -> RecipeOutput.claim(recipe.source(), output, rootDir));
         });
         if (platforms != null && targets.stream().anyMatch(target -> target.image() != null)) {

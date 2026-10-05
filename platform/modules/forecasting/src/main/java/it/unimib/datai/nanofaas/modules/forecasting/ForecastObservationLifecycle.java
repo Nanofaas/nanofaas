@@ -26,13 +26,16 @@ public final class ForecastObservationLifecycle implements SmartLifecycle {
     synchronized void refresh() {
         if (catalog == null || replicas == null) return;
         var active = new HashSet<String>();
+        var generations = new java.util.ArrayList<it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration>();
         for (var function : catalog.listRegistered()) {
             var generation = replicas.generationOf(function);
             if (generation == null) continue;
             active.add(generation.functionName() + "#" + generation.id());
-            source.observe(generation.functionName(), generation.id(), clock.instant());
+            generations.add(generation);
         }
         source.retain(active);
+        var now = clock.instant();
+        for (var generation : generations) source.observe(generation.functionName(), generation.id(), now);
     }
     @Override public synchronized void start() {
         if (running || !enabled) return;

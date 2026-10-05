@@ -8,8 +8,8 @@ public record ForecastingProperties(Boolean enabled, String nodeId, Provider pro
     public ForecastingProperties {
         enabled = Boolean.TRUE.equals(enabled);
         provider = provider == null ? Provider.EWMA : provider;
-        alpha = alpha == null ? 0.5 : alpha;
-        maxFunctions = maxFunctions == null ? 1000 : maxFunctions;
+        if (alpha == null) alpha = 0.5;
+        if (maxFunctions == null) maxFunctions = 1000;
         if (enabled && (nodeId == null || nodeId.isBlank() || window == null || maxAge == null))
             throw new IllegalArgumentException("forecasting requires explicit node-id, window and max-age");
     }

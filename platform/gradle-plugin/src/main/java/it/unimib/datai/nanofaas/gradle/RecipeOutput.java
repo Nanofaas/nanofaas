@@ -127,7 +127,7 @@ final class RecipeOutput {
         }
         for (JsonNode component : components) {
             if (!component.isObject() || !matches(component.path("name"), "[a-z0-9]+(?:-[a-z0-9]+)*")
-                    || !matches(component.path("sdk"), "java|java-lite|python|javascript|go|bash|dockerfile")
+                    || !matches(component.path("sdk"), "java|java-lite|python|javascript|go|bash|rust|dockerfile")
                     || !matches(component.path("mode"), "jvm|native|container")
                     || (version == 2 && !matches(component.path("kind"), "control-plane|function|service"))) {
                 return false;

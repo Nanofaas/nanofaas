@@ -35,7 +35,8 @@ public final class EwmaForecastSource implements ForecastSource, ExternalArrival
         Key key = new Key(function, generation);
         if (series.containsKey(key)) return;
         series.keySet().removeIf(k -> k.function().equals(function) && k.generation() < generation);
-        if (series.size() >= maxFunctions) throw new IllegalStateException("forecast function bound reached");
+        // Unobserved overflow generations remain explicitly MISSING; preserve existing series.
+        if (series.size() >= maxFunctions) return;
         long first = Math.floorDiv(at.getEpochSecond(), windowSeconds);
         if (at.getEpochSecond() % windowSeconds != 0 || at.getNano() != 0) first++;
         series.put(key, new Series(first));

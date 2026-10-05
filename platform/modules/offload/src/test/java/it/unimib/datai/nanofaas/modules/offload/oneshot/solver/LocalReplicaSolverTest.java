@@ -88,4 +88,15 @@ class LocalReplicaSolverTest {
         assertThat(result.status()).isEqualTo(LocalSolution.Status.DEADLINE);
         assertThat(result.local()).isEmpty();
     }
+    @Test void unsafeCapacityAndFractionalFixedFlowsCannotPublishAllocation() {
+        for (var f : List.of(
+                new LocalProblem.Function("f",1,1e-12,1,1,1,1,0,0,1,0,0),
+                new LocalProblem.Function("f",1,1,1,1,1,1,0,0,0,.5,0),
+                new LocalProblem.Function("f",1,1,1,1,1,1,0,0,0,0,.5),
+                new LocalProblem.Function("f",1,1,2,1,1,1,0,0,0,0,0))) {
+            var result=solver.solve(new LocalProblem(LocalProblem.Model.LSPr_x,1,List.of(f)),limits);
+            assertThat(result.status()).isEqualTo(LocalSolution.Status.UNSUPPORTED);
+            assertThat(result.replicas()).isEmpty();
+        }
+    }
 }

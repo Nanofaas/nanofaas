@@ -40,7 +40,7 @@ public final class HttpRuntimeExecutionProbe implements RuntimeExecutionProbe {
         private final java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();
         private final java.util.concurrent.CompletableFuture<byte[]> result=new java.util.concurrent.CompletableFuture<>();
         BoundedJsonSubscriber(int maximum) { this.maximum=maximum; }
-        public java.util.concurrent.CompletionStage<byte[]> getBody() { return result; }
+        public java.util.concurrent.CompletionStage<byte[]> getBody() { return result.minimalCompletionStage(); }
         public void onSubscribe(java.util.concurrent.Flow.Subscription s) { subscription=s; s.request(1); }
         public void onNext(java.util.List<java.nio.ByteBuffer> buffers) {
             for(var buffer:buffers) {

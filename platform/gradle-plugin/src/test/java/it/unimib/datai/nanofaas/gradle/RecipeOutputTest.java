@@ -32,6 +32,24 @@ class RecipeOutputTest {
     }
 
     @Test
+    void aRustDistributionRemainsRecognizedWhenItsMarkerIsMissing() {
+        ObjectNode report = JSON.createObjectNode().put("schemaVersion", 2).put("tag", "1.0.0");
+        report.putObject("recipe").put("name", "demo").put("sha256", "0".repeat(64)).put("schemaVersion", 2);
+        report.putNull("source");
+        report.putArray("modules");
+        var components = report.putArray("components");
+        components.addObject().put("kind", "control-plane").put("name", "control-plane")
+                .put("sdk", "java").put("mode", "jvm").put("artifact", "control-plane/")
+                .set("image", image("built").put("id", DIGEST));
+        components.addObject().put("kind", "function").put("name", "one-shot-workload")
+                .put("sdk", "rust").put("mode", "container").putNull("artifact")
+                .set("image", image("built").put("id", DIGEST));
+        assertThat(RecipeOutput.validReport(report)).isTrue();
+        ((ObjectNode) components.get(1)).put("sdk", "unknown");
+        assertThat(RecipeOutput.validReport(report)).isFalse();
+    }
+
+    @Test
     void aClassicV2ImageNeedsItsId() {
         assertThat(valid(image("built"))).isFalse();
         assertThat(valid(image("built").put("id", DIGEST))).isTrue();

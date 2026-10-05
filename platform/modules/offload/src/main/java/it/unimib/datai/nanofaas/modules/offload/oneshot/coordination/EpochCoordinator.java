@@ -115,7 +115,7 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
         if(run==null) return new byte[]{0};
         var peer=run.peers.get(sender);
         if(peer==null || !sender.equals(batch.senderId()) || !peer.incarnation().equals(batch.incarnation()) || batch.epoch()!=run.epoch
-            || !batch.startsAt().equals(run.from) || !batch.endsAt().equals(run.until)
+            || Double.compare(batch.flowQuantum(),run.input.flowQuantum())!=0 || !batch.startsAt().equals(run.from) || !batch.endsAt().equals(run.until)
             || !sameIncarnation(run) || !clockHealth.healthy() || !now.get().isBefore(run.from)) return new byte[]{0};
         synchronized(run) {
         var key=new Key(sender,batch.round(),batch.phase());
@@ -210,7 +210,7 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
         while(!missing.isEmpty()) {
             check(run);
             for(var peer:List.copyOf(missing)) {
-                var batch=new AuctionCodec.Batch(1,run.local.peerId(),run.local.incarnation(),run.epoch,0,AuctionCodec.Phase.HELLO,run.from,run.until,false,List.of());
+                var batch=new AuctionCodec.Batch(1,run.local.peerId(),run.local.incarnation(),run.epoch,0,AuctionCodec.Phase.HELLO,run.from,run.until,false,List.of(),run.input.flowQuantum());
                 var request=transport.request(peer,TOPIC,codec.encode(batch),peerTimeout(run)).toFuture();
                 run.exchange.set(request);
                 try {
@@ -226,7 +226,7 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
     private void exchange(Run run,AuctionCodec.Phase phase,java.util.function.Function<String,List<AuctionMessage>> messages,boolean changed) throws Exception {
         check(run);
         var request=Flux.fromIterable(run.peers.keySet()).flatMap(peer->{
-            var batch=new AuctionCodec.Batch(1,run.local.peerId(),run.local.incarnation(),run.epoch,run.round,phase,run.from,run.until,changed,messages.apply(peer));
+            var batch=new AuctionCodec.Batch(1,run.local.peerId(),run.local.incarnation(),run.epoch,run.round,phase,run.from,run.until,changed,messages.apply(peer),run.input.flowQuantum());
             byte[] bytes=codec.encode(batch);
             return Mono.defer(()->transport.request(peer,TOPIC,bytes,peerTimeout(run))).flatMap(reply->reply.length==1 && reply[0]==1?Mono.just(true):Mono.error(new IllegalStateException("peer did not accept closed phase"))).retry(1);
         },run.settings.parallelism()).collectList().toFuture();

@@ -154,3 +154,5 @@ without these features cannot enable them later through a runtime flag.
 builder for a Linux image; an explicit `:control-plane:nativeCompile` compiles a
 host executable for the process gate. The harness exercises Docker CLI and
 Docker Java adapters in different nodes, with the same physical protocol.
+
+Packaged one-shot recipes select the Docker Java adapter: distroless control-plane images do not contain the Docker CLI. Supply access to the Docker daemon and a runtime host/network configuration from which published function ports are reachable; the local process harness supplies its own explicit adapter and host settings.

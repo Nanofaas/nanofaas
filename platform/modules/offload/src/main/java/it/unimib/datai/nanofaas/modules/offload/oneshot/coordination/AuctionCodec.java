@@ -9,10 +9,13 @@ import tools.jackson.core.json.JsonFactory;
 /** One bounded batch is also the explicit closure barrier for its round phase. */
 public final class AuctionCodec {
     public enum Phase { HELLO,OFFERS,BIDS,GRANTS,CHECK,READY,READY_ACK }
-    public record Batch(int schemaVersion,String senderId,String incarnation,long epoch,int round,Phase phase,Instant startsAt,Instant endsAt,boolean changed,List<AuctionMessage> messages) {
+    public record Batch(int schemaVersion,String senderId,String incarnation,long epoch,int round,Phase phase,Instant startsAt,Instant endsAt,boolean changed,List<AuctionMessage> messages,double flowQuantum) {
+        public Batch(int schemaVersion,String senderId,String incarnation,long epoch,int round,Phase phase,Instant startsAt,Instant endsAt,boolean changed,List<AuctionMessage> messages) {
+            this(schemaVersion,senderId,incarnation,epoch,round,phase,startsAt,endsAt,changed,messages,1);
+        }
         public Batch {
             bounded(senderId); bounded(incarnation);
-            if(schemaVersion!=1 || epoch<0 || round<0 || phase==null || startsAt==null || endsAt==null || !startsAt.isBefore(endsAt) || messages==null || messages.size()>1000) throw new IllegalArgumentException("invalid batch");
+            if(!Double.isFinite(flowQuantum) || flowQuantum<=0 || schemaVersion!=1 || epoch<0 || round<0 || phase==null || startsAt==null || endsAt==null || !startsAt.isBefore(endsAt) || messages==null || messages.size()>1000) throw new IllegalArgumentException("invalid batch");
             messages=List.copyOf(messages);
             for(var message:messages) {
                 if((phase==Phase.OFFERS && message.kind()!=AuctionMessage.Kind.OFFER) || (phase==Phase.BIDS && message.kind()!=AuctionMessage.Kind.BID)

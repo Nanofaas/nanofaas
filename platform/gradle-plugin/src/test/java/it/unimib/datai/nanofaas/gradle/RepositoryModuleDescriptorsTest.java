@@ -39,7 +39,7 @@ class RepositoryModuleDescriptorsTest {
         Set<String> moduleIds = descriptors.stream().map(ModuleDescriptor::id).collect(Collectors.toSet());
 
         assertThat(moduleIds).containsExactlyInAnyOrder(
-                "async-queue", "autoscaler", "build-metadata", "concurrency-control",
+                "async-queue", "autoscaler", "build-metadata", "concurrency-control", "forecasting",
                 "container-deployment-provider", "containerd-deployment-provider", "k8s-deployment-provider", "offload",
                 "p2p-discovery", "runtime-config", "sync-queue");
 
