@@ -43,6 +43,26 @@ import org.junit.jupiter.api.Test;
 class AttemptCoordinatorTest {
 
     @Test
+    void executedHandlerErrorRetainsNodeButAdmissionFailureAndStaleProofDoNot() {
+        for(boolean executed:List.of(true,false)) {
+            var spec=new FunctionSpec("fn","image",null,null,null,30000,1,10,0,null,ExecutionMode.LOCAL,null,null,null);
+            var task=new InvocationTask("error-"+executed,"fn",spec,new InvocationRequest("input",null),null,null,Instant.now(),1,InvocationKind.SYNC);
+            var record=new ExecutionRecord(task.executionId(),task);
+            record.pinPlannedRoute(it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.local("edge-b"));
+            record.markRunning();
+            var store=new ExecutionStore();store.put(record);
+            var coordinator=new AttemptCoordinator(store,new FunctionCapacityRegistry(),RetryScheduler.unavailable(),mock(AttemptTransport.class),mock(AttemptObserver.class));
+            var result=new DispatchResult(InvocationResult.error(executed?"HANDLER_ERROR":"RUNTIME_HANDLER_BUSY","failed"),false,null,null,executed);
+            coordinator.completeExecution(task.executionId(),result,2);
+            assertThat(record.executionNode()).isNull();
+            coordinator.completeExecution(task.executionId(),result,1);
+            assertThat(record.completion().join().success()).isFalse();
+            assertThat(record.executionNode()).isEqualTo(executed?"edge-b":null);
+            assertThat(record.toOutcome().executionNode()).isEqualTo(executed?"edge-b":null);
+        }
+    }
+
+    @Test
     void retryHintIsCalculatedOnceAndStaleCompletionCannotReplaceIt() {
         Instant now = Instant.parse("2026-09-24T12:00:00Z");
         var spec = new FunctionSpec("fn", "image", null, null, null,

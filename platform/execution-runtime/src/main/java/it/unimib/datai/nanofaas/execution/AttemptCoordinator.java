@@ -355,6 +355,14 @@ public final class AttemptCoordinator {
             return Conclusion.NONE;
         }
 
+        // A managed physical proxy proves handler execution independently of HTTP/result success.
+        // Stale attempts and terminal records were rejected above; refusals and transport errors carry no proof.
+        var plannedRoute=executionRecord.plannedRoute();
+        if(dispatchResult.handlerExecuted() && plannedRoute!=null
+                && plannedRoute.kind()==it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.LOCAL) {
+            executionRecord.attributeExecutionNode(plannedRoute.executionNode());
+        }
+
         boolean shouldRetry = !result.success()
                 && currentTask.attempt() <= currentTask.functionSpec().maxRetries();
         if (shouldRetry) {

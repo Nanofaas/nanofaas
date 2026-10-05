@@ -27,6 +27,25 @@ class ReplicaDrainTest {
             assertThat(invoke(client,proxy.endpointUrl(),"other").statusCode()).isEqualTo(503);
         } finally { server.stop(0); }
     }
+    @Test void handlerHeadersCannotInventExecutionWithoutMatchingPhysicalProof() throws Exception {
+        for(String proof:List.of(
+                "{\"state\":\"UNKNOWN\"}",
+                "{\"state\":\"RELEASED\",\"incarnation\":\"old\",\"executionId\":\"work\",\"dispatchAttempt\":\"1\",\"occupancySeconds\":0.1}",
+                "{\"state\":\"RELEASED\",\"incarnation\":\"run-1\",\"executionId\":\"work\",\"dispatchAttempt\":\"old\",\"occupancySeconds\":0.1}")) {
+            var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+            server.createContext("/runtime/status",e->reply(e,200,"{\"schemaVersion\":1,\"incarnation\":\"run-1\",\"physicalReleaseProof\":true,\"maxConcurrentHandlers\":1,\"activeHandlers\":0}"));
+            server.createContext("/invoke",e->{e.getResponseHeaders().set("X-NanoFaaS-Handler-Executed","true");reply(e,500,"handler failed");});
+            server.createContext("/runtime/executions/work",e->reply(e,200,proof));
+            server.start();
+            try(var client=HttpClient.newHttpClient();var proxy=new RoundRobinFunctionProxy("127.0.0.1",2,Duration.ofSeconds(2))) {
+                proxy.enablePhysicalSlots();proxy.updateBackends(List.of("http://127.0.0.1:"+server.getAddress().getPort()));
+                var response=invoke(client,proxy.endpointUrl(),"work");
+                assertThat(response.statusCode()).isEqualTo(500);
+                assertThat(response.headers().firstValue("X-NanoFaaS-Handler-Executed")).isEmpty();
+            } finally {server.stop(0);}
+        }
+    }
+
     @Test void occupiedReplicaAForcesNextRequestToFreeReplicaB() throws Exception {
         var callsA=new java.util.concurrent.atomic.AtomicInteger(); var callsB=new java.util.concurrent.atomic.AtomicInteger();
         var a=activeBackend("a",callsA); var b=activeBackend("b",callsB);

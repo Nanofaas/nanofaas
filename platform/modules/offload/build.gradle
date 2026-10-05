@@ -21,6 +21,7 @@ dependencies {
     implementation 'io.micrometer:micrometer-core'
 
     testImplementation project(':control-plane')
+    testImplementation project(':container-deployment-runtime')
     testImplementation project(':control-plane-modules:p2p-discovery')
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.0'

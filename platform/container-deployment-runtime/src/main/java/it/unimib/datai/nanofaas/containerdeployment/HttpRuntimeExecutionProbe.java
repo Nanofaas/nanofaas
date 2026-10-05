@@ -19,10 +19,16 @@ public final class HttpRuntimeExecutionProbe implements RuntimeExecutionProbe {
     }
     public String eligibleIncarnation(URI backend) {
         var json=read(backend.resolve("/runtime/status"));
-        if(json==null || json.path("schemaVersion").asInt()!=1 || !json.path("physicalReleaseProof").asBoolean()
-            || json.path("maxConcurrentHandlers").asInt()!=1 || !json.path("activeHandlers").isNumber() || json.path("activeHandlers").asInt()!=0
-            || json.path("incarnation").asText().isBlank()) throw new IllegalStateException("Runtime lacks idle physical-release capability: "+backend);
+        if(json==null || !integral(json,"schemaVersion",1) || !integral(json,"maxConcurrentHandlers",1)
+            || !integral(json,"activeHandlers",0) || !json.path("physicalReleaseProof").isBoolean()
+            || !json.path("physicalReleaseProof").asBoolean() || !json.path("incarnation").isTextual()
+            || json.path("incarnation").asText().isBlank() || json.path("incarnation").asText().length()>256)
+            throw new IllegalStateException("Runtime lacks idle physical-release capability: "+backend);
         return json.path("incarnation").asText();
+    }
+    private static boolean integral(JsonNode json,String field,int expected) {
+        var value=json.path(field);
+        return value.isIntegralNumber() && value.canConvertToInt() && value.asInt()==expected;
     }
     private JsonNode read(URI uri) {
         var request=HttpRequest.newBuilder(uri).timeout(timeout).GET().build();

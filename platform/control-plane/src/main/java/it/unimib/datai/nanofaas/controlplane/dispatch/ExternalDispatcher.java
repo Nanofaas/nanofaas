@@ -75,6 +75,9 @@ public class ExternalDispatcher implements Dispatcher {
                     // One adapter for the whole response: asHttpHeaders() was called six
                     // times over the same headers, on every dispatch.
                     org.springframework.http.HttpHeaders responseHeaders = response.headers().asHttpHeaders();
+                    boolean handlerExecuted = task.functionSpec().env()!=null
+                            && "true".equals(task.functionSpec().env().get("NANOFAAS_ONE_SHOT_PROFILE"))
+                            && "true".equalsIgnoreCase(responseHeaders.getFirst(ResponseHeaderPolicy.HANDLER_EXECUTED_HEADER));
                     boolean isCold = "true".equalsIgnoreCase(responseHeaders.getFirst("X-Cold-Start"));
                     Long initMs = parseInitDuration(responseHeaders.getFirst("X-Init-Duration-Ms"));
                     boolean isFunctionDecided = "true".equalsIgnoreCase(
@@ -112,10 +115,10 @@ public class ExternalDispatcher implements Dispatcher {
                     return response.bodyToMono(String.class)
                             .defaultIfEmpty(response.statusCode().toString())
                             .map(msg -> new DispatchResult(InvocationResult.error("EXTERNAL_ERROR", msg),
-                                    isCold, initMs, retryAt))
+                                    isCold, initMs, retryAt, handlerExecuted))
                             .onErrorResume(ex -> Mono.just(new DispatchResult(
                                     InvocationResult.error("EXTERNAL_ERROR", ex.getMessage()),
-                                    isCold, initMs, retryAt)));
+                                    isCold, initMs, retryAt, handlerExecuted)));
                 })
                 .timeout(Duration.ofMillis(timeoutMs))
                 .onErrorResume(TimeoutException.class, ex -> reactor.core.publisher.Mono.just(

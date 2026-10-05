@@ -21,6 +21,7 @@ public final class OneShotController {
     private final OneShotOperations operations;private final ServiceProfileStore profiles;private final EpochEventStore events;private final ClockHealth clock;
     private final JsonMapper mapper=JsonMapper.builder(JsonFactory.builder().streamReadConstraints(StreamReadConstraints.builder().maxNestingDepth(12).maxStringLength(256).maxNumberLength(64).build()).build())
         .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,DeserializationFeature.FAIL_ON_TRAILING_TOKENS,DeserializationFeature.FAIL_ON_MISSING_CREATOR_PROPERTIES,DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES)
+        .disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
         .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS).build();
     public OneShotController(OneShotOperations operations,ServiceProfileStore profiles,EpochEventStore events,ClockHealth clock) { this(operations,profiles,events,clock,true); }
     public OneShotController(OneShotOperations operations,ServiceProfileStore profiles,EpochEventStore events,ClockHealth clock,boolean enabled) { this.operations=operations;this.profiles=profiles;this.events=events;this.clock=clock;this.enabled=enabled; }

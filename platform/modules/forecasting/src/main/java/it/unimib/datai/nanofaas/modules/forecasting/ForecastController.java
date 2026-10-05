@@ -25,7 +25,8 @@ public final class ForecastController {
             StreamReadConstraints.builder().maxNestingDepth(8).maxStringLength(256).maxNumberLength(64).build()).build())
             .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, DeserializationFeature.FAIL_ON_TRAILING_TOKENS,
                     DeserializationFeature.FAIL_ON_MISSING_CREATOR_PROPERTIES, DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES)
-            .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS).build();
+            .disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
+        .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS).build();
     public ForecastController(OracleForecastStore store) { this(store,true); }
     public ForecastController(OracleForecastStore store,boolean enabled) { this.store=store;this.enabled=enabled; }
     @ModelAttribute public void requireEnabled() { if(!enabled) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND); }

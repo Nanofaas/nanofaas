@@ -34,5 +34,27 @@ class RustPhysicalProxyTest {
             var metrics=client.send(HttpRequest.newBuilder(URI.create(backend+"/metrics")).GET().build(),HttpResponse.BodyHandlers.ofString()).body();
             assertThat(metrics).contains("nanofaas_runtime_active_handlers 0","nanofaas_runtime_replica_occupancy_seconds_count 1");
         } finally { process.destroy(); if(!process.waitFor(2,java.util.concurrent.TimeUnit.SECONDS)) process.destroyForcibly(); }
+    }    @Test void actualHandlerErrorHasPositiveExecutionEvidence() throws Exception {
+        int port; try(var socket=new java.net.ServerSocket(0)) { port=socket.getLocalPort(); }
+        var builder=new ProcessBuilder(System.getenv("NANOFAAS_ONE_SHOT_WORKLOAD_BINARY"));
+        builder.environment().put("PORT",Integer.toString(port));
+        builder.environment().put("NANOFAAS_MAX_CONCURRENT_HANDLERS","1");
+        var process=builder.redirectError(ProcessBuilder.Redirect.DISCARD).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
+        var backend="http://127.0.0.1:"+port;
+        try(var client=HttpClient.newHttpClient(); var proxy=new RoundRobinFunctionProxy("127.0.0.1",2,Duration.ofSeconds(2))) {
+            long deadline=System.nanoTime()+Duration.ofSeconds(5).toNanos();
+            while(true) {
+                try { new HttpRuntimeExecutionProbe(client,Duration.ofMillis(200)).eligibleIncarnation(URI.create(backend)); break; }
+                catch(IllegalStateException failure) { if(System.nanoTime()>deadline) throw failure; Thread.sleep(20); }
+            }
+            proxy.enablePhysicalSlots(); proxy.updateBackends(List.of(backend));
+            var request=HttpRequest.newBuilder(URI.create(proxy.endpointUrl())).header("X-Execution-Id","handler-error").header("X-Dispatch-Attempt","1")
+                    .POST(HttpRequest.BodyPublishers.ofString("{\"input\":{\"iterations\":1000000001,\"working_set_bytes\":4096,\"seed\":42}}")).build();
+            var response=client.send(request,HttpResponse.BodyHandlers.ofString());
+            assertThat(response.statusCode()).isEqualTo(500);
+            assertThat(response.body()).contains("HANDLER_ERROR");
+            assertThat(response.headers().firstValue("X-NanoFaaS-Handler-Executed")).contains("true");
+        } finally { process.destroy(); if(!process.waitFor(2,java.util.concurrent.TimeUnit.SECONDS)) process.destroyForcibly(); }
     }
+
 }

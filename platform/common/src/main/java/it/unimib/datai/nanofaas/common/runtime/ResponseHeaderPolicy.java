@@ -8,6 +8,8 @@ import java.util.Set;
 
 public final class ResponseHeaderPolicy {
     /** Trusted control-plane metadata; deliberately absent from handler allow-list. */
+    /** Internal physical-runtime evidence; never a handler-supplied response header. */
+    public static final String HANDLER_EXECUTED_HEADER="X-NanoFaaS-Handler-Executed";
     public static final String EXECUTION_NODE_HEADER="X-NanoFaaS-Execution-Node";
     public static final Set<String> ALLOWED_RESPONSE_HEADERS = Set.of(
             "content-type", "location", "cache-control", "etag",

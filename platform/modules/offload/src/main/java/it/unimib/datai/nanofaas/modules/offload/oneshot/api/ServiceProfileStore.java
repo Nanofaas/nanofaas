@@ -39,6 +39,7 @@ public final class ServiceProfileStore {
     private final Map<String,Stored> profiles=new HashMap<>();
     private final JsonMapper mapper=JsonMapper.builder(JsonFactory.builder().streamReadConstraints(StreamReadConstraints.builder().maxNestingDepth(12).maxStringLength(256).maxNumberLength(64).build()).build())
         .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,DeserializationFeature.FAIL_ON_TRAILING_TOKENS,DeserializationFeature.FAIL_ON_MISSING_CREATOR_PROPERTIES,DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES)
+        .disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
         .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS).build();
     static void text(String x) { if(x==null || x.isBlank() || x.length()>256) throw new IllegalArgumentException("bounded nonblank identity required"); }
     static boolean positive(double x) { return Double.isFinite(x) && x>0; }

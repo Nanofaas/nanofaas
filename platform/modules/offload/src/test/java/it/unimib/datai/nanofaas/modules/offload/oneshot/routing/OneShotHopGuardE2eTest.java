@@ -29,7 +29,12 @@ class OneShotHopGuardE2eTest {
     }
     static HttpResponse<String> send(String url,String method,String body,Map<String,String> headers) throws Exception {
         var request=HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(10)).header("Content-Type","application/json");headers.forEach(request::header);
-        return HttpClient.newHttpClient().send(request.method(method,HttpRequest.BodyPublishers.ofString(body)).build(),HttpResponse.BodyHandlers.ofString());
+        try(var client=HttpClient.newHttpClient()) {
+            var response=client.send(request.method(method,HttpRequest.BodyPublishers.ofString(body)).build(),HttpResponse.BodyHandlers.ofString());
+            if(url.endsWith("/v1/functions") && response.statusCode()!=201)
+                throw new AssertionError("Registration "+url+": "+response.statusCode()+" "+response.body()+" "+response.headers().map());
+            return response;
+        }
     }
     static OneShotSettings settings(long generation,String cloud) {
         String hash=ServiceProfileStore.hash(JsonMapper.builder().enable(tools.jackson.databind.SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).build().writeValueAsBytes(Map.of("nested",List.of(1,2),"payload","value")));
@@ -43,6 +48,90 @@ class OneShotHopGuardE2eTest {
             @Override public PeerSubscription subscribe(String topic,PeerReceiver receiver) { return ()->{}; }
         };
     }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"cloud","stale-grant"})
+    void terminalCloudHasTrustedIdentityButAnInactiveSellerRejectsNativeGrants(String assignment) throws Exception {
+        try(var backend=new MockWebServer()) {
+            backend.enqueue(new MockResponse().setHeader("Content-Type","application/json")
+                    .setHeader("X-NanoFaaS-Execution-Node","spoof").setBody("\"executed\""));
+            backend.start();
+            var registry=java.nio.file.Files.createTempDirectory("one-shot-terminal-").resolve("functions.json");
+            try(var terminal=app(registry.toString())) {
+                String target=url(terminal);
+                String spec="{\"name\":\"f\",\"image\":\"img@"+DIGEST+"\",\"executionMode\":\"EXTERNAL\",\"endpointUrl\":\""+backend.url("/invoke")+"\",\"timeoutMs\":5000,\"concurrency\":1}";
+                assertThat(send(target+"/v1/functions","POST",spec,Map.of()).statusCode()).isEqualTo(201);
+                var headers=Map.of("Idempotency-Key","terminal-replay","X-NanoFaaS-Offload-Hop","1",
+                        "X-NanoFaaS-Offload-Version","1","X-NanoFaaS-Offload-Origin","a@a-run",
+                        "X-NanoFaaS-Offload-Epoch","1","X-NanoFaaS-Offload-Assignment",assignment);
+                var response=send(target+"/v1/functions/f:invoke","POST","{\"input\":{}}",headers);
+                if(assignment.equals("cloud")) {
+                    assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+                    assertThat(response.headers().firstValue("X-NanoFaaS-Execution-Node")).contains("cloud");
+                    var replay=send(target+"/v1/functions/f:invoke","POST","{\"input\":{}}",headers);
+                    assertThat(replay.headers().firstValue("X-NanoFaaS-Execution-Node")).contains("cloud");
+                    assertThat(backend.getRequestCount()).isEqualTo(1);
+                } else {
+                    assertThat(response.statusCode()).as(response.body()).isEqualTo(429);
+                    assertThat(response.headers().firstValue("X-NanoFaaS-Execution-Node")).isEmpty();
+                    assertThat(backend.getRequestCount()).isZero();
+                }
+            }
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={true,false})
+    void handlerErrorAndItsRemoteReplayCarryOnlyPhysicalExecutionAttribution(boolean executed) throws Exception {
+        var calls=new java.util.concurrent.atomic.AtomicInteger();
+        var execution=new java.util.concurrent.atomic.AtomicReference<String>();
+        var attempt=new java.util.concurrent.atomic.AtomicReference<String>();
+        try(var backend=new MockWebServer();var cloud=new MockWebServer()) {
+            backend.setDispatcher(new Dispatcher() {
+                @Override public MockResponse dispatch(RecordedRequest request) {
+                    String path=request.getPath();
+                    if(path.equals("/runtime/status")) return new MockResponse().setBody("{\"schemaVersion\":1,\"incarnation\":\"physical-run\",\"physicalReleaseProof\":true,\"maxConcurrentHandlers\":1,\"activeHandlers\":0}");
+                    if(path.startsWith("/runtime/executions/")) {
+                        String proof=executed?"{\"state\":\"RELEASED\",\"incarnation\":\"physical-run\",\"executionId\":\""+execution.get()+"\",\"dispatchAttempt\":\""+attempt.get()+"\",\"occupancySeconds\":0.001}":"{\"state\":\"UNKNOWN\"}";
+                        return new MockResponse().setBody(proof);
+                    }
+                    calls.incrementAndGet();execution.set(request.getHeader("X-Execution-Id"));attempt.set(request.getHeader("X-Dispatch-Attempt"));
+                    return new MockResponse().setResponseCode(500).setHeader("Content-Type","application/json")
+                            .setHeader("X-NanoFaaS-Handler-Executed","true").setHeader("X-NanoFaaS-Execution-Node","spoof")
+                            .setBody("{\"error\":{\"code\":\""+(executed?"HANDLER_ERROR":"RUNTIME_HANDLER_BUSY")+"\",\"message\":\"failed\"}}");
+                }
+            });
+            backend.start();cloud.start();
+            try(var proxy=new it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxy("127.0.0.1")) {
+                proxy.updateLimits(2,Duration.ofSeconds(2));
+                proxy.enablePhysicalSlots();proxy.updateBackends(List.of(backend.url("/").toString().replaceAll("/+$","")));
+                var directory=java.nio.file.Files.createTempDirectory("one-shot-handler-error-");
+                try(var a=app(directory.resolve("a.json").toString());var b=app(directory.resolve("b.json").toString())) {
+                    String aUrl=url(a),bUrl=url(b),cloudUrl=cloud.url("/").toString().replaceAll("/+$", "");
+                    String spec="{\"name\":\"f\",\"image\":\"img@"+DIGEST+"\",\"executionMode\":\"EXTERNAL\",\"endpointUrl\":\""+proxy.endpointUrl()+"\",\"env\":{\"NANOFAAS_ONE_SHOT_PROFILE\":\"true\"},\"timeoutMs\":5000,\"concurrency\":1,\"maxRetries\":0}";
+                    assertThat(send(aUrl+"/v1/functions","POST",spec,Map.of()).statusCode()).isEqualTo(201);
+                    assertThat(send(bUrl+"/v1/functions","POST",spec,Map.of()).statusCode()).isEqualTo(201);
+                    long ag=a.getBean(FunctionCapacityRegistry.class).activeGeneration("f").id(),bg=b.getBean(FunctionCapacityRegistry.class).activeGeneration("f").id();
+                    var grant=new Assignment("grant","a","a-run","b","b-run","f",DIGEST,bg,ag,1,1,true);
+                    var from=Instant.now().minusSeconds(1);var until=from.plusSeconds(300);
+                    var ap=new ActiveRoutingPlan("a","a-run",1,1,from,until,1,Map.of("f",new ActiveRoutingPlan.FunctionPlan(DIGEST,ag,0,0,0,1,1,.5,.8,List.of(),List.of(grant))));
+                    var bp=new ActiveRoutingPlan("b","b-run",1,1,from,until,1,Map.of("f",new ActiveRoutingPlan.FunctionPlan(DIGEST,bg,1,0,0,0,1,.5,.8,List.of(grant),List.of())));
+                    var ac=settings(ag,cloudUrl);var bc=settings(bg,cloudUrl);
+                    ((DefaultOffloadGateway)a.getBean(OffloadGateway.class)).plannedRouting(new PlanRouter(()->Optional.of(ap),()->Optional.of(ac),rev->Optional.of(ac),peers("a",aUrl,"b",bUrl),()->0));
+                    ((DefaultOffloadGateway)b.getBean(OffloadGateway.class)).plannedRouting(new PlanRouter(()->Optional.of(bp),()->Optional.of(bc),rev->Optional.of(bc),peers("b",bUrl,"a",aUrl),()->0));
+                    String payload="{\"input\":{\"payload\":\"value\",\"nested\":[1,2]}}";
+                    var response=send(aUrl+"/v1/functions/f:invoke","POST",payload,Map.of("Idempotency-Key","error-replay"));
+                    assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+                    assertThat(JsonMapper.shared().readTree(response.body()).path("status").asText()).isEqualTo("error");
+                    assertThat(response.headers().firstValue("X-NanoFaaS-Execution-Node")).isEqualTo(executed?Optional.of("b"):Optional.empty());
+                    var replay=send(aUrl+"/v1/functions/f:invoke","POST",payload,Map.of("Idempotency-Key","error-replay"));
+                    assertThat(replay.statusCode()).isEqualTo(response.statusCode());
+                    assertThat(replay.headers().firstValue("X-NanoFaaS-Execution-Node")).isEqualTo(response.headers().firstValue("X-NanoFaaS-Execution-Node"));
+                    assertThat(calls.get()).isEqualTo(1);assertThat(cloud.getRequestCount()).isZero();
+                }
+            }
+        }
+    }
+
     @Test void confirmedOneHopPreservesNodeOnReplayAndOverflowUsesCloudBeforeSending() throws Exception {
         var backend=new MockWebServer();var cloud=new MockWebServer();backend.start();cloud.start();
         backend.setDispatcher(new Dispatcher() { @Override public MockResponse dispatch(RecordedRequest r) {return new MockResponse().setHeader("Content-Type","application/json").setBody("\"executed\"");} });

@@ -410,7 +410,7 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
         if(lease!=null) lease.markDispatched();
         BackendResponse backendResponse = readBackendResponse(requestBuilder.build());
         try (BufferedBody responseBody = backendResponse.body()) {
-            writeBackendResponse(exchange, backendResponse.response(), responseBody);
+            writeBackendResponse(exchange, backendResponse.response(), responseBody, lease);
         }
     }
 
@@ -471,8 +471,15 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
 
     private void writeBackendResponse(HttpExchange exchange,
                                       HttpResponse<InputStream> response,
-                                      BufferedBody body) throws IOException {
+                                      BufferedBody body, ReplicaLease lease) throws IOException {
         copyResponseHeaders(response, exchange);
+        if(lease!=null && response.statusCode()>=400) {
+            var proof=executionProbe.observe(URI.create(lease.backend()),lease.executionId());
+            if(lease.hasExecutionEvidence(proof)) {
+                exchange.getResponseHeaders().set(it.unimib.datai.nanofaas.common.runtime.ResponseHeaderPolicy.HANDLER_EXECUTED_HEADER,"true");
+                lease.markReleased(proof);
+            }
+        }
         try (Deadline deadline = deadline(
                 proxyProperties.responseWriteTimeout(), exchange::close)) {
             try {
@@ -747,7 +754,8 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
 
     private static void copyResponseHeaders(HttpResponse<?> response, HttpExchange exchange) {
         for (Map.Entry<String, List<String>> entry : response.headers().map().entrySet()) {
-            if ("content-length".equalsIgnoreCase(entry.getKey())
+            if (it.unimib.datai.nanofaas.common.runtime.ResponseHeaderPolicy.HANDLER_EXECUTED_HEADER.equalsIgnoreCase(entry.getKey())
+                    || "content-length".equalsIgnoreCase(entry.getKey())
                     || "connection".equalsIgnoreCase(entry.getKey())
                     || "transfer-encoding".equalsIgnoreCase(entry.getKey())) {
                 continue;
