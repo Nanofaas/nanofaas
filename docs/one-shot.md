@@ -110,7 +110,12 @@ map keys and properties using the platform Jackson mapper. Selected functions
 reject other inputs, so tests must send the calibrated fixed workload. Trusted
 `X-NanoFaaS-Execution-Node` travels separately from handler-provided headers and is
 preserved through remote completion and idempotent replay. It is absent on
-infrastructure failures where execution was not attributed.
+infrastructure failures where execution was not attributed. A failed handler can
+still have an execution node: the managed proxy accepts only physical runtime
+evidence matching execution ID, attempt and incarnation. It strips a backend
+`X-NanoFaaS-Handler-Executed` value before generating its own internal evidence;
+that internal field is not an allowed handler response header. Admission refusals,
+unknown observations and stale attempts do not supply execution attribution.
 
 ## Real local cluster gate
 

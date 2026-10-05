@@ -85,7 +85,8 @@ Verified locally:
 
 - A1–A13 are committed through `e0c874b9`; A14 boundary and packaging fixes
   are fixed at `c96c7bab`. Each task has its own verification.
-- Real JVM and host-native process gates passed in 2m59s and 2m52s. Both
+- Real JVM and host-native process gates were refreshed after the final fixes
+  and passed in 3m46s and 3m41s. Both
   conserved 30 logical / 30 physical completions and retained degraded events.
 - Full P2P suite: 147 tests, no failures or skips. Core-only HTTP checks passed
   separately from the composition with optional modules.
@@ -108,7 +109,20 @@ Verified locally:
 - All protocol phases carry explicit frozen q; different peer grids fail closed.
   Shared fractional-grid convergence and mixed-grid censorship are tested.
 
-Final packaged image identities and branch review are recorded below when complete.
+Final whole-branch review found two Important issues and no Critical/Minor
+issues. Both were reproduced with failing regressions and fixed in one pass at
+`cf8bf68f`: fractional JSON values cannot populate integer fields, and actual
+handler failures retain their execution node only with matching physical runtime
+evidence. Forged backend headers, admission refusals and stale attempts do not
+invent execution evidence. Integer/boolean/string capability metadata is also
+strictly checked before admitting a physical single-handler runtime.
+
+Post-fix `releaseChecks` and full affected suites passed in 3m14s: common 43,
+execution 353, container runtime 43, core 812 (three existing composition skips),
+offload 86 and forecasting 16; zero failures/errors and no physical Rust skip.
+Neighbor error attribution survives archived idempotent replay over real HTTP.
+Core-only HTTP/composition regressions passed again in 16s. No second reviewer
+was dispatched; the reproduced tests and green suites verify the single fix pass.
 
 The numerical solver rejects utilization >1, nonintegral fixed flows and
 capacities >=1e9 flow-grid units per replica, where the reference absolute
@@ -123,6 +137,8 @@ integer RAM flooring. They do not disable bug categories or whole modules.
 The all-module native compiler needs more heap than the smaller one-shot recipe
 in this environment. A 4 GiB attempt was stopped after measured full-GC thrash;
 the retry uses 8 GiB compiler heap, without changing runtime resource settings.
+After final fixes, all-module native compilation passed in 3m55s and actual
+artifact/HTTP 404/400 checks passed; one-shot native compilation passed in 2m15s.
 
 ## Limits and phase B responsibilities
 
@@ -146,13 +162,17 @@ needed to supply a missing NanoFaaS runtime feature.
 
 ## Local timing diagnostics
 
-These observations are from node B in the two-epoch synthetic process scenario,
-not a calibrated benchmark or an Azure qualification.
+These observations are from node B in the refreshed two-epoch synthetic process
+scenario at code commit `cf8bf68f`, not a calibrated benchmark or Azure
+qualification. Evidence directories:
+
+- JVM: `platform/modules/offload/build/test-diagnostics/nf-one-shot-6004377846393148900`
+- Host native: `platform/modules/offload/build/test-diagnostics/nf-one-shot-5905483229604603210`
 
 | Build | Solver max | Auction max | Qualified operational duration |
 | --- | --- | --- | --- |
-| JVM | 0.683 ms | 73.887 ms | 319.842 ms |
-| Host native | 0.0063 ms | 11.507 ms | 198.485 ms |
+| JVM | 0.845458 ms | 79.554833 ms | 351.236916 ms |
+| Host native | 0.006041 ms | 9.882375 ms | 200.126166 ms |
 
 Each run records two solver/auction samples and only one qualified operational
 sample: the readiness-degraded epoch is censored. Twenty successful samples remain
@@ -187,7 +207,7 @@ python3 scripts/one-shot/smoke_packaged.py nanofaas/one-shot-local-native/contro
 The recipe plugin's complete shell/native fixture suite runs on Linux with Git
 installed. Local images are built, not registry-published. Assembly reports retain
 real source revision and dirty state; a dirty worktree is never relabeled clean.
-All executable runtime changes were committed at `c96c7bab` before the final image
+All executable runtime changes were committed at `cf8bf68f` before the final image
 builds; outstanding documentation and the pre-existing `AGENTS.md` difference
 account for the recorded dirty state. Final documentation commits do not alter
 those binaries.
@@ -195,19 +215,26 @@ those binaries.
 ## Packaged image record
 
 Both distributions were built locally from executable code commit
-`c96c7babaaa190d003efeae1e29ea0619be117c3` (reported `dirty=true` as explained above).
+`cf8bf68f4945096fc1dfc27fada7a3c6f0302b1b` (reported `dirty=true` as explained above).
 Image IDs are immutable local content identities, not invented registry digests.
 
 ### one-shot-local-jvm
 
-- `nanofaas/one-shot-local-jvm/control-plane-one-shot-jvm:local`: `sha256:598a08b36b5e3c8b2e854d2ddd7d7c2b2aee6865b468bf3520e8f84a5a890c06`
-- `nanofaas/one-shot-local-jvm/nanofaas-one-shot-workload:local`: `sha256:26fbaf3f86244855874285720e39a4ed7d9314fc56d13064e7b5a9df7227df45`
+- `nanofaas/one-shot-local-jvm/control-plane-one-shot-jvm:local`: `sha256:e7b5633a3745b0c35936b104e0d4cd52fa701c704e098cc953f2d48ae0787ef4`
+- `nanofaas/one-shot-local-jvm/nanofaas-one-shot-workload:local`: `sha256:3a5cb47667dc52f773d1ba4aef35e4373720d5b427d4c38b19ecfbefdecee141`
 ### one-shot-local-native
 
-- `nanofaas/one-shot-local-native/control-plane-one-shot-native:local`: `sha256:2194a51816b075fa1c4ff24a0a957356e10791ac2638fdbb7cfb1931a3d2ffa6`
-- `nanofaas/one-shot-local-native/nanofaas-one-shot-workload:local`: `sha256:3bd4a4b01e4e5ea75cf74c63e2e566bb91d1b605401f334d73f43d55e23dcf9a`
+- `nanofaas/one-shot-local-native/control-plane-one-shot-native:local`: `sha256:761ee6806ac6e22a987e4303efc73d634f73a372efb41275bac12a1e1e8b332b`
+- `nanofaas/one-shot-local-native/nanofaas-one-shot-workload:local`: `sha256:eab5e659d5ca88042b66824add027faae8236e68d9dd00ee4a4a20a8e6bf5b63`
 
 Assembly reports are retained under `build/recipes/<recipe>/distribution.json`.
 Packaged JVM/native startup and HTTP 404/400 checks passed without host socket
-mounts, root-user overrides or host networking. Final branch review is the next
-verification step.
+mounts, root-user overrides or host networking. JVM assembly passed in 9s and
+native Linux assembly in 3m10s. Final whole-branch review and its one fix pass are
+complete; no Critical/Important findings remain unaddressed and no Minor findings
+were deferred. The worktree retains the pre-existing `AGENTS.md` difference.
+
+The inline task ledger, RED/GREEN logs, final review and rulings are retained in
+`build/test-diagnostics/one-shot-phase-a/execution-record/`; the per-plan scratch
+workspace was removed after archiving. This directory is local diagnostic output,
+not a runtime dependency or a NanoLab implementation.

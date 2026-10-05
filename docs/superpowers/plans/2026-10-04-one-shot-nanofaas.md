@@ -236,5 +236,6 @@ Dopo A14 fermarsi al passaggio di consegne. La fase B è un lavoro separato nel 
 
 A1–A14 implemented and locally verified on `codex/one-shot-nanofaas`; see
 [phase-A handoff](../../testing/one-shot-phase-a.md) for evidence and limits.
-The final whole-branch review follows these task gates. No phase-B implementation
-or Azure campaign has been started.
+Final whole-branch review completed: both Important findings have failing-then-passing
+regressions and a green affected suite; no Critical or Minor findings remain.
+No phase-B implementation or Azure campaign has been started.

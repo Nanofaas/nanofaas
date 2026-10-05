@@ -71,4 +71,4 @@ Le prove locali o i futuri esperimenti possono rivelare bug: si corregge NanoFaa
 
 ## Stato e metodo di esecuzione
 
-La fase A è stata eseguita in modalità nativa sul branch `codex/one-shot-nanofaas`, creato da main allineato con origin (`a62a743f`). A1–A14 hanno verifiche locali registrate nel [dossier di consegna](../../testing/one-shot-phase-a.md); segue la revisione finale dell’intero branch. La fase B resta da avviare su richiesta, con Multipass. La fase C Azure è un lavoro futuro separato.
+La fase A è stata eseguita in modalità nativa sul branch `codex/one-shot-nanofaas`, creato da main allineato con origin (`a62a743f`). A1–A14 hanno verifiche locali registrate nel [dossier di consegna](../../testing/one-shot-phase-a.md); la revisione finale dell’intero branch è completata, con entrambi i rilievi Important corretti e verificati tramite regressioni RED→GREEN e suite completa dei componenti coinvolti. Non restano rilievi Critical o Minor. La fase B resta da avviare su richiesta, con Multipass. La fase C Azure è un lavoro futuro separato.
