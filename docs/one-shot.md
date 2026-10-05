@@ -86,3 +86,28 @@ runtime positively proves physical drain. Unknown execution status quarantines
 capacity and does not free it on an HTTP timeout. See
 [coordination and preparation](one-shot-coordination.md) for readiness protocol
 and memory overlap behavior, and the phase-A handoff dossier for test commands.
+
+## Native invocation routing
+
+External arrivals receive a deterministic weighted LOCAL, confirmed peer or cloud
+choice. Local and per-assignment token buckets have the configured finite burst.
+An unavailable/changed peer or exhausted quota goes to terminal cloud before any
+peer dispatch. Accepted quota is not refunded after a timeout. Each execution pins
+its route once; local pressure and retry never choose another destination, and a
+remote error after sending never produces a second cloud attempt.
+
+The sender sets native HTTP headers `X-NanoFaaS-Offload-Version: 1`,
+`X-NanoFaaS-Offload-Origin: node@incarnation`, `X-NanoFaaS-Offload-Epoch`,
+`X-NanoFaaS-Offload-Assignment`, plus `X-NanoFaaS-Offload-Hop: 1`. The dedicated
+cloud uses assignment `cloud`; it executes locally and never forwards again. A
+peer accepts only its confirmed assignment, current buyer incarnation and epoch,
+and its own remaining quota. Missing, duplicate or inconsistent native metadata
+is rejected; any hop marker, including malformed legacy values, prevents another
+hop. Function payload headers cannot supply these control-plane fields.
+
+Calibration input hashes identify the exact JSON input, serialized with sorted
+map keys and properties using the platform Jackson mapper. Selected functions
+reject other inputs, so tests must send the calibrated fixed workload. Trusted
+`X-NanoFaaS-Execution-Node` travels separately from handler-provided headers and is
+preserved through remote completion and idempotent replay. It is absent on
+infrastructure failures where execution was not attributed.

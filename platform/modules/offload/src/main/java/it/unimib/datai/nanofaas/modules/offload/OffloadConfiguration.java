@@ -76,6 +76,11 @@ public class OffloadConfiguration {
             it.unimib.datai.nanofaas.modules.offload.oneshot.coordination.EpochSettings bounds,it.unimib.datai.nanofaas.p2papi.PeerTransport peers,io.micrometer.core.instrument.MeterRegistry meters) {
             return new it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotOperations(configs,profiles,inputs,coordinator,actuator,events,bounds,peers,meters);
         }
+        @Bean it.unimib.datai.nanofaas.modules.offload.oneshot.routing.PlanRouter oneShotRouter(
+            it.unimib.datai.nanofaas.modules.offload.oneshot.actuation.ReplicaPlanActuator actuator,it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotConfigurationStore configs,
+            it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotOperations operations,it.unimib.datai.nanofaas.p2papi.PeerTransport peers) {
+            return new it.unimib.datai.nanofaas.modules.offload.oneshot.routing.PlanRouter(actuator::activePlan,()->configs.snapshot().map(it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotConfigurationStore.Snapshot::settings),operations::settingsFor,peers,System::nanoTime);
+        }
         @Bean it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotController oneShotController(
             it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotOperations operations,it.unimib.datai.nanofaas.modules.offload.oneshot.api.ServiceProfileStore profiles,
             it.unimib.datai.nanofaas.modules.offload.oneshot.api.EpochEventStore events,it.unimib.datai.nanofaas.modules.offload.oneshot.coordination.ClockHealth health) {
@@ -86,11 +91,13 @@ public class OffloadConfiguration {
     @Bean
     OffloadGateway moduleOffloadGateway(OffloadProperties properties,
                                         ObjectProvider<WebClient> webClient,
-                                        ObjectProvider<OffloadMeters> metrics) {
+                                        ObjectProvider<OffloadMeters> metrics,
+                                        ObjectProvider<it.unimib.datai.nanofaas.modules.offload.oneshot.routing.PlanRouter> planned) {
         if (Boolean.TRUE.equals(properties.enabled()) && !properties.hasTarget()) {
             log.warn("Offload module loaded without nanofaas.offload.target-url; "
                     + "only functions declaring their own offload.targetUrl can offload");
         }
-        return new DefaultOffloadGateway(properties, webClient::getObject, metrics.getObject());
+        var gateway=new DefaultOffloadGateway(properties,webClient::getObject,metrics.getObject());
+        gateway.plannedRouting(planned.getIfAvailable());return gateway;
     }
 }

@@ -19,6 +19,15 @@ public interface OffloadGateway {
     /** Error code stored on the execution record when the remote call timed out. */
     String OFFLOAD_TIMEOUT_CODE = "OFFLOAD_TIMEOUT";
 
+    default PlannedInvocationRoute planRoute(InvocationTask task,OffloadContext context) {
+        if(context.invalidMetadata()) return PlannedInvocationRoute.reject("invalid native offload metadata");
+        if(context.metadata()!=null) return "cloud".equals(context.metadata().assignment())?PlannedInvocationRoute.local("cloud"):PlannedInvocationRoute.reject("native assignment gateway unavailable");
+        return PlannedInvocationRoute.legacy();
+    }
+    default Mono<PlannedRemoteResult> invokePlannedRemote(InvocationTask task,PlannedInvocationRoute route,OffloadContext context,int timeoutBudgetMs) {
+        return Mono.error(new OffloadFailedException(route.targetUrl(),false,"planned routing unavailable"));
+    }
+    default boolean hasPlannedRouting(FunctionSpec spec) { return false; }
     boolean enabled();
 
     /** Strategy 3: the function's policy mandates immediate offload ({@code mode=always}). */

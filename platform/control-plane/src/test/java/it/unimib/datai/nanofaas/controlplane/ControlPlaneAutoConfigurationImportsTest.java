@@ -19,6 +19,7 @@ class ControlPlaneAutoConfigurationImportsTest {
             Map.entry("container-deployment-provider", "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.ContainerDeploymentProviderConfiguration"),
             Map.entry("containerd-deployment-provider", "it.unimib.datai.nanofaas.modules.containerddeploymentprovider.ContainerdDeploymentProviderConfiguration"),
             Map.entry("k8s-deployment-provider", "it.unimib.datai.nanofaas.modules.k8s.KubernetesDeploymentProviderConfiguration"),
+            Map.entry("forecasting", "it.unimib.datai.nanofaas.modules.forecasting.ForecastingConfiguration"),
             Map.entry("offload", "it.unimib.datai.nanofaas.modules.offload.OffloadConfiguration"),
             Map.entry("p2p-discovery", "it.unimib.datai.nanofaas.modules.p2pdiscovery.P2pConfiguration"),
             Map.entry("runtime-config", "it.unimib.datai.nanofaas.modules.runtimeconfig.RuntimeConfigConfiguration"),

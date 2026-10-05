@@ -108,7 +108,7 @@ public class InvocationController {
                 return;
             }
             String key = name.toLowerCase(Locale.ROOT);
-            if (!EXCLUDED_REQUEST_HEADERS.contains(key) && !connectionNominated.contains(key)) {
+            if (!key.startsWith("x-nanofaas-offload-") && !key.equals("x-nanofaas-execution-node") && !EXCLUDED_REQUEST_HEADERS.contains(key) && !connectionNominated.contains(key)) {
                 // Application headers stay single-valued, as they were: the first value wins.
                 // Only the Connection nominations need every occurrence, and they are read above.
                 filtered.put(key, values.getFirst());
@@ -162,12 +162,14 @@ public class InvocationController {
             @RequestHeader(value = "traceparent", required = false) String traceparent,
             @RequestHeader(value = "tracestate", required = false) String tracestate,
             @RequestHeader MultiValueMap<String, String> allHeaders) {
-        OffloadContext offloadContext = new OffloadContext(offloadHop != null, traceparent, tracestate);
+        OffloadContext offloadContext = OffloadContext.fromHttp(offloadHop,traceparent,tracestate,allHeaders);
+        if(offloadContext.invalidMetadata()) return Mono.just(ResponseEntity.badRequest().body(Map.of("error","INVALID_ONE_SHOT_METADATA")));
         InvocationRequest requestWithHeaders = withCallerHeaders(request, allHeaders);
         observeExternalArrival(name, offloadContext.offloadedHop());
         // defer: a synchronously thrown service exception must flow through onErrorResume
         return Mono.defer(() -> invocationService.invokeSyncReactive(name, requestWithHeaders, idempotencyKey, traceId, timeoutMs, offloadContext))
                 .map(InvocationController::toResponse)
+                .onErrorResume(it.unimib.datai.nanofaas.controlplane.offload.PlannedRouteRejectedException.class, ex -> Mono.just(ResponseEntity.status(429).body(Map.of("error","ONE_SHOT_ADMISSION_REJECTED","message",ex.getMessage()))))
                 .onErrorResume(FunctionNotFoundException.class, ex ->
                         Mono.just(ResponseEntity.notFound().<Object>build()))
                 .onErrorResume(SyncQueueRejectedException.class, ex ->
@@ -221,6 +223,7 @@ public class InvocationController {
         if (invocation.offloadedTarget() != null) {
             builder.header("X-NanoFaaS-Offloaded", invocation.offloadedTarget());
         }
+        if(invocation.executionNode()!=null) builder.header(it.unimib.datai.nanofaas.common.runtime.ResponseHeaderPolicy.EXECUTION_NODE_HEADER,invocation.executionNode());
         return builder.body(response);
     }
 

@@ -29,8 +29,12 @@ public record Outcome(
         int statusCode,
         long initDurationMs,
         boolean coldStart,
-        boolean readable
+        boolean readable,
+        String executionNode
 ) {
+    public Outcome(ExecutionState state,long started,long finished,Object output,ErrorInfo error,Map<String,String> headers,String encoding,int status,long init,boolean cold,boolean readable) {
+        this(state,started,finished,output,error,headers,encoding,status,init,cold,readable,null);
+    }
     /** No HTTP status is 0, and no execution begins at the epoch. */
     static final int NO_STATUS = 0;
     static final long ABSENT = 0L;

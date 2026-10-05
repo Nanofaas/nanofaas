@@ -4,6 +4,10 @@ x-nanofaas-overlays:
       responses:
         '200':
           headers:
+            X-NanoFaaS-Execution-Node:
+              schema:
+                type: string
+              description: Trusted node attribution after execution, preserved on idempotent replay; absent when execution was not attributed.
             X-NanoFaaS-Offloaded:
               schema:
                 type: string

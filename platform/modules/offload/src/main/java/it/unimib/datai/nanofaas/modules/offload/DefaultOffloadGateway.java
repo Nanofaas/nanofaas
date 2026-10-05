@@ -82,6 +82,12 @@ public class DefaultOffloadGateway implements OffloadGateway {
 
     private static final String PROXY_HEADER_PREFIX = "proxy-";
 
+    private it.unimib.datai.nanofaas.modules.offload.oneshot.routing.PlanRouter planRouter;
+    public void plannedRouting(it.unimib.datai.nanofaas.modules.offload.oneshot.routing.PlanRouter router) { this.planRouter=router; }
+    @Override public it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute planRoute(InvocationTask task,OffloadContext context) {
+        return planRouter==null?OffloadGateway.super.planRoute(task,context):planRouter.route(task,context);
+    }
+    @Override public boolean hasPlannedRouting(FunctionSpec spec) { return planRouter!=null && planRouter.manages(spec.name()); }
     private final OffloadProperties properties;
     private final Supplier<WebClient> webClient;
     private final OffloadMeters metrics;
@@ -162,7 +168,14 @@ public class DefaultOffloadGateway implements OffloadGateway {
 
     @Override
     public Mono<InvocationResult> invokeRemote(InvocationTask task, OffloadTrigger trigger, OffloadContext context, int timeoutBudgetMs) {
-        String target = targetUrl(task.functionSpec());
+        return invokeAtTarget(task,trigger,context,timeoutBudgetMs,targetUrl(task.functionSpec()),Map.of()).map(it.unimib.datai.nanofaas.controlplane.offload.PlannedRemoteResult::result);
+    }
+    @Override public Mono<it.unimib.datai.nanofaas.controlplane.offload.PlannedRemoteResult> invokePlannedRemote(InvocationTask task,it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute route,OffloadContext context,int budget) {
+        if(context.offloadedHop() || route.kind()!=it.unimib.datai.nanofaas.controlplane.offload.PlannedInvocationRoute.Kind.REMOTE) return Mono.error(new OffloadFailedException(route.targetUrl(),false,"second hop or invalid planned route"));
+        return invokeAtTarget(task,OffloadTrigger.EAGER,context,budget,route.targetUrl(),route.headers());
+    }
+    private Mono<it.unimib.datai.nanofaas.controlplane.offload.PlannedRemoteResult> invokeAtTarget(InvocationTask task,OffloadTrigger trigger,OffloadContext context,int timeoutBudgetMs,String target,Map<String,String> nativeHeaders) {
+
         String uri = target + "/v1/functions/" + task.functionName() + ":invoke";
         long timeoutMs = Math.max(1, timeoutBudgetMs - TIMEOUT_MARGIN_MS);
         OffloadMeters.OffloadMeterLease meterLease = metrics == null
@@ -172,10 +185,15 @@ public class DefaultOffloadGateway implements OffloadGateway {
 
         WebClient.RequestBodySpec request = webClient.get().post().uri(uri);
         applyHopHeaders(request, task, context);
+        nativeHeaders.forEach(request::header);
         forwardApplicationHeaders(request, task.request().headers());
 
         return request.bodyValue(task.request())
-                .exchangeToMono(response -> readRemoteResponse(response, target, task.functionName()))
+                .exchangeToMono(response -> {
+                    String node=response.headers().asHttpHeaders().getFirst(it.unimib.datai.nanofaas.common.runtime.ResponseHeaderPolicy.EXECUTION_NODE_HEADER);
+                    String attributed=node!=null && !node.isBlank() && node.length()<=256?node:null;
+                    return readRemoteResponse(response,target,task.functionName()).map(result->new it.unimib.datai.nanofaas.controlplane.offload.PlannedRemoteResult(result,attributed));
+                })
                 .timeout(Duration.ofMillis(timeoutMs))
                 .onErrorMap(TimeoutException.class, ex ->
                         new OffloadFailedException(target, true,
@@ -388,7 +406,7 @@ public class DefaultOffloadGateway implements OffloadGateway {
                 return;
             }
             String key = name.toLowerCase(Locale.ROOT);
-            if (EXCLUDED_FORWARD_HEADERS.contains(key)
+            if (key.startsWith("x-nanofaas-offload-") || key.equals("x-nanofaas-execution-node") || EXCLUDED_FORWARD_HEADERS.contains(key)
                     || HOP_BY_HOP_HEADERS.contains(key)
                     || key.startsWith(PROXY_HEADER_PREFIX)) {
                 return;
