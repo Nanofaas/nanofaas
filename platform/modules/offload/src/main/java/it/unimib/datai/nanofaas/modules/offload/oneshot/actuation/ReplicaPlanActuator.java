@@ -90,7 +90,9 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
             var p=new Preparation(outcome,System.nanoTime()+Math.min(budget.toNanos(),Math.max(0,until)));
             if(!preparing.compareAndSet(null,p)) return Mono.just(failed("preparation already active"));
             receiving.set(p);
-            return Mono.fromCallable(()->apply(p)).subscribeOn(scheduler).doFinally(signal->preparing.compareAndSet(p,null));
+            return Mono.using(()->p,
+                    preparation->Mono.fromCallable(()->apply(preparation)).subscribeOn(scheduler),
+                    preparation->preparing.compareAndSet(preparation,null),true);
         });
     }
     private PlanActivation failed(String reason) { return new PlanActivation(PlanActivation.Status.FAILED,null,Map.of(),Map.of(),reason,now.get()); }

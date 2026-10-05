@@ -29,6 +29,7 @@ final class DockerJavaRuntimeHints implements RuntimeHintsRegistrar {
             CreateContainerResponse.class,
             com.github.dockerjava.api.command.InspectImageResponse.class,
             com.github.dockerjava.api.command.GraphDriver.class,
+            com.github.dockerjava.api.command.GraphData.class,
             com.github.dockerjava.api.command.RootFS.class,
             com.github.dockerjava.api.model.ContainerConfig.class,
             com.github.dockerjava.api.model.HealthCheck.class,

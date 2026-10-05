@@ -18,6 +18,21 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 class ReplicaPlanActuatorTest {
+    @Test void completedPreparationAllowsTheNextEpochFromItsResultSubscriber() {
+        var now = new AtomicReference<>(Instant.parse("2026-10-04T10:00:00Z"));
+        var from = now.get().plusSeconds(5);
+        try (var actuator = new ReplicaPlanActuator(control(3, 2), () -> List.of(registered("f", 1)),
+                peers("a"), now::get, () -> true, Duration.ofSeconds(2), Duration.ofSeconds(1))) {
+            actuator.start();
+            var second = actuator.prepare(outcome("a", 1, from, 2, 1)).flatMap(first -> {
+                assertThat(first.status()).withFailMessage(first.reason()).isEqualTo(PlanActivation.Status.PREPARED);
+                now.set(from);
+                assertThat(actuator.activePlan()).isPresent();
+                return actuator.prepare(outcome("a", 2, from.plusSeconds(300), 2, 1));
+            }).block(Duration.ofSeconds(3));
+            assertThat(second.status()).withFailMessage(second.reason()).isEqualTo(PlanActivation.Status.PREPARED);
+        }
+    }
     static RegisteredFunction registered(String name,int memory) {
         var cc=new ConcurrencyControlConfig(ConcurrencyControlMode.STATIC_PER_POD,1,1,1,0L,0L,.5,.15,null,null);
         var spec=new FunctionSpec(name,"image",List.of(),Map.of("NANOFAAS_ONE_SHOT_PROFILE","true","NANOFAAS_MAX_CONCURRENT_HANDLERS","1"),new ResourceSpec(null,new ResourceQuantity(java.math.BigDecimal.ONE,memory)),30000,10,100,0,null,ExecutionMode.DEPLOYMENT,RuntimeMode.HTTP,null,new ScalingConfig(ScalingStrategy.NONE,0,10,List.of(),cc));
@@ -67,6 +82,7 @@ class ReplicaPlanActuatorTest {
     static ManagedReplicaControl control(long generation,int readyMaximum) {
         var control=mock(ManagedReplicaControl.class);when(control.setReadyConcurrency(any(),anyInt())).thenReturn(true);var desired=new AtomicInteger();
         var lease=new ReplicaControlLease(new FunctionGeneration("f",generation),"token","owner",System.nanoTime()+Duration.ofHours(1).toNanos());
+        when(control.renewReplicaLease(any(),any())).thenAnswer(a->Optional.of(a.getArgument(0)));
         when(control.acquireReplicaLease(any(),anyString(),any())).thenReturn(Optional.of(lease));when(control.ownsReplicaLease(lease)).thenReturn(true);
         when(control.generationOf(any())).thenReturn(lease.generation());when(control.supportsPhysicalReplicaControl(any())).thenReturn(true);
         when(control.setReplicas(any(ReplicaControlLease.class),any(),anyInt())).thenAnswer(a->{desired.set(a.getArgument(2));return true;});

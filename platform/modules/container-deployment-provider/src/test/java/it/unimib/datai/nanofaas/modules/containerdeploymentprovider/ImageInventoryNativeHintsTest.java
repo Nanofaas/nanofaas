@@ -6,6 +6,16 @@ import org.springframework.aot.hint.predicate.RuntimeHintsPredicates;
 import static org.assertj.core.api.Assertions.*;
 
 class ImageInventoryNativeHintsTest {
+    @Test void nativeImageInspectionCanBindOverlayStorageData() throws Exception {
+        var hints = new RuntimeHints();
+        new DockerJavaRuntimeHints().registerHints(hints, getClass().getClassLoader());
+        var type = com.github.dockerjava.api.command.GraphData.class;
+        assertThat(RuntimeHintsPredicates.reflection().onConstructorInvocation(type.getDeclaredConstructor()))
+                .accepts(hints);
+        assertThat(RuntimeHintsPredicates.reflection().onType(type)
+                .withMemberCategory(org.springframework.aot.hint.MemberCategory.ACCESS_DECLARED_FIELDS))
+                .accepts(hints);
+    }
     @Test void nativeClientCanReadAnExistingDockerConfigurationFile() throws Exception {
         var hints = new RuntimeHints();
         new DockerJavaRuntimeHints().registerHints(hints, getClass().getClassLoader());

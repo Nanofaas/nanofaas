@@ -35,7 +35,38 @@ generate new reports on Linux and retain them with the tested commit SHA.
 | Containerd dependency preparation | The root run could not resolve `io.nanofaas:containerd-java-cni:0.23.0`; the bootstrap repository was not configured for that run. | Build the pinned source revisions with the existing bootstrap script and select its Maven repository explicitly. Require successful dependency resolution, tests and release checks; retain the source/JAR receipt. |
 | External timeout classification | `ExternalDispatcherTimeoutTest.dispatch_slowServer_returnsPoolTimeout` returned `EXTERNAL_ERROR` instead of `EXTERNAL_TIMEOUT` in the broad run, then passed in an isolated class rerun. | Reproduce under Linux, capture the actual exception and fix the confirmed cause in TDD. Verify both isolated and full-suite execution. A successful rerun alone does not close an intermittent failure. |
 | Current Linux runtime artifacts | The latest correction pass rebuilt a macOS executable and the Rust workload, but did not rebuild and verify the Linux packaged images. | Rebuild JVM/native recipe images from the current commit, run startup smoke checks and the real one-shot process gates, and retain reports and image identities. |
-| Native compiler memory | The latest macOS compilation exhausted a 4 GiB heap and succeeded with 8 GiB. The one-shot CI command still specifies 4 GiB. | Measure the build on the Linux runner. If insufficient, adjust compiler heap/parallelism to its available memory and verify again. Do not infer a runtime function-memory requirement from compiler heap usage. |
+| Native compiler memory | The macOS compilation exhausted a 4 GiB heap, but the first Linux PR run successfully compiled the one-shot recipe with 4 GiB and two threads. | Keep the verified Linux setting; no CI heap increase is justified by that run. Reassess only if a Linux build provides new evidence of insufficient memory. Compiler heap is separate from runtime function memory. |
+
+### First Linux PR run and CI corrections
+
+The [first PR CI run](https://github.com/miciav/nanofaas/actions/runs/37279269873)
+tested `4d21c7bca21bd6cc753b06c8c5dd62fdfc2b25fe` on Linux. The containerd
+bootstrap succeeded, all 233 recipe plugin tests passed without skips, and both
+native compilations succeeded. Python, Rust, watchdog, Go, JavaScript, tooling
+and CodeQL jobs passed. The Java and native cluster jobs failed for these reasons:
+
+- `ReplicaPlanActuatorTest.transitionBetweenMemorySaturatingFunctionsNeverAllocatesBothAtMaximum`
+  returned `FAILED` instead of `DEGRADED`. A deterministic new subscriber-chain
+  regression reproduced `preparation already active`: `doFinally` released the
+  preparation gate after delivering its result. Eager `Mono.using` cleanup now
+  releases it before delivery, while retaining cancellation cleanup.
+- `OneShotLocalClusterE2eTest.fullAuctionReadinessRoutingAndFaultedNextEpoch`
+  received registration HTTP 503 instead of 201. The native Docker client could
+  not construct `GraphData` inside the image inspection response. A failing
+  native-hints regression confirmed the missing constructor/field metadata;
+  the existing Docker DTO registrar now includes this model.
+- `SchedulerSwitchInvocationEquivalenceTest.syncWaiterAndAsyncPollingObserveTheSameResultAcrossTwoStrategySwitches`
+  timed out on the first synchronous invocation after switching to shared-queue.
+  It passed locally and in 30 diagnostic repetitions. Its cause remains unknown;
+  the test now uses the existing timeout extension to capture a thread dump if
+  it recurs, without increasing its timeout or accepting an unsuccessful result.
+
+The two confirmed fixes were verified with 84 provider and 87 offload tests,
+zero failures/errors/skips, plus both modules' SpotBugs checks. Those development
+runs are not a replacement for the corrected PR's Linux CI rerun. The release
+gate failed because the preceding jobs failed; it was not a fourth independent
+cause. The earlier `ExternalDispatcherTimeoutTest` failure did not recur in
+this first Linux run and remains a separate historical intermittent observation.
 
 ### Timeout investigation
 
@@ -100,9 +131,9 @@ all-module suite does not replace checks of those different compositions.
 ## One shot processes and packaged artifacts
 
 Start with the JVM process gate. Under the pinned GraalVM `JAVA_HOME`, compile
-the native composition and run its process gate too. An 8 GiB compiler heap is
-shown as the setting that succeeded in the recorded development run; confirm
-that the Linux machine has sufficient memory before using it.
+the native composition and run its process gate too. The 4 GiB compiler heap
+and two build threads below succeeded on the first Linux PR runner; confirm
+that the target machine has enough memory for the compiler and other processes.
 
 ```sh
 docker build -f functions/rust/one-shot-workload/Dockerfile -t nanofaas-one-shot-workload .
@@ -111,7 +142,7 @@ docker build -f functions/rust/one-shot-workload/Dockerfile -t nanofaas-one-shot
 
 ./gradlew :control-plane:nativeCompile \
   -Precipe=recipes/one-shot-local-native.yaml \
-  -PnativeParallelism=2 -PnativeBuildMemory=8g
+  -PnativeParallelism=2 -PnativeBuildMemory=4g
 scripts/assert-native-executable.sh platform/control-plane/build/native/nativeCompile/control-plane
 ./gradlew :control-plane-modules:offload:oneShotE2e \
   -Precipe=recipes/one-shot-local-native.yaml \
@@ -119,7 +150,7 @@ scripts/assert-native-executable.sh platform/control-plane/build/native/nativeCo
 
 ./gradlew assembleRecipe -Precipe=recipes/one-shot-local-jvm.yaml
 ./gradlew assembleRecipe -Precipe=recipes/one-shot-local-native.yaml \
-  -PnativeParallelism=2 -PnativeBuildMemory=8g
+  -PnativeParallelism=2 -PnativeBuildMemory=4g
 python3 scripts/one-shot/smoke_packaged.py nanofaas/one-shot-local-jvm/control-plane-one-shot-jvm:local
 python3 scripts/one-shot/smoke_packaged.py nanofaas/one-shot-local-native/control-plane-one-shot-native:local
 ```
@@ -138,8 +169,8 @@ calibration, auction-period qualification or scientific experiments.
   the captured diagnostics; do not declare it fixed from isolated success alone.
 - Current JVM/native process-gate results, native executable/API checks and
   packaged-image startup results with their artifact identities.
-- Recorded Linux build memory settings and a corresponding CI adjustment if
-  the current 4 GiB setting proves insufficient there.
+- Recorded Linux build memory settings; the first PR run already validates
+  4 GiB/two threads for compilation, without establishing cluster correctness.
 
 Update this document and the phase A dossier with the Linux results. The PR is
 kept in draft while these checks remain open. No merge, NanoLab work or Azure
