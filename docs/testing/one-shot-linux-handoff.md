@@ -68,6 +68,25 @@ gate failed because the preceding jobs failed; it was not a fourth independent
 cause. The earlier `ExternalDispatcherTimeoutTest` failure did not recur in
 this first Linux run and remains a separate historical intermittent observation.
 
+The [second Linux CI run](https://github.com/miciav/nanofaas/actions/runs/37295410026)
+tested the fixes at `e2801a343e965c8a4873ecb830640a17335f69ab`. Its complete
+`./gradlew test --continue` run passed in 20m11s; `releaseChecks` passed in 4m55s
+and the subsequent P2P gate passed. The job then exceeded its total 30-minute
+limit during the core-only checks. This was a job-budget cancellation, not an
+observed failing assertion; later compositions and the JVM cluster gate were
+not verified by that job. `test-java` now has a 60-minute budget, matching the
+native job. Test timeouts and assertions remain unchanged. The corrected budget
+still requires a complete CI run; the scheduler timeout's cause is not declared
+fixed merely because it passed in this Linux suite.
+
+The same run's `test-native-artifact` job passed in 38m35s, including both native
+compilations, executable/API checks and the real native one-shot cluster. This
+verifies the Docker image-registration fix on Linux. Its recipe compilation used
+4 GiB and two threads. Retained Java XML reports show 84 provider, 87 offload,
+45 physical runtime, 148 P2P and 233 recipe plugin tests with no failures, errors
+or skips. New Linux packaged-image assembly/startup identities and completion
+of the cancelled Java job's remaining gates are still required.
+
 ### Timeout investigation
 
 `ExternalDispatcher` configures both Netty's HTTP `responseTimeout` and Reactor's

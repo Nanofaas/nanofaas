@@ -20,7 +20,8 @@ defaults:
 jobs:
   test-java:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Includes the full suite, release checks, alternate compositions and the real JVM cluster.
+    timeout-minutes: 60
     env:
       ORG_GRADLE_PROJECT_containerdMavenLocal: 'true'
       GRADLE_OPTS: -Dmaven.repo.local=${{ github.workspace }}/.gradle/containerd-m2
