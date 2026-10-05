@@ -1,6 +1,6 @@
 # One-shot NanoFaaS — Phase A Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** implementare e verificare tutto one-shot in NanoFaaS prima di iniziare il lavoro NanoLab.
 
@@ -43,8 +43,8 @@ Per rendere leggibili i percorsi, le seguenti abbreviazioni sono espansioni esat
 | C | `platform/control-plane/src/main/java/it/unimib/datai/nanofaas/controlplane` |
 | S | `platform/control-plane-spi/src/main/java/it/unimib/datai/nanofaas/controlplane` |
 | R | `platform/container-deployment-runtime/src/main/java/it/unimib/datai/nanofaas/containerdeployment` |
-| PA | `platform/p2p-api/src/main/java/it/unimib/datai/nanofaas/p2p/api` |
-| FA | `platform/forecasting-api/src/main/java/it/unimib/datai/nanofaas/forecasting/api` |
+| PA | `platform/p2p-api/src/main/java/it/unimib/datai/nanofaas/p2papi` |
+| FA | `platform/forecasting-api/src/main/java/it/unimib/datai/nanofaas/forecastingapi` |
 | F | `platform/modules/forecasting/src/main/java/it/unimib/datai/nanofaas/modules/forecasting` |
 
 Comando unitario dei task Java: `./gradlew :<progetto>:test -PcontrolPlaneModules=all --tests '*<NomeTest>'`. I progetti dei moduli sono `control-plane-modules:offload`, `control-plane-modules:p2p-discovery`, `control-plane-modules:forecasting`; le librerie hanno il proprio nome, per esempio `p2p-api`. I comandi specificati sotto sono da eseguire nella radice NanoFaaS. Prima RED, poi GREEN; al GREEN serve exit code zero e nessun test ignorato per mancanza involontaria di prerequisiti.
@@ -55,11 +55,11 @@ Comando unitario dei task Java: `./gradlew :<progetto>:test -PcontrolPlaneModule
 
 **Interfacce:** gli schemi v1 fissano unità, identificatori, versioni e hash. Forecast: origine, funzione, generazione locale, intervallo `[start,end)`, rate, revisione. Service profile: fingerprint di immagine/runtime/backend/input/CPU/memoria/co-locazione e ambiente host/VM, provider, finalità `workflow-validation` o `scientific-experiment`, distribuzione warm, `D`, intervallo di validità del modello, `synthetic` e provenienza. Profili locali misurati e fixture sintetiche rimangono distinti. Eventi: nodo/incarnazione, epoca/round, tipo, offset monotono locale, tempo UTC, stato, censura e ID di correlazione. Hash SHA-256 dei byte immutabili, senza includere il proprio hash nel contenuto. Le generazioni delle funzioni sono locali: peer con contatori diversi possono eseguire la stessa funzione/versione; un assignment conserva la generazione del venditore senza richiederne l'uguaglianza con quella del compratore.
 
-- [ ] Scrivere `test_one_shot_contracts.py`: fixture completa valida; `NaN`, durata negativa, campo richiesto assente e versione sconosciuta rifiutati. L'exporter deve fallire se il checkout non corrisponde al commit richiesto.
-- [ ] Eseguire `python3 -m pytest scripts/tests/test_one_shot_contracts.py -q` e verificare RED per schemi/exporter assenti.
-- [ ] Implementare `export_reference(repo: Path, output: Path) -> None`: richiedere esplicitamente il checkout del branch `71899f7`, registrare SHA completo e hash dei sorgenti, esportare input/output per `LSP`, `LSPr_x` e ogni ulteriore variante realmente invocata dall'asta base. Includere trascrizioni d'asta con round e decisioni, non solo welfare finale. Usare l'ambiente Python del riferimento soltanto per rigenerare fixture; nessuna sua dipendenza entra in NanoFaaS runtime o nella normale CI Java.
-- [ ] Verificare GREEN; confrontare fixture con il riferimento e, per piccoli casi, enumerazione esaustiva/Pyomo. Documentare separatamente tie-break DP e ottimi MILP equivalenti. Congelare anche la mappatura `x/omega/z/r` verso i flussi runtime.
-- [ ] Commit: `Add versioned one-shot contracts and reference fixtures`.
+- [x] Scrivere `test_one_shot_contracts.py`: fixture completa valida; `NaN`, durata negativa, campo richiesto assente e versione sconosciuta rifiutati. L'exporter deve fallire se il checkout non corrisponde al commit richiesto.
+- [x] Eseguire `python3 -m pytest scripts/tests/test_one_shot_contracts.py -q` e verificare RED per schemi/exporter assenti.
+- [x] Implementare `export_reference(repo: Path, output: Path) -> None`: richiedere esplicitamente il checkout del branch `71899f7`, registrare SHA completo e hash dei sorgenti, esportare input/output per `LSP`, `LSPr_x` e ogni ulteriore variante realmente invocata dall'asta base. Includere trascrizioni d'asta con round e decisioni, non solo welfare finale. Usare l'ambiente Python del riferimento soltanto per rigenerare fixture; nessuna sua dipendenza entra in NanoFaaS runtime o nella normale CI Java.
+- [x] Verificare GREEN; confrontare fixture con il riferimento e, per piccoli casi, enumerazione esaustiva/Pyomo. Documentare separatamente tie-break DP e ottimi MILP equivalenti. Congelare anche la mappatura `x/omega/z/r` verso i flussi runtime.
+- [x] Commit: `Add versioned one-shot contracts and reference fixtures`.
 
 ## A2 — Contratto P2P e adattatore esistente
 
@@ -67,11 +67,11 @@ Comando unitario dei task Java: `./gradlew :<progetto>:test -PcontrolPlaneModule
 
 **Interfacce:** `PeerTransport.activeNeighbors(): List<PeerEndpoint>`, `request(String peerId, String topic, byte[] payload, Duration timeout): Mono<byte[]>`, `subscribe(String topic, PeerReceiver receiver): PeerSubscription`; `PeerReceiver.onMessage(String senderId, byte[] payload): Mono<byte[]>`; `PeerSubscription.close(): void`. `PeerEndpoint` contiene identità, incarnazione e URI HTTP di invocazione esplicitamente annunciata, distinta dall'indirizzo del trasporto P2P. Non dedurre porte HTTP dalla porta di discovery.
 
-- [ ] Scrivere test: esclusione peer inattivo, endpoint HTTP non annunciato non eleggibile per one-shot, payload oltre limite respinto, chiusura subscription effettiva e nessun callback dopo stop/rejoin della vecchia generazione.
-- [ ] Eseguire RED con `:p2p-api:test` e `:control-plane-modules:p2p-discovery:test`, filtro dei due test.
-- [ ] Estrarre solo il contratto pubblico, adattare `PeerMessaging` senza copiare discovery/trasporto. Esporre endpoint di invocazione e incarnazione nello scambio applicativo versionato; i peer precedenti continuano la discovery ma non vengono venduti come destinazioni one-shot. Limitare payload applicativi a 1 MiB e richieste concorrenti configurabili con default 4.
-- [ ] Eseguire GREEN e i test P2P esistenti. Verificare assenza di dipendenze di `p2p-api` su moduli, Spring e classi interne del control plane.
-- [ ] Commit: `Expose minimal P2P contracts for offload`.
+- [x] Scrivere test: esclusione peer inattivo, endpoint HTTP non annunciato non eleggibile per one-shot, payload oltre limite respinto, chiusura subscription effettiva e nessun callback dopo stop/rejoin della vecchia generazione.
+- [x] Eseguire RED con `:p2p-api:test` e `:control-plane-modules:p2p-discovery:test`, filtro dei due test.
+- [x] Estrarre solo il contratto pubblico, adattare `PeerMessaging` senza copiare discovery/trasporto. Esporre endpoint di invocazione e incarnazione nello scambio applicativo versionato; i peer precedenti continuano la discovery ma non vengono venduti come destinazioni one-shot. Limitare payload applicativi a 1 MiB e richieste concorrenti configurabili con default 4.
+- [x] Eseguire GREEN e i test P2P esistenti. Verificare assenza di dipendenze di `p2p-api` su moduli, Spring e classi interne del control plane.
+- [x] Commit: `Expose minimal P2P contracts for offload`.
 
 ## A3 — Contratto forecasting e conteggio degli arrivi esterni
 
@@ -79,11 +79,11 @@ Comando unitario dei task Java: `./gradlew :<progetto>:test -PcontrolPlaneModule
 
 **Interfacce:** `ForecastSource.forecast(ForecastQuery query): ForecastSnapshot`; query = nodo, funzione, generazione, intervallo. Snapshot immutabile = stato AVAILABLE/MISSING/STALE, rate, revisione, provider, producedAt, intervallo. `ExternalArrivalObserver.record(ExternalArrival arrival): void`, con implementazione no-op se forecasting assente. Evento = funzione/generazione, istante e ID richiesta; nessun contenuto del payload.
 
-- [ ] Test: una richiesta HTTP esterna valida produce un evento; inoltro peer e retry interno ne producono zero; zero osservato differisce da finestra non osservata. Una nuova generazione non eredita le misure della vecchia.
-- [ ] Eseguire RED in `forecasting-api` e `control-plane`.
-- [ ] Implementare l'osservazione al confine HTTP dopo classificazione del traffico, senza dipendenza del core dal modulo forecasting. Definire come arrivi le richieste esterne valide ricevute: eventuali retry del client sono arrivi osservati distinti, salvo correlazione esplicita; i test sperimentali usano un ID originale e disabilitano retry client automatici. Tenere replay/idempotenza separati dai tentativi interni e documentare i contatori.
-- [ ] Eseguire GREEN, incluso avvio core-only senza provider; `./gradlew :control-plane:test -PcontrolPlaneModules=none --tests '*CoreOnlyApiTest'`.
-- [ ] Commit: `Add forecast contracts and external arrival observations`.
+- [x] Test: una richiesta HTTP esterna valida produce un evento; inoltro peer e retry interno ne producono zero; zero osservato differisce da finestra non osservata. Una nuova generazione non eredita le misure della vecchia.
+- [x] Eseguire RED in `forecasting-api` e `control-plane`.
+- [x] Implementare l'osservazione al confine HTTP dopo classificazione del traffico, senza dipendenza del core dal modulo forecasting. Definire come arrivi le richieste esterne valide ricevute: eventuali retry del client sono arrivi osservati distinti, salvo correlazione esplicita; i test sperimentali usano un ID originale e disabilitano retry client automatici. Tenere replay/idempotenza separati dai tentativi interni e documentare i contatori.
+- [x] Eseguire GREEN, incluso avvio core-only senza provider; `./gradlew :control-plane:test -PcontrolPlaneModules=none --tests '*CoreOnlyApiTest'`.
+- [x] Commit: `Add forecast contracts and external arrival observations`.
 
 ## A4 — Provider EWMA e oracle atomico
 
@@ -91,11 +91,11 @@ Comando unitario dei task Java: `./gradlew :<progetto>:test -PcontrolPlaneModule
 
 **Interfacce:** implementa A3. `PUT /v1/admin/forecasting/trace` carica un documento v1 con revisione attesa; `GET /v1/admin/forecasting/trace` legge revisione e riepilogo. Limiti proposti: 8 MiB/documento e 100.000 righe, rifiuto completo se superati; sostituzione compare-and-set, `409` per revisione concorrente. Snapshot già consegnati restano immutabili.
 
-- [ ] Test: `alpha=0.5`, precedente 10 e osservato 20 → forecast 15; warmup non osservato → MISSING. Test confini `[start,end)`, righe duplicate/sovrapposte rifiutate, caricamento parzialmente invalido non cambia revisione, nuova funzione non usa traccia della vecchia generazione.
-- [ ] Eseguire RED: `./gradlew :control-plane-modules:forecasting:test -PcontrolPlaneModules=all`.
-- [ ] Implementare provider selezionabile, finestre bounded e scadenze; parametri EWMA e periodo espliciti. Modulo default-off, nessuna dipendenza da offload. Integrare documentazione e composizione OpenAPI nello stesso task.
-- [ ] Eseguire GREEN e test architetturale: dipendenze su `forecasting-api`, non sulle implementazioni di altri moduli.
-- [ ] Commit: `Implement EWMA and external forecast providers`.
+- [x] Test: `alpha=0.5`, precedente 10 e osservato 20 → forecast 15; warmup non osservato → MISSING. Test confini `[start,end)`, righe duplicate/sovrapposte rifiutate, caricamento parzialmente invalido non cambia revisione, nuova funzione non usa traccia della vecchia generazione.
+- [x] Eseguire RED: `./gradlew :control-plane-modules:forecasting:test -PcontrolPlaneModules=all`.
+- [x] Implementare provider selezionabile, finestre bounded e scadenze; parametri EWMA e periodo espliciti. Modulo default-off, nessuna dipendenza da offload. Integrare documentazione e composizione OpenAPI nello stesso task.
+- [x] Eseguire GREEN e test architetturale: dipendenze su `forecasting-api`, non sulle implementazioni di altri moduli.
+- [x] Commit: `Implement EWMA and external forecast providers`.
 
 ## A5 — Porting del solver locale esatto
 
@@ -103,11 +103,11 @@ Comando unitario dei task Java: `./gradlew :<progetto>:test -PcontrolPlaneModule
 
 **Interfacce:** `solve(LocalProblem problem, SolveLimits limits): LocalSolution`. Problema = modello supportato, vettori ordinati di carico, domanda, utilità, memoria, impegni in ingresso e variabili fissate; soluzione = stato, `x/omega/z/r`, obiettivo, durata, stati visitati. Limiti = massimo prodotto stati/livelli, byte massimi e deadline monotono. Stati: OPTIMAL, INFEASIBLE, UNSUPPORTED, SIZE_LIMIT, DEADLINE.
 
-- [ ] Test: fixture A1, brute force su piccoli problemi, pareggi deterministici, carico zero, RAM insufficiente, inbound già impegnato, overflow e `NaN`. `FlowUnits` con `q=0.5`, carico 3 e `D=0.1` produce 6 unità e `D_solver=0.05`, mantenendo la capacità fisica.
-- [ ] Eseguire RED con i due test nel progetto offload.
-- [ ] Portare costruzione delle curve e DP con array primitivi, GCD esatto della RAM, doppio vettore e backtracking. `LSPr_x` usa il calcolo diretto. Per obiettivi normalizzati per carico conservare i coefficienti e verificare l'invarianza; trasformare solo quantità dimensionali secondo A1. Usare decimali per conversione della griglia, evitando `floor` errati da rappresentazione binaria; EWMA separa il resto per il cloud. Come limite iniziale del lavoro usare 2.000.000 stati×livelli, come il riferimento, più un limite byte esplicito; nessun fallback MILP.
-- [ ] Eseguire GREEN; confronto differenziale riproducibile senza checkout Python disponibile nella CI ordinaria. Verificare che lo stop per deadline non produca un falso OPTIMAL.
-- [ ] Commit: `Port the exact local replica solver to Java`.
+- [x] Test: fixture A1, brute force su piccoli problemi, pareggi deterministici, carico zero, RAM insufficiente, inbound già impegnato, overflow e `NaN`. `FlowUnits` con `q=0.5`, carico 3 e `D=0.1` produce 6 unità e `D_solver=0.05`, mantenendo la capacità fisica.
+- [x] Eseguire RED con i due test nel progetto offload.
+- [x] Portare costruzione delle curve e DP con array primitivi, GCD esatto della RAM, doppio vettore e backtracking. `LSPr_x` usa il calcolo diretto. Per obiettivi normalizzati per carico conservare i coefficienti e verificare l'invarianza; trasformare solo quantità dimensionali secondo A1. Usare decimali per conversione della griglia, evitando `floor` errati da rappresentazione binaria; EWMA separa il resto per il cloud. Come limite iniziale del lavoro usare 2.000.000 stati×livelli, come il riferimento, più un limite byte esplicito; nessun fallback MILP.
+- [x] Eseguire GREEN; confronto differenziale riproducibile senza checkout Python disponibile nella CI ordinaria. Verificare che lo stop per deadline non produca un falso OPTIMAL.
+- [x] Commit: `Port the exact local replica solver to Java`.
 
 ## A6 — Motore d'asta puro e ledger del venditore
 
@@ -115,11 +115,11 @@ Comando unitario dei task Java: `./gradlew :<progetto>:test -PcontrolPlaneModule
 
 **Interfacce:** `OneShotAuctionEngine.advance(AuctionSnapshot state, AuctionMessage message): AuctionTransition`; transizione = nuovo snapshot e messaggi da emettere, senza I/O. `SellerLedger.apply(AuctionMessage message): AuctionTransition` serializza l'autorità del venditore. Messaggi tipizzati OFFER/BID/GRANT/ROUND_CLOSE/READY_CONFIRM, envelope schema1/nodo/incarnazione/epoca/round/messageId/funzione/revisione/validità. `Assignment` distingue provisional e ready-confirmed.
 
-- [ ] Test: replay A1, `apply(bid)` due volte non modifica il secondo risultato né consuma altra capacità; due compratori non superano RAM/capacità; messaggi vecchi non mutano il ledger. Verificare l'assenza di sostituzione di assegnazioni esistenti prevista da one-shot. Offerte per funzione/versione non compatibile sono escluse; contatori di generazione diversi su due nodi non bastano invece a dichiararle incompatibili.
-- [ ] Eseguire RED con `AuctionReferenceReplayTest` e `SellerLedgerTest`.
-- [ ] Portare ordine, prezzi, tie-break, memory bids, ricalcolo a `x` fissato e condizioni di progresso del riferimento usando A5. Per trascrizioni deterministiche ordinare gli input chiusi del round per identità stabile; non equiparare ordine di arrivo di rete e ordine Python. Il ledger applica prima di emettere conferma; conserva deduplica fino a scadenza del round/epoca con limiti espliciti.
-- [ ] Eseguire GREEN e simulazione in-memory di tre edge più cloud, verificando conservazione e vincoli a ogni transizione, non solo alla fine.
-- [ ] Commit: `Implement one-shot auction transitions and seller commitments`.
+- [x] Test: replay A1, `apply(bid)` due volte non modifica il secondo risultato né consuma altra capacità; due compratori non superano RAM/capacità; messaggi vecchi non mutano il ledger. Verificare l'assenza di sostituzione di assegnazioni esistenti prevista da one-shot. Offerte per funzione/versione non compatibile sono escluse; contatori di generazione diversi su due nodi non bastano invece a dichiararle incompatibili.
+- [x] Eseguire RED con `AuctionReferenceReplayTest` e `SellerLedgerTest`.
+- [x] Portare ordine, prezzi, tie-break, memory bids, ricalcolo a `x` fissato e condizioni di progresso del riferimento usando A5. Per trascrizioni deterministiche ordinare gli input chiusi del round per identità stabile; non equiparare ordine di arrivo di rete e ordine Python. Il ledger applica prima di emettere conferma; conserva deduplica fino a scadenza del round/epoca con limiti espliciti.
+- [x] Eseguire GREEN e simulazione in-memory di tre edge più cloud, verificando conservazione e vincoli a ogni transizione, non solo alla fine.
+- [x] Commit: `Implement one-shot auction transitions and seller commitments`.
 
 ## A7 — Occupazione reale Rust e funzione di prova
 
@@ -127,11 +127,11 @@ Comando unitario dei task Java: `./gradlew :<progetto>:test -PcontrolPlaneModule
 
 **Interfacce:** misurare dal possesso iniziale della prenotazione handler fino al rilascio dell'ultimo possessore, inclusa `Context.spawn_blocking`. Aggiungere metriche `nanofaas_runtime_replica_occupancy_seconds` e `nanofaas_runtime_active_handlers`, separate dall'esistente timer di risposta. `GET /runtime/executions/{executionId}` restituisce stato ACTIVE/RELEASED, incarnazione runtime, durata di occupazione a rilascio e stato della risposta (success/error/timeout/cancelled); unknown/expired non costituisce prova di rilascio. I campioni sono così disponibili anche fuori dall'istogramma aggregato. Retention e numero di record terminali bounded, senza executionId come label Prometheus; nessuna espulsione di record attivi per fare spazio. Limiti configurabili con default 10.000 record terminali e 10 minuti di retention, da registrare nelle evidenze.
 
-- [ ] Test con latch: timeout HTTP prima della fine della closure → `active_handlers==1`; dopo rilascio → `0` e un solo campione di occupazione. Panic, errore, cancellazione e clone del context non duplicano il campione. UNKNOWN/expired non viene letto come RELEASED; retention piena non elimina esecuzioni attive. La funzione con stesso seed/input produce stesso checksum e rifiuta dimensioni eccessive.
-- [ ] Eseguire RED: `cargo test --locked --manifest-path sdks/rust/Cargo.toml` e, dopo il manifest minimo della funzione, il corrispondente `cargo test --locked`.
-- [ ] Implementare osservazione sul proprietario della prenotazione, non sul select HTTP. Funzione con parametri bounded per iterazioni CPU, working-set in byte e seed, tocco effettivo della memoria e checksum; lavoro blocking passa dal Context e conserva la prenotazione. Nessuno sleep come lavoro principale. Stato runtime amministrativo utile al drain, senza introdurre una coda di esecuzione nuova.
-- [ ] Eseguire GREEN, build release e verifica container della funzione con concorrenza configurata a 1. Documentare che il consumo reale include runtime oltre al working-set richiesto.
-- [ ] Commit: `Measure physical replica occupancy and add a reproducible workload`.
+- [x] Test con latch: timeout HTTP prima della fine della closure → `active_handlers==1`; dopo rilascio → `0` e un solo campione di occupazione. Panic, errore, cancellazione e clone del context non duplicano il campione. UNKNOWN/expired non viene letto come RELEASED; retention piena non elimina esecuzioni attive. La funzione con stesso seed/input produce stesso checksum e rifiuta dimensioni eccessive.
+- [x] Eseguire RED: `cargo test --locked --manifest-path sdks/rust/Cargo.toml` e, dopo il manifest minimo della funzione, il corrispondente `cargo test --locked`.
+- [x] Implementare osservazione sul proprietario della prenotazione, non sul select HTTP. Funzione con parametri bounded per iterazioni CPU, working-set in byte e seed, tocco effettivo della memoria e checksum; lavoro blocking passa dal Context e conserva la prenotazione. Nessuno sleep come lavoro principale. Stato runtime amministrativo utile al drain, senza introdurre una coda di esecuzione nuova.
+- [x] Eseguire GREEN, build release e verifica container della funzione con concorrenza configurata a 1. Documentare che il consumo reale include runtime oltre al working-set richiesto.
+- [x] Commit: `Measure physical replica occupancy and add a reproducible workload`.
 
 ## A8 — Dispatch verso repliche libere e drain sicuro
 
@@ -139,11 +139,11 @@ Comando unitario dei task Java: `./gradlew :<progetto>:test -PcontrolPlaneModule
 
 **Interfacce:** `ReplicaSlots.tryAcquire(String executionId): Optional<ReplicaLease>`; lease identifica backend e incarnazione, con `markReleased()` solo su evidenza di completamento fisico. `RuntimeExecutionProbe.observe(URI backend, String executionId): ExecutionObservation` consuma A7. `beginDrain(String backendId): void` esclude nuove assegnazioni prima della rimozione.
 
-- [ ] Test: con replica A occupata e B libera la seconda richiesta va a B; nessuna replica supera uno. Timeout/client disconnect non liberano automaticamente A. Risposta di probe UNKNOWN o di vecchia incarnazione non autorizza il riuso. Downscale attende il lavoro in corso senza ucciderlo.
-- [ ] Eseguire RED nel progetto `container-deployment-runtime`.
-- [ ] Implementare prenotazione atomica per backend e protezione durante aggiornamenti del pool. Nel profilo one-shot, riusare dopo completamento RELEASED verificato per la stessa invocazione/incarnazione, anche quando la risposta HTTP è arrivata prima. Incertezza → replica in quarantena, non nuova esecuzione. Se non arriva mai prova positiva, fallire/degradare e richiedere drain controllato, senza liberare lo slot per semplice timeout. Provider/SDK privi di questa capacità non sono eleggibili per il profilo one-shot iniziale; modalità ordinarie restano compatibili.
-- [ ] Eseguire GREEN, inclusi test reali con la funzione A7 e verifica dei contatori runtime. Non limitarsi a contare richieste HTTP contemporanee nel proxy.
-- [ ] Commit: `Dispatch one-shot work to free replicas and preserve drain safety`.
+- [x] Test: con replica A occupata e B libera la seconda richiesta va a B; nessuna replica supera uno. Timeout/client disconnect non liberano automaticamente A. Risposta di probe UNKNOWN o di vecchia incarnazione non autorizza il riuso. Downscale attende il lavoro in corso senza ucciderlo.
+- [x] Eseguire RED nel progetto `container-deployment-runtime`.
+- [x] Implementare prenotazione atomica per backend e protezione durante aggiornamenti del pool. Nel profilo one-shot, riusare dopo completamento RELEASED verificato per la stessa invocazione/incarnazione, anche quando la risposta HTTP è arrivata prima. Incertezza → replica in quarantena, non nuova esecuzione. Se non arriva mai prova positiva, fallire/degradare e richiedere drain controllato, senza liberare lo slot per semplice timeout. Provider/SDK privi di questa capacità non sono eleggibili per il profilo one-shot iniziale; modalità ordinarie restano compatibili.
+- [x] Eseguire GREEN, inclusi test reali con la funzione A7 e verifica dei contatori runtime. Non limitarsi a contare richieste HTTP contemporanee nel proxy.
+- [x] Commit: `Dispatch one-shot work to free replicas and preserve drain safety`.
 
 ## A9 — Coordinatore di epoca e protocollo P2P reale
 
@@ -151,11 +151,11 @@ Comando unitario dei task Java: `./gradlew :<progetto>:test -PcontrolPlaneModule
 
 **Interfacce:** `EpochCoordinator.prepare(long epoch, Instant startsAt, Instant endsAt): Mono<EpochOutcome>` consuma A2/A4/A6 e produce assegnazioni provvisorie; una negoziazione attiva per nodo. `ClockHealth.sample(Duration observedOffset, Instant measuredAt): void`; campione scaduto o oltre soglia impedisce nuove conferme. A11 espone l'aggiornamento amministrativo; nei test il clock è iniettato.
 
-- [ ] Test con tempo virtuale e trasporto disturbato: duplicati, perdita grant, riordino, round chiuso, rejoin, deadline, clock fuori soglia; nessuna capacità duplicata né callback che ripopola lo stato dopo stop. Integrare tre veri servizi P2P locali per verificare serializzazione e topic.
-- [ ] Eseguire RED nel progetto offload, selezionando i tre test.
-- [ ] Usare topic `nanofaas.oneshot.v1`, codec bounded 1 MiB, schema e identità verificati. Congelare forecast/catalogo a inizio asta; assegnare code bounded ai messaggi e uno scheduler dedicato al controllo. ROUND_CLOSE distingue tutti-i-peer-chiusi da timeout/round-limit. Nessun algoritmo globale aggiuntivo: senza chiusure sufficienti il risultato è incompleto. Limitare parallelismo e cancellare/fence tutte le attività della vecchia incarnazione.
-- [ ] Eseguire GREEN. Registrare durata solver e intera asta distintamente, includendo attese del protocollo, con esito CONVERGED/ROUND_LIMIT/DEADLINE/FAILED.
-- [ ] Commit: `Run bounded one-shot epochs over peer messaging`.
+- [x] Test con tempo virtuale e trasporto disturbato: duplicati, perdita grant, riordino, round chiuso, rejoin, deadline, clock fuori soglia; nessuna capacità duplicata né callback che ripopola lo stato dopo stop. Integrare tre veri servizi P2P locali per verificare serializzazione e topic.
+- [x] Eseguire RED nel progetto offload, selezionando i tre test.
+- [x] Usare topic `nanofaas.oneshot.v1`, codec bounded 1 MiB, schema e identità verificati. Congelare forecast/catalogo a inizio asta; assegnare code bounded ai messaggi e uno scheduler dedicato al controllo. ROUND_CLOSE distingue tutti-i-peer-chiusi da timeout/round-limit. Nessun algoritmo globale aggiuntivo: senza chiusure sufficienti il risultato è incompleto. Limitare parallelismo e cancellare/fence tutte le attività della vecchia incarnazione.
+- [x] Eseguire GREEN. Registrare durata solver e intera asta distintamente, includendo attese del protocollo, con esito CONVERGED/ROUND_LIMIT/DEADLINE/FAILED.
+- [x] Commit: `Run bounded one-shot epochs over peer messaging`.
 
 ## A10 — Proprietà delle repliche e attivazione dei piani
 
@@ -163,11 +163,11 @@ Comando unitario dei task Java: `./gradlew :<progetto>:test -PcontrolPlaneModule
 
 **Interfacce:** aggiungere a `ManagedReplicaControl` acquisizione di un lease esclusivo legato a `FunctionGeneration` e overload `setReplicas(ReplicaControlLease lease, ManagedDeploymentTarget target, int replicas)`. Il metodo esistente resta, ma rifiuta scritture non proprietarie mentre un lease è attivo. `ReplicaPlanActuator.prepare(EpochOutcome outcome): Mono<PlanActivation>`; `PlanActivation` include capacità pronta, impegni confermati, residuo e stato di degradazione. `ActiveRoutingPlan` è immutabile e legato a epoca/generazioni.
 
-- [ ] Test: autoscaler/API concorrenti rifiutati, lease scaduto non riutilizzabile, remove/re-register invalida il vecchio lease; desired=3/ready=1 non conferma capacità per tre. Transizione da due funzioni che singolarmente saturano RAM non alloca entrambe al massimo.
-- [ ] Eseguire RED nei progetti control-plane e offload.
-- [ ] Implementare attuazione con A8, memoria di sovrapposizione esplicita, drenaggio e switch atomico locale del piano. Proteggere prima inbound già confermato, poi locale. In readiness parziale finalizzare un sottoinsieme ammissibile nell'ordine stabile dei grant; ridurre solo impegni ancora provvisori, mai revocare silenziosamente quelli già confermati. Comunicare READY_CONFIRM prima dell'uso al compratore; nessun ACK ricevuto significa nessun invio. HPA/scaler esterni rendono il profilo non eleggibile.
-- [ ] Eseguire GREEN; una funzione senza lease conserva l'attuale comportamento. Fallimenti rilasciano la proprietà solo dopo drain degli impegni validi, non nel semplice `finally` della pianificazione.
-- [ ] Commit: `Apply generation-fenced replica plans with exclusive ownership`.
+- [x] Test: autoscaler/API concorrenti rifiutati, lease scaduto non riutilizzabile, remove/re-register invalida il vecchio lease; desired=3/ready=1 non conferma capacità per tre. Transizione da due funzioni che singolarmente saturano RAM non alloca entrambe al massimo.
+- [x] Eseguire RED nei progetti control-plane e offload.
+- [x] Implementare attuazione con A8, memoria di sovrapposizione esplicita, drenaggio e switch atomico locale del piano. Proteggere prima inbound già confermato, poi locale. In readiness parziale finalizzare un sottoinsieme ammissibile nell'ordine stabile dei grant; ridurre solo impegni ancora provvisori, mai revocare silenziosamente quelli già confermati. Comunicare READY_CONFIRM prima dell'uso al compratore; nessun ACK ricevuto significa nessun invio. HPA/scaler esterni rendono il profilo non eleggibile.
+- [x] Eseguire GREEN; una funzione senza lease conserva l'attuale comportamento. Fallimenti rilasciano la proprietà solo dopo drain degli impegni validi, non nel semplice `finally` della pianificazione.
+- [x] Commit: `Apply generation-fenced replica plans with exclusive ownership`.
 
 ## A11 — Configurazione, profili e API osservabili
 
@@ -175,11 +175,11 @@ Comando unitario dei task Java: `./gradlew :<progetto>:test -PcontrolPlaneModule
 
 **Interfacce:** `PUT /v1/admin/offload/one-shot/config` sostituzione atomica con revisione attesa; `PUT .../profiles/{profileId}`, `GET .../status`, `GET .../epochs/{epoch}/events`, `PUT .../clock-health` (prefisso comune `/v1/admin/offload/one-shot`). Config contiene funzioni/generazioni, cloud URI, budget MiB, profilo, q, periodo/anticipo/deadline, limiti round/burst/skew e limiti solver. Eventi paginati e retention bounded; ID ad alta cardinalità nei log/eventi, non nelle label metriche.
 
-- [ ] Test: forecast/P2P assente → attivazione rifiutata; profilo con digest sbagliato → rifiuto; profilo sintetico senza opzione esplicita di test → rifiuto; profilo realmente misurato su Multipass accettato per verifica locale compatibile, non per un target/finalità diversi. Aggiornamento durante asta vale dalla prossima epoca. Deadline troncata produce `censored=true`, non durata qualificata. Clock update vecchio non rinfresca la validità.
-- [ ] Eseguire RED con i tre test offload.
-- [ ] Implementare validazione schema A1 e fingerprint, stati diagnostici e metriche aggregate; schemaVersion e hash in ogni esportazione. Fornire endpoint di trigger manuale `POST .../epochs/{epoch}/prepare` solo quando modalità scheduled disabilitata, per prove riproducibili senza doppia asta. Nessuna API fa diventare un profilo sintetico reale. Pubblicare esempi test e produzione distinti.
-- [ ] Eseguire GREEN e verifica copertura/composizione OpenAPI esistente. Verificare che disabilitare one-shot conservi l'offload ordinario e che fallback cloud abbia una ragione osservabile.
-- [ ] Commit: `Expose one-shot configuration profiles and diagnostics`.
+- [x] Test: forecast/P2P assente → attivazione rifiutata; profilo con digest sbagliato → rifiuto; profilo sintetico senza opzione esplicita di test → rifiuto; profilo realmente misurato su Multipass accettato per verifica locale compatibile, non per un target/finalità diversi. Aggiornamento durante asta vale dalla prossima epoca. Deadline troncata produce `censored=true`, non durata qualificata. Clock update vecchio non rinfresca la validità.
+- [x] Eseguire RED con i tre test offload.
+- [x] Implementare validazione schema A1 e fingerprint, stati diagnostici e metriche aggregate; schemaVersion e hash in ogni esportazione. Fornire endpoint di trigger manuale `POST .../epochs/{epoch}/prepare` solo quando modalità scheduled disabilitata, per prove riproducibili senza doppia asta. Nessuna API fa diventare un profilo sintetico reale. Pubblicare esempi test e produzione distinti.
+- [x] Eseguire GREEN e verifica copertura/composizione OpenAPI esistente. Verificare che disabilitare one-shot conservi l'offload ordinario e che fallback cloud abbia una ragione osservabile.
+- [x] Commit: `Expose one-shot configuration profiles and diagnostics`.
 
 ## A12 — Routing pianificato, quote e one-hop end-to-end
 
@@ -187,11 +187,11 @@ Comando unitario dei task Java: `./gradlew :<progetto>:test -PcontrolPlaneModule
 
 **Interfacce:** aggiungere `OffloadGateway.planRoute(InvocationTask task, OffloadContext context): PlannedInvocationRoute`, default LEGACY. Route = LEGACY/LOCAL/REMOTE/REJECT con destinazione definitiva, epoca e assignment. Conservare la route nella vita dell'esecuzione così retry/replay non scelgano un altro peer. Riutilizzare il client HTTP esistente; non sostituire il ramo di gestione dell'offload ordinario.
 
-- [ ] Test: pesi e quote riproducibili, burst finito, overflow va al cloud prima di inviare a un peer; A→B non diventa B→cloud; errore dopo invio non provoca A→cloud come secondo tentativo. Header riservati nel payload funzione non sovrascrivono quelli del control plane.
-- [ ] Eseguire RED nel core e nel modulo offload.
-- [ ] Implementare routing pesato deterministico con ammissione per assignment e riserva locale/inbound. Metadati HTTP v1: `X-NanoFaaS-Offload-Hop` esistente; `X-NanoFaaS-Offload-Origin`, `X-NanoFaaS-Offload-Epoch`, `X-NanoFaaS-Offload-Assignment`, `X-NanoFaaS-Offload-Version`; risposta `X-NanoFaaS-Execution-Node` soltanto con esecuzione attribuita. Validare nell'HTTP context, non fidarsi degli header annidati nel payload. Richiesta marcata per one-shot con metadati mancanti/incoerenti → errore; offload legacy conserva il proprio contratto. Nessun supporto DFaaS.
-- [ ] Eseguire GREEN più regressioni `OffloadHopGuardE2eTest`, `OffloadHeaderLossE2eTest`, `ReactiveInvocationCoordinatorOffloadTest`. Verificare propagazione del nodo esecutore lungo la risposta, inclusi replay; assenza di destinazione inventata per errori prima dell'esecuzione.
-- [ ] Commit: `Route invocations through confirmed one-shot assignments`.
+- [x] Test: pesi e quote riproducibili, burst finito, overflow va al cloud prima di inviare a un peer; A→B non diventa B→cloud; errore dopo invio non provoca A→cloud come secondo tentativo. Header riservati nel payload funzione non sovrascrivono quelli del control plane.
+- [x] Eseguire RED nel core e nel modulo offload.
+- [x] Implementare routing pesato deterministico con ammissione per assignment e riserva locale/inbound. Metadati HTTP v1: `X-NanoFaaS-Offload-Hop` esistente; `X-NanoFaaS-Offload-Origin`, `X-NanoFaaS-Offload-Epoch`, `X-NanoFaaS-Offload-Assignment`, `X-NanoFaaS-Offload-Version`; risposta `X-NanoFaaS-Execution-Node` soltanto con esecuzione attribuita. Validare nell'HTTP context, non fidarsi degli header annidati nel payload. Richiesta marcata per one-shot con metadati mancanti/incoerenti → errore; offload legacy conserva il proprio contratto. Nessun supporto DFaaS.
+- [x] Eseguire GREEN più regressioni `OffloadHopGuardE2eTest`, `OffloadHeaderLossE2eTest`, `ReactiveInvocationCoordinatorOffloadTest`. Verificare propagazione del nodo esecutore lungo la risposta, inclusi replay; assenza di destinazione inventata per errori prima dell'esecuzione.
+- [x] Commit: `Route invocations through confirmed one-shot assignments`.
 
 ## A13 — Packaging e test distribuiti locali completi
 
@@ -199,11 +199,11 @@ Comando unitario dei task Java: `./gradlew :<progetto>:test -PcontrolPlaneModule
 
 **Interfacce:** cluster di test = tre edge e cloud terminale, runtime Rust A7, profilo sintetico A1, clock e trace deterministici. Test locali JUnit/container o processi controllati dal test, senza NanoLab e senza provisioning VM. Esporre un task Gradle `:control-plane-modules:offload:oneShotE2e` con risorse limitate e cleanup in ogni uscita.
 
-- [ ] Scrivere test completo: oracle caricato → asta P2P → replica ready → traffico locale/peer/cloud → metriche e conservazione per ID. Scenario di seconda epoca cambia distribuzione, uno rallenta la readiness e un peer sparisce; nessuna doppia esecuzione introdotta dal routing e nessun doppio inoltro.
-- [ ] Eseguire RED con `./gradlew :control-plane-modules:offload:oneShotE2e -Precipe=recipes/one-shot-local-jvm.yaml`; indisponibilità del runtime container è un prerequisito mancante, non un PASS.
-- [ ] Implementare solo harness, recipe e wiring mancanti. Il test esercita componenti reali, non sostituisce il solver/P2P/attuatore con mock. Le unità isolate dei task precedenti mantengono fake clock e fault injection.
-- [ ] Eseguire GREEN con artifact JVM e nativo. Build dello scenario: `./gradlew :control-plane:nativeCompile -Precipe=recipes/one-shot-local-native.yaml` (il controllo di compatibilità dell’artefatto `all` resta separato in A14: il selettore `all` sceglie Kubernetes e non include Docker); il task E2E accetta `-DoneShot.controlPlaneBinary=<percorso-binario>` per lo stesso scenario nativo. Registrare log, versioni e esiti; nessuna soglia prestazionale Azure in CI locale.
-- [ ] Commit: `Validate complete one-shot flows with local clusters`.
+- [x] Scrivere test completo: oracle caricato → asta P2P → replica ready → traffico locale/peer/cloud → metriche e conservazione per ID. Scenario di seconda epoca cambia distribuzione, uno rallenta la readiness e un peer sparisce; nessuna doppia esecuzione introdotta dal routing e nessun doppio inoltro.
+- [x] Eseguire RED con `./gradlew :control-plane-modules:offload:oneShotE2e -Precipe=recipes/one-shot-local-jvm.yaml`; indisponibilità del runtime container è un prerequisito mancante, non un PASS.
+- [x] Implementare solo harness, recipe e wiring mancanti. Il test esercita componenti reali, non sostituisce il solver/P2P/attuatore con mock. Le unità isolate dei task precedenti mantengono fake clock e fault injection.
+- [x] Eseguire GREEN con artifact JVM e nativo. Build dello scenario: `./gradlew :control-plane:nativeCompile -Precipe=recipes/one-shot-local-native.yaml` (il controllo di compatibilità dell’artefatto `all` resta separato in A14: il selettore `all` sceglie Kubernetes e non include Docker); il task E2E accetta `-DoneShot.controlPlaneBinary=<percorso-binario>` per lo stesso scenario nativo. Registrare log, versioni e esiti; nessuna soglia prestazionale Azure in CI locale.
+- [x] Commit: `Validate complete one-shot flows with local clusters`.
 
 ## A14 — Chiusura della fase NanoFaaS e consegna
 
@@ -211,11 +211,11 @@ Comando unitario dei task Java: `./gradlew :<progetto>:test -PcontrolPlaneModule
 
 **Interfacce:** dossier consumabile da fase B con commit NanoFaaS, digest immagini, schemi v1, API, configurazioni eleggibili, provenienza fixture, comandi ed esiti, limiti noti. Nessuna credenziale o percorso personale obbligatorio negli artefatti.
 
-- [ ] Verificare la matrice della specifica contro A1–A13 e gli scenari del Review Focus. Aggiungere solo regressioni che colmino lacune concrete, senza duplicare i test esistenti.
-- [ ] Eseguire i controlli richiesti: `./gradlew releaseChecks -PcontrolPlaneModules=all --continue`, test core-only, suite offload/forecasting/P2P/container runtime, test Rust, scenario E2E JVM/native e controlli di architettura. Conservare eventuali limiti di ambiente come blocchi del gate, non come successo.
-- [ ] Misurare a scopo diagnostico tempi solver/asta locali e verificare eventi censurati. Etichettare esplicitamente queste misure come non utilizzabili per scegliere il periodo Azure.
-- [ ] Riesaminare diff e contratti; `git diff --check` e GitNexus detect-changes. Il gate è soddisfatto solo se NanoLab non serve a coprire funzionalità mancanti. Pubblicare il dossier e completare i checkbox dell'indice.
-- [ ] Commit: `Document verified NanoFaaS one-shot handoff`.
+- [x] Verificare la matrice della specifica contro A1–A13 e gli scenari del Review Focus. Aggiungere solo regressioni che colmino lacune concrete, senza duplicare i test esistenti.
+- [x] Eseguire i controlli richiesti: `./gradlew releaseChecks -PcontrolPlaneModules=all --continue`, test core-only, suite offload/forecasting/P2P/container runtime, test Rust, scenario E2E JVM/native e controlli di architettura. Conservare eventuali limiti di ambiente come blocchi del gate, non come successo.
+- [x] Misurare a scopo diagnostico tempi solver/asta locali e verificare eventi censurati. Etichettare esplicitamente queste misure come non utilizzabili per scegliere il periodo Azure.
+- [x] Riesaminare diff e contratti; `git diff --check` e GitNexus detect-changes. Il gate è soddisfatto solo se NanoLab non serve a coprire funzionalità mancanti. Pubblicare il dossier e completare i checkbox dell'indice.
+- [x] Commit: `Document verified NanoFaaS one-shot handoff`.
 
 ## Copertura e arresto della fase
 
@@ -231,3 +231,10 @@ Comando unitario dei task Java: `./gradlew :<progetto>:test -PcontrolPlaneModule
 | 13: criteri di accettazione | A14 e gate; verifica dei workflow in B, criteri scientifici Azure rinviati esplicitamente a C |
 
 Dopo A14 fermarsi al passaggio di consegne. La fase B è un lavoro separato nel repository NanoLab, con VM Multipass; nessun avvio automatico di risorse Azure, riservate al futuro lavoro sperimentale C.
+
+## Execution record
+
+A1–A14 implemented and locally verified on `codex/one-shot-nanofaas`; see
+[phase-A handoff](../../testing/one-shot-phase-a.md) for evidence and limits.
+The final whole-branch review follows these task gates. No phase-B implementation
+or Azure campaign has been started.

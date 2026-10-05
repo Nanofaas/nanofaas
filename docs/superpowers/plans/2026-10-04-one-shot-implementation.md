@@ -45,12 +45,12 @@ I due piani sono salvati qui per mantenere insieme decisioni e passaggio di cons
 
 ## Gate A → B
 
-- [ ] A1–A14 completati e relativi test superati, con risultati e limitazioni registrati.
-- [ ] Offload ordinario e profilo senza moduli opzionali ancora funzionanti.
-- [ ] Asta reale via P2P, forecasting, routing, scaling e one-hop verificati insieme su più nodi locali.
-- [ ] Schemi v1, OpenAPI, esempi, fixture, funzione Rust e immagini JVM/native disponibili a un commit NanoFaaS fissato.
-- [ ] Nessuna dipendenza da NanoLab per eseguire test o usare one-shot; nessuna credenziale Azure necessaria per il gate.
-- [ ] Dossier `docs/testing/one-shot-phase-a.md` distingue prove funzionali completate da misure Azure ancora da fare.
+- [x] A1–A14 completati e relativi test superati, con risultati e limitazioni registrati.
+- [x] Offload ordinario e profilo senza moduli opzionali ancora funzionanti.
+- [x] Asta reale via P2P, forecasting, routing, scaling e one-hop verificati insieme su più nodi locali.
+- [x] Schemi v1, OpenAPI, esempi, fixture, funzione Rust e immagini JVM/native disponibili a un commit NanoFaaS fissato.
+- [x] Nessuna dipendenza da NanoLab per eseguire test o usare one-shot; nessuna credenziale Azure necessaria per il gate.
+- [x] Dossier `docs/testing/one-shot-phase-a.md` distingue prove funzionali completate da misure Azure ancora da fare.
 - [ ] Solo a questo punto iniziare B1. La fase A non è dichiarata incompleta perché manca la calibrazione Azure; la campagna scientifica non è dichiarata valida grazie ai soli test A.
 
 ## Sequenza della fase B
@@ -71,4 +71,4 @@ Le prove locali o i futuri esperimenti possono rivelare bug: si corregge NanoFaa
 
 ## Stato e metodo di esecuzione
 
-Questo documento è un piano da revisionare, non l'avvio dell'implementazione. I checkbox sono inizialmente tutti aperti. Per l'esecuzione si consiglia la modalità nativa, con verifica al termine di ogni task e revisione finale: i contratti tra task sono strettamente collegati. La scelta del metodo resta all'utente prima dell'avvio.
+La fase A è stata eseguita in modalità nativa sul branch `codex/one-shot-nanofaas`, creato da main allineato con origin (`a62a743f`). A1–A14 hanno verifiche locali registrate nel [dossier di consegna](../../testing/one-shot-phase-a.md); segue la revisione finale dell’intero branch. La fase B resta da avviare su richiesta, con Multipass. La fase C Azure è un lavoro futuro separato.
