@@ -12,6 +12,31 @@ class DefaultPeerTransportTest {
     final PeerMessaging messaging = new PeerMessaging(wire, table);
     final AtomicReference<DefaultPeerTransport.Session> session = new AtomicReference<>(new DefaultPeerTransport.Session("self", "run1", messaging));
     final DefaultPeerTransport transport = new DefaultPeerTransport(table, session::get, URI.create("http://self:8080"), 4);
+    static final class StrictWire implements PeerMessaging.Wire {
+        final java.util.Map<String,PeerCluster.Handler> handlers=new java.util.HashMap<>();
+        public Mono<Void> send(String a,String t,byte[] p) {return Mono.empty();}
+        public Mono<byte[]> request(String a,String t,byte[] p,Duration d) {return Mono.empty();}
+        public void handle(String topic,PeerCluster.Handler handler) {if(handlers.putIfAbsent(topic,handler)!=null) throw new IllegalStateException("handler already registered");}
+        public void unhandle(String topic,PeerCluster.Handler handler) {handlers.remove(topic,handler);}
+    }
+    @Test void subscriptionBeforeFirstPollBindsEachPhysicalTopicOnlyOnce() {
+        var strict=new StrictWire();var session=new DefaultPeerTransport.Session("self","run",new PeerMessaging(strict,table));
+        var adapter=new DefaultPeerTransport(table,()->session,null,1);
+        adapter.subscribe("one-shot",(sender,payload)->Mono.just(payload));
+        assertThatCode(adapter::refresh).doesNotThrowAnyException();
+        assertThat(strict.handlers).containsOnlyKeys(DefaultPeerTransport.ANNOUNCEMENT_TOPIC,"one-shot");
+        adapter.stop();
+    }
+    @Test void closeAndResubscribeRemoveTheExactPhysicalHandler() {
+        table.upsert("a","a:7000");var strict=new StrictWire();var session=new DefaultPeerTransport.Session("self","run",new PeerMessaging(strict,table));
+        var adapter=new DefaultPeerTransport(table,()->session,null,1);adapter.refresh();
+        var first=adapter.subscribe("one-shot",(sender,payload)->Mono.just(new byte[]{1}));var old=strict.handlers.get("one-shot");first.close();
+        assertThat(strict.handlers).doesNotContainKey("one-shot");
+        adapter.subscribe("one-shot",(sender,payload)->Mono.just(new byte[]{2}));
+        assertThat(strict.handlers.get("one-shot").onMessage("a:7000",new byte[0]).block()).containsExactly((byte)2);
+        assertThatThrownBy(()->old.onMessage("a:7000",new byte[0]).block()).isInstanceOf(PeerCluster.Dropped.class);
+        adapter.stop();assertThat(strict.handlers).isEmpty();
+    }
     @Test void onlyCurrentActiveExplicitAnnouncementsAreEligible() {
         table.upsert("a", "a:7000"); table.upsert("legacy", "legacy:7000");
         transport.refresh();

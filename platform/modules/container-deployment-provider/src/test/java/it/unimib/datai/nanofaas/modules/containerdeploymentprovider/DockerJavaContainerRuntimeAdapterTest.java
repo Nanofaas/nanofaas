@@ -33,6 +33,19 @@ import static org.mockito.Mockito.when;
 
 class DockerJavaContainerRuntimeAdapterTest {
 
+    @Test void immutableLocalImageUsesExactInspectionWithoutRegistryPull() {
+        var client=mock(DockerClient.class);
+        var inspect=mock(com.github.dockerjava.api.command.InspectImageCmd.class);
+        var image=mock(com.github.dockerjava.api.command.InspectImageResponse.class);
+        String id="sha256:"+"a".repeat(64);
+        when(client.inspectImageCmd(id)).thenReturn(inspect);when(inspect.exec()).thenReturn(image);when(image.getId()).thenReturn(id);
+        var adapter=new DockerJavaContainerRuntimeAdapter(client,null,null,"127.0.0.1",()->18080);
+        adapter.pullImage(id);verify(client,org.mockito.Mockito.never()).pullImageCmd(org.mockito.ArgumentMatchers.anyString());
+        when(image.getId()).thenReturn("sha256:"+"b".repeat(64));
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->adapter.pullImage(id)).isInstanceOf(IllegalStateException.class);
+        verify(client,org.mockito.Mockito.never()).pullImageCmd(org.mockito.ArgumentMatchers.anyString());
+    }
+
     @Test
     void isAvailable_returnsTrueWhenDockerPingSucceeds() {
         DockerClient client = mock(DockerClient.class);

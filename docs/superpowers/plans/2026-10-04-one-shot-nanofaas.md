@@ -200,9 +200,9 @@ Comando unitario dei task Java: `./gradlew :<progetto>:test -PcontrolPlaneModule
 **Interfacce:** cluster di test = tre edge e cloud terminale, runtime Rust A7, profilo sintetico A1, clock e trace deterministici. Test locali JUnit/container o processi controllati dal test, senza NanoLab e senza provisioning VM. Esporre un task Gradle `:control-plane-modules:offload:oneShotE2e` con risorse limitate e cleanup in ogni uscita.
 
 - [ ] Scrivere test completo: oracle caricato → asta P2P → replica ready → traffico locale/peer/cloud → metriche e conservazione per ID. Scenario di seconda epoca cambia distribuzione, uno rallenta la readiness e un peer sparisce; nessuna doppia esecuzione introdotta dal routing e nessun doppio inoltro.
-- [ ] Eseguire RED con `./gradlew :control-plane-modules:offload:oneShotE2e -PcontrolPlaneModules=all`; indisponibilità del runtime container è un prerequisito mancante, non un PASS.
+- [ ] Eseguire RED con `./gradlew :control-plane-modules:offload:oneShotE2e -Precipe=recipes/one-shot-local-jvm.yaml`; indisponibilità del runtime container è un prerequisito mancante, non un PASS.
 - [ ] Implementare solo harness, recipe e wiring mancanti. Il test esercita componenti reali, non sostituisce il solver/P2P/attuatore con mock. Le unità isolate dei task precedenti mantengono fake clock e fault injection.
-- [ ] Eseguire GREEN con artifact JVM e nativo. Build: `./gradlew :control-plane:nativeCompile -PcontrolPlaneModules=all`; il task E2E accetta `-DoneShot.controlPlaneBinary=<percorso-binario>` per lo stesso scenario nativo. Registrare log, versioni e esiti; nessuna soglia prestazionale Azure in CI locale.
+- [ ] Eseguire GREEN con artifact JVM e nativo. Build dello scenario: `./gradlew :control-plane:nativeCompile -Precipe=recipes/one-shot-local-native.yaml` (il controllo di compatibilità dell’artefatto `all` resta separato in A14: il selettore `all` sceglie Kubernetes e non include Docker); il task E2E accetta `-DoneShot.controlPlaneBinary=<percorso-binario>` per lo stesso scenario nativo. Registrare log, versioni e esiti; nessuna soglia prestazionale Azure in CI locale.
 - [ ] Commit: `Validate complete one-shot flows with local clusters`.
 
 ## A14 — Chiusura della fase NanoFaaS e consegna

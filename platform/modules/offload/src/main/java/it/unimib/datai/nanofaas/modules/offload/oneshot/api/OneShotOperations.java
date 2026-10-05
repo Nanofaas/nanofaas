@@ -15,6 +15,7 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
     public record Window(Instant startsAt,Instant endsAt) {}
     private final OneShotConfigurationStore configs;private final ServiceProfileStore profiles;private final ProfileEpochInputFactory inputs;
     private final EpochCoordinator coordinator;private final ReplicaPlanActuator actuator;private final EpochEventStore events;private final EpochSettings bounds;private final PeerTransport peers;private final MeterRegistry meters;
+    private final boolean enabled;
     private final AtomicBoolean busy=new AtomicBoolean();private final AtomicLong lastScheduled=new AtomicLong(-1);
     private final Map<Long,OneShotSettings> preparedSettings=new ConcurrentHashMap<>();
     private final ArrayDeque<Long> qualified=new ArrayDeque<>();private String qualificationKey="";
@@ -22,6 +23,10 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
     private volatile ScheduledFuture<?> tickTask;
     private volatile boolean running;private volatile String lastState="UNCONFIGURED";private volatile Disposable subscription;
     public OneShotOperations(OneShotConfigurationStore configs,ServiceProfileStore profiles,ProfileEpochInputFactory inputs,EpochCoordinator coordinator,ReplicaPlanActuator actuator,EpochEventStore events,EpochSettings bounds,PeerTransport peers,MeterRegistry meters) {
+        this(configs,profiles,inputs,coordinator,actuator,events,bounds,peers,meters,true);
+    }
+    public OneShotOperations(OneShotConfigurationStore configs,ServiceProfileStore profiles,ProfileEpochInputFactory inputs,EpochCoordinator coordinator,ReplicaPlanActuator actuator,EpochEventStore events,EpochSettings bounds,PeerTransport peers,MeterRegistry meters,boolean enabled) {
+        this.enabled=enabled;
         this.configs=configs;this.profiles=profiles;this.inputs=inputs;this.coordinator=coordinator;this.actuator=actuator;this.events=events;this.bounds=bounds;this.peers=peers;this.meters=meters;
     }
     public synchronized OneShotConfigurationStore.Snapshot configure(long expected,OneShotSettings settings) {
@@ -70,8 +75,9 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
               .doFinally(signal->{if(recorded.compareAndSet(false,true)) events.record(epoch,"CANCELLED",true,System.nanoTime()-start,Instant.now());inputs.unpin(epoch);busy.set(false);});
         });
     }
-    public Map<String,Object> status() { return Map.of("schemaVersion",1,"state",lastState,"busy",busy.get(),"clockHealthy",coordinator.clockHealthy(),"revision",configs.snapshot().map(OneShotConfigurationStore.Snapshot::revision).orElse(0L),"activePlan",actuator.activePlan().map(p->(Object)p).orElse(Map.of())); }
-    @Override public synchronized void start() { if(running) return;running=true;tickTask=timer.scheduleWithFixedDelay(this::tick,100,100,TimeUnit.MILLISECONDS); }
+    public Map<String,Object> status() { return Map.of("schemaVersion",1,"state",lastState,"busy",busy.get(),"clockHealthy",coordinator.clockHealthy(),"catalogGenerations",inputs.catalogGenerations(),"peerEndpoints",peers.activeNeighbors(),"localEndpoint",peers.localEndpoint().map(p->(Object)p).orElse(Map.of()),"revision",configs.snapshot().map(OneShotConfigurationStore.Snapshot::revision).orElse(0L),"activePlan",actuator.activePlan().map(p->(Object)p).orElse(Map.of())); }
+    @Override public boolean isAutoStartup() { return enabled; }
+    @Override public synchronized void start() { if(running || !enabled) return;running=true;tickTask=timer.scheduleWithFixedDelay(this::tick,100,100,TimeUnit.MILLISECONDS); }
     private void tick() {
         if(!running || busy.get()) return;
         try {

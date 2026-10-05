@@ -14,10 +14,14 @@ public final class ForecastObservationLifecycle implements SmartLifecycle {
     private final FunctionCatalogView catalog;
     private final ManagedReplicaControl replicas;
     private final Clock clock;
+    private final boolean enabled;
     private Disposable loop;
     private volatile boolean running;
     public ForecastObservationLifecycle(EwmaForecastSource source, FunctionCatalogView catalog, ManagedReplicaControl replicas, Clock clock) {
-        this.source = source; this.catalog = catalog; this.replicas = replicas; this.clock = clock;
+        this(source,catalog,replicas,clock,true);
+    }
+    public ForecastObservationLifecycle(EwmaForecastSource source, FunctionCatalogView catalog, ManagedReplicaControl replicas, Clock clock,boolean enabled) {
+        this.source = source; this.catalog = catalog; this.replicas = replicas; this.clock = clock;this.enabled=enabled;
     }
     synchronized void refresh() {
         if (catalog == null || replicas == null) return;
@@ -31,7 +35,7 @@ public final class ForecastObservationLifecycle implements SmartLifecycle {
         source.retain(active);
     }
     @Override public synchronized void start() {
-        if (running) return;
+        if (running || !enabled) return;
         running = true;
         refresh();
         loop = Flux.interval(Duration.ofSeconds(1)).subscribe(i -> refresh());

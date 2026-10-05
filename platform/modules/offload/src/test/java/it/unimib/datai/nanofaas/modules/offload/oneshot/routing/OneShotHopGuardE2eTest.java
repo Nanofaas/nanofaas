@@ -32,7 +32,7 @@ class OneShotHopGuardE2eTest {
         return HttpClient.newHttpClient().send(request.method(method,HttpRequest.BodyPublishers.ofString(body)).build(),HttpResponse.BodyHandlers.ofString());
     }
     static OneShotSettings settings(long generation,String cloud) {
-        String hash=ServiceProfileStore.hash(new JsonMapper().writeValueAsBytes("payload"));
+        String hash=ServiceProfileStore.hash(JsonMapper.builder().enable(tools.jackson.databind.SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).build().writeValueAsBytes(Map.of("nested",List.of(1,2),"payload","value")));
         return new OneShotSettings(1,"p","sha256:"+"a".repeat(64),"workflow-validation",true,URI.create(cloud),1,1,Duration.ofMinutes(5),Duration.ofSeconds(20),false,Instant.EPOCH,Duration.ofSeconds(2),.1,1,Map.of("f",new OneShotSettings.Function(generation,DIGEST,hash,.8,1,.9,.1)));
     }
     static PeerTransport peers(String node,String uri,String other,String otherUri) {
@@ -61,7 +61,7 @@ class OneShotHopGuardE2eTest {
             var clock=new AtomicLong();var ac=settings(ag,cloudUrl);var bc=settings(bg,cloudUrl);
             ((DefaultOffloadGateway)a.getBean(OffloadGateway.class)).plannedRouting(new PlanRouter(()->Optional.of(ap),()->Optional.of(ac),rev->Optional.of(ac),peers("a",aUrl,"b",bUrl),clock::get));
             ((DefaultOffloadGateway)b.getBean(OffloadGateway.class)).plannedRouting(new PlanRouter(()->Optional.of(bp),()->Optional.of(bc),rev->Optional.of(bc),peers("b",bUrl,"a",aUrl),clock::get));
-            String payload="{\"input\":\"payload\",\"headers\":{\"X-NanoFaaS-Offload-Origin\":\"spoof\",\"X-NanoFaaS-Execution-Node\":\"spoof\"}}";
+            String payload="{\"input\":{\"payload\":\"value\",\"nested\":[1,2]},\"headers\":{\"X-NanoFaaS-Offload-Origin\":\"spoof\",\"X-NanoFaaS-Execution-Node\":\"spoof\"}}";
             var result=send(aUrl+"/v1/functions/f:invoke","POST",payload,Map.of("Idempotency-Key","replay"));
             assertThat(result.statusCode()).as(result.body()).isEqualTo(200);assertThat(result.headers().firstValue("X-NanoFaaS-Execution-Node")).contains("b");
             var replay=send(aUrl+"/v1/functions/f:invoke","POST",payload,Map.of("Idempotency-Key","replay"));

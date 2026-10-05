@@ -921,6 +921,26 @@ mod execution_tests {
     }
 
     #[tokio::test]
+    async fn nullable_java_envelope_maps_are_empty_handler_context() {
+        let runtime = TestRuntime::start(settings(), |rt| {
+            rt.register("inspect", |ctx: Context, _: Value| async move {
+                Ok::<_, BoxError>(json!({"metadata": ctx.metadata(), "headers": ctx.headers()}))
+            })
+        })
+        .await;
+        let response = runtime
+            .send(invoke_request(
+                r#"{"input":{"n":1},"metadata":null,"headers":null}"#,
+            ))
+            .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            body_json(response).await,
+            json!({"metadata":{},"headers":{}})
+        );
+    }
+
+    #[tokio::test]
     async fn the_handler_sees_request_metadata_and_headers() {
         let runtime = TestRuntime::start(settings(), |rt| {
             rt.register("inspect", |ctx: Context, _: Value| async move {

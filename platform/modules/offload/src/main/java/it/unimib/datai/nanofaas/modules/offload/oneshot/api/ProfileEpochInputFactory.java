@@ -24,6 +24,9 @@ public final class ProfileEpochInputFactory implements EpochInput.Factory {
     public ProfileEpochInputFactory(OneShotConfigurationStore configs,ServiceProfileStore profiles,FunctionCatalogView catalog,ManagedReplicaControl control,PeerTransport peers,ForecastSource forecasts) {
         this.configs=configs;this.profiles=profiles;this.catalog=catalog;this.control=control;this.peers=peers;this.forecasts=forecasts;
     }
+    public Map<String,Long> catalogGenerations() {
+        var result=new TreeMap<String,Long>();for(var f:catalog.listRegistered()) {var g=control.generationOf(f);if(g!=null) result.put(f.name(),g.id());}return Map.copyOf(result);
+    }
     public void validate(OneShotSettings settings) { freeze(settings,1,Instant.EPOCH,Instant.EPOCH.plus(settings.period()),false); }
     @Override public EpochInput freeze(long epoch,Instant from,Instant until) {
         var pin=pinned.get();
@@ -45,7 +48,7 @@ public final class ProfileEpochInputFactory implements EpochInput.Factory {
             var limits=spec.resources()==null?null:spec.resources().limits();var cc=spec.scalingConfig()==null?null:spec.scalingConfig().concurrencyControl();
             long max=settings.memoryCapacityMiB()/measured.memoryMiB();
             var colocated=new HashSet<>(settings.functions().keySet());colocated.remove(name);
-            if(generation==null || generation.id()!=configured.generation() || !measured.imageDigest().equals(configured.imageDigest()) || !spec.image().endsWith("@"+configured.imageDigest())
+            if(generation==null || generation.id()!=configured.generation() || !measured.imageDigest().equals(configured.imageDigest()) || !ServiceProfileStore.imageMatches(spec.image(),configured.imageDigest())
                 || !measured.inputHash().equals(configured.inputHash()) || !measured.backend().equals(target.backendId()) || spec.runtimeMode()==null || !measured.runtime().equalsIgnoreCase(spec.runtimeMode().name())
                 || limits==null || limits.memoryMiB()==null || limits.memoryMiB().longValue()!=measured.memoryMiB() || limits.cpu()==null || Double.compare(limits.cpu().doubleValue(),measured.cpuQuota())!=0
                 || !new HashSet<>(measured.coLocation()).equals(colocated) || measured.validity().minReplicas()>1 || measured.validity().maxReplicas()<max || max<1

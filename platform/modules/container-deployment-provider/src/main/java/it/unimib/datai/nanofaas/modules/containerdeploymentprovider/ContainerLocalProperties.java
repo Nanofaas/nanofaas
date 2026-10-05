@@ -22,8 +22,13 @@ public record ContainerLocalProperties(
         Duration readinessPollInterval,
         String callbackUrl,
         String networkName,
-        String cpuset
+        String cpuset,
+        String namespace
 ) {
+    public ContainerLocalProperties(String adapter,String host,Duration timeout,Duration poll,String callback,String network,String cpuset) {
+        this(adapter,host,timeout,poll,callback,network,cpuset,null);
+    }
+
     public ContainerLocalProperties(String runtimeAdapter,
                                     String bindHost,
                                     Duration readinessTimeout,
@@ -45,6 +50,7 @@ public record ContainerLocalProperties(
 
     @ConstructorBinding
     public ContainerLocalProperties {
+        if(namespace!=null && !namespace.matches("[a-z0-9][a-z0-9-]{0,62}")) throw new IllegalArgumentException("invalid local container namespace");
         if (runtimeAdapter == null || runtimeAdapter.isBlank()) {
             runtimeAdapter = "docker";
         }

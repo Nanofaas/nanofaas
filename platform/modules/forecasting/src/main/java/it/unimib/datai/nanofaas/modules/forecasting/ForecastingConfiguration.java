@@ -22,12 +22,13 @@ public class ForecastingConfiguration {
         return new OracleForecastStore(Clock.systemUTC(), props.maxAge());
     }
     @Bean @Primary ForecastSource selectedForecastSource(ForecastingProperties props, EwmaForecastSource ewma, OracleForecastStore oracle) {
+        if(!props.enabled()) return q -> new ForecastSnapshot(q,ForecastSnapshot.Status.MISSING,null,0,"disabled",null);
         return props.provider() == ForecastingProperties.Provider.ORACLE ? oracle::forecast : ewma::forecast;
     }
-    @Bean @Primary ExternalArrivalObserver forecastExternalArrivalObserver(EwmaForecastSource ewma) { return ewma::record; }
-    @Bean ForecastController forecastController(OracleForecastStore oracle) { return new ForecastController(oracle); }
-    @Bean ForecastObservationLifecycle forecastObservationLifecycle(EwmaForecastSource ewma,
+    @Bean @Primary ExternalArrivalObserver forecastExternalArrivalObserver(ForecastingProperties props,EwmaForecastSource ewma) { return props.enabled()?ewma::record:ExternalArrivalObserver.noOp(); }
+    @Bean ForecastController forecastController(ForecastingProperties props,OracleForecastStore oracle) { return new ForecastController(oracle,props.enabled()); }
+    @Bean ForecastObservationLifecycle forecastObservationLifecycle(ForecastingProperties props,EwmaForecastSource ewma,
             ObjectProvider<FunctionCatalogView> catalog, ObjectProvider<ManagedReplicaControl> replicas) {
-        return new ForecastObservationLifecycle(ewma, catalog.getIfAvailable(), replicas.getIfAvailable(), Clock.systemUTC());
+        return new ForecastObservationLifecycle(ewma, catalog.getIfAvailable(), replicas.getIfAvailable(), Clock.systemUTC(),props.enabled());
     }
 }

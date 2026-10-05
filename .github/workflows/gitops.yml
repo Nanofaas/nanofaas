@@ -80,6 +80,11 @@ jobs:
       - name: Run Sync-Queue Concurrency Tests
         run: ./gradlew :control-plane-modules:concurrency-control:test :control-plane-modules:sync-queue:test -PcontrolPlaneModules=sync-queue,concurrency-control,runtime-config
 
+      - name: Build the one-shot diagnostic Rust workload
+        run: docker build -f functions/rust/one-shot-workload/Dockerfile -t nanofaas-one-shot-workload .
+      - name: Verify the real JVM one-shot cluster
+        run: ./gradlew :control-plane-modules:offload:oneShotE2e -Precipe=recipes/one-shot-local-jvm.yaml
+
       # CI-only failures are otherwise undiagnosable: the log carries only the exception class and line.
       - name: Upload test reports
         if: always()
@@ -88,6 +93,7 @@ jobs:
           name: test-java-reports-${{ github.run_attempt }}
           path: |
             **/build/test-results/test/*.xml
+            **/build/test-results/oneShotE2e/*.xml
             **/build/test-diagnostics/
             **/build/reports/spotbugs/
           retention-days: 14
@@ -96,7 +102,7 @@ jobs:
   # Java-lite's unused native target has a separate artifact decision. See ADR 238.
   test-native-artifact:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # For the Gradle cache and the wrapper only: the native compile itself must run on the
@@ -147,6 +153,24 @@ jobs:
         run: scripts/assert-native-executable.sh platform/control-plane/build/native/nativeCompile/control-plane
       - name: Verify native HTTP management errors
         run: python3 scripts/assert-native-api-errors.py platform/control-plane/build/native/nativeCompile/control-plane
+
+      - name: Build the one-shot diagnostic Rust workload
+        run: docker build -f functions/rust/one-shot-workload/Dockerfile -t nanofaas-one-shot-workload .
+      - name: Compile the one-shot native composition
+        run: ./gradlew :control-plane:nativeCompile -Precipe=recipes/one-shot-local-native.yaml -PnativeParallelism=2 -PnativeBuildMemory=4g
+      - name: Assert the one-shot native artifact is an executable
+        run: scripts/assert-native-executable.sh platform/control-plane/build/native/nativeCompile/control-plane
+      - name: Verify the real native one-shot cluster
+        run: ./gradlew :control-plane-modules:offload:oneShotE2e -Precipe=recipes/one-shot-local-native.yaml -DoneShot.controlPlaneBinary="$PWD/platform/control-plane/build/native/nativeCompile/control-plane"
+      - name: Upload one-shot native diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: one-shot-native-${{ github.run_attempt }}
+          path: |
+            **/build/test-results/oneShotE2e/*.xml
+            **/build/test-diagnostics/
+          retention-days: 14
 
   test-python:
     runs-on: ubuntu-latest

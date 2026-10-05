@@ -10,6 +10,12 @@ class ForecastControllerTest {
         {"schemaVersion":1,"nodeId":"edge","revision":1,"provider":"oracle","producedAt":"2026-10-04T12:00:00Z",
          "entries":[{"function":"f","generation":1,"start":"2026-10-04T12:00:00Z","end":"2026-10-04T12:05:00Z","rate":10,"unit":"requests/s"}]}
         """;
+    @Test void aotIncludedControllerHonorsRuntimeDisable() {
+        var disabled=WebTestClient.bindToController(new ForecastController(store,false)).build();
+        disabled.get().uri("/v1/admin/forecasting/trace").exchange().expectStatus().isNotFound();
+        disabled.put().uri("/v1/admin/forecasting/trace").header("If-Match","0").contentType(MediaType.APPLICATION_JSON).bodyValue(document).exchange().expectStatus().isNotFound();
+        org.assertj.core.api.Assertions.assertThat(store.summary().revision()).isZero();
+    }
     @Test void atomicTraceUploadUsesExpectedRevisionAndReportsConflicts() {
         client.put().uri("/v1/admin/forecasting/trace").header("If-Match", "0")
                 .contentType(MediaType.APPLICATION_JSON).bodyValue(document).exchange().expectStatus().isOk();

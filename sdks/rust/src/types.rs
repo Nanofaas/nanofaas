@@ -105,10 +105,18 @@ pub(crate) fn filter_allowed_headers(raw: Vec<(String, String)>) -> Vec<(String,
 pub(crate) struct WireRequest<'a> {
     #[serde(borrow, default)]
     pub input: Option<&'a RawValue>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable_string_map")]
     pub metadata: HashMap<String, String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable_string_map")]
     pub headers: HashMap<String, String>,
+}
+
+// Java InvocationRequest represents omitted optional maps as JSON null.
+fn nullable_string_map<'de, D>(deserializer: D) -> Result<HashMap<String, String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<HashMap<String, String>>::deserialize(deserializer).map(Option::unwrap_or_default)
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]

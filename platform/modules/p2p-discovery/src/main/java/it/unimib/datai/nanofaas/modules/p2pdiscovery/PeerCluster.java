@@ -164,6 +164,8 @@ public final class PeerCluster implements AutoCloseable {
         }
     }
 
+    public void unhandle(String topic, Handler handler) { handlers.remove(topic, handler); }
+
     public Mono<Void> send(String address, String topic, byte[] payload) {
         return Mono.defer(() -> cluster.get() == null || isolated
                 ? Mono.error(new IllegalStateException("p2p node is unavailable"))

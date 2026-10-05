@@ -32,6 +32,7 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
     private final Duration preparationBudget,drainGrace;
     private final String owner="one-shot:"+UUID.randomUUID();
     private final Map<String,ManagedDeploymentTarget> leaseTargets=new ConcurrentHashMap<>();
+    private final boolean enabled;
     private final Map<String,ReplicaControlLease> leases=new ConcurrentHashMap<>();
     private final AtomicReference<Instant> reservedUntil=new AtomicReference<>(Instant.MIN);
     private final AtomicReference<Preparation> preparing=new AtomicReference<>(),receiving=new AtomicReference<>();
@@ -39,11 +40,16 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
     private final AuctionCodec codec=new AuctionCodec(); private final Scheduler scheduler=Schedulers.newBoundedElastic(1,1,"one-shot-actuation");
     private volatile PeerSubscription subscription; private volatile boolean running; private volatile long lifecycle;
     public ReplicaPlanActuator(ManagedReplicaControl control,FunctionCatalogView catalog,PeerTransport peers,Supplier<Instant> now,BooleanSupplier clockHealthy,Duration preparationBudget,Duration drainGrace) {
+        this(control,catalog,peers,now,clockHealthy,preparationBudget,drainGrace,true);
+    }
+    public ReplicaPlanActuator(ManagedReplicaControl control,FunctionCatalogView catalog,PeerTransport peers,Supplier<Instant> now,BooleanSupplier clockHealthy,Duration preparationBudget,Duration drainGrace,boolean enabled) {
+        this.enabled=enabled;
         this.control=control;this.catalog=catalog;this.peers=peers;this.now=now;this.clockHealthy=clockHealthy;this.preparationBudget=preparationBudget;this.drainGrace=drainGrace;
         if(preparationBudget.isZero() || preparationBudget.isNegative() || drainGrace.isNegative()) throw new IllegalArgumentException("invalid actuation duration");
     }
+    @Override public boolean isAutoStartup() { return enabled; }
     @Override public synchronized void start() {
-        if(running) return; long token=++lifecycle;
+        if(running || !enabled) return; long token=++lifecycle;
         subscription=peers.subscribe(READY_TOPIC,(sender,bytes)->Mono.fromCallable(()->running && lifecycle==token?receive(sender,bytes):new byte[]{0}));running=true;
     }
     @Override public synchronized void stop() { running=false;lifecycle++;if(subscription!=null) subscription.close();pending.set(null); }

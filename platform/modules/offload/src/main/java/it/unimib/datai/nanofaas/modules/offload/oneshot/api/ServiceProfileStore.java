@@ -42,6 +42,7 @@ public final class ServiceProfileStore {
         .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS).build();
     static void text(String x) { if(x==null || x.isBlank() || x.length()>256) throw new IllegalArgumentException("bounded nonblank identity required"); }
     static boolean positive(double x) { return Double.isFinite(x) && x>0; }
+    public static boolean imageMatches(String reference,String digest) { return reference!=null && (reference.equals(digest) || reference.endsWith("@"+digest)); }
     public static String hash(byte[] bytes) {
         try { return "sha256:"+HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)); }
         catch(java.security.NoSuchAlgorithmException e) { throw new IllegalStateException(e); }

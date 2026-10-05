@@ -54,7 +54,8 @@ public final class PlanRouter {
             return PlannedInvocationRoute.legacy();
         }
         var configured=settings.get().functions().get(task.functionName());
-        if(!task.functionSpec().image().endsWith("@"+configured.imageDigest()) || !ServiceProfileStore.hash(mapper.writeValueAsBytes(task.request().input())).equals(configured.inputHash())) return PlannedInvocationRoute.reject("workload identity differs from calibration");
+        if(!ServiceProfileStore.imageMatches(task.functionSpec().image(),configured.imageDigest())) return PlannedInvocationRoute.reject("workload image differs from calibration");
+        if(!ServiceProfileStore.hash(mapper.writeValueAsBytes(task.request().input())).equals(configured.inputHash())) return PlannedInvocationRoute.reject("workload input differs from calibration");
         if(active.isEmpty()) return context.offloadedHop()?PlannedInvocationRoute.reject("seller has no active ready plan"):cloud(settings.get(),task,0);
         var plan=active.get();var f=plan.functions().get(task.functionName());
         if(f==null || f.generation()!=configured.generation()) return PlannedInvocationRoute.reject("function generation differs from plan");

@@ -47,6 +47,11 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
 
     @Override
     public void pullImage(String image) {
+        if(image.matches("sha256:[0-9a-f]{64}")) {
+            var inspect=executor.run(List.of(runtimeAdapter,"image","inspect","--format","{{.Id}}",image));
+            if(!inspect.isSuccess() || !image.equals(inspect.output().trim())) throw new IllegalStateException("local immutable image ID unavailable or mismatched");
+            return;
+        }
         ExecutionResult result = executor.run(List.of(runtimeAdapter, "pull", image));
         if (!result.isSuccess()) {
             throw new IllegalStateException("Failed to pull image '" + image + "': " + result.output());

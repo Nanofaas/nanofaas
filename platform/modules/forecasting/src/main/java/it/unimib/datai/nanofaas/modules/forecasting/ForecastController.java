@@ -20,12 +20,15 @@ import tools.jackson.databind.json.JsonMapper;
 public final class ForecastController {
     static final int MAX_BYTES = 8 * 1024 * 1024;
     private final OracleForecastStore store;
+    private final boolean enabled;
     private final JsonMapper mapper = JsonMapper.builder(JsonFactory.builder().streamReadConstraints(
             StreamReadConstraints.builder().maxNestingDepth(8).maxStringLength(256).maxNumberLength(64).build()).build())
             .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, DeserializationFeature.FAIL_ON_TRAILING_TOKENS,
                     DeserializationFeature.FAIL_ON_MISSING_CREATOR_PROPERTIES, DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES)
             .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS).build();
-    public ForecastController(OracleForecastStore store) { this.store = store; }
+    public ForecastController(OracleForecastStore store) { this(store,true); }
+    public ForecastController(OracleForecastStore store,boolean enabled) { this.store=store;this.enabled=enabled; }
+    @ModelAttribute public void requireEnabled() { if(!enabled) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND); }
     @GetMapping public OracleForecastStore.Summary get() { return store.summary(); }
     @PutMapping(consumes = "application/json")
     public Mono<ResponseEntity<OracleForecastStore.Summary>> replace(@RequestHeader("If-Match") long expected,

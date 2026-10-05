@@ -23,6 +23,7 @@ public final class DefaultPeerTransport implements PeerTransport, SmartLifecycle
     private static final class Registration {
         final PeerReceiver receiver;
         boolean closed;
+        PeerSubscription subscription;
         Registration(PeerReceiver receiver) { this.receiver = receiver; }
     }
     private final PeerTable table;
@@ -33,6 +34,7 @@ public final class DefaultPeerTransport implements PeerTransport, SmartLifecycle
     private final Map<String, Announcement> endpoints = new HashMap<>();
     private final Map<String, Registration> registrations = new HashMap<>();
     private Session bound;
+    private PeerSubscription endpointSubscription;
     private Disposable loop;
     private Disposable round;
     private volatile boolean stopped;
@@ -94,21 +96,25 @@ public final class DefaultPeerTransport implements PeerTransport, SmartLifecycle
         Registration old = registrations.get(topic);
         if (old != null && !old.closed) throw new IllegalStateException("topic already subscribed");
         Registration registration = new Registration(Objects.requireNonNull(receiver));
+        refresh();
         Session session = current();
         registrations.put(topic, registration);
         bind(topic, registration, session);
         return () -> { synchronized (this) {
             registration.closed = true;
+            if(registration.subscription!=null) registration.subscription.close();
             registrations.remove(topic, registration);
         } };
     }
 
     private void bind(String topic, Registration registration, Session session) {
-        session.messaging().subscribe(topic, (sender, payload) -> Mono.defer(() -> {
+        if(registration.subscription!=null) registration.subscription.close();
+        registration.subscription=session.messaging().subscribeScoped(topic, (sender, payload) -> Mono.defer(() -> {
             synchronized (this) {
                 if (registration.closed || !sameSession(session)) return Mono.error(new PeerCluster.Dropped());
                 bounded(payload);
                 return registration.receiver.onMessage(sender, payload.clone()).map(reply -> {
+                    synchronized(this) {if(registration.closed || !sameSession(session)) throw new PeerCluster.Dropped();}
                     bounded(reply); return reply.clone();
                 });
             }
@@ -135,8 +141,9 @@ public final class DefaultPeerTransport implements PeerTransport, SmartLifecycle
         Session session = sessions.get();
         if (session == null) { endpoints.clear(); bound = null; return; }
         if (bound != null && sameSession(bound)) return;
-        endpoints.clear(); bound = session;
-        session.messaging().subscribe(ANNOUNCEMENT_TOPIC, (sender, payload) -> Mono.defer(() -> {
+        endpoints.clear();
+        if(endpointSubscription!=null) endpointSubscription.close();
+        endpointSubscription=session.messaging().subscribeScoped(ANNOUNCEMENT_TOPIC, (sender, payload) -> Mono.defer(() -> {
             synchronized (this) {
                 if (!sameSession(session) || invocationUri == null || payload.length != 0)
                     return Mono.error(new PeerCluster.Dropped());
@@ -144,6 +151,7 @@ public final class DefaultPeerTransport implements PeerTransport, SmartLifecycle
             }
         }));
         registrations.forEach((topic, registration) -> bind(topic, registration, session));
+        bound=session;
     }
 
     private synchronized void tick() {
@@ -165,6 +173,7 @@ public final class DefaultPeerTransport implements PeerTransport, SmartLifecycle
     @Override public synchronized void start() {
         if (running) return;
         stopped = false;
+        refresh();
         running = true;
         loop = Flux.interval(Duration.ZERO, Duration.ofSeconds(1)).subscribe(i -> tick());
     }
@@ -173,7 +182,8 @@ public final class DefaultPeerTransport implements PeerTransport, SmartLifecycle
         stopped = true;
         if (round != null) round.dispose();
         if (loop != null) loop.dispose();
-        registrations.values().forEach(r -> r.closed = true);
+        registrations.values().forEach(r -> {r.closed=true;if(r.subscription!=null) r.subscription.close();});
+        if(endpointSubscription!=null) {endpointSubscription.close();endpointSubscription=null;}
         registrations.clear(); endpoints.clear(); bound = null;
     }
     @Override public boolean isRunning() { return running; }

@@ -111,3 +111,46 @@ reject other inputs, so tests must send the calibrated fixed workload. Trusted
 `X-NanoFaaS-Execution-Node` travels separately from handler-provided headers and is
 preserved through remote completion and idempotent replay. It is absent on
 infrastructure failures where execution was not attributed.
+
+## Real local cluster gate
+
+The JVM and native recipes select `offload`, `forecasting`, `p2p-discovery`,
+`container-deployment-provider` and `build-metadata`. `controlPlaneModules=all`
+selects the default Kubernetes provider and is a separate compatibility gate.
+Build the Rust fixture image from the repository root, then run the process test:
+
+```sh
+docker build -f functions/rust/one-shot-workload/Dockerfile -t nanofaas-one-shot-workload .
+./gradlew :control-plane-modules:offload:oneShotE2e -Precipe=recipes/one-shot-local-jvm.yaml
+./gradlew :control-plane:nativeCompile -Precipe=recipes/one-shot-local-native.yaml -PnativeParallelism=2 -PnativeBuildMemory=4g
+./gradlew :control-plane-modules:offload:oneShotE2e -Precipe=recipes/one-shot-local-native.yaml -DoneShot.controlPlaneBinary="$PWD/platform/control-plane/build/native/nativeCompile/control-plane"
+```
+
+Use JDK 25 for JVM execution and the GraalVM version pinned in
+`gradle.properties` for native compilation. Docker and the fixture image are
+required; unavailable prerequisites fail the test. Four real control planes
+share one Docker daemon, using distinct `nanofaas.container-local.namespace`
+values for creation, discovery, recovery and cleanup. The harness obtains the
+immutable local image ID from Docker; raw `sha256:…` image IDs are eligible only
+when inspection confirms that exact local image. Registry digest references
+remain supported, and mutable image tags retain their normal pulling behavior.
+
+The scenario loads synthetic profiles and oracle traces, executes the actual
+auction, prepares physical replicas, then checks local/peer/cloud execution,
+idempotent replay and total physical occupancy samples. The next epoch changes
+arrivals, pauses one replica during readiness and removes another peer before
+routing. Logs, plans, events, responses and runtime metrics are retained under
+`platform/modules/offload/build/test-diagnostics/`. Its 120-second period and
+5-second auction budget are diagnostic bounds, not timing qualification or a
+scientific calibration. NanoLab is not needed for this gate.
+
+Spring AOT resolves conditional beans at build time. Build the enabled native
+recipe to include one-shot and forecasting. Runtime disable still removes the
+router and returns HTTP 404 from their administrative endpoints, including on
+the terminal cloud using the same binary. A baseline native composition built
+without these features cannot enable them later through a runtime flag.
+
+`assembleRecipe -Precipe=recipes/one-shot-local-native.yaml` uses the container
+builder for a Linux image; an explicit `:control-plane:nativeCompile` compiles a
+host executable for the process gate. The harness exercises Docker CLI and
+Docker Java adapters in different nodes, with the same physical protocol.

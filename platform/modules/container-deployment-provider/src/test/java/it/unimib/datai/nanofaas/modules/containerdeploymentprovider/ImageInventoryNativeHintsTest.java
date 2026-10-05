@@ -18,6 +18,12 @@ class ImageInventoryNativeHintsTest {
                 com.github.dockerjava.core.DockerConfigFile.class.getDeclaredMethod("setCurrentContext", String.class)))
                 .accepts(hints);
     }
+    @Test void immutableImageInspectionModelsHaveNativeBindingMetadata() throws Exception {
+        var hints=new RuntimeHints();new DockerJavaRuntimeHints().registerHints(hints,getClass().getClassLoader());
+        for(var type:new Class<?>[]{com.github.dockerjava.api.command.InspectImageResponse.class,com.github.dockerjava.api.command.GraphDriver.class,com.github.dockerjava.api.command.RootFS.class,com.github.dockerjava.api.model.ContainerConfig.class,com.github.dockerjava.api.model.HealthCheck.class}) {
+            assertThat(RuntimeHintsPredicates.reflection().onConstructorInvocation(type.getDeclaredConstructor())).accepts(hints);
+        }
+    }
     @Test void registersTheDockerImageDeserializationDto() throws Exception {
         var hints = new RuntimeHints();
         new DockerJavaRuntimeHints().registerHints(hints, getClass().getClassLoader());

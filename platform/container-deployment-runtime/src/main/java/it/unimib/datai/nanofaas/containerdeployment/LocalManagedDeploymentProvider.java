@@ -124,7 +124,7 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
         lock.lock();
         try {
             String prefix = requirePersistedPrefix(spec.name(), deploymentObjects);
-            List<ManagedContainer> discovered = adapter.listManagedContainers(spec.name()).stream()
+            List<ManagedContainer> discovered = adapter.listManagedContainers(containerFunctionLabel(spec.name())).stream()
                     .sorted(Comparator.comparingInt(ManagedContainer::replicaIndex))
                     .toList();
             validateReplicaIndexes(spec.name(), prefix, discovered);
@@ -299,7 +299,7 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
             }
         }
         try {
-            adapter.listManagedContainers(functionName)
+            adapter.listManagedContainers(containerFunctionLabel(functionName))
                     .forEach(container -> containerNames.add(container.name()));
         } catch (RuntimeException discoveryFailure) {
             failures.add(discoveryFailure);
@@ -434,7 +434,7 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
                 state.spec.resources(),
                 Map.of(
                         MANAGED_LABEL, "true",
-                        FUNCTION_LABEL, state.spec.name(),
+                        FUNCTION_LABEL, containerFunctionLabel(state.spec.name()),
                         REPLICA_LABEL, Integer.toString(replicaIndex))
         );
 
@@ -552,6 +552,8 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
     private Map<String, String> deploymentObjects(String functionName) {
         return Map.of(ProvisionResult.CONTAINER_NAME_PREFIX, containerNamePrefix(functionName));
     }
+
+    protected String containerFunctionLabel(String functionName) { return functionName; }
 
     protected String containerNamePrefix(String functionName) {
         return "nanofaas-" + normalizeName(functionName);

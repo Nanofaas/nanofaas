@@ -33,6 +33,7 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
             this.started=started; this.deadline=deadline; inbox=new ArrayBlockingQueue<>(bound); pending=new Semaphore(bound);
         }
     }
+    private final boolean enabled;
     private final PeerTransport transport; private final EpochInput.Factory inputs; private final EpochSettings settings;
     private final ClockHealth clockHealth; private final Supplier<Instant> now; private final AuctionCodec codec=new AuctionCodec();
     private final OneShotAuctionEngine.Options options;
@@ -45,12 +46,20 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
     public EpochCoordinator(PeerTransport transport,EpochInput.Factory inputs,EpochSettings settings,ClockHealth health) {
         this(transport,inputs,settings,health,Instant::now,OneShotAuctionEngine.Options.base());
     }
+    public EpochCoordinator(PeerTransport transport,EpochInput.Factory inputs,EpochSettings settings,ClockHealth health,boolean enabled) {
+        this(transport,inputs,settings,health,Instant::now,OneShotAuctionEngine.Options.base(),enabled);
+    }
     public EpochCoordinator(PeerTransport transport,EpochInput.Factory inputs,EpochSettings settings,ClockHealth health,Supplier<Instant> now,OneShotAuctionEngine.Options options) {
+        this(transport,inputs,settings,health,now,options,true);
+    }
+    public EpochCoordinator(PeerTransport transport,EpochInput.Factory inputs,EpochSettings settings,ClockHealth health,Supplier<Instant> now,OneShotAuctionEngine.Options options,boolean enabled) {
+        this.enabled=enabled;
         this.transport=transport; this.inputs=inputs; this.settings=settings; clockHealth=health; this.now=now; this.options=options;
         scheduler=Schedulers.newBoundedElastic(1,1,"one-shot-control");
     }
+    @Override public boolean isAutoStartup() { return enabled; }
     @Override public synchronized void start() {
-        if(running) return;
+        if(running || !enabled) return;
         long token=++lifecycle;
         subscription=transport.subscribe(TOPIC,(sender,payload)->Mono.fromCallable(()->token==lifecycle && running?receive(sender,payload):new byte[]{0}));
         running=true;
