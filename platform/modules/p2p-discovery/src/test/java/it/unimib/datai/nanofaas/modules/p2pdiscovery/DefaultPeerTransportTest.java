@@ -12,6 +12,31 @@ class DefaultPeerTransportTest {
     final PeerMessaging messaging = new PeerMessaging(wire, table);
     final AtomicReference<DefaultPeerTransport.Session> session = new AtomicReference<>(new DefaultPeerTransport.Session("self", "run1", messaging));
     final DefaultPeerTransport transport = new DefaultPeerTransport(table, session::get, URI.create("http://self:8080"), 4);
+    @Test void completingRequestsAdmitsEveryPeerBeyondTheConcurrencyLimit() {
+        var pending = new java.util.LinkedHashMap<String, reactor.core.publisher.Sinks.One<byte[]>>();
+        PeerMessaging.Wire asynchronous = new PeerMessaging.Wire() {
+            public Mono<Void> send(String address, String topic, byte[] payload) { return Mono.empty(); }
+            public Mono<byte[]> request(String address, String topic, byte[] payload, Duration timeout) {
+                var response = reactor.core.publisher.Sinks.<byte[]>one();
+                pending.put(address, response);
+                return response.asMono();
+            }
+            public void handle(String topic, PeerCluster.Handler handler) {}
+        };
+        for (int i = 0; i < 8; i++) table.upsert("peer-" + i, "peer-" + i + ":7000");
+        var current = new DefaultPeerTransport.Session("self", "run", new PeerMessaging(asynchronous, table));
+        var adapter = new DefaultPeerTransport(table, () -> current, null, 4);
+        var result = reactor.core.publisher.Flux.range(0, 8)
+                .flatMap(i -> adapter.request("peer-" + i, "one-shot", new byte[0], Duration.ofSeconds(5)), 4)
+                .collectList().toFuture();
+        assertThat(pending).hasSize(4);
+        while (!result.isDone()) {
+            var responses = java.util.List.copyOf(pending.values());
+            responses.forEach(response -> response.tryEmitValue(new byte[]{1}));
+        }
+        assertThat(result.join()).hasSize(8);
+        assertThat(pending).hasSize(8);
+    }
     static final class StrictWire implements PeerMessaging.Wire {
         final java.util.Map<String,PeerCluster.Handler> handlers=new java.util.HashMap<>();
         public Mono<Void> send(String a,String t,byte[] p) {return Mono.empty();}

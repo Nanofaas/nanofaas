@@ -2,6 +2,71 @@ use nanofaas::{BoxError, Context, Runtime, RuntimeSettings};
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+#[tokio::test]
+async fn admission_rejections_release_the_slot_without_claiming_handler_execution() {
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let observed_calls = Arc::clone(&calls);
+    let runtime = Runtime::with_settings(RuntimeSettings {
+        max_concurrent_handlers: 1,
+        max_input_bytes: 128,
+        ..Default::default()
+    })
+    .register("typed", move |_: Context, input: u64| {
+        observed_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        async move { Ok::<_, BoxError>(input) }
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let (stop, stopped) = tokio::sync::oneshot::channel();
+    let server = tokio::spawn(async move {
+        runtime
+            .serve(listener, async {
+                let _ = stopped.await;
+            })
+            .await
+    });
+    let client = reqwest::Client::new();
+    for (id, body, expected) in [
+        ("invalid-json", "{".to_owned(), 400),
+        ("invalid-input", "{\"input\":{}}".to_owned(), 400),
+        (
+            "oversized",
+            format!(
+                "{{\"input\":1,\"metadata\":{{\"extra\":\"{}\"}}}}",
+                "x".repeat(256)
+            ),
+            413,
+        ),
+        ("accepted", "{\"input\":1}".to_owned(), 200),
+    ] {
+        let response = client
+            .post(format!("{base}/invoke"))
+            .header("x-execution-id", id)
+            .header("x-dispatch-attempt", "1")
+            .body(body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), expected);
+        let proof: Value = serde_json::from_slice(
+            &client
+                .get(format!("{base}/runtime/executions/{id}"))
+                .send()
+                .await
+                .unwrap()
+                .bytes()
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(proof["state"], "RELEASED");
+        assert_eq!(proof["handlerStarted"], expected == 200, "{id}: {proof}");
+    }
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    stop.send(()).unwrap();
+    server.await.unwrap().unwrap();
+}
 #[tokio::test(flavor = "multi_thread")]
 async fn timeout_does_not_release_blocking_work_and_release_has_one_sample() {
     let (release, released) = std::sync::mpsc::channel();
@@ -52,6 +117,7 @@ async fn timeout_does_not_release_blocking_work_and_release_has_one_sample() {
     };
     let active = read(url.clone()).await;
     assert_eq!(active["state"], "ACTIVE");
+    assert_eq!(active["handlerStarted"], true);
     assert_eq!(active["responseStatus"], "timeout");
     let metrics = client
         .get(format!("{base}/metrics"))
@@ -75,6 +141,7 @@ async fn timeout_does_not_release_blocking_work_and_release_has_one_sample() {
     .await
     .unwrap();
     assert_eq!(proof["incarnation"], active["incarnation"]);
+    assert_eq!(proof["handlerStarted"], true);
     assert!(proof["occupancySeconds"].as_f64().unwrap() >= 0.05);
     let metrics = client
         .get(format!("{base}/metrics"))
@@ -147,6 +214,7 @@ async fn errors_panics_and_context_clones_record_exactly_one_sample() {
         )
         .unwrap();
         assert_eq!(proof["state"], "RELEASED");
+        assert_eq!(proof["handlerStarted"], true);
         assert_eq!(
             proof["responseStatus"],
             if expected == 200 { "success" } else { "error" }

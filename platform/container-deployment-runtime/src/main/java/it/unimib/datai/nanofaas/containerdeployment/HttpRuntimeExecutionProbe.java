@@ -15,7 +15,9 @@ public final class HttpRuntimeExecutionProbe implements RuntimeExecutionProbe {
         var json=read(backend.resolve("/runtime/executions/"+URLEncoder.encode(id,StandardCharsets.UTF_8).replace("+","%20")));
         if(json==null || ("RELEASED".equals(json.path("state").asText()) &&
             (!json.path("occupancySeconds").isNumber() || !Double.isFinite(json.path("occupancySeconds").asDouble()) || json.path("occupancySeconds").asDouble()<0))) return ExecutionObservation.unknown();
-        return new ExecutionObservation(json.path("state").asText(),json.path("incarnation").asText(),json.path("executionId").asText(), json.path("dispatchAttempt").isNull()?null:json.path("dispatchAttempt").asText());
+        return new ExecutionObservation(json.path("state").asText(),json.path("incarnation").asText(),json.path("executionId").asText(),
+                json.path("dispatchAttempt").isNull()?null:json.path("dispatchAttempt").asText(),
+                json.path("handlerStarted").isBoolean() && json.path("handlerStarted").asBoolean());
     }
     public String eligibleIncarnation(URI backend) {
         var json=read(backend.resolve("/runtime/status"));

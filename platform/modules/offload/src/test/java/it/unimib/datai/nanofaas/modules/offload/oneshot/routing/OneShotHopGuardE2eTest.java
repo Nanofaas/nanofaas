@@ -91,7 +91,7 @@ class OneShotHopGuardE2eTest {
                     String path=request.getPath();
                     if(path.equals("/runtime/status")) return new MockResponse().setBody("{\"schemaVersion\":1,\"incarnation\":\"physical-run\",\"physicalReleaseProof\":true,\"maxConcurrentHandlers\":1,\"activeHandlers\":0}");
                     if(path.startsWith("/runtime/executions/")) {
-                        String proof=executed?"{\"state\":\"RELEASED\",\"incarnation\":\"physical-run\",\"executionId\":\""+execution.get()+"\",\"dispatchAttempt\":\""+attempt.get()+"\",\"occupancySeconds\":0.001}":"{\"state\":\"UNKNOWN\"}";
+                        String proof=executed?"{\"state\":\"RELEASED\",\"incarnation\":\"physical-run\",\"executionId\":\""+execution.get()+"\",\"dispatchAttempt\":\""+attempt.get()+"\",\"occupancySeconds\":0.001,\"handlerStarted\":true}":"{\"state\":\"UNKNOWN\"}";
                         return new MockResponse().setBody(proof);
                     }
                     calls.incrementAndGet();execution.set(request.getHeader("X-Execution-Id"));attempt.set(request.getHeader("X-Dispatch-Attempt"));

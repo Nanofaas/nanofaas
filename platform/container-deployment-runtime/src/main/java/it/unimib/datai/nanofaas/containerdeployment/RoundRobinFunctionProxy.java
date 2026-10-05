@@ -477,8 +477,8 @@ public final class RoundRobinFunctionProxy implements ManagedFunctionProxy {
             var proof=executionProbe.observe(URI.create(lease.backend()),lease.executionId());
             if(lease.hasExecutionEvidence(proof)) {
                 exchange.getResponseHeaders().set(it.unimib.datai.nanofaas.common.runtime.ResponseHeaderPolicy.HANDLER_EXECUTED_HEADER,"true");
-                lease.markReleased(proof);
             }
+            lease.markReleased(proof);
         }
         try (Deadline deadline = deadline(
                 proxyProperties.responseWriteTimeout(), exchange::close)) {

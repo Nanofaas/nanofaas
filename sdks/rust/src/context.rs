@@ -44,6 +44,10 @@ impl Context {
         &self.inner.execution_id
     }
 
+    pub(crate) fn mark_handler_started(&self) {
+        self.inner.reservation.mark_handler_started();
+    }
+
     pub fn trace_id(&self) -> Option<&str> {
         self.inner.trace_id.as_deref()
     }

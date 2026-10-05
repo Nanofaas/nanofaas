@@ -9,10 +9,10 @@ class ReplicaSlotsTest {
         var second = slots.tryAcquire("second", "attempt-2").orElseThrow();
         assertThat(first.backend()).isNotEqualTo(second.backend());
         assertThat(slots.tryAcquire("third")).isEmpty();
-        assertThat(first.markReleased(new ExecutionObservation("UNKNOWN", "inc-a", "first", "attempt-1"))).isFalse();
-        assertThat(first.markReleased(new ExecutionObservation("RELEASED", "old", "first", "attempt-1"))).isFalse();
-        assertThat(first.markReleased(new ExecutionObservation("RELEASED", first.incarnation(), "first", "old-attempt"))).isFalse();
-        assertThat(first.markReleased(new ExecutionObservation("RELEASED", first.incarnation(), "first", "attempt-1"))).isTrue();
+        assertThat(first.markReleased(new ExecutionObservation("UNKNOWN", "inc-a", "first", "attempt-1", false))).isFalse();
+        assertThat(first.markReleased(new ExecutionObservation("RELEASED", "old", "first", "attempt-1", true))).isFalse();
+        assertThat(first.markReleased(new ExecutionObservation("RELEASED", first.incarnation(), "first", "old-attempt", true))).isFalse();
+        assertThat(first.markReleased(new ExecutionObservation("RELEASED", first.incarnation(), "first", "attempt-1", false))).isTrue();
         assertThat(slots.tryAcquire("third")).isPresent();
     }
     @Test void drainAndPoolUpdateCannotForgetActiveLease() {
@@ -20,7 +20,7 @@ class ReplicaSlotsTest {
         var lease = slots.tryAcquire("work").orElseThrow(); slots.beginDrain("http://a");
         slots.update(Map.of()); assertThat(slots.drained("http://a")).isFalse();
         slots.update(Map.of("http://a", "inc-a")); assertThat(slots.tryAcquire("new")).isEmpty();
-        lease.markReleased(new ExecutionObservation("RELEASED", "inc-a", "work", null));
+        lease.markReleased(new ExecutionObservation("RELEASED", "inc-a", "work", null, false));
         assertThat(slots.drained("http://a")).isTrue(); assertThat(slots.tryAcquire("new")).isEmpty();
     }    @Test void onlyNeverDispatchedReservationsCanBeCancelledWithoutProof() {
         var slots=new ReplicaSlots(); slots.update(Map.of("http://a","inc"));

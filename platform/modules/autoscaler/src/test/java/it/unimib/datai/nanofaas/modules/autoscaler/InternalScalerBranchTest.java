@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.modules.autoscaler;
 
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
+
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
 import it.unimib.datai.nanofaas.common.model.RuntimeMode;
@@ -56,7 +58,7 @@ class InternalScalerBranchTest {
         );
         lenient().when(deploymentCoordinator.generationOf(any())).thenAnswer(invocation ->
                 wakeUpResources.generation(invocation.getArgument(0, RegisteredFunction.class).name()));
-        lenient().when(deploymentCoordinator.setReplicas(any(), any(), anyInt())).thenReturn(true);
+        lenient().when(deploymentCoordinator.setReplicas(any(FunctionGeneration.class), any(), anyInt())).thenReturn(true);
     }
 
     @AfterEach
@@ -84,7 +86,7 @@ class InternalScalerBranchTest {
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator).setReplicas(any(), eq(target(good)), eq(3));
+        verify(deploymentCoordinator).setReplicas(any(FunctionGeneration.class), eq(target(good)), eq(3));
     }
 
     @Test
@@ -98,7 +100,7 @@ class InternalScalerBranchTest {
         scaler.scalingLoop();
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator, times(1)).setReplicas(any(), eq(target(spec)), eq(3));
+        verify(deploymentCoordinator, times(1)).setReplicas(any(FunctionGeneration.class), eq(target(spec)), eq(3));
     }
 
     @Test
@@ -112,7 +114,7 @@ class InternalScalerBranchTest {
         scaler.scalingLoop();
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator, times(1)).setReplicas(any(), eq(target(spec)), eq(0));
+        verify(deploymentCoordinator, times(1)).setReplicas(any(FunctionGeneration.class), eq(target(spec)), eq(0));
     }
 
     @Test
@@ -128,7 +130,7 @@ class InternalScalerBranchTest {
 
         scaler.scalingLoop();
 
-        verify(deploymentCoordinator, never()).setReplicas(any(), any(), anyInt());
+        verify(deploymentCoordinator, never()).setReplicas(any(FunctionGeneration.class), any(), anyInt());
     }
 
     @Test

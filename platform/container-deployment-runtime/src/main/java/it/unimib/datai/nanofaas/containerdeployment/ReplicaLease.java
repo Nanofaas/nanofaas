@@ -13,7 +13,7 @@ public final class ReplicaLease {
     public synchronized void markDispatched() { dispatched=true; }
     public synchronized boolean cancelBeforeDispatch() { return !dispatched && owner.cancelUndispatched(this); }
     public synchronized boolean hasExecutionEvidence(ExecutionObservation proof) {
-        return dispatched && proof!=null && ("ACTIVE".equals(proof.state()) || "RELEASED".equals(proof.state()))
+        return dispatched && proof!=null && proof.handlerStarted() && ("ACTIVE".equals(proof.state()) || "RELEASED".equals(proof.state()))
             && java.util.Objects.equals(incarnation,proof.incarnation())
             && java.util.Objects.equals(executionId,proof.executionId())
             && java.util.Objects.equals(dispatchAttempt,proof.dispatchAttempt());

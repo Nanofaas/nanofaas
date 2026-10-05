@@ -122,6 +122,12 @@ impl HandlerReservation {
         self.started
     }
 
+    pub fn mark_handler_started(&self) {
+        if let Some((tracker, id, started)) = &self.occupancy {
+            tracker.handler_started_at(id, *started);
+        }
+    }
+
     pub fn retain_input(&self, bytes: usize) {
         self.input_bytes.fetch_add(bytes, Ordering::Relaxed);
         self.limits.update(|state| state.input_bytes += bytes);

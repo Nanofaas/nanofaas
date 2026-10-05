@@ -8,8 +8,25 @@ import subprocess
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[2]
+
+def test_published_one_shot_profile_has_valid_openapi_30_numeric_constraints():
+    import yaml
+    from jsonschema import Draft4Validator
+
+    fragment = yaml.safe_load((ROOT / "platform/modules/offload/openapi.yaml").read_text())
+    schema = fragment["components"]["schemas"]["OneShotServiceProfile"]
+    Draft4Validator.check_schema(schema)
+    validator = Draft4Validator(schema)
+    validator.validate(profile())
+    for field in ("cpuQuota", "serviceSeconds"):
+        invalid = profile()
+        invalid["functions"][0][field] = 0
+        assert not validator.is_valid(invalid), field
+    for field in ("meanSeconds", "p95Seconds"):
+        invalid = profile()
+        invalid["functions"][0]["statistics"][field] = 0
+        assert not validator.is_valid(invalid), field
 
 
 def exporter():

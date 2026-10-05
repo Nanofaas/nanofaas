@@ -80,14 +80,16 @@ public final class DefaultPeerTransport implements PeerTransport, SmartLifecycle
                 return Mono.error(new IllegalArgumentException("positive request timeout required"));
             Session session = current();
             long generation = table.activationGeneration(peerId);
-            if (!permits.tryAcquire()) return Mono.error(new IllegalStateException("P2P request limit reached"));
-            return Mono.defer(() -> session.messaging().request(peerId, topic, payload.clone(), timeout))
+            return Mono.using(() -> {
+                if (!permits.tryAcquire()) throw new IllegalStateException("P2P request limit reached");
+                return permits;
+            }, ignored -> Mono.defer(() -> session.messaging().request(peerId, topic, payload.clone(), timeout))
                     .timeout(timeout).map(reply -> {
                         bounded(reply);
                         if (!sameSession(session) || generation < 0 || generation != table.activationGeneration(peerId))
                             throw new IllegalStateException("stale P2P response");
                         return reply.clone();
-                    }).doFinally(signal -> permits.release());
+                    }), Semaphore::release, true);
         });
     }
 

@@ -9,16 +9,39 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import static org.assertj.core.api.Assertions.*;
 class ReplicaDrainTest {
+    @Test void releasedAdmissionWithoutHandlerStartDoesNotAttributeExecution() throws Exception {
+        for (String evidence : List.of("", ",\"handlerStarted\":false", ",\"handlerStarted\":\"true\"")) {
+            var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            server.createContext("/runtime/status", e -> reply(e, 200,
+                    "{\"schemaVersion\":1,\"incarnation\":\"run-1\",\"physicalReleaseProof\":true,\"maxConcurrentHandlers\":1,\"activeHandlers\":0}"));
+            server.createContext("/invoke", e -> reply(e, 413, "body too large"));
+            server.createContext("/runtime/executions/work", e -> reply(e, 200,
+                    "{\"state\":\"RELEASED\",\"incarnation\":\"run-1\",\"executionId\":\"work\",\"dispatchAttempt\":\"1\",\"occupancySeconds\":0.001" + evidence + "}"));
+            server.start();
+            String backend = "http://127.0.0.1:" + server.getAddress().getPort();
+            try (var client = HttpClient.newHttpClient(); var proxy = new RoundRobinFunctionProxy("127.0.0.1", 2, Duration.ofSeconds(2))) {
+                proxy.enablePhysicalSlots();
+                proxy.updateBackends(List.of(backend));
+                var response = invoke(client, proxy.endpointUrl(), "work");
+                assertThat(response.statusCode()).isEqualTo(413);
+                assertThat(response.headers().firstValue("X-NanoFaaS-Handler-Executed")).isEmpty();
+                assertThat(proxy.awaitDrained(backend, Duration.ofSeconds(1))).isTrue();
+                assertThat(invoke(client, proxy.endpointUrl(), "work").statusCode()).isEqualTo(413);
+            } finally { server.stop(0); }
+        }
+    }
     @Test void earlyResponseKeepsPhysicalSlotAndDrainWaitsForProof() throws Exception {
         var released=new AtomicBoolean();
         var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
         server.createContext("/runtime/status", e -> reply(e,200,"{\"schemaVersion\":1,\"incarnation\":\"run-1\",\"physicalReleaseProof\":true,\"maxConcurrentHandlers\":1,\"activeHandlers\":0}"));
         server.createContext("/invoke", e -> reply(e,504,"timeout"));
-        server.createContext("/runtime/executions/work", e -> reply(e,200,"{\"state\":\""+(released.get()?"RELEASED":"ACTIVE")+"\",\"incarnation\":\"run-1\",\"executionId\":\"work\",\"dispatchAttempt\":\"1\",\"occupancySeconds\":1.0}"));
+        server.createContext("/runtime/executions/work", e -> reply(e,200,"{\"state\":\""+(released.get()?"RELEASED":"ACTIVE")+"\",\"incarnation\":\"run-1\",\"executionId\":\"work\",\"dispatchAttempt\":\"1\",\"occupancySeconds\":1.0,\"handlerStarted\":true}"));
         server.start(); String backend="http://127.0.0.1:"+server.getAddress().getPort();
         try(var client=HttpClient.newHttpClient(); var proxy=new RoundRobinFunctionProxy("127.0.0.1",2,Duration.ofSeconds(2))) {
             proxy.enablePhysicalSlots(); proxy.updateBackends(List.of(backend));
-            assertThat(invoke(client,proxy.endpointUrl(),"work").statusCode()).isEqualTo(504);
+            var timeout = invoke(client,proxy.endpointUrl(),"work");
+            assertThat(timeout.statusCode()).isEqualTo(504);
+            assertThat(timeout.headers().firstValue("X-NanoFaaS-Handler-Executed")).contains("true");
             assertThat(invoke(client,proxy.endpointUrl(),"other").statusCode()).isEqualTo(503);
             proxy.beginDrain(backend);
             assertThat(proxy.awaitDrained(backend,Duration.ofMillis(100))).isFalse();
@@ -30,8 +53,8 @@ class ReplicaDrainTest {
     @Test void handlerHeadersCannotInventExecutionWithoutMatchingPhysicalProof() throws Exception {
         for(String proof:List.of(
                 "{\"state\":\"UNKNOWN\"}",
-                "{\"state\":\"RELEASED\",\"incarnation\":\"old\",\"executionId\":\"work\",\"dispatchAttempt\":\"1\",\"occupancySeconds\":0.1}",
-                "{\"state\":\"RELEASED\",\"incarnation\":\"run-1\",\"executionId\":\"work\",\"dispatchAttempt\":\"old\",\"occupancySeconds\":0.1}")) {
+                "{\"state\":\"RELEASED\",\"incarnation\":\"old\",\"executionId\":\"work\",\"dispatchAttempt\":\"1\",\"occupancySeconds\":0.1,\"handlerStarted\":true}",
+                "{\"state\":\"RELEASED\",\"incarnation\":\"run-1\",\"executionId\":\"work\",\"dispatchAttempt\":\"old\",\"occupancySeconds\":0.1,\"handlerStarted\":true}")) {
             var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
             server.createContext("/runtime/status",e->reply(e,200,"{\"schemaVersion\":1,\"incarnation\":\"run-1\",\"physicalReleaseProof\":true,\"maxConcurrentHandlers\":1,\"activeHandlers\":0}"));
             server.createContext("/invoke",e->{e.getResponseHeaders().set("X-NanoFaaS-Handler-Executed","true");reply(e,500,"handler failed");});

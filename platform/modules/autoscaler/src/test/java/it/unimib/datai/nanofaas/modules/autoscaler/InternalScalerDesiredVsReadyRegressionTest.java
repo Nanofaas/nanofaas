@@ -1,5 +1,7 @@
 package it.unimib.datai.nanofaas.modules.autoscaler;
 
+import it.unimib.datai.nanofaas.controlplane.capacity.FunctionGeneration;
+
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.RuntimeMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
@@ -70,7 +72,7 @@ class InternalScalerDesiredVsReadyRegressionTest {
                 org.mockito.ArgumentMatchers.any())).thenAnswer(invocation ->
                 wakeUpResources.generation(invocation.getArgument(0, RegisteredFunction.class).name()));
         org.mockito.Mockito.lenient().when(deploymentCoordinator.setReplicas(
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(FunctionGeneration.class), org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyInt())).thenReturn(true);
     }
 
@@ -122,7 +124,7 @@ class InternalScalerDesiredVsReadyRegressionTest {
 
         ArgumentCaptor<Integer> replicaCounts = ArgumentCaptor.forClass(Integer.class);
         verify(deploymentCoordinator, org.mockito.Mockito.atLeastOnce())
-                .setReplicas(org.mockito.ArgumentMatchers.any(),
+                .setReplicas(org.mockito.ArgumentMatchers.any(FunctionGeneration.class),
                         org.mockito.ArgumentMatchers.eq(target), replicaCounts.capture());
 
         int firstCommandedTarget = replicaCounts.getAllValues().get(0);

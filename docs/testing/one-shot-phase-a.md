@@ -238,3 +238,74 @@ The inline task ledger, RED/GREEN logs, final review and rulings are retained in
 `build/test-diagnostics/one-shot-phase-a/execution-record/`; the per-plan scratch
 workspace was removed after archiving. This directory is local diagnostic output,
 not a runtime dependency or a NanoLab implementation.
+
+
+## Review corrections verified with TDD (2026-10-05)
+
+These checks cover the five findings from the subsequent read-only review. Tests
+were observed failing before the corresponding corrections. All changes remain
+in NanoFaaS; the packaged image identities above belong to the earlier revision
+and have not been rebuilt by this correction pass.
+
+| Finding | Observed RED | Correction and GREEN evidence |
+| --- | --- | --- |
+| Missing tooling dependency | The CI-style isolated environment failed 14 contract tests with `ModuleNotFoundError: jsonschema`. | Declare `jsonschema` in `test-tools`; the complete tooling/experiments/runtime-contract suite passes 258 tests. |
+| P2P permit ordering | Eight asynchronous requests with concurrency four failed with `P2P request limit reached` as earlier responses completed. | Eager resource cleanup through `Mono.using`; all 148 P2P tests pass, including cancellation and the eight-peer regression. |
+| False handler attribution | The managed proxy attributed a 413 response with matching `RELEASED` evidence; Rust admission failures had no explicit handler-start field. | Rust records `handlerStarted` after typed deserialization, before calling the handler; Java requires boolean `true` for attribution while accepting matching release evidence independently. All 45 proxy tests pass, including three tests against the rebuilt Rust binary. |
+| Retained-history overhead | The status lookup regression grew from 625 ns to 7.7 ms with 10000 records, exceeding its relative cost budget. | An ordered terminal index expires/evicts records incrementally. All 103 Rust SDK tests pass; expiry, identity reuse, active retention, errors and timeouts remain covered. |
+| Invalid OpenAPI numeric limits | The new profile-schema test failed because `exclusiveMinimum: 0` is invalid for OpenAPI 3.0. | Publish `minimum: 0` with `exclusiveMinimum: true`; reject zero-valued positive quantities. Fragment validation and validation of the schema served by the native executable both pass. |
+
+The full gate also exposed two omissions from the earlier implementation:
+`sonar.sh` did not list the new workload Cargo manifest, and untyped Mockito
+matchers became ambiguous after the owned-replica overload was introduced. Both
+were corrected using the failing existing checks; all 73 autoscaler tests pass.
+Offload's 86 tests and forecasting's 16 tests also pass. SpotBugs passes for the
+changed Java runtime/P2P modules and offload; Rust formatting and Clippy pass.
+
+A diagnostic HTTP run against the rebuilt Rust workload sent 8100 sequential
+malformed typed inputs. The median of the first 100 requests was 0.080834 ms;
+after 8000 retained executions it was 0.052438 ms. This is a local regression
+check, not a calibration or scientific experiment.
+
+The native recipe compiles with the pinned GraalVM and two build threads. The
+initial 4 GiB heap was exhausted; repeating with 8 GiB succeeded. The rebuilt host
+executable starts with explicit runtime parameters and returns the expected 404
+and 400 API errors. Its published OpenAPI 3.0.3 profile schema validates. This is
+host-native verification, not a new Linux packaged-image or NanoLab run.
+
+### Whole-suite limits
+
+`./gradlew test -PcontrolPlaneModules=all --continue` was attempted. It did not
+produce an entirely green result on this macOS host. The initial autoscaler
+compilation failure is resolved by the successful full module rerun. The
+`ExternalDispatcherTimeoutTest.dispatch_slowServer_returnsPoolTimeout` case
+returned `EXTERNAL_ERROR` rather than `EXTERNAL_TIMEOUT` in the broad run, then
+passed in its isolated three-test class rerun. That intermittent broad-run result
+remains recorded rather than being counted as an entirely successful root suite.
+
+The unselected containerd module could not resolve
+`io.nanofaas:containerd-java-cni:0.23.0`; its bootstrap dependency was not installed
+by this correction pass. The recipe plugin's Linux shell/native fixture suite
+also failed on macOS due to the Linux-host requirement and missing `sha256sum`.
+The following 19 plugin cases failed in that broad run and were not relabeled
+successful:
+
+- `RecipePluginTest > v1RecipeReportsAdditiveFieldsOnly()`
+- `RecipePluginTest > imageIdSurvivesPublication()`
+- `RecipePluginTest > failedSecondPushKeepsTheFirstSuccessInTheReport()`
+- `RecipePluginTest > multiArchPublishOfOnePlatformWithoutProvenanceRecordsItsManifest()`
+- `RecipePluginTest > builderFailureFailsAssemblyWithoutReport()`
+- `RecipePluginTest > assembleBuildsOnlySelectedArtifactsAndImagesWithoutPushing()`
+- `RecipePluginTest > reassemblyAfterPublishForgetsPublication()`
+- `RecipePluginTest > multiArchFailedSecondPushKeepsTheFirstSuccess()`
+- `RecipePluginTest > multiArchPublishWithAMissingPlatformIsUnverified()`
+- `RecipePluginTest > reassemblyDropsRemovedFunctionsAndStaleReport()`
+- `RecipePluginTest > hostBuiltNativeImageOnTheHostPlatformPackagesTheStagedExecutable()`
+- `RecipePluginTest > multiArchRejectsHostBuiltNativeImagesAndAStrayBuilder()`
+- `RecipePluginTest > previewsTwoSdksOfTheSameFunctionWithoutBuilding()`
+- `RecipePluginTest > multiArchPublishPushesTheAssembledBuildsAndRecordsIndexAndPlatformDigests()`
+- `RecipePluginTest > reportRecordsKindsIdentityNativeOptionsAndImageIds()`
+- `RecipePluginTest > servicesAndBashBuildWithTheirOwnContexts()`
+- `RecipePluginTest > publishPushesAfterAllBuildsAndRecordsRegistryDigests()`
+- `WarmEchoAotTest > recipeModeDecidesServiceAot(String, String, String, boolean) > control plane jvm, warm-echo native, assembleRecipe`
+- `WarmEchoAotTest > recipeModeDecidesServiceAot(String, String, String, boolean) > control plane jvm, warm-echo native, publishRecipe`
