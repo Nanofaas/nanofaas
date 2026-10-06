@@ -30,7 +30,8 @@ public record ContainerdProperties(
         String callbackUrl,
         String bindHost,
         Duration readinessTimeout,
-        Duration readinessPollInterval
+        Duration readinessPollInterval,
+        Path registryHostsDirectory
 ) {
     @ConstructorBinding
     public ContainerdProperties {
@@ -59,6 +60,7 @@ public record ContainerdProperties(
         cpuset = blankToNull(cpuset);
         callbackUrl = blankToNull(callbackUrl);
         requireAbsolute(Path.of(socketPath), cniPluginDirectory, cniConfigDirectory, cniCacheDirectory, stateDirectory);
+        if (registryHostsDirectory != null) requireAbsolute(registryHostsDirectory);
     }
 
     private static String blankToNull(String value) {
@@ -77,14 +79,14 @@ public record ContainerdProperties(
         return new ContainerdProperties(runtime + "/containerd/containerd.sock", null, null, null, null,
                 null, Path.of(home, ".config/cni/net.d"), Path.of(home, ".local/share/nanofaas/cni"),
                 Path.of(home, ".local/share/nanofaas/containerd"), null, null, null, null, null,
-                null, null, null, null, null);
+                null, null, null, null, null, null);
     }
 
     /** Called once by the selected module's Spring configuration; the client is shared by all replicas. */
     public ContainerdClient newClient() {
         requireDirectory(cniPluginDirectory, "nanofaas.containerd.cni-plugin-directory");
         requireDirectory(cniConfigDirectory, "nanofaas.containerd.cni-config-directory");
-        return ContainerdClient.builder()
+        var builder = ContainerdClient.builder()
                 .socketPath(socketPath)
                 .namespace(namespace)
                 .runtimeBinaryName(runtimeBinary)
@@ -97,8 +99,9 @@ public record ContainerdProperties(
                         .configDir(cniConfigDirectory)
                         .cacheDir(cniCacheDirectory)
                         .pluginTimeout(cniPluginTimeout)
-                        .build())
-                .build();
+                        .build());
+        if (registryHostsDirectory != null) builder.registryHostsDirectory(registryHostsDirectory);
+        return builder.build();
     }
 
     private static void requireDirectory(Path path, String setting) {

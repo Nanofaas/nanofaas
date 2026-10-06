@@ -92,7 +92,10 @@ their JAR, POM, Gradle module and Maven metadata files into a run-owned remote
 repository. It records a `nanolab-receipt.json` of artifact hashes there and
 builds with `-PcontainerdMavenLocal=true` and
 `-Dmaven.repo.local=<remote repository>`. Point it at an isolated bootstrap
-output; do not stage an entire personal Maven cache. The NanoLab scenario
+output; do not stage an entire personal Maven cache. The runner's staging
+allowlist must include `containerd-java` and `containerd-java-cni` 0.24.0, with
+`libcni-java` 0.23.0. Older NanoLab runners hard-code all three to 0.23.0 and
+reject the new bootstrap output until their allowlist is updated. The NanoLab scenario
 revision in `dependencies.env` is pinned to the exact scenario checkout used by
 the recorded checks. The lifecycle run used NanoFaaS `18d7b98f`; recovery and
 the focused JVM async run used `00ab7ac9`. Keep these revisions in the receipt
@@ -121,6 +124,7 @@ names):
 | `NANOFAAS_CONTAINERD_CNICONFIGDIRECTORY` | Absolute config directory; default `$HOME/.config/cni/net.d` |
 | `NANOFAAS_CONTAINERD_CNICACHEDIRECTORY` | Absolute writable cache; default `$HOME/.local/share/nanofaas/cni` |
 | `NANOFAAS_CONTAINERD_STATEDIRECTORY` | Absolute writable client state; default `$HOME/.local/share/nanofaas/containerd` |
+| `NANOFAAS_CONTAINERD_REGISTRYHOSTSDIRECTORY` | Optional absolute registry hosts directory, read by the daemon; unset by default |
 | `NANOFAAS_CONTAINERD_CALLBACKURL` | Reachable function-to-control-plane URL, e.g. `http://10.90.0.1:8080` |
 | `NANOFAAS_CONTAINERD_BINDHOST` | Local bind host; default `127.0.0.1` |
 | `NANOFAAS_CONTAINERD_SYSTEMDCGROUP`, `NANOFAAS_CONTAINERD_CGROUPSPATH` | `true`; parent systemd slice `user.slice` (or parent cgroup directory when systemd cgroups are disabled) |
@@ -143,17 +147,21 @@ arguments (shell quoting is not interpreted). NanoLab renders the
 `CPUQuota`/`MemoryMax` for load runs where needed.
 
 Function images must be pushed to a registry reachable *inside* RootlessKit;
-Docker's local image store is separate. CRI registry configuration does not
-configure the standalone **Transfer** pull path. Use a verified anonymous
-registry endpoint for the common workflow. On containerd 2.2.2, setting the
-Transfer plugin's `config_path` alone did not make a diagnostic pull use the
-configured HTTP endpoint; a `ctr --hosts-dir` pull uses explicit request options
-that the pinned NanoFaaS Java client does not send. The current image validator
-requests a pull at registration, so custom endpoints, CA trust and authenticated
-registry paths need an actual NanoFaaS registration test before claiming support.
+Docker's local image store is separate. For HTTP endpoints, custom CA trust or
+mirrors, set `nanofaas.containerd.registry-hosts-directory` (environment:
+`NANOFAAS_CONTAINERD_REGISTRYHOSTSDIRECTORY`) to the absolute daemon-side directory
+containing registry-specific `hosts.toml` files. The pinned `containerd-java` 0.24.0
+passes this directory in `OCIRegistry.resolver.host_dir` for Transfer pulls.
+The path must be readable in containerd's filesystem and mount namespace;
+NanoFaaS does not check its existence against the JVM's filesystem. Leaving it
+unset preserves the default resolver. The setting applies to all image pulls
+through this provider and does not supply authentication credentials.
 
-For a concrete `hosts.toml` diagnostic example, the Transfer configuration
-limitation, socket/namespace checks and the limits of imported images, follow
+On containerd 2.2.2, setting only the Transfer plugin's `config_path` did not
+configure the tested HTTP pull. CRI registry configuration is also separate.
+The image validator pulls at registration, so use registration and invocation
+to verify the complete path after configuring NanoFaaS. For `hosts.toml` examples,
+CLI checks and authentication limits, follow
 [Function images and registries](image-registries.md#standalone-rootless-containerd).
 
 Function resource requests map to CPU shares and memory reservation; limits
