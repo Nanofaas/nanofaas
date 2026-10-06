@@ -3,6 +3,7 @@ package it.unimib.datai.nanofaas.controlplane.dispatch;
 import it.unimib.datai.nanofaas.common.model.InvocationResult;
 import it.unimib.datai.nanofaas.common.runtime.ResponseHeaderPolicy;
 import it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask;
+import io.netty.handler.timeout.ReadTimeoutException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -116,16 +117,25 @@ public class ExternalDispatcher implements Dispatcher {
                             .defaultIfEmpty(response.statusCode().toString())
                             .map(msg -> new DispatchResult(InvocationResult.error("EXTERNAL_ERROR", msg),
                                     isCold, initMs, retryAt, handlerExecuted))
-                            .onErrorResume(ex -> Mono.just(new DispatchResult(
+                            .onErrorResume(ex -> isTimeout(ex) ? Mono.error(ex) : Mono.just(new DispatchResult(
                                     InvocationResult.error("EXTERNAL_ERROR", ex.getMessage()),
                                     isCold, initMs, retryAt, handlerExecuted)));
                 })
                 .timeout(Duration.ofMillis(timeoutMs))
-                .onErrorResume(TimeoutException.class, ex -> reactor.core.publisher.Mono.just(
+                .onErrorResume(ExternalDispatcher::isTimeout, ex -> reactor.core.publisher.Mono.just(
                         DispatchResult.warm(InvocationResult.error("EXTERNAL_TIMEOUT", "External request timed out after " + timeoutMs + "ms"))))
                 .onErrorResume(ex -> reactor.core.publisher.Mono.just(
                         DispatchResult.warm(InvocationResult.error("EXTERNAL_ERROR", ex.getMessage()))))
                 .toFuture();
+    }
+
+    private static boolean isTimeout(Throwable error) {
+        for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+            if (cause instanceof TimeoutException || cause instanceof ReadTimeoutException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     static Instant parseRetryAfter(List<String> values, Instant receivedAt) {
