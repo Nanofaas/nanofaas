@@ -1,0 +1,6 @@
+libcni-java source commit: bf0e292673b5ee6157617967bd3758172795ed89
+containerd-java source commit: ced2d3f3a0f511e1657e353745a4f54a599de75e
+Maven outputs: io.libcni:libcni-java:0.23.0, io.nanofaas:containerd-java:0.23.0, io.nanofaas:containerd-java-cni:0.23.0
+605920ea23c3e3d1aa079ee481f14bfe3eda4243a849e8200f258d1384edd879  io/libcni/libcni-java/0.23.0/libcni-java-0.23.0.jar
+bacb14fe91968061eabcda9755e611d3a27899ef92d08bf108d34ad202035a0f  io/nanofaas/containerd-java/0.23.0/containerd-java-0.23.0.jar
+9427d7035ecf2af0d6342fe75d5cd4ea9fa74e567a0c286ca7035793490c7ca2  io/nanofaas/containerd-java-cni/0.23.0/containerd-java-cni-0.23.0.jar

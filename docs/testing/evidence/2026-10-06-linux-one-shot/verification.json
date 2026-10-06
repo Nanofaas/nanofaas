@@ -1,0 +1,431 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-06",
+  "testedRevision": "2ef16c16c964611fe7d231869819026cb5db12c0",
+  "baseline": {
+    "revision": "b87b721beba924a94b9c9340ab82b55f5e2cb349",
+    "ciUrl": "https://github.com/miciav/nanofaas/actions/runs/37316494938",
+    "requiredJobsPassed": 9,
+    "codeQlUrl": "https://github.com/miciav/nanofaas/actions/runs/37316494950",
+    "javaReportArtifactId": 11350401312,
+    "nativeReportArtifactId": 11349981376,
+    "toolReportArtifactId": 11347199515,
+    "note": "CI verifies the baseline. Python, Rust, watchdog, Go, JavaScript and tooling sources were unchanged by the Java timeout fix."
+  },
+  "environment": {
+    "os": "Ubuntu 24.04.5 LTS",
+    "architecture": "aarch64",
+    "java": "GraalVM CE 25.2.4+7.1 / Java 25.0.4",
+    "rust": "1.98.1",
+    "python": "3.12.3",
+    "uv": "0.12.9",
+    "helm": "4.3.0",
+    "docker": "29.6.2",
+    "availableRamGiBAtStart": 115,
+    "builderOverride": "BUILDX_BUILDER=default"
+  },
+  "timeout": {
+    "capturedBodyCause": "io.netty.handler.timeout.ReadTimeoutException",
+    "capturedHeaderWrapper": "org.springframework.web.reactive.function.client.WebClientRequestException",
+    "red": {
+      "tests": 14,
+      "failures": 3,
+      "errors": 0,
+      "skipped": 0
+    },
+    "greenTargeted": {
+      "tests": 63,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "spotbugs": "PASS",
+    "independentReview": "No actionable findings",
+    "historicalLimit": "The original macOS exception was not captured; identical historical causation is not claimed."
+  },
+  "fullSuite": {
+    "command": "./gradlew test releaseChecks -PcontrolPlaneModules=all --continue -PcontainerdMavenLocal=true -Dmaven.repo.local=<prepared-repository>",
+    "result": "PASS",
+    "total": {
+      "tests": 2736,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 6
+    },
+    "modules": {
+      "platform/container-deployment-runtime": {
+        "tests": 45,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "platform/execution-runtime": {
+        "tests": 353,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "platform/forecasting-api": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "platform/p2p-api": {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "platform/workload-metrics": {
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "platform/gradle-plugin": {
+        "tests": 233,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "platform/control-plane-spi": {
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "platform/control-plane": {
+        "tests": 816,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 3
+      },
+      "platform/common": {
+        "tests": 43,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "platform/modules/sync-queue": {
+        "tests": 36,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "platform/modules/forecasting": {
+        "tests": 16,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "platform/modules/autoscaler": {
+        "tests": 73,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "platform/modules/k8s-deployment-provider": {
+        "tests": 102,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "platform/modules/concurrency-control": {
+        "tests": 68,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 3
+      },
+      "platform/modules/runtime-config": {
+        "tests": 35,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "platform/modules/async-queue": {
+        "tests": 18,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "platform/modules/build-metadata": {
+        "tests": 22,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "platform/modules/offload": {
+        "tests": 87,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "platform/modules/p2p-discovery": {
+        "tests": 148,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "platform/modules/containerd-deployment-provider": {
+        "tests": 48,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "platform/modules/container-deployment-provider": {
+        "tests": 84,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "sdks/java": {
+        "tests": 152,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "sdks/java-lite": {
+        "tests": 97,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "services/java/warm-echo": {
+        "tests": 13,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "functions/java/handler-envelope": {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "functions/java/word-stats-lite": {
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "functions/java/roman-numeral-lite": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "functions/java/json-transform-lite": {
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "functions/java/binary-envelope": {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "functions/java/figlet": {
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "functions/java/qr-code": {
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "functions/java/roman-numeral": {
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "functions/java/word-stats": {
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "functions/java/json-transform": {
+        "tests": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "clients/cli": {
+        "tests": 196,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "rerunNote": "Initial execution ran the whole suite and had five CLI failures caused by the selected NVIDIA Buildx builder. The subsequent complete command used the default builder; Gradle reused successful tasks at the same source revision and reran the failed CLI task. Original reports are retained."
+  },
+  "compositions": {
+    "coreOnly": {
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1
+    },
+    "asyncQueue": {
+      "tests": 68,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1
+    },
+    "syncQueueConcurrency": {
+      "tests": 68,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3
+    },
+    "syncQueue": {
+      "tests": 36,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "processGates": {
+    "jvm": {
+      "result": "PASS",
+      "tests": {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "duration": "3m 52s",
+      "diagnostics": "platform/modules/offload/build/test-diagnostics/nf-one-shot-13479832896690536894",
+      "conservation": {
+        "logicalExecutions": 30,
+        "physicalCompletions": 30
+      }
+    },
+    "native": {
+      "result": "PASS",
+      "tests": {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "duration": "3m 47s",
+      "diagnostics": "platform/modules/offload/build/test-diagnostics/nf-one-shot-3691811749813910931",
+      "conservation": {
+        "logicalExecutions": 30,
+        "physicalCompletions": 30
+      }
+    }
+  },
+  "nativeCompilation": {
+    "allModules": {
+      "result": "PASS",
+      "heap": "8g",
+      "threads": 2,
+      "duration": "3m 50s",
+      "binarySha256": "ee56f2e7df5b057a5f5b238c977c0d1f3585d87b154e71eed8452a2c7b445cd2",
+      "executableCheck": "PASS",
+      "httpErrors": [
+        404,
+        400
+      ]
+    },
+    "recipe": {
+      "result": "PASS",
+      "heap": "8g",
+      "threads": 2,
+      "duration": "3m 25s",
+      "binarySha256": "e88afb97499cc8601c10e8d9ea61fb47970aad914c2d0985a03606e5f344a7d0",
+      "executableCheck": "PASS",
+      "configuredHostHttpErrors": [
+        404,
+        400
+      ]
+    },
+    "initialArm64Attempt": {
+      "sourceRevision": "b87b721beba924a94b9c9340ab82b55f5e2cb349",
+      "heap": "4g",
+      "threads": 2,
+      "result": "java.lang.OutOfMemoryError: Java heap space"
+    },
+    "ciSetting": "Linux x86_64 CI remains at 4g and two threads for the recipe."
+  },
+  "packagedImages": {
+    "jvm": {
+      "source": {
+        "revision": "2ef16c16c964611fe7d231869819026cb5db12c0",
+        "dirty": false
+      },
+      "images": [
+        {
+          "reference": "nanofaas/one-shot-local-jvm/control-plane-one-shot-jvm:local",
+          "status": "built",
+          "id": "sha256:2698d825e2de0d8f74c4e85deee638951d6f6f07ee33b2c51f855b4a74c867f9"
+        },
+        {
+          "reference": "nanofaas/one-shot-local-jvm/nanofaas-one-shot-workload:local",
+          "status": "built",
+          "id": "sha256:067b1f30c19f232b13338121691488d27c47a04a4b9b16a1525ff3115830cf19"
+        }
+      ],
+      "startupSmoke": {
+        "controlPlaneImage": "sha256:2698d825e2de0d8f74c4e85deee638951d6f6f07ee33b2c51f855b4a74c867f9",
+        "status": "PASS",
+        "errors": [
+          404,
+          400
+        ]
+      }
+    },
+    "native": {
+      "source": {
+        "revision": "2ef16c16c964611fe7d231869819026cb5db12c0",
+        "dirty": false
+      },
+      "images": [
+        {
+          "reference": "nanofaas/one-shot-local-native/control-plane-one-shot-native:local",
+          "status": "built",
+          "id": "sha256:0f908abc7dbaabac672166bb5b91b0679ef2dd792143ee16b91e91565c3083cb"
+        },
+        {
+          "reference": "nanofaas/one-shot-local-native/nanofaas-one-shot-workload:local",
+          "status": "built",
+          "id": "sha256:067b1f30c19f232b13338121691488d27c47a04a4b9b16a1525ff3115830cf19"
+        }
+      ],
+      "startupSmoke": {
+        "controlPlaneImage": "sha256:0f908abc7dbaabac672166bb5b91b0679ef2dd792143ee16b91e91565c3083cb",
+        "status": "PASS",
+        "errors": [
+          404,
+          400
+        ]
+      }
+    }
+  },
+  "localDiagnostics": "build/test-diagnostics/linux-handoff/",
+  "diagnosticSha256": {
+    "timeout-diagnostic-red.log": "11fa53d7687ca94ab11ccbac4a32000a462bc54b372db0c4d233a93c92fb3688",
+    "timeout-regression-red.log": "17309b4b7b493d89a74bffa3b663058fda547ce0b7b83114c8a9a5eb54176b96",
+    "timeout-regression-green.log": "d77bfaeb4f9c16626f831a75da344d8128844c79b315f08ee54216d129f7fd12",
+    "full-suite-release-first.log": "011feba7ef19dfee6d08914fff198f93527711719b26bb002bf7bfa19422d903",
+    "full-suite-release.log": "72ad4112b060f3bd77dd6b17f10e5b5b6687c4b93778df087d5de11750c417c8",
+    "assemble-native-4g-oom.log": "721a1a90369f4d4749d3e02217ef0f2c3fbc46d4ecef4e4e4dd73f38a70b676a",
+    "assemble-native-8g.log": "89097f6f4fb57feb312abef21118b90fe9ea54235ff4349f985288932f95fe18",
+    "native-all-compile.log": "045dba44f658472507a73d0ef35b2141a73ac469ebd2e6565968a8b0f71dac0d",
+    "native-all-api.log": "214ad376f3ec438c323709c194107d20cbbf94bf8a237744717afc1ef694e42b",
+    "jvm-cluster.log": "8a1f7c455d01d24cce6f8c4b5e2cd1e4e0fe022705e80a4fc54d2fc9762fd370",
+    "native-cluster.log": "7ef2105eaf9b48383ce18f458892a23470a0e92ff8c7bf34935c3d44c8580fa2",
+    "smoke-jvm.log": "7eb7f6d7b2d967cf4fd1a26d2e6b50fe62776bd283576c9d781093db84d4fbfd",
+    "smoke-native.log": "c7211b85708dba3f859753dbfd20152611bdb61c64fe3690ee2a983d87ce4542",
+    "ci/logs.zip": "288d5ef919f16590dcc7ad660cf68dbad2e411b2a976b546ed485df54961f63f"
+  }
+}

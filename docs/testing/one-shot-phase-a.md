@@ -1,5 +1,11 @@
 # NanoFaaS one-shot: phase A handoff
 
+Linux verification was completed on 2026-10-06 at
+`2ef16c16c964611fe7d231869819026cb5db12c0`. The
+[Linux closure record](one-shot-linux-handoff.md#linux-closure-2026-10-06) and
+[retained evidence](evidence/2026-10-06-linux-one-shot/verification.json) supersede
+the open Linux checks in the historical records below.
+
 Phase A is implemented on `codex/one-shot-nanofaas`, created from main aligned
 with origin at `a62a743f16205b3d4d3ce2945f857a88c559d83e`. The verification record below distinguishes the local functional gate from
 qualification required for a scientific campaign.
@@ -309,3 +315,55 @@ successful:
 - `RecipePluginTest > publishPushesAfterAllBuildsAndRecordsRegistryDigests()`
 - `WarmEchoAotTest > recipeModeDecidesServiceAot(String, String, String, boolean) > control plane jvm, warm-echo native, assembleRecipe`
 - `WarmEchoAotTest > recipeModeDecidesServiceAot(String, String, String, boolean) > control plane jvm, warm-echo native, publishRecipe`
+
+## Linux closure (2026-10-06)
+
+Verified on Ubuntu 24.04.5 LTS/aarch64 using the pinned GraalVM and runtime commit
+`2ef16c16c964611fe7d231869819026cb5db12c0`, based on merged main `b87b721b`:
+
+- Complete Java tests and release checks passed. Retained all-module XML contains
+  2736 tests, zero failures/errors and six expected composition skips; all 233
+  recipe cases and all 45 container runtime tests ran without skips. The three
+  physical-proxy cases used a freshly built real host Rust workload. Pinned
+  containerd dependencies resolved and their retained source/JAR receipt hashes
+  were verified.
+- Core-only, async-queue and sync-queue compositions passed separately. The first
+  full run's five CLI failures came from the selected custom NVIDIA Buildx
+  builder; a complete command rerun with `BUILDX_BUILDER=default` passed, reusing
+  the successful same-revision tasks and rerunning the failed CLI task. Initial
+  diagnostics were preserved.
+- A real Netty `ReadTimeoutException` was captured before changing behavior.
+  Three regressions for slow HTTP 200/500 bodies and wrapped header errors first
+  failed with `EXTERNAL_ERROR`, then passed with `EXTERNAL_TIMEOUT`. The fix also
+  prevents HTTP error-body handling from swallowing timeouts. Connection refusal
+  remains an error. All 63 targeted dispatch/connection/cancellation tests and
+  SpotBugs passed, followed by the full suite and independent read-only review.
+  The original macOS exception was never captured, so identical historical
+  causation is not claimed. The scheduler-switch timeout did not recur; its
+  original cause remains unknown and its diagnostic extension is retained.
+- Real JVM/native process gates passed in 3m52s/3m47s. Each conserved 30 logical
+  executions and 30 physical completions through idempotent replay and the faulted
+  next epoch, without skips. Native used the binary extracted from the packaged
+  image. All-module native compilation passed in 3m50s; ELF executable and actual
+  HTTP 404/400 API checks passed.
+- Current JVM/native packaged images both report the tested revision and
+  `dirty=false`; default-user startup and HTTP 404/400 checks passed. Their reports
+  replace the earlier packaged-image identities for current-runtime evidence:
+  [JVM](evidence/2026-10-06-linux-one-shot/distribution-jvm.json),
+  [native](evidence/2026-10-06-linux-one-shot/distribution-native.json).
+- ARM64 packaging at baseline `b87b721b` exhausted a 4 GiB compiler heap after
+  GC thrash. The retained retry at the corrected commit passed with 8 GiB/two
+  threads in 3m25s. All-module host compilation also used 8 GiB/two threads.
+  The successful Linux x86_64 CI recipe setting remains 4 GiB/two threads;
+  runtime function memory and CI settings were not increased.
+
+The [complete baseline Linux CI run](https://github.com/miciav/nanofaas/actions/runs/37316494938)
+passed all nine jobs at `b87b721b`, including the previously cancelled Java gates.
+Unchanged Python/Rust/watchdog/Go/JavaScript/tooling sources retain that CI
+evidence; local Java/native results cover the new runtime commit. Full diagnostic
+logs, reports and failed attempts remain under
+`build/test-diagnostics/linux-handoff/`; durable counts, hashes and process
+conservation records are in
+[verification.json](evidence/2026-10-06-linux-one-shot/verification.json).
+These functional checks do not qualify scientific profiles, a scheduled auction
+period, NanoLab/Sonata workflows or Azure experiments.
