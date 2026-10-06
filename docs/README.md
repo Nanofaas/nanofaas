@@ -5,6 +5,7 @@
 | Doc | What it covers |
 | --- | --- |
 | [Quickstart](quickstart.md) | Build the platform and CLI, provision and validate a platform |
+| [Function lifecycle](function-lifecycle.md) | Write a minimal HTTP function, build, register, invoke and verify restart recovery on Kubernetes, Docker or containerd |
 | [Tutorial: writing a function](tutorial-function.md) | End-to-end walkthrough: scaffold, handler, tests, deploy, invoke, contract tests (Java / Python / JavaScript) |
 | [Local development](local.md) | How to run and develop the control plane, nanofaas-cli, and functions locally |
 
@@ -26,7 +27,7 @@
 | --- | --- |
 | [Control-plane](control-plane.md) | Control-plane overview |
 | [Function pod architecture](function-pod-architecture.md) | Watchdog, runtimes, and managed deployment model |
-| [Kubernetes deployment](k8s.md) | k8s backend: resources, HPA, labels, secrets |
+| [Kubernetes deployment](k8s.md) | k8s backend: resources, HPA, labels, credential limitations |
 | [Observability](observability.md) | Metrics, PromQL queries, health, logging, tracing |
 
 ## Operations

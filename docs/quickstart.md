@@ -1,8 +1,10 @@
 # Quickstart
 
 This guide separates the application CLI from infrastructure provisioning. The
-`nanofaas` CLI talks only to the control-plane HTTP API; the Python
-control-plane tool provisions VMs and installs the platform.
+`nanofaas` CLI talks only to the control-plane HTTP API; NanoLab provisions
+infrastructure and installs the platform. For application
+development on Docker or an existing Kubernetes/containerd environment, use
+[Function lifecycle](function-lifecycle.md).
 
 ## Prerequisites
 
@@ -26,8 +28,15 @@ runtime. For example:
 ## Build the platform
 
 ```bash
-./gradlew build
+./gradlew :control-plane:bootJar :nanofaas-cli:installDist
 ```
+
+This builds the default Kubernetes control plane and CLI without requiring the
+rootless containerd provider's external dependencies. A full `./gradlew build`
+also builds that provider: first stage its pinned dependencies as described in
+[Rootless containerd deployment](deployment-containerd.md). See
+[Function lifecycle](function-lifecycle.md#choose-and-start-a-backend) to select
+Docker/containerd or deploy the source-built image on k3s.
 
 Run the control plane locally when developing its HTTP API:
 

@@ -6,6 +6,8 @@ the real example functions in the repository. For a complete step-by-step
 walkthrough (scaffold → test → deploy → invoke), read the
 [tutorial](tutorial-function.md); for the manifest reference, read
 [function-definition](function-definition.md).
+For a backend-independent HTTP example and catalog restart checks, read
+[Function lifecycle](function-lifecycle.md).
 
 ## FunctionSpec examples
 
@@ -24,7 +26,7 @@ walkthrough (scaffold → test → deploy → invoke), read the
 ```
 
 The control plane provisions a Deployment + Service (Kubernetes) or container
-instances (local Docker/Podman) from the image.
+instances (local Docker-compatible runtime or rootless containerd) from the image.
 
 ## Scale a managed deployment to zero
 
@@ -75,13 +77,15 @@ function only removes the registration.
 ## Invoking from the CLI
 
 ```bash
-nanofaas invoke echo -d '{"input": {"message": "hi"}}'        # sync
-nanofaas enqueue echo -d '{"input": {"message": "hi"}}'       # async
+nanofaas invoke echo -d '{"message": "hi"}'                  # sync
+nanofaas enqueue echo -d '{"message": "hi"}'                 # async
 nanofaas exec get <executionId> --watch                       # poll async result
 ```
 
 `invoke` prints the `InvocationResponse` envelope (the handler result nested
 under `output`), not the raw handler result.
+CLI data is raw function input; the CLI adds the `input` wrapper. Direct HTTP
+requests below must include that wrapper themselves.
 
 ## Invoking over HTTP
 

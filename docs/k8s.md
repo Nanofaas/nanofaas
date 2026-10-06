@@ -20,7 +20,7 @@ control plane with only this provider on the classpath).
 For each DEPLOYMENT function the provider provisions:
 
 - **Deployment** with the function image, command and env from the
-  `FunctionSpec`, `restartPolicy: Never`, and a Service pointing at it.
+  `FunctionSpec`, `restartPolicy: Always`, and a Service pointing at it.
 - **Service** (ClusterIP) on port 8080, selected by the `function=<name>`
   label.
 
@@ -46,7 +46,13 @@ resources:
 
 Kubernetes renders these as `250m`/`256Mi` requests and `1`/`512Mi` limits.
 The `container-local` backend uses CPU shares/memory reservation for requests
-and CPU quota/memory limit for limits.
+and CPU quota/memory limit for limits. See [Function definition](function-definition.md)
+for the full contract and the resource-catalog restart defect
+([#247](https://github.com/miciav/nanofaas/issues/247)). The source-built JVM
+reproduction at `4f3d58b7` registers and invokes successfully, then fails to load
+`resources.requestWithinLimit` on restart. Until a fix is verified, omit explicit
+function resources when catalog recovery is required. A namespace `LimitRange`
+can supply pod defaults; it does not repair an already affected catalog.
 
 ### Image pull policy
 
@@ -69,12 +75,22 @@ references to reduce registry pulls.
 
 ## Secrets
 
-- Use Kubernetes Secrets for function env if needed; the control plane reads
-  secret refs and injects them into the Deployment env.
+- `FunctionSpec.env` accepts literal strings, which are persisted in the catalog.
+  Application `secretKeyRef` and `envFrom` references are not supported. Reading
+  a Secret during registration and passing its value as env creates a plaintext
+  copy in that catalog. Portable bindings for Kubernetes, Docker and containerd
+  are requested in [#248](https://github.com/miciav/nanofaas/issues/248).
+- `imagePullSecrets` names existing Secrets for private image pulls; it does not
+  inject application credentials.
 - The control plane itself has no authentication (project constraint) — do
   not expose its API outside the cluster unless trusted.
 
 ## Setup and validation
+
+For a source-built control plane on an existing cluster and a function you can
+write, build, register, invoke and check after restart, follow
+[Function lifecycle](function-lifecycle.md). The workflow below validates
+infrastructure through NanoLab rather than developing an application.
 
 Deploy the control plane with the Helm chart (`deploy/helm/nanofaas`), then
 run the `validate-k8s` scenario for end-to-end validation:

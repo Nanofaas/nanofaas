@@ -2,7 +2,9 @@
 
 This tutorial walks you through creating, building, and invoking a nanofaas
 function from scratch. Examples are shown for Java, Python, and JavaScript; sections that
-differ between languages are marked accordingly.
+differ between languages are marked accordingly. For a small HTTP function
+without an SDK, backend setup and a restart verification, use
+[Function lifecycle](function-lifecycle.md).
 
 ---
 
@@ -28,8 +30,10 @@ Start the platform locally:
 
 ## Concepts
 
-A nanofaas function is an HTTP service that implements one endpoint (`POST /invoke`).
-The SDK wires up the server; you write only the handler.
+In managed HTTP examples, a function serves `POST /invoke` and `GET /health`
+on port 8080. The SDK wires up the server; you write only the handler. STDIO and
+FILE functions use a watchdog instead; runtimeMode and deployment backend are
+separate choices. See the [manifest reference](function-definition.md).
 
 The platform calls your handler with an `InvocationRequest`:
 
@@ -38,7 +42,9 @@ The platform calls your handler with an `InvocationRequest`:
 | `input` | any | JSON body sent by the caller |
 | `metadata` | map | Optional caller-supplied metadata |
 
-Whatever your handler returns is serialized back to the caller as JSON.
+The gateway wraps the result in InvocationResponse JSON. HTML or binary output
+is not returned as a raw browser-facing response. See
+[runtime and gateway contracts](function-lifecycle.md#runtime-and-gateway-contracts).
 
 ---
 
@@ -251,6 +257,9 @@ nanofaas deploy -f function.yaml
 ```
 
 This builds the container image and registers the function on the control plane.
+Set the registry and target architecture for your runtime. Changing image or env
+on an existing function requires `--replace`, a delete/register sequence with
+possible downtime; see [registration and updates](function-definition.md#registration-and-updates).
 
 ---
 
@@ -306,6 +315,7 @@ nanofaas exec get <executionId> --watch
 ## What's next
 
 - Add more payload cases in `payloads/` for edge cases and error paths.
-- Deploy to Kubernetes: see `docs/k8s.md`.
-- Run a full E2E load test: see `docs/e2e-tutorial.md`.
+- Deploy and verify catalog recovery: see [Function lifecycle](function-lifecycle.md).
+- Deploy to Kubernetes: see [Kubernetes deployment](k8s.md).
+- Run a full E2E load test: see [E2E tutorial](e2e-tutorial.md).
 - Add the function key to a YAML scenario, inspect it with `nanolab.sh plan <scenario>`, then execute the same file with `nanolab.sh run <scenario>` (from a `nanolab` checkout with `NANOFAAS_ROOT` set to this repo).

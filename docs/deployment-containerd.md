@@ -9,6 +9,14 @@ Linux, Java 25 for JVM builds, and a rootless containerd installation with a
 working Unix socket. Docker is used by NanoLab only to build and push function
 images; it does not own the running functions.
 
+After preparing this runtime, use [Function lifecycle](function-lifecycle.md)
+for a common HTTP function image, registration, invocation and catalog restart
+checks. The [manifest reference](function-definition.md) lists all function
+fields, credential limitations and the source-built JVM resource-catalog defect
+tracked in [#247](https://github.com/miciav/nanofaas/issues/247). That defect was
+reproduced on k3s, not independently on containerd; this guide does not claim
+containerd makes explicit-resource catalog round trips safe.
+
 ## Build from reviewed source revisions
 
 `io.nanofaas:containerd-java`, `io.nanofaas:containerd-java-cni`, and
