@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <FindBugsFilter>
+    <!-- /opt/cni/bin is the documented, overridable default; configured paths must be absolute. -->
+    <Match>
+        <Class name="it.unimib.datai.nanofaas.modules.containerddeploymentprovider.ContainerdProperties"/>
+        <Method name="&lt;init&gt;"/>
+        <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    </Match>
+
     <!-- Mutations share the instance monitor; volatile supports lock-free readers. -->
     <Match>
         <Class name="it.unimib.datai.nanofaas.controlplane.capacity.GenerationLifecycle"/>

@@ -28,5 +28,12 @@ be available again. The adapter lists only containers bearing NanoFaaS ownership
 labels; a failed removal remains pending for retry. It does not sweep unrelated
 containerd resources.
 
+For registry-specific endpoints, mirrors or CA trust, set
+`nanofaas.containerd.registry-hosts-directory` (canonical environment variable:
+`NANOFAAS_CONTAINERD_REGISTRYHOSTSDIRECTORY`). The absolute directory is read by
+the daemon in its own filesystem and forwarded by `containerd-java` 0.24.0 in
+Transfer requests. Unset means the default resolver; authentication credentials
+are not supplied by this setting.
+
 See [rootless containerd deployment](../../../docs/deployment-containerd.md)
 for paths, networking, image transfer, native builds, and operational limits.

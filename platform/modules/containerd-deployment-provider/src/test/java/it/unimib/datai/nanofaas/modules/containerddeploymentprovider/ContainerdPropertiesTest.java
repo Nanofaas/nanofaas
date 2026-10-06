@@ -27,6 +27,7 @@ class ContainerdPropertiesTest {
         assertThat(properties.cniConfigDirectory()).isEqualTo(Path.of("/home/service/.config/cni/net.d"));
         assertThat(properties.cniCacheDirectory()).isEqualTo(Path.of("/home/service/.local/share/nanofaas/cni"));
         assertThat(properties.stateDirectory()).isEqualTo(Path.of("/home/service/.local/share/nanofaas/containerd"));
+        assertThat(properties.registryHostsDirectory()).isNull();
         assertThat(properties.systemdCgroup()).isTrue();
         assertThat(properties.cgroupsPath()).isEqualTo("user.slice");
     }
@@ -53,6 +54,7 @@ class ContainerdPropertiesTest {
                                 Map.entry("NANOFAAS_CONTAINERD_CNICONFIGDIRECTORY", "/test/cni/conf"),
                                 Map.entry("NANOFAAS_CONTAINERD_CNICACHEDIRECTORY", "/test/cni/cache"),
                                 Map.entry("NANOFAAS_CONTAINERD_STATEDIRECTORY", "/test/state"),
+                                Map.entry("NANOFAAS_CONTAINERD_REGISTRYHOSTSDIRECTORY", "/daemon/certs.d"),
                                 Map.entry("NANOFAAS_CONTAINERD_CNIPLUGINTIMEOUT", "19s"),
                                 Map.entry("NANOFAAS_CONTAINERD_STOPTIMEOUT", "12s"),
                                 Map.entry("NANOFAAS_CONTAINERD_AVAILABILITYTIMEOUT", "5s"),
@@ -75,6 +77,7 @@ class ContainerdPropertiesTest {
                     assertThat(properties.cniConfigDirectory()).isEqualTo(Path.of("/test/cni/conf"));
                     assertThat(properties.cniCacheDirectory()).isEqualTo(Path.of("/test/cni/cache"));
                     assertThat(properties.stateDirectory()).isEqualTo(Path.of("/test/state"));
+                    assertThat(properties.registryHostsDirectory()).isEqualTo(Path.of("/daemon/certs.d"));
                     assertThat(properties.cniPluginTimeout()).isEqualTo(java.time.Duration.ofSeconds(19));
                     assertThat(properties.stopTimeout()).isEqualTo(java.time.Duration.ofSeconds(12));
                     assertThat(properties.availabilityTimeout()).isEqualTo(java.time.Duration.ofSeconds(5));
@@ -86,5 +89,15 @@ class ContainerdPropertiesTest {
                     assertThat(properties.readinessTimeout()).isEqualTo(java.time.Duration.ofSeconds(22));
                     assertThat(properties.readinessPollInterval()).isEqualTo(java.time.Duration.ofMillis(350));
                 });
+    }
+
+    @Test
+    void rejectsRelativeRegistryHostsDirectory() {
+        new ApplicationContextRunner().withUserConfiguration(PropertiesConfiguration.class)
+                .withPropertyValues("nanofaas.containerd.socket-path=/run/test/containerd.sock",
+                        "nanofaas.containerd.registry-hosts-directory=certs.d")
+                .run(context -> assertThat(context).hasFailed()
+                        .getFailure().hasRootCauseInstanceOf(IllegalArgumentException.class)
+                        .hasStackTraceContaining("containerd path must be absolute: certs.d"));
     }
 }

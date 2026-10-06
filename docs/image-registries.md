@@ -229,9 +229,8 @@ Do not assume host loopback is shared; test the address from that namespace.
 
 Use an anonymously pullable HTTPS registry with standard CA trust for the common
 function workflow: build and push under your registry account, then use that
-exact reference with the `containerd` backend. For a custom HTTP endpoint or CA,
-check the following limitation before assuming a runtime configuration change
-will make NanoFaaS pull successfully.
+exact reference with the `containerd` backend. For a custom HTTP endpoint, CA or
+mirror, configure the daemon-side hosts directory on NanoFaaS as shown below.
 
 On the build host, replace the registry and account/repository with ones you
 control, and enable anonymous pull access through that registry's settings:
@@ -256,29 +255,28 @@ ctr --address "$CONTAINERD_SOCKET" --namespace "$CONTAINERD_NAMESPACE" \
   images pull --snapshotter native "$FUNCTION_IMAGE"
 ```
 
-Then [register and invoke](#register-and-invoke). The following custom-endpoint
-example is a separate diagnostic path.
+Then [register and invoke](#register-and-invoke), or follow the custom-endpoint
+configuration below before registering an image from that endpoint.
 
-### Custom endpoints and the Transfer limitation
+### Custom endpoints and registry hosts configuration
 
-The containerd 2.x Transfer plugin exposes this configuration table. A path must
-be absolute; TOML does not expand `$HOME` or `~`:
+NanoFaaS uses `containerd-java` 0.24.0 and can forward a registry hosts directory
+in each Transfer request. Configure `nanofaas.containerd.registry-hosts-directory`
+or its canonical environment form `NANOFAAS_CONTAINERD_REGISTRYHOSTSDIRECTORY`.
+The default is unset, preserving containerd's default resolver behavior.
 
-```toml
-[plugins."io.containerd.transfer.v1.local"]
-  config_path = "/home/example/.config/containerd/certs.d"
-```
+The path must be absolute and readable **by containerd**, in the daemon's own
+filesystem and mount namespace. If the daemon and control plane run in separate
+containers, mount the files into the daemon and use its path. NanoFaaS validates
+that the path is absolute but does not require it to exist in the JVM's filesystem.
+This is operator configuration shared by this provider's functions, not a
+per-function field or an authentication mechanism.
 
-**This table alone is not a verified solution for NanoFaaS custom registries.**
-On standalone containerd 2.2.2, setting `config_path` to a directory containing
-the HTTP endpoint below still left a default `ctr` Transfer pull trying HTTPS.
-Passing that directory explicitly in the Transfer request is a distinct path.
-The pinned Java client used by NanoFaaS sends an image reference without
-Resolver options; the current function contract has no registry host-directory,
-scheme or custom-CA fields. Do not assume the successful CLI check below proves
-NanoFaaS can use those custom settings. The [pinned client implementation](https://github.com/Nanofaas/containerd-java/blob/ced2d3f3a0f511e1657e353745a4f54a599de75e/src/main/java/io/nanofaas/containerd/internal/ImagesServiceImpl.java)
-and [containerd Transfer resolver](https://github.com/containerd/containerd/blob/v2.2.2/core/transfer/registry/registry.go)
-show the request boundary.
+On standalone containerd 2.2.2, setting only the Transfer plugin's `config_path`
+still left a default pull trying HTTPS against an HTTP registry. The new client
+option sends `OCIRegistry.resolver.host_dir` explicitly. See the [client implementation](https://github.com/Nanofaas/containerd-java/blob/v0.24.0/src/main/java/io/nanofaas/containerd/internal/ImagesServiceImpl.java)
+and [containerd Transfer resolver](https://github.com/containerd/containerd/blob/v2.2.2/core/transfer/registry/registry.go).
+Changing only CRI registry settings does not configure this standalone pull path.
 
 Create the registry-specific directory as that runtime user. The command below
 creates a new file and refuses to overwrite an existing one; if it already
@@ -299,28 +297,31 @@ EOF
 )
 ```
 
-For a diagnostic HTTPS endpoint with a custom CA, use HTTPS URLs and a `ca` path
+For an HTTPS endpoint with a custom CA, use HTTPS URLs and a `ca` path
 in `hosts.toml`. The host formats are documented in [containerd registry hosts](https://github.com/containerd/containerd/blob/v2.1.5/docs/hosts.md).
-The [Transfer plugin configuration](https://github.com/containerd/containerd/blob/v2.1.5/plugins/transfer/plugin.go)
-is separate from the CRI registry configuration. NanoFaaS's standalone provider
-uses Transfer; changing only CRI settings does not configure its pull path.
+Keep TLS verification enabled when configuring custom CA trust.
 
-If you change daemon plugin configuration, restart its actual user service
-(commonly `systemctl --user restart containerd`), then restart the control-plane
-launcher if the RootlessKit child PID changed. Preserve root, state, snapshotter
-and networking settings. Re-enter the current RootlessKit namespaces when
-checking connectivity. A CLI-only hosts directory does not require changing
-the daemon's configuration.
+Set the directory before launching NanoFaaS:
 
-For this separate HTTP diagnostic, permit the endpoint in the build host's Docker
-daemon settings as described above, then build/push using a distinct variable:
+```bash
+export NANOFAAS_CONTAINERD_REGISTRYHOSTSDIRECTORY="$REGISTRY_HOSTS_DIR"
+```
+
+For a systemd launch, add this variable with its absolute value to the service's
+environment file instead of relying on the calling shell's exports. Restart the
+control plane when changing the directory setting. No daemon configuration
+change or daemon restart is needed for this request option. If you independently
+restart RootlessKit, restart the control-plane launcher in its new namespaces.
+
+Permit this HTTP endpoint in the build host's Docker daemon settings as described
+above, then build and push:
 
 ```bash
 DEMO_DIR=/tmp/nanofaas-greet
-DIAGNOSTIC_REGISTRY=192.0.2.10:5000  # replace with the diagnostic endpoint
-DIAGNOSTIC_IMAGE="$DIAGNOSTIC_REGISTRY/greet:release-1"
-docker build -t "$DIAGNOSTIC_IMAGE" "$DEMO_DIR"
-docker push "$DIAGNOSTIC_IMAGE"
+REGISTRY=192.0.2.10:5000  # replace with the configured endpoint
+FUNCTION_IMAGE="$REGISTRY/greet:release-1"
+docker build -t "$FUNCTION_IMAGE" "$DEMO_DIR"
+docker push "$FUNCTION_IMAGE"
 ```
 
 For a diagnostic pull check, use the same socket and containerd namespace as
@@ -332,19 +333,18 @@ CONTAINERD_SOCKET="$XDG_RUNTIME_DIR/containerd/containerd.sock"
 CONTAINERD_NAMESPACE=nanofaas
 REGISTRY_HOSTS_DIR="$HOME/.config/containerd/certs.d"
 REGISTRY=192.0.2.10:5000  # replace as above
-DIAGNOSTIC_IMAGE="$REGISTRY/greet:release-1"
+FUNCTION_IMAGE="$REGISTRY/greet:release-1"
 ctr --address "$CONTAINERD_SOCKET" --namespace "$CONTAINERD_NAMESPACE" \
-  images pull --hosts-dir "$REGISTRY_HOSTS_DIR" --snapshotter native "$DIAGNOSTIC_IMAGE"
+  images pull --hosts-dir "$REGISTRY_HOSTS_DIR" --snapshotter native "$FUNCTION_IMAGE"
 ```
 
-This command targets containerd 2.x's Transfer path with explicit resolver
-configuration. It diagnoses registry reachability and `hosts.toml`; it is not
-equivalent to NanoFaaS's request. Retain the anonymously pullable HTTPS
-`FUNCTION_IMAGE` from the common workflow when registering; the diagnostic HTTP
-reference does not replace it. Registration is the final check of NanoFaaS's own
-pull path. Loopback HTTP registries may benefit from the runtime's localhost
-exception, but must actually be reachable inside the rootless daemon namespace;
-this does not establish support for a remote HTTP registry or custom CA.
+This CLI check diagnoses registry reachability and `hosts.toml`. NanoFaaS uses
+the same explicit host-directory request option when configured above, but
+[registration and invocation](#register-and-invoke) remain the final checks of
+its own pull and deployment path. Use this HTTP `FUNCTION_IMAGE` for registration.
+Loopback HTTP endpoints may also benefit from containerd's localhost exception;
+that is separate from configured HTTP support and does not make host loopback
+reachable inside RootlessKit.
 
 `imagePullSecrets` does not deliver credentials to standalone containerd.
 Authenticated Transfer pulls through the NanoFaaS Java client remain unverified
@@ -431,7 +431,7 @@ and [K3s image import](https://docs.k3s.io/import-images/).
 | Symptom | Check |
 | --- | --- |
 | Connection refused / timeout | Registry process, interface binding, firewall, DNS and address reachability from the daemon/node namespace |
-| HTTP response to HTTPS client | Explicit HTTP configuration in the runtime that pulls; Docker settings do not propagate to k3s/Transfer. For standalone Transfer, see the custom-endpoint limitation above. |
+| HTTP response to HTTPS client | Explicit HTTP configuration in the runtime that pulls; Docker settings do not propagate to k3s/Transfer. For standalone Transfer, see the registry hosts configuration above. |
 | `x509` certificate error | CA installed for the actual pull runtime and hostname matches the certificate |
 | Unauthorized / denied | Pull credentials for the control-plane CLI user or Kubernetes workload namespace; build-host login alone is insufficient |
 | Manifest unknown / image not found | Full registry/repository/tag or digest, and whether `docker push` completed |
@@ -470,7 +470,8 @@ registry used by other functions can break their next rollout or restart.
 
 ## Verification scope
 
-Verified on 2026-10-06 using the function source from the linked lifecycle guide:
+Verified on 2026-10-06. Docker and k3s checks use the linked lifecycle guide's
+`greet` function; the fresh rootless check uses the Java `word-stats` fixture:
 
 - Docker 29.6.2: loopback HTTP registry, image build/push/pull, managed registration
   HTTP 201 and invocation HTTP 200 returning `Hello, Registry!`. The temporary JVM
@@ -483,11 +484,24 @@ Verified on 2026-10-06 using the function source from the linked lifecycle guide
 - Standalone containerd 2.2.2: an isolated rootful daemon and socket reproduced
   an HTTPS/HTTP mismatch both without configuration and with only Transfer
   `config_path`. The same pull succeeded with an explicit request hosts directory.
-  This checks the diagnostic configuration, not NanoFaaS's rootless lifecycle.
+  The `containerd-java` 0.24.0 public builder also passed a real Transfer pull
+  and native unpack through a temporary HTTP mirror (`RegistryHostsIT`, zero
+  skipped). This isolated rootful test does not establish a rootless lifecycle.
+  The inherited general version test failed on the Ubuntu daemon because its
+  revision string was empty; the registry pull test passed independently.
+- Fresh rootless containerd 2.3.3: NanoFaaS JVM built from this registry-hosts
+  change with `containerd-java` 0.24.0. A synthetic registry name failed
+  registration with HTTP 503 while the option was unset. Mapping that name to
+  an HTTP mirror through `NANOFAAS_CONTAINERD_REGISTRYHOSTSDIRECTORY` yielded
+  registration HTTP 201 and invocation HTTP 200 (`wordCount: 3`), then deletion
+  HTTP 204. NanoLab provisioned the dedicated VM and passed its Java function
+  lifecycle; its hard-coded staging allowlist was overridden only in the test
+  process to stage core/CNI 0.24.0 with libcni 0.23.0. NanoLab source was unchanged.
 - Shell syntax, JSON, YAML, TOML, local links and anchors were checked; the
   function pull-policy Helm values were rendered against the chart.
 
 The temporary function registrations, local registry container and standalone
-daemon were removed. Existing application pods remained Ready. Private-registry
-authentication, custom CA pulls, a multiple-node cluster, offline function
-registration and a fresh rootless runtime were not executed in this check.
+daemon were removed. The rootless test function was deleted and its dedicated
+NanoLab environment was torn down. Existing application pods remained Ready.
+Private-registry authentication, custom CA pulls, a multiple-node cluster and
+offline function registration were not executed in these checks.
