@@ -1,17 +1,85 @@
 # NanoFaaS one shot verification on Linux
 
-This handoff records the checks still open after the review corrections at
+This handoff originally recorded the checks still open after the review
+corrections at
 `e9829a77f54f8cd8d7dae002f37633e56b94c4d6`, on branch
 `codex/one-shot-nanofaas`, as of 2026-10-05. NanoFaaS supports Linux exclusively.
-Complete the remaining verification on Linux before treating phase A as fully
-validated. macOS results are partial development evidence; they do not establish
+The Linux verification below was completed on 2026-10-06 at
+`2ef16c16c964611fe7d231869819026cb5db12c0`. macOS results are partial development
+evidence; they do not establish
 support for that platform or replace Linux verification.
 
 The scope remains NanoFaaS. NanoLab and Sonata workflow work follows in phase B;
 scientific Azure experiments remain a separate phase C. The detailed historical
 results and failing test names are in the [phase A dossier](one-shot-phase-a.md).
 
-## Current evidence
+## Linux closure (2026-10-06)
+
+The tested checkout was clean at runtime commit
+`2ef16c16c964611fe7d231869819026cb5db12c0`, based on merged main
+`b87b721beba924a94b9c9340ab82b55f5e2cb349`. The local environment was Ubuntu
+24.04.5 LTS on aarch64, with 115 GiB initially available RAM, GraalVM CE
+25.2.4/Java 25.0.4, Rust 1.98.1, Python 3.12.3, uv 0.12.9, Helm 4.3.0 and
+Docker 29.6.2.
+
+| Check | Linux result |
+| --- | --- |
+| Complete Java tests and release checks | `test releaseChecks -PcontrolPlaneModules=all --continue` passed. Retained XML contains 2736 tests, zero failures/errors and six expected composition skips. All 233 recipe plugin tests ran without skips. |
+| Containerd preparation | The prepared local Maven repository resolved the pinned dependencies; all 48 provider tests and release checks passed. The retained source/JAR receipt was checked against the three local JAR hashes. |
+| Physical Rust tests | All 45 container runtime tests passed without skips, including the three real Rust physical-proxy cases using the freshly built host workload. |
+| Alternate compositions | Core-only, async-queue and sync-queue gates passed separately. Mutually exclusive tests retain the expected composition skips; these runs exercise cases excluded by the all-module composition. |
+| External timeout | Three real-network regressions first failed with `EXTERNAL_ERROR`, then passed with `EXTERNAL_TIMEOUT`. The 63-test dispatch/connection/cancellation gate and SpotBugs passed, followed by the full suite. Connection refusal remains `EXTERNAL_ERROR`. |
+| Real one-shot processes | JVM and native gates passed in 3m52s and 3m47s. Both recorded 30 logical executions and 30 physical completions, including replay and faulted next-epoch assertions, without skipped process tests. The native gate used the executable extracted from the packaged image. |
+| All-module native artifact | Compilation passed in 3m50s with an 8 GiB compiler heap and two threads. The ELF executable check and actual HTTP 404/400 management checks passed. |
+| Packaged artifacts | JVM and native recipes were rebuilt from the tested commit with `dirty=false`. Both default-user packaged startup checks passed with HTTP 404/400 assertions. Image identities and assembly reports are retained below. |
+
+The first local complete run had five CLI failures: the selected
+`nanolab-heap-analysis` Buildx builder could not start its NVIDIA prestart hook
+because the driver was not loaded. Setting `BUILDX_BUILDER=default` for the
+verification commands resolved this environment problem. The subsequent complete
+command passed; Gradle reused successful tasks from the same revision and reran
+the failed CLI task. The first reports and log remain retained. Persistent Docker
+configuration was not changed.
+
+The downloaded [complete Linux CI run](https://github.com/miciav/nanofaas/actions/runs/37316494938)
+passed all nine required jobs at baseline `b87b721b`, including the previously
+cancelled Java compositions and JVM gate. Its retained XML includes 233 recipe
+tests, 148 P2P tests and three physical Rust tests without skips. Native executable,
+API and real cluster checks passed there too. Python, Rust, watchdog, Go,
+JavaScript and tooling sources were unchanged by the Java timeout fix; their
+evidence remains that baseline CI run. Local Java/native evidence covers
+`2ef16c16`; the baseline CI run is not relabeled as testing the new fix.
+
+The Linux race was captured as `io.netty.handler.timeout.ReadTimeoutException`
+for delayed response bodies and as `WebClientRequestException` wrapping that cause
+for delayed headers. The regressions hold Reactor timer workers with latches so
+Netty's real response timeout wins while both production deadlines stay at
+200 ms. The correction recognizes timeout causes and lets HTTP error-body
+timeouts reach the same mapping. The original uncaptured macOS exception cannot
+be proved identical. The historical scheduler-switch timeout did not recur in
+the full Linux suite; its original cause remains unknown, with its diagnostic
+timeout extension retained. An independent read-only review found no actionable
+findings in the runtime/test correction.
+
+The first ARM64 container-native attempt at baseline `b87b721b` exhausted its
+4 GiB compiler heap after recorded GC thrash. The successful local recipe build
+used 8 GiB and two threads and took 3m25s. This is new Linux ARM64 evidence;
+the verified Linux x86_64 CI recipe setting remains 4 GiB/two threads. No CI heap
+or runtime function memory setting was changed.
+
+Durable evidence is in
+[verification.json](evidence/2026-10-06-linux-one-shot/verification.json),
+[the dependency receipt](evidence/2026-10-06-linux-one-shot/containerd-source-revisions.txt),
+and the [JVM](evidence/2026-10-06-linux-one-shot/distribution-jvm.json) and
+[native](evidence/2026-10-06-linux-one-shot/distribution-native.json) assembly reports.
+The manifest includes image IDs, binary hashes, test counts, conservation results
+and diagnostic log hashes. Raw CI downloads, RED/GREEN XML, complete suite reports,
+failed build diagnostics and process logs remain in
+`build/test-diagnostics/linux-handoff/` and the recorded offload diagnostics
+directories. These are functional Linux checks, not scientific calibration or
+scheduled-period qualification.
+
+## Historical development evidence
 
 The five review findings were reproduced and corrected in TDD: the missing CI
 `jsonschema` dependency, P2P permit release ordering, false handler attribution,
@@ -27,7 +95,7 @@ runtime corrections. Their image identities must not be reused as evidence for
 the current branch. Temporary logs from the macOS session are not portable;
 generate new reports on Linux and retain them with the tested commit SHA.
 
-## Problems and checks still open
+## Original handoff checklist
 
 | Item | Observed result | Work on Linux and closure condition |
 | --- | --- | --- |
@@ -87,13 +155,14 @@ verifies the Docker image-registration fix on Linux. Its recipe compilation used
 or skips. New Linux packaged-image assembly/startup identities and completion
 of the cancelled Java job's remaining gates are still required.
 
-### Timeout investigation
+### Initial timeout investigation
 
-`ExternalDispatcher` configures both Netty's HTTP `responseTimeout` and Reactor's
-outer `.timeout`. Its error handling explicitly maps `TimeoutException` to
-`EXTERNAL_TIMEOUT` and otherwise maps errors to `EXTERNAL_ERROR`.
+Before the Linux correction, `ExternalDispatcher` configured both Netty's HTTP
+`responseTimeout` and Reactor's
+outer `.timeout`. Its error handling explicitly mapped `TimeoutException` to
+`EXTERNAL_TIMEOUT` and otherwise mapped errors to `EXTERNAL_ERROR`.
 
-**Unconfirmed hypothesis:** a Netty timeout can win the race and reach the generic
+**Initially unconfirmed hypothesis:** a Netty timeout can win the race and reach the generic
 error mapping. The macOS assertion failure did not establish the exception type;
 connection errors or shared-suite state must also be considered. Capture the
 exception and cause chain before changing production behavior. Add a failing
@@ -103,7 +172,7 @@ test timeouts or an assertion accepting either result.
 
 ## Linux preparation and first checks
 
-Use a Linux checkout of this branch, Java 25, Rust/Cargo, Python 3.12 or newer
+Use a Linux checkout of the tested revision, Java 25, Rust/Cargo, Python 3.12 or newer
 with `uv`, Git, Helm and a working Docker daemon/context. Native builds require
 the GraalVM release pinned in `gradle.properties`; the setup in
 [the CI workflow](../../.github/workflows/gitops.yml) is the reference. Record
@@ -116,7 +185,6 @@ revisions from `deploy/containerd-rootless/dependencies.env`.
 
 ```sh
 git fetch origin
-git switch --track origin/codex/one-shot-nanofaas
 git rev-parse HEAD
 
 mkdir -p .gradle/ci-sources
@@ -136,8 +204,9 @@ export NANOFAAS_ONE_SHOT_WORKLOAD_BINARY="$PWD/functions/rust/one-shot-workload/
   -PcontainerdMavenLocal=true -Dmaven.repo.local="$PWD/.gradle/containerd-m2"
 ```
 
-If the local branch already exists, switch to it and update it with a fast-forward
-instead of creating it again. Keep the workload environment variable set for the
+Confirm the checkout's SHA before running. For a machine with a previously
+configured custom Buildx builder, select the working verification builder with
+`export BUILDX_BUILDER=default`. Keep the workload environment variable set for the
 Java physical-proxy tests; check their XML reports to ensure none were skipped.
 Preserve failing diagnostics before rerunning tests, because Gradle may replace
 the previous reports. Repeat the isolated timeout case and run it with the wider
@@ -151,7 +220,8 @@ all-module suite does not replace checks of those different compositions.
 
 Start with the JVM process gate. Under the pinned GraalVM `JAVA_HOME`, compile
 the native composition and run its process gate too. The 4 GiB compiler heap
-and two build threads below succeeded on the first Linux PR runner; confirm
+and two build threads succeeded on the Linux x86_64 PR runner. The recorded ARM64
+checks below use 8 GiB after the retained 4 GiB OOM; confirm
 that the target machine has enough memory for the compiler and other processes.
 
 ```sh
@@ -161,7 +231,7 @@ docker build -f functions/rust/one-shot-workload/Dockerfile -t nanofaas-one-shot
 
 ./gradlew :control-plane:nativeCompile \
   -Precipe=recipes/one-shot-local-native.yaml \
-  -PnativeParallelism=2 -PnativeBuildMemory=4g
+  -PnativeParallelism=2 -PnativeBuildMemory=8g
 scripts/assert-native-executable.sh platform/control-plane/build/native/nativeCompile/control-plane
 ./gradlew :control-plane-modules:offload:oneShotE2e \
   -Precipe=recipes/one-shot-local-native.yaml \
@@ -169,7 +239,7 @@ scripts/assert-native-executable.sh platform/control-plane/build/native/nativeCo
 
 ./gradlew assembleRecipe -Precipe=recipes/one-shot-local-jvm.yaml
 ./gradlew assembleRecipe -Precipe=recipes/one-shot-local-native.yaml \
-  -PnativeParallelism=2 -PnativeBuildMemory=4g
+  -PnativeParallelism=2 -PnativeBuildMemory=8g
 python3 scripts/one-shot/smoke_packaged.py nanofaas/one-shot-local-jvm/control-plane-one-shot-jvm:local
 python3 scripts/one-shot/smoke_packaged.py nanofaas/one-shot-local-native/control-plane-one-shot-native:local
 ```
@@ -191,6 +261,7 @@ calibration, auction-period qualification or scientific experiments.
 - Recorded Linux build memory settings; the first PR run already validates
   4 GiB/two threads for compilation, without establishing cluster correctness.
 
-Update this document and the phase A dossier with the Linux results. The PR is
-kept in draft while these checks remain open. No merge, NanoLab work or Azure
-campaign is part of this handoff.
+The Linux results are recorded here and in the phase A dossier. The original PR
+was already merged at baseline `b87b721b`; this local correction and verification
+are on `codex/linux-one-shot-handoff`. No additional merge, NanoLab work or Azure
+campaign was performed as part of this handoff.

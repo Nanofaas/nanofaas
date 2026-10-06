@@ -1,0 +1,37 @@
+{
+  "schemaVersion" : 2,
+  "recipe" : {
+    "name" : "one-shot-local-jvm",
+    "sha256" : "9c883bad4a4977173e017e70f77fe45a6ad9a71933b0f956f0b6d60ed72714c0",
+    "schemaVersion" : 2
+  },
+  "tag" : "local",
+  "source" : {
+    "revision" : "2ef16c16c964611fe7d231869819026cb5db12c0",
+    "dirty" : false
+  },
+  "modules" : [ "build-metadata", "container-deployment-provider", "forecasting", "offload", "p2p-discovery" ],
+  "components" : [ {
+    "kind" : "control-plane",
+    "name" : "control-plane",
+    "sdk" : "java",
+    "mode" : "jvm",
+    "artifact" : "control-plane/",
+    "image" : {
+      "reference" : "nanofaas/one-shot-local-jvm/control-plane-one-shot-jvm:local",
+      "status" : "built",
+      "id" : "sha256:2698d825e2de0d8f74c4e85deee638951d6f6f07ee33b2c51f855b4a74c867f9"
+    }
+  }, {
+    "kind" : "function",
+    "name" : "one-shot-workload",
+    "sdk" : "rust",
+    "mode" : "container",
+    "artifact" : null,
+    "image" : {
+      "reference" : "nanofaas/one-shot-local-jvm/nanofaas-one-shot-workload:local",
+      "status" : "built",
+      "id" : "sha256:067b1f30c19f232b13338121691488d27c47a04a4b9b16a1525ff3115830cf19"
+    }
+  } ]
+}
