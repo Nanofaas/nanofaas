@@ -18,18 +18,18 @@ and deploy a function with `nanofaas-cli`.
 
 ## Start a local image registry
 
-The NanoFaaS control plane requires access to an image registry to pull function
-images during deployment. By default, NanoFaaS uses the Docker default registry,
-Docker Hub. During local development, you may not be able to push images to
-Docker Hub. For local development, use a local image registry without
-authentication. The registry must be available at `localhost:5000`.
+The Docker daemon used by the `container-local` backend pulls named function
+images during registration. This example uses an unauthenticated registry on
+the same daemon host at `127.0.0.1:5000`; the address and port are configurable.
+For runtime trust settings, private registries, k3s, standalone containerd and
+pre-imported images, follow [Function images and registries](image-registries.md).
 
 Follow these commands to start the local image registry:
 
 ```bash
 $ docker volume create registry-data
 $ docker run -d --name registry --restart=always \
-    -p 5000:5000 \
+    -p 127.0.0.1:5000:5000 \
     -v registry-data:/var/lib/registry \
     registry:3
 ```

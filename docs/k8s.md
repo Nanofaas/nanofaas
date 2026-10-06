@@ -60,6 +60,11 @@ Configurable through `nanofaas.k8s.image-pull-policy` (default `Always`, to
 preserve mutable-tag behavior). Use `IfNotPresent` with immutable image
 references to reduce registry pulls.
 
+See [Function images and registries](image-registries.md#k3s-with-a-reachable-development-registry)
+for a k3s registry, CA trust, private pull Secrets, node-level diagnostics and
+pre-imported images. The function pull policy also applies to validation pods;
+it is separate from the chart's `controlPlane.image.pullPolicy`.
+
 ## Labels & annotations
 
 - Labels: `app=nanofaas`, `function=<name>`, `executionId=<id>`.

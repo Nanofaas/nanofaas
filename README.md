@@ -245,6 +245,7 @@ Provisioning and end-to-end orchestration live in the companion
 | [Quickstart](docs/quickstart.md) | Local builds, the CLI, and provisioning a Kubernetes VM |
 | [Writing a function](docs/tutorial-function.md) | Scaffold, handler, tests, deployment and invocation |
 | [Function lifecycle](docs/function-lifecycle.md) | Minimal HTTP function, three backend paths, invocation and catalog restart checks |
+| [Function images and registries](docs/image-registries.md) | Registry setup and pull diagnostics for Docker, k3s and standalone containerd |
 | [CLI guide](docs/nanofaas-cli.md) | Commands, payloads and `deploy` |
 | [Control plane](docs/control-plane.md) | Modules, retries, admission, persistence |
 | [Observability](docs/observability.md) | Metrics, health, logging and tracing |

@@ -103,8 +103,9 @@ CMD ["python", "function.py"]
 ```
 
 Choose a registry and build for the nodes' architecture. For a local registry,
-configure each runtime's HTTP mirror/trust settings; do not assume Docker's
-settings or image store apply to k3s/containerd. Replace this example hostname:
+follow [Function images and registries](image-registries.md) to configure each
+runtime's HTTP mirror/trust settings and verify pulls. Docker's settings and image
+store do not configure k3s/containerd. Replace this example hostname:
 
 ```bash
 REGISTRY=registry.example

@@ -143,12 +143,18 @@ arguments (shell quoting is not interpreted). NanoLab renders the
 `CPUQuota`/`MemoryMax` for load runs where needed.
 
 Function images must be pushed to a registry reachable *inside* RootlessKit;
-Docker's local image store is separate. For a test HTTP registry, configure the
-rootless containerd **Transfer** plugin's `config_path` to a `hosts.toml`
-directory permitting HTTP only for that registry. CRI registry configuration
-does not configure the Transfer pull path. The current image validator asks
-containerd to pull the image at registration; authenticated and alternative
-registry transfer paths still need explicit runtime proof.
+Docker's local image store is separate. CRI registry configuration does not
+configure the standalone **Transfer** pull path. Use a verified anonymous
+registry endpoint for the common workflow. On containerd 2.2.2, setting the
+Transfer plugin's `config_path` alone did not make a diagnostic pull use the
+configured HTTP endpoint; a `ctr --hosts-dir` pull uses explicit request options
+that the pinned NanoFaaS Java client does not send. The current image validator
+requests a pull at registration, so custom endpoints, CA trust and authenticated
+registry paths need an actual NanoFaaS registration test before claiming support.
+
+For a concrete `hosts.toml` diagnostic example, the Transfer configuration
+limitation, socket/namespace checks and the limits of imported images, follow
+[Function images and registries](image-registries.md#standalone-rootless-containerd).
 
 Function resource requests map to CPU shares and memory reservation; limits
 map to cgroup CPU quota/period and memory bytes. CPU quota uses a 100 ms period.
