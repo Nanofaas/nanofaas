@@ -171,6 +171,15 @@ Docker-backed tests need a Docker-compatible runtime. End-to-end scenarios on
 containers and Kubernetes run from [NanoLab](https://github.com/miciav/nanolab);
 see the [testing guide](docs/testing.md) and the [E2E tutorial](docs/e2e-tutorial.md).
 
+Before pushing, check unused private code and public reachability candidates:
+
+```bash
+./gradlew deadCode deadCodePublic -PcontrolPlaneModules=all -PdeadCodeStrict=true --continue
+```
+
+PMD findings fail this command; the public-code report remains advisory. See the
+[testing guide](docs/testing.md#unused-java-code-before-pushing) for reports and framework keep rules.
+
 </details>
 
 <details>

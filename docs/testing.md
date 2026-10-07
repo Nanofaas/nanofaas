@@ -80,6 +80,48 @@ add a narrow `@SuppressWarnings("PMD.UnusedPrivateMethod")` (or the correspondin
 rule name) with a comment explaining the caller. The selected rules live in
 `config/pmd/dead-code.xml`; the pinned version lives in `gradle.properties`.
 
+For unused public classes and methods, run the separate ProGuard reachability
+report:
+
+```bash
+./gradlew deadCodePublic -PcontrolPlaneModules=all
+```
+
+This analyzes the compiled production classes of all Java subprojects together,
+so a call from a different module counts as a use. Test classes and the included
+Gradle plugin build are outside this application analysis. Main methods,
+Spring components and annotated callbacks, Jackson binding members, Picocli
+commands, and providers listed in `META-INF/services` or Spring `.imports` files
+are preserved. Public/protected SDK APIs and function handlers are entry points
+because callers can live outside this repository. Rules are in
+`config/proguard/dead-code-public.pro`; ProGuard's version is pinned in
+`gradle.properties`. External dependencies are resolved into one common
+classpath by Gradle to avoid selecting between duplicate library versions by
+JAR order.
+
+Reports are under the root `build/reports/dead-code-public/`:
+
+- `unused.txt`: candidate classes and members, including public methods.
+- `entry-points.txt`: symbols preserved explicitly by keep rules.
+- `effective.pro`: the complete ProGuard configuration, for investigating a finding.
+
+The command only writes reports: it does not produce a shrunk JAR or modify
+compiled classes. Findings do not fail the task; compilation, resolution, and
+analysis errors do. It is opt-in and is not attached to `check`, `build`, or Git
+hooks. Gradle reuses the report when its inputs have not changed.
+
+This is a conservative analysis of the combined application, not proof that a
+symbol can be deleted. It includes candidates used only by tests, inlined
+constants, and private utility constructors. Conversely, keep rules deliberately
+hide some unused SDK, DTO, and framework members. Custom reflection, custom
+Spring stereotypes, or named lifecycle methods need explicit keep rules; add a
+narrow rule with a comment identifying the external caller. Review candidates
+against the source and tests before removal. To run both checks before pushing:
+
+```bash
+./gradlew deadCode deadCodePublic -PcontrolPlaneModules=all -PdeadCodeStrict=true --continue
+```
+
 For dependency usage, the existing dependency-analysis plugin provides a separate
 check:
 

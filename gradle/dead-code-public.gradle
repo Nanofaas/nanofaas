@@ -1,0 +1,83 @@
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+
+def repositoryRoot = buildscript.sourceFile.parentFile.parentFile
+def keepRules = new File(repositoryRoot, 'config/proguard/dead-code-public.pro')
+def javaProjects = subprojects.findAll { it.plugins.hasPlugin('java') }
+def productionClasses = files(javaProjects.collect { it.sourceSets.main.output.classesDirs })
+// Resolve a common external classpath: the executables can select different versions
+// of the same library, and concatenating their JARs makes ProGuard pick by path order.
+def libraries = configurations.create('deadCodePublicLibraries') {
+    canBeConsumed = false
+    // The full APIs are present and include the same classes as these smaller JARs.
+    exclude group: 'com.google.protobuf', module: 'protobuf-javalite'
+    exclude group: 'org.apache.tomcat', module: 'tomcat-annotations-api'
+    defaultDependencies { dependenciesSet ->
+        javaProjects.collectMany { p ->
+            p.configurations.runtimeClasspath.incoming.resolutionResult.allComponents
+                    .collect { it.id }.findAll { it instanceof ModuleComponentIdentifier }
+                    .collect { "${it.group}:${it.module}:${it.version}" }
+        }.unique().each { dependenciesSet.add(project.dependencies.create(it)) }
+    }
+}
+def registrations = files(javaProjects.collect { p ->
+    p.sourceSets.main.resources.matching {
+        include 'META-INF/services/*', 'META-INF/spring/*.imports'
+    }
+})
+def reports = layout.buildDirectory.dir('reports/dead-code-public')
+def launcher = javaToolchains.launcherFor {
+    languageVersion = JavaLanguageVersion.of(Integer.parseInt(project.property('javaVersion').toString()))
+}
+
+configurations.create('deadCodePublicTool') { canBeConsumed = false }
+dependencies.add('deadCodePublicTool', "com.guardsquare:proguard-base:${project.property('proguardVersion')}")
+// The tool belongs to this build, even when the script is exercised by a test fixture.
+repositories { mavenCentral() }
+
+tasks.register('deadCodePublic', JavaExec) {
+    group = 'verification'
+    description = 'Report unreachable Java classes and members with conservative framework/SDK entry points.'
+    dependsOn javaProjects.collect { it.tasks.named('classes') }
+    classpath = configurations.deadCodePublicTool
+    mainClass = 'proguard.ProGuard'
+    javaLauncher = launcher
+    maxHeapSize = '1g'
+    inputs.files(productionClasses, libraries, registrations, keepRules)
+    outputs.dir(reports)
+
+    doFirst {
+        def directory = reports.get().asFile
+        directory.mkdirs()
+        // Discard stale reports if this analysis subsequently fails.
+        ['unused.txt', 'entry-points.txt', 'effective.pro'].each { new File(directory, it).delete() }
+        def quoted = { File f -> '"' + f.absolutePath.replace('\\', '\\\\').replace('"', '\\"') + '"' }
+        def lines = ["-include ${quoted(keepRules)}"]
+        productionClasses.files.findAll { it.exists() }.sort().each { lines.add("-injars ${quoted(it)}") }
+        libraries.files.sort().each {
+            lines.add("-libraryjars ${quoted(it)}(!META-INF/versions/**,!module-info.class)")
+        }
+        def jmods = launcher.get().metadata.installationPath.dir('jmods').asFile
+        fileTree(jmods) { include '*.jmod' }.files.sort().each {
+            lines.add("-libraryjars ${quoted(it)}(!**.jar;!module-info.class)")
+        }
+        registrations.files.sort().each { registration ->
+            def service = registration.parentFile.name == 'services'
+            registration.eachLine { line ->
+                def name = line.split('#', 2)[0].trim()
+                if (!name.isEmpty()) {
+                    lines.add("-keep class ${name} { ${service ? 'public *;' : '<init>(...);'} }")
+                }
+            }
+        }
+        lines.add("-printusage ${quoted(new File(directory, 'unused.txt'))}")
+        lines.add("-printseeds ${quoted(new File(directory, 'entry-points.txt'))}")
+        lines.add("-printconfiguration ${quoted(new File(directory, 'effective.pro'))}")
+        def configuration = new File(directory, 'analysis.pro')
+        configuration.text = lines.join('\n') + '\n'
+        setArgs(['@' + configuration.absolutePath])
+    }
+    doLast {
+        logger.lifecycle("Public dead-code candidates: ${reports.get().file('unused.txt').asFile}")
+        logger.lifecycle('Review candidates against framework/reflection and external callers before deleting code.')
+    }
+}

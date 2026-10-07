@@ -230,3 +230,5 @@ tasks.register('deadCode') {
     dependsOn subprojects.collect { it.tasks.named('pmdMain') }
     dependsOn gradle.includedBuild('gradle-plugin').task(':pmdMain')
 }
+
+apply from: rootProject.file('gradle/dead-code-public.gradle')
