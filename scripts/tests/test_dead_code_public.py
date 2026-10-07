@@ -48,12 +48,16 @@ public class UnusedPublicClass { public void unused() {} }
     write("app/src/main/java/sample/App.java", """
 package sample;
 public class App {
-    public static void main(String[] args) { System.out.println(Helper.usedAcrossModules()); }
+    public static void main(String[] args) {
+        System.out.println(Helper.usedAcrossModules());
+        System.out.println(it.unimib.datai.nanofaas.common.logging.LogSanitizer.singleLine("used"));
+    }
 }
 """)
     for package, name, target in [
         ("org.springframework.stereotype", "Component", "TYPE"),
         ("org.springframework.context.event", "EventListener", "METHOD"),
+        ("org.springframework.context.annotation", "Bean", "METHOD"),
     ]:
         write(f"shared/src/main/java/{package.replace('.', '/')}/{name}.java", f"""
 package {package};
@@ -79,6 +83,41 @@ public record MessageDto(String text) {}
 package sample;
 public record UnusedDto(String text) {}
 """)
+    for package, name, body in [
+        ("controlplane.config", "ReplicaStatusSnapshotConfiguration", """
+public class ReplicaStatusSnapshotConfiguration {
+    @org.springframework.context.annotation.Bean
+    public int replicaStatusSnapshot() { return 1; }
+}
+"""),
+        ("controlplane.service", "ExecutorBackedInvocationEnqueuer", """
+@org.springframework.stereotype.Component
+public class ExecutorBackedInvocationEnqueuer { void shutdown() {} }
+"""),
+        ("sdk.lite.handler", "RuntimeLimits", """
+@org.springframework.stereotype.Component
+public class RuntimeLimits {
+    int activeHandlers() { return 0; }
+    int newlyUnusedHook() { return 1; }
+}
+"""),
+        ("common.logging", "LogSanitizer", """
+public class LogSanitizer {
+    private LogSanitizer() {}
+    public static String singleLine(Object value) { return String.valueOf(value); }
+}
+"""),
+        ("common.model", "ConcurrencyControlConfig", """
+@org.springframework.stereotype.Component
+public class ConcurrencyControlConfig {
+    private static final int DEFAULT_TARGET_PER_POD = 1;
+    private static final int NEW_UNUSED_CONSTANT = 2;
+}
+"""),
+    ]:
+        package = f"it.unimib.datai.nanofaas.{package}"
+        write(f"shared/src/main/java/{package.replace('.', '/')}/{name}.java",
+              f"package {package};\n{body}")
     write("shared/src/main/java/sample/LoadedProvider.java", """
 package sample;
 public class LoadedProvider implements Runnable { public void run() {} }
@@ -107,6 +146,13 @@ public class PublicApi { public String externalCall() { return "api"; } }
     assert "sample.UnusedDto" in report
     assert "sample.LoadedProvider" not in report
     assert "it.unimib.datai.nanofaas.sdk.PublicApi" not in report
+    assert "ReplicaStatusSnapshotConfiguration" not in report
+    assert "void shutdown()" not in report
+    assert "activeHandlers()" not in report
+    assert "private LogSanitizer()" not in report
+    assert "DEFAULT_TARGET_PER_POD" not in report
+    assert "newlyUnusedHook()" in report
+    assert "NEW_UNUSED_CONSTANT" in report
     classes = list(tmp_path.glob("*/build/classes/java/main/**/*.class"))
     before = {p: hashlib.sha256(p.read_bytes()).digest() for p in classes}
     second = subprocess.run(

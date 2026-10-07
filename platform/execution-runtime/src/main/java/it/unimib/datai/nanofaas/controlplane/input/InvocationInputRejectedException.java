@@ -11,14 +11,7 @@ import java.util.Locale;
  * {@code @ExceptionHandler(InvocationInputRejectedException.class)} in {@code GlobalExceptionHandler}.
  */
 public final class InvocationInputRejectedException extends RuntimeException {
-    private final RetainedInputEstimator.Rejection rejection;
-
     public InvocationInputRejectedException(RetainedInputEstimator.Rejection rejection) {
         super("Invocation input rejected: " + rejection.name().toLowerCase(Locale.ROOT));
-        this.rejection = rejection;
-    }
-
-    public RetainedInputEstimator.Rejection rejection() {
-        return rejection;
     }
 }

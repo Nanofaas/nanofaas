@@ -26,10 +26,6 @@ public final class DispatchLease implements DispatchOwnership {
         this.releaseAction = releaseAction;
     }
 
-    public String functionName() {
-        return generation.functionName();
-    }
-
     /** Internal generation identity; never part of any public key or tag. */
     public FunctionGeneration generation() {
         return generation;

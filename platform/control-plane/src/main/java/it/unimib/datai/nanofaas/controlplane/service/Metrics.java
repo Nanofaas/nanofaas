@@ -231,22 +231,6 @@ public class Metrics implements InvocationObservations, OffloadMeters {
         }
     }
 
-    /**
-     * True when a completion may still attribute to {@code function}'s core meters: either the
-     * caller never captured a generation at admission (an offload or name-released path, where
-     * there is nothing yet to compare against), or the captured generation is still the one the
-     * capacity registry considers active. False only when the function was removed and
-     * re-registered under a new generation since this execution was admitted — attributing a
-     * late completion there would contaminate the new registration's counters (I7).
-     */
-    public boolean isCurrentGeneration(String function, FunctionGeneration admittedGeneration) {
-        if (admittedGeneration == null || capacityRegistry == null) {
-            return true;
-        }
-        FunctionGeneration active = capacityRegistry.activeGeneration(function);
-        return active == null || active.equals(admittedGeneration);
-    }
-
     private FunctionGeneration generationForRegistration(String function) {
         if (capacityRegistry != null) {
             FunctionGeneration active = capacityRegistry.activeGeneration(function);

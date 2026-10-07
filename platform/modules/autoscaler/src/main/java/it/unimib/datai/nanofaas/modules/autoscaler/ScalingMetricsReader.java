@@ -42,14 +42,6 @@ public class ScalingMetricsReader {
         return scalingMetricsSource.inFlight(functionName);
     }
 
-    public double queueDepth(String functionName) {
-        return readQueueDepth(functionName);
-    }
-
-    public double inFlight(String functionName) {
-        return readInFlight(functionName);
-    }
-
     void removeFunctionState(String functionName) {
         lastDispatchSamples.remove(functionName);
     }

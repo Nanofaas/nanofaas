@@ -111,12 +111,20 @@ analysis errors do. It is opt-in and is not attached to `check`, `build`, or Git
 hooks. Gradle reuses the report when its inputs have not changed.
 
 This is a conservative analysis of the combined application, not proof that a
-symbol can be deleted. It includes candidates used only by tests, inlined
-constants, and private utility constructors. Conversely, keep rules deliberately
-hide some unused SDK, DTO, and framework members. Custom reflection, custom
-Spring stereotypes, or named lifecycle methods need explicit keep rules; add a
-narrow rule with a comment identifying the external caller. Review candidates
-against the source and tests before removal. To run both checks before pushing:
+symbol can be deleted. Reviewed test hooks, inlined constants, utility
+constructors, API/SPI contracts and reflective callbacks are preserved by exact
+rules in `config/proguard/reviewed-usage.pro`. Each group documents why it is
+retained; new members of the same classes remain eligible for reporting. Add a
+specific class/member rule with its reason and caller when a finding is reviewed
+and intentionally retained. Remove or update the rule when that use disappears
+or the signature changes. Both rule files are Gradle inputs, so editing either
+invalidates the cached report. Java `@SuppressWarnings("unused")` alone cannot
+suppress this bytecode analysis: that annotation is not retained in class files.
+
+Keep rules deliberately hide some unused SDK, DTO, and framework members. Custom
+reflection, custom Spring stereotypes, or named lifecycle methods need explicit
+keep rules. Review candidates against the source and tests before removal. To run
+both checks before pushing:
 
 ```bash
 ./gradlew deadCode deadCodePublic -PcontrolPlaneModules=all -PdeadCodeStrict=true --continue

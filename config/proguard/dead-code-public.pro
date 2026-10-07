@@ -4,6 +4,9 @@
 -dontpreverify
 -keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod,Record
 
+# Exact, reviewed exclusions with documented source/test/framework callers.
+-include reviewed-usage.pro
+
 # Executable entry points across the control plane, CLI and example functions.
 -keepclasseswithmembers class * { public static void main(java.lang.String[]); }
 

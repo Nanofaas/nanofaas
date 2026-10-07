@@ -28,19 +28,11 @@ public final class RetainedInputLease implements AutoCloseable {
             throw new IllegalStateException("canonical input reader limit reached");
         }
         references++;
-        return new Reference(owner);
+        return new Reference();
     }
 
     public FunctionGeneration generation() {
         return reservation.generation();
-    }
-
-    public long units() {
-        return reservation.units();
-    }
-
-    public synchronized int references() {
-        return references;
     }
 
     @Override
@@ -66,15 +58,9 @@ public final class RetainedInputLease implements AutoCloseable {
     }
 
     public final class Reference implements AutoCloseable {
-        private final ResourceOwner owner;
         private final AtomicBoolean closed = new AtomicBoolean();
 
-        private Reference(ResourceOwner owner) {
-            this.owner = owner;
-        }
-
-        public ResourceOwner owner() {
-            return owner;
+        private Reference() {
         }
 
         @Override

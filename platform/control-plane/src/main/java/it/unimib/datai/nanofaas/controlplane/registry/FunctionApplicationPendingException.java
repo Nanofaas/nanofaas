@@ -7,14 +7,7 @@ package it.unimib.datai.nanofaas.controlplane.registry;
 public final class FunctionApplicationPendingException extends RuntimeException {
     public static final String ERROR_CODE = "FUNCTION_APPLICATION_PENDING";
 
-    private final String functionName;
-
     public FunctionApplicationPendingException(String functionName, String reason) {
         super("Function '" + functionName + "' is unavailable while provider application is pending: " + reason);
-        this.functionName = functionName;
-    }
-
-    public String functionName() {
-        return functionName;
     }
 }

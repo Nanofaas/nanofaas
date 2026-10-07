@@ -140,10 +140,6 @@ public final class PeerCluster implements AutoCloseable {
                 .then();
     }
 
-    public String id() {
-        return nodeId;
-    }
-
     public String address() {
         return cluster.get().address();
     }

@@ -23,14 +23,6 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
     private final String bindHost;
     private final PortAllocator portAllocator;
 
-    CliContainerRuntimeAdapter(String runtimeAdapter, CliCommandExecutor executor) {
-        this(runtimeAdapter, executor, null);
-    }
-
-    CliContainerRuntimeAdapter(String runtimeAdapter, CliCommandExecutor executor, String cpuset) {
-        this(runtimeAdapter, executor, cpuset, "127.0.0.1", new EphemeralPortAllocator("127.0.0.1"));
-    }
-
     CliContainerRuntimeAdapter(String runtimeAdapter, CliCommandExecutor executor, String cpuset,
                                String bindHost, PortAllocator portAllocator) {
         this.bindHost = bindHost;

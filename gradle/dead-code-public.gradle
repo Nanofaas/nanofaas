@@ -2,6 +2,7 @@ import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 
 def repositoryRoot = buildscript.sourceFile.parentFile.parentFile
 def keepRules = new File(repositoryRoot, 'config/proguard/dead-code-public.pro')
+def reviewedRules = new File(repositoryRoot, 'config/proguard/reviewed-usage.pro')
 def javaProjects = subprojects.findAll { it.plugins.hasPlugin('java') }
 def productionClasses = files(javaProjects.collect { it.sourceSets.main.output.classesDirs })
 // Resolve a common external classpath: the executables can select different versions
@@ -42,7 +43,7 @@ tasks.register('deadCodePublic', JavaExec) {
     mainClass = 'proguard.ProGuard'
     javaLauncher = launcher
     maxHeapSize = '1g'
-    inputs.files(productionClasses, libraries, registrations, keepRules)
+    inputs.files(productionClasses, libraries, registrations, keepRules, reviewedRules)
     outputs.dir(reports)
 
     doFirst {

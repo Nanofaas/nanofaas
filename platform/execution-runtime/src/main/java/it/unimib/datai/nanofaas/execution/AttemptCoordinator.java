@@ -736,9 +736,8 @@ public final class AttemptCoordinator {
      * generation was captured at admission (nothing to compare against), or the captured
      * generation is still the one the capacity registry considers active. False only when the
      * function was removed and re-registered under a new generation since admission (I7).
-     * Reproduces {@code Metrics.isCurrentGeneration}'s exact semantics against this class's own
-     * {@link FunctionCapacityRegistry} reference, since metrics recording moved behind
-     * {@link AttemptObserver} but the fencing decision belongs here.
+     * Uses this class's {@link FunctionCapacityRegistry} reference: metrics recording belongs to
+     * {@link AttemptObserver}, while the generation fencing decision belongs here.
      */
     private boolean isCurrentGeneration(String functionName, FunctionGeneration admittedGeneration) {
         if (admittedGeneration == null) {

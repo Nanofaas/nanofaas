@@ -113,10 +113,6 @@ public final class WaiterCapacity implements AutoCloseable {
             this.reservation = reservation;
         }
 
-        public FunctionGeneration generation() {
-            return reservation.generation();
-        }
-
         @Override
         public void close() {
             synchronized (lock) {

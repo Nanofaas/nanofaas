@@ -63,7 +63,6 @@ public final class ReplicaPlanActuator implements SmartLifecycle,AutoCloseable {
         }
         var plan=active.get(); return plan!=null && plan.validAt(time) && validOwnership(plan)?Optional.of(plan):Optional.empty();
     }
-    public Optional<ActiveRoutingPlan> preparedPlan() { return Optional.ofNullable(pending.get()); }
     private boolean validOwnership(ActiveRoutingPlan plan) {
         if(!running || !clockHealthy.getAsBoolean() || peers.localEndpoint().filter(e->e.peerId().equals(plan.nodeId()) && e.incarnation().equals(plan.incarnation())).isEmpty()) return false;
         return plan.functions().entrySet().stream().allMatch(e->{ var lease=leases.get(e.getKey());return lease!=null && lease.generation().id()==e.getValue().generation() && control.ownsReplicaLease(lease) && generation(e.getKey(),e.getValue().generation()); });

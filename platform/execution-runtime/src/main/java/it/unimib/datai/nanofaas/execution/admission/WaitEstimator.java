@@ -74,17 +74,6 @@ public class WaitEstimator {
                   int perFunctionMinSamples,
                   int maxGlobalSamples,
                   int maxPerFunctionSamples,
-                  int cleanupBudget,
-                  int maintenanceSampleBudget) {
-        this(window, perFunctionMinSamples, new ConcurrentLinkedDeque<>(), Map.of(),
-                maxGlobalSamples, maxPerFunctionSamples, maxGlobalSamples, maxGlobalSamples,
-                cleanupBudget, maintenanceSampleBudget);
-    }
-
-    WaitEstimator(Duration window,
-                  int perFunctionMinSamples,
-                  int maxGlobalSamples,
-                  int maxPerFunctionSamples,
                   int maxFunctionStates,
                   int maxTotalPerFunctionSamples,
                   int cleanupBudget) {

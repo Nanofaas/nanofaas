@@ -168,11 +168,6 @@ public class ExecutionRecord {
         return executionId;
     }
 
-    /** See {@link #readableAfterFinishing}. */
-    public boolean readableAfterFinishing() {
-        return readableAfterFinishing;
-    }
-
     /** The key the execution was admitted under, stable across internal retries; null if unkeyed. */
     public String idempotencyKey() {
         return idempotencyKey;
