@@ -56,7 +56,7 @@ public final class PlanRouter {
         var configured=settings.get().functions().get(task.functionName());
         if(!ServiceProfileStore.imageMatches(task.functionSpec().image(),configured.imageDigest())) return PlannedInvocationRoute.reject("workload image differs from calibration");
         if(!ServiceProfileStore.hash(mapper.writeValueAsBytes(task.request().input())).equals(configured.inputHash())) return PlannedInvocationRoute.reject("workload input differs from calibration");
-        if(active.isEmpty()) return context.offloadedHop()?PlannedInvocationRoute.reject("seller has no active ready plan"):cloud(settings.get(),task,0);
+        if(active.isEmpty()) return context.offloadedHop()?PlannedInvocationRoute.reject("seller has no active ready plan"):cloud(settings.get(),0);
         var plan=active.get();var f=plan.functions().get(task.functionName());
         if(f==null || f.generation()!=configured.generation()) return PlannedInvocationRoute.reject("function generation differs from plan");
         if(state==null || !state.plan.equals(plan)) state=new State(plan,settings.get().burst(),nanoTime);
@@ -66,16 +66,16 @@ public final class PlanRouter {
             if(inbound.isEmpty() || !state.quotas.get("in:"+inbound.get().id()).tryAdmit()) return PlannedInvocationRoute.reject("inbound assignment absent or quota exhausted");
             return PlannedInvocationRoute.local(plan.nodeId());
         }
-        var picker=state.picks.get(task.functionName());if(picker==null) return cloud(settings.get(),task,plan.epoch());
+        var picker=state.picks.get(task.functionName());if(picker==null) return cloud(settings.get(),plan.epoch());
         var selected=picker.next();
-        if(selected.equals("local")) return state.quotas.get("local:"+task.functionName()).tryAdmit()?PlannedInvocationRoute.local(plan.nodeId()):cloud(settings.get(),task,plan.epoch());
-        if(selected.equals("cloud")) return cloud(settings.get(),task,plan.epoch());
+        if(selected.equals("local")) return state.quotas.get("local:"+task.functionName()).tryAdmit()?PlannedInvocationRoute.local(plan.nodeId()):cloud(settings.get(),plan.epoch());
+        if(selected.equals("cloud")) return cloud(settings.get(),plan.epoch());
         var assignment=f.outbound().stream().filter(a->a.id().equals(selected)).findFirst().orElseThrow();
         var peer=peers.activeNeighbors().stream().filter(p->p.peerId().equals(assignment.sellerId()) && p.incarnation().equals(assignment.sellerIncarnation())).findFirst();
-        if(peer.isEmpty() || !state.quotas.get("out:"+assignment.id()).tryAdmit()) return cloud(settings.get(),task,plan.epoch());
+        if(peer.isEmpty() || !state.quotas.get("out:"+assignment.id()).tryAdmit()) return cloud(settings.get(),plan.epoch());
         return remote(peer.get().invocationUri().toString(),peer.get().peerId(),plan.epoch(),assignment.id(),plan.nodeId(),plan.incarnation());
     }
-    private PlannedInvocationRoute cloud(OneShotSettings settings,InvocationTask task,long epoch) {
+    private PlannedInvocationRoute cloud(OneShotSettings settings,long epoch) {
         var local=peers.localEndpoint().orElse(null);if(local==null) return PlannedInvocationRoute.reject("origin endpoint unavailable");
         return remote(settings.cloudUri().toString(),"cloud",epoch,"cloud",local.peerId(),local.incarnation());
     }

@@ -7,7 +7,7 @@ class OneShotClusterFixtureTest {
         var peers=org.mockito.Mockito.mock(it.unimib.datai.nanofaas.p2papi.PeerTransport.class);
         try(var coordinator=new it.unimib.datai.nanofaas.modules.offload.oneshot.coordination.EpochCoordinator(peers,null,null,null,false);
             var actuator=new it.unimib.datai.nanofaas.modules.offload.oneshot.actuation.ReplicaPlanActuator(null,null,peers,java.time.Instant::now,()->true,java.time.Duration.ofSeconds(1),java.time.Duration.ZERO,false);
-            var operations=new it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotOperations(null,null,null,null,null,null,null,peers,null,false)) {
+            var operations=new it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotOperations(null,null,null,null,null,null,peers,null,false)) {
             for(var lifecycle:java.util.List.of(coordinator,actuator,operations)) {assertThat(lifecycle.isAutoStartup()).isFalse();lifecycle.start();assertThat(lifecycle.isRunning()).isFalse();}
             org.mockito.Mockito.verifyNoInteractions(peers);
         }

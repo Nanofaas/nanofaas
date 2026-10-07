@@ -75,9 +75,9 @@ public class OffloadConfiguration {
             it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotConfigurationStore configs,it.unimib.datai.nanofaas.modules.offload.oneshot.api.ServiceProfileStore profiles,
             it.unimib.datai.nanofaas.modules.offload.oneshot.api.ProfileEpochInputFactory inputs,it.unimib.datai.nanofaas.modules.offload.oneshot.coordination.EpochCoordinator coordinator,
             it.unimib.datai.nanofaas.modules.offload.oneshot.actuation.ReplicaPlanActuator actuator,it.unimib.datai.nanofaas.modules.offload.oneshot.api.EpochEventStore events,
-            it.unimib.datai.nanofaas.modules.offload.oneshot.coordination.EpochSettings bounds,it.unimib.datai.nanofaas.p2papi.PeerTransport peers,io.micrometer.core.instrument.MeterRegistry meters,
+            it.unimib.datai.nanofaas.p2papi.PeerTransport peers,io.micrometer.core.instrument.MeterRegistry meters,
             @org.springframework.beans.factory.annotation.Value("${nanofaas.offload.one-shot.enabled:false}") boolean enabled) {
-            return new it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotOperations(configs,profiles,inputs,coordinator,actuator,events,bounds,peers,meters,enabled);
+            return new it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotOperations(configs,profiles,inputs,coordinator,actuator,events,peers,meters,enabled);
         }
         @Bean it.unimib.datai.nanofaas.modules.offload.oneshot.routing.PlanRouter oneShotRouter(
             it.unimib.datai.nanofaas.modules.offload.oneshot.actuation.ReplicaPlanActuator actuator,it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotConfigurationStore configs,

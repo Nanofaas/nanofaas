@@ -30,7 +30,7 @@ class OneShotTimingQualificationTest {
             when(actuator.ownedFunctions()).thenReturn(Set.of());
             when(coordinator.prepare(anyLong(),any(),any())).thenAnswer(inv->Mono.just(new EpochOutcome(inv.getArgument(0),EpochOutcome.Status.CONVERGED,null,10,5,1,"ok")));
             when(actuator.prepare(any(),any())).thenReturn(Mono.just(activation(PlanActivation.Status.PREPARED)));
-            operations=new OneShotOperations(store,profiles,inputs,coordinator,actuator,events,config.negotiation(),peers,new SimpleMeterRegistry());
+            operations=new OneShotOperations(store,profiles,inputs,coordinator,actuator,events,peers,new SimpleMeterRegistry());
             operations.configure(0,config);operations.start();
         }
         void sample(long epoch) {

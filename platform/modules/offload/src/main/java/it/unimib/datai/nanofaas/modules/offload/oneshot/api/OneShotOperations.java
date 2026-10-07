@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.*;
 public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
     public record Window(Instant startsAt,Instant endsAt) {}
     private final OneShotConfigurationStore configs;private final ServiceProfileStore profiles;private final ProfileEpochInputFactory inputs;
-    private final EpochCoordinator coordinator;private final ReplicaPlanActuator actuator;private final EpochEventStore events;private final EpochSettings bounds;private final PeerTransport peers;private final MeterRegistry meters;
+    private final EpochCoordinator coordinator;private final ReplicaPlanActuator actuator;private final EpochEventStore events;private final PeerTransport peers;private final MeterRegistry meters;
     private final boolean enabled;
     private final AtomicBoolean busy=new AtomicBoolean();private final AtomicLong lastScheduled=new AtomicLong(-1);
     private final Map<Long,OneShotSettings> preparedSettings=new ConcurrentHashMap<>();
@@ -22,12 +22,12 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
     private final ScheduledExecutorService timer=Executors.newSingleThreadScheduledExecutor(r->{var t=new Thread(r,"one-shot-epochs");t.setDaemon(true);return t;});
     private volatile ScheduledFuture<?> tickTask;
     private volatile boolean running;private volatile String lastState="UNCONFIGURED";private volatile Disposable subscription;
-    public OneShotOperations(OneShotConfigurationStore configs,ServiceProfileStore profiles,ProfileEpochInputFactory inputs,EpochCoordinator coordinator,ReplicaPlanActuator actuator,EpochEventStore events,EpochSettings bounds,PeerTransport peers,MeterRegistry meters) {
-        this(configs,profiles,inputs,coordinator,actuator,events,bounds,peers,meters,true);
+    public OneShotOperations(OneShotConfigurationStore configs,ServiceProfileStore profiles,ProfileEpochInputFactory inputs,EpochCoordinator coordinator,ReplicaPlanActuator actuator,EpochEventStore events,PeerTransport peers,MeterRegistry meters) {
+        this(configs,profiles,inputs,coordinator,actuator,events,peers,meters,true);
     }
-    public OneShotOperations(OneShotConfigurationStore configs,ServiceProfileStore profiles,ProfileEpochInputFactory inputs,EpochCoordinator coordinator,ReplicaPlanActuator actuator,EpochEventStore events,EpochSettings bounds,PeerTransport peers,MeterRegistry meters,boolean enabled) {
+    public OneShotOperations(OneShotConfigurationStore configs,ServiceProfileStore profiles,ProfileEpochInputFactory inputs,EpochCoordinator coordinator,ReplicaPlanActuator actuator,EpochEventStore events,PeerTransport peers,MeterRegistry meters,boolean enabled) {
         this.enabled=enabled;
-        this.configs=configs;this.profiles=profiles;this.inputs=inputs;this.coordinator=coordinator;this.actuator=actuator;this.events=events;this.bounds=bounds;this.peers=peers;this.meters=meters;
+        this.configs=configs;this.profiles=profiles;this.inputs=inputs;this.coordinator=coordinator;this.actuator=actuator;this.events=events;this.peers=peers;this.meters=meters;
     }
     public synchronized OneShotConfigurationStore.Snapshot configure(long expected,OneShotSettings settings) {
         if(!actuator.ownedFunctions().isEmpty() && !actuator.ownedFunctions().equals(settings.functions().keySet())) throw new IllegalStateException("drain owned function scope before changing selection");

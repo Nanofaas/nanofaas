@@ -45,7 +45,7 @@ public final class RetainedInputLease implements AutoCloseable {
 
     @Override
     public void close() {
-        boolean drained = false;
+        boolean drained;
         synchronized (this) {
             if (baseReleased) return;
             baseReleased = true;
