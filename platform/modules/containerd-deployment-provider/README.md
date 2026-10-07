@@ -10,15 +10,15 @@ Select this provider alone among the managed deployment providers:
 
 ```bash
 ./gradlew :control-plane:bootJar \
-  -PcontrolPlaneModules=containerd-deployment-provider \
-  -PcontainerdMavenLocal=true -Dmaven.repo.local="$PWD/.gradle/containerd-m2"
+  -PcontrolPlaneModules=containerd-deployment-provider
 ```
 
-The two `io.nanofaas` artifacts and `io.libcni` artifact are source snapshots.
-Use [`scripts/bootstrap-containerd-dependencies.sh`](../../../scripts/bootstrap-containerd-dependencies.sh)
+The libraries are published on Maven Central under `io.github.nanofaas` and
+resolve without credentials. For reproducible source builds, use [`scripts/bootstrap-containerd-dependencies.sh`](../../../scripts/bootstrap-containerd-dependencies.sh)
 with checkouts containing the exact commits in
-[`dependencies.env`](../../../deploy/containerd-rootless/dependencies.env). This
-module has no Docker or Kubernetes runtime dependency. `all` and the default
+[`dependencies.env`](../../../deploy/containerd-rootless/dependencies.env), then
+add `-PcontainerdMavenLocal=true -Dmaven.repo.local="$PWD/.gradle/containerd-m2"`
+to the build command. This module has no Docker or Kubernetes runtime dependency. `all` and the default
 selection continue to include Kubernetes; an explicit pair of deployment
 providers fails at settings configuration.
 
@@ -31,7 +31,7 @@ containerd resources.
 For registry-specific endpoints, mirrors or CA trust, set
 `nanofaas.containerd.registry-hosts-directory` (canonical environment variable:
 `NANOFAAS_CONTAINERD_REGISTRYHOSTSDIRECTORY`). The absolute directory is read by
-the daemon in its own filesystem and forwarded by `containerd-java` 0.24.0 in
+the daemon in its own filesystem and forwarded by `containerd-java` 0.25.0 in
 Transfer requests. Unset means the default resolver; authentication credentials
 are not supplied by this setting.
 

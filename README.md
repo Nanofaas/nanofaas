@@ -157,13 +157,15 @@ are mutually exclusive. See [control-plane modules](docs/control-plane.md#contro
 
 <br>
 
-The full build includes the rootless containerd provider, whose dependencies are
-not on Maven Central. Stage them once as described in the
-[containerd guide](docs/deployment-containerd.md), then run:
+The full build includes the rootless containerd provider. Its libraries resolve
+from Maven Central without credentials:
 
 ```bash
-./gradlew build -PcontainerdMavenLocal=true -Dmaven.repo.local="$PWD/.gradle/containerd-m2"
+./gradlew build
 ```
+
+For reproducible builds from the recorded source revisions, the same guide
+documents the local Maven bootstrap and `-PcontainerdMavenLocal=true` override.
 
 Docker-backed tests need a Docker-compatible runtime. End-to-end scenarios on
 containers and Kubernetes run from [NanoLab](https://github.com/miciav/nanolab);

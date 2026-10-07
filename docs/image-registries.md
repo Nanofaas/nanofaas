@@ -260,7 +260,7 @@ configuration below before registering an image from that endpoint.
 
 ### Custom endpoints and registry hosts configuration
 
-NanoFaaS uses `containerd-java` 0.24.0 and can forward a registry hosts directory
+NanoFaaS uses `containerd-java` 0.25.0 and can forward a registry hosts directory
 in each Transfer request. Configure `nanofaas.containerd.registry-hosts-directory`
 or its canonical environment form `NANOFAAS_CONTAINERD_REGISTRYHOSTSDIRECTORY`.
 The default is unset, preserving containerd's default resolver behavior.

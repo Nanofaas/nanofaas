@@ -37,8 +37,8 @@ git -C "$containerd_checkout" archive "$CONTAINERD_JAVA_REV" | tar -x -C "$stage
 )
 (
     cd "$stage/containerd-java"
-    # containerd-java resolves libcni-java from GitHub Packages, which needs credentials, unless a
-    # checkout is named: build it against the staged libcni-java at LIBCNI_JAVA_REV instead.
+    # Build against the staged libcni-java at LIBCNI_JAVA_REV so the source bootstrap
+    # uses exactly the recorded revision rather than the published Central artifact.
     ./gradlew publishToMavenLocal -PlibcniDir="$stage/libcni-java" \
         -Dmaven.repo.local="$maven_repository" --no-daemon
 )

@@ -34,6 +34,62 @@ they then use the same normal teardown.
 
 Use `--only`, `--from`, and `--until` to isolate tasks. Use `--keep` only when infrastructure must remain available for investigation.
 
+## Unused Java code before pushing
+
+Run the focused PMD checks on authored production Java sources:
+
+```bash
+./gradlew deadCode -PcontrolPlaneModules=all
+```
+
+`deadCode` covers all Java subprojects, including optional modules and the included
+`platform/gradle-plugin` build. It checks unused private methods and fields, local
+variables, private method/constructor parameters, and assignments whose values
+are never read. Test sources and generated sources under `build/` are excluded.
+The normal command reports findings without failing. Tool, parsing, compilation,
+and dependency-resolution errors fail the command in both modes; the XML report
+is checked for processing/configuration errors to catch incomplete analysis.
+To fail on findings:
+
+```bash
+./gradlew deadCode -PcontrolPlaneModules=all -PdeadCodeStrict=true --continue
+```
+
+`--continue` lets independent modules finish and produce reports even if another
+module has findings. Reports are written to each project's
+`build/reports/pmd/main.html` and `main.xml`, with findings also printed to the
+console. For a quicker check of a single module, use `./gradlew :common:pmdMain`;
+the same strict flag applies. PMD is opt-in and is not added to `check`, `build`,
+or the mandatory release gate. No Git hook is installed.
+
+Use Java 25 and the same dependencies as a normal build: Gradle compiles sources
+and resolves their classpaths for PMD's type analysis. The full inventory includes
+the containerd provider, whose published libraries resolve from Maven Central
+without credentials. For a build from the recorded source revisions, bootstrap
+the libraries as described in the [containerd guide](deployment-containerd.md#build-from-reviewed-source-revisions).
+If they were staged locally, add
+`-PcontainerdMavenLocal=true -Dmaven.repo.local="$PWD/.gradle/containerd-m2"`.
+Subsequent runs reuse Gradle's up-to-date checks and PMD's incremental analysis.
+
+Findings are candidates for review, not proof that a declaration can be deleted.
+PMD does not identify unused public classes or methods across the whole project.
+Reflection and framework entry points require review; PMD's defaults skip
+annotated private fields/classes and standard lifecycle methods, which also means
+some unused declarations will not be reported. For an intentional reflective use,
+add a narrow `@SuppressWarnings("PMD.UnusedPrivateMethod")` (or the corresponding
+rule name) with a comment explaining the caller. The selected rules live in
+`config/pmd/dead-code.xml`; the pinned version lives in `gradle.properties`.
+
+For dependency usage, the existing dependency-analysis plugin provides a separate
+check:
+
+```bash
+./gradlew buildHealth -PcontrolPlaneModules=all
+```
+
+This produces `build/reports/dependency-analysis/build-health-report.txt`. Its
+advice also needs review for runtime dependencies loaded by frameworks.
+
 ## Watchdog
 
 The watchdog has Rust unit tests and local integration tests for HTTP, STDIO, FILE, callback, metrics, and warm lifecycle behavior. They require Rust, Python 3, `jq`, `curl`, and `nc`; Docker and a VM are not required.

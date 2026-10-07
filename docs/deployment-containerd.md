@@ -17,11 +17,24 @@ tracked in [#247](https://github.com/miciav/nanofaas/issues/247). That defect wa
 reproduced on k3s, not independently on containerd; this guide does not claim
 containerd makes explicit-resource catalog round trips safe.
 
+## Build with published libraries
+
+Gradle resolves `io.github.nanofaas:containerd-java:0.25.0`,
+`io.github.nanofaas:containerd-java-cni:0.25.0`, and the transitive
+`io.github.nanofaas:libcni-java:0.24.0` from Maven Central without credentials.
+The Java package names remain `io.nanofaas.containerd` and `io.libcni`.
+The [library publishing guide](https://github.com/Nanofaas/libcni-java/blob/master/docs/publishing.md)
+documents the namespace, signing key and GitHub Actions release workflow.
+
+```bash
+./gradlew :control-plane:bootJar -PcontrolPlaneModules=containerd-deployment-provider
+```
+
 ## Build from reviewed source revisions
 
-`io.nanofaas:containerd-java`, `io.nanofaas:containerd-java-cni`, and
-`io.libcni:libcni-java` are built from recorded revisions of their public
-repositories rather than resolved from a package registry. The revisions, and the
+`io.github.nanofaas:containerd-java`, `io.github.nanofaas:containerd-java-cni`, and
+`io.github.nanofaas:libcni-java` can also be built from recorded revisions of their public
+repositories for reproducible source builds. The revisions, and the
 Maven coordinates they produce, are in
 [`dependencies.env`](../deploy/containerd-rootless/dependencies.env); each is a
 commit on its repository's default branch. Supply checkouts containing those
@@ -40,7 +53,8 @@ cat "$MAVEN_REPOSITORY/containerd-source-revisions.txt"
 
 The receipt records the source commits and SHA-256 of all three produced JARs.
 Pass a third script argument to stage into another Maven directory. The Gradle
-repository flag admits only `io.nanofaas` and `io.libcni` from that directory.
+repository flag resolves only those three libraries from that directory,
+excluding their Central copies so that the selected source revisions are used. CI and NanoLab retain this source-bootstrap path.
 For native compilation, use the same module selection and repository:
 
 ```bash
@@ -87,15 +101,16 @@ No VM provisioning runs from this repository.
 
 For a NanoLab Multipass containerd environment, set
 `containerdMavenRepository: /absolute/host/path` to the bootstrap output. The
-runner copies only the three reviewed `io.nanofaas`/`io.libcni` versions and
+runner copies only the three reviewed `io.github.nanofaas` versions and
 their JAR, POM, Gradle module and Maven metadata files into a run-owned remote
 repository. It records a `nanolab-receipt.json` of artifact hashes there and
 builds with `-PcontainerdMavenLocal=true` and
 `-Dmaven.repo.local=<remote repository>`. Point it at an isolated bootstrap
 output; do not stage an entire personal Maven cache. The runner's staging
-allowlist must include `containerd-java` and `containerd-java-cni` 0.24.0, with
-`libcni-java` 0.23.0. Older NanoLab runners hard-code all three to 0.23.0 and
-reject the new bootstrap output until their allowlist is updated. The NanoLab scenario
+allowlist must include group `io.github.nanofaas`, `containerd-java` and
+`containerd-java-cni` 0.25.0, with `libcni-java` 0.24.0. NanoLab runners whose
+allowlist still uses the previous groups or versions require an update before
+using the new bootstrap output. The NanoLab scenario
 revision in `dependencies.env` is pinned to the exact scenario checkout used by
 the recorded checks. The lifecycle run used NanoFaaS `18d7b98f`; recovery and
 the focused JVM async run used `00ab7ac9`. Keep these revisions in the receipt
@@ -150,7 +165,7 @@ Function images must be pushed to a registry reachable *inside* RootlessKit;
 Docker's local image store is separate. For HTTP endpoints, custom CA trust or
 mirrors, set `nanofaas.containerd.registry-hosts-directory` (environment:
 `NANOFAAS_CONTAINERD_REGISTRYHOSTSDIRECTORY`) to the absolute daemon-side directory
-containing registry-specific `hosts.toml` files. The pinned `containerd-java` 0.24.0
+containing registry-specific `hosts.toml` files. The pinned `containerd-java` 0.25.0
 passes this directory in `OCIRegistry.resolver.host_dir` for Transfer pulls.
 The path must be readable in containerd's filesystem and mount namespace;
 NanoFaaS does not check its existence against the JVM's filesystem. Leaving it

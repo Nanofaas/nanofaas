@@ -1,0 +1,43 @@
+import groovy.xml.XmlSlurper
+import org.gradle.api.plugins.quality.Pmd
+
+apply plugin: 'pmd'
+
+// Resolve shared configuration from this script, also when applied by the included build.
+def repositoryRoot = buildscript.sourceFile.parentFile.parentFile
+def buildProperties = new Properties()
+new File(repositoryRoot, 'gradle.properties').withInputStream { buildProperties.load(it) }
+
+pmd {
+    toolVersion = buildProperties.getProperty('pmdVersion')
+    ruleSets = []
+    ruleSetFiles = files(new File(repositoryRoot, 'config/pmd/dead-code.xml'))
+    // Keep the analysis opt-in; applying PMD must not add work to check/build.
+    sourceSets = []
+    consoleOutput = true
+    ignoreFailures = !providers.gradleProperty('deadCodeStrict')
+            .map { it.toBoolean() }.getOrElse(false)
+}
+
+tasks.withType(Pmd).configureEach {
+    // Use PMD's toolchain explicitly for JDK type resolution.
+    classpath += files(javaLauncher.map { it.metadata.installationPath.file('lib/jrt-fs.jar') })
+    reports {
+        html.required = true
+        xml.required = true
+    }
+    doLast {
+        // Gradle's PMD adapter does not fail on processing errors, even in strict mode.
+        def reportFile = reports.xml.outputLocation.get().asFile
+        def report = new XmlSlurper().parse(reportFile)
+        def errors = report.error.size() + report.configerror.size()
+        if (errors > 0) {
+            throw new GradleException("PMD analysis was incomplete (${errors} errors). See ${reportFile}")
+        }
+    }
+}
+
+tasks.named('pmdMain') {
+    // Analyze authored production sources, excluding Spring AOT and other build outputs.
+    source = fileTree('src/main/java') { include '**/*.java' }
+}

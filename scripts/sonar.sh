@@ -123,7 +123,7 @@ if [ "$DRY" = false ]; then
 fi
 # --- Analyses ----------------------------------------------------------------
 run_java() {
-    # The containerd module resolves io.nanofaas/io.libcni from a local Maven repository
+    # The containerd module resolves io.github.nanofaas libraries from a local Maven repository
     # (scripts/bootstrap-containerd-dependencies.sh); `test` builds every module, so it is required.
     local containerd_repo="${CONTAINERD_MAVEN_REPO:-$PWD/.gradle/containerd-m2}"
     if [ ! -d "$containerd_repo" ]; then

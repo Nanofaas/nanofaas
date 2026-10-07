@@ -29,11 +29,14 @@ allprojects {
     repositories {
         mavenCentral()
         if (containerdMavenLocal) {
-            maven {
-                url = uri(containerdMavenRepository)
-                content {
-                    includeGroup 'io.nanofaas'
-                    includeGroup 'io.libcni'
+            exclusiveContent {
+                forRepository {
+                    maven { url = uri(containerdMavenRepository) }
+                }
+                filter {
+                    includeModule 'io.github.nanofaas', 'containerd-java'
+                    includeModule 'io.github.nanofaas', 'containerd-java-cni'
+                    includeModule 'io.github.nanofaas', 'libcni-java'
                 }
             }
         }
@@ -42,6 +45,7 @@ allprojects {
 
 subprojects {
     apply plugin: 'java'
+    apply from: rootProject.file('gradle/dead-code.gradle')
     apply plugin: 'jacoco'
     apply plugin: 'com.github.spotbugs'
     apply plugin: 'net.ltgt.errorprone'
@@ -218,4 +222,11 @@ tasks.register('releaseChecks') {
     description = 'Run mandatory version and static-analysis checks for the full project graph.'
     dependsOn 'verifyHelmVersionSync'
     dependsOn subprojects.collect { it.tasks.named('spotbugsMain') }
+}
+
+tasks.register('deadCode') {
+    group = 'verification'
+    description = 'Report potentially unused Java code across all modules (use -PdeadCodeStrict=true to fail on findings).'
+    dependsOn subprojects.collect { it.tasks.named('pmdMain') }
+    dependsOn gradle.includedBuild('gradle-plugin').task(':pmdMain')
 }

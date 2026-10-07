@@ -2,6 +2,8 @@ plugins {
     id 'java-gradle-plugin'
 }
 
+apply from: file('../../gradle/dead-code.gradle')
+
 group = 'it.unimib.datai.nanofaas'
 
 java {
