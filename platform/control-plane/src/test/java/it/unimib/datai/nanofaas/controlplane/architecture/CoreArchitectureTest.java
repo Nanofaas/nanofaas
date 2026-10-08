@@ -4,12 +4,17 @@ import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.domain.Source;
+import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
+
+import it.unimib.datai.nanofaas.controlplane.api.FunctionController;
+import it.unimib.datai.nanofaas.controlplane.execution.ExecutionRecord;
+import it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogView;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -39,7 +44,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @AnalyzeClasses(packages = {
         "it.unimib.datai.nanofaas.controlplane..",
-        "it.unimib.datai.nanofaas.modules.."})
+        "it.unimib.datai.nanofaas.modules.."}, importOptions = ImportOption.DoNotIncludeTests.class)
 class CoreArchitectureTest {
 
     // R1: the core must contain no cycles between its top-level packages.
@@ -225,14 +230,37 @@ class CoreArchitectureTest {
     }
 
     static boolean isCoreSource(URI uri) {
-        return uri.toString().contains("/platform/control-plane/");
+        return isFromCodeSource(uri, codeSourceOf(FunctionController.class));
     }
 
     static boolean isContractSource(URI uri) {
-        return uri.toString().contains("/platform/control-plane-spi/");
+        return isFromCodeSource(uri, codeSourceOf(FunctionCatalogView.class));
     }
 
     static boolean isRuntimeSource(URI uri) {
-        return uri.toString().contains("/platform/execution-runtime/");
+        return isFromCodeSource(uri, codeSourceOf(ExecutionRecord.class));
+    }
+
+    static boolean isFromCodeSource(URI classUri, URI codeSourceUri) {
+        if (classUri == null || codeSourceUri == null) {
+            return false;
+        }
+        URI owner = codeSourceUri.normalize();
+        if ("jar".equals(classUri.getScheme())) {
+            String entry = classUri.getRawSchemeSpecificPart();
+            int separator = entry.indexOf("!/");
+            return separator >= 0 && URI.create(entry.substring(0, separator)).normalize().equals(owner);
+        }
+        if (!owner.toString().endsWith("/")) {
+            return false;
+        }
+        URI source = classUri.normalize();
+        URI relative = owner.relativize(source);
+        return !relative.equals(source) && !relative.isAbsolute() && !relative.getPath().isEmpty();
+    }
+
+    private static URI codeSourceOf(Class<?> marker) {
+        var source = marker.getProtectionDomain().getCodeSource();
+        return source == null ? null : URI.create(source.getLocation().toExternalForm());
     }
 }
