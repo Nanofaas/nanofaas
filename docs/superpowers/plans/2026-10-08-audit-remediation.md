@@ -143,11 +143,11 @@ Verifiche già disponibili sulla baseline: suite Java completa riuscita; 89 test
 
 **Interfaces:** estendere `SyncInvocation` con `boolean waiterTimedOut`, mantenere i costruttori a 2 e 3 argomenti con default false e aggiungere `static SyncInvocation waiterTimeout(InvocationResponse response, String target, String executionNode)`. Il flag è interno al control plane, non un nuovo campo JSON pubblico. Preservarlo in eventuali ricostruzioni della risposta individuate con impact.
 
-- [ ] Aggiungere `waiterTimeoutReturns408WithoutFunctionStatusMarker`: vero percorso coordinator→controller con esecuzione bloccata da latch; scade il solo waiter. Attesi HTTP 408, `status=timeout`, execution ID stabile, assenza del marker di status deciso dalla funzione.
-- [ ] Sullo stesso execution ID verificare stato ancora running, secondo waiter ancora attivo, successivo callback e replay/poll con risultato reale; coprire local ed offloaded. Un timeout già terminale dell'esecuzione non viene riclassificato come timeout del chiamante; un handler che decide 408 conserva il proprio marker.
-- [ ] Eseguire RED. Usare la factory soltanto nel ramo TimeoutException relativo all'attesa del chiamante; `toResponse` sceglie 408 tramite il flag, senza inferirlo da `response.status()` e senza valorizzare `InvocationResponse.statusCode` come se fosse una scelta del handler.
-- [ ] Eseguire `./gradlew :control-plane:test --tests '*InvocationControllerTest' --tests '*WaiterTimeoutHttpContractTest'` e le regressioni esistenti di timeout/idempotenza individuate nei caller. Aggiungere il caso al gate API dell'artefatto native nel task 9.
-- [ ] Analisi graph completa e commit: `Return HTTP 408 for caller wait timeouts`.
+- [x] Aggiungere `waiterTimeoutReturns408WithoutFunctionStatusMarker`: vero percorso coordinator→controller con esecuzione bloccata da latch; scade il solo waiter. Attesi HTTP 408, `status=timeout`, execution ID stabile, assenza del marker di status deciso dalla funzione.
+- [x] Sullo stesso execution ID verificare stato ancora running, secondo waiter ancora attivo, successivo callback e replay/poll con risultato reale; coprire local ed offloaded. Un timeout già terminale dell'esecuzione non viene riclassificato come timeout del chiamante; un handler che decide 408 conserva il proprio marker.
+- [x] Eseguire RED. Usare la factory soltanto nel ramo TimeoutException relativo all'attesa del chiamante; `toResponse` sceglie 408 tramite il flag, senza inferirlo da `response.status()` e senza valorizzare `InvocationResponse.statusCode` come se fosse una scelta del handler.
+- [x] Eseguire `./gradlew :control-plane:test --tests '*InvocationControllerTest' --tests '*WaiterTimeoutHttpContractTest'` e le regressioni esistenti di timeout/idempotenza individuate nei caller. Aggiungere il caso al gate API dell'artefatto native nel task 9.
+- [x] Analisi graph completa e commit: `Return HTTP 408 for caller wait timeouts`.
 
 ### Task 6: Decodificare gli envelope marcati prima del Content-Type
 

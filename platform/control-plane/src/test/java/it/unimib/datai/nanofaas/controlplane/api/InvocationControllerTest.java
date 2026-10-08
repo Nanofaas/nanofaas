@@ -43,6 +43,27 @@ import static org.mockito.Mockito.when;
 @Import({GlobalExceptionHandler.class, RateLimiter.class})
 class InvocationControllerTest {
 
+    @Test
+    void terminalExecutionTimeoutKeepsItsExistingHttpContract() {
+        var response=new InvocationResponse("terminal-timeout","timeout",null,null);
+        when(invocationService.invokeSyncReactive(eq("echo"),any(),eq(null),eq(null),eq(null),any()))
+                .thenReturn(Mono.just(new SyncInvocation(response,null,"edge")));
+        webClient.post().uri("/v1/functions/echo:invoke").contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(new InvocationRequest("p",Map.of())).exchange().expectStatus().isOk()
+                .expectHeader().doesNotExist("X-NanoFaaS-Function-Status").expectBody().jsonPath("$.status").isEqualTo("timeout");
+    }
+
+    @Test
+    void functionDecided408KeepsItsStatusMarker() {
+        var response=new InvocationResponse("function-timeout","success","function output",null,408,Map.of(),null);
+        when(invocationService.invokeSyncReactive(eq("echo"),any(),eq(null),eq(null),eq(null),any()))
+                .thenReturn(Mono.just(SyncInvocation.local(response)));
+        webClient.post().uri("/v1/functions/echo:invoke").contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(new InvocationRequest("p",Map.of())).exchange().expectStatus().isEqualTo(408)
+                .expectHeader().valueEquals("X-NanoFaaS-Function-Status","true")
+                .expectBody().jsonPath("$.output").isEqualTo("function output");
+    }
+
     @Autowired
     private WebTestClient webClient;
 

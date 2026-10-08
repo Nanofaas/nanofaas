@@ -278,6 +278,8 @@ paths:
             and then the real result — never a fabricated `timeout` borrowed from
             another caller's budget. This also applies to offloaded work: the remote
             invocation uses the function's timeout, independently of this waiter's budget.
+            This platform timeout does not set the X-NanoFaaS-Function-Status marker;
+            a function-selected 408 retains that marker and its function response metadata.
         '409':
           description: |
             The function is in pending removal: a previous DELETE deprovisioned it only partially

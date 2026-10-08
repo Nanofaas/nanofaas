@@ -134,14 +134,13 @@ public final class ReactiveInvocationCoordinator {
                 // typed exception survives any CompletionException wrapping
                 .onErrorMap(java.util.concurrent.CompletionException.class,
                         ex -> ex.getCause() != null ? ex.getCause() : ex)
-                .timeout(Duration.ofMillis(timeoutMs))
                 .map(result -> {
                     if (result.error() != null && "QUEUE_TIMEOUT".equals(result.error().code())) {
                         throw new SyncQueueRejectedException(SyncQueueRejectReason.TIMEOUT, syncQueueGateway.retryAfterSeconds());
                     }
                     return new SyncInvocation(responseMapper.toResponse(executionRecord, result), offloadedTarget.get(),executionRecord.executionNode());
                 })
-                .onErrorResume(java.util.concurrent.TimeoutException.class, ex -> {
+                .timeout(Duration.ofMillis(timeoutMs), Mono.defer(() -> {
                     // Per-waiter timeout (ADR 0001 §5, invariant I1): this waiter's own budget
                     // elapsed, so only its wait ends with the documented 408/timeout response.
                     // The shared record, key, store, lease, budget and counters are untouched;
@@ -149,8 +148,8 @@ public final class ReactiveInvocationCoordinator {
                     // poll/replay observes. The waiter timeout is recorded on its own counter,
                     // never as a backend error.
                     metrics.timeout(executionRecord.task().functionName());
-                    return Mono.just(new SyncInvocation(responseMapper.timeoutResponse(executionRecord), offloadedTarget.get()));
-                })
+                    return Mono.just(SyncInvocation.waiterTimeout(responseMapper.timeoutResponse(executionRecord), offloadedTarget.get(),executionRecord.executionNode()));
+                }))
                 .onErrorResume(ex -> !(ex instanceof SyncQueueRejectedException) && !(ex instanceof OffloadFailedException), ex -> {
                     log.warn("Execution {} completed exceptionally", executionRecord.executionId(), ex);
                     String message = ex.getMessage() != null ? ex.getMessage() : ex.toString();

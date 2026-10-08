@@ -740,3 +740,5 @@ and the contract library share package names on purpose: `controlplane.service` 
   `WorkloadMetricsSource`, `WorkloadCapacityController`, `WorkloadMetricsBinder`,
   `WorkloadMetricNames` — has real consumers in the queue modules, the autoscaler and the
   governor. `WorkloadDiagnostics`, which no composition ever recorded into, was deleted later.
+
+A caller wait timeout returns HTTP 408 with the stable execution ID and `status=timeout`, without the function-status marker or a function-selected `statusCode`. This is an internal waiter outcome, not a terminal shared outcome. An exception originating from the shared execution, including `TimeoutException`, remains an execution failure; the caller deadline fallback alone produces this 408. A terminal execution timeout keeps its existing replay contract, while a function-selected 408 keeps its function-status marker and metadata.

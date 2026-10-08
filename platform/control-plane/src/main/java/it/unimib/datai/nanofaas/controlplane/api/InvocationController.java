@@ -201,7 +201,7 @@ public class InvocationController {
             log.warn("Execution {} returned out-of-range status code {} (expected [200,599]); "
                     + "falling back to 200", response.executionId(), statusCode);
         }
-        int status = functionDecided ? statusCode : 200;
+        int status = invocation.waiterTimedOut() ? 408 : functionDecided ? statusCode : 200;
         ResponseEntity.BodyBuilder builder = ResponseEntity.status(status)
                 .header("X-Execution-Id", response.executionId());
         if (functionDecided) {
