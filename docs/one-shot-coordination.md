@@ -24,6 +24,38 @@ closures. Each seller closes all neighbor inputs before allocating. One dedicate
 control scheduler freezes forecasts and profiles, invokes the pure engine and
 waits for bounded barriers. There is no global optimizer, PG search or hierarchy.
 
+### Aggregate bids and round traffic
+
+The base mode uses aggregate bids (`unitBids=false`). For each selected neighbor
+and function, a capacity bid carries one price and a quantity, rather than one
+record per unit. The price is calculated once while constructing that round's
+bids; prices, residual capacity and remaining demand may change between rounds.
+An aggregation group retains its buyer and seller identities, epoch, round,
+function version, buyer generation and price. Different groups remain separate.
+Memory-only requests are separate records with zero quantity; their multiplicity
+is not a capacity quantity.
+
+`quantity` counts integer flow units on the shared grid, not individual HTTP
+invocations. For example, `(function=f, price=0.01, quantity=2000)` with
+`flowQuantum=0.001` requests/s per unit asks to allocate 2 requests/s. The seller
+may grant fewer units when capacity is insufficient. Aggregate bids preserve
+the price ordering and buyer tie-break used for unit bids; grants from earlier
+rounds remain committed.
+
+The coordinator already collects all records for a neighbor into one batch per
+round phase: OFFERS, BIDS, GRANTS and CHECK. Empty batches still close their phase.
+With P neighbors and R completed rounds, a node sends `4 * P * R` round-phase
+request batches without retries. With F functions, the base mode sends
+`O(P * F * R)` records. HELLO, response messages, retry attempts and physical
+readiness exchanges are counted separately. Larger quantities increase the
+number of digits in a record, not the number of records or batches.
+
+The 1000-message bound limits records in a batch, not flow units: one bid can
+carry more than 1000 units. Large catalogs or additional memory-only requests can
+still exceed the record or byte bound and fail preparation. Batches are not
+fragmented: each is the complete phase closure, and conflicting repeated content
+is rejected. Retries resend the same serialized batch and do not add commitments.
+
 CONVERGED means unchanged decisions after all closures in the local participating
 neighborhood. It does not assert convergence of a separate node that did not
 participate. ROUND_LIMIT, DEADLINE and FAILED are censored operational outcomes,

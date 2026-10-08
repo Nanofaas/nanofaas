@@ -52,6 +52,15 @@ cloud. Frozen inputs retain one configuration/profile revision and compatible
 oracle revisions throughout an auction; updates apply to the next preparation.
 An owned function cannot leave the managed group until positive drain/release.
 
+The base auction already sends aggregate bids containing price and integer flow
+quantity, grouped by neighbor and function within a round. For example,
+`price=0.01, quantity=2000` with `q=0.001` represents 2 requests/s; the seller can
+accept a smaller quantity. All records for a neighbor share one batch per round
+phase, including empty phase closures. Increasing flow units does not add bid
+records or batches. Prices and quantities can change between rounds. See
+[aggregate bids and round traffic](one-shot-coordination.md#aggregate-bids-and-round-traffic)
+for grouping, message counts and batch bounds.
+
 Report clock offset and its original measurement time with
 `PUT /v1/admin/offload/one-shot/clock-health`. Old reports cannot advance freshness;
 future-dated reports are rejected. For deterministic tests use
