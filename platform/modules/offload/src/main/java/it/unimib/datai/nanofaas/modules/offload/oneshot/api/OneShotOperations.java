@@ -16,6 +16,9 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
     private final OneShotConfigurationStore configs;private final ServiceProfileStore profiles;private final ProfileEpochInputFactory inputs;
     private final EpochCoordinator coordinator;private final ReplicaPlanActuator actuator;private final EpochEventStore events;private final PeerTransport peers;private final MeterRegistry meters;
     private final boolean enabled;
+    private final Clock clock;
+    private record Grid(Instant anchor,Duration period) {}
+    private Grid claimedGrid;
     private final AtomicBoolean busy=new AtomicBoolean();private final AtomicLong lastScheduled=new AtomicLong(-1);
     private final Map<Long,OneShotSettings> preparedSettings=new ConcurrentHashMap<>();
     private final ArrayDeque<Long> qualified=new ArrayDeque<>();private String qualificationKey="";
@@ -26,15 +29,29 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
         this(configs,profiles,inputs,coordinator,actuator,events,peers,meters,true);
     }
     public OneShotOperations(OneShotConfigurationStore configs,ServiceProfileStore profiles,ProfileEpochInputFactory inputs,EpochCoordinator coordinator,ReplicaPlanActuator actuator,EpochEventStore events,PeerTransport peers,MeterRegistry meters,boolean enabled) {
+        this(configs,profiles,inputs,coordinator,actuator,events,peers,meters,enabled,Clock.systemUTC());
+    }
+    OneShotOperations(OneShotConfigurationStore configs,ServiceProfileStore profiles,ProfileEpochInputFactory inputs,EpochCoordinator coordinator,ReplicaPlanActuator actuator,EpochEventStore events,PeerTransport peers,MeterRegistry meters,boolean enabled,Clock clock) {
+        this.clock=Objects.requireNonNull(clock);
         this.enabled=enabled;
         this.configs=configs;this.profiles=profiles;this.inputs=inputs;this.coordinator=coordinator;this.actuator=actuator;this.events=events;this.peers=peers;this.meters=meters;
     }
     public synchronized OneShotConfigurationStore.Snapshot configure(long expected,OneShotSettings settings) {
+        var current=configs.snapshot();
+        if(expected!=current.map(OneShotConfigurationStore.Snapshot::revision).orElse(0L)) throw new OneShotConfigurationStore.RevisionConflict();
+        if(claimedGrid!=null && !claimedGrid.equals(new Grid(settings.anchor(),settings.period())))
+            throw new IllegalStateException("automatic epoch grid is frozen; drain and restart all peers to change anchor or period");
         if(!actuator.ownedFunctions().isEmpty() && !actuator.ownedFunctions().equals(settings.functions().keySet())) throw new IllegalStateException("drain owned function scope before changing selection");
         inputs.validate(settings);
         long budget=settings.negotiation().auctionBudget().plus(settings.preparationBudget()).toNanos();
         if(budget>settings.period().toNanos()*settings.maxOperationalFraction() || budget>settings.leadTime().toNanos()) throw new IllegalArgumentException("full operational budget must fit lead time and a small period fraction");
         if(settings.scheduled() && !qualified(settings)) throw new IllegalArgumentException("scheduled mode requires at least 20 complete timing samples with p99 and margin");
+        if(settings.scheduled() && current.map(s->!s.settings().scheduled()).orElse(true)) {
+            if(busy.get()) throw new IllegalStateException("manual preparation must finish before enabling scheduling");
+            long delta=Duration.between(settings.anchor(),clock.instant().plus(settings.leadTime())).toMillis();
+            long candidate=Math.max(0,delta/settings.period().toMillis());
+            if(candidate<=coordinator.lastPreparedEpoch()) throw new IllegalStateException("scheduled epoch must advance beyond the last manual epoch");
+        }
         return configs.replace(expected,settings);
     }
     public Mono<Boolean> drainAndRelease() { if(busy.get()) return Mono.error(new IllegalStateException("preparation active"));return actuator.drainAndRelease(); }
@@ -50,8 +67,17 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
     }
     public Mono<PlanActivation> prepare(long epoch,Window window,boolean automatic) {
         return Mono.defer(()-> {
-            var frozen=configs.snapshot().orElseThrow(()->new IllegalStateException("configuration missing"));var settings=frozen.settings();
-            if(settings.scheduled()!=automatic || !running || !busy.compareAndSet(false,true)) return Mono.error(new IllegalStateException("trigger mode conflict or active preparation"));
+            OneShotConfigurationStore.Snapshot frozen;
+            synchronized(this) {
+                frozen=configs.snapshot().orElseThrow(()->new IllegalStateException("configuration missing"));
+                if(frozen.settings().scheduled()!=automatic || !running || !busy.compareAndSet(false,true)) return Mono.error(new IllegalStateException("trigger mode conflict or active preparation"));
+                if(automatic) claimedGrid=new Grid(frozen.settings().anchor(),frozen.settings().period());
+            }
+            return prepareFrozen(epoch,window,frozen,automatic);
+        });
+    }
+    private Mono<PlanActivation> prepareFrozen(long epoch,Window window,OneShotConfigurationStore.Snapshot frozen,boolean automatic) {
+            var settings=frozen.settings();
             long start=System.nanoTime();String identity;var recorded=new AtomicBoolean();
             try {
                 if(automatic && !qualified(settings)) throw new IllegalStateException("timing qualification expired");
@@ -73,19 +99,23 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
                 if(result.plan()!=null) { preparedSettings.put(result.plan().revision(),settings);while(preparedSettings.size()>4) preparedSettings.remove(Collections.min(preparedSettings.keySet())); }
             }).doOnError(error->{recorded.set(true);lastState="FAILED";events.record(epoch,lastState,true,System.nanoTime()-start,Instant.now());})
               .doFinally(signal->{if(recorded.compareAndSet(false,true)) events.record(epoch,"CANCELLED",true,System.nanoTime()-start,Instant.now());inputs.unpin(epoch);busy.set(false);});
-        });
     }
     public Map<String,Object> status() { return Map.of("schemaVersion",1,"state",lastState,"busy",busy.get(),"clockHealthy",coordinator.clockHealthy(),"catalogGenerations",inputs.catalogGenerations(),"peerEndpoints",peers.activeNeighbors(),"localEndpoint",peers.localEndpoint().map(p->(Object)p).orElse(Map.of()),"revision",configs.snapshot().map(OneShotConfigurationStore.Snapshot::revision).orElse(0L),"activePlan",actuator.activePlan().map(p->(Object)p).orElse(Map.of())); }
     @Override public boolean isAutoStartup() { return enabled; }
     @Override public synchronized void start() { if(running || !enabled) return;running=true;tickTask=timer.scheduleWithFixedDelay(this::tick,100,100,TimeUnit.MILLISECONDS); }
-    private void tick() {
-        if(!running || busy.get()) return;
+    void tick() {
         try {
-            var current=configs.snapshot();if(current.isEmpty() || !current.get().settings().scheduled()) return;var s=current.get().settings();
-            long delta=Duration.between(s.anchor(),Instant.now().plus(s.leadTime())).toMillis();long step=s.period().toMillis();if(delta<0 || step<1) return;
-            long epoch=delta/step;var from=s.anchor().plusMillis(Math.multiplyExact(epoch,step));
-            if(!Instant.now().isBefore(from) || epoch<=lastScheduled.get()) return;lastScheduled.set(epoch);
-            subscription=prepare(epoch,new Window(from,from.plus(s.period())),true).subscribe(result->{},error->lastState="FAILED");
+            OneShotConfigurationStore.Snapshot frozen; long epoch; Window window;
+            synchronized(this) {
+                if(!running || busy.get()) return;
+                var current=configs.snapshot();if(current.isEmpty() || !current.get().settings().scheduled()) return;
+                frozen=current.get();var s=frozen.settings();var now=clock.instant();
+                long delta=Duration.between(s.anchor(),now.plus(s.leadTime())).toMillis();long step=s.period().toMillis();if(delta<0 || step<1) return;
+                epoch=delta/step;var from=s.anchor().plusMillis(Math.multiplyExact(epoch,step));
+                if(!now.isBefore(from) || epoch<=lastScheduled.get() || epoch<=coordinator.lastPreparedEpoch() || !busy.compareAndSet(false,true)) return;
+                lastScheduled.set(epoch);claimedGrid=new Grid(s.anchor(),s.period());window=new Window(from,from.plus(s.period()));
+            }
+            subscription=prepareFrozen(epoch,window,frozen,true).subscribe(result->{},error->lastState="FAILED");
         } catch(RuntimeException error) { lastState="FAILED"; }
     }
     @Override public synchronized void stop() { running=false;if(tickTask!=null) tickTask.cancel(false);if(subscription!=null) subscription.dispose(); }

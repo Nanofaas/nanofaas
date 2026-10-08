@@ -73,6 +73,7 @@ public final class EpochCoordinator implements SmartLifecycle, AutoCloseable {
     @Override public int getPhase() { return Integer.MAX_VALUE-2046; }
     @Override public void close() { stop(); scheduler.dispose(); }
     public boolean clockHealthy() { return clockHealth.healthy(); }
+    public long lastPreparedEpoch() { return lastEpoch.get(); }
     public Mono<EpochOutcome> prepare(long epoch,Instant startsAt,Instant endsAt) {
         return Mono.defer(()-> {
             long started=System.nanoTime();

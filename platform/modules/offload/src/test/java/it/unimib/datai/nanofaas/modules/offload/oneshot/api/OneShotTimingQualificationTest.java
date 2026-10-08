@@ -22,15 +22,17 @@ class OneShotTimingQualificationTest {
         final EpochEventStore events=new EpochEventStore(100);
         final OneShotSettings config=OneShotConfigurationTest.config();
         final OneShotOperations operations;
-        Fixture() {
+        Fixture() { this(Clock.systemUTC()); }
+        Fixture(Clock clock) {
             when(profiles.compatible(any())).thenReturn(new ServiceProfileStore.Stored(1,"hash",null,1));
+            when(coordinator.lastPreparedEpoch()).thenReturn(-1L);
             when(inputs.pin(anyLong(),any(),any(),any())).thenReturn(new EpochInput(null,Map.of(),Map.of(),1,1,null,100,100,"hash"));
             when(peers.activeNeighbors()).thenReturn(List.of());
             when(peers.localEndpoint()).thenReturn(Optional.of(new PeerEndpoint("edge","inc",URI.create("http://edge:8080"))));
             when(actuator.ownedFunctions()).thenReturn(Set.of());
             when(coordinator.prepare(anyLong(),any(),any())).thenAnswer(inv->Mono.just(new EpochOutcome(inv.getArgument(0),EpochOutcome.Status.CONVERGED,null,10,5,1,"ok")));
             when(actuator.prepare(any(),any())).thenReturn(Mono.just(activation(PlanActivation.Status.PREPARED)));
-            operations=new OneShotOperations(store,profiles,inputs,coordinator,actuator,events,peers,new SimpleMeterRegistry());
+            operations=new OneShotOperations(store,profiles,inputs,coordinator,actuator,events,peers,new SimpleMeterRegistry(),true,clock);
             operations.configure(0,config);operations.start();
         }
         void sample(long epoch) {
@@ -39,6 +41,129 @@ class OneShotTimingQualificationTest {
         }
         void qualify() { for(int i=0;i<20;i++) sample(i); }
         public void close() { operations.close(); }
+    }
+    static final class MutableClock extends Clock {
+        volatile Instant now=Instant.EPOCH;
+        public ZoneId getZone() { return ZoneOffset.UTC; }
+        public Clock withZone(ZoneId zone) { return this; }
+        public Instant instant() { return now; }
+    }
+    static OneShotSettings grid(OneShotSettings s,Instant anchor,Duration period,boolean scheduled) {
+        return new OneShotSettings(s.schemaVersion(),s.profileId(),s.environmentFingerprint(),s.purpose(),s.allowSynthetic(),s.cloudUri(),s.memoryCapacityMiB(),s.flowQuantum(),period,s.leadTime(),scheduled,anchor,s.preparationBudget(),s.maxOperationalFraction(),s.burst(),s.functions(),s.negotiation(),s.maxSolverStates(),s.maxSolverBytes());
+    }
+    @Test void rejectsGridChangeAfterFirstScheduledEpoch() {
+        var clock=new MutableClock();
+        try(var f=new Fixture(clock)) {
+            f.qualify(); var scheduled=grid(f.config,Instant.EPOCH,f.config.period(),true);
+            f.operations.configure(1,scheduled);
+            clock.now=Instant.EPOCH.plusSeconds(280); f.operations.tick();
+            verify(f.coordinator).prepare(1,Instant.EPOCH.plusSeconds(300),Instant.EPOCH.plusSeconds(600));
+            for(var changed:List.of(grid(scheduled,Instant.EPOCH.plusSeconds(1),scheduled.period(),true),
+                    grid(scheduled,scheduled.anchor(),scheduled.period().plusSeconds(1),true))) {
+                assertThatThrownBy(()->f.operations.configure(2,changed)).isInstanceOf(IllegalStateException.class);
+                assertThat(f.store.snapshot().orElseThrow().revision()).isEqualTo(2);
+            }
+            var s=scheduled;
+            var equivalentProfile=new OneShotSettings(s.schemaVersion(),"equivalent-profile",s.environmentFingerprint(),s.purpose(),s.allowSynthetic(),s.cloudUri(),s.memoryCapacityMiB(),s.flowQuantum(),s.period(),s.leadTime(),true,s.anchor(),s.preparationBudget(),s.maxOperationalFraction(),s.burst(),s.functions(),s.negotiation(),s.maxSolverStates(),s.maxSolverBytes());
+            assertThat(f.operations.configure(2,equivalentProfile).revision()).isEqualTo(3);
+            clock.now=Instant.EPOCH.plusSeconds(580); f.operations.tick();
+            verify(f.coordinator).prepare(2,Instant.EPOCH.plusSeconds(600),Instant.EPOCH.plusSeconds(900));
+        }
+    }
+    @Test void failedAutomaticClaimAndLifecycleChangesDoNotUnfreezeGrid() {
+        var clock=new MutableClock();
+        try(var f=new Fixture(clock)) {
+            f.qualify(); var s=grid(f.config,Instant.EPOCH,f.config.period(),true);
+            f.operations.configure(1,s);
+            when(f.coordinator.prepare(anyLong(),any(),any())).thenReturn(Mono.error(new IllegalStateException("network failure")));
+            clock.now=Instant.EPOCH.plusSeconds(280); f.operations.tick();
+            f.operations.stop(); f.operations.start();
+            f.operations.configure(2,grid(s,s.anchor(),s.period(),false));
+            assertThatThrownBy(()->f.operations.configure(3,grid(s,s.anchor().plusSeconds(1),s.period(),false)))
+                    .isInstanceOf(IllegalStateException.class);
+            assertThat(f.store.snapshot().orElseThrow().revision()).isEqualTo(3);
+            assertThat(f.operations.configure(3,s).revision()).isEqualTo(4);
+        }
+    }
+    @Test void gridCanChangeBeforeFirstAutomaticClaim() {
+        var clock=new MutableClock();
+        try(var f=new Fixture(clock)) {
+            f.qualify(); var s=grid(f.config,Instant.EPOCH.plusSeconds(1),f.config.period(),true);
+            assertThat(f.operations.configure(1,s).settings()).isEqualTo(s);
+            var changed=grid(s,Instant.EPOCH.plusSeconds(2),s.period().plusSeconds(1),true);
+            assertThat(f.operations.configure(2,changed).settings()).isEqualTo(changed);
+        }
+    }
+    @Test void staleRevisionRemainsARevisionConflict() {
+        try(var f=new Fixture(new MutableClock())) {
+            assertThatThrownBy(()->f.operations.configure(0,f.config))
+                    .isInstanceOf(OneShotConfigurationStore.RevisionConflict.class);
+            assertThat(f.store.snapshot().orElseThrow().revision()).isEqualTo(1);
+        }
+    }
+    @Test void manualEpochFenceRejectsAStaleScheduledCandidate() {
+        var clock=new MutableClock();
+        try(var f=new Fixture(clock)) {
+            f.qualify();clock.now=Instant.EPOCH.plusSeconds(280);
+            when(f.coordinator.lastPreparedEpoch()).thenReturn(19L);
+            var stale=grid(f.config,Instant.EPOCH,f.config.period(),true);
+            assertThatThrownBy(()->f.operations.configure(1,stale)).isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("manual epoch");
+            assertThat(f.store.snapshot().orElseThrow().revision()).isEqualTo(1);
+            var future=grid(f.config,Instant.EPOCH.minusSeconds(6000),f.config.period(),true);
+            assertThat(f.operations.configure(1,future).revision()).isEqualTo(2);
+        }
+    }
+    @Test void cannotEnableSchedulingDuringAnActiveManualPreparation() {
+        try(var f=new Fixture(new MutableClock())) {
+            f.qualify();when(f.actuator.prepare(any(),any())).thenReturn(Mono.never());
+            var start=Instant.EPOCH.plusSeconds(300);
+            var preparation=f.operations.prepare(20,new OneShotOperations.Window(start,start.plusSeconds(300)),false).subscribe();
+            try {
+                var scheduled=grid(f.config,Instant.EPOCH,f.config.period(),true);
+                assertThatThrownBy(()->f.operations.configure(1,scheduled)).isInstanceOf(IllegalStateException.class);
+                assertThat(f.store.snapshot().orElseThrow().revision()).isEqualTo(1);
+            } finally { preparation.dispose(); }
+        }
+    }
+    @Test void frozenGridReturnsHttp409WithoutConsumingRevision() throws Exception {
+        var clock=new MutableClock();
+        try(var f=new Fixture(clock)) {
+            f.qualify();var scheduled=grid(f.config,Instant.EPOCH,f.config.period(),true);
+            f.operations.configure(1,scheduled);clock.now=Instant.EPOCH.plusSeconds(280);f.operations.tick();
+            var controller=new OneShotController(f.operations,f.profiles,f.events,
+                    new ClockHealth(Duration.ofMillis(100),Duration.ofSeconds(10),clock::instant));
+            var client=org.springframework.test.web.reactive.server.WebTestClient.bindToController(controller).build();
+            var changed=grid(scheduled,Instant.EPOCH.plusSeconds(1),scheduled.period(),true);
+            byte[] body=tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsBytes(changed);
+            client.put().uri("/v1/admin/offload/one-shot/config").header("If-Match","2")
+                    .contentType(org.springframework.http.MediaType.APPLICATION_JSON).bodyValue(body).exchange()
+                    .expectStatus().isEqualTo(409).expectBody().jsonPath("$.error").isEqualTo("ONE_SHOT_CONFLICT");
+            assertThat(f.store.snapshot().orElseThrow().revision()).isEqualTo(2);
+        }
+    }
+    @Test void firstTickAndConfigurationRaceKeepOneConsistentGrid() throws Exception {
+        var clock=new MutableClock();
+        try(var f=new Fixture(clock);var executor=java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            f.qualify();var original=grid(f.config,Instant.EPOCH,f.config.period(),true);
+            f.operations.configure(1,original);
+            var changed=grid(original,Instant.EPOCH.minusSeconds(1),original.period(),true);
+            var barrier=new java.util.concurrent.CyclicBarrier(2);
+            clearInvocations(f.inputs);
+            clock.now=Instant.EPOCH.plusSeconds(280);
+            var update=executor.submit(()->{
+                barrier.await();
+                try { f.operations.configure(2,changed);return true; }
+                catch(IllegalStateException conflict) { return false; }
+            });
+            var tick=executor.submit(()->{barrier.await();f.operations.tick();return true;});
+            boolean accepted=update.get(2,java.util.concurrent.TimeUnit.SECONDS);
+            tick.get(2,java.util.concurrent.TimeUnit.SECONDS);
+            var selected=accepted?changed:original;
+            assertThat(f.store.snapshot().orElseThrow().settings()).isEqualTo(selected);
+            verify(f.inputs).pin(eq(1L),eq(selected.anchor().plusSeconds(300)),eq(selected.anchor().plusSeconds(600)),
+                    argThat(snapshot->snapshot.settings().equals(selected)));
+        }
     }
     static PlanActivation activation(PlanActivation.Status status) {
         return new PlanActivation(status,null,Map.of(),Map.of(),"fixture",Instant.now());

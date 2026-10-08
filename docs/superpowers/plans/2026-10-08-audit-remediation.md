@@ -110,12 +110,12 @@ Verifiche già disponibili sulla baseline: suite Java completa riuscita; 89 test
 
 **Interfaces:** preservare `configure(long, OneShotSettings)` e `prepare(long, Window, boolean)`. Aggiungere un clock iniettabile tramite costruttore di test mantenendo il costruttore produttivo con UTC. Conservare una griglia congelata `(Instant anchor, Duration period)` dopo la prima rivendicazione automatica. Eventuale `EpochCoordinator.lastPreparedEpoch(): long` espone il fencing esistente senza reset.
 
-- [ ] Aggiungere `rejectsGridChangeAfterFirstScheduledEpoch`: produrre realmente il primo tick con clock controllato, senza impostare `lastScheduled` via reflection; cambiare anchor e poi period. Attesi 409/`ONE_SHOT_CONFLICT`, revisione invariata e prosecuzione sulla vecchia griglia.
-- [ ] Aggiungere casi: modifica prima del primo tick ammessa; stessa griglia e nuovo profilo ammessi se qualificati; disable→modifica→enable e stop→start non aggirano il vincolo; tentativo automatico fallito non sblocca la griglia; revisione obsoleta conserva il conflitto previsto.
-- [ ] Aggiungere race configurazione/primo tick con barrier: o la nuova griglia viene accettata prima del claim, oppure viene rifiutata dopo; nessuno stato misto. Coprire manuale→scheduled con candidato successivo sopra/sotto l'ultimo epoch del coordinator: il caso sotto viene rifiutato esplicitamente, mai accettato per restare silenziosamente inattivo.
-- [ ] Eseguire RED. Rendere atomici la verifica/configurazione e il claim della griglia sotto lo stesso lock; non tenere il lock durante solver, rete o attuazione. Validare prima di `configs.replace`, congelare la griglia prima della sottoscrizione. Mantenere entrambi i fencing; non rinumerare epoche diversamente sui peer.
-- [ ] Eseguire `./gradlew :control-plane-modules:offload:test --tests '*OneShotTimingQualificationTest' --tests '*OneShotConfigurationTest'`. Aggiornare OpenAPI e guida con 409, momento del congelamento e procedura drain/riavvio coordinato per cambiare griglia.
-- [ ] Analisi graph completa e commit: `Reject incompatible one-shot schedule changes`.
+- [x] Aggiungere `rejectsGridChangeAfterFirstScheduledEpoch`: produrre realmente il primo tick con clock controllato, senza impostare `lastScheduled` via reflection; cambiare anchor e poi period. Attesi 409/`ONE_SHOT_CONFLICT`, revisione invariata e prosecuzione sulla vecchia griglia.
+- [x] Aggiungere casi: modifica prima del primo tick ammessa; stessa griglia e nuovo profilo ammessi se qualificati; disable→modifica→enable e stop→start non aggirano il vincolo; tentativo automatico fallito non sblocca la griglia; revisione obsoleta conserva il conflitto previsto.
+- [x] Aggiungere race configurazione/primo tick con barrier: o la nuova griglia viene accettata prima del claim, oppure viene rifiutata dopo; nessuno stato misto. Coprire manuale→scheduled con candidato successivo sopra/sotto l'ultimo epoch del coordinator: il caso sotto viene rifiutato esplicitamente, mai accettato per restare silenziosamente inattivo.
+- [x] Eseguire RED. Rendere atomici la verifica/configurazione e il claim della griglia sotto lo stesso lock; non tenere il lock durante solver, rete o attuazione. Validare prima di `configs.replace`, congelare la griglia prima della sottoscrizione. Mantenere entrambi i fencing; non rinumerare epoche diversamente sui peer.
+- [x] Eseguire `./gradlew :control-plane-modules:offload:test --tests '*OneShotTimingQualificationTest' --tests '*OneShotConfigurationTest'`. Aggiornare OpenAPI e guida con 409, momento del congelamento e procedura drain/riavvio coordinato per cambiare griglia.
+- [x] Analisi graph completa e commit: `Reject incompatible one-shot schedule changes`.
 
 ### Task 4: Conservare la precisione temporale delle finestre
 

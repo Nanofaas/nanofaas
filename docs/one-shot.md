@@ -174,3 +174,9 @@ host executable for the process gate. The harness exercises Docker CLI and
 Docker Java adapters in different nodes, with the same physical protocol.
 
 Packaged one-shot recipes select the Docker Java adapter: distroless control-plane images do not contain the Docker CLI. Supply access to the Docker daemon and a runtime host/network configuration from which published function ports are reachable; the local process harness supplies its own explicit adapter and host settings.
+
+### Automatic schedule grid
+
+The first automatic epoch claim freezes `(anchor, period)` for the lifetime of the process, including failed preparations. Later changes return HTTP 409 (`ONE_SHOT_CONFLICT`) without consuming the configuration revision. Disabling scheduling, draining ownership, or stopping and starting the lifecycle does not reset this fence. Other settings may change when their existing eligibility and timing qualification checks pass.
+
+To change the grid, disable scheduling and drain commitments and physical executions on all peers, then perform a coordinated restart with the same new anchor and period and collect 20 complete timing samples again before enabling automatic scheduling. Before the first automatic claim, grid changes remain possible. Enabling scheduling must wait for any active manual preparation and must select an epoch above the coordinator’s last prepared manual epoch; stale candidates return 409.
