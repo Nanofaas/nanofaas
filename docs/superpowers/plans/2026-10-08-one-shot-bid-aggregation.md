@@ -94,3 +94,14 @@ I test dimostrano equivalenza delle quantità assegnate, prezzi e repliche; batc
 - Suite one-shot: 64 test, 0 fallimenti, 0 saltati; `OneShotPeerIntegrationTest` incluso.
 - Analisi GitNexus strutturata completa dei due task: rischio basso, nessun flag `partial`/`truncated`.
 - I test sono caratterizzazioni del comportamento esistente, come previsto; non è stata introdotta una modifica artificiale per farli fallire.
+- Revisione finale indipendente (`gpt-6-astra`): nessun rilievo Critical o Important. Un Minor rinviato: riusare un codec per Fake invece di costruirlo per ogni osservazione. È solo overhead del test; i casi di retry e griglia completano in meno di 0.2 secondi sul sistema di verifica, rispetto al budget di 3 secondi.
+
+Decisioni dell'esecuzione native:
+
+- Usare test di caratterizzazione che possono passare subito, come prescritto dal piano approvato. Il rischio è non rilevare una regressione con aspettative deboli; quantità e allocazioni attese sono quindi fissate anche con valori concreti.
+- Il gate Docker `oneShotE2e` resta condizionale a una modifica produttiva a motore/coordinatore, che non è avvenuta. Comportamento fisico tra processi e native non è rivalidato da questo intervento.
+- Il checkout Python originale non è disponibile: il contratto ristretto è sostenuto dalle fixture fissate e dai confronti Java unitari/aggregati. Altre modalità del progetto Python restano non verificate.
+
+Verifica globale: `BUILDX_BUILDER=default ./gradlew test --continue` — BUILD SUCCESSFUL in 9m41s; 2753 test nei report Gradle, 0 fallimenti, 0 errori, 9 saltati. Il comando senza selezione esplicita del builder aveva cinque fallimenti CLI: il builder selezionato `nanolab-heap-analysis` era fermo. I soli test CLI e poi la suite globale passano con il builder `default`, già disponibile, senza modifiche al codice o alla configurazione Docker globale.
+
+La verifica globale era stata lasciata in sospeso dal revisore; è stata completata prima della chiusura. Il costo di una verifica insufficiente sarebbe stato non rilevare regressioni estranee al sottoinsieme one-shot.
