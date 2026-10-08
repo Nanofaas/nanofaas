@@ -327,6 +327,8 @@ class ExecutionLifecycleTerminalTransitionTest {
             assertThat(executionRecord.isTerminal()).isTrue();
             assertThat(executionRecord.completion().isDone()).isTrue();
             assertThat(store.getOrNull(executionId)).isNull();
+            // Expiry publishes the future before the asynchronous archive becomes visible.
+            assertThat(store.outcomeOf(executionId)).isNotNull();
         });
 
         // The real dispatch result arrives late; it must not create a second outcome or
