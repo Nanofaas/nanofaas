@@ -32,7 +32,7 @@ type InvocationResult struct {
 	Success bool       `json:"success"`
 	Output  any        `json:"output"`
 	Error   *ErrorInfo `json:"error"`
-	// Wire keys are camelCase to match platform/common's InvocationResult under default Jackson
+	// Wire keys are camelCase to match platform/libs/common's InvocationResult under default Jackson
 	// naming. A mismatch here is silent — the field just vanishes on the control plane.
 	StatusCode *int              `json:"statusCode,omitempty"`
 	Headers    map[string]string `json:"headers,omitempty"`

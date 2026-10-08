@@ -28,7 +28,7 @@ export NANOFAAS_ROOT="$(pwd)"   # nanolab commands below read nanoFaaS source fr
 (cd ../nanolab && ./nanolab.sh plan packages/nanolab/scenarios-v2/deployment-lifecycle-k8s.yaml --environment packages/nanolab/environments/local.yaml)
 
 # Build JVM OCI images on Distroless Java 25
-docker build -f platform/control-plane/Dockerfile -t nanofaas/control-plane .
+docker build -f platform/control-plane/Dockerfile -t nanofaas/control-plane platform/control-plane
 docker build -f services/java/warm-echo/Dockerfile -t nanofaas/warm-echo .
 
 # Build native OCI images on Distroless
@@ -95,7 +95,7 @@ Spring WebFlux (non-blocking). Ports: 8080 (API), 8081 (management/metrics).
 ### sdks/python/
 Python function SDK providing the FastAPI-based runtime for Python handlers.
 
-### platform/common/
+### platform/libs/common/
 Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `ExecutionStatus`, `FunctionHandler` interface.
 
 ## Request Flow
@@ -132,7 +132,7 @@ Shared contracts: `FunctionSpec`, `InvocationRequest`, `InvocationResponse`, `Ex
 - In-memory state (and in-memory queues when queue modules are enabled)
 - No authentication/authorization
 - Performance and latency prioritized over features
-- Java 25 toolchain, 4-space indentation, `com.nanofaas` package root
+- Java 25 toolchain, 4-space indentation, `it.unimib.datai.nanofaas` package root
 - Python 3.12 or newer for every Python project (SDK, tools, functions, experiments); function images use `python:3.12-alpine` in both build stages with dependencies precompiled (`uv pip install --compile-bytecode`), except a function whose dependencies ship only glibc wheels (such as `mlimage` with PyTorch), which uses `python:3.12-slim`
 
 <!-- gitnexus:start -->

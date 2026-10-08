@@ -6,7 +6,7 @@ import { createRuntime } from "../src/index.js";
 import { HandlerResponse } from "../src/response.js";
 import type { Handler } from "../src/types.js";
 
-// The frozen wire contract, shared with platform/common (Java), sdks/python and sdks/go.
+// The frozen wire contract, shared with platform/libs/common (Java), sdks/python and sdks/go.
 const MARKER_HEADER = "x-nanofaas-function-status";
 const ENCODING_HEADER = "x-nanofaas-encoding";
 const CALLBACK_KEYS = ["statusCode", "headers", "encoding"];

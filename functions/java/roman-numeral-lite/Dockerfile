@@ -11,7 +11,7 @@ WORKDIR /build
 COPY gradlew build.gradle gradle.properties ./
 COPY gradle/ gradle/
 COPY functions/java/roman-numeral-lite/settings.gradle.docker settings.gradle
-COPY platform/common/ common/
+COPY platform/libs/common/ common/
 COPY sdks/java-lite/ sdks/java-lite/
 COPY functions/java/roman-numeral-lite/ functions/java/roman-numeral-lite/
 

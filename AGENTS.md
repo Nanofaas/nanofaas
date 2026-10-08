@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-- `platform/common/` contains shared DTOs and runtime interfaces (e.g., handler contracts used by both services).
+- `platform/libs/common/` contains shared DTOs and runtime interfaces (e.g., handler contracts used by both services).
 - `platform/control-plane/` is the API gateway + scheduler + in-memory queues + dispatch logic (execution modes: `LOCAL`, `EXTERNAL`, and managed `DEPLOYMENT` via backend providers).
 - `sdks/java/` provides the reusable Java invocation runtime; `services/java/warm-echo/` is its runnable long-running example service.
 - `sdks/python/` provides the Python function SDK and FastAPI runtime.
@@ -16,7 +16,7 @@
 - `./gradlew test` — run unit/integration/E2E tests (requires container runtime).
 - `./gradlew :control-plane:bootRun` — run the control plane locally.
 - `./gradlew :services:java:warm-echo:bootRun` — run the warm-echo example service locally.
-- `docker build -f platform/control-plane/Dockerfile -t nanofaas/control-plane .` — create a JVM image on Distroless Java 25.
+- `docker build -f platform/control-plane/Dockerfile -t nanofaas/control-plane platform/control-plane` — create a JVM image on Distroless Java 25.
 - `scripts/native-java-image.sh control-plane` — create a native control-plane image on Distroless.
 - `scripts/native-build.sh` — build every Java GraalVM native binary with the configured GraalVM release.
 - `nanolab.sh run packages/nanolab/scenarios-v2/deployment-lifecycle-container.yaml` (run from a `nanolab` checkout with `NANOFAAS_ROOT` set to this repo) — run local container E2E validation.
@@ -24,7 +24,7 @@
 
 ## Coding Style & Naming Conventions
 
-- Java 25 toolchain; 4-space indentation; `com.nanofaas` package root.
+- Java 25 toolchain; 4-space indentation; `it.unimib.datai.nanofaas` package root.
 - Python 3.12 or newer for every Python project (SDK, tools, functions, experiments); function images use `python:3.12-alpine` in both build stages with dependencies precompiled (`uv pip install --compile-bytecode`), except a function whose dependencies ship only glibc wheels (such as `mlimage` with PyTorch), which uses `python:3.12-slim`.
 - Class names `PascalCase`, methods/fields `camelCase`, constants `SCREAMING_SNAKE_CASE`.
 - Configuration lives in `platform/control-plane/src/main/resources/application.yml` and `services/java/warm-echo/src/main/resources/application.yml`.

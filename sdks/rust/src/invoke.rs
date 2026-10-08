@@ -1204,7 +1204,7 @@ mod execution_tests {
         );
     }
 
-    /// The frozen wire contract shared with platform/common, sdks/python, sdks/go and
+    /// The frozen wire contract shared with platform/libs/common, sdks/python, sdks/go and
     /// sdks/javascript. Changing one side silently breaks cross-language dispatch.
     #[tokio::test]
     async fn wire_contract_header_names() {

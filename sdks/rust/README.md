@@ -52,7 +52,7 @@ async fn main() {
   handler starts.
 - Return `HandlerResponse::new(value, status).header(name, value).encoding("base64")` to choose
   the HTTP status and headers. Only the headers allowed by `ResponseHeaderPolicy` in
-  `platform/common` reach the caller.
+  `platform/libs/common` reach the caller.
 - `Context` exposes `execution_id()`, `trace_id()` and the request's `metadata()` and `headers()`.
   Every handler runs inside a `tracing` span carrying `execution_id` and `trace_id`; install any
   subscriber to see them.

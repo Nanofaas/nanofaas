@@ -23,12 +23,12 @@ plugins {
 
 rootProject.name = 'nanofaas'
 
-include('container-deployment-runtime'); project(':container-deployment-runtime').projectDir = file('platform/container-deployment-runtime')
-include('common');            project(':common').projectDir = file('platform/common')
-include('workload-metrics');  project(':workload-metrics').projectDir = file('platform/workload-metrics')
+include('container-deployment-runtime'); project(':container-deployment-runtime').projectDir = file('platform/libs/container-deployment-runtime')
+include('common');            project(':common').projectDir = file('platform/libs/common')
+include('workload-metrics');  project(':workload-metrics').projectDir = file('platform/libs/workload-metrics')
 include(':sdks:java');        project(':sdks:java').projectDir = file('sdks/java')
-include('control-plane-spi'); project(':control-plane-spi').projectDir = file('platform/control-plane-spi')
-include('execution-runtime'); project(':execution-runtime').projectDir = file('platform/execution-runtime')
+include('control-plane-spi'); project(':control-plane-spi').projectDir = file('platform/libs/control-plane-spi')
+include('execution-runtime'); project(':execution-runtime').projectDir = file('platform/libs/execution-runtime')
 include('control-plane');     project(':control-plane').projectDir = file('platform/control-plane')
 include(':services:java:warm-echo'); project(':services:java:warm-echo').projectDir = file('services/java/warm-echo')
 include('nanofaas-cli');      project(':nanofaas-cli').projectDir = file('clients/cli')
@@ -45,6 +45,6 @@ include 'functions:java:qr-code'
 include 'functions:java:handler-envelope'
 include 'functions:java:binary-envelope'
 
-include('p2p-api'); project(':p2p-api').projectDir = file('platform/p2p-api')
+include('p2p-api'); project(':p2p-api').projectDir = file('platform/libs/p2p-api')
 
-include('forecasting-api'); project(':forecasting-api').projectDir = file('platform/forecasting-api')
+include('forecasting-api'); project(':forecasting-api').projectDir = file('platform/libs/forecasting-api')

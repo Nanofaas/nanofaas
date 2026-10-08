@@ -256,3 +256,10 @@ def test_native_builder_decodes_the_aot_configuration_byte_for_byte(tmp_path):
     target.unlink()
     assert run({}) == ""
     assert not target.exists()
+
+
+def test_java_lite_images_receive_common_sources_from_the_library_directory():
+    for name in ("word-stats-lite", "json-transform-lite", "roman-numeral-lite"):
+        text = (REPO_ROOT / "functions/java" / name / "Dockerfile").read_text()
+        assert "COPY platform/libs/common/ common/" in text
+        assert "COPY platform/common/ common/" not in text

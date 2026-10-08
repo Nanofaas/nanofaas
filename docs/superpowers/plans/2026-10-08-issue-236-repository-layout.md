@@ -60,7 +60,7 @@ Before modifying functions/classes, run upstream GitNexus impact in the owning r
 - Produces: private `_native_java_dockerfile(repo_root: Path) -> Path`; an appended `NativeBuild.dockerfile: Path` field defaulting to the existing legacy `NATIVE_JAVA_DOCKERFILE` constant for direct constructors.
 - `ImageCell.dockerfile` and `_validate_targets` consume each target's immutable `native_build.dockerfile`; they no longer select a process-global path independently.
 
-- [ ] **Step 1: Add layout-selection and bake-output regressions.**
+- [x] **Step 1: Add layout-selection and bake-output regressions.**
 
 Create the listed relative paths as empty files under `tmp_path` and assert:
 
@@ -81,20 +81,20 @@ def test_native_dockerfile_layout_selection(tmp_path, present, expected):
 
 Also assert: neither file -> `FileNotFoundError` naming both supported locations; inspecting two roots in succession preserves the first plan's path; `render_bake` uses the selected path for every native cell with a root context, while JVM cells remain unchanged. A directory at the new filename is not a valid Dockerfile.
 
-- [ ] **Step 2: Run the focused tests and verify failure before implementation.**
+- [x] **Step 2: Run the focused tests and verify failure before implementation.**
 
 Run from NanoLab: `uv run --python 3.12 --project packages/nanolab --group dev pytest packages/nanolab/tests/images/test_plan.py packages/nanolab/tests/images/test_bake.py -q`
 Expected: missing resolver/field or legacy-path mismatch. Respect the repository's configured source-contract fixture; do not bypass its allowlist.
 
-- [ ] **Step 3: Implement per-plan native Dockerfile selection.**
+- [x] **Step 3: Implement per-plan native Dockerfile selection.**
 
 Select the first existing regular file from new then legacy paths; fail if neither exists. After `_all_targets` builds its target list, use `dataclasses.replace` to attach the selected path to each native build description. Preserve all task names, binaries, Gradle arguments and default constructors. Update native validation and `ImageCell.dockerfile` to use that stored field. Do not introduce a general layout registry or mutate `NATIVE_JAVA_DOCKERFILE` globally.
 
-- [ ] **Step 4: Exercise both recipe-observation fixture layouts.**
+- [x] **Step 4: Exercise both recipe-observation fixture layouts.**
 
 Add `layout="legacy"` as a keyword-only parameter to the existing `publication_inputs(...)` fixture helper. For `layout="current"`, create `tools/gradle-plugin/build.gradle` and `tools/gradle-plugin/dockerfiles/Dockerfile.jvm`; preserve legacy as the default for old-revision coverage. Make the embedded `GRADLE_STUB` derive its plugin cache/template locations from the fixture's existing directory. Parameterize `test_one_snapshot_one_publication_all_receipts` for both values. Assert publication receipts still bind to the same assembled inputs, and build-cache files remain excluded from the owned source snapshot. Do not change actual publication policy.
 
-- [ ] **Step 5: Verify and commit NanoLab compatibility.**
+- [x] **Step 5: Verify and commit NanoLab compatibility.**
 
 Run the four listed test files from NanoLab with its documented pytest environment. Expected: PASS for legacy and current layouts. Record the resulting NanoLab commit; integrate this backward-compatible change before shared workflows consume the relocated NanoFaaS tree. Commit message: `Support role-oriented NanoFaaS build paths`.
 
@@ -113,7 +113,7 @@ Run the four listed test files from NanoLab with its documented pytest environme
 - Produces unchanged `:common`, `:control-plane-spi`, `:execution-runtime`, `:container-deployment-runtime`, `:workload-metrics`, `:p2p-api`, `:forecasting-api`, now rooted under `platform/libs/`.
 - Java-lite image builders continue receiving common sources at their existing in-image destination `common/`.
 
-- [ ] **Step 1: Capture the behavior baseline and add the failing COPY regression.**
+- [x] **Step 1: Capture the behavior baseline and add the failing COPY regression.**
 
 Save outputs of `./gradlew projects`, selected-module reporting for default/none/async/sync/all, and compile/runtime dependency reports for core, sync and both container providers outside the source tree. Record the base revision. Add assertions in the existing Java image test:
 
@@ -124,24 +124,24 @@ for name in ("word-stats-lite", "json-transform-lite", "roman-numeral-lite"):
     assert "COPY platform/common/ common/" not in text
 ```
 
-- [ ] **Step 2: Verify the regression is red on the old layout.**
+- [x] **Step 2: Verify the regression is red on the old layout.**
 
 Run: `uv run --python 3.12 --with pytest --with pyyaml pytest scripts/tests/test_java_container_images.py -q`
 Expected: the new COPY assertions fail; retain all previous image checks.
 
-- [ ] **Step 3: Move the seven libraries and update active references.**
+- [x] **Step 3: Move the seven libraries and update active references.**
 
 Use `git mv` for each spec mapping; adjust only the corresponding `projectDir` paths, source COPY inputs, and actual relative filesystem inputs of moved build files. Preserve `project(':...')` dependencies, source packages and artifacts. Re-run a targeted literal search to catch active references in scripts/build files. Do not rewrite comments that explicitly identify historical revisions in SDK sources, raw evidence or old plans.
 
 Write the current architecture note using the spec's naming matrix. Explain `api` versus `spi` versus `runtime`, the role of `common`, and the distinction between optional module IDs and runtime backend IDs. Record why `common`, `workload-metrics` and provider IDs are retained rather than mechanically renamed. Update current contributor/documentation paths; leave historical sections intact.
 
-- [ ] **Step 4: Verify identity, architecture and the three image consumers.**
+- [x] **Step 4: Verify identity, architecture and the three image consumers.**
 
 Run the same project/module/dependency reports and compare semantic project IDs, selected modules and dependency coordinates with the baseline; paths alone may differ. Run the first plan's focused all/none/async/sync architecture matrix and the existing `:execution-runtime:verifyNoForbiddenDependencies` task. Run `scripts/tests/test_java_container_images.py` again: PASS.
 
 Build the three Java-lite Dockerfiles using the repository-root context and local temporary tags, using the existing Docker build environment. Expected: each COPY succeeds and each image contains the same runtime entrypoint. Native image work requires the existing GraalVM prerequisites; record real build results, not only Dockerfile string assertions.
 
-- [ ] **Step 5: Verify historical preservation, analyze changes and commit.**
+- [x] **Step 5: Verify historical preservation, analyze changes and commit.**
 
 Compare `docs/experiments`, archived plans/specs, `docs/testing/evidence` and existing raw untracked files against the starting state: no content changes. Review moves with `git diff --summary`. Commit only this task's moves and active references. Commit message: `Group shared libraries under platform libs`.
 

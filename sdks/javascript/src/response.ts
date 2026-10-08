@@ -1,7 +1,7 @@
 import type { JsonValue } from "./types.js";
 
 /**
- * Mirrors ResponseHeaderPolicy.ALLOWED_RESPONSE_HEADERS in platform/common. Keep in sync.
+ * Mirrors ResponseHeaderPolicy.ALLOWED_RESPONSE_HEADERS in platform/libs/common. Keep in sync.
  */
 const ALLOWED_RESPONSE_HEADERS = new Set([
     "content-type",

@@ -22,7 +22,7 @@ COPY gradle/ gradle/
 COPY functions/java/word-stats-lite/settings.gradle.docker settings.gradle
 
 # Copy only required modules
-COPY platform/common/ common/
+COPY platform/libs/common/ common/
 COPY sdks/java-lite/ sdks/java-lite/
 COPY functions/java/word-stats-lite/ functions/java/word-stats-lite/
 

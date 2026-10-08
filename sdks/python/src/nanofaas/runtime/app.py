@@ -696,7 +696,7 @@ _runtime_work = RuntimeWorkManager(
     MAX_PENDING_CALLBACK_BYTES,
 )
 
-# Mirror of ResponseHeaderPolicy.ALLOWED_RESPONSE_HEADERS (platform/common). Keep in sync.
+# Mirror of ResponseHeaderPolicy.ALLOWED_RESPONSE_HEADERS (platform/libs/common). Keep in sync.
 _ALLOWED_RESPONSE_HEADERS = {
     "content-type", "location", "cache-control", "etag",
     "content-disposition", "content-language", "retry-after", "vary",
@@ -710,7 +710,7 @@ def _filter_response_headers(raw: dict[str, str] | None, execution_id: str | Non
     case-insensitive, so emitting both ``Content-Type`` and ``content-type`` would put two colliding
     entries on the response. The first occurrence wins and keeps its original casing, which is part
     of the public ``InvocationResponse.headers`` contract. Mirrors
-    ``ResponseHeaderPolicy.filterAllowedHeaders`` in platform/common — keep the two in sync.
+    ``ResponseHeaderPolicy.filterAllowedHeaders`` in platform/libs/common — keep the two in sync.
     """
     if not raw:
         return {}

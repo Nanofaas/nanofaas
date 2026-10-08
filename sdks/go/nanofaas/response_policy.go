@@ -2,7 +2,7 @@ package nanofaas
 
 import "strings"
 
-// allowedResponseHeaders mirrors ResponseHeaderPolicy.ALLOWED_RESPONSE_HEADERS in platform/common.
+// allowedResponseHeaders mirrors ResponseHeaderPolicy.ALLOWED_RESPONSE_HEADERS in platform/libs/common.
 // Keep the two in sync.
 var allowedResponseHeaders = map[string]struct{}{
 	"content-type":        {},

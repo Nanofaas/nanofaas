@@ -5,11 +5,11 @@ use serde_json::Value;
 use serde_json::value::RawValue;
 
 /// Marker telling the control plane that the handler chose the status and headers. These names
-/// are the frozen wire contract shared with platform/common and every other SDK.
+/// are the frozen wire contract shared with platform/libs/common and every other SDK.
 pub(crate) const FUNCTION_STATUS_HEADER: &str = "x-nanofaas-function-status";
 pub(crate) const ENCODING_HEADER: &str = "x-nanofaas-encoding";
 
-/// Mirrors ResponseHeaderPolicy.ALLOWED_RESPONSE_HEADERS in platform/common. Keep the two in sync.
+/// Mirrors ResponseHeaderPolicy.ALLOWED_RESPONSE_HEADERS in platform/libs/common. Keep the two in sync.
 const ALLOWED_RESPONSE_HEADERS: [&str; 8] = [
     "content-type",
     "location",
@@ -125,7 +125,7 @@ pub(crate) struct ErrorInfo {
     pub message: String,
 }
 
-/// The callback body. Keys are camelCase to match platform/common's InvocationResult: a mismatch
+/// The callback body. Keys are camelCase to match platform/libs/common's InvocationResult: a mismatch
 /// is silent, the field just vanishes on the control plane. `output` and `error` are always
 /// present; the envelope fields only when set.
 #[derive(Debug, Serialize)]

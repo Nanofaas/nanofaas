@@ -62,7 +62,7 @@ the immediate Gradle projects under `platform/modules`, reads the required
 ### What a module compiles against
 
 Optional modules compile against `:control-plane-spi` — a mandatory contract library at
-`platform/control-plane-spi`, not an optional module, and therefore never selected or
+`platform/libs/control-plane-spi`, not an optional module, and therefore never selected or
 deselected. It holds the dispatch, admission, capacity, lifecycle-event, observation,
 provider and replica contracts, and nothing else: no store, no record, no mutable capacity,
 no registry, no controller, no executor and no autoconfiguration, all of which stay in the

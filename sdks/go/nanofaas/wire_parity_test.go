@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// These constants are the frozen wire contract, shared with platform/common (Java),
+// These constants are the frozen wire contract, shared with platform/libs/common (Java),
 // sdks/python, and sdks/javascript. Changing one without the others silently breaks
 // cross-language dispatch.
 func TestWireContractConstants(t *testing.T) {

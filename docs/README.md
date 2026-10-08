@@ -53,3 +53,5 @@
 `plans/` and `superpowers/plans/` hold dated design and implementation plans.
 They are the design record of past work — do not edit them for freshness; if a
 plan contradicts this documentation, this documentation wins.
+
+- [Module boundaries and repository layout](architecture/module-boundaries-and-layout.md) — module roles, naming and intentional dependency boundaries.
