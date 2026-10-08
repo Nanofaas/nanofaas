@@ -22,9 +22,9 @@ NANOFAAS_HANDLER_TIMEOUT
 NANOFAAS_MAX_CONCURRENT_HANDLERS
     Positive bound on admitted physical handler executions. Defaults to 32.
 NANOFAAS_CALLBACK_WORKERS
-    Positive number of runtime-owned blocking callback workers. Defaults to 2.
+    Positive number of concurrent asynchronous callback attempts. Defaults to 2.
 NANOFAAS_MAX_PENDING_CALLBACKS
-    Positive bound on callback work admitted before executor submission.
+    Positive bound on callback work admitted before transport execution.
     Defaults to 128.
 NANOFAAS_MAX_INPUT_BYTES
     Positive byte limit for an invocation request body. Defaults to 1 MiB.
@@ -67,6 +67,7 @@ import logging
 import math
 import threading
 import time
+from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -76,7 +77,7 @@ from fastapi.responses import Response
 from nanofaas.sdk import context, decorator, logging as sdk_logging
 from nanofaas.sdk.response import HandlerResponse
 from typing import Annotated
-import requests
+from nanofaas.runtime import callback_transport
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
     REGISTRY,
@@ -259,7 +260,7 @@ RUNTIME_PENDING_CALLBACK_BYTES = _collector(
 RUNTIME_ACTIVE_CALLBACK_WORKERS = _collector(
     Gauge,
     "runtime_active_callback_workers",
-    "Runtime-owned callback workers currently executing blocking HTTP calls",
+    "Callback worker slots currently occupied by asynchronous HTTP attempts",
     ["function"],
 )
 RUNTIME_CALLBACK_DELIVERY_FAILURES_TOTAL = _collector(
@@ -330,6 +331,13 @@ class RuntimeShutdownReport:
     pending_callbacks: int
     pending_callback_bytes: int
     active_callback_workers: int
+
+
+@dataclass(eq=False)
+class _CallbackWorkerWaiter:
+    loop: asyncio.AbstractEventLoop
+    ready: asyncio.Future
+    granted: bool = False
 
 
 class CallbackReservation:
@@ -410,14 +418,12 @@ class RuntimeWorkManager:
             thread_name_prefix="nanofaas-handler",
         )
         self._callback_submit_slots = threading.BoundedSemaphore(max_pending_callbacks)
-        self._callback_executor = ThreadPoolExecutor(
-            max_workers=callback_workers,
-            thread_name_prefix="nanofaas-callback",
-        )
+        self._callback_worker_limit = callback_workers
+        self._callback_worker_waiters: deque[_CallbackWorkerWaiter] = deque()
         self._lock = threading.Condition()
         self._accepting = True
         self._handler_work: set[Future | asyncio.Task] = set()
-        self._callback_work: set[Future] = set()
+        self._callback_work: set[asyncio.Task] = set()
         self._callback_tasks: set[asyncio.Task] = set()
         self._pending_callbacks = 0
         self._pending_callback_bytes = 0
@@ -533,6 +539,8 @@ class RuntimeWorkManager:
         if not self._callback_submit_slots.acquire(blocking=False):
             raise HandlerAdmissionError(CALLBACK_SATURATED)
         held_reservation = None
+        worker = None
+        work = asyncio.current_task()
         try:
             with self._lock:
                 if not self._accepting and callback_reservation is None:
@@ -540,17 +548,62 @@ class RuntimeWorkManager:
                 if callback_reservation is not None:
                     self._hold_callback_physical(callback_reservation)
                     held_reservation = callback_reservation
-                work = self._callback_executor.submit(self._run_callback, callback, args, kwargs)
                 self._callback_work.add(work)
-        except BaseException:
+            worker = await self._acquire_callback_worker()
+            return await callback(*args, **kwargs)
+        finally:
+            if worker is not None:
+                self._release_callback_worker(worker)
+            with self._lock:
+                self._callback_work.discard(work)
+                self._callback_submit_slots.release()
+                self._notify_drain_waiters_locked()
             if held_reservation is not None:
-                held_reservation._physical_holds -= 1
-            self._callback_submit_slots.release()
+                self._release_callback_physical(held_reservation)
+
+    async def _acquire_callback_worker(self) -> _CallbackWorkerWaiter:
+        loop = asyncio.get_running_loop()
+        waiter = _CallbackWorkerWaiter(loop, loop.create_future())
+        with self._lock:
+            self._callback_worker_waiters.append(waiter)
+            self._grant_callback_workers_locked()
+        try:
+            await waiter.ready
+            return waiter
+        except BaseException:
+            with self._lock:
+                if waiter.granted:
+                    self._release_callback_worker(waiter)
+                elif waiter in self._callback_worker_waiters:
+                    self._callback_worker_waiters.remove(waiter)
             raise
-        work.add_done_callback(
-            lambda completed: self._callback_completed(completed, held_reservation)
-        )
-        return await _await_concurrent_future(work)
+
+    @staticmethod
+    def _wake_callback_worker(waiter: _CallbackWorkerWaiter) -> None:
+        if not waiter.ready.done():
+            waiter.ready.set_result(None)
+
+    def _grant_callback_workers_locked(self) -> None:
+        while self._callback_worker_waiters and self._active_callback_workers < self._callback_worker_limit:
+            waiter = self._callback_worker_waiters.popleft()
+            if waiter.ready.cancelled() or waiter.loop.is_closed():
+                continue
+            waiter.granted = True
+            try:
+                waiter.loop.call_soon_threadsafe(self._wake_callback_worker, waiter)
+            except RuntimeError:
+                waiter.granted = False
+                continue
+            self._active_callback_workers += 1
+            RUNTIME_ACTIVE_CALLBACK_WORKERS.labels(function=FUNCTION_NAME).inc()
+
+    def _release_callback_worker(self, waiter: _CallbackWorkerWaiter) -> None:
+        with self._lock:
+            waiter.granted = False
+            self._active_callback_workers -= 1
+            RUNTIME_ACTIVE_CALLBACK_WORKERS.labels(function=FUNCTION_NAME).dec()
+            self._grant_callback_workers_locked()
+            self._notify_drain_waiters_locked()
 
     def start_reserved_callback_task(
         self, reservation: CallbackReservation, callback, *args
@@ -606,9 +659,8 @@ class RuntimeWorkManager:
         finally:
             with self._lock:
                 self._drain_waiters.discard((loop, drain_event))
-                callback_tasks = list(self._callback_tasks)
+                callback_tasks = list(self._callback_tasks | self._callback_work)
             _cancel_tasks(task for task in callback_tasks if not task.get_loop().is_closed())
-            self._callback_executor.shutdown(wait=False, cancel_futures=True)
         snapshot = self.snapshot()
         return RuntimeShutdownReport(
             drained=(
@@ -649,30 +701,6 @@ class RuntimeWorkManager:
             self._handler_slots.release()
             self._notify_drain_waiters_locked()
         RUNTIME_ACTIVE_HANDLERS.labels(function=FUNCTION_NAME).dec()
-
-    def _run_callback(self, callback, args, kwargs):
-        with self._lock:
-            self._active_callback_workers += 1
-        RUNTIME_ACTIVE_CALLBACK_WORKERS.labels(function=FUNCTION_NAME).inc()
-        try:
-            return callback(*args, **kwargs)
-        finally:
-            with self._lock:
-                self._active_callback_workers -= 1
-                self._notify_drain_waiters_locked()
-            RUNTIME_ACTIVE_CALLBACK_WORKERS.labels(function=FUNCTION_NAME).dec()
-
-    def _callback_completed(
-        self, work, reservation: CallbackReservation | None = None
-    ) -> None:
-        with self._lock:
-            if work not in self._callback_work:
-                return
-            self._callback_work.remove(work)
-            self._callback_submit_slots.release()
-            self._notify_drain_waiters_locked()
-        if reservation is not None:
-            self._release_callback_physical(reservation)
 
     def _callback_task_completed(self, task, reservation: CallbackReservation) -> None:
         with self._lock:
@@ -840,8 +868,8 @@ async def send_callback(
 
     Performs the configured number of HTTP POST attempts (three by default)
     with finite per-attempt timeout and bounded back-off. The HTTP call is
-    offloaded to the runtime-owned callback executor to avoid blocking the
-    event loop or consuming handler capacity.
+    asynchronous transport uses bounded callback worker slots independently
+    of handler capacity; its deadline includes waiting for a worker.
 
     :param callback_url: Base URL of the control-plane; trailing slash is
         stripped automatically.
@@ -907,22 +935,20 @@ async def _post_callback_with_retries(
     delays = [0.1, 0.5, 2.0]
     for attempt in range(CALLBACK_MAX_ATTEMPTS):
         try:
-            resp = await _runtime_work.run_callback_call(
-                requests.post,
-                url,
-                data=serialized_result,
-                headers=headers,
-                timeout=CALLBACK_ATTEMPT_TIMEOUT_SECONDS,
-                callback_reservation=reservation,
-            )
-            if resp.status_code < 400:
+            async with asyncio.timeout(CALLBACK_ATTEMPT_TIMEOUT_SECONDS):
+                status = await _runtime_work.run_callback_call(
+                    callback_transport.post_callback, url, body=serialized_result, headers=headers,
+                    timeout_seconds=CALLBACK_ATTEMPT_TIMEOUT_SECONDS,
+                    callback_reservation=reservation,
+                )
+            if status < 400:
                 logger.info("Callback sent successfully")
                 return True
-            if 400 <= resp.status_code < 500 and resp.status_code not in (408, 429):
-                logger.warning(f"Permanent callback failure with status {resp.status_code}")
+            if 400 <= status < 500 and status not in (408, 429):
+                logger.warning(f"Permanent callback failure with status {status}")
                 return True
             logger.warning(
-                f"Callback failed with status {resp.status_code} (attempt {attempt + 1})"
+                f"Callback failed with status {status} (attempt {attempt + 1})"
             )
         except Exception as e:
             logger.warning(f"Callback error: {e} (attempt {attempt + 1})")

@@ -146,7 +146,7 @@ class ScenarioHarness:
         self.handler_inputs = {}
         self.output_messages = {}
         self.physical_payloads = {}
-        self.callback_filler_release = threading.Event()
+        self.callback_filler_release = asyncio.Event()
         self.stop_task = None
         self.stop_report = None
         self.stop_count = 0
@@ -256,14 +256,16 @@ class ScenarioHarness:
             state["terminal"] = "succeeded"
             return {"result": "ok"}
 
-    def callback_post(self, url, *, data, headers, timeout):
+    async def callback_post(self, url, *, body, headers, timeout_seconds):
+        data = body
+        timeout = timeout_seconds
         if url.endswith("/capacity-fixture:complete"):
             with self.resource_lock:
                 self.physical_payloads[url] = data
             try:
                 self._capture_resources()
-                assert self.callback_filler_release.wait(self.deadline)
-                return SimpleNamespace(status_code=204)
+                await asyncio.wait_for(self.callback_filler_release.wait(), self.deadline)
+                return 204
             finally:
                 with self.resource_lock:
                     self.physical_payloads.pop(url)
@@ -291,7 +293,7 @@ class ScenarioHarness:
         self.observations.add("callback-attempt")
         if call["status"] < 400:
             self.observations.add("callback-delivery")
-        return SimpleNamespace(status_code=call["status"])
+        return call["status"]
 
     def _calls_for(self, request_id: str) -> list[dict]:
         attempt = str(self.requests[request_id]["metadata"]["dispatchAttempt"])
@@ -724,7 +726,7 @@ class ScenarioHarness:
         self.runtime.logger.addHandler(self.log_capture)
         try:
             with patch.object(
-                self.runtime.requests, "post", side_effect=self.callback_post
+                self.runtime.callback_transport, "post_callback", side_effect=self.callback_post
             ), patch.object(
                 self.runtime.asyncio, "sleep", side_effect=deterministic_sleep
             ), patch.object(

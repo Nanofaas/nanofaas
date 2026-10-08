@@ -61,3 +61,8 @@ Known differences are explicit fixture data, validated and applied by the named 
 Java-lite reads and parses on a bounded virtual reader thread. At the body deadline it flushes the canonical 408 response with `Connection: close`, then interrupts the reader to close the blocked JDK SocketChannel. The admission reservation remains held until that physical reader returns. Real TCP tests cover fixed-length and chunked uploads with empty, partial and complete JSON in unfinished HTTP bodies, repeated timeouts, closed connections and a healthy subsequent invocation. The shared failure adapter now executes the real TCP ingress case.
 
 Run schema/mutation tests with `python -m pytest sdks/runtime-contract`; runtime tests run with each SDK's normal test command. Java and Java-lite use SharedFailureWireCorpusTest; Python test_failure_wire_corpus.py; Go TestSharedFailureWireCorpus; JavaScript runtime-failure-corpus.test.ts; Rust failure_corpus_tests. Resources without a corresponding SDK aggregate counter are checked through their owner (handler/callback reservations or closed ingress stream), not invented gauges.
+
+Python callback attempts use asynchronous HTTPX streaming. The attempt deadline
+includes callback-worker admission and the entire redirect chain. Response bodies
+are discarded by closing the response; cancellation closes the transport before
+releasing reserved capacity. Handler threads remain separately bounded.

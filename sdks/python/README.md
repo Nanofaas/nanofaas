@@ -42,7 +42,7 @@ def handle(input_data):
 | `NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES` | Single serialized callback cap (default `2097152`) |
 | `NANOFAAS_MAX_PENDING_CALLBACK_BYTES` | Aggregate pending callback-byte cap (default `16777216`) |
 | `NANOFAAS_BODY_READ_TIMEOUT` | Request-body read timeout in milliseconds (default `5000`) |
-| `NANOFAAS_CALLBACK_ATTEMPT_TIMEOUT` | Callback HTTP attempt timeout in milliseconds (default `5000`) |
+| `NANOFAAS_CALLBACK_ATTEMPT_TIMEOUT` | Total callback attempt timeout, including worker wait, in milliseconds (default `5000`) |
 | `NANOFAAS_CALLBACK_MAX_ATTEMPTS` | Callback delivery attempt count (default `3`) |
 | `NANOFAAS_SHUTDOWN_TIMEOUT` | Physical drain deadline in milliseconds (default `5000`) |
 
@@ -52,8 +52,18 @@ Final callback-delivery exhaustion increments
 `runtime_callback_delivery_failures_total{function=...}`; its only label is the
 process-local function name, keeping callback failure cardinality bounded.
 
-The callback transport uses requests to preserve POST redirect behavior; replacing it
-requires transport parity tests, including HTTP 307 and 308.
+Callback delivery uses HTTPX asynchronously with at most two concurrent attempts by
+default. The total attempt deadline includes waiting for a worker, connect, upload,
+response headers and all redirects. Response bodies are not consumed; connections
+are closed before releasing callback count and byte reservations. Cleanup is bounded
+to at most 100 ms and preserves the original failure. Synchronous handlers retain
+their separate executor.
+
+Redirects 301/302/303 change POST to GET; 307/308 preserve POST and its payload.
+At most 30 redirects share the same attempt budget. Status 204 succeeds; permanent
+4xx responses end delivery, except 408 and 429, which retry like 5xx and transport
+failures. Three attempts are made by default, retaining execution, dispatch and trace
+identity across retries.
 
 ### 3. Local Development
 

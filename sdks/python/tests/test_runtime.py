@@ -4,10 +4,10 @@ import asyncio
 import importlib
 import json
 import threading
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
 import pytest
-import requests
+import httpx
 from sdks.python.tests.asgi_test_client import ASGITestClient
 
 # Add src to path
@@ -112,9 +112,9 @@ def test_invoke_missing_execution_id(client):
     assert response.status_code == 400
     assert "Execution ID required" in response.json()["detail"]
 
-@patch("requests.post")
+@patch("nanofaas.runtime.callback_transport.post_callback")
 def test_callback_triggered(mock_post, client):
-    mock_post.return_value.status_code = 204
+    mock_post.return_value = 204
     @decorator.nanofaas_function
     def mock_handler(input_data):
         return "done"
@@ -132,21 +132,21 @@ def test_callback_triggered(mock_post, client):
     mock_post.assert_called()
     call_args = mock_post.call_args
     assert "http://control-plane/callbacks/exec-cb:complete" in call_args[0][0]
-    callback_body = json.loads(call_args[1]["data"])
+    callback_body = json.loads(call_args[1]["body"])
     assert callback_body["success"] is True
     assert callback_body["output"] == "done"
 
 @patch("nanofaas.runtime.app.asyncio.to_thread")
-@patch("requests.post")
+@patch("nanofaas.runtime.callback_transport.post_callback")
 def test_callback_uses_asyncio_to_thread(mock_post, mock_to_thread):
     """Legacy regression: callbacks now bypass asyncio's shared default executor."""
     callback_threads = []
     callback_finished = threading.Event()
 
-    def capture_callback_thread(*_args, **_kwargs):
+    async def capture_callback_thread(*_args, **_kwargs):
         callback_threads.append(threading.current_thread().name)
         callback_finished.set()
-        return MagicMock(status_code=200)
+        return 200
 
     mock_post.side_effect = capture_callback_thread
 
@@ -171,7 +171,7 @@ def test_callback_uses_asyncio_to_thread(mock_post, mock_to_thread):
     assert callback_finished.wait(0), "callback worker did not complete"
     mock_to_thread.assert_not_called()
     assert callback_threads
-    assert callback_threads[0].startswith("nanofaas-callback")
+    assert callback_threads[0] == threading.current_thread().name
 
 def test_cold_start_counted_exactly_once_under_concurrency(client, monkeypatch):
     """Only the very first request must be flagged as a cold start."""
@@ -249,9 +249,9 @@ def test_handler_timeout_returns_504(client, monkeypatch):
     assert "retry-after" not in response.headers
 
 
-@patch("requests.post")
+@patch("nanofaas.runtime.callback_transport.post_callback")
 def test_trace_environment_fallback_and_dispatch_attempt_are_forwarded(mock_post, client, monkeypatch):
-    mock_post.return_value.status_code = 204
+    mock_post.return_value = 204
     monkeypatch.setattr(_app, "DEFAULT_TRACE_ID", "trace-env", raising=False)
 
     @decorator.nanofaas_function
@@ -275,21 +275,21 @@ def test_trace_environment_fallback_and_dispatch_attempt_are_forwarded(mock_post
 
 
 def test_callback_retries_retryable_status_but_not_permanent_4xx():
-    retryable = MagicMock(side_effect=[
-        MagicMock(status_code=429),
-        MagicMock(status_code=204),
+    retryable = AsyncMock(side_effect=[
+        429,
+        204,
     ])
-    with patch("requests.post", retryable):
+    with patch("nanofaas.runtime.callback_transport.post_callback", retryable):
         asyncio.run(_app.send_callback("http://cp/callbacks", "exec-retry", None, {}))
     assert retryable.call_count == 2
 
-    permanent = MagicMock(return_value=MagicMock(status_code=400))
-    with patch("requests.post", permanent):
+    permanent = AsyncMock(return_value=400)
+    with patch("nanofaas.runtime.callback_transport.post_callback", permanent):
         asyncio.run(_app.send_callback("http://cp/callbacks", "exec-400", None, {}))
     assert permanent.call_count == 1
 
 
-@patch("requests.post")
+@patch("nanofaas.runtime.callback_transport.post_callback")
 def test_callback_submission_is_bounded(mock_post, client, monkeypatch):
     reservations = [
         _app._runtime_work.reserve_callback(_app.MAX_CALLBACK_BYTES)
@@ -500,13 +500,13 @@ def test_invoke_handler_cannot_spoof_encoding_header_through_its_own_headers_map
     assert "x-nanofaas-encoding" not in response.headers
 
 
-@patch("requests.post")
+@patch("nanofaas.runtime.callback_transport.post_callback")
 def test_invoke_envelope_callback_uses_camelcase_wire_keys(mock_post, client):
     callback_finished = threading.Event()
 
-    def successful_post(*_args, **_kwargs):
+    async def successful_post(*_args, **_kwargs):
         callback_finished.set()
-        return MagicMock(status_code=204)
+        return 204
 
     mock_post.side_effect = successful_post
 
@@ -521,7 +521,7 @@ def test_invoke_envelope_callback_uses_camelcase_wire_keys(mock_post, client):
     )
     assert response.status_code == 201
     assert callback_finished.wait(0.2), "callback worker did not complete"
-    callback_body = json.loads(mock_post.call_args.kwargs["data"])
+    callback_body = json.loads(mock_post.call_args.kwargs["body"])
     assert callback_body["statusCode"] == 201
     assert callback_body["headers"] == {"Content-Type": "application/json"}
     assert callback_body["encoding"] == "base64"
@@ -902,9 +902,9 @@ def test_callback_worker_progresses_while_handler_capacity_is_saturated(monkeypa
         handler_started.set()
         assert release_handler.wait(1.0), "test handler release was not signalled"
 
-    def callback_call():
+    async def callback_call():
         callback_threads.append(threading.current_thread().name)
-        return MagicMock(status_code=204)
+        return 204
 
     async def exercise():
         execution = runtime._runtime_work.start_handler(blocked_handler, None)
@@ -913,8 +913,8 @@ def test_callback_worker_progresses_while_handler_capacity_is_saturated(monkeypa
             runtime._runtime_work.run_callback_call(callback_call),
             timeout=0.2,
         )
-        assert response.status_code == 204
-        assert callback_threads[0].startswith("nanofaas-callback")
+        assert response == 204
+        assert callback_threads[0] == threading.current_thread().name
         assert runtime._runtime_work.snapshot().active_handlers == 1
 
         release_handler.set()
@@ -949,7 +949,7 @@ def test_callback_admission_uses_configured_limit_before_background_submission(m
         )
 
     try:
-        with patch("requests.post", return_value=MagicMock(status_code=204)):
+        with patch("nanofaas.runtime.callback_transport.post_callback", return_value=204):
             asyncio.run(exercise())
         assert runtime._runtime_work.snapshot().pending_callbacks == 0
     finally:
@@ -964,69 +964,48 @@ def test_simultaneous_callbacks_use_owned_workers_and_health_keeps_progressing(m
         NANOFAAS_MAX_PENDING_CALLBACKS=2,
         NANOFAAS_CALLBACK_WORKERS=2,
     )
-    callbacks_started = threading.Event()
-    release_callbacks = threading.Event()
-    callback_threads = []
-    lock = threading.Lock()
+    async def exercise():
+        callbacks_started = asyncio.Event()
+        release_callbacks = asyncio.Event()
+        started = 0
 
-    def blocking_post(*_args, **_kwargs):
-        with lock:
-            callback_threads.append(threading.current_thread().name)
-            if len(callback_threads) == 2:
+        async def blocking_post(*_args, **_kwargs):
+            nonlocal started
+            started += 1
+            if started == 2:
                 callbacks_started.set()
-        assert release_callbacks.wait(1.0), "test callback release was not signalled"
-        return MagicMock(status_code=204)
+            try:
+                await asyncio.Event().wait()
+            finally:
+                await release_callbacks.wait()
+            return 204
 
-    async def exercise_callbacks():
-        await asyncio.wait_for(
-            asyncio.gather(
-                *(
-                    runtime.send_callback(
-                        "http://callback.invalid", f"callback-worker-{index}", None, {}
-                    )
-                    for index in range(2)
-                )
-            ),
-            timeout=1.5,
-        )
-
-    callback_runner_errors = []
-
-    def run_callbacks():
-        try:
-            asyncio.run(exercise_callbacks())
-        except BaseException as error:
-            callback_runner_errors.append(error)
+        with patch("nanofaas.runtime.callback_transport.post_callback", side_effect=blocking_post):
+            callbacks = [asyncio.create_task(runtime.send_callback(
+                "http://callback.invalid", f"callback-worker-{index}", None, {}
+            )) for index in range(2)]
+            try:
+                await asyncio.wait_for(callbacks_started.wait(), 0.5)
+                assert runtime.health() == {"status": "ok"}
+                snapshot = runtime._runtime_work.snapshot()
+                assert snapshot.active_callback_workers == 2
+                assert snapshot.pending_callbacks == 2
+                assert snapshot.pending_callback_bytes > 0
+                report = await runtime._runtime_work.shutdown(0.02)
+                assert report.drained is False
+                assert report.active_callback_workers == 2
+            finally:
+                release_callbacks.set()
+                await asyncio.gather(*callbacks, return_exceptions=True)
+            snapshot = runtime._runtime_work.snapshot()
+            assert snapshot.active_callback_workers == 0
+            assert snapshot.pending_callbacks == 0
+            assert snapshot.pending_callback_bytes == 0
+            assert (await runtime._runtime_work.shutdown(0.5)).drained is True
 
     try:
-        with patch("requests.post", side_effect=blocking_post):
-            callback_runner = threading.Thread(target=run_callbacks, daemon=True)
-            callback_runner.start()
-            assert callbacks_started.wait(1.0)
-
-            assert runtime.health() == {"status": "ok"}
-            snapshot = runtime._runtime_work.snapshot()
-            assert snapshot.active_callback_workers == 2
-            assert snapshot.pending_callbacks == 2
-            assert snapshot.pending_callback_bytes > 0
-            assert all(name.startswith("nanofaas-callback") for name in callback_threads)
-
-            bounded_report = asyncio.run(runtime._runtime_work.shutdown(0.02))
-            assert bounded_report.drained is False
-            assert bounded_report.active_callback_workers == 2
-
-            release_callbacks.set()
-            callback_runner.join(1.0)
-            assert not callback_runner.is_alive()
-            assert callback_runner_errors == []
-        assert runtime._runtime_work.snapshot().active_callback_workers == 0
-        assert runtime._runtime_work.snapshot().pending_callbacks == 0
-        assert runtime._runtime_work.snapshot().pending_callback_bytes == 0
-        assert asyncio.run(runtime._runtime_work.shutdown(0.5)).drained is True
+        asyncio.run(asyncio.wait_for(exercise(), 1.0))
     finally:
-        release_callbacks.set()
-        if "callback_runner" in locals():
-            callback_runner.join(1.0)
         asyncio.run(runtime._runtime_work.shutdown(0.5))
         importlib.reload(_app)
 
@@ -1058,11 +1037,11 @@ def test_callback_max_attempts_requires_positive_integer(monkeypatch):
     importlib.reload(_app)
 
 
-@patch("requests.post")
+@patch("nanofaas.runtime.callback_transport.post_callback")
 def test_callback_attempt_timeout_and_retry_count_use_finite_configuration(
     mock_post, monkeypatch
 ):
-    mock_post.return_value.status_code = 503
+    mock_post.return_value = 503
     runtime = _reload_runtime_with_limits(
         monkeypatch,
         NANOFAAS_CALLBACK_ATTEMPT_TIMEOUT=41,
@@ -1071,7 +1050,7 @@ def test_callback_attempt_timeout_and_retry_count_use_finite_configuration(
     try:
         asyncio.run(runtime.send_callback("http://callback.invalid", "configured", None, {}))
         assert mock_post.call_count == 2
-        assert all(call.kwargs["timeout"] == 0.041 for call in mock_post.call_args_list)
+        assert all(call.kwargs["timeout_seconds"] == 0.041 for call in mock_post.call_args_list)
     finally:
         asyncio.run(runtime._runtime_work.shutdown(0.5))
         importlib.reload(_app)
@@ -1162,7 +1141,7 @@ def test_callback_count_and_bytes_are_reserved_before_handler_admission(monkeypa
         importlib.reload(_app)
 
 
-@patch("requests.post")
+@patch("nanofaas.runtime.callback_transport.post_callback")
 def test_direct_runtime_rejects_oversized_input_before_handler_or_callback(mock_post, monkeypatch):
     runtime = _reload_runtime_with_limits(monkeypatch, NANOFAAS_MAX_INPUT_BYTES=32)
     handler_calls = 0
@@ -1197,11 +1176,11 @@ def test_direct_runtime_rejects_oversized_input_before_handler_or_callback(mock_
         importlib.reload(_app)
 
 
-@patch("requests.post")
+@patch("nanofaas.runtime.callback_transport.post_callback")
 def test_direct_runtime_rejects_oversized_output_and_delivers_canonical_callback(
     mock_post, monkeypatch
 ):
-    mock_post.return_value.status_code = 204
+    mock_post.return_value = 204
     runtime = _reload_runtime_with_limits(
         monkeypatch,
         NANOFAAS_MAX_OUTPUT_BYTES=8,
@@ -1231,7 +1210,7 @@ def test_direct_runtime_rejects_oversized_output_and_delivers_canonical_callback
         assert response.status_code == 500
         assert response.json() == {"error": expected_error}
         assert "retry-after" not in response.headers
-        callback = json.loads(mock_post.call_args.kwargs["data"])
+        callback = json.loads(mock_post.call_args.kwargs["body"])
         assert callback == {"success": False, "output": None, "error": expected_error}
         assert runtime._runtime_work.snapshot().pending_callbacks == 0
         assert runtime._runtime_work.snapshot().pending_callback_bytes == 0
@@ -1353,9 +1332,9 @@ def test_oversized_string_is_rejected_before_json_encoder_creates_a_copy(monkeyp
         _app._encode_json_bounded("x" * 65, 64)
 
 
-@patch("requests.post")
+@patch("nanofaas.runtime.callback_transport.post_callback")
 def test_single_callback_cap_converts_success_to_output_too_large(mock_post, monkeypatch):
-    mock_post.return_value.status_code = 204
+    mock_post.return_value = 204
     runtime = _reload_runtime_with_limits(
         monkeypatch,
         NANOFAAS_MAX_OUTPUT_BYTES=128,
@@ -1388,7 +1367,7 @@ def test_single_callback_cap_converts_success_to_output_too_large(mock_post, mon
 
         assert response.status_code == 500
         assert response.json()["error"]["code"] == "RUNTIME_OUTPUT_TOO_LARGE"
-        callback = json.loads(mock_post.call_args.kwargs["data"])
+        callback = json.loads(mock_post.call_args.kwargs["body"])
         assert callback["error"]["code"] == "RUNTIME_OUTPUT_TOO_LARGE"
         assert success_counter._value.get() == success_before
         assert failure_counter._value.get() == failure_before + 1
@@ -1397,7 +1376,7 @@ def test_single_callback_cap_converts_success_to_output_too_large(mock_post, mon
         importlib.reload(_app)
 
 
-@patch("requests.post", side_effect=requests.ConnectionError("unreachable"))
+@patch("nanofaas.runtime.callback_transport.post_callback", side_effect=httpx.ConnectError("unreachable"))
 def test_callback_delivery_error_releases_count_and_bytes(mock_post, monkeypatch):
     runtime = _reload_runtime_with_limits(
         monkeypatch,
@@ -1607,11 +1586,11 @@ def test_direct_invoke_after_stop_returns_canonical_retryable_503(monkeypatch):
         importlib.reload(_app)
 
 
-@patch("requests.post")
+@patch("nanofaas.runtime.callback_transport.post_callback")
 def test_cancelled_direct_invocation_delivers_callback_and_releases_reservation(
     mock_post, monkeypatch
 ):
-    mock_post.return_value.status_code = 204
+    mock_post.return_value = 204
     runtime = _reload_runtime_with_limits(
         monkeypatch,
         NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES=512,
@@ -1650,7 +1629,7 @@ def test_cancelled_direct_invocation_delivers_callback_and_releases_reservation(
         assert len(owned_callbacks) == 1
         await asyncio.wait_for(asyncio.gather(*owned_callbacks), timeout=0.2)
 
-        callback = json.loads(mock_post.call_args.kwargs["data"])
+        callback = json.loads(mock_post.call_args.kwargs["body"])
         assert callback == {
             "success": False,
             "output": None,
@@ -1678,12 +1657,12 @@ def test_cancelled_callback_wait_keeps_bytes_owned_until_http_worker_exits(monke
     worker_exited = threading.Event()
     release_worker = threading.Event()
 
-    def blocked_post(*_args, **_kwargs):
+    async def blocked_post(*_args, **_kwargs):
         worker_started.set()
         try:
-            assert release_worker.wait(1.0), "callback worker release was not signalled"
-            return MagicMock(status_code=204)
+            await asyncio.Event().wait()
         finally:
+            assert await asyncio.to_thread(release_worker.wait, 1.0), "callback cleanup release was not signalled"
             worker_exited.set()
 
     async def exercise():
@@ -1720,7 +1699,7 @@ def test_cancelled_callback_wait_keeps_bytes_owned_until_http_worker_exits(monke
         assert snapshot.pending_callbacks == 0
         assert snapshot.pending_callback_bytes == 0
 
-    monkeypatch.setattr(runtime.requests, "post", blocked_post)
+    monkeypatch.setattr(runtime.callback_transport, "post_callback", blocked_post)
     try:
         asyncio.run(exercise())
     finally:
@@ -1745,9 +1724,9 @@ def test_shutdown_drains_terminal_callback_reserved_before_handler_start(monkeyp
         assert release_handler.wait(1.0), "handler release was not signalled"
         return {"ok": True}
 
-    def successful_post(*_args, **_kwargs):
+    async def successful_post(*_args, **_kwargs):
         callback_delivered.set()
-        return MagicMock(status_code=204)
+        return 204
 
     async def exercise():
         background_tasks = runtime.BackgroundTasks()
@@ -1776,7 +1755,7 @@ def test_shutdown_drains_terminal_callback_reserved_before_handler_start(monkeyp
         assert report.pending_callbacks == 0
         assert report.pending_callback_bytes == 0
 
-    monkeypatch.setattr(runtime.requests, "post", successful_post)
+    monkeypatch.setattr(runtime.callback_transport, "post_callback", successful_post)
     try:
         asyncio.run(exercise())
     finally:
@@ -1789,15 +1768,15 @@ def test_callback_final_exhaustion_increments_bounded_metric_once(monkeypatch):
     runtime = _reload_runtime_with_limits(monkeypatch, NANOFAAS_CALLBACK_MAX_ATTEMPTS=3)
     attempts = 0
 
-    def retryable_post(*_args, **_kwargs):
+    async def retryable_post(*_args, **_kwargs):
         nonlocal attempts
         attempts += 1
-        return MagicMock(status_code=503)
+        return 503
 
     async def no_delay(_seconds):
         return None
 
-    monkeypatch.setattr(runtime.requests, "post", retryable_post)
+    monkeypatch.setattr(runtime.callback_transport, "post_callback", retryable_post)
     monkeypatch.setattr(runtime.asyncio, "sleep", no_delay)
     try:
         before = runtime.RUNTIME_CALLBACK_DELIVERY_FAILURES_TOTAL.labels(
@@ -1821,11 +1800,11 @@ def test_callback_final_exhaustion_increments_bounded_metric_once(monkeypatch):
         importlib.reload(_app)
 
 
-@patch("requests.post")
+@patch("nanofaas.runtime.callback_transport.post_callback")
 def test_handler_failure_response_and_callback_never_expose_exception_text(
     mock_post, client
 ):
-    mock_post.return_value.status_code = 204
+    mock_post.return_value = 204
 
     class UnrenderableError(RuntimeError):
         def __str__(self):
@@ -1847,7 +1826,7 @@ def test_handler_failure_response_and_callback_never_expose_exception_text(
     expected_error = {"code": "HANDLER_ERROR", "message": "Handler failed"}
     assert response.status_code == 500
     assert response.json() == {"error": expected_error}
-    callback = json.loads(mock_post.call_args.kwargs["data"])
+    callback = json.loads(mock_post.call_args.kwargs["body"])
     assert callback == {"success": False, "output": None, "error": expected_error}
 
 
@@ -1916,9 +1895,9 @@ def test_immediate_handler_and_callback_futures_never_stall(monkeypatch):
             for index in range(100):
                 handler = runtime._runtime_work.start_handler(lambda value: value, index)
                 assert await handler.wait(0.2) == index
-                assert await runtime._runtime_work.run_callback_call(
-                    lambda value: value, index
-                ) == index
+                async def immediate_callback(value):
+                    return value
+                assert await runtime._runtime_work.run_callback_call(immediate_callback, index) == index
 
     try:
         asyncio.run(exercise())
@@ -1933,8 +1912,8 @@ def test_raw_callback_bytes_over_single_payload_cap_are_rejected(monkeypatch):
         NANOFAAS_MAX_CALLBACK_PAYLOAD_BYTES=64,
         NANOFAAS_MAX_PENDING_CALLBACK_BYTES=128,
     )
-    post = MagicMock(return_value=MagicMock(status_code=204))
-    monkeypatch.setattr(runtime.requests, "post", post)
+    post = AsyncMock(return_value=204)
+    monkeypatch.setattr(runtime.callback_transport, "post_callback", post)
 
     async def exercise():
         with pytest.raises(runtime.PayloadTooLargeError):
@@ -1961,10 +1940,10 @@ def test_raw_callback_reservation_tracks_exact_serialized_bytes(monkeypatch):
     worker_started = threading.Event()
     release_worker = threading.Event()
 
-    def blocked_post(*_args, **_kwargs):
+    async def blocked_post(*_args, **_kwargs):
         worker_started.set()
-        assert release_worker.wait(1.0), "raw callback worker release was not signalled"
-        return MagicMock(status_code=204)
+        assert await asyncio.to_thread(release_worker.wait, 1.0), "raw callback worker release was not signalled"
+        return 204
 
     async def exercise():
         reservation = runtime._runtime_work.reserve_callback(64)
@@ -1985,7 +1964,7 @@ def test_raw_callback_reservation_tracks_exact_serialized_bytes(monkeypatch):
         await asyncio.wait_for(task, timeout=0.2)
         assert runtime._runtime_work.snapshot().pending_callback_bytes == 0
 
-    monkeypatch.setattr(runtime.requests, "post", blocked_post)
+    monkeypatch.setattr(runtime.callback_transport, "post_callback", blocked_post)
     try:
         asyncio.run(exercise())
     finally:

@@ -2,7 +2,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 
 import pytest
-import requests
+import asyncio
+from nanofaas.runtime.callback_transport import post_callback
 
 
 @pytest.fixture
@@ -44,9 +45,7 @@ def callback_server():
 def test_post_status_and_payload(callback_server, status):
     base, calls = callback_server
     headers = {"Content-Type": "application/json", "X-Dispatch-Attempt": "4"}
-    with requests.post(base + f"/status/{status}", data=b'{"ok":true}',
-                       headers=headers, timeout=1) as response:
-        assert response.status_code == status
+    assert asyncio.run(post_callback(base + f"/status/{status}", b'{"ok":true}', headers, 1)) == status
     method, path, body, received = calls[-1]
     assert method == "POST"
     assert body == b'{"ok":true}'
@@ -59,9 +58,7 @@ def test_post_status_and_payload(callback_server, status):
 def test_redirect_behavior(callback_server, status):
     base, calls = callback_server
     headers = {"Content-Type": "application/json", "X-Trace-Id": "trace-1"}
-    with requests.post(base + f"/redirect/{status}", data=b"{}", headers=headers,
-                       timeout=1) as response:
-        assert response.status_code == 204
+    assert asyncio.run(post_callback(base + f"/redirect/{status}", b"{}", headers, 1)) == 204
     preserves_post = status in (307, 308)
     assert [(method, path, body) for method, path, body, _ in calls] == [
         ("POST", f"/redirect/{status}", b"{}"),

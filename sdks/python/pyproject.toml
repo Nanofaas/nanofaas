@@ -11,10 +11,10 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.100.0",
     "uvicorn>=0.22.0",
-    "requests>=2.31.0",
+    "httpx>=0.24.0",
     "python-multipart>=0.0.6",
     "prometheus_client>=0.21.0",
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=7.4.0", "httpx>=0.24.0"]
+test = ["pytest>=7.4.0"]

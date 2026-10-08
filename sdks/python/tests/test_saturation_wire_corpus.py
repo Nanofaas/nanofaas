@@ -219,7 +219,7 @@ def test_runtime_adapter_health_probe_uses_the_asgi_route(monkeypatch):
         raise AssertionError("adapter called health() instead of GET /health")
 
     monkeypatch.setattr(runtime, "health", direct_health_call_is_forbidden)
-    monkeypatch.setattr(runtime.requests, "post", harness.callback_post)
+    monkeypatch.setattr(runtime.callback_transport, "post_callback", harness.callback_post)
 
     async def exercise():
         for name in ("start-runtime", "fill-callback-capacity", "probe-health"):
