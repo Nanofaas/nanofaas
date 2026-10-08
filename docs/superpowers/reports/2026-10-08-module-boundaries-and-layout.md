@@ -21,7 +21,7 @@ Branches: NanoFaaS `work/module-boundaries-layout`, NanoLab `work/nanofaas-layou
 - Gradle hierarchy and included-build identities are identical. Eight compile/runtime dependency reports for core, sync queue, Docker and containerd match baseline.
 - SPI, sync, forecasting, P2P, build metadata and runtime architecture suites pass. Temporary forbidden gateway, new core candidate and direct enclosing-enqueuer field mutations each fail; mutations were restored. Shared-package foreign SPI fixtures fail.
 - Gradle plugin focused and full suites pass, including command/provenance coverage for custom templates, named contexts, native target selection and multi-architecture publication command generation. No registry publication was performed.
-- All script tests: **116 PASS**. Both Compose configurations parse. All three tracked recipes validate; local-demo assembly preserves staging filenames, launch/config/Python SDK bytes and JAR entry sets. Source identity/report checksums legitimately change; templates remain outside staging.
+- All script tests: **116 PASS**. Both Compose configurations parse. All three tracked recipes validate; local-demo assembly preserves staging filenames, launch/config/Python SDK bytes and JAR entry sets. Source identity/report checksums legitimately change; templates remain outside staging. Final task-done `build releaseChecks` PASS (3m51s); current Gradle XML contains **2747 tests, zero failures/errors**.
 - Historical `docs/experiments`, completed `docs/plans`, archived review/evidence and provenance bytes remain unchanged against base `748ab0d0c85ff5be610a3958fa5c7252a485254b`. Live guide, SDK mirror and manuscript paths were updated.
 - GitNexus refreshed before tooling commit; full detect-changes reports 67 files, 34 symbols, 243 affected processes, CRITICAL risk without a partial/truncated result. Real packaging validation and final review address the affected producers/consumers. Its whole-flow enumeration and FTS have tool limitations; missing graph results were confirmed in source and never used as proof of no callers.
 
@@ -45,9 +45,11 @@ Actual amd64 build: **pending**. The working default builder exposes ARM64 only;
 
 Focused image plan/bake/soak/recipe observation: 114 PASS before tooling move; ruff lint/format PASS; basedpyright zero errors/warnings. A final source-contract run uses `NANOFAAS_ROOT` pointing at the committed relocated NanoFaaS worktree, since the contract setup archives HEAD rather than the dirty directory. Final committed-source contract run: **114 PASS in 37.43s** against NanoFaaS `ff1230b5`.
 
-Full NanoLab suite before tooling commit: branch 3277 PASS, 193 FAIL, 19 ERROR; original branch 3270 PASS, 193 FAIL, 19 ERROR. All **212 failing/error identifiers are identical**, with no added/removed failures. The guarded release recipe/module-selection mismatch is independent of native-path compatibility; no policy check was relaxed. These existing failures prevent claiming a green full NanoLab suite.
+Full NanoLab suite before tooling commit: branch 3277 PASS, 193 FAIL, 19 ERROR; original branch 3270 PASS, 193 FAIL, 19 ERROR. All **212 failing/error identifiers are identical**, with no added/removed failures. The guarded release recipe/module-selection mismatch is independent of native-path compatibility; no policy check was relaxed. These existing failures prevent claiming a green full NanoLab suite. Final stable clean-source run against `55fca0aa`: **3277 PASS, 193 FAIL, 19 ERROR in 184.62s**, with exactly the same 212 identifiers as original baseline. A preceding run during documentation changes added two dirty/moving-source failures; both targeted tests pass on a clean source, and neither appears in this stable run.
 
-Local logs: `/tmp/nanofaas-layout-build-final.log`, `/tmp/nanofaas-layout-release-final.log`, `/tmp/nanofaas-layout-final-{profile}.log`, `/tmp/nanofaas-layout-scripts-final.log`, `/tmp/nanofaas-layout-plugin-full.log`, `/tmp/nanolab-layout-new-source-contract.log`, `/tmp/nanolab-layout-full.log`, `/tmp/nanolab-layout-full-baseline.log`. Logs are session evidence, not committed provenance artifacts.
+The reviewer also confirmed the generic NanoLab Bake renderer already omits `containerd_maven_repo` at baseline `8313e6e`. This native-build integration limitation is unchanged by path resolution; generic native Bake execution can fail until that context is supplied. The existing NanoFaaS wrapper/recipe producers retain and exercise both required contexts. Resolve this separately before treating generic NanoLab native Bake as verified.
+
+Local logs: `/tmp/nanofaas-layout-build-final.log`, `/tmp/nanofaas-layout-release-final.log`, `/tmp/nanofaas-layout-final-{profile}.log`, `/tmp/nanofaas-layout-scripts-final.log`, `/tmp/nanofaas-layout-plugin-full.log`, `/tmp/nanolab-layout-new-source-contract.log`, `/tmp/nanolab-layout-full.log`, `/tmp/nanolab-layout-full-baseline.log`, `/tmp/nanolab-layout-full-stable.log`. Profile XML and ledger snapshots are preserved at `/tmp/nanofaas-native-plan-evidence-2026-10-08`. Logs are session evidence, not committed provenance artifacts.
 
 ## Execution rulings
 
@@ -61,10 +63,21 @@ Local logs: `/tmp/nanofaas-layout-build-final.log`, `/tmp/nanofaas-layout-releas
 - Task 3: Ruling: use BUILDX_BUILDER=default only in validation commands — selected NanoLab builder fails NVIDIA prestart hook (driver not loaded); CLI tests pass with local builder — cost: selected docker-container builder remains unverified; global settings unchanged.
 - Task 3: Ruling: include watchdog combined image in live consumer corrections and give its Java builder the root context — final scan found obsolete COPY platform/common and root settings already require omitted plugin/library inputs — cost: larger build-context copy, filtered by existing .dockerignore; stages/runtime semantics unchanged. RED watchdog COPY source test /tmp/nanofaas-layout-watchdog-red.log.
 - Task 3: Ruling: update current path descriptions in seven manuscript chapters — these explain today’s source/build structure rather than pinning experiment provenance — cost: a reader comparing directory names with older revisions must use those revisions; historical claims and commit references remain unchanged.
+- Final: Ruling: real amd64 execution set aside by reviewer — retain explicit pending acceptance, because builder is ARM64 only — cost: cross-architecture failures remain undetected.
+- Final: Ruling: shared-branch/deployed integration set aside by reviewer — keep both local branches and integrate compatible NanoLab first — cost: deployed compatibility remains unproven until integration.
+- Final: Ruling: overall NanoLab suite health set aside by reviewer — do not call full suite green; retain baseline failures and complete stable-source rerun — cost: independent release-recipe guard mismatch still blocks full-suite health.
+- Final: Ruling: two dirty-source failures set aside by reviewer — clean targeted checks pass; require stable-source full rerun before final conclusion — cost: a persistent failure would remain unresolved if only targeted results were used.
+- Final: Ruling: NanoLab Bake omits containerd_maven_repo at baseline — preserve renderer behavior in this path-compatibility change and document separate existing native-build limitation — cost: generic native Bake builds can fail until the context integration is addressed; #236 is not closed.
+- Final: Ruling: registry publication and NVIDIA builder set aside by reviewer — retain local-image validation only, with no publication or unrelated builder reconfiguration — cost: published/deployed images and that builder remain unverified.
+- Final: Ruling: benchmark/website/runtime redesign set aside by reviewer — honor explicit exclusions; no unrelated changes — cost: those independent tasks remain outstanding.
 
 ## Final independent review
 
-Pending final whole-branch review after task completion.
+Fresh-context, read-only review by `gpt-6-astra` of NanoFaaS `748ab0d0..55fca0aa` and NanoLab `8313e6e..f00e71cd`: **no Critical, Important or Minor findings in introduced changes**. All ten plan review-focus items were checked explicitly. No fix pass or second review was needed. The reviewer approved code integration in prerequisite order while distinguishing it from issue-closure acceptance or a green full NanoLab suite.
+
+Deferred minors: none. Reviewer set-aside behaviors and the executor's decisions/costs are included exhaustively in the rulings above.
+
+`finishing-a-development-branch` requires “If tests fail, report the failures and stop”. Full NanoLab retains its documented baseline failures, so no integration menu/action is performed here. Local branches are preserved for review; merge/push/publication and issue closure have not occurred.
 
 ## Existing NanoLab failing/error test identifiers
 
