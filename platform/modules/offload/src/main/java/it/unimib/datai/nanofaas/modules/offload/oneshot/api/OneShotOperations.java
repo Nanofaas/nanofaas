@@ -13,6 +13,32 @@ import java.util.concurrent.atomic.*;
 /** Bounded manual/scheduled orchestration; the scheduled gate needs measured complete durations. */
 public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
     public record Window(Instant startsAt,Instant endsAt) {}
+    record ScheduledWindow(long epoch,Window window) {}
+
+    static Optional<ScheduledWindow> nextWindow(OneShotSettings settings,Instant now) {
+        try {
+            var delta=Duration.between(settings.anchor(),now.plus(settings.leadTime()));
+            if(delta.isNegative()) return Optional.empty();
+            long epoch=delta.dividedBy(settings.period());
+            var candidate=windowAt(settings,epoch);
+            return now.isBefore(candidate.window().startsAt())?Optional.of(candidate):Optional.empty();
+        } catch(ArithmeticException | DateTimeException error) {
+            throw new IllegalArgumentException("schedule window outside supported time range",error);
+        }
+    }
+    private static ScheduledWindow firstFutureWindow(OneShotSettings settings,Instant now) {
+        try {
+            long epoch=now.isBefore(settings.anchor())?0:
+                    Math.addExact(Duration.between(settings.anchor(),now).dividedBy(settings.period()),1);
+            return windowAt(settings,epoch);
+        } catch(ArithmeticException | DateTimeException error) {
+            throw new IllegalArgumentException("schedule window outside supported time range",error);
+        }
+    }
+    private static ScheduledWindow windowAt(OneShotSettings settings,long epoch) {
+        var from=settings.anchor().plus(settings.period().multipliedBy(epoch));
+        return new ScheduledWindow(epoch,new Window(from,from.plus(settings.period())));
+    }
     private final OneShotConfigurationStore configs;private final ServiceProfileStore profiles;private final ProfileEpochInputFactory inputs;
     private final EpochCoordinator coordinator;private final ReplicaPlanActuator actuator;private final EpochEventStore events;private final PeerTransport peers;private final MeterRegistry meters;
     private final boolean enabled;
@@ -48,9 +74,10 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
         if(settings.scheduled() && !qualified(settings)) throw new IllegalArgumentException("scheduled mode requires at least 20 complete timing samples with p99 and margin");
         if(settings.scheduled() && current.map(s->!s.settings().scheduled()).orElse(true)) {
             if(busy.get()) throw new IllegalStateException("manual preparation must finish before enabling scheduling");
-            long delta=Duration.between(settings.anchor(),clock.instant().plus(settings.leadTime())).toMillis();
-            long candidate=Math.max(0,delta/settings.period().toMillis());
-            if(candidate<=coordinator.lastPreparedEpoch()) throw new IllegalStateException("scheduled epoch must advance beyond the last manual epoch");
+            var now=clock.instant();
+            var candidate=nextWindow(settings,now).orElseGet(()->firstFutureWindow(settings,now));
+            long fence=coordinator.lastPreparedEpoch();
+            if(fence>lastScheduled.get() && candidate.epoch()<=fence) throw new IllegalStateException("scheduled epoch must advance beyond the last manual epoch");
         }
         return configs.replace(expected,settings);
     }
@@ -71,7 +98,10 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
             synchronized(this) {
                 frozen=configs.snapshot().orElseThrow(()->new IllegalStateException("configuration missing"));
                 if(frozen.settings().scheduled()!=automatic || !running || !busy.compareAndSet(false,true)) return Mono.error(new IllegalStateException("trigger mode conflict or active preparation"));
-                if(automatic) claimedGrid=new Grid(frozen.settings().anchor(),frozen.settings().period());
+                if(automatic) {
+                    claimedGrid=new Grid(frozen.settings().anchor(),frozen.settings().period());
+                    lastScheduled.accumulateAndGet(epoch,Math::max);
+                }
             }
             return prepareFrozen(epoch,window,frozen,automatic);
         });
@@ -110,10 +140,10 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
                 if(!running || busy.get()) return;
                 var current=configs.snapshot();if(current.isEmpty() || !current.get().settings().scheduled()) return;
                 frozen=current.get();var s=frozen.settings();var now=clock.instant();
-                long delta=Duration.between(s.anchor(),now.plus(s.leadTime())).toMillis();long step=s.period().toMillis();if(delta<0 || step<1) return;
-                epoch=delta/step;var from=s.anchor().plusMillis(Math.multiplyExact(epoch,step));
-                if(!now.isBefore(from) || epoch<=lastScheduled.get() || epoch<=coordinator.lastPreparedEpoch() || !busy.compareAndSet(false,true)) return;
-                lastScheduled.set(epoch);claimedGrid=new Grid(s.anchor(),s.period());window=new Window(from,from.plus(s.period()));
+                var candidate=nextWindow(s,now);if(candidate.isEmpty()) return;
+                epoch=candidate.get().epoch();
+                if(epoch<=lastScheduled.get() || epoch<=coordinator.lastPreparedEpoch() || !busy.compareAndSet(false,true)) return;
+                lastScheduled.set(epoch);claimedGrid=new Grid(s.anchor(),s.period());window=candidate.get().window();
             }
             subscription=prepareFrozen(epoch,window,frozen,true).subscribe(result->{},error->lastState="FAILED");
         } catch(RuntimeException error) { lastState="FAILED"; }

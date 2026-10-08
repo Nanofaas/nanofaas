@@ -123,11 +123,11 @@ Verifiche già disponibili sulla baseline: suite Java completa riuscita; 89 test
 
 **Interfaces:** introdurre nel package API una funzione pura di calcolo, nel medesimo file se sufficiente: `static Optional<ScheduledWindow> nextWindow(OneShotSettings settings, Instant now)`, con `ScheduledWindow(long epoch, Window window)`. Questo task aggiorna anche la validazione implementata nel task 3 per usare lo stesso risultato del tick. Nessun nuovo bean o formato wire.
 
-- [ ] Aggiungere `fractionalPeriodCreatesContiguousWindows`: periodo `Duration.ofSeconds(300).plusNanos(500_000)`, anchor anche non allineata al millisecondo. Asserire `end(epoch).equals(start(epoch+1))` e durata esatta; i due piani consecutivi vengono preparati senza overlap.
-- [ ] Coprire istante prima dell'anchor, bordo esatto, lead time, indice grande e overflow di `Instant`/moltiplicazione. Il bordo di inizio già raggiunto non prepara retroattivamente quel piano. Per input fuori dal range supportato produrre errore esplicito, senza wrap numerico o indice negativo.
-- [ ] Eseguire RED. Calcolare `delta = Duration.between(anchor, now.plus(leadTime))`, indice con `delta.dividedBy(period)`, inizio con `anchor.plus(period.multipliedBy(epoch))`, fine con `start.plus(period)`. Evitare la conversione di tutto il delta in nanosecondi o millisecondi. Riutilizzare il calcolo nel controllo manuale→scheduled del task 3.
-- [ ] Eseguire `./gradlew :control-plane-modules:offload:test --tests '*OneShotTimingQualificationTest' --tests '*ReplicaPlanActuatorTest'` e poi la suite `--tests 'it.unimib.datai.nanofaas.modules.offload.oneshot.*'`. Documentare la precisione supportata.
-- [ ] Analisi graph completa e commit: `Preserve precision in one-shot epoch windows`.
+- [x] Aggiungere `fractionalPeriodCreatesContiguousWindows`: periodo `Duration.ofSeconds(300).plusNanos(500_000)`, anchor anche non allineata al millisecondo. Asserire `end(epoch).equals(start(epoch+1))` e durata esatta; i due piani consecutivi vengono preparati senza overlap.
+- [x] Coprire istante prima dell'anchor, bordo esatto, lead time, indice grande e overflow di `Instant`/moltiplicazione. Il bordo di inizio già raggiunto non prepara retroattivamente quel piano. Per input fuori dal range supportato produrre errore esplicito, senza wrap numerico o indice negativo.
+- [x] Eseguire RED. Calcolare `delta = Duration.between(anchor, now.plus(leadTime))`, indice con `delta.dividedBy(period)`, inizio con `anchor.plus(period.multipliedBy(epoch))`, fine con `start.plus(period)`. Evitare la conversione di tutto il delta in nanosecondi o millisecondi. Riutilizzare il calcolo nel controllo manuale→scheduled del task 3.
+- [x] Eseguire `./gradlew :control-plane-modules:offload:test --tests '*OneShotTimingQualificationTest' --tests '*ReplicaPlanActuatorTest'` e poi la suite `--tests 'it.unimib.datai.nanofaas.modules.offload.oneshot.*'`. Documentare la precisione supportata.
+- [x] Analisi graph completa e commit: `Preserve precision in one-shot epoch windows`.
 
 ## Lotto C — Contratto HTTP e SDK
 

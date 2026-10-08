@@ -70,6 +70,52 @@ class OneShotTimingQualificationTest {
             verify(f.coordinator).prepare(2,Instant.EPOCH.plusSeconds(600),Instant.EPOCH.plusSeconds(900));
         }
     }
+    @Test void fractionalPeriodCreatesContiguousWindows() {
+        var clock=new MutableClock();
+        try(var f=new Fixture(clock)) {
+            f.qualify();var period=Duration.ofSeconds(300).plusNanos(500_000);
+            var anchor=Instant.EPOCH.plusNanos(123_456);
+            f.operations.configure(1,grid(f.config,anchor,period,true));
+            clearInvocations(f.coordinator);
+            clock.now=anchor.plus(period).minusSeconds(20);f.operations.tick();
+            clock.now=anchor.plus(period.multipliedBy(2)).minusSeconds(20);f.operations.tick();
+            var starts=org.mockito.ArgumentCaptor.forClass(Instant.class);
+            var ends=org.mockito.ArgumentCaptor.forClass(Instant.class);
+            verify(f.coordinator,times(2)).prepare(anyLong(),starts.capture(),ends.capture());
+            assertThat(ends.getAllValues().getFirst()).isEqualTo(starts.getAllValues().get(1));
+            assertThat(starts.getAllValues().getFirst()).isEqualTo(anchor.plus(period));
+            for(int i=0;i<2;i++) assertThat(Duration.between(starts.getAllValues().get(i),ends.getAllValues().get(i))).isEqualTo(period);
+        }
+    }
+    @Test void scheduleWindowRespectsAnchorLeadAndExactStartBoundary() {
+        var base=OneShotConfigurationTest.config();var anchor=Instant.EPOCH.plusNanos(123_456);
+        var s=grid(base,anchor,Duration.ofSeconds(300).plusNanos(500_000),true);
+        assertThat(OneShotOperations.nextWindow(s,anchor.minus(s.leadTime()).minusNanos(1))).isEmpty();
+        var first=OneShotOperations.nextWindow(s,anchor.minus(s.leadTime())).orElseThrow();
+        assertThat(first.epoch()).isZero();assertThat(first.window().startsAt()).isEqualTo(anchor);
+        assertThat(OneShotOperations.nextWindow(s,anchor)).isEmpty();
+        var next=anchor.plus(s.period());
+        assertThat(OneShotOperations.nextWindow(s,next.minus(s.leadTime()).minusNanos(1))).isEmpty();
+        assertThat(OneShotOperations.nextWindow(s,next.minus(s.leadTime())).orElseThrow().epoch()).isEqualTo(1);
+        assertThat(OneShotOperations.nextWindow(s,next)).isEmpty();
+    }
+    @Test void largeEpochKeepsPrecisionWithoutConvertingDeltaToNanos() {
+        var base=OneShotConfigurationTest.config();var s=grid(base,Instant.EPOCH.plusNanos(123),Duration.ofSeconds(300).plusNanos(500_000),true);
+        long epoch=1_000_000_000_000L;
+        var from=s.anchor().plus(s.period().multipliedBy(epoch));
+        var candidate=OneShotOperations.nextWindow(s,from.minus(s.leadTime())).orElseThrow();
+        assertThat(candidate.epoch()).isEqualTo(epoch);
+        assertThat(candidate.window().startsAt()).isEqualTo(from);
+        assertThat(candidate.window().endsAt()).isEqualTo(from.plus(s.period()));
+    }
+    @Test void outOfRangeWindowAndEpochFailExplicitly() {
+        var base=OneShotConfigurationTest.config();
+        var s=grid(base,Instant.MAX.minusSeconds(100),base.period(),true);
+        assertThatThrownBy(()->OneShotOperations.nextWindow(s,Instant.MAX.minusSeconds(1))).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("time range");
+        assertThatThrownBy(()->OneShotOperations.nextWindow(s,s.anchor().minusSeconds(20))).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("time range");
+        var tiny=new OneShotSettings(base.schemaVersion(),base.profileId(),base.environmentFingerprint(),base.purpose(),base.allowSynthetic(),base.cloudUri(),base.memoryCapacityMiB(),base.flowQuantum(),Duration.ofNanos(3),Duration.ofNanos(2),true,Instant.MIN,Duration.ofNanos(1),base.maxOperationalFraction(),base.burst(),base.functions(),base.negotiation(),base.maxSolverStates(),base.maxSolverBytes());
+        assertThatThrownBy(()->OneShotOperations.nextWindow(tiny,Instant.EPOCH)).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("time range");
+    }
     @Test void failedAutomaticClaimAndLifecycleChangesDoNotUnfreezeGrid() {
         var clock=new MutableClock();
         try(var f=new Fixture(clock)) {
@@ -83,6 +129,22 @@ class OneShotTimingQualificationTest {
                     .isInstanceOf(IllegalStateException.class);
             assertThat(f.store.snapshot().orElseThrow().revision()).isEqualTo(3);
             assertThat(f.operations.configure(3,s).revision()).isEqualTo(4);
+        }
+    }
+    @Test void sameGridCanResumeAfterAnAutomaticEpochAdvancedTheFence() {
+        var clock=new MutableClock();
+        try(var f=new Fixture(clock)) {
+            f.qualify();var s=grid(f.config,Instant.EPOCH,f.config.period(),true);
+            f.operations.configure(1,s);clock.now=Instant.EPOCH.plusSeconds(280);f.operations.tick();
+            when(f.coordinator.lastPreparedEpoch()).thenReturn(1L);
+            f.operations.configure(2,grid(s,s.anchor(),s.period(),false));
+            assertThat(f.operations.configure(3,s).revision()).isEqualTo(4);
+            clock.now=Instant.EPOCH.plusSeconds(580);f.operations.tick();
+            verify(f.coordinator).prepare(2,Instant.EPOCH.plusSeconds(600),Instant.EPOCH.plusSeconds(900));
+            f.operations.configure(4,grid(s,s.anchor(),s.period(),false));
+            f.sample(20);when(f.coordinator.lastPreparedEpoch()).thenReturn(20L);
+            assertThatThrownBy(()->f.operations.configure(5,s)).hasMessageContaining("manual epoch");
+            assertThat(f.store.snapshot().orElseThrow().revision()).isEqualTo(5);
         }
     }
     @Test void gridCanChangeBeforeFirstAutomaticClaim() {

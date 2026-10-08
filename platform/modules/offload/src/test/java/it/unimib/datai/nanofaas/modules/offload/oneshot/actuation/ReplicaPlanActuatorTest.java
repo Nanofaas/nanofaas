@@ -18,6 +18,18 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 class ReplicaPlanActuatorTest {
+    @Test void fractionalContiguousPlansPrepareWithoutOverlap() {
+        var now=new AtomicReference<>(Instant.parse("2026-10-04T10:00:00.000123456Z"));
+        var from=now.get().plusSeconds(5);var period=Duration.ofSeconds(300).plusNanos(500_000);
+        try(var actuator=new ReplicaPlanActuator(control(3,2),()->List.of(registered("f",1)),peers("a"),now::get,()->true,Duration.ofSeconds(2),Duration.ofSeconds(1))) {
+            actuator.start();
+            var first=actuator.prepare(outcome("a",1,from,period,2,1)).block(Duration.ofSeconds(3));
+            assertThat(first.status()).withFailMessage(first.reason()).isEqualTo(PlanActivation.Status.PREPARED);
+            now.set(from);assertThat(actuator.activePlan()).isPresent();
+            var second=actuator.prepare(outcome("a",2,from.plus(period),period,2,1)).block(Duration.ofSeconds(3));
+            assertThat(second.status()).withFailMessage(second.reason()).isEqualTo(PlanActivation.Status.PREPARED);
+        }
+    }
     @Test void completedPreparationAllowsTheNextEpochFromItsResultSubscriber() {
         var now = new AtomicReference<>(Instant.parse("2026-10-04T10:00:00Z"));
         var from = now.get().plusSeconds(5);
@@ -39,12 +51,15 @@ class ReplicaPlanActuatorTest {
         return new RegisteredFunction(spec,new DeploymentMetadata(ExecutionMode.DEPLOYMENT,ExecutionMode.DEPLOYMENT,"local",null).withDesiredReplicas(0));
     }
     static EpochOutcome outcome(String node,long epoch,Instant from,int capacity,double load) {
+        return outcome(node,epoch,from,Duration.ofSeconds(300),capacity,load);
+    }
+    static EpochOutcome outcome(String node,long epoch,Instant from,Duration period,int capacity,double load) {
         var problem=new LocalProblem(LocalProblem.Model.LSP,capacity,List.of(new LocalProblem.Function("f",load,1,1,1,1,.9,.1,0,0,0,0)));
         var initial=new LocalReplicaSolver().solve(problem,SolveLimits.forDuration(Duration.ofSeconds(1)));
         var identities=Map.of("f",new AuctionSnapshot.FunctionIdentity("v",3));
-        var snapshot=AuctionSnapshot.open(node,node+"-run",epoch,0,1,from,from.plusSeconds(300),problem,initial,identities,Map.of());
+        var snapshot=AuctionSnapshot.open(node,node+"-run",epoch,0,1,from,from.plus(period),problem,initial,identities,Map.of());
         var ledger=new SellerLedger(snapshot,OneShotAuctionEngine.Options.base());snapshot=ledger.finalizeAuction().state();
-        var input=new EpochInput(problem,identities,Map.of("f",new ForecastSnapshot(new ForecastQuery(node,"f",3,from,from.plusSeconds(300)),ForecastSnapshot.Status.AVAILABLE,load,1,"oracle",from.minusSeconds(5))),1);
+        var input=new EpochInput(problem,identities,Map.of("f",new ForecastSnapshot(new ForecastQuery(node,"f",3,from,from.plus(period)),ForecastSnapshot.Status.AVAILABLE,load,1,"oracle",from.minusSeconds(5))),1);
         return new EpochOutcome(epoch,EpochOutcome.Status.CONVERGED,snapshot,100,10,1,"test",input);
     }
     static PeerTransport peers(String node) {
