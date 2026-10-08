@@ -1,9 +1,12 @@
 package it.unimib.datai.nanofaas.controlplane.architecture;
 
+import com.tngtech.archunit.base.DescribedPredicate;
+import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
+import it.unimib.datai.nanofaas.controlplane.registry.FunctionCatalogView;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
-import com.tngtech.archunit.core.importer.ImportOption;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
@@ -20,29 +23,36 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 class SpiPurityTest {
 
     private final JavaClasses spiClasses = new ClassFileImporter()
-            .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
-            .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_JARS)
-            .importPackages("it.unimib.datai.nanofaas");
+            .importUrl(FunctionCatalogView.class.getProtectionDomain().getCodeSource().getLocation());
 
     @Test
     void theSpiReferencesOnlyItsOwnTypesTheWireModelsAndTwoNeutralLibraries() {
-        classes().should().onlyDependOnClassesThat()
-                .resideInAnyPackage(
-                        // The SPI's own contracts; every one of them is in the control-plane
-                        // namespace, including the runtime-config contract two modules implement.
-                        "it.unimib.datai.nanofaas.controlplane..",
-                        // Shared wire and runtime models: the SPI may depend on common, never the
-                        // reverse.
-                        "it.unimib.datai.nanofaas.common..",
-                        "java..",
-                        "javax..",
-                        // A gateway signature returns a Mono; two support classes log.
-                        "reactor.core..",
-                        "reactor.util..",
-                        "org.slf4j..",
-                        "org.reactivestreams..")
-                .as("the SPI depends only on common, reactor-core and slf4j")
-                .check(spiClasses);
+        purityRule().check(spiClasses);
+    }
+
+    private com.tngtech.archunit.lang.ArchRule purityRule() {
+        assertTrue(spiClasses.contain(FunctionCatalogView.class.getName()), "SPI artifact must have subjects");
+        var ownTypes = new DescribedPredicate<JavaClass>("belong to the SPI artifact") {
+            @Override
+            public boolean test(JavaClass type) {
+                return spiClasses.contain(type.getBaseComponentType().getName());
+            }
+        };
+        return classes().should().onlyDependOnClassesThat(ownTypes.or(
+                JavaClass.Predicates.resideInAnyPackage(
+                        "it.unimib.datai.nanofaas.common..", "java..", "javax..",
+                        "reactor.core..", "reactor.util..", "org.slf4j..", "org.reactivestreams..")))
+                .as("the SPI depends only on its own artifact, common, reactor-core and slf4j");
+    }
+
+    static final class ForeignImplementation { }
+    static final class SpiConsumerFixture { ForeignImplementation implementation; }
+
+    @Test
+    void rejectsForeignTypesInTheControlplaneNamespace() {
+        var result = purityRule().evaluate(new ClassFileImporter().importClasses(SpiConsumerFixture.class));
+        assertTrue(result.hasViolation());
+        assertTrue(result.getFailureReport().getDetails().toString().contains("ForeignImplementation"));
     }
 
     @Test

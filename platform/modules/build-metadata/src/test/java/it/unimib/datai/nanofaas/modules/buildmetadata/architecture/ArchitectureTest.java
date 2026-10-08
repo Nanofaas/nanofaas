@@ -1,6 +1,7 @@
 package it.unimib.datai.nanofaas.modules.buildmetadata.architecture;
 
 import com.tngtech.archunit.base.DescribedPredicate;
+import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
@@ -8,7 +9,8 @@ import com.tngtech.archunit.lang.ArchRule;
 import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
-@AnalyzeClasses(packages = "it.unimib.datai.nanofaas.modules.buildmetadata..")
+@AnalyzeClasses(packages = "it.unimib.datai.nanofaas.modules.buildmetadata..",
+        importOptions = ImportOption.DoNotIncludeTests.class)
 class ArchitectureTest {
 
     // R5': SPI isolation. A cross-module extension is an explicit decision: add one

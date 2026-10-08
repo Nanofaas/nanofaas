@@ -4,7 +4,14 @@ import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
+import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.lang.ArchRule;
+import com.tngtech.archunit.lang.ArchCondition;
+import com.tngtech.archunit.lang.ConditionEvents;
+import com.tngtech.archunit.lang.SimpleConditionEvent;
+import java.util.Set;
+import java.util.regex.Pattern;
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 
 import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
@@ -39,23 +46,42 @@ class ArchitectureTest {
      * The module consumes contracts; SyncQueueConfiguration is the composition point that binds
      * admission collaborators to SchedulerEngine.
      */
+    private static final String ROOT = "it.unimib.datai.nanofaas.";
+    private static final String ENQUEUER = ROOT + "controlplane.service.EngineInvocationEnqueuer";
+    private static final Set<String> COMPOSITION_TARGETS = Set.of(
+            ROOT + "controlplane.service.EngineSyncQueueGateway", ENQUEUER, ENQUEUER + "$AdmissionProfile",
+            ROOT + "execution.SchedulerEngine", ROOT + "execution.PendingWorkStore",
+            ROOT + "execution.admission.SyncQueueAdmissionController", ROOT + "execution.admission.WaitEstimator");
+    private static final Pattern CORE_IMPLEMENTATION = Pattern.compile(
+            "it\\.unimib\\.datai\\.nanofaas\\."
+                    + "(execution\\..*|controlplane\\.execution\\..*"
+                    + "|controlplane\\.service\\.(Metrics|InvocationService|ReactiveInvocationCoordinator"
+                    + "|ExecutionCompletionHandler|RateLimiter|EngineInvocationEnqueuer(?:\\$.*)?|EngineSyncQueueGateway"
+                    + "|SchedulerConfiguration|SchedulerLifecycleAdapter)"
+                    + "|controlplane\\.capacity\\.(FunctionCapacityRegistry|FunctionCapacityState|DispatchLease"
+                    + "|InvocationCapacity|WaiterCapacity|ResourceQuota)"
+                    + "|controlplane\\.registry\\.(FunctionRegistry|FunctionService|FunctionCatalog|ManagedDeploymentCoordinator)"
+                    + "|controlplane\\.deployment\\.(ReplicaStatusSnapshot|DeploymentWakeUpCoordinator))");
+
     @ArchTest
-    static final ArchRule does_not_depend_on_core_implementations =
-            noClasses()
-                    .that(DescribedPredicate.not(
-                            com.tngtech.archunit.core.domain.JavaClass.Predicates.simpleName("SyncQueueConfiguration")))
-                    .should().dependOnClassesThat()
-                    .haveNameMatching("it\\.unimib\\.datai\\.nanofaas\\."
-                            + "(execution\\..*"
-                            + "|controlplane\\.execution\\..*"
-                            + "|controlplane\\.service\\.(Metrics|InvocationService|ReactiveInvocationCoordinator"
-                            + "|ExecutionCompletionHandler|RateLimiter|EngineInvocationEnqueuer|SchedulerConfiguration"
-                            + "|SchedulerLifecycleAdapter)"
-                            + "|controlplane\\.capacity\\.(FunctionCapacityRegistry|FunctionCapacityState|DispatchLease"
-                            + "|InvocationCapacity|WaiterCapacity|ResourceQuota)"
-                            + "|controlplane\\.registry\\.(FunctionRegistry|FunctionService|FunctionCatalog"
-                            + "|ManagedDeploymentCoordinator)"
-                            + "|controlplane\\.deployment\\.(ReplicaStatusSnapshot|DeploymentWakeUpCoordinator))")
-                    .as("a module consumes contracts and ports, never core implementations, "
-                            + "except SyncQueueConfiguration's EngineSyncQueueGateway factory");
+    static final ArchRule does_not_depend_on_core_implementations = classes()
+            .should(new ArchCondition<JavaClass>("consume contracts except the exact sync composition pairs") {
+                @Override
+                public void check(JavaClass origin, ConditionEvents events) {
+                    for (var dependency : origin.getDirectDependenciesFromSelf()) {
+                        String target = dependency.getTargetClass().getName();
+                        boolean approved = origin.getName().equals(ROOT + "modules.syncqueue.SyncQueueConfiguration")
+                                && COMPOSITION_TARGETS.contains(target);
+                        if (approved && target.equals(ENQUEUER)) {
+                            approved = dependency.getDescription().startsWith("Class <" + origin.getName()
+                                + "> depends on <" + ENQUEUER + ">")
+                                && origin.getAccessesFromSelf().stream()
+                                    .noneMatch(access -> access.getTargetOwner().getName().equals(ENQUEUER));
+                        }
+                        if (CORE_IMPLEMENTATION.matcher(target).matches() && !approved) {
+                            events.add(SimpleConditionEvent.violated(dependency, dependency.getDescription()));
+                        }
+                    }
+                }
+            });
 }

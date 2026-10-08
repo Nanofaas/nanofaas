@@ -202,3 +202,16 @@ The reproducible reference environment is Linux, Node 24, Go 1.24 and Java 25. m
 The tool gate installs k6 2.3.0 from its pinned Grafana release with SHA-256 verification. The benchmark semantic-threshold test executes `k6 inspect` and requires the actual binary; it is not skipped when the dependency is absent.
 
 Before the scaffolder suite, the tool gate selects the Rust toolchain and fetches the SDK's locked dependencies. The generated Rust function test then runs Cargo offline, including on runners with an initially empty registry cache.
+
+## Module boundaries
+
+The composition-level checks classify core, SPI and execution-runtime classes by their artifact code source, so shared Java packages and repository directory moves do not weaken the boundary. Run:
+
+```bash
+./gradlew :control-plane:test --tests '*CoreArchitecture*' --tests '*ModuleBoundaryArchitectureTest' -PcontrolPlaneModules=all
+./gradlew :control-plane:test --tests '*CoreArchitecture*' --tests '*ModuleBoundaryArchitectureTest' -PcontrolPlaneModules=none
+```
+
+Optional production modules consume SPI/API contracts and shared libraries, not another optional implementation or core/execution-runtime implementation. Integration tests may use implementations. Every selected module must contribute production subjects; `none` is a valid empty selection. SPI purity checks the SPI artifact's actual types rather than allowing the entire shared `controlplane` package.
+
+`SyncQueueConfiguration` is the explicit composition exception: it may reference `EngineSyncQueueGateway`, `EngineInvocationEnqueuer.AdmissionProfile`, `SchedulerEngine`, `PendingWorkStore`, `SyncQueueAdmissionController` and `WaitEstimator`. The enclosing `EngineInvocationEnqueuer` is accepted only as structural enum metadata, never for direct calls or construction. Additional collaborators require a deliberate policy update. The core and execution runtime retain shared state ownership; Docker and containerd providers retain the shared container deployment runtime. A Gradle project is not necessarily an independent component requiring a separate API artifact.

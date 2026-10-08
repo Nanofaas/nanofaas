@@ -214,10 +214,10 @@ class CoreArchitectureTest {
             return;
         }
         List<String> expected = new ArrayList<>();
-        if (selected.contains("async-queue")) {
+        if (List.of(selected.split(",")).contains("async-queue")) {
             expected.addAll(List.of("PerFunctionSchedulingStrategy", "PerFunctionIndex"));
         }
-        if (selected.contains("sync-queue")) {
+        if (List.of(selected.split(",")).contains("sync-queue")) {
             expected.addAll(List.of("SharedQueueSchedulingStrategy", "SharedQueueIndex"));
         }
 

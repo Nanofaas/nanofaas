@@ -68,6 +68,9 @@ jobs:
       - name: Run release checks
         run: ./gradlew releaseChecks -PcontrolPlaneModules=all --continue
 
+      - name: Check module boundaries with the full composition
+        run: ./gradlew :control-plane:test --tests '*CoreArchitecture*' --tests '*ModuleBoundaryArchitectureTest' -PcontrolPlaneModules=all
+
       - name: Run P2P Tests
         run: ./gradlew :control-plane-modules:p2p-discovery:test -PcontrolPlaneModules=all
 
@@ -77,7 +80,7 @@ jobs:
       # so it needs its own invocation. Module selection happens at configuration
       # time and cannot be varied inside a single build.
       - name: Run Core-Only Tests
-        run: ./gradlew :control-plane:test -PcontrolPlaneModules=none --tests '*CoreOnlyApiTest' --tests '*P07ConfiguredHttpCalibrationTest'
+        run: ./gradlew :control-plane:test -PcontrolPlaneModules=none --tests '*CoreOnlyApiTest' --tests '*P07ConfiguredHttpCalibrationTest' --tests '*CoreArchitecture*' --tests '*ModuleBoundaryArchitectureTest'
 
       # Both queues are enabled by default; concurrency-control selects sync
       # when both are present. Run each provider explicitly to cover both governors.
