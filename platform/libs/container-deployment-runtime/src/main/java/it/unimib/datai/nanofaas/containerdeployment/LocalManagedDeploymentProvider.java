@@ -94,15 +94,15 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
                             + "' has a pending removal on backend '" + backendId()
                             + "'; finish the deprovision before provisioning it again");
                 }
-                return new ProvisionResult(existing.proxy.endpointUrl(), backendId(), deploymentObjects(spec.name()));
+                return new ProvisionResult(existing.proxy.endpointUrl(), backendId(), deploymentObjects(states.get(spec.name())));
             }
 
             ManagedFunctionProxy proxy = proxyFactory.create(spec.name());
-            FunctionState state = new FunctionState(spec, proxy);
+            FunctionState state = new FunctionState(spec, proxy, containerNamePrefix(spec.name()));
             states.put(spec.name(), state);
             try {
                 scaleTo(state, desiredReplicas(spec));
-                return new ProvisionResult(proxy.endpointUrl(), backendId(), deploymentObjects(spec.name()));
+                return new ProvisionResult(proxy.endpointUrl(), backendId(), deploymentObjects(states.get(spec.name())));
             } catch (RuntimeException e) {
                 for (int replicaIndex : List.copyOf(state.replicas.keySet()).reversed()) {
                     suppressCleanupFailure(e, () -> removeReplica(state, replicaIndex));
@@ -139,7 +139,7 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
             }
 
             ManagedFunctionProxy proxy = proxyFactory.create(spec.name());
-            FunctionState state = new FunctionState(spec, proxy);
+            FunctionState state = new FunctionState(spec, proxy, prefix);
             Set<String> createdDuringReconcile = new HashSet<>();
             try {
                 for (ManagedContainer container : discovered) {
@@ -164,7 +164,7 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
                 if (replaced != null && replaced.proxy != proxy) {
                     safeClose(replaced.proxy);
                 }
-                return new ProvisionResult(proxy.endpointUrl(), backendId(), deploymentObjects(spec.name()));
+                return new ProvisionResult(proxy.endpointUrl(), backendId(), deploymentObjects(states.get(spec.name())));
             } catch (RuntimeException failure) {
                 for (String createdName : createdDuringReconcile) {
                     suppressCleanupFailure(failure, () -> adapter.removeContainer(createdName));
@@ -424,7 +424,7 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
     }
 
     private void addReplica(FunctionState state, int replicaIndex) {
-        String containerName = containerName(state.spec.name(), replicaIndex);
+        String containerName = stateContainerName(state, replicaIndex);
         String baseUrl;
         ContainerInstanceSpec instanceSpec = new ContainerInstanceSpec(
                 containerName,
@@ -438,11 +438,20 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
                         REPLICA_LABEL, Integer.toString(replicaIndex))
         );
 
+        boolean created = false;
         try {
             baseUrl = adapter.runContainer(instanceSpec).baseUrl();
+            created = true;
             endpointProbe.awaitReady(baseUrl, settings.readinessTimeout(), settings.readinessPollInterval());
         } catch (RuntimeException e) {
-            suppressCleanupFailure(e, () -> adapter.removeContainer(containerName));
+            boolean createdHere = created;
+            if (!(e instanceof ContainerNameConflictException)) {
+                suppressCleanupFailure(e, () -> {
+                    boolean owned = createdHere || adapter.listManagedContainers(containerFunctionLabel(state.spec.name())).stream()
+                            .anyMatch(container -> container.name().equals(containerName));
+                    if (owned) adapter.removeContainer(containerName);
+                });
+            }
             throw e;
         }
         state.replicas.put(replicaIndex, new ReplicaState(containerName, baseUrl));
@@ -471,11 +480,11 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
         String expected = containerNamePrefix(functionName);
         String persisted = deploymentObjects == null ? null
                 : deploymentObjects.get(ProvisionResult.CONTAINER_NAME_PREFIX);
-        if (persisted == null || persisted.isBlank() || !expected.equals(persisted)) {
+        if (persisted == null || persisted.isBlank() || (!expected.equals(persisted) && !legacyContainerNamePrefix(functionName).equals(persisted))) {
             throw new IllegalArgumentException("Persisted container name prefix '" + persisted
                     + "' does not match function '" + functionName + "'");
         }
-        return expected;
+        return persisted;
     }
 
     private void validateReplicaIndexes(String functionName, String prefix, List<ManagedContainer> discovered) {
@@ -485,7 +494,9 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
                 throw new IllegalArgumentException("Managed container '" + container.name()
                         + "' has an invalid replica index");
             }
-            if (!container.name().equals(containerName(functionName, container.replicaIndex()))) {
+            String expectedName = prefix.equals(containerNamePrefix(functionName))
+                    ? containerName(functionName, container.replicaIndex()) : prefix + "-r" + container.replicaIndex();
+            if (!container.name().equals(expectedName)) {
                 throw new IllegalArgumentException("Managed container '" + container.name()
                         + "' does not match the persisted prefix '" + prefix + "'");
             }
@@ -506,7 +517,7 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
         for (int replicaIndex = 1; replicaIndex <= desiredReplicas; replicaIndex++) {
             if (!state.replicas.containsKey(replicaIndex)) {
                 addReplica(state, replicaIndex);
-                createdDuringReconcile.add(containerName(state.spec.name(), replicaIndex));
+                createdDuringReconcile.add(stateContainerName(state, replicaIndex));
             }
         }
         pushProxyConfig(state);
@@ -549,8 +560,17 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
         return env;
     }
 
-    private Map<String, String> deploymentObjects(String functionName) {
-        return Map.of(ProvisionResult.CONTAINER_NAME_PREFIX, containerNamePrefix(functionName));
+    private Map<String, String> deploymentObjects(FunctionState state) {
+        return Map.of(ProvisionResult.CONTAINER_NAME_PREFIX, state.prefix);
+    }
+
+    private String stateContainerName(FunctionState state, int replicaIndex) {
+        return state.prefix.equals(containerNamePrefix(state.spec.name()))
+                ? containerName(state.spec.name(), replicaIndex) : state.prefix + "-r" + replicaIndex;
+    }
+
+    protected String legacyContainerNamePrefix(String functionName) {
+        return containerNamePrefix(functionName);
     }
 
     protected String containerFunctionLabel(String functionName) { return functionName; }
@@ -616,6 +636,7 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
         // so a snapshot frozen at provisioning time would outlive every later PATCH.
         private volatile FunctionSpec spec; // NOSONAR (java:S3077): thread-safe or immutable value replaced wholesale
         private final ManagedFunctionProxy proxy;
+        private final String prefix;
         private final LinkedHashMap<Integer, ReplicaState> replicas = new LinkedHashMap<>();
         /**
          * Set by a deprovision that could not finish. The state then exists only to be cleaned up:
@@ -624,9 +645,10 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
          */
         private volatile boolean pendingRemoval;
 
-        private FunctionState(FunctionSpec spec, ManagedFunctionProxy proxy) {
+        private FunctionState(FunctionSpec spec, ManagedFunctionProxy proxy, String prefix) {
             this.spec = spec;
             this.proxy = proxy;
+            this.prefix = prefix;
         }
     }
 

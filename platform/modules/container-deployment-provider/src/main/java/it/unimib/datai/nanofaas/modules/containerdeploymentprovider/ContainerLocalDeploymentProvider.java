@@ -8,7 +8,26 @@ import it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxyFacto
 
 public class ContainerLocalDeploymentProvider extends LocalManagedDeploymentProvider {
     private final String namespace;
-    @Override protected String containerNamePrefix(String function) { return namespace==null?super.containerNamePrefix(function):namespace+"-"+super.containerNamePrefix(function); }
+    @Override
+    protected String containerNamePrefix(String function) {
+        String slug = super.containerNamePrefix(function).substring("nanofaas-".length());
+        if (slug.length() > 44) slug = slug.substring(0, 44);
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(function.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            String prefix = "nanofaas-" + slug + "-" + java.util.HexFormat.of().formatHex(digest, 0, 8);
+            return namespace == null ? prefix : namespace + "-" + prefix;
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 is unavailable", impossible);
+        }
+    }
+
+    @Override
+    protected String legacyContainerNamePrefix(String function) {
+        String prefix = super.containerNamePrefix(function);
+        return namespace == null ? prefix : namespace + "-" + prefix;
+    }
+
     @Override protected String containerFunctionLabel(String function) { return namespace==null?function:namespace+"/"+function; }
     static final String BACKEND_ID = "container-local";
 

@@ -23,6 +23,20 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class LocalManagedDeploymentProviderTest {
+    @Test
+    void runFailureDoesNotRemoveForeignResource() {
+        var adapter = mock(ContainerRuntimeAdapter.class);
+        var proxy = mock(ManagedFunctionProxy.class);
+        when(adapter.runContainer(any())).thenThrow(new IllegalStateException("name occupied"));
+        when(adapter.listManagedContainers("echo")).thenReturn(List.of());
+        var provider = new LocalManagedDeploymentProvider("test-runtime",
+                new LocalDeploymentSettings(null, Duration.ofSeconds(1), Duration.ofMillis(10)),
+                adapter, mock(EndpointProbe.class), factoryReturning(proxy));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> provider.provision(spec()))
+                .isInstanceOf(IllegalStateException.class);
+        verify(adapter, org.mockito.Mockito.never()).removeContainer(anyString());
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"http://10.90.0.2:8080", "http://nanofaas-echo-r1:8080"})
     void provisionUsesTheEndpointReturnedByTheAdapter(String endpoint) {

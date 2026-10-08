@@ -53,7 +53,6 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
     @Override
     public ManagedContainer runContainer(ContainerInstanceSpec spec) {
         int hostPort = portAllocator.nextPort();
-        executor.run(List.of(runtimeAdapter, "rm", "-f", spec.containerName()));
 
         List<String> command = new ArrayList<>();
         command.add(runtimeAdapter);
@@ -89,6 +88,9 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
 
         ExecutionResult result = executor.run(command);
         if (!result.isSuccess()) {
+            if (result.output().contains("already in use") || result.output().contains("already exists")) {
+                throw new it.unimib.datai.nanofaas.containerdeployment.ContainerNameConflictException(spec.containerName(), null);
+            }
             throw new IllegalStateException("Failed to start container '" + spec.containerName() + "': " + result.output());
         }
         return new ManagedContainer(spec.containerName(),

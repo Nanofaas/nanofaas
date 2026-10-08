@@ -17,6 +17,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class CliContainerRuntimeAdapterTest {
 
+    @Test
+    void nameConflictNeverDeletesExistingContainer() {
+        var executor = new RecordingCliCommandExecutor()
+                .withResult(ExecutionResult.failure(125, "container name already in use"));
+        var adapter = new CliContainerRuntimeAdapter("docker", executor, null, "127.0.0.1", () -> 18080);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> adapter.runContainer(instance(null)))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(executor.commands()).noneMatch(command -> command.contains("rm"));
+    }
+
     @Test void immutableLocalImageNeverFallsBackToMutablePull() {
         String id="sha256:"+"a".repeat(64);
         var executor=new RecordingCliCommandExecutor().withResult(ExecutionResult.success(id+"\n")).withResult(ExecutionResult.success("sha256:"+"b".repeat(64)));
@@ -60,7 +70,6 @@ class CliContainerRuntimeAdapterTest {
 
         assertThat(managed).isEqualTo(new ManagedContainer("nanofaas-echo-r1", 1, "http://127.0.0.1:18080", true));
         assertThat(executor.commands()).containsExactly(
-                List.of("podman", "rm", "-f", "nanofaas-echo-r1"),
                 List.of(
                         "podman", "run", "-d",
                         "--name", "nanofaas-echo-r1",
@@ -87,7 +96,7 @@ class CliContainerRuntimeAdapterTest {
                 new ResourceQuantity(null, 256)
         )));
 
-        assertThat(executor.commands().get(1))
+        assertThat(executor.commands().getFirst())
                 .contains("--memory", "256m")
                 .doesNotContain("--memory-reservation");
     }
@@ -99,7 +108,7 @@ class CliContainerRuntimeAdapterTest {
 
         adapter.runContainer(instance(null));
 
-        assertThat(executor.commands().get(1))
+        assertThat(executor.commands().getFirst())
                 .doesNotContain("--cpu-shares", "--cpus", "--memory-reservation", "--memory");
     }
 
@@ -144,7 +153,7 @@ class CliContainerRuntimeAdapterTest {
         adapter.runContainer(new ContainerInstanceSpec(
                 "nanofaas-echo-r1", "img:latest", List.of(), Map.of(), null, null));
 
-        assertThat(executor.commands().get(1)).containsSequence("--cpuset-cpus", "0-3");
+        assertThat(executor.commands().getFirst()).containsSequence("--cpuset-cpus", "0-3");
     }
 
     @Test
@@ -157,7 +166,7 @@ class CliContainerRuntimeAdapterTest {
         adapter.runContainer(new ContainerInstanceSpec(
                 "nanofaas-echo-r1", "img:latest", List.of(), Map.of(), null, null));
 
-        assertThat(executor.commands().get(1)).doesNotContain("--cpuset-cpus");
+        assertThat(executor.commands().getFirst()).doesNotContain("--cpuset-cpus");
     }
 
     @Test
@@ -175,7 +184,7 @@ class CliContainerRuntimeAdapterTest {
                         ContainerLocalDeploymentProvider.REPLICA_LABEL, "1")
         ));
 
-        assertThat(executor.commands().get(1)).containsSubsequence(
+        assertThat(executor.commands().getFirst()).containsSubsequence(
                 "--label", "io.nanofaas.function=echo",
                 "--label", "io.nanofaas.managed=true",
                 "--label", "io.nanofaas.replica=1"

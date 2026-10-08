@@ -49,21 +49,21 @@ class ContainerLocalDeprovisionRecoveryTest {
         ContainerLocalDeploymentProvider provider = provider(adapter, proxy);
         provider.provision(spec("echo", 3));
 
-        adapter.failRemovalOf("nanofaas-echo-r2");
+        adapter.failRemovalOf("nanofaas-echo-092c79e8f80e559e-r2");
 
         PartialDeprovisionException partial = (PartialDeprovisionException)
                 catchThrowable(() -> provider.deprovision("echo"));
 
         assertThat(partial).isNotNull();
         // Both healthy replicas were attempted despite the failure in the middle of the pass.
-        assertThat(adapter.removed()).containsExactly("nanofaas-echo-r3", "nanofaas-echo-r1");
-        assertThat(partial.remainingResources()).containsExactly("nanofaas-echo-r2");
+        assertThat(adapter.removed()).containsExactly("nanofaas-echo-092c79e8f80e559e-r3", "nanofaas-echo-092c79e8f80e559e-r1");
+        assertThat(partial.remainingResources()).containsExactly("nanofaas-echo-092c79e8f80e559e-r2");
         assertThat(partial.functionName()).isEqualTo("echo");
         assertThat(partial.backendId()).isEqualTo("container-local");
-        assertThat(partial).hasRootCauseMessage("remove of nanofaas-echo-r2 failed");
+        assertThat(partial).hasRootCauseMessage("remove of nanofaas-echo-092c79e8f80e559e-r2 failed");
         // The one resource that survived is the one that is still tracked: nothing else lingers,
         // and nothing that is gone is still claimed.
-        assertThat(trackedContainers(provider, "echo")).containsExactly("nanofaas-echo-r2");
+        assertThat(trackedContainers(provider, "echo")).containsExactly("nanofaas-echo-092c79e8f80e559e-r2");
         assertThat(proxy.closes()).isEqualTo(1);
     }
 
@@ -73,14 +73,14 @@ class ContainerLocalDeprovisionRecoveryTest {
         RecordingProxy proxy = new RecordingProxy();
         ContainerLocalDeploymentProvider provider = provider(adapter, proxy);
         provider.provision(spec("echo", 2));
-        adapter.failRemovalOf("nanofaas-echo-r1");
+        adapter.failRemovalOf("nanofaas-echo-092c79e8f80e559e-r1");
         assertThatThrownBy(() -> provider.deprovision("echo")).isInstanceOf(PartialDeprovisionException.class);
 
         adapter.recover();
         provider.deprovision("echo");
 
         // The retry removes only what was left: r2 is not deleted twice.
-        assertThat(adapter.removed()).containsExactly("nanofaas-echo-r2", "nanofaas-echo-r1");
+        assertThat(adapter.removed()).containsExactly("nanofaas-echo-092c79e8f80e559e-r2", "nanofaas-echo-092c79e8f80e559e-r1");
         assertThat(trackedFunctions(provider)).isEmpty();
         assertThat(trackedLocks(provider)).isEmpty();
         assertThat(proxy.closes()).isEqualTo(2);
@@ -99,7 +99,7 @@ class ContainerLocalDeprovisionRecoveryTest {
         assertThat(partial).isNotNull();
         assertThat(partial.remainingResources()).containsExactly("local invocation proxy");
         // A proxy that will not close never blocks the containers from being removed.
-        assertThat(adapter.removed()).containsExactly("nanofaas-echo-r2", "nanofaas-echo-r1");
+        assertThat(adapter.removed()).containsExactly("nanofaas-echo-092c79e8f80e559e-r2", "nanofaas-echo-092c79e8f80e559e-r1");
         assertThat(trackedFunctions(provider)).containsExactly("echo");
         assertThat(trackedContainers(provider, "echo")).isEmpty();
 
@@ -123,7 +123,7 @@ class ContainerLocalDeprovisionRecoveryTest {
                 catchThrowable(() -> provider.deprovision("echo"));
 
         assertThat(partial).isNotNull();
-        assertThat(adapter.removed()).containsExactly("nanofaas-echo-r2", "nanofaas-echo-r1");
+        assertThat(adapter.removed()).containsExactly("nanofaas-echo-092c79e8f80e559e-r2", "nanofaas-echo-092c79e8f80e559e-r1");
         assertThat(partial.remainingResources())
                 .containsExactly("managed containers of 'echo' (could not be listed)");
         // Tracking survives even though it is now empty: only a successful pass gives up ownership.
@@ -136,13 +136,13 @@ class ContainerLocalDeprovisionRecoveryTest {
         RecordingProxy firstProxy = new RecordingProxy();
         ContainerLocalDeploymentProvider first = provider(adapter, firstProxy);
         first.provision(spec("echo", 2));
-        adapter.failRemovalOf("nanofaas-echo-r1");
+        adapter.failRemovalOf("nanofaas-echo-092c79e8f80e559e-r1");
         assertThatThrownBy(() -> first.deprovision("echo")).isInstanceOf(PartialDeprovisionException.class);
 
         // Context shutdown: the Java-side resources go, the surviving container does not.
         first.close();
         assertThat(firstProxy.closes()).isEqualTo(2);
-        assertThat(adapter.live()).containsExactly("nanofaas-echo-r1");
+        assertThat(adapter.live()).containsExactly("nanofaas-echo-092c79e8f80e559e-r1");
 
         // Restart: a provider with no state at all finds the leftover by its managed labels.
         adapter.recover();
@@ -167,7 +167,7 @@ class ContainerLocalDeprovisionRecoveryTest {
 
         assertThat(proxy.closes()).isEqualTo(1);
         assertThat(adapter.removed()).isEmpty();
-        assertThat(adapter.live()).containsExactly("nanofaas-echo-r1", "nanofaas-echo-r2");
+        assertThat(adapter.live()).containsExactly("nanofaas-echo-092c79e8f80e559e-r1", "nanofaas-echo-092c79e8f80e559e-r2");
     }
 
     @Test
@@ -176,7 +176,7 @@ class ContainerLocalDeprovisionRecoveryTest {
         RecordingProxy proxy = new RecordingProxy();
         ContainerLocalDeploymentProvider provider = provider(adapter, proxy);
         provider.provision(spec("echo", 1));
-        adapter.failRemovalOf("nanofaas-echo-r1");
+        adapter.failRemovalOf("nanofaas-echo-092c79e8f80e559e-r1");
         assertThatThrownBy(() -> provider.deprovision("echo")).isInstanceOf(PartialDeprovisionException.class);
 
         FunctionSpec sameName = spec("echo", 1);
@@ -185,8 +185,8 @@ class ContainerLocalDeprovisionRecoveryTest {
                 .hasMessageContaining("pending removal");
 
         provider.setReplicas("echo", 4);
-        assertThat(adapter.live()).containsExactly("nanofaas-echo-r1");
-        assertThat(trackedContainers(provider, "echo")).containsExactly("nanofaas-echo-r1");
+        assertThat(adapter.live()).containsExactly("nanofaas-echo-092c79e8f80e559e-r1");
+        assertThat(trackedContainers(provider, "echo")).containsExactly("nanofaas-echo-092c79e8f80e559e-r1");
     }
 
     @Test
@@ -196,16 +196,16 @@ class ContainerLocalDeprovisionRecoveryTest {
         ContainerLocalDeploymentProvider provider = provider(adapter, proxy);
         provider.provision(spec("echo", 2));
 
-        adapter.failRemovalOf("nanofaas-echo-r2");
+        adapter.failRemovalOf("nanofaas-echo-092c79e8f80e559e-r2");
 
         assertThatThrownBy(() -> provider.setReplicas("echo", 1))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessage("remove of nanofaas-echo-r2 failed");
+                .hasMessage("remove of nanofaas-echo-092c79e8f80e559e-r2 failed");
         // The container is still running, so the provider still claims it: a map entry dropped
         // before the removal is confirmed is a container nothing can find again.
-        assertThat(adapter.live()).containsExactly("nanofaas-echo-r1", "nanofaas-echo-r2");
+        assertThat(adapter.live()).containsExactly("nanofaas-echo-092c79e8f80e559e-r1", "nanofaas-echo-092c79e8f80e559e-r2");
         assertThat(trackedContainers(provider, "echo"))
-                .containsExactly("nanofaas-echo-r1", "nanofaas-echo-r2");
+                .containsExactly("nanofaas-echo-092c79e8f80e559e-r1", "nanofaas-echo-092c79e8f80e559e-r2");
     }
 
     @Test
@@ -215,23 +215,23 @@ class ContainerLocalDeprovisionRecoveryTest {
         RecordingProxy rebuiltProxy = new RecordingProxy();
         ContainerLocalDeploymentProvider provider = provider(adapter, firstProxy, rebuiltProxy);
         provider.provision(spec("echo", 1));
-        adapter.failRemovalOf("nanofaas-echo-r1");
+        adapter.failRemovalOf("nanofaas-echo-092c79e8f80e559e-r1");
         assertThatThrownBy(() -> provider.deprovision("echo")).isInstanceOf(PartialDeprovisionException.class);
         adapter.recover();
 
         // The one path allowed to declare the deployment operational again: it rebuilds from the
         // resources that are actually there and probes them before publishing an endpoint.
         ProvisionResult rebuilt = provider.reconcile(spec("echo", 1), 1,
-                Map.of(ProvisionResult.CONTAINER_NAME_PREFIX, "nanofaas-echo"));
+                Map.of(ProvisionResult.CONTAINER_NAME_PREFIX, "nanofaas-echo-092c79e8f80e559e"));
 
         assertThat(rebuilt.endpointUrl()).isEqualTo("http://127.0.0.1:19090/invoke");
-        assertThat(adapter.live()).containsExactly("nanofaas-echo-r1");
-        assertThat(trackedContainers(provider, "echo")).containsExactly("nanofaas-echo-r1");
+        assertThat(adapter.live()).containsExactly("nanofaas-echo-092c79e8f80e559e-r1");
+        assertThat(trackedContainers(provider, "echo")).containsExactly("nanofaas-echo-092c79e8f80e559e-r1");
         assertThat(rebuiltProxy.closes()).isZero();
         // The pending state is gone with the proxy it owned, so the function serves again.
         assertThat(provider.getReplicaStatus("echo").readyReplicas()).isEqualTo(1);
         provider.setReplicas("echo", 2);
-        assertThat(adapter.live()).containsExactly("nanofaas-echo-r1", "nanofaas-echo-r2");
+        assertThat(adapter.live()).containsExactly("nanofaas-echo-092c79e8f80e559e-r1", "nanofaas-echo-092c79e8f80e559e-r2");
     }
 
     @Test
@@ -241,12 +241,12 @@ class ContainerLocalDeprovisionRecoveryTest {
         ContainerLocalDeploymentProvider provider = provider(adapter, proxy);
         provider.provision(spec("echo", 1));
         // A container the provider never got to track: exactly what a crashed create leaves behind.
-        adapter.runContainer(instanceSpec("nanofaas-echo-r2"));
+        adapter.runContainer(instanceSpec("nanofaas-echo-092c79e8f80e559e-r2"));
 
         provider.deprovision("echo");
 
         assertThat(adapter.live()).isEmpty();
-        assertThat(adapter.removed()).containsExactly("nanofaas-echo-r1", "nanofaas-echo-r2");
+        assertThat(adapter.removed()).containsExactly("nanofaas-echo-092c79e8f80e559e-r1", "nanofaas-echo-092c79e8f80e559e-r2");
         assertThat(trackedFunctions(provider)).isEmpty();
     }
 
@@ -332,6 +332,7 @@ class ContainerLocalDeprovisionRecoveryTest {
      */
     private static final class SteerableAdapter implements ContainerRuntimeAdapter {
         private final List<String> live = new ArrayList<>();
+        private final Map<String, String> functionLabels = new LinkedHashMap<>();
         private final List<String> removed = new ArrayList<>();
         private String failingContainer;
         private boolean discoveryFails;
@@ -370,6 +371,7 @@ class ContainerLocalDeprovisionRecoveryTest {
         @Override
         public ManagedContainer runContainer(ContainerInstanceSpec spec) {
             live.add(spec.containerName());
+            functionLabels.put(spec.containerName(), spec.labels().get(ContainerLocalDeploymentProvider.FUNCTION_LABEL));
             return new ManagedContainer(spec.containerName(),
                     ContainerLocalDeploymentProvider.replicaIndex(spec.containerName()),
                     "http://127.0.0.1:31000", true);
@@ -382,6 +384,7 @@ class ContainerLocalDeprovisionRecoveryTest {
             }
             removed.add(containerName);
             live.remove(containerName);
+            functionLabels.remove(containerName);
         }
 
         @Override
@@ -389,9 +392,8 @@ class ContainerLocalDeprovisionRecoveryTest {
             if (discoveryFails) {
                 throw new IllegalStateException("docker ps failed");
             }
-            String prefix = "nanofaas-" + functionName.toLowerCase();
             return live.stream()
-                    .filter(name -> name.startsWith(prefix + "-r"))
+                    .filter(name -> functionName.equals(functionLabels.get(name)))
                     .map(name -> new ManagedContainer(name,
                             ContainerLocalDeploymentProvider.replicaIndex(name), "http://127.0.0.1:31000", true))
                     .toList();

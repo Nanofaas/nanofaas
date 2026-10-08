@@ -614,3 +614,9 @@ preserves the server body in its error diagnostics and requires no parser change
 Runtime `/invoke` errors and execution/callback result envelopes are distinct:
 their error value remains an object with `code` and `message`. Application output
 and function-selected status codes are not converted to a management error.
+
+### Local container ownership and recovery
+
+New container-local replica names contain a bounded readable slug and a digest of the original function name. Names that differ by case, punctuation or Unicode therefore have distinct container identities. A preexisting name is a creation conflict: the adapters never remove it merely to make room for a new container. Failed startup cleanup is limited to resources whose ownership is positively established.
+
+Catalog recovery also accepts the previous container-local prefix when discovery confirms the exact function and namespace labels. The recovered prefix remains attached to that deployment, including later scale-up, so upgrading the control plane does not rename or replace healthy replicas. Containerd retains its existing naming scheme.

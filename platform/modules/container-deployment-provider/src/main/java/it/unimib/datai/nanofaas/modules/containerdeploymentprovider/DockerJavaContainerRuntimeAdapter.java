@@ -84,7 +84,6 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
 
     @Override
     public ManagedContainer runContainer(ContainerInstanceSpec spec) {
-        removeContainer(spec.containerName());
 
         Integer hostPort = networkName == null ? portAllocator.nextPort() : null;
         ExposedPort functionPort = ExposedPort.tcp(8080);
@@ -114,7 +113,12 @@ final class DockerJavaContainerRuntimeAdapter implements ContainerRuntimeAdapter
                 create.withCmd(spec.command());
             }
 
-            CreateContainerResponse created = create.exec();
+            CreateContainerResponse created;
+            try {
+                created = create.exec();
+            } catch (com.github.dockerjava.api.exception.ConflictException conflict) {
+                throw new it.unimib.datai.nanofaas.containerdeployment.ContainerNameConflictException(spec.containerName(), conflict);
+            }
             client.startContainerCmd(created.getId()).exec();
         }
         return new ManagedContainer(spec.containerName(),

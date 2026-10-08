@@ -43,6 +43,43 @@ import static org.mockito.Mockito.when;
 class ContainerLocalDeploymentProviderTest {
 
     @Test
+    void reconcileAdoptsOwnedLegacyPrefixAndKeepsItForScaleUp() {
+        var adapter = new RecordingContainerRuntimeAdapter();
+        adapter.managedContainers(List.of(new ManagedContainer("nanofaas-echo-r1", 1, "http://127.0.0.1:19001", true)));
+        var proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
+        var provider = provider(adapter,
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
+                new ReadyEndpointProbe(), new FixedPortAllocator(19002), name -> proxy);
+        var result = provider.reconcile(spec("echo", 1), 1,
+                Map.of(ProvisionResult.CONTAINER_NAME_PREFIX, "nanofaas-echo"));
+        provider.setReplicas("echo", 2);
+        assertThat(result.deploymentObjects()).containsEntry(ProvisionResult.CONTAINER_NAME_PREFIX, "nanofaas-echo");
+        assertThat(adapter.startedSpecs()).extracting(ContainerInstanceSpec::containerName)
+                .containsExactly("nanofaas-echo-r2");
+        assertThat(adapter.removedContainers()).isEmpty();
+        var restarted = provider(adapter,
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
+                new ReadyEndpointProbe(), new FixedPortAllocator(19003), name -> proxy);
+        var recovered = restarted.reconcile(spec("echo", 2), 2, result.deploymentObjects());
+        assertThat(recovered.deploymentObjects()).isEqualTo(result.deploymentObjects());
+        assertThat(adapter.startedSpecs()).hasSize(1);
+    }
+
+    @Test
+    void distinctFunctionNamesDoNotReplaceEachOther() {
+        RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
+        var provider = provider(adapter,
+                new ContainerLocalProperties("docker", "127.0.0.1", Duration.ofSeconds(5), Duration.ofMillis(10), null),
+                new ReadyEndpointProbe(), new FixedPortAllocator(19001, 19002, 19003, 19004, 19005, 19006),
+                name -> new RecordingProxy("http://127.0.0.1:19090/invoke"));
+        for (String name : List.of("Echo", "echo", "foo_bar", "foo-bar", "Écho", "écho")) {
+            provider.provision(spec(name, 1));
+        }
+        assertThat(adapter.startedSpecs().stream().map(ContainerInstanceSpec::containerName)).doesNotHaveDuplicates();
+        assertThat(adapter.removedContainers()).isEmpty();
+    }
+
+    @Test
     void provision_startsMinReplicasAndReturnsStableProxyEndpoint() {
         RecordingContainerRuntimeAdapter adapter = new RecordingContainerRuntimeAdapter();
         RecordingProxy proxy = new RecordingProxy("http://127.0.0.1:19090/invoke");
@@ -170,8 +207,8 @@ class ContainerLocalDeploymentProviderTest {
 
         assertThat(adapter.startedPorts()).containsExactly(null, null);
         assertThat(proxy.backends()).containsExactly(
-                "http://nanofaas-word-stats-r1:8080",
-                "http://nanofaas-word-stats-r2:8080"
+                "http://nanofaas-word-stats-f1153f98e2d7b875-r1:8080",
+                "http://nanofaas-word-stats-f1153f98e2d7b875-r2:8080"
         );
     }
 
@@ -192,7 +229,7 @@ class ContainerLocalDeploymentProviderTest {
         ProvisionResult result = provider.provision(spec("Word_Stats", 2));
 
         String prefix = result.deploymentObjects().get(ProvisionResult.CONTAINER_NAME_PREFIX);
-        assertThat(prefix).isEqualTo("nanofaas-word-stats");
+        assertThat(prefix).isEqualTo("nanofaas-word-stats-f1153f98e2d7b875");
         assertThat(adapter.startedSpecs().stream().map(ContainerInstanceSpec::containerName))
                 .containsExactly(prefix + "-r1", prefix + "-r2");
     }
@@ -226,7 +263,7 @@ class ContainerLocalDeploymentProviderTest {
 
         provider.setReplicas("echo", 1);
 
-        assertThat(adapter.removedContainers()).containsExactly("nanofaas-echo-r3", "nanofaas-echo-r2");
+        assertThat(adapter.removedContainers()).containsExactly("nanofaas-echo-092c79e8f80e559e-r3", "nanofaas-echo-092c79e8f80e559e-r2");
         assertThat(proxy.backends()).containsExactly("http://127.0.0.1:19001");
         assertThat(provider.getReadyReplicas("echo")).isEqualTo(1);
     }
@@ -375,7 +412,7 @@ class ContainerLocalDeploymentProviderTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("start result lost");
 
-        assertThat(adapter.removedContainers()).containsExactly("nanofaas-echo-r1");
+        assertThat(adapter.removedContainers()).containsExactly("nanofaas-echo-092c79e8f80e559e-r1");
         assertThat(proxy.isClosed()).isTrue();
     }
 
@@ -396,7 +433,7 @@ class ContainerLocalDeploymentProviderTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("probe timeout");
 
-        assertThat(adapter.removedContainers()).containsExactly("nanofaas-echo-r1");
+        assertThat(adapter.removedContainers()).containsExactly("nanofaas-echo-092c79e8f80e559e-r1");
         assertThat(proxy.isClosed()).isTrue();
     }
 
@@ -420,7 +457,7 @@ class ContainerLocalDeploymentProviderTest {
                 .hasMessageContaining("second replica failed");
 
         assertThat(adapter.removedContainers())
-                .containsExactly("nanofaas-echo-r2", "nanofaas-echo-r1");
+                .containsExactly("nanofaas-echo-092c79e8f80e559e-r2", "nanofaas-echo-092c79e8f80e559e-r1");
         assertThat(firstProxy.isClosed()).isTrue();
         assertThat(provider.provision(spec("echo", 2)).endpointUrl())
                 .isEqualTo("http://127.0.0.1:19091/invoke");
@@ -445,7 +482,7 @@ class ContainerLocalDeploymentProviderTest {
         assertThat(failure.getSuppressed())
                 .extracting(Throwable::getMessage)
                 .containsExactly("remove failed");
-        assertThat(adapter.removedContainers()).containsExactly("nanofaas-echo-r1");
+        assertThat(adapter.removedContainers()).containsExactly("nanofaas-echo-092c79e8f80e559e-r1");
     }
 
     @Test
@@ -762,13 +799,18 @@ class ContainerLocalDeploymentProviderTest {
             startedPorts.add(hostPort);
             String url = hostPort == null ? "http://" + spec.containerName() + ":8080"
                     : "http://" + properties.bindHost() + ":" + hostPort;
-            return new ManagedContainer(spec.containerName(),
+            var container = new ManagedContainer(spec.containerName(),
                     ContainerLocalDeploymentProvider.replicaIndex(spec.containerName()), url, true);
+            var updated = new ArrayList<>(managedContainers);
+            updated.add(container);
+            managedContainers = List.copyOf(updated);
+            return container;
         }
 
         @Override
         public void removeContainer(String containerName) {
             removed.add(containerName);
+            managedContainers = managedContainers.stream().filter(c -> !c.name().equals(containerName)).toList();
         }
 
         @Override

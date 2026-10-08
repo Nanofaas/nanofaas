@@ -33,6 +33,21 @@ import static org.mockito.Mockito.when;
 
 class DockerJavaContainerRuntimeAdapterTest {
 
+    @Test
+    void nameConflictNeverDeletesExistingContainer() {
+        var client = mock(DockerClient.class);
+        var remove = mock(RemoveContainerCmd.class, RETURNS_SELF);
+        var create = mock(CreateContainerCmd.class, RETURNS_SELF);
+        when(client.removeContainerCmd("foreign-r1")).thenReturn(remove);
+        when(client.createContainerCmd("img")).thenReturn(create);
+        when(create.exec()).thenThrow(new com.github.dockerjava.api.exception.ConflictException("name occupied"));
+        var adapter = new DockerJavaContainerRuntimeAdapter(client, null, null, "127.0.0.1", () -> 18080);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> adapter.runContainer(
+                new ContainerInstanceSpec("foreign-r1", "img", List.of(), Map.of(), null, Map.of())))
+                .isInstanceOf(RuntimeException.class);
+        verify(client, org.mockito.Mockito.never()).removeContainerCmd(org.mockito.ArgumentMatchers.anyString());
+    }
+
     @Test void immutableLocalImageUsesExactInspectionWithoutRegistryPull() {
         var client=mock(DockerClient.class);
         var inspect=mock(com.github.dockerjava.api.command.InspectImageCmd.class);
@@ -86,8 +101,7 @@ class DockerJavaContainerRuntimeAdapterTest {
 
         ArgumentCaptor<List<String>> env = ArgumentCaptor.forClass(List.class);
         ArgumentCaptor<HostConfig> hostConfig = ArgumentCaptor.forClass(HostConfig.class);
-        verify(remove).withForce(true);
-        verify(remove).exec();
+        verify(client, org.mockito.Mockito.never()).removeContainerCmd(org.mockito.ArgumentMatchers.anyString());
         verify(create).withName("nanofaas-echo-r1");
         verify(create).withEnv(env.capture());
         verify(create).withCmd(List.of("java", "-jar", "app.jar"));

@@ -90,6 +90,30 @@ class DockerJavaContainerRuntimeAdapterIntegrationTest {
         }
     }
 
+    @Test
+    void creatingOccupiedNamePreservesTheOriginalDockerContainer() throws Exception {
+        String name = "nanofaas-ownership-audit-" + UUID.randomUUID();
+        var client = ContainerDeploymentProviderConfiguration.createDockerClient();
+        var adapter = new DockerJavaContainerRuntimeAdapter(client);
+        assumeTrue(adapter.isAvailable(), "Docker Engine is unavailable");
+        pullTestImage(client);
+        try {
+            adapter.runContainer(new ContainerInstanceSpec(name, TEST_IMAGE,
+                    List.of("sh", "-c", "sleep 30"), Map.of(), null, Map.of("audit-owner", "original")));
+            String original = client.inspectContainerCmd(name).exec().getId();
+            assertThatThrownBy(() -> adapter.runContainer(new ContainerInstanceSpec(name, TEST_IMAGE,
+                    List.of("sh", "-c", "sleep 30"), Map.of(), null, Map.of("audit-owner", "other"))))
+                    .isInstanceOf(it.unimib.datai.nanofaas.containerdeployment.ContainerNameConflictException.class);
+            var retained = client.inspectContainerCmd(name).exec();
+            assertThat(retained.getId()).isEqualTo(original);
+            assertThat(retained.getState().getRunning()).isTrue();
+            assertThat(retained.getConfig().getLabels()).containsEntry("audit-owner", "original");
+        } finally {
+            adapter.removeContainer(name);
+            adapter.close();
+        }
+    }
+
     private static void pullTestImage(DockerClient client) throws InterruptedException {
         client.pullImageCmd(TEST_IMAGE)
                 .exec(new PullImageResultCallback())
