@@ -18,9 +18,9 @@ import java.util.TreeMap;
  */
 final class RecipeContainerBuild {
 
-    static final String DOCKERFILE = "deploy/native-java/Dockerfile";
+    static final String DOCKERFILE = "tools/native-java/Dockerfile";
     static final String TARGET = "native-executable";
-    static final String EMPTY_MAVEN_REPOSITORY = "deploy/native-java/empty-maven-repo";
+    static final String EMPTY_MAVEN_REPOSITORY = "tools/native-java/empty-maven-repo";
     static final String CONTAINERD_MODULE = "containerd-deployment-provider";
     /** Builder-sizing flags of the invocation, passed into the container too. */
     static final List<String> PASS_THROUGH = List.of("nativeBuildMemory", "nativeParallelism");

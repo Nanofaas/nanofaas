@@ -1,5 +1,5 @@
 # JVM-only local development Dockerfile.
-# Native images are built via scripts/native-java-image.sh + deploy/native-java/Dockerfile;
+# Native images are built via scripts/native-java-image.sh + tools/native-java/Dockerfile;
 # this project does not use Cloud Native Buildpacks, and .github/workflows/ builds no image.
 ARG BUILDER_IMAGE=eclipse-temurin:25-jdk
 ARG RUNTIME_IMAGE=gcr.io/distroless/base-debian13:nonroot
@@ -22,7 +22,7 @@ RUN jar xf app.jar BOOT-INF/lib BOOT-INF/classes && \
 # The tuning flags live in a @argfile because the final image is distroless: an
 # exec-form ENTRYPOINT does no variable expansion and there is no shell to do it.
 #
-# Full tiering (no TieredStopAtLevel), matching deploy/compose/Dockerfile: the
+# Full tiering (no TieredStopAtLevel), matching platform/control-plane/Dockerfile.from-source: the
 # 2026-08-23 comparison found C2 40% faster in dispatch at 1 core, and
 # docs/experiments/overload-path-2026-09 (2026-09-05, post-ExecutionStore-fix)
 # revalidated it on today's code - p99 19.7ms vs 176.5ms, shed 0.46% vs

@@ -1,5 +1,5 @@
 pluginManagement {
-    includeBuild('platform/gradle-plugin')
+    includeBuild('tools/gradle-plugin')
     resolutionStrategy {
         eachPlugin {
             if (requested.id.id == 'org.graalvm.buildtools.native' && requested.version != null) {

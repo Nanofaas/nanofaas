@@ -25,7 +25,7 @@ Commands used (provider patterns select the new inventory tests and existing con
 ./gradlew :control-plane-modules:k8s-deployment-provider:test +  -PcontrolPlaneModules=k8s-deployment-provider,p2p-discovery +  --tests '*KubernetesImageInventorySourceTest' --tests '*ConfigurationTest' --tests '*ArchitectureTest'
 ./gradlew :control-plane-modules:containerd-deployment-provider:test +  -PcontrolPlaneModules=all -PcontainerdMavenLocal=true +  -Dmaven.repo.local=/private/tmp/nanofaas-p2p-m2 +  --tests '*ContainerdImageInventorySourceTest' --tests '*ConfigurationTest' --tests '*ArchitectureTest'
 ./gradlew :control-plane-spi:test --tests '*ImageInventoryTest'
-./gradlew -p platform/gradle-plugin test --tests '*RepositoryModuleDescriptorsTest' +  --tests '*ControlPlaneModuleProjectPluginTest' --tests '*OpenApiComposerTest'
+./gradlew -p tools/gradle-plugin test --tests '*RepositoryModuleDescriptorsTest' +  --tests '*ControlPlaneModuleProjectPluginTest' --tests '*OpenApiComposerTest'
 ./gradlew :control-plane:test -PcontrolPlaneModules=p2p-discovery --tests '*OpenApiRouteCoverageTest'
 ./gradlew :control-plane:nativeCompile -PcontrolPlaneModules=container-deployment-provider,p2p-discovery
 helm lint deploy/helm/nanofaas

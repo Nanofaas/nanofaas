@@ -482,7 +482,7 @@ final class RecipeArtifacts {
 
     private static Path dockerfile(Path rootDir, RecipeTasks.Target target) {
         return target.dockerfile() != null ? rootDir.resolve(target.dockerfile())
-                : rootDir.resolve("deploy/recipes/Dockerfile." + target.mode());
+                : rootDir.resolve("tools/gradle-plugin/dockerfiles/Dockerfile." + target.mode());
     }
 
     private static Path context(Path rootDir, Path output, RecipeTasks.Target target) {

@@ -20,7 +20,7 @@ def _assert_runtime_stage_redeclares_and_reports_base_images(dockerfile_text):
     # resolving to empty at runtime.
     lines = dockerfile_text.splitlines()
 
-    # the last runtime FROM: deploy/native-java/Dockerfile also has a recipe-native stage on the same base.
+    # the last runtime FROM: tools/native-java/Dockerfile also has a recipe-native stage on the same base.
     runtime_from = max(i for i, line in enumerate(lines) if line.startswith("FROM ${RUNTIME_IMAGE}"))
     # search strictly after the runtime FROM: the global declarations above the
     # first FROM also contain these substrings, and matching those would let a
@@ -44,7 +44,7 @@ def test_java_container_images_target_java_25():
     # from eclipse-temurin:25-jdk, and run it on the same distroless/base image the native
     # builds use — not the full stock JRE in gcr.io/distroless/java25-debian13.
     jlink_dockerfiles = [
-        "deploy/compose/Dockerfile",
+        "platform/control-plane/Dockerfile.from-source",
         "platform/control-plane/Dockerfile",
         "services/java/warm-echo/Dockerfile",
         "runtimes/watchdog/Dockerfile.combined",
@@ -62,7 +62,7 @@ def test_java_container_images_target_java_25():
         assert "gcr.io/distroless/java25-debian13:nonroot" not in dockerfile
 
     for relative_path in (
-        "deploy/compose/Dockerfile",
+        "platform/control-plane/Dockerfile.from-source",
         "platform/control-plane/Dockerfile",
     ):
         control_plane_dockerfile = (REPO_ROOT / relative_path).read_text()
@@ -95,7 +95,7 @@ def test_java_container_images_target_java_25():
 
 
 def test_native_java_images_use_the_shared_builder():
-    dockerfile = (REPO_ROOT / "deploy/native-java/Dockerfile").read_text()
+    dockerfile = (REPO_ROOT / "tools/native-java/Dockerfile").read_text()
     wrapper = (REPO_ROOT / "scripts/native-java-image.sh").read_text()
 
     assert "scripts/install-graalvm.sh" in dockerfile
@@ -128,7 +128,7 @@ def test_jvm_dockerfiles_report_their_base_images():
     # string that can drift from the FROM line.
     for relative_path, builder_image, runtime_image in (
         ("platform/control-plane/Dockerfile", "eclipse-temurin:25-jdk", "gcr.io/distroless/base-debian13:nonroot"),
-        ("deploy/compose/Dockerfile", "eclipse-temurin:25-jdk", "gcr.io/distroless/base-debian13:nonroot"),
+        ("platform/control-plane/Dockerfile.from-source", "eclipse-temurin:25-jdk", "gcr.io/distroless/base-debian13:nonroot"),
     ):
         dockerfile = (REPO_ROOT / relative_path).read_text()
         assert f"ARG BUILDER_IMAGE={builder_image}" in dockerfile
@@ -141,7 +141,7 @@ def test_jvm_dockerfiles_report_their_base_images():
 
 
 def test_native_java_dockerfile_reports_its_base_images():
-    dockerfile = (REPO_ROOT / "deploy/native-java/Dockerfile").read_text()
+    dockerfile = (REPO_ROOT / "tools/native-java/Dockerfile").read_text()
 
     assert "ARG BUILDER_IMAGE=oraclelinux:9-slim" in dockerfile
     assert "ARG RUNTIME_IMAGE=gcr.io/distroless/cc-debian13:nonroot" in dockerfile
@@ -170,7 +170,7 @@ def test_native_builder_can_link_the_g1_collector():
     minutes of compiling, which is an expensive way to learn it. `gcc-c++` brings
     /usr/lib/gcc/x86_64-redhat-linux/11/libstdc++.so, which is what works.
     """
-    dockerfile = (REPO_ROOT / "deploy/native-java/Dockerfile").read_text(encoding="utf-8")
+    dockerfile = (REPO_ROOT / "tools/native-java/Dockerfile").read_text(encoding="utf-8")
     install = next(
         line for line in dockerfile.splitlines() if "microdnf install" in line
     )
@@ -181,7 +181,7 @@ def test_native_builder_can_link_the_g1_collector():
 def test_native_builder_exports_the_executable_and_caches_gradle():
     """assembleRecipe's container builder exports only /application from `native-executable`;
     the release keeps building the default (last) stage, so that one must stay the runtime image."""
-    dockerfile = (REPO_ROOT / "deploy/native-java/Dockerfile").read_text(encoding="utf-8")
+    dockerfile = (REPO_ROOT / "tools/native-java/Dockerfile").read_text(encoding="utf-8")
     stages = [line.split() for line in dockerfile.splitlines() if line.startswith("FROM ")]
 
     assert ["FROM", "scratch", "AS", "native-executable"] in stages
@@ -205,9 +205,9 @@ def _stage(dockerfile_text, name):
 def test_recipe_native_stage_packages_like_the_recipe_native_dockerfile():
     """The multi-architecture path compiles and packages a container-built native image in one build, so the
     image's provenance names the GraalVM builder stage. It must package exactly as Dockerfile.native does."""
-    dockerfile = (REPO_ROOT / "deploy/native-java/Dockerfile").read_text(encoding="utf-8")
+    dockerfile = (REPO_ROOT / "tools/native-java/Dockerfile").read_text(encoding="utf-8")
     stage = _stage(dockerfile, "recipe-native")
-    packaging = (REPO_ROOT / "deploy/recipes/Dockerfile.native").read_text(encoding="utf-8").splitlines()
+    packaging = (REPO_ROOT / "tools/gradle-plugin/dockerfiles/Dockerfile.native").read_text(encoding="utf-8").splitlines()
     runtime = packaging[max(i for i, line in enumerate(packaging) if line.startswith("FROM ${RUNTIME_IMAGE}")):]
 
     def settings(lines):
@@ -225,7 +225,7 @@ def test_recipe_native_stage_packages_like_the_recipe_native_dockerfile():
 def test_native_builder_hands_the_recipe_configuration_to_spring_aot():
     """A recipe's control-plane configuration arrives base64 in NATIVE_AOT_CONFIG (empty for the release). The
     builder decodes it and adds -PnanofaasAotConfig itself, so the path lives in one place."""
-    dockerfile = (REPO_ROOT / "deploy/native-java/Dockerfile").read_text(encoding="utf-8")
+    dockerfile = (REPO_ROOT / "tools/native-java/Dockerfile").read_text(encoding="utf-8")
     stage = _stage(dockerfile, "builder")
 
     assert "ARG NATIVE_AOT_CONFIG" in stage
@@ -238,7 +238,7 @@ def test_native_builder_hands_the_recipe_configuration_to_spring_aot():
 def test_native_builder_decodes_the_aot_configuration_byte_for_byte(tmp_path):
     """Runs the builder's decode step and its Gradle flag expansion in sh. Quotes, $ and line breaks must come out
     exactly as the recipe wrote them, and without the argument neither the file nor the flag appears."""
-    stage = _stage((REPO_ROOT / "deploy/native-java/Dockerfile").read_text(encoding="utf-8"), "builder")
+    stage = _stage((REPO_ROOT / "tools/native-java/Dockerfile").read_text(encoding="utf-8"), "builder")
     start = next(i for i, line in enumerate(stage) if line.startswith('RUN if [ -n "$NATIVE_AOT_CONFIG" ]'))
     end = next(i for i in range(start, len(stage)) if not stage[i].endswith("\\"))
     target = tmp_path / "aot.yaml"
@@ -263,3 +263,13 @@ def test_java_lite_images_receive_common_sources_from_the_library_directory():
         text = (REPO_ROOT / "functions/java" / name / "Dockerfile").read_text()
         assert "COPY platform/libs/common/ common/" in text
         assert "COPY platform/common/ common/" not in text
+
+
+def test_watchdog_combined_image_copy_sources_exist_in_the_repository():
+    text = (REPO_ROOT / "runtimes/watchdog/Dockerfile.combined").read_text()
+    for line in text.splitlines():
+        if not line.startswith("COPY ") or "--from=" in line:
+            continue
+        for source in line.split()[1:-1]:
+            assert (REPO_ROOT / source).exists() or list(REPO_ROOT.glob(source)), \
+                f"Missing Docker COPY source: {source}"

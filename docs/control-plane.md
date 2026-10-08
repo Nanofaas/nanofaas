@@ -213,7 +213,7 @@ are not discovered through application component scanning.
 
 The API contract is split between `openapi/core.yaml` (the always-present
 routes) and a per-module `platform/modules/<id>/openapi.yaml` fragment. A
-Gradle-time task (`OpenApiComposer` in `platform/gradle-plugin`) merges the
+Gradle-time task (`OpenApiComposer` in `tools/gradle-plugin`) merges the
 core document with the fragments of whatever modules were actually selected
 for the build, and packages the result as `META-INF/resources/openapi.yaml`
 inside the jar. There is no static `openapi.yaml` at the repository root

@@ -5,7 +5,7 @@ services:
     image: ${NANOFAAS_CONTROL_PLANE_IMAGE:-ghcr.io/miciav/nanofaas/control-plane:latest}
     build:
       context: ../..
-      dockerfile: deploy/compose/Dockerfile
+      dockerfile: platform/control-plane/Dockerfile.from-source
       args:
         NANOFAAS_CONTROL_PLANE_MODULES: ${NANOFAAS_CONTROL_PLANE_MODULES:-container-deployment-provider}
         # Export these to stamp the image with its provenance, which the builder cannot

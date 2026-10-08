@@ -95,9 +95,9 @@ class RecipeContainerBuildTest {
         assertThat(RecipeContainerBuild.command("docker", root, Path.of("/out/control-plane"), ":control-plane:nativeCompile",
                 "platform/control-plane/build/native/nativeCompile/control-plane", "oracle",
                 List.of("-PnanofaasBuildType=native", "-PcontrolPlaneModules=none"), null, null)).containsExactly(
-                "docker", "build", "-f", "/repo/deploy/native-java/Dockerfile", "--target", "native-executable",
+                "docker", "build", "-f", "/repo/tools/native-java/Dockerfile", "--target", "native-executable",
                 "--output", "type=local,dest=/out/control-plane",
-                "--build-context", "containerd_maven_repo=/repo/deploy/native-java/empty-maven-repo",
+                "--build-context", "containerd_maven_repo=/repo/tools/native-java/empty-maven-repo",
                 "--build-arg", "NATIVE_TASK=:control-plane:nativeCompile",
                 "--build-arg", "NATIVE_BINARY=platform/control-plane/build/native/nativeCompile/control-plane",
                 "--build-arg", "GRAALVM_DISTRIBUTION=oracle",

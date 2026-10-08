@@ -18,7 +18,7 @@ class IssueCoverageTest {
         assertTrue(Files.isDirectory(root.resolve("platform/control-plane")));
         assertTrue(Files.isDirectory(root.resolve("services/java/warm-echo")));
         assertFalse(Files.exists(root.resolve("platform/function-runtime")));
-        assertTrue(Files.isDirectory(root.resolve("platform/common")));
+        assertTrue(Files.isDirectory(root.resolve("platform/libs/common")));
     }
 
     @Test

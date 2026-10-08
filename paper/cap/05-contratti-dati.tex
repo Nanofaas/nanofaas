@@ -1,7 +1,7 @@
 \chapter{Contratti e modello dei dati}
 \label{cap:05-contratti-dati}
 
-Il modulo \code{platform/common} contiene i tipi che attraversano ogni confine
+Il modulo \code{platform/libs/common} contiene i tipi che attraversano ogni confine
 del sistema: quelli che il control plane scambia con i chiamanti, con i runtime
 delle funzioni e con gli SDK nei vari linguaggi. Sono circa seicento righe
 di codice Java di produzione, e la loro stabilit\`a \`e ci\`o che consente ai moduli e agli SDK di
@@ -183,7 +183,7 @@ esercitando il controllo sulla risposta HTTP e quando no.
 
 Cinque enumerazioni definiscono lo spazio delle politiche configurabili. Sono
 elencate qui per completezza; ciascuna \`e trattata nel capitolo del modulo che
-la implementa. Le prime quattro vivono in \code{platform/common}, perch\'e
+la implementa. Le prime quattro vivono in \code{platform/libs/common}, perch\'e
 compaiono nella specifica di funzione; \code{SyncQueueRejectReason} vive invece
 nella libreria di contratto dei moduli \code{control-plane-spi}
 (\cref{cap:08-sistema-moduli}), perch\'e non attraversa il confine del
@@ -237,7 +237,7 @@ grandezza che l'autoscaler determina.
 
 \section{Il punto di estensione dei moduli}
 
-\code{platform/common} non contiene pi\`u un'interfaccia di modulo. Una versione
+\code{platform/libs/common} non contiene pi\`u un'interfaccia di modulo. Una versione
 precedente definiva un'interfaccia \code{ControlPlaneModule} con un solo metodo
 (\code{configurationClasses()}), caricata tramite \code{ServiceLoader} da un
 selettore di importazione scritto ad hoc; il commit \code{bfe9cdd3} l'ha

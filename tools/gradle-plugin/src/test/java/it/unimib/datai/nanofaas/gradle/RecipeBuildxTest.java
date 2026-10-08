@@ -101,15 +101,15 @@ class RecipeBuildxTest {
         assertThat(RecipeBuildx.inspect("docker", "multi"))
                 .containsExactly("docker", "buildx", "inspect", "--bootstrap", "--builder", "multi");
 
-        List<String> source = List.of("-f", "/repo/deploy/recipes/Dockerfile.jvm", "/out/control-plane");
+        List<String> source = List.of("-f", "/repo/tools/gradle-plugin/dockerfiles/Dockerfile.jvm", "/out/control-plane");
         assertThat(RecipeBuildx.build("docker", null, List.of("linux/amd64", "linux/arm64"), true, "r.example/cp:1",
                 source, null)).containsExactly("docker", "buildx", "build", "--platform", "linux/amd64,linux/arm64",
-                "--provenance=mode=max", "-t", "r.example/cp:1", "-f", "/repo/deploy/recipes/Dockerfile.jvm",
+                "--provenance=mode=max", "-t", "r.example/cp:1", "-f", "/repo/tools/gradle-plugin/dockerfiles/Dockerfile.jvm",
                 "/out/control-plane");
         assertThat(RecipeBuildx.build("docker", "multi", List.of("linux/arm64"), false, "r.example/cp:1", source,
                 Path.of("/tmp/meta.json"))).containsExactly("docker", "buildx", "build", "--builder", "multi",
                 "--platform", "linux/arm64", "--provenance=false", "-t", "r.example/cp:1", "--push", "--metadata-file",
-                "/tmp/meta.json", "-f", "/repo/deploy/recipes/Dockerfile.jvm", "/out/control-plane");
+                "/tmp/meta.json", "-f", "/repo/tools/gradle-plugin/dockerfiles/Dockerfile.jvm", "/out/control-plane");
     }
 
     @Test

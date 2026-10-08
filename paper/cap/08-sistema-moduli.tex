@@ -56,7 +56,7 @@ NANOFAAS_CONTROL_PLANE_MODULES=all ./gradlew :control-plane:bootJar
 
 La logica che una versione precedente teneva in \code{settings.gradle} \`e oggi
 un plugin di settings, \code{it.unimib.datai.nanofaas.control-plane-modules}
-(\code{platform/gradle-plugin}). Il plugin scopre i progetti Gradle immediati
+(\code{tools/gradle-plugin}). Il plugin scopre i progetti Gradle immediati
 sotto \code{platform/modules/}, legge di ciascuno un descrittore
 \code{module.properties} obbligatorio e valida la selezione prima
 dell'esecuzione di qualunque task; non esiste un elenco da mantenere

@@ -5,7 +5,7 @@ services:
     image: nanofaas/offload-loadtest-control-plane:local
     build:
       context: ../..
-      dockerfile: deploy/compose/Dockerfile
+      dockerfile: platform/control-plane/Dockerfile.from-source
       args:
         NANOFAAS_CONTROL_PLANE_MODULES: container-deployment-provider,offload,sync-queue
     environment:
@@ -25,7 +25,7 @@ services:
     image: nanofaas/offload-loadtest-control-plane:local
     build:
       context: ../..
-      dockerfile: deploy/compose/Dockerfile
+      dockerfile: platform/control-plane/Dockerfile.from-source
       args:
         NANOFAAS_CONTROL_PLANE_MODULES: container-deployment-provider,offload,sync-queue
     user: "0:0"

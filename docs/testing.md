@@ -43,7 +43,7 @@ Run the focused PMD checks on authored production Java sources:
 ```
 
 `deadCode` covers all Java subprojects, including optional modules and the included
-`platform/gradle-plugin` build. It checks unused private methods and fields, local
+`tools/gradle-plugin` build. It checks unused private methods and fields, local
 variables, private method/constructor parameters, and assignments whose values
 are never read. Test sources and generated sources under `build/` are excluded.
 The normal command reports findings without failing. Tool, parsing, compilation,

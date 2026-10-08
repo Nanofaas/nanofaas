@@ -20,7 +20,7 @@ import java.util.Set;
  */
 final class RecipeBuildx {
 
-    /** The deploy/native-java/Dockerfile stage that compiles and packages a container-built native image in one build. */
+    /** The tools/native-java/Dockerfile stage that compiles and packages a container-built native image in one build. */
     static final String NATIVE_TARGET = "recipe-native";
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String DIGEST = "sha256:[0-9a-f]{64}";

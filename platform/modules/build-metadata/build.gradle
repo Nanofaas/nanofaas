@@ -34,7 +34,7 @@ static String runGit(File workingDir, String... args) {
     }
 }
 
-// A container build (deploy/native-java/Dockerfile, deploy/compose/Dockerfile) COPYs the
+// A container build (tools/native-java/Dockerfile, platform/control-plane/Dockerfile.from-source) COPYs the
 // repo without .git (see .dockerignore) and without a git binary installed, so runGit()
 // can't answer inside the builder. Let the caller inject the values it already knows on
 // the host instead; the git subprocess remains the fallback for a normal checkout build.

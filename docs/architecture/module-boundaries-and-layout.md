@@ -18,7 +18,7 @@ The platform separates host contracts, optional capabilities and shared implemen
 
 Shared implementations retain `runtime` names; they are not presented as interface libraries. Optional deployment implementations retain `*-deployment-provider` IDs. The `container-deployment-provider` module implements the `container-local` backend: a module ID and a public runtime backend identifier have different roles. No package or public identifier is renamed for directory consistency.
 
-Build-tool and Dockerfile locations will be updated in the subsequent tooling migration described in [the approved plan](../superpowers/plans/2026-10-08-issue-236-repository-layout.md).
+Build tooling lives under `tools/`: `tools/gradle-plugin` owns Gradle composition and recipe templates in its `dockerfiles/` directory; `tools/native-java` owns the shared native builder. `deploy/` owns operational configuration. `platform/control-plane/Dockerfile` packages a prebuilt JAR; `Dockerfile.from-source` compiles from the repository-root context. The source filename now identifies its build semantics, independently of Compose. Recipe templates remain filesystem inputs and are not copied into application staging.
 
 ## Dependency boundaries
 

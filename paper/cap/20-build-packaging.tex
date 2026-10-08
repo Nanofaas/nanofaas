@@ -118,7 +118,7 @@ cinquanta. Il dubbio residuo era che C2 vincesse soltanto perch\'e il vecchio
 \code{ExecutionStore} produceva pressione sul collector; la misura rifatta dopo
 la correzione l'ha chiuso, perch\'e quella pressione non c'\`e pi\`u e il
 divario resta. Il default \`e quindi \emph{collector seriale e compilazione
-completa}, lo stesso di \code{deploy/compose/Dockerfile}. Chiude anche
+completa}, lo stesso di \code{platform/control-plane/Dockerfile.from-source}. Chiude anche
 l'incoerenza che la versione precedente di questo capitolo segnalava: le misure
 di throughput del \cref{cap:24-footprint} erano state raccolte su una
 configurazione diversa da quella spedita, e oggi le due coincidono. \`E anche una
@@ -421,7 +421,7 @@ quindi essere Linux, sull'architettura dell'immagine, con una glibc non pi\`u
 recente di quella di Debian~13 (l'immagine di runtime \`e
 \code{distroless/cc-debian13}). \\
 \code{container} & Compila dentro il builder del \code{Dockerfile}
-\code{deploy/native-java}, lo stesso che usa la release. All'host basta una CLI
+\code{tools/native-java}, lo stesso che usa la release. All'host basta una CLI
 compatibile con Docker con BuildKit (Docker~23 o podman); funziona quindi anche
 su macOS e Windows. Ne torna solo l'eseguibile
 (\code{docker build --target native-executable --output type=local}). \\

@@ -1,6 +1,6 @@
 # Packages a native executable that assembleRecipe already compiled with GraalVM and staged as
 # build/recipes/<recipe>/<component>/application (the build context), plus config/recipe.yaml
-# for the control plane. Base images and runtime layout follow deploy/native-java/Dockerfile.
+# for the control plane. Base images and runtime layout follow tools/native-java/Dockerfile.
 ARG BUILDER_IMAGE=oraclelinux:9-slim
 ARG RUNTIME_IMAGE=gcr.io/distroless/cc-debian13:nonroot
 

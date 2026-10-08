@@ -1,7 +1,7 @@
 # Combined image: Rust watchdog + Java warm-echo service
 #
 # Usage:
-#   docker build -f Dockerfile.combined -t nanofaas/java-warm-echo:watchdog ..
+#   docker build -f runtimes/watchdog/Dockerfile.combined -t nanofaas/java-warm-echo:watchdog .
 
 # Stage 1: Build Rust watchdog
 FROM rust:1.97-alpine AS watchdog-builder
@@ -18,15 +18,8 @@ RUN cargo build --release
 FROM eclipse-temurin:25-jdk-alpine AS java-builder
 
 WORKDIR /build
-COPY gradlew settings.gradle build.gradle gradle.properties ./
-COPY gradle ./gradle
-COPY platform/common ./platform/common
-COPY platform/control-plane ./platform/control-plane
-COPY sdks/java ./sdks/java
-COPY sdks/java-lite ./sdks/java-lite
-COPY clients/cli ./clients/cli
-COPY services/java/warm-echo ./services/java/warm-echo
-COPY functions ./functions
+# Root settings consume the included plugin and shared platform libraries.
+COPY . .
 
 RUN ./gradlew :services:java:warm-echo:bootJar --no-daemon
 

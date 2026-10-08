@@ -1,9 +1,11 @@
 from pathlib import Path
 
+import yaml
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COMPOSE = REPO_ROOT / "deploy" / "compose" / "compose.yaml"
-DOCKERFILE = REPO_ROOT / "deploy" / "compose" / "Dockerfile"
+DOCKERFILE = REPO_ROOT / "platform" / "control-plane" / "Dockerfile.from-source"
 PROMETHEUS = REPO_ROOT / "deploy" / "compose" / "prometheus.yml"
 DOCKERIGNORE = REPO_ROOT / ".dockerignore"
 
@@ -13,7 +15,7 @@ def test_compose_control_plane_has_build_and_public_image_paths():
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
 
     assert "image: ${NANOFAAS_CONTROL_PLANE_IMAGE:-ghcr.io/miciav/nanofaas/control-plane:latest}" in compose
-    assert "dockerfile: deploy/compose/Dockerfile" in compose
+    assert "dockerfile: platform/control-plane/Dockerfile.from-source" in compose
     assert ":control-plane:bootJar" in dockerfile
     assert "-PcontrolPlaneModules=" in dockerfile
 
@@ -63,3 +65,13 @@ def test_compose_persists_function_registry_to_a_named_volume():
     # The named volume is declared under the top-level `volumes:` block, not just referenced.
     top_level_volumes = compose.rpartition("volumes:")[2]
     assert "control-plane-data:" in top_level_volumes
+
+
+def test_compose_build_paths_use_the_repository_root_and_source_entrypoint():
+    for filename, names in [("compose.yaml", ["control-plane"]),
+                            ("offload-loadtest.yaml", ["edge-control-plane", "cloud-control-plane"])]:
+        config = yaml.safe_load((COMPOSE.parent / filename).read_text())
+        for name in names:
+            build = config["services"][name]["build"]
+            assert build["context"] == "../.."
+            assert build["dockerfile"] == "platform/control-plane/Dockerfile.from-source"

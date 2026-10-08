@@ -82,8 +82,8 @@ class RecipePluginTest {
                 apply from: rootProject.file('marker.gradle')
                 fakeBootJar('app.jar'); fakeNative('control-plane')
                 """);
-        write("deploy/recipes/Dockerfile.jvm", "FROM scratch\n");
-        write("deploy/recipes/Dockerfile.native", "FROM scratch\n");
+        write("tools/gradle-plugin/dockerfiles/Dockerfile.jvm", "FROM scratch\n");
+        write("tools/gradle-plugin/dockerfiles/Dockerfile.native", "FROM scratch\n");
         write("bin/docker", """
                 #!/bin/sh
                 log=%s
@@ -467,7 +467,7 @@ class RecipePluginTest {
         assertThat(dockerCalls().stream().filter(call -> call.getFirst().equals("build")).toList()).containsExactlyInAnyOrder(
                 List.of("build", "-f", root.resolve("functions/bash/word-stats/Dockerfile").toString(),
                         "-t", "nanofaas/demo/ws-bash:local", root.toString()),
-                List.of("build", "-f", root.resolve("deploy/recipes/Dockerfile.native").toString(),
+                List.of("build", "-f", root.resolve("tools/gradle-plugin/dockerfiles/Dockerfile.native").toString(),
                         "-t", "nanofaas/demo/echo:local", root.resolve("build/recipes/demo/services/java/warm-echo").toString()),
                 List.of("build", "-f", root.resolve("runtimes/watchdog/Dockerfile").toString(),
                         "-t", "nanofaas/demo/watchdog:local", root.resolve("runtimes/watchdog").toString()));
@@ -881,9 +881,9 @@ class RecipePluginTest {
         assertThat(projectDir.resolve("markers/control-plane-nativeCompile")).doesNotExist();
         assertThat(staged.resolve("application")).isExecutable();
         assertThat(staged.resolve("config/recipe.yaml")).content().contains("profile: basic");
-        assertThat(containerBuild()).containsExactly("build", "-f", root.resolve("deploy/native-java/Dockerfile").toString(),
+        assertThat(containerBuild()).containsExactly("build", "-f", root.resolve("tools/native-java/Dockerfile").toString(),
                 "--target", "native-executable", "--output", "type=local,dest=" + root.resolve("build/recipes/demo/control-plane"),
-                "--build-context", "containerd_maven_repo=" + root.resolve("deploy/native-java/empty-maven-repo"),
+                "--build-context", "containerd_maven_repo=" + root.resolve("tools/native-java/empty-maven-repo"),
                 "--build-arg", "NATIVE_TASK=:control-plane:nativeCompile",
                 "--build-arg", "NATIVE_BINARY=platform/control-plane/build/native/nativeCompile/control-plane",
                 "--build-arg", "GRAALVM_DISTRIBUTION=oracle",
@@ -948,7 +948,7 @@ class RecipePluginTest {
         recipe(V2_HEADER + "controlPlane: {modules: [], build: {mode: native, builder: container, native: {gc: G1}}}\n");
 
         assertThat(run("validateRecipe", "-Precipe=recipe.yaml").getOutput()).contains(
-                "docker build -f deploy/native-java/Dockerfile --target native-executable (container builder, oracle)");
+                "docker build -f tools/native-java/Dockerfile --target native-executable (container builder, oracle)");
     }
 
     @Test
@@ -996,9 +996,9 @@ class RecipePluginTest {
         assertThat(calls.getFirst()).containsExactly("buildx", "inspect", "--bootstrap", "--builder", "multi");
         assertThat(buildxBuild(MA_CP, false)).containsExactly("buildx", "build", "--builder", "multi",
                 "--platform", "linux/amd64,linux/arm64", "--provenance=mode=max", "-t", MA_CP,
-                "-f", root.resolve("deploy/native-java/Dockerfile").toString(), "--target", "recipe-native",
+                "-f", root.resolve("tools/native-java/Dockerfile").toString(), "--target", "recipe-native",
                 "--build-context", "recipe=" + root.resolve("build/recipes/demo/control-plane"),
-                "--build-context", "containerd_maven_repo=" + root.resolve("deploy/native-java/empty-maven-repo"),
+                "--build-context", "containerd_maven_repo=" + root.resolve("tools/native-java/empty-maven-repo"),
                 "--build-arg", "NATIVE_TASK=:control-plane:nativeCompile",
                 "--build-arg", "NATIVE_BINARY=platform/control-plane/build/native/nativeCompile/control-plane",
                 "--build-arg", "GRAALVM_DISTRIBUTION=community",
@@ -1006,7 +1006,7 @@ class RecipePluginTest {
                 "--build-arg", "NATIVE_AOT_CONFIG=" + base64("nanofaas:\n  metrics:\n    profile: basic\n"),
                 root.toString());
         assertThat(buildxBuild("registry.example:5000/team/ws-java:1.0.0", false)).endsWith("-f",
-                root.resolve("deploy/recipes/Dockerfile.jvm").toString(),
+                root.resolve("tools/gradle-plugin/dockerfiles/Dockerfile.jvm").toString(),
                 root.resolve("build/recipes/demo/functions/java/word-stats").toString());
         assertThat(buildxBuild("registry.example:5000/team/ws-python:1.0.0", false)).endsWith("-f",
                 root.resolve("functions/python/word-stats/Dockerfile").toString(), root.toString());
@@ -1077,7 +1077,7 @@ class RecipePluginTest {
         assertThat(projectDir.resolve("markers/control-plane-nativeCompile")).exists();
         assertThat(projectDir.resolve("build/recipes/demo/control-plane/application")).isExecutable();
         assertThat(buildxBuild("registry.example/team/cp:t", false)).containsSubsequence("--platform", host,
-                "--provenance=false", "-f", root.resolve("deploy/recipes/Dockerfile.native").toString(),
+                "--provenance=false", "-f", root.resolve("tools/gradle-plugin/dockerfiles/Dockerfile.native").toString(),
                 root.resolve("build/recipes/demo/control-plane").toString());
     }
 
@@ -1088,7 +1088,7 @@ class RecipePluginTest {
                 + " container: {image: cp}}\n");
 
         assertThat(run("validateRecipe", "-Precipe=recipe.yaml").getOutput())
-                .contains("docker buildx build -f deploy/native-java/Dockerfile --target recipe-native"
+                .contains("docker buildx build -f tools/native-java/Dockerfile --target recipe-native"
                         + " (container builder, community)")
                 .contains("image registry.example/team/cp:t (docker buildx build --platform linux/amd64,linux/arm64,"
                         + " provenance: max)");
@@ -1236,9 +1236,9 @@ class RecipePluginTest {
 
         Path root = projectDir.toRealPath();
         assertThat(dockerCalls().stream().filter(call -> call.getFirst().equals("build")).toList()).containsExactlyInAnyOrder(
-                List.of("build", "-f", root.resolve("deploy/recipes/Dockerfile.jvm").toString(),
+                List.of("build", "-f", root.resolve("tools/gradle-plugin/dockerfiles/Dockerfile.jvm").toString(),
                         "-t", "registry.example:5000/team/control-plane:2.0.0", root.resolve("build/recipes/demo/control-plane").toString()),
-                List.of("build", "-f", root.resolve("deploy/recipes/Dockerfile.native").toString(),
+                List.of("build", "-f", root.resolve("tools/gradle-plugin/dockerfiles/Dockerfile.native").toString(),
                         "-t", "registry.example:5000/team/ws-lite:2.0.0",
                         root.resolve("build/recipes/demo/functions/java-lite/word-stats").toString()),
                 List.of("build", "-f", root.resolve("functions/python/word-stats/Dockerfile").toString(),

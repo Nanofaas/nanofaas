@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../platform/gradle-plugin/src/main/resources/recipes/recipe-v2.schema.json
+# yaml-language-server: $schema=../tools/gradle-plugin/src/main/resources/recipes/recipe-v2.schema.json
 schemaVersion: 2
 name: one-shot-local-jvm
 controlPlane:

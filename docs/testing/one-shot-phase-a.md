@@ -200,7 +200,7 @@ receipt when enabling the containerd provider's local Maven dependencies.
 ./gradlew releaseChecks -PcontrolPlaneModules=all --continue
 ./gradlew :execution-runtime:test :container-deployment-runtime:test :control-plane-modules:offload:test :control-plane-modules:forecasting:test :control-plane-modules:p2p-discovery:test -PcontrolPlaneModules=all
 ./gradlew :control-plane:test -PcontrolPlaneModules=none --tests '*CoreOnlyApiTest' --tests '*InvocationControllerTest'
-./gradlew -p platform/gradle-plugin test
+./gradlew -p tools/gradle-plugin test
 cargo test --locked --manifest-path sdks/rust/Cargo.toml
 cargo fmt --manifest-path sdks/rust/Cargo.toml --check
 cargo clippy --locked --manifest-path sdks/rust/Cargo.toml --all-targets -- -D warnings

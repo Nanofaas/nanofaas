@@ -129,8 +129,8 @@ if [ -n "${NATIVE_PARALLELISM:-}" ]; then
   gradle_args="$gradle_args -PnativeParallelism=$NATIVE_PARALLELISM"
 fi
 
-build=(docker build --file deploy/native-java/Dockerfile --tag "$image")
-build+=(--build-context "containerd_maven_repo=${CONTAINERD_MAVEN_REPO:-deploy/native-java/empty-maven-repo}")
+build=(docker build --file tools/native-java/Dockerfile --tag "$image")
+build+=(--build-context "containerd_maven_repo=${CONTAINERD_MAVEN_REPO:-tools/native-java/empty-maven-repo}")
 if [ -n "${IMAGE_PLATFORM:-}" ]; then
   build+=(--platform "$IMAGE_PLATFORM")
 fi

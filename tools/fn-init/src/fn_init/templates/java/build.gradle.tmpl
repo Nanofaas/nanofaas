@@ -21,6 +21,6 @@ bootJar {
 
 bootBuildImage {
     doFirst {
-        throw new GradleException('Native buildpacks are disabled; use deploy/native-java/Dockerfile instead')
+        throw new GradleException('Native buildpacks are disabled; use tools/native-java/Dockerfile instead')
     }
 }

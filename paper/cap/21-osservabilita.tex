@@ -118,7 +118,7 @@ controllore che decide dal solo servizio sta ottimizzando la grandezza sbagliata
 
 I quattro gauge per funzione del carico --- profondit\`a, in volo, concorrenza
 effettiva e backlog dispatchabile --- hanno un \emph{unico} fornitore,
-\code{EngineWorkloadMetricsSource} (\code{platform/workload-metrics}), qualunque
+\code{EngineWorkloadMetricsSource} (\code{platform/libs/workload-metrics}), qualunque
 sia il modulo di coda o la strategia di scheduling selezionati. Dashboard, regole
 HPA e autoscaler devono dunque usare questi nomi indipendentemente dal modulo di
 coda (\cref{sec:09-profili}); in una versione precedente ciascun modulo li

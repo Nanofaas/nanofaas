@@ -210,7 +210,7 @@ tasks.named('build') {
     dependsOn 'verifyHelmVersionSync'
 }
 
-// platform/gradle-plugin is an included build (settings.gradle pluginManagement): the root
+// tools/gradle-plugin is an included build (settings.gradle pluginManagement): the root
 // test task builds its jar but would never run its tests without this edge.
 tasks.named('test') {
     dependsOn gradle.includedBuild('gradle-plugin').task(':test')

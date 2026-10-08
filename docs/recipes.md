@@ -34,16 +34,16 @@ build uses.
 ## Recipe format
 
 The current schema is
-[`recipe-v2.schema.json`](../platform/gradle-plugin/src/main/resources/recipes/recipe-v2.schema.json).
+[`recipe-v2.schema.json`](../tools/gradle-plugin/src/main/resources/recipes/recipe-v2.schema.json).
 The plugin picks the schema that the file's `schemaVersion` names, validates against the
 copy packaged with it, and never downloads a schema. A `schemaVersion: 1` file is validated
 against the frozen
-[`recipe-v1.schema.json`](../platform/gradle-plugin/src/main/resources/recipes/recipe-v1.schema.json)
+[`recipe-v1.schema.json`](../tools/gradle-plugin/src/main/resources/recipes/recipe-v1.schema.json)
 and keeps working unchanged; it cannot use the fields v2 adds. Add this line at the top of a
 recipe to get completion and checks in editors that use the YAML language server:
 
 ```yaml
-# yaml-language-server: $schema=../platform/gradle-plugin/src/main/resources/recipes/recipe-v2.schema.json
+# yaml-language-server: $schema=../tools/gradle-plugin/src/main/resources/recipes/recipe-v2.schema.json
 ```
 
 ```yaml
@@ -177,7 +177,7 @@ Build through `assembleRecipe` instead.
   copied as-is into a Linux image, so the host must be Linux on the image's architecture, and
   its glibc must not be newer than Debian 13's (the runtime image is `distroless/cc-debian13`).
 - `container`: inside the builder of
-  [`deploy/native-java/Dockerfile`](../deploy/native-java/Dockerfile), the one the release uses.
+  [`tools/native-java/Dockerfile`](../tools/native-java/Dockerfile), the one the release uses.
   The host needs only a Docker-compatible CLI with BuildKit (Docker 23+, or podman through
   `-PrecipeDocker`), so it also works on macOS and Windows. The builder installs GraalVM
   Community, or Oracle GraalVM when the component's `gc` is `G1`: Community has no G1. Oracle
@@ -237,7 +237,7 @@ registry:
   - This path needs `docker buildx`: podman is not supported here.
 - **Native components.**
   - With `builder: container` and an image, the component is compiled and packaged in one build,
-    by the `recipe-native` stage of `deploy/native-java/Dockerfile`, once per platform. The
+    by the `recipe-native` stage of `tools/native-java/Dockerfile`, once per platform. The
     image's provenance therefore names the GraalVM builder stage. Its staging directory holds
     only the runtime files, with no `application`.
   - With `builder: host`, the executable has the host's architecture, so `platforms` must be
@@ -260,8 +260,8 @@ build/recipes/<name>/
 
 The directory is regenerated on every assembly. Gradle's incremental compilation and
 Docker's layer cache are what make repeated assemblies fast. Java images are built from
-the staged directory with [`deploy/recipes/Dockerfile.jvm`](../deploy/recipes/Dockerfile.jvm)
-or [`Dockerfile.native`](../deploy/recipes/Dockerfile.native). Python, JavaScript, Go and bash
+the staged directory with [`tools/gradle-plugin/dockerfiles/Dockerfile.jvm`](../tools/gradle-plugin/dockerfiles/Dockerfile.jvm)
+or [`Dockerfile.native`](../tools/gradle-plugin/dockerfiles/Dockerfile.native). Python, JavaScript, Go and bash
 images use the function's own Dockerfile with the repository as the build context; a
 `dockerfile` service uses its own Dockerfile with its own directory as the context.
 

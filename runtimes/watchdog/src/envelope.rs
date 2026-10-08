@@ -12,7 +12,7 @@ pub const MARKER_HEADER: &str = "X-NanoFaaS-Function-Status";
 pub const ENCODING_HEADER: &str = "X-NanoFaaS-Encoding";
 pub const ENVELOPE_KEY: &str = "__nanofaas_envelope__";
 
-/// Mirrors ResponseHeaderPolicy.ALLOWED_RESPONSE_HEADERS in platform/common. Keep in sync.
+/// Mirrors ResponseHeaderPolicy.ALLOWED_RESPONSE_HEADERS in platform/libs/common. Keep in sync.
 const ALLOWED_RESPONSE_HEADERS: [&str; 8] = [
     "content-type",
     "location",

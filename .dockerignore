@@ -9,3 +9,6 @@ experiments
 **/target
 **/.pytest_cache
 **/__pycache__
+
+.gitnexus
+.superpowers

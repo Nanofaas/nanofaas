@@ -159,8 +159,8 @@ noClasses().that().resideInAPackage("..controlplane..")
   package \code{it.unimib.datai.nanofaas.controlplane} deve avere il proprio
   file di classe sotto \code{platform/control-plane/}, oppure sotto le due
   librerie obbligatorie che ne sono state estratte con gli stessi nomi:
-  \code{platform/control-plane-spi/} (i contratti contro cui compilano i
-  moduli) e \code{platform/execution-runtime/} (lo store, la capacit\`a e
+  \code{platform/libs/control-plane-spi/} (i contratti contro cui compilano i
+  moduli) e \code{platform/libs/execution-runtime/} (lo store, la capacit\`a e
   l'input).
 
   \item[\textbf{La politica di scheduling dipende solo dall'SPI.}] Una
@@ -412,7 +412,7 @@ registrare, perch\'e ciascuna corrisponde a una propriet\`a reale del sistema.
   \cref{cap:05-contratti-dati}.
 
   \item[\textbf{Modificare i contratti condivisi richiede la suite intera.}] Una
-  modifica a \code{platform/common} o a un SDK si propaga oltre il control plane;
+  modifica a \code{platform/libs/common} o a un SDK si propaga oltre il control plane;
   eseguire soltanto \code{:control-plane:test} non basta.
 
   \item[\textbf{Un test che passa su venti core pu\`o fallire su due.}] Il

@@ -6,8 +6,8 @@ i quattro obblighi di una piattaforma FaaS enunciati nel
 \cref{cap:02-stato-dell-arte} vi sono tutti implementati, e il modulo pu\`o solo
 aggiungere politiche. Il codice non sta pi\`u in un solo progetto: la macchina a
 stati dei tentativi, lo store delle esecuzioni e il registro della capacit\`a
-vivono in \code{platform/execution-runtime}, i contratti verso i moduli in
-\code{platform/control-plane-spi}, e il resto (registro delle funzioni, API,
+vivono in \code{platform/libs/execution-runtime}, i contratti verso i moduli in
+\code{platform/libs/control-plane-spi}, e il resto (registro delle funzioni, API,
 dispatcher, metriche) in \code{platform/control-plane}
 (\cref{cap:08-sistema-moduli}). Insieme alle tre librerie obbligatorie il modulo
 \code{control-plane} conta 17\,334 righe non vuote di produzione, contro le 6\,299 dei
