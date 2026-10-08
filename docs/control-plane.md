@@ -570,6 +570,13 @@ the exact backend recorded in the catalog (`requireBackend`), so a function
 that was persisted for a backend no longer available fails startup rather
 than silently degrading to a different backend or to an unmanaged state.
 
+Resource requests and limits survive catalog round trips. The derived validation
+property `resources.requestWithinLimit` is not written. Catalogs from earlier
+versions containing that property are accepted without manual editing; its value
+is ignored and validation is recomputed from the actual requests and limits.
+The next catalog mutation writes the corrected representation. Unknown resource
+configuration fields and invalid resource values still fail restoration.
+
 **Security.** The catalog serializes each function's spec, including its
 environment variables, in plaintext. On POSIX the parent directory is written
 with mode `0700` and the file with mode `0600` (owner-only), and writes are
