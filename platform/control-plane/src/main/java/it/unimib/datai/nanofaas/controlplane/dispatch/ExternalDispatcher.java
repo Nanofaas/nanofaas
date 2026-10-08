@@ -201,9 +201,6 @@ public class ExternalDispatcher implements Dispatcher {
      */
     private static Mono<Object> decodeBody(ClientResponse response, boolean lenientJsonFallback) {
         MediaType contentType = response.headers().contentType().orElse(MediaType.APPLICATION_JSON);
-        if (MediaType.TEXT_PLAIN.isCompatibleWith(contentType)) {
-            return response.bodyToMono(String.class).cast(Object.class);
-        }
         if (lenientJsonFallback) {
             return response.bodyToMono(String.class)
                     .flatMap(raw -> {
@@ -220,6 +217,9 @@ public class ExternalDispatcher implements Dispatcher {
                             return Mono.error(ex);
                         }
                     });
+        }
+        if (MediaType.TEXT_PLAIN.isCompatibleWith(contentType)) {
+            return response.bodyToMono(String.class).cast(Object.class);
         }
         return response.bodyToMono(Object.class);
     }

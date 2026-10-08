@@ -159,11 +159,11 @@ Verifiche già disponibili sulla baseline: suite Java completa riuscita; 89 test
 
 **Interfaces:** conservare `decodeBody(ClientResponse, boolean)`. Il marker valido di risposta decisa dalla funzione impone decodifica JSON indipendentemente da Content-Type; `text/plain` senza marker mantiene il percorso legacy raw.
 
-- [ ] Aggiungere test parametrico con envelope marcato text/plain e output stringa, oggetto, numero, booleano e null. Assert: `"hello"` sul wire → `hello` di 5 caratteri; oggetto → oggetto; un solo abbonamento al body. Costruire almeno un caso usando l'output effettivo del controller SDK, non una fixture raw inventata.
-- [ ] Verificare JSON marcato malformato → errore di trasporto, text/plain non marcato → testo originale, application/json invariato e metadati status/header/encoding conservati. Verificare equivalenza HTTP/callback con entrambi gli ordini di completamento, usando le regressioni di lifecycle esistenti.
-- [ ] Eseguire RED. Applicare il ramo JSON per il marker prima del ramo text/plain, mantenendo una sola lettura e la gestione esistente di body vuoto/null. Non cambiare ciò che gli SDK serializzano.
-- [ ] Eseguire `./gradlew :control-plane:test --tests '*ExternalDispatcherTest' :sdks:java:test --tests '*InvokeControllerTest'` e i test di completamento callback modificati.
-- [ ] Analisi graph completa e commit: `Decode marked function responses as JSON`.
+- [x] Aggiungere test parametrico con envelope marcato text/plain e output stringa, oggetto, numero, booleano e null. Assert: `"hello"` sul wire → `hello` di 5 caratteri; oggetto → oggetto; un solo abbonamento al body. Costruire almeno un caso usando l'output effettivo del controller SDK, non una fixture raw inventata.
+- [x] Verificare JSON marcato malformato → errore di trasporto, text/plain non marcato → testo originale, application/json invariato e metadati status/header/encoding conservati. Verificare equivalenza HTTP/callback con entrambi gli ordini di completamento, usando le regressioni di lifecycle esistenti.
+- [x] Eseguire RED. Applicare il ramo JSON per il marker prima del ramo text/plain, mantenendo una sola lettura e la gestione esistente di body vuoto/null. Non cambiare ciò che gli SDK serializzano.
+- [x] Eseguire `./gradlew :control-plane:test --tests '*ExternalDispatcherTest' :sdks:java:test --tests '*InvokeControllerTest'` e i test di completamento callback modificati.
+- [x] Analisi graph completa e commit: `Decode marked function responses as JSON`.
 
 ### Task 7: Rendere cancellabile e temporalmente limitato il trasporto callback Python
 

@@ -38,6 +38,34 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class InvokeControllerTest {
 
+    @Test
+    void markedTextPlainHttpAndCallbackCarryTheSameStringOutput() throws Exception {
+        when(handler.handle(any())).thenReturn(HandlerResponse.of("hello",202,Map.of("Content-Type","text/plain")));
+        MockMvc mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller).build();
+        var wire=mvc.perform(post("/invoke").header("X-Execution-Id","env-exec-id")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"input\":{}}"))
+                .andExpect(status().isAccepted()).andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_PLAIN))
+                .andExpect(header().string("X-NanoFaaS-Function-Status","true")).andReturn().getResponse();
+        assertEquals("\"hello\"",wire.getContentAsString());
+        ArgumentCaptor<CallbackPayload> callback=ArgumentCaptor.forClass(CallbackPayload.class);
+        verify(callbackDispatcher).submit(eq("env-exec-id"),callback.capture(),isNull(),isNull());
+        try(var server=new MockWebServer()) {
+            server.enqueue(new MockResponse().setResponseCode(wire.getStatus()).setBody(wire.getContentAsString())
+                    .addHeader("Content-Type",wire.getContentType()).addHeader("X-NanoFaaS-Function-Status","true"));
+            server.start();
+            var spec=new it.unimib.datai.nanofaas.common.model.FunctionSpec("echo","image",List.of(),Map.of(),null,
+                    5000,1,10,0,server.url("/invoke").toString(),it.unimib.datai.nanofaas.common.model.ExecutionMode.EXTERNAL,null,null,null);
+            var task=new it.unimib.datai.nanofaas.controlplane.scheduler.InvocationTask("env-exec-id","echo",spec,
+                    new InvocationRequest("p",Map.of()),null,null,java.time.Instant.now(),1,
+                    it.unimib.datai.nanofaas.controlplane.scheduler.InvocationKind.SYNC);
+            var answer=new it.unimib.datai.nanofaas.controlplane.dispatch.ExternalDispatcher(
+                    org.springframework.web.reactive.function.client.WebClient.create()).dispatch(task).get(5,TimeUnit.SECONDS).result();
+            assertTrue(answer.success());assertEquals(callback.getValue().output().asText(),answer.output());
+            assertEquals(5,((String)answer.output()).length());assertEquals(callback.getValue().statusCode(),answer.statusCode());
+            assertEquals(callback.getValue().headers().get("Content-Type"),answer.headers().get("Content-Type"));
+        }
+    }
+
     private CallbackDispatcher callbackDispatcher;
     private HandlerRegistry handlerRegistry;
     private InvocationRuntimeContextResolver runtimeContextResolver;

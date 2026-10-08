@@ -25,6 +25,53 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ExternalDispatcherTest {
+    @Test
+    void markedBodyIsSubscribedExactlyOnce() throws Exception {
+        var subscriptions=new java.util.concurrent.atomic.AtomicInteger();
+        var body=reactor.core.publisher.Flux.<org.springframework.core.io.buffer.DataBuffer>defer(()->{
+            return reactor.core.publisher.Flux.just(org.springframework.core.io.buffer.DefaultDataBufferFactory.sharedInstance
+                    .wrap("\"hello\"".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        });
+        var original=org.springframework.web.reactive.function.client.ClientResponse.create(org.springframework.http.HttpStatus.ACCEPTED)
+                .header("Content-Type","text/plain").header("X-NanoFaaS-Function-Status","true").body(body).build();
+        var response=org.mockito.Mockito.spy(original);
+        org.mockito.Mockito.doAnswer(invocation->original.bodyToMono(String.class)
+                .doOnSubscribe(subscription->subscriptions.incrementAndGet())).when(response).bodyToMono(String.class);
+        var client=WebClient.builder().exchangeFunction(request->reactor.core.publisher.Mono.just(response)).build();
+        try(var server=new MockWebServer()) {
+            server.start();
+            var result=new ExternalDispatcher(client).dispatch(taskFor(server)).get(5,TimeUnit.SECONDS).result();
+            assertTrue(result.success());assertEquals("hello",result.output());assertEquals(1,subscriptions.get());
+            org.mockito.Mockito.verify(response).releaseBody();
+        }
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource(value={"\"hello\"|hello", "{\"answer\":42}|object", "42|number", "true|boolean", "null|null"},delimiter='|')
+    void markedTextPlainUsesJsonOutputTypes(String wire,String type) throws Exception {
+        try(var server=new MockWebServer()) {
+            server.enqueue(new MockResponse().setResponseCode(202).setBody(wire)
+                    .addHeader("Content-Type","text/plain").addHeader("X-NanoFaaS-Function-Status","true")
+                    .addHeader("Location","/answer").addHeader("X-NanoFaaS-Encoding","base64"));
+            server.start();
+            var result=new ExternalDispatcher(WebClient.create()).dispatch(taskFor(server)).get(5,TimeUnit.SECONDS).result();
+            assertTrue(result.success());
+            Object expected=switch(type) { case "hello" -> "hello";case "object" -> Map.of("answer",42);case "number" -> 42;case "boolean" -> true;default -> null; };
+            assertEquals(expected,result.output());assertEquals(202,result.statusCode());
+            assertEquals("/answer",result.headers().get("Location"));assertEquals("base64",result.encoding());
+            assertEquals(1,server.getRequestCount());
+        }
+    }
+
+    @Test
+    void malformedMarkedTextPlainIsATransportError() throws Exception {
+        try(var server=new MockWebServer()) {
+            server.enqueue(new MockResponse().setResponseCode(200).setBody("not json")
+                    .addHeader("Content-Type","text/plain").addHeader("X-NanoFaaS-Function-Status","true"));
+            server.start();
+            var result=new ExternalDispatcher(WebClient.create()).dispatch(taskFor(server)).get(5,TimeUnit.SECONDS).result();
+            assertFalse(result.success());assertEquals("EXTERNAL_ERROR",result.error().code());
+        }
+    }
     private static final Instant RETRY_NOW = Instant.parse("2026-09-24T12:00:00Z");
 
     @Test
@@ -550,7 +597,7 @@ class ExternalDispatcherTest {
         MockWebServer server = new MockWebServer();
         server.enqueue(new MockResponse()
                 .setResponseCode(200)
-                .setBody("hello")
+                .setBody("\"hello\"")
                 .addHeader("Content-Type", "text/plain")
                 .addHeader("X-NanoFaaS-Function-Status", "true"));
         server.start();
