@@ -388,14 +388,19 @@ public class LocalManagedDeploymentProvider implements ManagedDeploymentProvider
 
     private void scaleTo(FunctionState state, int desiredReplicas) {
         int currentReplicas = state.replicas.size();
-        if (desiredReplicas > currentReplicas) {
-            for (int replicaIndex = currentReplicas + 1; replicaIndex <= desiredReplicas; replicaIndex++) {
-                addReplica(state, replicaIndex);
+        try {
+            if (desiredReplicas > currentReplicas) {
+                for (int replicaIndex = currentReplicas + 1; replicaIndex <= desiredReplicas; replicaIndex++) {
+                    addReplica(state, replicaIndex);
+                }
+            } else if (desiredReplicas < currentReplicas) {
+                for (int replicaIndex = currentReplicas; replicaIndex > desiredReplicas; replicaIndex--) {
+                    removeReplica(state, replicaIndex);
+                }
             }
-        } else if (desiredReplicas < currentReplicas) {
-            for (int replicaIndex = currentReplicas; replicaIndex > desiredReplicas; replicaIndex--) {
-                removeReplica(state, replicaIndex);
-            }
+        } catch (RuntimeException failure) {
+            suppressCleanupFailure(failure, () -> pushProxyConfig(state));
+            throw failure;
         }
         pushProxyConfig(state);
     }

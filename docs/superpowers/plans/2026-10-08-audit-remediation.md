@@ -91,11 +91,11 @@ Verifiche già disponibili sulla baseline: suite Java completa riuscita; 89 test
 
 **Interfaces:** conservare `scaleTo(FunctionState, int)`, `removeReplica(FunctionState, int)` e `pushProxyConfig(FunctionState)`. Lo stato conserva le repliche la cui rimozione non è confermata; il proxy riceve l'insieme aggiornato dopo ogni operazione di scaling, anche fallita.
 
-- [ ] Aggiungere `partialScaleDownRefreshesProxy`: tre backend locali reali; rimuovere r3, far fallire r2, invocare sei volte; attesi due backend rimasti e tutte le risposte 200. Asserire che l'errore di scaling rimane visibile.
-- [ ] Aggiungere casi per fallimento della prima rimozione, scale-up parziale, retry dello stesso target e fallimento di `pushProxyConfig` insieme all'errore primario. Nel caso one-shot, replica occupata/quarantinata resta tracciata e non è rimessa in servizio da un refresh del proxy.
-- [ ] Eseguire RED. Garantire il refresh sul percorso di errore usando lo stato effettivo; conservare l'eccezione primaria e aggiungere quella del refresh come suppressed. Non anticipare la rimozione dalla mappa rispetto alla conferma del runtime, né simulare un rollback di container già eliminati.
-- [ ] Eseguire `./gradlew :container-deployment-runtime:test :control-plane-modules:container-deployment-provider:test :control-plane-modules:containerd-deployment-provider:test` e documentare il comportamento di retry dopo scaling parziale.
-- [ ] Analisi graph completa e commit: `Refresh proxy after partial scaling failures`.
+- [x] Aggiungere `partialScaleDownRefreshesProxy`: tre backend locali reali; rimuovere r3, far fallire r2, invocare sei volte; attesi due backend rimasti e tutte le risposte 200. Asserire che l'errore di scaling rimane visibile.
+- [x] Aggiungere casi per fallimento della prima rimozione, scale-up parziale, retry dello stesso target e fallimento di `pushProxyConfig` insieme all'errore primario. Nel caso one-shot, replica occupata/quarantinata resta tracciata e non è rimessa in servizio da un refresh del proxy.
+- [x] Eseguire RED. Garantire il refresh sul percorso di errore usando lo stato effettivo; conservare l'eccezione primaria e aggiungere quella del refresh come suppressed. Non anticipare la rimozione dalla mappa rispetto alla conferma del runtime, né simulare un rollback di container già eliminati.
+- [x] Eseguire `./gradlew :container-deployment-runtime:test :control-plane-modules:container-deployment-provider:test :control-plane-modules:containerd-deployment-provider:test` e documentare il comportamento di retry dopo scaling parziale.
+- [x] Analisi graph completa e commit: `Refresh proxy after partial scaling failures`.
 
 ## Lotto B — Schedulazione one-shot
 
