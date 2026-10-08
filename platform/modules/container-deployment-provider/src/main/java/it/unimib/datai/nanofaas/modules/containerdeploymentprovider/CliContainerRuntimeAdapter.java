@@ -126,7 +126,21 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
 
     @Override
     public void removeContainer(String containerName) {
-        executor.run(List.of(runtimeAdapter, "rm", "-f", containerName));
+        ExecutionResult removal = executor.run(List.of(runtimeAdapter, "rm", "-f", containerName));
+        if (removal.isSuccess()) {
+            return;
+        }
+        // An unsuccessful removal is idempotent only when a successful inventory proves absence.
+        // Do not infer absence from daemon errors, timeouts or localized error text.
+        ExecutionResult inventory = executor.run(List.of(runtimeAdapter, "ps", "-a", "--format", "{{.Names}}"));
+        if (inventory.isSuccess() && inventory.output().lines().map(String::strip).noneMatch(containerName::equals)) {
+            return;
+        }
+        IllegalStateException failure = new IllegalStateException("Failed to remove container '" + containerName + "': " + removal.output());
+        if (!inventory.isSuccess()) {
+            failure.addSuppressed(new IllegalStateException("Could not confirm container absence: " + inventory.output()));
+        }
+        throw failure;
     }
 
     @Override
@@ -137,7 +151,7 @@ final class CliContainerRuntimeAdapter implements ContainerRuntimeAdapter {
                 "--filter", "label=" + LocalManagedDeploymentProvider.FUNCTION_LABEL + "=" + functionName,
                 "--format", "{{.Names}}\t{{.State}}"));
         if (!listing.isSuccess()) {
-            return List.of();
+            throw new IllegalStateException("Failed to list managed containers of '" + functionName + "': " + listing.output());
         }
 
         List<ManagedContainer> containers = new ArrayList<>();

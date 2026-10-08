@@ -18,6 +18,82 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CliContainerRuntimeAdapterTest {
 
     @Test
+    void failedRemovalKeepsPhysicalReplicaAndRetryRemovesIt() {
+        var executor=new RecordingCliCommandExecutor();
+        var proxy=org.mockito.Mockito.mock(it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxy.class);
+        var provider=provider(executor,proxy);
+        var provision=provider.provision(spec());
+        String prefix=provision.deploymentObjects().get(it.unimib.datai.nanofaas.controlplane.deployment.ProvisionResult.CONTAINER_NAME_PREFIX);
+        executor.withResult(ExecutionResult.success("removed r3"))
+                .withResult(ExecutionResult.failure(1,"removal denied"))
+                .withResult(ExecutionResult.success(prefix+"-r1\n"+prefix+"-r2\n"));
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->provider.setReplicas("echo",1))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("removal denied");
+        assertThat(provider.getReplicaStatus("echo").desiredReplicas()).isEqualTo(2);
+        org.mockito.Mockito.verify(proxy).updateBackends(List.of("http://127.0.0.1:18080","http://127.0.0.1:18081"));
+        executor.withResult(ExecutionResult.success("removed r2"));
+        provider.setReplicas("echo",1);
+        assertThat(provider.getReplicaStatus("echo").desiredReplicas()).isEqualTo(1);
+        assertThat(executor.commands().stream().filter(c->c.contains("rm")).toList()).containsExactly(
+                List.of("docker","rm","-f",prefix+"-r3"),
+                List.of("docker","rm","-f",prefix+"-r2"),
+                List.of("docker","rm","-f",prefix+"-r2"));
+    }
+
+    @Test
+    void failedDiscoveryCannotCompleteDeprovisionAndDiscardOwnership() {
+        var executor=new RecordingCliCommandExecutor();
+        var proxy=org.mockito.Mockito.mock(it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxy.class);
+        var provider=provider(executor,proxy);
+        provider.provision(spec());
+        executor.withResult(ExecutionResult.failure(1,"daemon unavailable"));
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->provider.deprovision("echo"))
+                .isInstanceOf(it.unimib.datai.nanofaas.controlplane.deployment.PartialDeprovisionException.class)
+                .hasRootCauseMessage("Failed to list managed containers of 'echo': daemon unavailable");
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->provider.provision(spec()))
+                .hasMessageContaining("pending removal");
+        provider.deprovision("echo");
+        provider.provision(spec());
+        assertThat(provider.getReplicaStatus("echo").desiredReplicas()).isEqualTo(3);
+    }
+
+    @Test
+    void unsuccessfulRemovalIsIdempotentOnlyAfterSuccessfulAbsenceCheck() {
+        var executor=new RecordingCliCommandExecutor()
+                .withResult(ExecutionResult.failure(1,"No such container: gone"))
+                .withResult(ExecutionResult.failure(1,"daemon unavailable"))
+                .withResult(ExecutionResult.failure(1,"No such container: gone"))
+                .withResult(ExecutionResult.success("unrelated\n"));
+        var adapter=new CliContainerRuntimeAdapter("docker",executor,null,"127.0.0.1",()->18080);
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->adapter.removeContainer("gone"))
+                .hasMessageContaining("No such container");
+        adapter.removeContainer("gone");
+        assertThat(executor.commands()).containsExactly(
+                List.of("docker","rm","-f","gone"),List.of("docker","ps","-a","--format","{{.Names}}"),
+                List.of("docker","rm","-f","gone"),List.of("docker","ps","-a","--format","{{.Names}}"));
+    }
+
+    private static ContainerLocalDeploymentProvider provider(RecordingCliCommandExecutor executor,
+            it.unimib.datai.nanofaas.containerdeployment.ManagedFunctionProxy proxy) {
+        var ports=new java.util.concurrent.atomic.AtomicInteger(18080);
+        var adapter=new CliContainerRuntimeAdapter("docker",executor,null,"127.0.0.1",ports::getAndIncrement);
+        var factory=org.mockito.Mockito.mock(it.unimib.datai.nanofaas.containerdeployment.RoundRobinFunctionProxyFactory.class);
+        org.mockito.Mockito.when(factory.create("echo")).thenReturn(proxy);
+        org.mockito.Mockito.when(proxy.endpointUrl()).thenReturn("http://127.0.0.1:19090/invoke");
+        var probe=org.mockito.Mockito.mock(it.unimib.datai.nanofaas.containerdeployment.EndpointProbe.class);
+        org.mockito.Mockito.when(probe.isReady(org.mockito.ArgumentMatchers.anyString())).thenReturn(true);
+        return new ContainerLocalDeploymentProvider(adapter,
+                new ContainerLocalProperties("docker","127.0.0.1",java.time.Duration.ofSeconds(1),java.time.Duration.ofMillis(10),null),probe,factory);
+    }
+
+    private static it.unimib.datai.nanofaas.common.model.FunctionSpec spec() {
+        return new it.unimib.datai.nanofaas.common.model.FunctionSpec("echo","img",List.of(),Map.of(),null,
+                30000,4,100,3,null,it.unimib.datai.nanofaas.common.model.ExecutionMode.DEPLOYMENT,
+                it.unimib.datai.nanofaas.common.model.RuntimeMode.HTTP,null,
+                new it.unimib.datai.nanofaas.common.model.ScalingConfig(it.unimib.datai.nanofaas.common.model.ScalingStrategy.INTERNAL,3,5,List.of()));
+    }
+
+    @Test
     void nameConflictNeverDeletesExistingContainer() {
         var executor = new RecordingCliCommandExecutor()
                 .withResult(ExecutionResult.failure(125, "container name already in use"));

@@ -1,0 +1,62 @@
+{
+  "reviewedRange": "fed1be9c..5572e55a",
+  "review": {
+    "important": 3,
+    "critical": 0,
+    "minor": 0,
+    "declinedToJudge": 0,
+    "deferred": 0
+  },
+  "red": {
+    "scheduling": [
+      "HTTP expected 409, actual 200 on scheduled-to-scheduled stale grid",
+      "coordinator prepare invoked after stop while pinning was blocked"
+    ],
+    "cli": [
+      "failed removal returned normally",
+      "failed discovery completed deprovision",
+      "unconfirmed absence returned normally"
+    ]
+  },
+  "greenCommand": "BUILDX_BUILDER=default ./gradlew test --continue",
+  "regressions": [
+    {
+      "class": "it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotTimingQualificationTest",
+      "test": "scheduledGridUpdateCannotBypassManualFenceBeforeFirstClaim()",
+      "passed": true
+    },
+    {
+      "class": "it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotTimingQualificationTest",
+      "test": "stopCancelsAnAlreadySubscribedScheduledPreparation()",
+      "passed": true
+    },
+    {
+      "class": "it.unimib.datai.nanofaas.modules.offload.oneshot.api.OneShotTimingQualificationTest",
+      "test": "stoppedTickCannotResumePreparationAcrossLifecycleChanges()",
+      "passed": true
+    },
+    {
+      "class": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.CliContainerRuntimeAdapterTest",
+      "test": "unsuccessfulRemovalIsIdempotentOnlyAfterSuccessfulAbsenceCheck()",
+      "passed": true
+    },
+    {
+      "class": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.CliContainerRuntimeAdapterTest",
+      "test": "failedDiscoveryCannotCompleteDeprovisionAndDiscardOwnership()",
+      "passed": true
+    },
+    {
+      "class": "it.unimib.datai.nanofaas.modules.containerdeploymentprovider.CliContainerRuntimeAdapterTest",
+      "test": "failedRemovalKeepsPhysicalReplicaAndRetryRemovesIt()",
+      "passed": true
+    }
+  ],
+  "java": {
+    "reports": 457,
+    "tests": 2569,
+    "executed": 2560,
+    "skipped": 9,
+    "failures": 0,
+    "errors": 0
+  }
+}

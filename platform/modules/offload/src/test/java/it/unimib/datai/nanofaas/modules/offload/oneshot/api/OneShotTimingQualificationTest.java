@@ -40,6 +40,9 @@ class OneShotTimingQualificationTest {
             operations.prepare(epoch,new OneShotOperations.Window(start,start.plusSeconds(300)),false).block();
         }
         void qualify() { for(int i=0;i<20;i++) sample(i); }
+        void pauseTicks() {
+            ((java.util.concurrent.ScheduledFuture<?>)org.springframework.test.util.ReflectionTestUtils.getField(operations,"tickTask")).cancel(false);
+        }
         public void close() { operations.close(); }
     }
     static final class MutableClock extends Clock {
@@ -186,6 +189,74 @@ class OneShotTimingQualificationTest {
                 assertThatThrownBy(()->f.operations.configure(1,scheduled)).isInstanceOf(IllegalStateException.class);
                 assertThat(f.store.snapshot().orElseThrow().revision()).isEqualTo(1);
             } finally { preparation.dispose(); }
+        }
+    }
+    @Test void scheduledGridUpdateCannotBypassManualFenceBeforeFirstClaim() throws Exception {
+        var clock=new MutableClock();
+        try(var f=new Fixture(clock)) {
+            f.pauseTicks();f.qualify();clock.now=Instant.EPOCH.plusSeconds(280);
+            when(f.coordinator.lastPreparedEpoch()).thenReturn(19L);
+            var accepted=grid(f.config,Instant.EPOCH.minusSeconds(6000),f.config.period(),true);
+            f.operations.configure(1,accepted);
+            var controller=new OneShotController(f.operations,f.profiles,f.events,
+                    new ClockHealth(Duration.ofMillis(100),Duration.ofSeconds(10),clock::instant));
+            var client=org.springframework.test.web.reactive.server.WebTestClient.bindToController(controller).build();
+            var stale=grid(accepted,Instant.EPOCH,accepted.period(),true);
+            byte[] body=tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsBytes(stale);
+            client.put().uri("/v1/admin/offload/one-shot/config").header("If-Match","2")
+                    .contentType(org.springframework.http.MediaType.APPLICATION_JSON).bodyValue(body).exchange()
+                    .expectStatus().isEqualTo(409);
+            assertThat(f.store.snapshot().orElseThrow().revision()).isEqualTo(2);
+            assertThat(f.store.snapshot().orElseThrow().settings()).isEqualTo(accepted);
+            f.operations.tick();
+            verify(f.coordinator).prepare(21,Instant.EPOCH.plusSeconds(300),Instant.EPOCH.plusSeconds(600));
+        }
+    }
+    @Test void stoppedTickCannotResumePreparationAcrossLifecycleChanges() throws Exception {
+        for(boolean restart:List.of(false,true)) {
+            var clock=new MutableClock();
+            try(var f=new Fixture(clock);var executor=java.util.concurrent.Executors.newSingleThreadExecutor()) {
+                f.pauseTicks();f.qualify();f.operations.configure(1,grid(f.config,Instant.EPOCH,f.config.period(),true));
+                var entered=new java.util.concurrent.CountDownLatch(1);
+                var release=new java.util.concurrent.CountDownLatch(1);
+                var input=new EpochInput(null,Map.of(),Map.of(),1,1,null,100,100,"hash");
+                when(f.inputs.pin(eq(1L),any(),any(),any())).thenAnswer(invocation->{
+                    entered.countDown();assertThat(release.await(2,java.util.concurrent.TimeUnit.SECONDS)).isTrue();return input;
+                });
+                clearInvocations(f.coordinator,f.actuator,f.inputs);
+                clock.now=Instant.EPOCH.plusSeconds(280);
+                var tick=executor.submit(f.operations::tick);
+                try {
+                    assertThat(entered.await(2,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                    f.operations.stop();if(restart) f.operations.start();
+                    assertThat(f.operations.status().get("busy")).isEqualTo(true);
+                } finally { release.countDown(); }
+                tick.get(2,java.util.concurrent.TimeUnit.SECONDS);
+                verify(f.coordinator,never()).prepare(anyLong(),any(),any());
+                verify(f.actuator,never()).prepare(any(),any());
+                verify(f.inputs).unpin(1);
+                assertThat(f.operations.status().get("busy")).isEqualTo(false);
+                if(restart) {
+                    clock.now=Instant.EPOCH.plusSeconds(580);f.operations.tick();
+                    verify(f.coordinator).prepare(2,Instant.EPOCH.plusSeconds(600),Instant.EPOCH.plusSeconds(900));
+                }
+            }
+        }
+    }
+    @Test void stopCancelsAnAlreadySubscribedScheduledPreparation() {
+        var clock=new MutableClock();
+        try(var f=new Fixture(clock)) {
+            f.pauseTicks();f.qualify();f.operations.configure(1,grid(f.config,Instant.EPOCH,f.config.period(),true));
+            var cancelled=new java.util.concurrent.atomic.AtomicBoolean();
+            when(f.coordinator.prepare(anyLong(),any(),any())).thenReturn(Mono.<EpochOutcome>never().doOnCancel(()->cancelled.set(true)));
+            clearInvocations(f.inputs,f.actuator);
+            clock.now=Instant.EPOCH.plusSeconds(280);f.operations.tick();
+            assertThat(f.operations.status().get("busy")).isEqualTo(true);
+            f.operations.stop();
+            assertThat(cancelled).isTrue();
+            verify(f.inputs).unpin(1);
+            verify(f.actuator,never()).prepare(any(),any());
+            assertThat(f.operations.status().get("busy")).isEqualTo(false);
         }
     }
     @Test void frozenGridReturnsHttp409WithoutConsumingRevision() throws Exception {

@@ -5,7 +5,7 @@ import it.unimib.datai.nanofaas.p2papi.PeerTransport;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.context.SmartLifecycle;
 import reactor.core.publisher.Mono;
-import reactor.core.Disposable;
+import reactor.core.publisher.Sinks;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -45,12 +45,18 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
     private final Clock clock;
     private record Grid(Instant anchor,Duration period) {}
     private Grid claimedGrid;
+    private static final class ScheduledRun {
+        final Sinks.Empty<Void> cancelled=Sinks.empty();
+        volatile boolean stopped;
+        synchronized void cancel() { stopped=true;cancelled.tryEmitEmpty(); }
+    }
+    private ScheduledRun scheduledRun;
     private final AtomicBoolean busy=new AtomicBoolean();private final AtomicLong lastScheduled=new AtomicLong(-1);
     private final Map<Long,OneShotSettings> preparedSettings=new ConcurrentHashMap<>();
     private final ArrayDeque<Long> qualified=new ArrayDeque<>();private String qualificationKey="";
     private final ScheduledExecutorService timer=Executors.newSingleThreadScheduledExecutor(r->{var t=new Thread(r,"one-shot-epochs");t.setDaemon(true);return t;});
     private volatile ScheduledFuture<?> tickTask;
-    private volatile boolean running;private volatile String lastState="UNCONFIGURED";private volatile Disposable subscription;
+    private volatile boolean running;private volatile String lastState="UNCONFIGURED";
     public OneShotOperations(OneShotConfigurationStore configs,ServiceProfileStore profiles,ProfileEpochInputFactory inputs,EpochCoordinator coordinator,ReplicaPlanActuator actuator,EpochEventStore events,PeerTransport peers,MeterRegistry meters) {
         this(configs,profiles,inputs,coordinator,actuator,events,peers,meters,true);
     }
@@ -72,8 +78,8 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
         long budget=settings.negotiation().auctionBudget().plus(settings.preparationBudget()).toNanos();
         if(budget>settings.period().toNanos()*settings.maxOperationalFraction() || budget>settings.leadTime().toNanos()) throw new IllegalArgumentException("full operational budget must fit lead time and a small period fraction");
         if(settings.scheduled() && !qualified(settings)) throw new IllegalArgumentException("scheduled mode requires at least 20 complete timing samples with p99 and margin");
-        if(settings.scheduled() && current.map(s->!s.settings().scheduled()).orElse(true)) {
-            if(busy.get()) throw new IllegalStateException("manual preparation must finish before enabling scheduling");
+        if(settings.scheduled()) {
+            if(current.map(s->!s.settings().scheduled()).orElse(true) && busy.get()) throw new IllegalStateException("manual preparation must finish before enabling scheduling");
             var now=clock.instant();
             var candidate=nextWindow(settings,now).orElseGet(()->firstFutureWindow(settings,now));
             long fence=coordinator.lastPreparedEpoch();
@@ -103,17 +109,17 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
                     lastScheduled.accumulateAndGet(epoch,Math::max);
                 }
             }
-            return prepareFrozen(epoch,window,frozen,automatic);
+            return prepareFrozen(epoch,window,frozen,automatic,null);
         });
     }
-    private Mono<PlanActivation> prepareFrozen(long epoch,Window window,OneShotConfigurationStore.Snapshot frozen,boolean automatic) {
+    private Mono<PlanActivation> prepareFrozen(long epoch,Window window,OneShotConfigurationStore.Snapshot frozen,boolean automatic,ScheduledRun run) {
             var settings=frozen.settings();
             long start=System.nanoTime();String identity;var recorded=new AtomicBoolean();
             try {
                 if(automatic && !qualified(settings)) throw new IllegalStateException("timing qualification expired");
                 var input=inputs.pin(epoch,window.startsAt(),window.endsAt(),frozen);identity=key(settings,input.profileHash());
             } catch(RuntimeException error) { busy.set(false);return Mono.error(error); }
-            return coordinator.prepare(epoch,window.startsAt(),window.endsAt()).flatMap(outcome-> {
+            var preparation=Mono.defer(()->run!=null && run.stopped?Mono.empty():coordinator.prepare(epoch,window.startsAt(),window.endsAt())).flatMap(outcome-> {
                 meters.timer("nanofaas_oneshot_solver_seconds").record(outcome.solverNanos(),TimeUnit.NANOSECONDS);
                 meters.timer("nanofaas_oneshot_auction_seconds","status",outcome.status().name()).record(outcome.auctionNanos(),TimeUnit.NANOSECONDS);
                 if(outcome.status()!=EpochOutcome.Status.CONVERGED) return Mono.just(new PlanActivation(PlanActivation.Status.FAILED,null,Map.of(),Map.of(),outcome.reason(),Instant.now()));
@@ -127,15 +133,18 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
                     meters.timer("nanofaas_oneshot_operational_seconds").record(elapsed,TimeUnit.NANOSECONDS);
                 }
                 if(result.plan()!=null) { preparedSettings.put(result.plan().revision(),settings);while(preparedSettings.size()>4) preparedSettings.remove(Collections.min(preparedSettings.keySet())); }
-            }).doOnError(error->{recorded.set(true);lastState="FAILED";events.record(epoch,lastState,true,System.nanoTime()-start,Instant.now());})
-              .doFinally(signal->{if(recorded.compareAndSet(false,true)) events.record(epoch,"CANCELLED",true,System.nanoTime()-start,Instant.now());inputs.unpin(epoch);busy.set(false);});
+            }).doOnError(error->{recorded.set(true);lastState="FAILED";events.record(epoch,lastState,true,System.nanoTime()-start,Instant.now());});
+            // The stop signal is registered with the claim, before input pinning can block.
+            // Subscribe to it before starting coordinator work, even after a stop/start cycle.
+            if(run!=null) preparation=preparation.takeUntilOther(run.cancelled.asMono());
+            return preparation.doFinally(signal->{if(recorded.compareAndSet(false,true)) events.record(epoch,"CANCELLED",true,System.nanoTime()-start,Instant.now());inputs.unpin(epoch);busy.set(false);});
     }
     public Map<String,Object> status() { return Map.of("schemaVersion",1,"state",lastState,"busy",busy.get(),"clockHealthy",coordinator.clockHealthy(),"catalogGenerations",inputs.catalogGenerations(),"peerEndpoints",peers.activeNeighbors(),"localEndpoint",peers.localEndpoint().map(p->(Object)p).orElse(Map.of()),"revision",configs.snapshot().map(OneShotConfigurationStore.Snapshot::revision).orElse(0L),"activePlan",actuator.activePlan().map(p->(Object)p).orElse(Map.of())); }
     @Override public boolean isAutoStartup() { return enabled; }
     @Override public synchronized void start() { if(running || !enabled) return;running=true;tickTask=timer.scheduleWithFixedDelay(this::tick,100,100,TimeUnit.MILLISECONDS); }
     void tick() {
         try {
-            OneShotConfigurationStore.Snapshot frozen; long epoch; Window window;
+            OneShotConfigurationStore.Snapshot frozen; long epoch; Window window; ScheduledRun run;
             synchronized(this) {
                 if(!running || busy.get()) return;
                 var current=configs.snapshot();if(current.isEmpty() || !current.get().settings().scheduled()) return;
@@ -144,11 +153,17 @@ public final class OneShotOperations implements SmartLifecycle,AutoCloseable {
                 epoch=candidate.get().epoch();
                 if(epoch<=lastScheduled.get() || epoch<=coordinator.lastPreparedEpoch() || !busy.compareAndSet(false,true)) return;
                 lastScheduled.set(epoch);claimedGrid=new Grid(s.anchor(),s.period());window=candidate.get().window();
+                scheduledRun=run=new ScheduledRun();
             }
-            subscription=prepareFrozen(epoch,window,frozen,true).subscribe(result->{},error->lastState="FAILED");
+            var preparation=prepareFrozen(epoch,window,frozen,true,run);
+            synchronized(run) { preparation.subscribe(result->{},error->lastState="FAILED"); }
         } catch(RuntimeException error) { lastState="FAILED"; }
     }
-    @Override public synchronized void stop() { running=false;if(tickTask!=null) tickTask.cancel(false);if(subscription!=null) subscription.dispose(); }
+    @Override public void stop() {
+        ScheduledRun run;
+        synchronized(this) { running=false;if(tickTask!=null) tickTask.cancel(false);run=scheduledRun; }
+        if(run!=null) run.cancel();
+    }
     @Override public boolean isRunning() { return running; }
     @Override public int getPhase() { return Integer.MAX_VALUE-2044; }
     @Override public void close() { stop();timer.shutdownNow(); }

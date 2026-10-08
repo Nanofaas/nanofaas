@@ -1,0 +1,7 @@
+Required initial run: nativeBuildMemory=4g, nativeParallelism=2, recipe one-shot-local-native.yaml
+Actual failed-build excerpt:
+Terminating due to java.lang.OutOfMemoryError: Java heap space
+FAILURE: Build failed with an exception.
+BUILD FAILED in 5m 8s
+
+Retry: same sources, recipe and parallelism; nativeBuildMemory=6g. See README.md for final executable and artifact validation.
