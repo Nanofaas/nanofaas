@@ -40,7 +40,14 @@ class OneShotLocalClusterE2eTest {
         if(seed>0) args.add("--nanofaas.p2p.seeds[0]=127.0.0.1:"+seed);
         var builder=new ProcessBuilder(args).directory(root.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());builder.environment().put("DOCKER_HOST",dockerHost);
         var node=new Node(id,namespace,http,management,transport,log,builder.start());nodes.add(node);
-        await(45,()->{if(!node.process.isAlive()) throw new AssertionError(Files.readString(node.log));return get(node,"/v1/functions").statusCode()==200;});return node;
+        // Listing functions is available before catalog restoration completes; writes are not.
+        await(45,()->{
+            if(!node.process.isAlive()) throw new AssertionError(Files.readString(node.log));
+            var readiness=HttpRequest.newBuilder(URI.create(node.managementUrl+"/actuator/health/readiness"))
+                    .timeout(Duration.ofSeconds(2)).GET().build();
+            return HTTP.send(readiness,HttpResponse.BodyHandlers.discarding()).statusCode()==200
+                    && get(node,"/v1/functions").statusCode()==200;
+        });return node;
     }
     static HttpResponse<String> request(Node node,String path,String method,Object body,Map<String,String> headers) throws Exception {
         var builder=HttpRequest.newBuilder(URI.create(node.url+path)).timeout(Duration.ofSeconds(30));headers.forEach(builder::header);

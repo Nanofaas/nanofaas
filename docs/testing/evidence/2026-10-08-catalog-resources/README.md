@@ -98,3 +98,21 @@ The full Java suite passed again after these changes (`./gradlew test --continue
 4m09s), including both callback orders. `deadCodePublic` also passed on the
 complete project using the JDK without JMODs (10s); its effective configuration
 references the extracted module directories, confirming that the fallback ran.
+
+### Cluster readiness follow-up
+
+The next [CI run](https://github.com/Nanofaas/nanofaas/actions/runs/37838097860)
+passed the tools, Java suite and native cluster gates, but the JVM HTTP artifact
+check failed when registering a function: the server returned 503 with
+`Control plane is still restoring the function catalog`. The shared cluster
+harness had waited only for `GET /v1/functions`, which is available before the
+restore gate opens. It now waits for `/actuator/health/readiness` on the management
+port as well as the function listing, within the existing 45-second deadline.
+The application readiness state becomes accepting traffic after its startup
+runners, including catalog restoration, complete.
+
+Local validation: the exact JVM cluster gate
+`./gradlew :control-plane-modules:offload:oneShotE2e -Precipe=recipes/one-shot-local-jvm.yaml`
+finished with `BUILD SUCCESSFUL in 5m`; all three real-process E2E cases passed
+without failures, errors or skips. The task also ran the offload unit tests and
+coverage report. No production code changed in this follow-up.
