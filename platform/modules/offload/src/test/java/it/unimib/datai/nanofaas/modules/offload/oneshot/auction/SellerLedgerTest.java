@@ -20,6 +20,58 @@ class SellerLedgerTest {
         return AuctionMessage.bid(envelope(buyer, buyer + "-run", epoch, id), "seller",
                 new AuctionMessage.Bid("f", version, 3, quantity, price, false));
     }
+    private AuctionSnapshot allocate(List<AuctionMessage> bids, boolean unit, boolean reverse) {
+        var ledger = new SellerLedger(state(), OneShotAuctionEngine.Options.base());
+        var messages = new ArrayList<AuctionMessage>();
+        for (var message : bids) {
+            if (unit) {
+                for (long i = 0; i < message.bid().quantity(); i++) {
+                    messages.add(bid(message.envelope().senderId(), message.envelope().messageId() + "-" + i,
+                            1, 1, message.bid().price(), message.bid().version()));
+                }
+            } else messages.add(message);
+        }
+        if (reverse) Collections.reverse(messages);
+        messages.forEach(ledger::apply);
+        var closed = ledger.apply(AuctionMessage.close(envelope("seller", "s-run", 1, "close"), "seller"));
+        assertThat(closed.state().status()).isEqualTo("ROUND_CLOSED");
+        return closed.state();
+    }
+
+    private Map<String, Long> allocatedByBuyer(AuctionSnapshot snapshot) {
+        var quantities = new HashMap<String, Long>();
+        snapshot.assignments().values().forEach(a -> quantities.merge(a.buyerId(), a.quantity(), Long::sum));
+        return quantities;
+    }
+
+    @Test void aggregateAndUnitBidsProduceTheSamePartialAllocation() {
+        var bids = List.of(bid("a", "a-bid", 1, 1, 0.02, "image-v1"),
+                bid("b", "b-bid", 1, 3, 0.01, "image-v1"));
+        var aggregate = allocate(bids, false, false);
+        var unit = allocate(bids, true, false);
+        assertThat(allocatedByBuyer(aggregate)).isEqualTo(Map.of("a", 1L, "b", 1L));
+        assertThat(allocatedByBuyer(unit)).isEqualTo(allocatedByBuyer(aggregate));
+        assertThat(aggregate.prices()).isEqualTo(Map.of("f", 0.01));
+        assertThat(unit.prices()).isEqualTo(aggregate.prices());
+        assertThat(aggregate.desiredReplicas()).isEqualTo(Map.of("f", 2));
+        assertThat(unit.desiredReplicas()).isEqualTo(aggregate.desiredReplicas());
+    }
+
+    @Test void equalPriceAggregationPreservesBuyerTieBreak() {
+        var bids = List.of(bid("a", "a-bid", 1, 3, 0.01, "image-v1"),
+                bid("b", "b-bid", 1, 3, 0.01, "image-v1"));
+        for (boolean reverse : List.of(false, true)) {
+            var aggregate = allocate(bids, false, reverse);
+            var unit = allocate(bids, true, reverse);
+            assertThat(allocatedByBuyer(aggregate)).isEqualTo(Map.of("a", 2L));
+            assertThat(allocatedByBuyer(unit)).isEqualTo(allocatedByBuyer(aggregate));
+            assertThat(aggregate.prices()).isEqualTo(Map.of("f", 0.01));
+            assertThat(unit.prices()).isEqualTo(aggregate.prices());
+            assertThat(aggregate.desiredReplicas()).isEqualTo(Map.of("f", 2));
+            assertThat(unit.desiredReplicas()).isEqualTo(aggregate.desiredReplicas());
+        }
+    }
+
     @Test void duplicateAndOldBidsDoNotConsumeAnotherCommitment() {
         var ledger = new SellerLedger(state(), OneShotAuctionEngine.Options.base());
         var request = bid("a", "bid-1", 1, 2, 0.01, "image-v1");
