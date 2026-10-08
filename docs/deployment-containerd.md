@@ -75,14 +75,29 @@ must remain in the selected artifact. The Gradle `bootJar` and `nativeCompile`
 tasks include them through the selected provider's dependency graph.
 
 The JVM image Dockerfile packages that `app.jar`; build the selected JAR first
-and use `platform/control-plane` as its Docker context. For a native OCI image,
-the script passes the staged repository as a Docker named context:
+and use `platform/control-plane` as its Docker context. Native OCI builds also use
+Maven Central by default:
+
+```bash
+CONTROL_PLANE_MODULES=containerd-deployment-provider \
+  scripts/native-java-image.sh control-plane
+```
+
+For an explicit local source build, the script validates and passes the staged
+repository as a Docker named context:
 
 ```bash
 CONTROL_PLANE_MODULES=containerd-deployment-provider \
 CONTAINERD_MAVEN_REPO="$MAVEN_REPOSITORY" \
   scripts/native-java-image.sh control-plane
 ```
+
+`CONTAINERD_MAVEN_REPO` is an opt-in for the native wrapper and `scripts/sonar.sh`.
+An invalid explicit directory fails rather than falling back to Central. Recipe
+builds use `-PcontainerdMavenLocal=true -Dmaven.repo.local=<directory>` for the same
+choice; a generic Maven cache setting alone does not select local source builds.
+CI and NanoLab source-pinned builds continue using the bootstrap receipt and SHA-256
+verification described above.
 
 This proves image packaging only. A working rootless host launch still needs
 the namespace and socket setup below; the image itself is not a substitute for

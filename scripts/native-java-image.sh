@@ -6,6 +6,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 target="${1:-}"
 image="${2:-}"
 gradle_args="-PnanofaasBuildType=native"
+containerd_repository="tools/native-java/empty-maven-repo"
 
 if [ -n "${NANOFAAS_BUILD_VARIANT:-}" ]; then
   gradle_args="$gradle_args -PnanofaasBuildVariant=$NANOFAAS_BUILD_VARIANT"
@@ -30,15 +31,12 @@ case "$target" in
     binary="platform/control-plane/build/native/nativeCompile/control-plane"
     default_image="nanofaas/control-plane:native"
     gradle_args="$gradle_args -PcontrolPlaneModules=${CONTROL_PLANE_MODULES:-all}"
-    if [[ ,${CONTROL_PLANE_MODULES:-all}, == *,containerd-deployment-provider,* ]]; then
-      [[ -n ${CONTAINERD_MAVEN_REPO:-} ]] || {
-        echo 'Set CONTAINERD_MAVEN_REPO to the output of scripts/bootstrap-containerd-dependencies.sh' >&2
-        exit 2
-      }
+    if [[ ,${CONTROL_PLANE_MODULES:-all}, == *,containerd-deployment-provider,* ]] && [[ -n ${CONTAINERD_MAVEN_REPO:-} ]]; then
       [[ -d $CONTAINERD_MAVEN_REPO ]] || {
         echo "Missing CONTAINERD_MAVEN_REPO: $CONTAINERD_MAVEN_REPO" >&2
         exit 2
       }
+      containerd_repository="$CONTAINERD_MAVEN_REPO"
       gradle_args="$gradle_args -PcontainerdMavenLocal=true -Dmaven.repo.local=/tmp/containerd-m2"
     fi
     ;;
@@ -130,7 +128,7 @@ if [ -n "${NATIVE_PARALLELISM:-}" ]; then
 fi
 
 build=(docker build --file tools/native-java/Dockerfile --tag "$image")
-build+=(--build-context "containerd_maven_repo=${CONTAINERD_MAVEN_REPO:-tools/native-java/empty-maven-repo}")
+build+=(--build-context "containerd_maven_repo=$containerd_repository")
 if [ -n "${IMAGE_PLATFORM:-}" ]; then
   build+=(--platform "$IMAGE_PLATFORM")
 fi

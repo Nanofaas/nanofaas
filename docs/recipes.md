@@ -187,7 +187,9 @@ Build through `assembleRecipe` instead.
   staging directory. From there the image is packaged exactly as for `host`. Gradle's
   dependencies stay in a BuildKit cache between builds. `-PnativeBuildMemory` and
   `-PnativeParallelism` are passed into the builder. With the containerd module, the builder
-  needs the staged repository: `-PcontainerdMavenLocal=true -Dmaven.repo.local=<dir>`.
+  resolves dependencies from Maven Central by default. Local source builds require explicit
+  `-PcontainerdMavenLocal=true -Dmaven.repo.local=<dir>`; the directory must exist.
+  Setting only `maven.repo.local` does not mount a host repository into the builder.
 
 In native, Spring decides which components exist while the executable is built (Spring AOT),
 not at startup. For example, the runtime-config admin API needs

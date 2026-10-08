@@ -133,11 +133,13 @@ final class RecipeArtifacts {
             }
         }
         String mavenRepoLocal = System.getProperty("maven.repo.local");
+        boolean useLocalContainerdRepository = modules.contains(RecipeContainerBuild.CONTAINERD_MODULE)
+                && "true".equals(String.valueOf(root.findProperty("containerdMavenLocal")));
         if (targets.stream().anyMatch(target -> target.controlPlane() && target.containerBuilt())) {
             RecipeContainerBuild.requireContainerdRepository(recipe.source(), modules,
                     root.findProperty("containerdMavenLocal"), mavenRepoLocal);
         }
-        Path containerdRepository = modules.contains(RecipeContainerBuild.CONTAINERD_MODULE) && mavenRepoLocal != null
+        Path containerdRepository = useLocalContainerdRepository && mavenRepoLocal != null
                 ? Path.of(mavenRepoLocal) : null;
         Map<RecipeTasks.Target, TaskProvider<Exec>> containerBuilds = new java.util.LinkedHashMap<>();
         for (RecipeTasks.Target target : targets) {
@@ -147,7 +149,7 @@ final class RecipeArtifacts {
             String projectPath = target.task().substring(0, target.task().lastIndexOf(':'));
             // Checked now: a whitespace value must fail before anything is built, not inside the builder.
             RecipeContainerBuild.gradleArgs(recipe.source(), recipe.data(), projectPath, modules, NullNode.getInstance(),
-                    passThrough);
+                    passThrough, useLocalContainerdRepository);
             if (platforms != null && target.image() != null) {
                 continue; // recipe-native compiles it inside the image build, once per platform
             }
@@ -161,7 +163,7 @@ final class RecipeArtifacts {
                                 output.resolve(target.stagingDir()), target.task(), nativeBinary(root, target),
                                 target.nativeOptions().distribution(),
                                 RecipeContainerBuild.gradleArgs(recipe.source(), recipe.data(), projectPath, modules,
-                                        source(services.getExec(), rootDir, output), passThrough),
+                                        source(services.getExec(), rootDir, output), passThrough, useLocalContainerdRepository),
                                 containerdRepository,
                                 target.controlPlane() ? RecipeBuildProperties.aotConfig(recipe.data()) : null)));
                     }));
@@ -187,7 +189,7 @@ final class RecipeArtifacts {
             }
             Function<Path, List<String>> command = metadata -> RecipeBuildx.build(docker, builder, platforms,
                     provenance, target.image(), buildxSource(root, recipe, modules, services, rootDir, output, target,
-                            passThrough, containerdRepository), metadata);
+                            passThrough, containerdRepository, useLocalContainerdRepository), metadata);
             buildxCommands.put(target.image(), command);
             images.add(root.getTasks().register("recipeImage" + images.size(), Exec.class, exec -> {
                 exec.setDescription("Builds " + target.image() + " for " + String.join(", ", platforms));
@@ -492,7 +494,8 @@ final class RecipeArtifacts {
     /** What follows -t in a buildx image build: the Dockerfile arguments, ending with the build context. */
     private static List<String> buildxSource(Project root, RecipeReader.Document recipe, List<String> modules,
                                              Services services, Path rootDir, Path output, RecipeTasks.Target target,
-                                             Map<String, String> passThrough, Path containerdRepository) {
+                                             Map<String, String> passThrough, Path containerdRepository,
+                                             boolean useLocalContainerdRepository) {
         if (!target.containerBuilt()) {
             return List.of("-f", dockerfile(rootDir, target).toString(), context(rootDir, output, target).toString());
         }
@@ -501,7 +504,7 @@ final class RecipeArtifacts {
                 "--target", RecipeBuildx.NATIVE_TARGET, "--build-context", "recipe=" + output.resolve(target.stagingDir())));
         arguments.addAll(RecipeContainerBuild.builderArguments(rootDir, target.task(), nativeBinary(root, target),
                 target.nativeOptions().distribution(), RecipeContainerBuild.gradleArgs(recipe.source(), recipe.data(),
-                        projectPath, modules, source(services.getExec(), rootDir, output), passThrough),
+                        projectPath, modules, source(services.getExec(), rootDir, output), passThrough, useLocalContainerdRepository),
                 containerdRepository, target.controlPlane() ? RecipeBuildProperties.aotConfig(recipe.data()) : null));
         arguments.add(rootDir.toString());
         return arguments;

@@ -201,12 +201,14 @@ Task 7 evidence: SDK + shared contracts 203 tests and 11 subtests; real TCP dead
 
 **Interfaces:** Gradle mantiene `-PcontainerdMavenLocal=true -Dmaven.repo.local=<directory>`; gli script interpretano `CONTAINERD_MAVEN_REPO` non vuoto come opt-in locale. Nessuna variabile → Central. Estendere `RecipeContainerBuild.gradleArgs(...)` con `boolean useLocalContainerdRepository`, calcolato una sola volta in `RecipeArtifacts` e propagato sia all'export binario sia alla build immagine multiarch.
 
-- [ ] Aggiungere matrice di test: modulo containerd + default Central → nessun flag Maven locale; opt-in con directory valida → flag e build context locali; opt-in senza directory o directory inesistente → errore prima del build; sola `maven.repo.local` senza opt-in non abilita implicitamente i sorgenti locali.
-- [ ] Negli script usare comandi stub per verificare gli argomenti realmente ricevuti da Docker/Gradle: niente avvio di SonarQube o chiamate esterne nei test. Coprire selezione esplicita, `all`, modulo assente, namespace di percorsi con spazi e directory locale non valida. Mantenere i test shell esistenti.
-- [ ] Eseguire RED. Rimuovere la precondizione locale quando non selezionata e aggiungere i flag soltanto quando serve; mantenere il contesto Maven vuoto previsto dal Dockerfile per il percorso Central. Non montare il repository dell'host solo perché è impostata una proprietà Maven generica.
-- [ ] Conservare pin, receipt e verifica SHA-256 di `scripts/bootstrap-containerd-dependencies.sh`; verificare le chiamate CI/NanoLab documentate, senza trasformarle in build Central. Aggiornare esempi per entrambe le modalità.
-- [ ] Eseguire `./gradlew -p tools/gradle-plugin test --tests '*RecipeContainerBuildTest' --tests '*RecipePluginTest'` e `python3 -m pytest scripts/tests/test_java_container_images.py scripts/tests/test_sonar_script.py scripts/tests/test_native_build_wrapper.py -q` nell'ambiente pytest configurato. Verificare un `bootJar` containerd con Central e una build native in container del task 9.
-- [ ] Analisi graph completa e commit: `Make local containerd dependencies opt-in`.
+- [x] Aggiungere matrice di test: modulo containerd + default Central → nessun flag Maven locale; opt-in con directory valida → flag e build context locali; opt-in senza directory o directory inesistente → errore prima del build; sola `maven.repo.local` senza opt-in non abilita implicitamente i sorgenti locali.
+- [x] Negli script usare comandi stub per verificare gli argomenti realmente ricevuti da Docker/Gradle: niente avvio di SonarQube o chiamate esterne nei test. Coprire selezione esplicita, `all`, modulo assente, namespace di percorsi con spazi e directory locale non valida. Mantenere i test shell esistenti.
+- [x] Eseguire RED. Rimuovere la precondizione locale quando non selezionata e aggiungere i flag soltanto quando serve; mantenere il contesto Maven vuoto previsto dal Dockerfile per il percorso Central. Non montare il repository dell'host solo perché è impostata una proprietà Maven generica.
+- [x] Conservare pin, receipt e verifica SHA-256 di `scripts/bootstrap-containerd-dependencies.sh`; verificare le chiamate CI/NanoLab documentate, senza trasformarle in build Central. Aggiornare esempi per entrambe le modalità.
+- [x] Eseguire `./gradlew -p tools/gradle-plugin test --tests '*RecipeContainerBuildTest' --tests '*RecipePluginTest'` e `python3 -m pytest scripts/tests/test_java_container_images.py scripts/tests/test_sonar_script.py scripts/tests/test_native_build_wrapper.py -q` nell'ambiente pytest configurato. Verificare un `bootJar` containerd con Central e una build native in container del task 9.
+- [x] Analisi graph completa e commit: `Make local containerd dependencies opt-in`.
+
+Task 8 evidence: plugin suites passed including multiarch local propagation; script suites 28/28 passed; containerd Central bootJar passed. Source pin/receipt code and CI opt-in are preserved; real container packaging follows in Task 9.
 
 ## Task 9: Verifica integrata e revisione finale
 

@@ -42,7 +42,7 @@ class RecipeContainerBuildTest {
                 """);
 
         assertThat(RecipeContainerBuild.gradleArgs(RECIPE, data, ":control-plane", List.of("build-metadata"),
-                source(true), Map.of("nativeBuildMemory", "6g"))).containsExactly(
+                source(true), Map.of("nativeBuildMemory", "6g"), false)).containsExactly(
                 "-PnanofaasBuildType=native", "-PnativeOptimization=s", "-PnativeGc=G1",
                 "-PcontrolPlaneModules=build-metadata",
                 "-PnanofaasBuildOptimization=s", "-PnanofaasBuildVariant=native-os",
@@ -54,15 +54,17 @@ class RecipeContainerBuildTest {
     void emptyModulesSelectNoneAndContainerdGetsItsRepository() throws IOException {
         JsonNode data = data("controlPlane: {modules: [], build: {mode: native, builder: container}}\n");
         assertThat(RecipeContainerBuild.gradleArgs(RECIPE, data, ":control-plane", List.of(), NullNode.getInstance(),
-                Map.of())).containsExactly("-PnanofaasBuildType=native", "-PcontrolPlaneModules=none");
+                Map.of(), false)).containsExactly("-PnanofaasBuildType=native", "-PcontrolPlaneModules=none");
 
         JsonNode containerd = data("""
                 controlPlane: {modules: [containerd-deployment-provider], build: {mode: native, builder: container}}
                 """);
         assertThat(RecipeContainerBuild.gradleArgs(RECIPE, containerd, ":control-plane",
-                List.of("containerd-deployment-provider"), NullNode.getInstance(), Map.of()))
-                .containsSubsequence("-PcontrolPlaneModules=containerd-deployment-provider",
-                        "-PcontainerdMavenLocal=true", "-Dmaven.repo.local=/tmp/containerd-m2");
+                List.of("containerd-deployment-provider"), NullNode.getInstance(), Map.of(), false))
+                .containsExactly("-PnanofaasBuildType=native", "-PcontrolPlaneModules=containerd-deployment-provider");
+        assertThat(RecipeContainerBuild.gradleArgs(RECIPE, containerd, ":control-plane",
+                List.of("containerd-deployment-provider"), NullNode.getInstance(), Map.of(), true))
+                .contains("-PcontainerdMavenLocal=true", "-Dmaven.repo.local=/tmp/containerd-m2");
     }
 
     @Test
@@ -73,7 +75,7 @@ class RecipeContainerBuildTest {
                 """);
 
         assertThat(RecipeContainerBuild.gradleArgs(RECIPE, data, ":services:java:warm-echo", List.of("build-metadata"),
-                source(false), Map.of("nativeParallelism", "2"))).containsExactly(
+                source(false), Map.of("nativeParallelism", "2"), false)).containsExactly(
                 "-PnanofaasBuildType=native", "-PnativeOptimization=2", "-PnativeParallelism=2");
     }
 
@@ -82,7 +84,7 @@ class RecipeContainerBuildTest {
         JsonNode data = data("controlPlane: {modules: [], build: {mode: native, builder: container}}\n");
 
         assertThatThrownBy(() -> RecipeContainerBuild.gradleArgs(RECIPE, data, ":control-plane", List.of(),
-                NullNode.getInstance(), Map.of("nativeBuildMemory", "6 g")))
+                NullNode.getInstance(), Map.of("nativeBuildMemory", "6 g"), false))
                 .isInstanceOf(GradleException.class)
                 .hasMessageContaining("-PnativeBuildMemory=6 g")
                 .hasMessageContaining("whitespace");
@@ -134,8 +136,10 @@ class RecipeContainerBuildTest {
     void containerdNeedsTheStagedRepository() {
         List<String> modules = List.of("containerd-deployment-provider");
 
-        assertThatThrownBy(() -> RecipeContainerBuild.requireContainerdRepository(RECIPE, modules, null, null))
-                .hasMessageContaining("-PcontainerdMavenLocal=true").hasMessageContaining("-Dmaven.repo.local");
+        RecipeContainerBuild.requireContainerdRepository(RECIPE, modules, null, null);
+        RecipeContainerBuild.requireContainerdRepository(RECIPE, modules, null, dir.toString());
+        assertThatThrownBy(() -> RecipeContainerBuild.requireContainerdRepository(RECIPE, modules, "true", null))
+                .hasMessageContaining("-Dmaven.repo.local");
         assertThatThrownBy(() -> RecipeContainerBuild.requireContainerdRepository(RECIPE, modules, "true",
                 dir.resolve("missing").toString())).hasMessageContaining(dir.resolve("missing").toString())
                 .hasMessageContaining("is not a directory");

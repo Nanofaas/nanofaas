@@ -123,16 +123,15 @@ if [ "$DRY" = false ]; then
 fi
 # --- Analyses ----------------------------------------------------------------
 run_java() {
-    # The containerd module resolves io.github.nanofaas libraries from a local Maven repository
-    # (scripts/bootstrap-containerd-dependencies.sh); `test` builds every module, so it is required.
-    local containerd_repo="${CONTAINERD_MAVEN_REPO:-$PWD/.gradle/containerd-m2}"
-    if [ ! -d "$containerd_repo" ]; then
-        echo "Missing containerd Maven repository: $containerd_repo" >&2
-        echo "Run scripts/bootstrap-containerd-dependencies.sh or set CONTAINERD_MAVEN_REPO." >&2
-        return 1
+    local repository_args=()
+    if [[ -n ${CONTAINERD_MAVEN_REPO:-} ]]; then
+        if [[ ! -d $CONTAINERD_MAVEN_REPO ]]; then
+            echo "Missing containerd Maven repository: $CONTAINERD_MAVEN_REPO" >&2
+            return 1
+        fi
+        repository_args=(-PcontainerdMavenLocal=true "-Dmaven.repo.local=$CONTAINERD_MAVEN_REPO")
     fi
-    run ./gradlew test --no-parallel sonar \
-        -PcontainerdMavenLocal=true -Dmaven.repo.local="$containerd_repo" \
+    run ./gradlew test --no-parallel sonar "${repository_args[@]}" \
         -Dsonar.host.url="$SONAR_HOST" -Dsonar.token="$TOKEN" \
         -Dsonar.projectKey=nanofaas-java -Dsonar.projectName="nanofaas Java"
 }

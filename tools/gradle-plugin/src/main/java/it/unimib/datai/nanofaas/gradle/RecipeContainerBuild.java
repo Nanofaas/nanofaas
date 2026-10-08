@@ -31,7 +31,7 @@ final class RecipeContainerBuild {
 
     /** @param source the report's source node (revision and dirty state), or a null node when Git is unavailable */
     static List<String> gradleArgs(Path recipeSource, JsonNode data, String projectPath, List<String> modules,
-                                   JsonNode source, Map<String, String> passThrough) {
+                                   JsonNode source, Map<String, String> passThrough, boolean useLocalContainerdRepository) {
         Map<String, Map<String, String>> byProject = RecipeBuildProperties.byProject(data);
         List<String> args = new ArrayList<>(List.of("-PnanofaasBuildType=native"));
         Map<String, String> own = byProject.getOrDefault(projectPath, Map.of());
@@ -48,7 +48,7 @@ final class RecipeContainerBuild {
                     args.add("-PnanofaasBuildDirty=" + source.get("dirty").asBoolean());
                 }
             }
-            if (modules.contains(CONTAINERD_MODULE)) {
+            if (modules.contains(CONTAINERD_MODULE) && useLocalContainerdRepository) {
                 args.add("-PcontainerdMavenLocal=true");
                 args.add("-Dmaven.repo.local=/tmp/containerd-m2");
             }
@@ -102,13 +102,14 @@ final class RecipeContainerBuild {
 
     static void requireContainerdRepository(Path recipeSource, List<String> modules, Object containerdMavenLocal,
                                             String mavenRepoLocal) {
-        if (modules.contains(CONTAINERD_MODULE)
-                && (!"true".equals(String.valueOf(containerdMavenLocal)) || mavenRepoLocal == null)) {
-            throw RecipeReader.failure(recipeSource, "controlPlane.modules: " + CONTAINERD_MODULE
-                    + " with builder: container needs -PcontainerdMavenLocal=true and -Dmaven.repo.local=<the staged"
+        if (!modules.contains(CONTAINERD_MODULE) || !"true".equals(String.valueOf(containerdMavenLocal))) {
+            return;
+        }
+        if (mavenRepoLocal == null || mavenRepoLocal.isBlank()) {
+            throw RecipeReader.failure(recipeSource, "local containerd build needs -Dmaven.repo.local=<the staged"
                     + " repository from scripts/bootstrap-containerd-dependencies.sh>");
         }
-        if (modules.contains(CONTAINERD_MODULE) && !Files.isDirectory(Path.of(mavenRepoLocal))) {
+        if (!Files.isDirectory(Path.of(mavenRepoLocal))) {
             throw RecipeReader.failure(recipeSource, "controlPlane.modules: " + CONTAINERD_MODULE + " with builder:"
                     + " container: -Dmaven.repo.local=" + mavenRepoLocal + " is not a directory; stage it with"
                     + " scripts/bootstrap-containerd-dependencies.sh");

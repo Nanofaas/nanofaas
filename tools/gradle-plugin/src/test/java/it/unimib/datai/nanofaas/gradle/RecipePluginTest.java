@@ -924,8 +924,8 @@ class RecipePluginTest {
 
         writeModule("containerd-deployment-provider", "");
         recipe(V2_HEADER + "controlPlane: {modules: [containerd-deployment-provider], build: {mode: native, builder: container}}\n");
-        assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker()))
-                .contains("needs -PcontainerdMavenLocal=true");
+        assertThat(fails("assembleRecipe", "-Precipe=recipe.yaml", docker(), "-PcontainerdMavenLocal=true"))
+                .contains("needs -Dmaven.repo.local");
         assertThat(projectDir.resolve("docker.log")).doesNotExist();
     }
 
@@ -939,6 +939,29 @@ class RecipePluginTest {
                 "-Dmaven.repo.local=" + repository);
 
         assertThat(containerBuild()).contains("containerd_maven_repo=" + repository,
+                "GRADLE_ARGS=-PnanofaasBuildType=native -PcontrolPlaneModules=containerd-deployment-provider"
+                        + " -PcontainerdMavenLocal=true -Dmaven.repo.local=/tmp/containerd-m2");
+    }
+
+    @Test
+    void containerdDefaultsToCentralEvenWithGenericMavenRepository() throws IOException {
+        writeModule("containerd-deployment-provider", "");
+        recipe(V2_HEADER + "controlPlane: {modules: [containerd-deployment-provider], build: {mode: native, builder: container}}\n");
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker(), "-Dmaven.repo.local=" + outsideDir);
+        assertThat(containerBuild()).contains("containerd_maven_repo="
+                + projectDir.resolve("tools/native-java/empty-maven-repo"));
+        assertThat(containerBuild()).noneMatch(argument -> argument.contains("-PcontainerdMavenLocal=true")
+                || argument.contains("-Dmaven.repo.local="));
+    }
+
+    @Test
+    void multiArchContainerdUsesExplicitLocalRepositoryOnly() throws IOException {
+        writeModule("containerd-deployment-provider", "");
+        recipe(MULTI_ARCH.replace("modules: []", "modules: [containerd-deployment-provider]"));
+        Path repository = Files.createDirectories(outsideDir.resolve("maven repo with spaces"));
+        run("assembleRecipe", "-Precipe=recipe.yaml", docker(), "-PrecipeBuilder=multi",
+                "-PcontainerdMavenLocal=true", "-Dmaven.repo.local=" + repository);
+        assertThat(buildxBuild(MA_CP, false)).contains("containerd_maven_repo=" + repository,
                 "GRADLE_ARGS=-PnanofaasBuildType=native -PcontrolPlaneModules=containerd-deployment-provider"
                         + " -PcontainerdMavenLocal=true -Dmaven.repo.local=/tmp/containerd-m2");
     }
