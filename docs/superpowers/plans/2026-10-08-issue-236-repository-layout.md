@@ -166,7 +166,7 @@ Compare `docs/experiments`, archived plans/specs, `docs/testing/evidence` and ex
 - `RecipeArtifacts.dockerfile(Path rootDir, RecipeTasks.Target target): Path` defaults to `tools/gradle-plugin/dockerfiles/Dockerfile.<mode>`; custom Dockerfile/context overrides keep their current semantics.
 - Compose keeps context `../..` relative to its own YAML and uses `platform/control-plane/Dockerfile.from-source` relative to that context.
 
-- [ ] **Step 1: Pin command-generation and packaging expectations before the moves.**
+- [x] **Step 1: Pin command-generation and packaging expectations before the moves.**
 
 Extend existing tests to assert the new template/native paths in emitted command lists, without changing staged content. Assert:
 
@@ -177,26 +177,26 @@ assert config["services"]["control-plane"]["build"]["dockerfile"] == "platform/c
 
 The existing Compose service key is `control-plane`; also check `edge-control-plane` and `cloud-control-plane` in `offload-loadtest.yaml`. Parse those existing files rather than creating a second Compose document. In Java tests assert the `-f` argument points at the new template/native file, the final argument is the same staging/root context, and `--target native-executable`/`recipe-native` plus named contexts remain present where currently required. Retain stage-order, base-image redeclaration, executable and no-extra-staged-Dockerfile checks. Custom Dockerfile overrides must still win over defaults.
 
-- [ ] **Step 2: Run focused tests and observe the new path assertions fail.**
+- [x] **Step 2: Run focused tests and observe the new path assertions fail.**
 
 ```bash
 ./gradlew -p platform/gradle-plugin test --tests '*RecipePluginTest' --tests '*RecipeContainerBuildTest' --tests '*RecipeBuildxTest'
 uv run --python 3.12 --with pytest --with pyyaml pytest scripts/tests/test_java_container_images.py scripts/tests/test_docker_compose_deployment.py scripts/tests/test_native_build_wrapper.py -q
 ```
 
-- [ ] **Step 3: Perform the moves and update command producers and live consumers.**
+- [x] **Step 3: Perform the moves and update command producers and live consumers.**
 
 Use `git mv`. Update included-build locations and recipe/native constants, wrapper defaults, schema links and Compose Dockerfile references. The plugin still lives two levels below root, so existing `../../` root-relative references must remain where they are already correct. Preserve the prebuilt-JAR Dockerfile and every native stage (`builder`, `native-executable`, `recipe-native`, final runtime), ARG, entrypoint and context name. Retain templates on disk beside the plugin; keep them out of recipe staging.
 
 Class/package names and method signatures remain unchanged. Correct the role descriptions and current paths in the listed guides. Preserve completed plans, pinned evidence, provenance paths and historical ADR sections. Add a dated current-path note where a live ADR reader needs orientation rather than editing its historical record.
 
-- [ ] **Step 4: Verify focused checks and all recipe definitions.**
+- [x] **Step 4: Verify focused checks and all recipe definitions.**
 
 Run the previous focused commands with `-p tools/gradle-plugin`, then its full test suite. Run `uv run --python 3.12 --with pytest --with pyyaml pytest scripts/tests -q`. Run `validateRecipe` once for every tracked recipe and `assembleRecipe -Precipe=recipes/local-demo.yaml`; compare staged relative filenames and launch/config semantics with the baseline. Revisions/build identities legitimately change and must not be overwritten to force byte equality. Expected: no copied build template and unchanged public task/module IDs.
 
 Run `docker compose -f deploy/compose/compose.yaml config` and the offload Compose equivalent. Run the NanoLab image-plan/bake tests against the relocated worktree through its supported source-contract setup. Expected: selected native path is the new location; legacy fixture cases remain green.
 
-- [ ] **Step 5: Validate real image and native build paths in the existing build environment.**
+- [x] **Step 5: Validate real image and native build paths in the existing build environment.**
 
 ```bash
 ./gradlew :control-plane:bootJar -PcontrolPlaneModules=all
@@ -209,7 +209,7 @@ Extract `/app/application` from a disposable container created from the local na
 
 Run existing multi-architecture command/provenance tests; exercise a real amd64/arm64 build in the established builder when available. Verify launch/health and packaged configuration, not performance. Preserve `containerd_maven_repo` and `recipe` contexts. Publishing to a public registry is not required: use local build/export paths and verify publish command generation through existing tests. If the native/multi-architecture environment is unavailable, leave that verification explicitly pending.
 
-- [ ] **Step 6: Run the final build/profile checks, review naming and commit.**
+- [x] **Step 6: Run the final build/profile checks, review naming and commit.**
 
 Run the architecture all/none/async/sync matrix from the first plan, `./gradlew build -PcontrolPlaneModules=all --continue` and `./gradlew releaseChecks -PcontrolPlaneModules=all --continue` in the supported environment. Include the default profile's selected-module report and compare it with the baseline. Preserve reports before another profile overwrites them. Do not rerun unrelated benchmark campaigns.
 
@@ -218,3 +218,6 @@ Review the spec's naming table: each changed name/location must convey its role 
 ## Completion evidence
 
 Record the NanoFaaS safeguard/library/tooling commits and compatible NanoLab commit, passing profile/check commands, real image/native results and any explicitly pending environment checks. #236 remains open until its required checks and cross-repository compatibility are verified. Execution of this plan does not authorize posting issue comments, changing publication policy or publishing releases.
+
+
+Execution evidence: [2026-10-08 execution report](../reports/2026-10-08-module-boundaries-and-layout.md). Tooling commit `ff1230b53189ba96e42d01c271c2b632c29598de`; final source-contract NanoLab focused checks 114 PASS. All locally available checks above ran; actual amd64 build and shared-branch integration remain pending, so #236 remains open.
