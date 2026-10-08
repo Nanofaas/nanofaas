@@ -65,11 +65,12 @@ class OneShotLocalClusterE2eTest {
         var fn=new LinkedHashMap<String,Object>();fn.put("function","f");fn.put("imageDigest",image);fn.put("runtime","HTTP");fn.put("backend","container-local");fn.put("inputHash",ServiceProfileStore.hash(JSON.writeValueAsBytes(INPUT)));fn.put("cpuQuota",1);fn.put("memoryMiB",128);fn.put("replicas",1);fn.put("coLocation",List.of());fn.put("serviceSeconds",.5);fn.put("statistics",Map.of("sampleCount",1,"meanSeconds",.5,"stddevSeconds",0,"p95Seconds",.5));fn.put("validity",Map.of("minReplicas",1,"maxReplicas",1,"maxRelativeCapacityError",0));fn.put("measurement",Map.of("warmupInvocations",0,"includesColdStarts",false,"occupancy","physical-handler","rawSamplesHash","sha256:"+"0".repeat(64)));
         return Map.of("schemaVersion",1,"profileId","cluster","provider","synthetic-local-test","purpose","workflow-validation","synthetic",true,"sourceCommit","0".repeat(40),"environmentFingerprint","sha256:"+"a".repeat(64),"environment",Map.of("host","local-test","vm","docker","os","linux","architecture",System.getProperty("os.arch"),"cpu","synthetic-fixture"),"functions",List.of(fn));
     }
-    void configure(Node node,Node cloud) throws Exception {
+    Map<String,Object> configure(Node node,Node cloud) throws Exception {
         var profile=profile(node);json(request(node,"/v1/admin/offload/one-shot/profiles/cluster","PUT",profile,Map.of("If-Match","0","X-Content-SHA256",ServiceProfileStore.hash(JSON.writeValueAsBytes(profile)))),200);
         var config=new LinkedHashMap<String,Object>();config.put("schemaVersion",1);config.put("profileId","cluster");config.put("environmentFingerprint","sha256:"+"a".repeat(64));config.put("purpose","workflow-validation");config.put("allowSynthetic",true);config.put("cloudUri",cloud.url);config.put("memoryCapacityMiB",128);config.put("flowQuantum",1);config.put("period",PERIOD.toString());config.put("leadTime","PT15S");config.put("scheduled",false);config.put("anchor",Instant.EPOCH.toString());config.put("preparationBudget","PT5S");config.put("maxOperationalFraction",.1);config.put("burst",1);config.put("maxSolverStates",2000000);config.put("maxSolverBytes",67108864);config.put("functions",Map.of("f",Map.of("generation",node.generation,"imageDigest",image,"inputHash",ServiceProfileStore.hash(JSON.writeValueAsBytes(INPUT)),"utilization",.8,"alpha",1,"delta",.9,"gamma",.1)));config.put("negotiation",Map.of("auctionBudget","PT5S","peerTimeout","PT0.5S","solverBudget","PT1S","maxRounds",20,"parallelism",4,"queueCapacity",64,"maxPeers",16,"maxAuctionFraction",.1));
         json(request(node,"/v1/admin/offload/one-shot/config","PUT",config,Map.of("If-Match","0")),200);
         json(request(node,"/v1/admin/offload/one-shot/clock-health","PUT",Map.of("offset","PT0S","measuredAt",Instant.now().toString()),Map.of()),200);
+        return config;
     }
     List<JsonNode> prepare(List<Node> edges,long epoch,Instant from,double[] loads,long revision) throws Exception {
         for(int i=0;i<edges.size();i++) {var node=edges.get(i);json(request(node,"/v1/admin/forecasting/trace","PUT",Map.of("schemaVersion",1,"nodeId",node.id,"revision",revision,"provider","oracle","producedAt",Instant.now().toString(),"entries",List.of(Map.of("function","f","generation",node.generation,"start",from.toString(),"end",from.plus(PERIOD).toString(),"rate",loads[i],"unit","requests/s"))),Map.of("If-Match",Long.toString(revision-1))),200);}
@@ -108,6 +109,83 @@ class OneShotLocalClusterE2eTest {
         assertThat(total).as("unique logical invocations equal physical completions; replays add none").isEqualTo(expected);
         Files.writeString(artifacts.resolve("conservation.json"),JSON.writeValueAsString(Map.of("logicalExecutions",expected,"physicalCompletions",total)));
     }
+    @Test
+    @Timeout(value = 3, unit = TimeUnit.MINUTES)
+    void qualifiedAutomaticWindowsAreContiguousAndRejectGridChange() throws Exception {
+        var evidence = root.resolve("platform/modules/offload/build/test-diagnostics");
+        Files.createDirectories(evidence);
+        artifacts = Files.createTempDirectory(evidence, "nf-automatic-");
+        try {
+            dockerHost = command(List.of("docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}"));
+            image = command(List.of("docker", "image", "inspect", "--format", "{{.Id}}",
+                    System.getProperty("oneShot.workloadImage")));
+            var cloud = start("cloud", false, 0);
+            var edge = start("auto", true, 0);
+            register(cloud, true);
+            register(edge, false);
+            var config = configure(edge, cloud);
+            var period = Duration.ofSeconds(2);
+            var first = Instant.now().plusSeconds(2);
+            config.put("period", period.toString());
+            config.put("anchor", first.minus(period).toString());
+            config.put("leadTime", "PT0.6S");
+            config.put("preparationBudget", "PT0.1S");
+            config.put("maxOperationalFraction", .2);
+            config.put("negotiation", Map.of("auctionBudget", "PT0.1S", "peerTimeout", "PT0.05S",
+                    "solverBudget", "PT0.05S", "maxRounds", 20, "parallelism", 4,
+                    "queueCapacity", 64, "maxPeers", 16, "maxAuctionFraction", .1));
+            json(request(edge, "/v1/admin/offload/one-shot/config", "PUT", config, Map.of("If-Match", "1")), 200);
+            var entries = new ArrayList<Map<String,Object>>();
+            for (int epoch = 1; epoch <= 23; epoch++) {
+                var from = first.plus(period.multipliedBy(epoch - 1));
+                entries.add(Map.of("function", "f", "generation", edge.generation, "start", from.toString(),
+                        "end", from.plus(period).toString(), "rate", 0, "unit", "requests/s"));
+            }
+            json(request(edge, "/v1/admin/forecasting/trace", "PUT", Map.of("schemaVersion", 1,
+                    "nodeId", edge.id, "revision", 1, "provider", "oracle", "producedAt", Instant.now().toString(),
+                    "entries", entries), Map.of("If-Match", "0")), 200);
+            for (int epoch = 1; epoch <= 20; epoch++) {
+                if (epoch > 1) {
+                    long previousEpoch = epoch - 1;
+                    await(4, () -> json(get(edge, "/v1/admin/offload/one-shot/status"), 200)
+                            .path("activePlan").path("epoch").asLong() == previousEpoch);
+                }
+                var from = first.plus(period.multipliedBy(epoch - 1));
+                var result = json(request(edge, "/v1/admin/offload/one-shot/epochs/" + epoch + "/prepare",
+                        "POST", Map.of("startsAt", from.toString(), "endsAt", from.plus(period).toString()), Map.of()), 200);
+                assertThat(result.path("status").asString()).as(result.toPrettyString()).isEqualTo("PREPARED");
+            }
+            await(4, () -> json(get(edge, "/v1/admin/offload/one-shot/status"), 200)
+                    .path("activePlan").path("epoch").asLong() == 20);
+            config.put("scheduled", true);
+            json(request(edge, "/v1/admin/offload/one-shot/config", "PUT", config, Map.of("If-Match", "2")), 200);
+            await(6, () -> json(get(edge, "/v1/admin/offload/one-shot/status"), 200)
+                    .path("activePlan").path("epoch").asLong() == 21);
+            var firstPlan = json(get(edge, "/v1/admin/offload/one-shot/status"), 200).path("activePlan");
+            var changed = new LinkedHashMap<>(config);
+            changed.put("anchor", first.plusSeconds(1).toString());
+            json(request(edge, "/v1/admin/offload/one-shot/config", "PUT", changed, Map.of("If-Match", "3")), 409);
+            assertThat(json(get(edge, "/v1/admin/offload/one-shot/status"), 200).path("revision").asLong()).isEqualTo(3);
+            await(4, () -> json(get(edge, "/v1/admin/offload/one-shot/status"), 200)
+                    .path("activePlan").path("epoch").asLong() == 22);
+            var secondPlan = json(get(edge, "/v1/admin/offload/one-shot/status"), 200).path("activePlan");
+            assertThat(secondPlan.path("startsAt").asString()).isEqualTo(firstPlan.path("endsAt").asString());
+            assertThat(firstPlan.path("startsAt").asString()).isEqualTo(first.plus(period.multipliedBy(20)).toString());
+            Files.writeString(artifacts.resolve("automatic-plans.json"), JSON.writeValueAsString(List.of(firstPlan, secondPlan)));
+        } finally {
+            for (var node : nodes) {
+                node.process.destroy();
+                if (!node.process.waitFor(10, TimeUnit.SECONDS)) node.process.destroyForcibly();
+                var owned = command(List.of("docker", "ps", "-aq", "--filter", "label=io.nanofaas.function=" + node.namespace + "/f"));
+                if (!owned.isBlank()) {
+                    var args = new ArrayList<>(List.of("docker", "rm", "-f"));
+                    args.addAll(Arrays.asList(owned.split("\\s+")));
+                    command(args);
+                }
+            }
+        }
+    }
+
     @Test @Timeout(value=5,unit=TimeUnit.MINUTES) void fullAuctionReadinessRoutingAndFaultedNextEpoch() throws Exception {
         var evidence=root.resolve("platform/modules/offload/build/test-diagnostics");Files.createDirectories(evidence);artifacts=Files.createTempDirectory(evidence,"nf-one-shot-");
         try {
