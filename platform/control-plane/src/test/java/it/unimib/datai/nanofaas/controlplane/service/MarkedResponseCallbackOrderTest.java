@@ -12,6 +12,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import java.util.*;
 import java.util.concurrent.*;
 import static org.assertj.core.api.Assertions.*;
+import static org.awaitility.Awaitility.await;
 
 class MarkedResponseCallbackOrderTest {
     @ParameterizedTest
@@ -54,7 +55,8 @@ class MarkedResponseCallbackOrderTest {
                 var replay=coordinator.invoke(runtime.factory().createOrReuseExecution("fn",spec,request,"key",null,InvocationKind.SYNC),spec,5000).block();
                 assertThat(replay.response().output()).isEqualTo("hello");
                 assertThat(replay.response().statusCode()).isEqualTo(answer.statusCode());
-                assertThat(store.inFlightCount()).isZero();
+                // The shared answer is published before the terminal record is removed.
+                await().atMost(2,TimeUnit.SECONDS).untilAsserted(() -> assertThat(store.inFlightCount()).isZero());
             } finally { releaseResponse.countDown();waiting.cancel(true); }
         }
     }

@@ -1,0 +1,10 @@
+{
+  "artifact": "platform/control-plane/build/libs/app.jar",
+  "registration": 201,
+  "invocation_before_restart": 200,
+  "invocation_after_restart": 200,
+  "legacy_catalog_invocation": 200,
+  "invalid_resources": 400,
+  "unknown_resource_field": 400,
+  "resource_settings_preserved": true
+}

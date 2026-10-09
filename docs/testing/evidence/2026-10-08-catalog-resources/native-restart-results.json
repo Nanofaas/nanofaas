@@ -1,0 +1,21 @@
+{
+  "artifact": "platform/control-plane/build/native/nativeCompile/control-plane",
+  "registration": 201,
+  "invocation_before_restart": 200,
+  "invocation_after_restart": 200,
+  "legacy_catalog_invocation": 200,
+  "invalid_resources": 400,
+  "unknown_resource_field": 400,
+  "resource_settings_preserved": true,
+  "sha256": "14f3503dad72052864080bc2b8eaac5ac58d496367f92ac20d6eebf51e5d51df",
+  "modules": [
+    "k8s-deployment-provider",
+    "async-queue",
+    "runtime-config"
+  ],
+  "build_heap": "10g",
+  "build_parallelism": 2,
+  "graalvm": "CE 25.2.4+7.1 / Java 25.0.4+7",
+  "architecture": "aarch64",
+  "build_duration": "3m42s"
+}

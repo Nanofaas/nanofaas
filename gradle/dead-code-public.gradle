@@ -44,6 +44,7 @@ tasks.register('deadCodePublic', JavaExec) {
     javaLauncher = launcher
     maxHeapSize = '1g'
     inputs.files(productionClasses, libraries, registrations, keepRules, reviewedRules)
+    inputs.file(launcher.map { it.metadata.installationPath.file('lib/modules') })
     outputs.dir(reports)
 
     doFirst {
@@ -57,9 +58,22 @@ tasks.register('deadCodePublic', JavaExec) {
         libraries.files.sort().each {
             lines.add("-libraryjars ${quoted(it)}(!META-INF/versions/**,!module-info.class)")
         }
-        def jmods = launcher.get().metadata.installationPath.dir('jmods').asFile
-        fileTree(jmods) { include '*.jmod' }.files.sort().each {
-            lines.add("-libraryjars ${quoted(it)}(!**.jar;!module-info.class)")
+        def javaHome = launcher.get().metadata.installationPath.asFile
+        def jmods = fileTree(new File(javaHome, 'jmods')) { include '*.jmod' }.files.sort()
+        if (!jmods.isEmpty()) {
+            jmods.each { lines.add("-libraryjars ${quoted(it)}(!**.jar;!module-info.class)") }
+        } else {
+            // JEP 493 JDKs retain the classes in lib/modules without shipping jmods.
+            def extracted = layout.buildDirectory.dir('tmp/dead-code-public-jdk').get().asFile
+            delete(extracted)
+            def suffix = launcher.get().executablePath.asFile.name.endsWith('.exe') ? '.exe' : ''
+            providers.exec {
+                commandLine new File(javaHome, "bin/jimage${suffix}"), 'extract', '--dir', extracted,
+                        new File(javaHome, 'lib/modules')
+            }.result.get().assertNormalExitValue()
+            extracted.listFiles().findAll { it.isDirectory() }.sort().each {
+                lines.add("-libraryjars ${quoted(it)}(!module-info.class)")
+            }
         }
         registrations.files.sort().each { registration ->
             def service = registration.parentFile.name == 'services'

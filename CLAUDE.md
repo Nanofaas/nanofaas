@@ -80,7 +80,10 @@ Optional control-plane modules (loaded via `ControlPlaneModule` SPI from `platfo
 - **build-metadata** - `/modules/build-metadata` diagnostics endpoint
 - **k8s-deployment-provider** - Kubernetes managed deployment backend and image validation for `DEPLOYMENT`
 - **container-deployment-provider** - Local managed deployment backend and image validation using a Docker-compatible runtime
+- **containerd-deployment-provider** - Rootless containerd/crun/CNI managed deployment backend; mutually exclusive with the other providers
 - **offload** - Conditional transparent proxy of sync invocations to a remote nanofaas instance (eager per-function policy, or on sync-queue DEPTH/EST_WAIT rejection); single hop, no local fallback (remote failure → 502/504)
+- **forecasting** - Per-function external arrival-rate forecasts (EWMA or uploaded oracle trace); not default-enabled, inert unless `nanofaas.forecasting.enabled=true`
+- **p2p-discovery** - SWIM-based node discovery, latency measurement, neighbour selection and messaging; primitives only, not default-enabled
 
 Execution Modes:
 - **DEPLOYMENT** - Managed deployment intent resolved through a backend provider (`k8s`, `container-local`, ...)

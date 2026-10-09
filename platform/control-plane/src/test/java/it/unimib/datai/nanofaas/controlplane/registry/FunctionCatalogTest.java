@@ -2,6 +2,9 @@ package it.unimib.datai.nanofaas.controlplane.registry;
 
 import it.unimib.datai.nanofaas.common.model.ExecutionMode;
 import it.unimib.datai.nanofaas.common.model.FunctionSpec;
+import it.unimib.datai.nanofaas.common.model.ResourceSpec;
+import it.unimib.datai.nanofaas.common.model.ResourceQuantity;
+import java.math.BigDecimal;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import java.io.IOException;
@@ -15,6 +18,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.json.JsonMapper;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -22,7 +27,9 @@ class FunctionCatalogTest {
     @TempDir
     Path tempDir;
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    // Match the strict mapper configured in application.yml.
+    private final ObjectMapper objectMapper = JsonMapper.builder()
+            .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
     private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
 
     @Test
@@ -39,6 +46,60 @@ class FunctionCatalogTest {
 
         assertEquals(List.of("alpha", "zulu"), catalog.load().stream().map(RegisteredFunction::name).toList());
         assertEquals(1, objectMapper.readTree(Files.readAllBytes(path)).get("schemaVersion").asInt());
+    }
+
+    @Test
+    void explicitResourcesSurviveRegistryRestart() throws IOException {
+        Path path = tempDir.resolve("functions.json");
+        ResourceSpec resources = new ResourceSpec(
+                new ResourceQuantity(new BigDecimal("0.05"), 128),
+                new ResourceQuantity(BigDecimal.ONE, 256));
+        FunctionSpec spec = new FunctionSpec("resources", "example:latest", List.of(), java.util.Map.of(), resources,
+                1000, 1, 1, 0, null, ExecutionMode.LOCAL, null, null, null);
+        new FunctionRegistry(catalog(path)).put(spec);
+
+        assertEquals(spec, new FunctionRegistry(catalog(path)).get("resources").orElseThrow());
+        assertFalse(objectMapper.readTree(Files.readAllBytes(path)).get("functions").get(0)
+                .get("spec").get("resources").has("requestWithinLimit"));
+    }
+
+    @Test
+    void loadsLegacyValidationPropertyAndRewritesOnlyResourceConfiguration() throws IOException {
+        Path path = tempDir.resolve("functions.json");
+        Files.writeString(path, """
+                {"schemaVersion":1,"functions":[{"spec":{"name":"legacy","image":"example:latest",
+                  "resources":{"requests":{"cpu":0.05,"memoryMiB":128},
+                    "limits":{"cpu":1,"memoryMiB":256},"requestWithinLimit":false}}}]}
+                """);
+        FunctionRegistry restored = new FunctionRegistry(catalog(path));
+        ResourceSpec resources = restored.get("legacy").orElseThrow().resources();
+        assertEquals(new ResourceQuantity(new BigDecimal("0.05"), 128), resources.requests());
+        assertEquals(new ResourceQuantity(BigDecimal.ONE, 256), resources.limits());
+        catalog(path).save(restored.listRegisteredForRecovery());
+        assertFalse(objectMapper.readTree(Files.readAllBytes(path)).get("functions").get(0)
+                .get("spec").get("resources").has("requestWithinLimit"));
+    }
+
+    @Test
+    void legacyValidationPropertyCannotBypassResourceLimits() throws IOException {
+        Path path = tempDir.resolve("functions.json");
+        Files.writeString(path, """
+                {"schemaVersion":1,"functions":[{"spec":{"name":"invalid","image":"example:latest",
+                  "resources":{"requests":{"cpu":2,"memoryMiB":512},
+                    "limits":{"cpu":1,"memoryMiB":256},"requestWithinLimit":true}}}]}
+                """);
+        IllegalStateException failure = assertThrows(IllegalStateException.class, () -> catalog(path).load());
+        assertEquals("Function catalog contains an invalid function: invalid", failure.getMessage());
+    }
+
+    @Test
+    void rejectsUnknownResourceConfiguration() throws IOException {
+        Path path = tempDir.resolve("functions.json");
+        Files.writeString(path, """
+                {"schemaVersion":1,"functions":[{"spec":{"name":"unknown","image":"example:latest",
+                  "resources":{"requests":{"cpu":0.05,"memoryMiB":128},"limit":{}}}}]}
+                """);
+        assertThrows(IllegalStateException.class, () -> catalog(path).load());
     }
 
     @Test
