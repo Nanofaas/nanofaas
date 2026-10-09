@@ -100,8 +100,9 @@ be combined with other values. `all` selects every compatible module, preferring
 `defaultEnabled=true` when a default and a non-default module conflict; conflicts
 between modules with equal `defaultEnabled` values are ambiguous and fail the
 build. Unknown names and other constraint violations also fail the build. The
-default selects only descriptors whose `defaultEnabled=true`; this keeps
-`async-queue` enabled and `sync-queue` disabled.
+default selects only descriptors whose `defaultEnabled=true`: every module
+except `container-deployment-provider`, `containerd-deployment-provider`,
+`forecasting` and `p2p-discovery`.
 With `-Precipe=<file>`, a [distribution recipe](recipes.md)'s
 `controlPlane.modules` is the only selection source: `-PcontrolPlaneModules` is
 rejected and the environment selector is ignored.
@@ -159,6 +160,11 @@ Current modules:
   mutually exclusive with the other managed providers
 - `offload` — conditional transparent proxy of sync invocations to a remote
   instance
+- `forecasting` — per-function external arrival-rate forecasts (EWMA or an
+  uploaded oracle trace); inert unless enabled — see [forecasting](forecasting.md)
+- `p2p-discovery` — node discovery, latency measurement, neighbour selection
+  and messaging between NanoFaaS nodes; primitives only, invocations are not
+  routed through it — see `platform/modules/p2p-discovery/README.md`
 
 ### Modules that need other modules
 

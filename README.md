@@ -21,7 +21,7 @@ at build time. A build contains only the modules it needs.
 
 ## Highlights
 
-- **Build-time modularity.** Ten optional modules with declared defaults,
+- **Build-time modularity.** Twelve optional modules with declared defaults,
   requirements and conflicts, validated before a single task runs.
 - **One API, three execution modes.** Managed deployments, passthrough to
   external endpoints, and in-process execution share the same invocation
@@ -146,6 +146,8 @@ It goes through `sync-queue` if that module is present, otherwise through
 | `k8s-deployment-provider` | Kubernetes backend | ✓ |
 | `container-deployment-provider` | Docker-compatible local backend | |
 | `containerd-deployment-provider` | Rootless containerd backend | |
+| `forecasting` | Per-function arrival-rate forecasts (EWMA or an uploaded trace) | |
+| `p2p-discovery` | Peer discovery, latency measurement and messaging between nodes | |
 
 Select a set with `-PcontrolPlaneModules=<list|all|none>`; the three providers
 are mutually exclusive. See [control-plane modules](docs/control-plane.md#control-plane-modules).
