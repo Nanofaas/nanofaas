@@ -1,0 +1,18 @@
+{
+  "tests": 2808,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 9,
+  "reports": 471,
+  "skipped_tests": [
+    "it.unimib.datai.nanofaas.controlplane.P07ConfiguredHttpCalibrationTest.t1CoreOnlySyncUnkeyedThroughConfiguredHttpRuntime()",
+    "it.unimib.datai.nanofaas.controlplane.CoreOnlyApiTest.disabledInvocationEnqueuerReportsUnavailable()",
+    "it.unimib.datai.nanofaas.controlplane.CoreOnlyApiTest.asyncEnqueueReturns501WhenAsyncQueueModuleIsNotLoaded()",
+    "it.unimib.datai.nanofaas.modules.concurrencycontrol.ConcurrencyGovernorE2eTest.raisingTheConfiguredCeilingAtRuntimeUnblocksTheGovernor()",
+    "it.unimib.datai.nanofaas.modules.concurrencycontrol.ConcurrencyGovernorE2eTest.budgetedFunctionsShareOneBudgetInsteadOfCompetingForTheSameCores()",
+    "it.unimib.datai.nanofaas.modules.concurrencycontrol.ConcurrencyGovernorE2eTest.governorThrottlesTheQueueConcurrencyLimitOfARegisteredFunction()",
+    "it.unimib.datai.nanofaas.containerdeployment.RustPhysicalProxyTest.runtimeTimeoutCannotReleaseReplicaBeforeBlockingCpuWorkFinishes()",
+    "it.unimib.datai.nanofaas.containerdeployment.RustPhysicalProxyTest.actualHandlerErrorHasPositiveExecutionEvidence()",
+    "it.unimib.datai.nanofaas.containerdeployment.RustPhysicalProxyTest.actualAdmissionRefusalsDoNotAttributeExecutionAndAllowReplicaReuse()"
+  ]
+}

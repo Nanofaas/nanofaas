@@ -1,0 +1,23 @@
+{
+  "repository": "nanofaas",
+  "base": "a3722a471b92c67cb2cb335995d2fdc4742f3f7d",
+  "worktree": "fix-catalog-resources",
+  "summary": {
+    "changed_count": 2,
+    "affected_count": 432,
+    "changed_files": 11,
+    "risk_level": "critical"
+  },
+  "partial": false,
+  "truncated": false,
+  "changed_symbols": [
+    {
+      "name": "tempDir",
+      "file": "platform/control-plane/src/test/java/it/unimib/datai/nanofaas/controlplane/registry/FunctionCatalogTest.java"
+    },
+    {
+      "name": "ResourceSpec",
+      "file": "platform/libs/common/src/main/java/it/unimib/datai/nanofaas/common/model/ResourceSpec.java"
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 package it.unimib.datai.nanofaas.common.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 
@@ -7,6 +8,7 @@ public record ResourceSpec(
         @Valid ResourceQuantity requests,
         @Valid ResourceQuantity limits
 ) {
+    @JsonIgnore
     @AssertTrue(message = "resource request must not exceed limit")
     public boolean isRequestWithinLimit() {
         if (requests == null || limits == null) {
