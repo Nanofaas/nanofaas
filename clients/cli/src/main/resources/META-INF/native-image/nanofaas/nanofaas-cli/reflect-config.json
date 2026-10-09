@@ -121,6 +121,12 @@
     "allDeclaredFields": true
   },
   {
+    "name": "it.unimib.datai.nanofaas.cli.config.Context",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true
+  },
+  {
     "name": "it.unimib.datai.nanofaas.cli.commands.controlplane.ControlPlaneInfoCommand$Info",
     "allDeclaredConstructors": true,
     "allPublicMethods": true

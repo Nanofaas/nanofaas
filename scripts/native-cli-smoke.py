@@ -5,8 +5,10 @@ from __future__ import annotations
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import os
 import subprocess
 import sys
+import tempfile
 import threading
 
 
@@ -57,6 +59,29 @@ def main() -> None:
     thread.start()
     try:
         output = run(binary, "--endpoint", f"http://127.0.0.1:{server.server_port}", "fn", "list")
+        with tempfile.TemporaryDirectory(prefix="nanofaas-native-cli-smoke-") as config_dir:
+            config_path = Path(config_dir) / "config.yaml"
+            config_path.write_text(
+                "currentContext: smoke\n"
+                "contexts:\n"
+                "  smoke:\n"
+                f"    endpoint: http://127.0.0.1:{server.server_port}\n",
+                encoding="utf-8",
+            )
+            env = os.environ.copy()
+            env.pop("NANOFAAS_ENDPOINT", None)
+            env.pop("NANOFAAS_CONTEXT", None)
+            configured = subprocess.run(
+                [str(binary), "--config", str(config_path), "fn", "list"],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=60,
+            )
+            if configured.returncode != 0:
+                raise RuntimeError(f"native CLI config lookup failed: {configured.stderr}")
+            if "smoke\texample/smoke:latest" not in configured.stdout:
+                raise RuntimeError("native CLI did not resolve the configured context endpoint")
     finally:
         server.shutdown()
         thread.join()
