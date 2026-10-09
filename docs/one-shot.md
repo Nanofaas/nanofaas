@@ -114,6 +114,16 @@ and its own remaining quota. Missing, duplicate or inconsistent native metadata
 is rejected; any hop marker, including malformed legacy values, prevents another
 hop. Function payload headers cannot supply these control-plane fields.
 
+For forwarded responses, `X-NanoFaaS-Terminal-Execution-Id` identifies the
+independently assigned execution on the destination control plane. The ordinary
+`X-Execution-Id` and response `executionId` continue to identify the origin.
+NanoLab uses the terminal ID to query physical SDK release proof without inventing
+completion from client latency. The gateway generates this metadata from a valid
+remote response, replaces handler-supplied values, and excludes caller-supplied
+values from forwarding. Handler errors retain the terminal ID through completion
+and outcome retention; missing or invalid remote IDs never generate it. An ID by
+itself proves neither handler start nor physical release.
+
 Calibration input hashes identify the exact JSON input, serialized with sorted
 map keys and properties using the platform Jackson mapper. Selected functions
 reject other inputs, so tests must send the calibrated fixed workload. Trusted

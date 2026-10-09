@@ -226,7 +226,7 @@ public class ExecutionRecord {
                 Outcome.epochMilli(finishedAt),
                 readableAfterFinishing ? output : null,
                 lastError,
-                readableAfterFinishing ? headers : null,
+                readableAfterFinishing ? headers : terminalExecutionHeaders(),
                 readableAfterFinishing ? encoding : null,
                 statusCode == null ? Outcome.NO_STATUS : statusCode,
                 initDurationMs == null ? Outcome.NO_INIT : initDurationMs,
@@ -234,6 +234,11 @@ public class ExecutionRecord {
                 readableAfterFinishing,
                 executionNode
         );
+    }
+
+    private Map<String, String> terminalExecutionHeaders() {
+        String id = headers == null ? null : headers.get("X-NanoFaaS-Terminal-Execution-Id");
+        return id == null ? null : Map.of("X-NanoFaaS-Terminal-Execution-Id", id);
     }
 
     /**
@@ -297,6 +302,11 @@ public class ExecutionRecord {
      * Marks the execution as completed with error.
      */
     public synchronized void markError(ErrorInfo error) {
+        markError(error, null);
+    }
+
+    /** Marks an error while retaining trusted headers from a terminal remote response. */
+    public synchronized void markError(ErrorInfo error, Map<String, String> terminalHeaders) {
         if (!canTransition(ExecutionState.ERROR)) {
             return;
         }
@@ -305,6 +315,7 @@ public class ExecutionRecord {
         this.finishedAtNanos = timeSource.nanoTime();
         this.lastError = error;
         this.output = null;
+        this.headers = terminalHeaders;
     }
 
     /**
@@ -536,7 +547,8 @@ public class ExecutionRecord {
                 result = InvocationResult.successWithEnvelope(output, statusCode, headers, encoding);
             } else {
                 ErrorInfo error = lastError != null ? lastError : new ErrorInfo("TIMEOUT", "Execution timed out");
-                result = new InvocationResult(false, null, error);
+                result = new InvocationResult(false, null, error, null,
+                        terminalExecutionHeaders(), null);
             }
         }
         if (failure != null) completion.completeExceptionally(failure);

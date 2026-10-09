@@ -589,7 +589,7 @@ public final class AttemptCoordinator {
                     executionRecord.markSuccess(result.output(), result.statusCode(),
                             result.headers(), result.encoding());
                 } else {
-                    executionRecord.markError(result.error());
+                    executionRecord.markError(result.error(), result.headers());
                 }
             }
         }

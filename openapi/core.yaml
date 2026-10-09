@@ -252,6 +252,16 @@ paths:
             X-Execution-Id:
               schema:
                 type: string
+            X-NanoFaaS-Terminal-Execution-Id:
+              description: |
+                Execution ID assigned by the terminal control plane when an invocation
+                was offloaded and a valid remote response was received. Allows matching
+                physical runtime release proof on the destination, including handler
+                errors. X-Execution-Id continues to identify the origin execution.
+                Absent when no valid remote execution ID is available; its presence
+                alone does not prove that a handler started or physically completed.
+              schema:
+                type: string
             X-NanoFaaS-Function-Status:
               description: |
                 Marker (value `true`) that the HTTP status is function-decided

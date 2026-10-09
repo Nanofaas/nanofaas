@@ -122,6 +122,7 @@ class DefaultOffloadGatewayTest {
         assertThat(result).isNotNull();
         assertThat(result.success()).isTrue();
         assertThat(result.output()).isEqualTo("out");
+        assertThat(result.headers()).containsEntry("X-NanoFaaS-Terminal-Execution-Id", "remote-1");
 
         RecordedRequest recorded = server.takeRequest();
         assertThat(recorded.getPath()).isEqualTo("/v1/functions/echo:invoke");
@@ -133,6 +134,31 @@ class DefaultOffloadGatewayTest {
                 .isEqualTo(1.0);
         assertThat(meterRegistry.counter("nanofaas.offload.failure", "function", "echo").count())
                 .isEqualTo(0.0);
+    }
+
+    @Test
+    void terminalExecutionIdComesFromRemoteEnvelopeInsteadOfPayloadHeaders() {
+        server.enqueue(new MockResponse().setHeader("Content-Type", "application/json")
+                .setBody("{\"executionId\":\"remote-owned\",\"status\":\"success\",\"output\":1,"
+                        + "\"headers\":{\"x-nanofaas-terminal-execution-id\":\"spoof\",\"Location\":\"/keep\"}}"));
+        InvocationResult result = gateway().invokeRemote(task(spec("echo", null, 5000)),
+                OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS).block();
+        assertThat(result.headers()).containsEntry("X-NanoFaaS-Terminal-Execution-Id", "remote-owned")
+                .containsEntry("Location", "/keep")
+                .doesNotContainKey("x-nanofaas-terminal-execution-id");
+    }
+
+    @Test
+    void invalidOrMissingRemoteExecutionIdDoesNotInventTerminalIdentity() {
+        for (String invalid : List.of("null", "\"\"", "\"bad id\"", "\"" + "x".repeat(257) + "\"")) {
+            server.enqueue(new MockResponse().setHeader("Content-Type", "application/json")
+                    .setBody("{\"executionId\":" + invalid + ",\"status\":\"success\",\"output\":1,"
+                            + "\"headers\":{\"X-NanoFaaS-Terminal-Execution-Id\":\"spoof\"}}"));
+            InvocationResult result = gateway().invokeRemote(task(spec("echo", null, 5000)),
+                    OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS).block();
+            assertThat(result.success()).isTrue();
+            assertThat(result.headers()).doesNotContainKey("X-NanoFaaS-Terminal-Execution-Id");
+        }
     }
 
     @Test
@@ -272,6 +298,7 @@ class DefaultOffloadGatewayTest {
         assertThat(result).isNotNull();
         assertThat(result.success()).isFalse();
         assertThat(result.error().code()).isEqualTo("BOOM");
+        assertThat(result.headers()).containsEntry("X-NanoFaaS-Terminal-Execution-Id", "r");
     }
 
     @Test
@@ -447,6 +474,7 @@ class DefaultOffloadGatewayTest {
         // trace context (re-offload prevention / tracing acceptance).
         gateway().invokeRemote(task(spec, Map.of(
                         "x-tenant", "acme",
+                        "X-NanoFaaS-Terminal-Execution-Id", "forged-id",
                         "x-nanofaas-offload-hop", "forged-hop",
                         "x-trace-id", "forged-trace",
                         "traceparent", "00-forged-parent-01",
@@ -467,6 +495,7 @@ class DefaultOffloadGatewayTest {
         assertThat(recorded.getHeader("Content-Type")).startsWith("application/json");
         assertThat(recorded.getHeader("Content-Length")).isNotEqualTo("999");
         assertThat(recorded.getHeader("Host")).isNotEqualTo("forged-host");
+        assertThat(recorded.getHeader("X-NanoFaaS-Terminal-Execution-Id")).isNull();
     }
 
     @Test

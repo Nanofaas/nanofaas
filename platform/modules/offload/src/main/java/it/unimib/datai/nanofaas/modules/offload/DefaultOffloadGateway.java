@@ -81,6 +81,8 @@ public class DefaultOffloadGateway implements OffloadGateway {
             "connection", "keep-alive", "proxy-connection", "te", "trailer", "upgrade");
 
     private static final String PROXY_HEADER_PREFIX = "proxy-";
+    private static final java.util.regex.Pattern TERMINAL_EXECUTION_ID =
+            java.util.regex.Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,255}");
 
     private it.unimib.datai.nanofaas.modules.offload.oneshot.routing.PlanRouter planRouter;
     public void plannedRouting(it.unimib.datai.nanofaas.modules.offload.oneshot.routing.PlanRouter router) { this.planRouter=router; }
@@ -406,7 +408,8 @@ public class DefaultOffloadGateway implements OffloadGateway {
                 return;
             }
             String key = name.toLowerCase(Locale.ROOT);
-            if (key.startsWith("x-nanofaas-offload-") || key.equals("x-nanofaas-execution-node") || EXCLUDED_FORWARD_HEADERS.contains(key)
+            if (key.startsWith("x-nanofaas-offload-") || key.equals("x-nanofaas-execution-node")
+                    || key.equals("x-nanofaas-terminal-execution-id") || EXCLUDED_FORWARD_HEADERS.contains(key)
                     || HOP_BY_HOP_HEADERS.contains(key)
                     || key.startsWith(PROXY_HEADER_PREFIX)) {
                 return;
@@ -416,7 +419,7 @@ public class DefaultOffloadGateway implements OffloadGateway {
     }
 
     private InvocationResult toResult(InvocationResponse response) {
-        return switch (response.status() == null ? "" : response.status()) {
+        InvocationResult result = switch (response.status() == null ? "" : response.status()) {
             case "success" -> InvocationResult.successWithEnvelope(
                     response.output(), response.statusCode(), response.headers(), response.encoding());
             case "timeout" -> InvocationResult.error("REMOTE_TIMEOUT", "remote execution timed out");
@@ -424,6 +427,22 @@ public class DefaultOffloadGateway implements OffloadGateway {
                     ? new InvocationResult(false, null, response.error())
                     : InvocationResult.error("REMOTE_ERROR", "remote execution failed with status " + response.status());
         };
+        // The origin owns its response executionId. Keep the independently assigned
+        // remote ID available for physical runtime proof, including failed handlers.
+        var headers = new java.util.LinkedHashMap<String, String>();
+        if (result.headers() != null) {
+            result.headers().forEach((name, value) -> {
+                if (!"X-NanoFaaS-Terminal-Execution-Id".equalsIgnoreCase(name)) {
+                    headers.put(name, value);
+                }
+            });
+        }
+        String terminalId = response.executionId();
+        if (terminalId != null && TERMINAL_EXECUTION_ID.matcher(terminalId).matches()) {
+            headers.put("X-NanoFaaS-Terminal-Execution-Id", terminalId);
+        }
+        return new InvocationResult(result.success(), result.output(), result.error(),
+                result.statusCode(), java.util.Map.copyOf(headers), result.encoding());
     }
 
 }

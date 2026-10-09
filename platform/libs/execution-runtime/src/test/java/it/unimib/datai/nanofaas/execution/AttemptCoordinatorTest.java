@@ -63,6 +63,25 @@ class AttemptCoordinatorTest {
     }
 
     @Test
+    void offloadedHandlerErrorKeepsTerminalExecutionIdInOutcomeAndCompletion() {
+        var spec = new FunctionSpec("fn", "image", null, null, null,
+                30000, 1, 10, 0, null, ExecutionMode.LOCAL, null, null, null);
+        var task = new InvocationTask("origin", "fn", spec, new InvocationRequest("input", null),
+                null, null, Instant.now(), 1, InvocationKind.SYNC);
+        var record = new ExecutionRecord("origin", task);
+        var store = new ExecutionStore();
+        store.put(record);
+        var coordinator = new AttemptCoordinator(store, new FunctionCapacityRegistry(),
+                RetryScheduler.unavailable(), mock(AttemptTransport.class), mock(AttemptObserver.class));
+        coordinator.completeOffloadedExecution("origin", new InvocationResult(false, null,
+                new it.unimib.datai.nanofaas.common.model.ErrorInfo("HANDLER_ERROR", "failed"),
+                null, java.util.Map.of("X-NanoFaaS-Terminal-Execution-Id", "remote"), null));
+        assertThat(record.toOutcome().headers()).containsEntry("X-NanoFaaS-Terminal-Execution-Id", "remote");
+        assertThat(record.completion().join().headers()).containsEntry("X-NanoFaaS-Terminal-Execution-Id", "remote");
+        assertThat(record.executionId()).isEqualTo("origin");
+    }
+
+    @Test
     void retryHintIsCalculatedOnceAndStaleCompletionCannotReplaceIt() {
         Instant now = Instant.parse("2026-09-24T12:00:00Z");
         var spec = new FunctionSpec("fn", "image", null, null, null,
