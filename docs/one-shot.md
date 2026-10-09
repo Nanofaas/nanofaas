@@ -124,6 +124,13 @@ values from forwarding. Handler errors retain the terminal ID through completion
 and outcome retention; missing or invalid remote IDs never generate it. An ID by
 itself proves neither handler start nor physical release.
 
+Remote transport and unmarked HTTP failures return 502 or 504 with the
+`OFFLOAD_FAILED` error body and the gateway's message, while retaining
+`X-NanoFaaS-Offloaded`. An explicit remote 429 admission refusal therefore stays
+observable instead of becoming a bodyless 502. This does not assign a terminal
+execution ID, claim handler execution, retry the request or change native quotas.
+Other remote failures and timeouts can still have ambiguous physical outcomes.
+
 Calibration input hashes identify the exact JSON input, serialized with sorted
 map keys and properties using the platform Jackson mapper. Selected functions
 reject other inputs, so tests must send the calibrated fixed workload. Trusted

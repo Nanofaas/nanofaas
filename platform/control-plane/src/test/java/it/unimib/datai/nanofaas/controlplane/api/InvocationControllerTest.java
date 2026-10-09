@@ -407,6 +407,27 @@ class InvocationControllerTest {
     }
 
     @Test
+    void invokeSync_remoteAdmissionRefusalPreservesReasonWithoutInventingExecution() {
+        InvocationRequest request = new InvocationRequest("payload", Map.of());
+        String reason = "remote http://peer:8080 returned 429: {\"error\":\"ONE_SHOT_ADMISSION_REJECTED\",\"message\":\"inbound assignment absent or quota exhausted\"}";
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
+                .thenReturn(Mono.error(new OffloadFailedException("http://peer:8080", false, reason)));
+
+        webClient.post()
+                .uri("/v1/functions/echo:invoke")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isEqualTo(502)
+                .expectHeader().valueEquals("X-NanoFaaS-Offloaded", "http://peer:8080")
+                .expectHeader().doesNotExist("X-NanoFaaS-Terminal-Execution-Id")
+                .expectBody()
+                .jsonPath("$.error").isEqualTo("OFFLOAD_FAILED")
+                .jsonPath("$.message").isEqualTo(reason)
+                .jsonPath("$.executionId").doesNotExist();
+    }
+
+    @Test
     void invokeSync_offloadFailed_returns502WithTargetHeader() {
         InvocationRequest request = new InvocationRequest("payload", Map.of());
         when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))

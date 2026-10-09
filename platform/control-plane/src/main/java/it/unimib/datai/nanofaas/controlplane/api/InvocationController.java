@@ -327,7 +327,8 @@ public class InvocationController {
         if (ex.targetUrl() != null) {
             builder.header("X-NanoFaaS-Offloaded", ex.targetUrl());
         }
-        return builder.build();
+        return builder.body(Map.of("error", "OFFLOAD_FAILED", "message",
+                ex.getMessage() == null ? "remote offload failed" : ex.getMessage()));
     }
 
     private record InvocationQuotaError(String error, String resource) {

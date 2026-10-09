@@ -329,6 +329,30 @@ paths:
                 $ref: '#/components/schemas/InvocationQuotaError'
         '500':
           description: Invocation failed
+        '502':
+          description: |
+            Remote offload failed. The gateway message preserves the remote HTTP
+            status and error body when available. An explicit remote admission
+            refusal is distinguishable from an unresolved transport failure;
+            neither response fabricates a terminal execution ID or physical proof.
+          headers:
+            X-NanoFaaS-Offloaded:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OffloadFailure'
+        '504':
+          description: Remote offload timed out; physical outcome may be unresolved.
+          headers:
+            X-NanoFaaS-Offloaded:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OffloadFailure'
 
   /v1/functions/{name}:enqueue:
     post:
@@ -455,6 +479,15 @@ components:
       description: Max time in milliseconds for sync invocation.
 
   schemas:
+    OffloadFailure:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          enum: [OFFLOAD_FAILED]
+        message:
+          type: string
     ApiError:
       type: object
       required: [error, message]

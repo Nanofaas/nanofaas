@@ -107,6 +107,22 @@ class DefaultOffloadGatewayTest {
     }
 
     @Test
+    void remoteNativeAdmissionRefusalRetainsExactStatusAndReason() {
+        String body = "{\"error\":\"ONE_SHOT_ADMISSION_REJECTED\",\"message\":\"inbound assignment absent or quota exhausted\"}";
+        server.enqueue(new MockResponse().setResponseCode(429)
+                .setHeader("Content-Type", "application/json").setBody(body));
+
+        assertThatThrownBy(() -> invokeRemoteBlocking(gateway(), task(spec("echo", null, 5000)),
+                OffloadTrigger.EAGER, OffloadContext.none(), BUDGET_MS))
+                .satisfies(error -> {
+                    OffloadFailedException failure = offloadFailure(error);
+                    assertThat(failure.gatewayTimeout()).isFalse();
+                    assertThat(failure.targetUrl()).isEqualTo(serverUrl());
+                    assertThat(failure.getMessage()).isEqualTo("remote " + serverUrl() + " returned 429: " + body);
+                });
+    }
+
+    @Test
     void successResponseMapsToSuccessResultAndForwardsHeaders() throws InterruptedException {
         server.enqueue(new MockResponse()
                 .setHeader("Content-Type", "application/json")
