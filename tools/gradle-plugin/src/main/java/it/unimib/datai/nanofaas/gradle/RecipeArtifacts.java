@@ -424,14 +424,16 @@ final class RecipeArtifacts {
         return root.project(target.task().substring(0, separator)).getTasks().named(target.task().substring(separator + 1));
     }
 
-    /** Copies only the declared outputs of the selected task: a Boot jar, the java-lite classpath or the executable. */
+    /** Copies the selected artifact and, for native images, its emitted shared libraries. */
     private static void stageJava(Project root, Sync sync, RecipeTasks.Target target) {
         TaskProvider<Task> producer = producer(root, target);
         sync.dependsOn(producer);
         if (target.mode().equals("native")) {
-            // BuildNativeImageTask.getOutputFile(): the executable, without the rest of the output directory.
+            // Native Image emits JNI libraries beside the executable; they must retain their filenames.
             Provider<RegularFile> executable = producer.map(task -> (RegularFile) ((Provider<?>) task.property("outputFile")).get());
             sync.from(executable, spec -> spec.into(target.stagingDir()).rename(name -> "application"));
+            sync.from(executable.map(file -> file.getAsFile().getParentFile()),
+                    spec -> spec.into(target.stagingDir()).include("*.so"));
         } else if (target.sdk().equals("java-lite")) {
             sync.from(producer, spec -> spec.into(target.stagingDir()).include("lib/**"));
         } else {

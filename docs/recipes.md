@@ -173,8 +173,8 @@ Build through `assembleRecipe` instead.
 
 `build.builder` chooses where a native component compiles:
 
-- `host` (the default): `nativeCompile` on this machine, with its GraalVM. The executable is
-  copied as-is into a Linux image, so the host must be Linux on the image's architecture, and
+- `host` (the default): `nativeCompile` on this machine, with its GraalVM. The executable and
+  its emitted `.so` libraries are copied as-is into a Linux image, so the host must be Linux on the image's architecture, and
   its glibc must not be newer than Debian 13's (the runtime image is `distroless/cc-debian13`).
 - `container`: inside the builder of
   [`tools/native-java/Dockerfile`](../tools/native-java/Dockerfile), the one the release uses.
@@ -182,7 +182,7 @@ Build through `assembleRecipe` instead.
   `-PrecipeDocker`), so it also works on macOS and Windows. The builder installs GraalVM
   Community, or Oracle GraalVM when the component's `gc` is `G1`: Community has no G1. Oracle
   GraalVM is GFTC-licensed, not GPL, so asking for G1 is also a licensing choice. The report
-  records the distribution. Only the executable comes back
+  records the distribution. The executable and its emitted `.so` libraries come back
   (`docker build --target native-executable --output type=local,...`), into the component's
   staging directory. From there the image is packaged exactly as for `host`. Gradle's
   dependencies stay in a BuildKit cache between builds. `-PnativeBuildMemory` and
