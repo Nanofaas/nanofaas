@@ -179,7 +179,7 @@ def test_native_builder_can_link_the_g1_collector():
 
 
 def test_native_builder_exports_the_executable_and_caches_gradle():
-    """assembleRecipe's container builder exports only /application from `native-executable`;
+    """assembleRecipe's container builder exports /application from `native-executable`;
     the release keeps building the default (last) stage, so that one must stay the runtime image."""
     dockerfile = (REPO_ROOT / "tools/native-java/Dockerfile").read_text(encoding="utf-8")
     stages = [line.split() for line in dockerfile.splitlines() if line.startswith("FROM ")]

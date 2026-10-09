@@ -451,6 +451,29 @@ class RecipePluginTest {
     }
 
     @Test
+    void stagesNativeSharedLibrariesBesideTheExecutable() throws IOException {
+        Files.writeString(projectDir.resolve("services/java/warm-echo/build.gradle"), """
+                tasks.named('nativeCompile') {
+                    doLast {
+                        new File(outputFile.get().asFile.parentFile, 'libawt.so').text = 'awt library'
+                        new File(outputFile.get().asFile.parentFile, 'libawt_headless.so').text = 'headless library'
+                    }
+                }
+                """, java.nio.file.StandardOpenOption.APPEND);
+        recipe(V2_HEADER + CP_JVM + """
+                services: [{name: warm-echo, sdk: java, build: {mode: native}}]
+                """);
+
+        run("stageRecipe", "-Precipe=recipe.yaml");
+
+        Path staged = projectDir.resolve("build/recipes/demo/services/java/warm-echo");
+        assertThat(staged.resolve("application")).isExecutable();
+        assertThat(staged.resolve("libawt.so")).hasContent("awt library");
+        assertThat(staged.resolve("libawt_headless.so")).hasContent("headless library");
+        assertThat(staged.resolve("unrelated.txt")).doesNotExist();
+    }
+
+    @Test
     void servicesAndBashBuildWithTheirOwnContexts() throws IOException {
         recipe(V2_HEADER + CP_JVM + """
                 functions: [{name: word-stats, sdk: bash, container: {image: ws-bash}}]

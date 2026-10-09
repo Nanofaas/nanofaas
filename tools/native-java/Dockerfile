@@ -53,12 +53,18 @@ RUN if [ -n "$NATIVE_AOT_CONFIG" ]; then \
 # where Gradle cannot hand its lock over.
 RUN --mount=type=cache,target=/root/.gradle,sharing=locked ./gradlew "$NATIVE_TASK" $GRADLE_ARGS ${NATIVE_AOT_CONFIG:+-PnanofaasAotConfig=/tmp/nanofaas-aot-config.yaml} --no-daemon && \
     cp "$NATIVE_BINARY" /tmp/application && \
+    mkdir -p /tmp/native-libraries && \
+    find "$(dirname "$NATIVE_BINARY")" -maxdepth 1 -name '*.so' \
+      -exec cp -L {} /tmp/native-libraries/ \; && \
     mkdir -p /var/lib/nanofaas && touch /var/lib/nanofaas/.keep
 
-# assembleRecipe's container builder exports only the executable
+# Native Image emits JNI libraries and JDK shims beside the executable (AWT, for example).
+# Preserve that layout: GraalVM searches the executable's directory for these libraries.
+# assembleRecipe's container builder exports the executable and its libraries
 # (docker build --target native-executable --output type=local,...) and packages it itself.
 FROM scratch AS native-executable
 COPY --from=builder /tmp/application /application
+COPY --from=builder /tmp/native-libraries/ /
 
 # `cc` rather than `base`: it carries libstdc++, which a G1 binary loads at run
 # time because the collector itself is C++. A serial binary does not need it and
@@ -81,6 +87,7 @@ WORKDIR /app
 COPY --from=builder --chown=nonroot:nonroot /var/lib/nanofaas /var/lib/nanofaas
 COPY --from=recipe . /app/
 COPY --from=builder /tmp/application /app/application
+COPY --from=builder /tmp/native-libraries/ /app/
 EXPOSE 8080 8081
 ENTRYPOINT ["/app/application"]
 
@@ -93,6 +100,7 @@ ENV NANOFAAS_RUNTIME_BASE_IMAGE=${RUNTIME_IMAGE}
 ENV NANOFAAS_REGISTRY_PATH=/var/lib/nanofaas/functions.json
 WORKDIR /app
 COPY --from=builder --chown=nonroot:nonroot /tmp/application /app/application
+COPY --from=builder --chown=nonroot:nonroot /tmp/native-libraries/ /app/
 COPY --from=builder --chown=nonroot:nonroot /var/lib/nanofaas /var/lib/nanofaas
 EXPOSE 8080 8081
 ENTRYPOINT ["/app/application"]
