@@ -1,5 +1,8 @@
 # One-shot: campagna controllata con cinque edge eterogenei e un cloud
 
+> Revisione utente 2026-10-10: scope scientifico sostituito da `2026-10-10-one-shot-multifunction-multipass-design.md`:5funzioni, memoria strict,9round sincronizzati di360s. Questo documento conserva il disegno precedente e non deve essere usato per nuove acquisizioni.
+
+
 Data: 2026-10-10. Stato: progetto aggiornato; implementazione native autorizzata dall’utente dopo completamento della progettazione, gate scientifici obbligatori.
 
 ## Obiettivo e ambito
@@ -33,7 +36,7 @@ L'host osservato ha 20 CPU logiche e circa 122 GiB di RAM: la tabella è plausib
 
 ## Topologia e rete
 
-Grafo edge con archi bidirezionali: `1–2`, `2–3`, `3–4`, `4–5`, `5–1`, `2–5`. Non è una rete completa: i gradi sono 2, 3, 2, 2, 3. Ogni edge può raggiungere direttamente il cloud. Le richieste inoltrate a un peer restano terminali, senza secondo hop.
+Grafo edge con archi bidirezionali: `1–2`, `2–3`, `3–1`, `3–4`, `4–5`, `5–3`: due triangoli planari che condividono edge-3, secondo la revisione richiesta dall’utente prima delle misure. I gradi sono 2, 2, 4, 2, 2. Ogni edge può raggiungere direttamente il cloud. Le richieste inoltrate a un peer restano terminali, senza secondo hop.
 
 ```mermaid
 graph LR
@@ -41,8 +44,8 @@ graph LR
   E2 --- E3[edge-3]
   E3 --- E4[edge-4]
   E4 --- E5[edge-5]
-  E5 --- E1
-  E2 --- E5
+  E3 --- E1
+  E5 --- E3
   E1 -. cloud .-> C[cloud]
   E2 -. cloud .-> C
   E3 -. cloud .-> C

@@ -1,5 +1,8 @@
 # One-shot eterogeneo su Multipass — Implementation Plan
 
+> Revisione utente 2026-10-10: le acquisizioni dei Task 8–9 e i parametri single-function/54round sono superseded dal piano `2026-10-10-one-shot-multifunction-multipass.md` e relativa spec. Task1–7 restano infrastruttura completata; nessuna misura delle due prove interrotte qualifica il nuovo scope.
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans (native, preferenza già espressa) oppure superpowers:subagent-driven-development soltanto su nuova scelta dell'utente. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** rendere eseguibile e misurabile una campagna controllata con cinque edge eterogenei, un cloud, topologia sparsa e carico che eserciti offload orizzontale e verticale.
@@ -17,7 +20,7 @@
 ## Global Constraints
 
 - Cinque VM edge e una VM cloud su Multipass; traffico positivo a tutte le sei VM.
-- Grafo: `1–2, 2–3, 3–4, 4–5, 5–1, 2–5`; cloud direttamente raggiungibile da ciascun edge; one-hop terminale.
+- Grafo: `1–2, 2–3, 3–1, 3–4, 4–5, 5–3`; cloud direttamente raggiungibile da ciascun edge; one-hop terminale.
 - Dimensioni, quote e pool della tabella della specifica; 17 vCPU/30 GiB iniziali, subordinati al preflight delle risorse realmente disponibili.
 - Una funzione Rust CPU-bound identica ovunque; input e checksum identici, c1 fisica, quote CPU per nodo, 256 MiB per replica.
 - Modello usa `D[node,function]` misurato; CPU/RAM e intervallo di repliche devono essere validati anche sotto contesa simultanea.
