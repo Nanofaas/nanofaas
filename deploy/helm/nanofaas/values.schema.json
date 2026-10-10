@@ -5,8 +5,13 @@
     "rbac": {
       "type": "object",
       "properties": {
-        "create": {"type": "boolean"},
-        "nodeImageInventory": {"type": "boolean", "default": false}
+        "create": {
+          "type": "boolean"
+        },
+        "nodeImageInventory": {
+          "type": "boolean",
+          "default": false
+        }
       }
     },
     "controlPlane": {
@@ -16,37 +21,160 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "shareFunctions": {"type": "boolean", "default": false},
-            "shareImages": {"type": "boolean", "default": false},
-            "shareResources": {"type": "boolean", "default": false}
+            "shareFunctions": {
+              "type": "boolean",
+              "default": false
+            },
+            "shareImages": {
+              "type": "boolean",
+              "default": false
+            },
+            "shareResources": {
+              "type": "boolean",
+              "default": false
+            }
           }
         },
         "invocationCapacity": {
           "type": "object",
           "additionalProperties": false,
           "required": [
-            "ingressBodyBytes", "executionsGlobal", "executionsPerFunction",
-            "canonicalInputBytesGlobal", "canonicalInputBytesPerFunction",
-            "physicalInputCopyBytesGlobal", "physicalInputCopyBytesPerFunction",
-            "waitersGlobal", "waitersPerFunction", "maxInputReferences",
-            "retainedInputMaxDepth", "retainedInputMaxContainerEntries",
-            "retainedInputMaxVisitedNodes", "retainedInputMaxBytesPerExecution"
+            "ingressBodyBytes",
+            "executionsGlobal",
+            "executionsPerFunction",
+            "canonicalInputBytesGlobal",
+            "canonicalInputBytesPerFunction",
+            "physicalInputCopyBytesGlobal",
+            "physicalInputCopyBytesPerFunction",
+            "waitersGlobal",
+            "waitersPerFunction",
+            "maxInputReferences",
+            "retainedInputMaxDepth",
+            "retainedInputMaxContainerEntries",
+            "retainedInputMaxVisitedNodes",
+            "retainedInputMaxBytesPerExecution"
           ],
           "properties": {
-            "ingressBodyBytes": {"type": "integer", "minimum": 1, "maximum": 2147483647},
-            "executionsGlobal": {"type": "integer", "minimum": 1},
-            "executionsPerFunction": {"type": "integer", "minimum": 1},
-            "canonicalInputBytesGlobal": {"type": "integer", "minimum": 1},
-            "canonicalInputBytesPerFunction": {"type": "integer", "minimum": 1},
-            "physicalInputCopyBytesGlobal": {"type": "integer", "minimum": 1},
-            "physicalInputCopyBytesPerFunction": {"type": "integer", "minimum": 1},
-            "waitersGlobal": {"type": "integer", "minimum": 1},
-            "waitersPerFunction": {"type": "integer", "minimum": 1},
-            "maxInputReferences": {"type": "integer", "minimum": 1},
-            "retainedInputMaxDepth": {"type": "integer", "minimum": 1},
-            "retainedInputMaxContainerEntries": {"type": "integer", "minimum": 1},
-            "retainedInputMaxVisitedNodes": {"type": "integer", "minimum": 1},
-            "retainedInputMaxBytesPerExecution": {"type": "integer", "minimum": 1}
+            "ingressBodyBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "executionsGlobal": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "executionsPerFunction": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "canonicalInputBytesGlobal": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "canonicalInputBytesPerFunction": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "physicalInputCopyBytesGlobal": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "physicalInputCopyBytesPerFunction": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "waitersGlobal": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "waitersPerFunction": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "maxInputReferences": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "retainedInputMaxDepth": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "retainedInputMaxContainerEntries": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "retainedInputMaxVisitedNodes": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "retainedInputMaxBytesPerExecution": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      }
+    },
+    "observability": {
+      "type": "object",
+      "properties": {
+        "logs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "image",
+            "loki",
+            "environment",
+            "bufferSize",
+            "statePath",
+            "namespaces",
+            "resources"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "image": {
+              "type": "string",
+              "minLength": 1
+            },
+            "loki": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "url"
+              ],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "pattern": "^https?://[^/]+/.*$"
+                }
+              }
+            },
+            "environment": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]+$"
+            },
+            "bufferSize": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*[KMGT]$"
+            },
+            "statePath": {
+              "type": "string",
+              "pattern": "^/"
+            },
+            "namespaces": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]+$"
+              }
+            },
+            "resources": {
+              "type": "object"
+            }
           }
         }
       }

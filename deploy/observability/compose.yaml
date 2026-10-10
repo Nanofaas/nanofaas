@@ -1,0 +1,67 @@
+# Optional per-node agent and separately hosted backend. No Docker socket mount.
+services:
+  agent:
+    profiles: [agent]
+    image: fluent/fluent-bit:5.1.3
+    restart: unless-stopped
+    user: "0:0"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 64m
+    cpus: 0.10
+    logging:
+      driver: local
+      options: {max-size: 10m, max-file: "2"}
+    environment:
+      NANOFAAS_NODE_ID: ${NANOFAAS_NODE_ID:-local}
+      NANOFAAS_ENVIRONMENT: ${NANOFAAS_ENVIRONMENT:-local}
+      NANOFAAS_CAMPAIGN_ID: ${NANOFAAS_CAMPAIGN_ID:-none}
+      NANOFAAS_RUN_ID: ${NANOFAAS_RUN_ID:-none}
+      NANOFAAS_MODE: ${NANOFAAS_MODE:-none}
+      NANOFAAS_NODE_ROLE: ${NANOFAAS_NODE_ROLE:-edge}
+      NANOFAAS_LOG_BUFFER_SIZE: ${NANOFAAS_LOG_BUFFER_SIZE:-256M}
+      LOKI_HOST: ${LOKI_HOST:-loki}
+      LOKI_PORT: ${LOKI_PORT:-3100}
+      LOKI_URI: ${LOKI_URI:-/loki/api/v1/push}
+      LOKI_TLS: ${LOKI_TLS:-Off}
+    ports: ["${METRICS_BIND:-127.0.0.1}:${METRICS_PORT:-2020}:2020"]
+    volumes:
+      - ${DOCKER_LOG_ROOT:-/var/lib/docker/containers}:/var/log/containers:ro
+      - agent-state:/var/lib/fluent-bit
+      - ./fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - ./parsers.conf:/fluent-bit/etc/parsers.conf:ro
+  loki:
+    profiles: [backend]
+    logging:
+      driver: local
+      options: {max-size: 10m, max-file: "2"}
+    image: grafana/loki:3.7.8
+    restart: unless-stopped
+    command: [-config.file=/etc/loki/config.yaml]
+    mem_limit: 512m
+    cpus: 1.0
+    ports: ["${LOKI_BIND:-127.0.0.1}:${LOKI_LISTEN_PORT:-3100}:3100"]
+    volumes:
+      - ./loki.yaml:/etc/loki/config.yaml:ro
+      - loki-data:/loki
+  grafana:
+    profiles: [backend]
+    logging:
+      driver: local
+      options: {max-size: 10m, max-file: "2"}
+    image: grafana/grafana:13.2.3
+    restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.50
+    ports: ["${GRAFANA_BIND:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000"]
+    environment:
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana-datasources.yaml:/etc/grafana/provisioning/datasources/nanofaas.yaml:ro
+volumes:
+  agent-state:
+  loki-data:
+  grafana-data:

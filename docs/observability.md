@@ -185,3 +185,11 @@ estimated-wait rejection, not capacity exhaustion.
 Structured logging uses [logging schema v1](../sdks/runtime-contract/logging-schema.json) and a shared cross-language corpus. Each event is one UTF-8 JSON line with `schemaVersion`, UTC `timestamp`, uppercase `level`, `service`, `logger`, and `message`. Invocation fields `executionId`, `traceId`, `functionName`, and positive `attempt` are optional and omitted when unavailable. Application fields belong under `attributes`; they cannot overwrite runtime correlation.
 
 `NANOFAAS_LOG_FORMAT=json|text` selects the application format (default text); `NANOFAAS_LOG_SERVICE` optionally selects its service name. SDK embedding does not automatically replace the host logger. Python JSON output migrates `execution_id`/`trace_id` to the canonical camelCase names. Modules in one process share its backend; independent executables configure their own logging. No runtime sends directly to the log backend.
+
+The optional [edge logging deployment](../deploy/observability/README.md) provides
+one Fluent Bit per Docker/CRI node and a separately hosted Loki/Grafana backend.
+It is disabled by default in Helm, supports an existing push endpoint, persists
+checkpoints/chunks and exposes collector metrics. Select JSON separately in each
+autonomous process and managed function's `env`; modules inside a process inherit
+its backend. Request IDs are searchable JSON fields, never Loki labels. Buffer
+limits, rotation and the possibility of loss/duplicates are documented there.
