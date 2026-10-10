@@ -22,6 +22,9 @@
   "resources": [
     {
       "glob": "nanofaas-logback.xml"
+    },
+    {
+      "glob": "logback.xml"
     }
   ]
 }

@@ -1,0 +1,22 @@
+[
+  {
+    "sdk": "python",
+    "invocations": 2,
+    "correlatedHandlerLogs": 2
+  },
+  {
+    "sdk": "javascript",
+    "invocations": 2,
+    "correlatedHandlerLogs": 2
+  },
+  {
+    "sdk": "go",
+    "invocations": 2,
+    "correlatedHandlerLogs": 2
+  },
+  {
+    "sdk": "rust",
+    "invocations": 2,
+    "correlatedHandlerLogs": 2
+  }
+]

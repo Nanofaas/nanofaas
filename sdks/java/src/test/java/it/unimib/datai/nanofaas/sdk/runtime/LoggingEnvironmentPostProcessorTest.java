@@ -4,6 +4,15 @@ import org.springframework.mock.env.MockEnvironment;
 import org.springframework.boot.SpringApplication;
 import static org.junit.jupiter.api.Assertions.*;
 class LoggingEnvironmentPostProcessorTest {
+    @Test void conventionalHostLogbackResourceIsPreserved(@org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
+        java.nio.file.Files.writeString(directory.resolve("logback-spring.xml"), "<configuration/>");
+        try (var loader = new java.net.URLClassLoader(new java.net.URL[]{directory.toUri().toURL()}, null)) {
+            var application = new SpringApplication(new org.springframework.core.io.DefaultResourceLoader(loader));
+            var environment = new MockEnvironment().withProperty("NANOFAAS_LOG_FORMAT", "json");
+            new LoggingEnvironmentPostProcessor().postProcessEnvironment(environment, application);
+            assertNull(environment.getProperty("logging.config"));
+        }
+    }
     @Test void optInSelectsSharedConfigButDefaultAndHostConfigArePreserved() {
         var processor = new LoggingEnvironmentPostProcessor();
         var environment = new MockEnvironment();
