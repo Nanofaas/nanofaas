@@ -36,6 +36,7 @@ public class DefaultOffloadGateway implements OffloadGateway {
     // coordinator's local wait, making 504 (not a local "timeout") deterministic
     private static final long TIMEOUT_MARGIN_MS = 50;
     private static final String REMOTE_PREFIX = "remote ";
+    private static final tools.jackson.databind.json.JsonMapper ERROR_MAPPER = tools.jackson.databind.json.JsonMapper.shared();
 
     /**
      * Application headers that must never cross the offload hop as real HTTP headers.
@@ -245,9 +246,26 @@ public class DefaultOffloadGateway implements OffloadGateway {
         int status = response.statusCode().value();
         return response.bodyToMono(String.class)
                 .defaultIfEmpty("")
-                .flatMap(body -> Mono.error(new OffloadFailedException(target, false,
-                        REMOTE_PREFIX + target + " returned " + status
-                                + (body.isBlank() ? "" : ": " + body))));
+                .flatMap(body -> {
+                    if (!body.isBlank()) {
+                        try {
+                            InvocationResponse envelope = ERROR_MAPPER.readValue(body, InvocationResponse.class);
+                            if ("error".equals(envelope.status()) && envelope.error() != null
+                                    && envelope.error().code() != null && !envelope.error().code().isBlank()) {
+                                var result = toResult(envelope);
+                                int publicStatus = status == 429 || status == 503 || status == 504 ? status : 502;
+                                return Mono.just(new InvocationResult(false, null, result.error(),
+                                        publicStatus, result.headers(), null));
+                            }
+                        } catch (tools.jackson.core.JacksonException | IllegalArgumentException ignored) {
+                            // Admission responses without an execution envelope remain gateway failures.
+                        }
+                    }
+                    String retryAfter = response.headers().asHttpHeaders().getFirst("Retry-After");
+                    return Mono.error(new OffloadFailedException(target, status, retryAfter,
+                            REMOTE_PREFIX + target + " returned " + status
+                                    + (body.isBlank() ? "" : ": " + body)));
+                });
     }
 
     private static void subscribed(OffloadMeters.OffloadMeterLease meterLease, LegacyMeterLease legacyLease) {
@@ -424,7 +442,7 @@ public class DefaultOffloadGateway implements OffloadGateway {
                     response.output(), response.statusCode(), response.headers(), response.encoding());
             case "timeout" -> InvocationResult.error("REMOTE_TIMEOUT", "remote execution timed out");
             default -> response.error() != null
-                    ? new InvocationResult(false, null, response.error())
+                    ? new InvocationResult(false, null, response.error(), response.statusCode(), response.headers(), null)
                     : InvocationResult.error("REMOTE_ERROR", "remote execution failed with status " + response.status());
         };
         // The origin owns its response executionId. Keep the independently assigned

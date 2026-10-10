@@ -22,6 +22,22 @@ class InvocationResponseMapperTest {
     private final InvocationResponseMapper mapper = new InvocationResponseMapper();
 
     @Test
+    void terminalErrorReplayRetainsStatusAndRetryAfter() {
+        var original = task("exec-1");
+        var keyed = new InvocationTask(original.executionId(), original.functionName(), original.functionSpec(),
+                original.request(), "replay-key", null, original.enqueuedAt(), 1, InvocationKind.SYNC);
+        var record = new ExecutionRecord("exec-1", keyed);
+        record.markError(new it.unimib.datai.nanofaas.common.model.ErrorInfo("RUNTIME_STOPPING", "stopping"),
+                503, Map.of("Retry-After", "1"));
+        var response = mapper.terminalResponse(record);
+        assertThat(response.status()).isEqualTo("error");
+        assertThat(response.statusCode()).isEqualTo(503);
+        assertThat(response.headers()).containsEntry("Retry-After", "1");
+        var archived = mapper.terminalResponse("exec-1", record.toOutcome());
+        assertThat(archived).isEqualTo(response);
+    }
+
+    @Test
     void terminalResponse_mapsTimeoutRecordToTimeoutResponse() {
         ExecutionRecord executionRecord = new ExecutionRecord("exec-1", task("exec-1"));
         executionRecord.markTimeout();

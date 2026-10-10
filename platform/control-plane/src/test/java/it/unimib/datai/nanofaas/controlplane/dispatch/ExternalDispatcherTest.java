@@ -25,6 +25,35 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ExternalDispatcherTest {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"429,RUNTIME_HANDLER_SATURATED", "429,RUNTIME_CALLBACK_SATURATED", "503,RUNTIME_STOPPING"})
+    void runtimeFailuresRetainStatusCodeAndRetryHint(int status, String code) throws Exception {
+        try (var server = new MockWebServer()) {
+            server.enqueue(new MockResponse().setResponseCode(status).addHeader("Retry-After", "1")
+                    .setBody("{\"error\":{\"code\":\"" + code + "\",\"message\":\"busy\"}}"));
+            server.start();
+            var result = new ExternalDispatcher(WebClient.create()).dispatch(taskFor(server)).get(5, TimeUnit.SECONDS).result();
+            assertFalse(result.success());
+            assertEquals(status, result.statusCode());
+            assertEquals(code, result.error().code());
+            assertEquals("busy", result.error().message());
+            assertEquals("1", result.headers().get("Retry-After"));
+        }
+    }
+
+    @Test
+    void externalTimeoutUsesGatewayTimeoutStatus() throws Exception {
+        try (var server = new MockWebServer()) {
+            server.start();
+            var client = WebClient.builder().exchangeFunction(request ->
+                    reactor.core.publisher.Mono.error(new java.util.concurrent.TimeoutException("expired"))).build();
+            var result = new ExternalDispatcher(client).dispatch(taskFor(server)).get(5, TimeUnit.SECONDS).result();
+            assertFalse(result.success());
+            assertEquals(504, result.statusCode());
+            assertEquals("EXTERNAL_TIMEOUT", result.error().code());
+        }
+    }
+
     @Test
     void markedBodyIsSubscribedExactlyOnce() throws Exception {
         var subscriptions=new java.util.concurrent.atomic.AtomicInteger();
@@ -181,8 +210,8 @@ class ExternalDispatcherTest {
                 DispatchResult result = new ExternalDispatcher(WebClient.create())
                         .dispatch(taskFor(server)).get(5, TimeUnit.SECONDS);
                 assertFalse(result.result().success(), code);
-                assertEquals("EXTERNAL_ERROR", result.result().error().code());
-                assertNull(result.result().statusCode());
+                assertEquals(code.equals("RUNTIME_STOPPING") ? code : "EXTERNAL_ERROR", result.result().error().code());
+                assertEquals(code.equals("RUNTIME_STOPPING") ? 503 : 502, result.result().statusCode());
             } finally {
                 server.shutdown();
             }
@@ -750,8 +779,8 @@ class ExternalDispatcherTest {
         assertFalse(dr.result().success(),
                 "an out-of-range status must not be trusted as a function decision");
         assertEquals("EXTERNAL_ERROR", dr.result().error().code());
-        assertNull(dr.result().statusCode(),
-                "the illegal status must never be propagated to the caller");
+        assertEquals(502, dr.result().statusCode(),
+                "the illegal status must be converted to a gateway failure");
         server.shutdown();
     }
 }

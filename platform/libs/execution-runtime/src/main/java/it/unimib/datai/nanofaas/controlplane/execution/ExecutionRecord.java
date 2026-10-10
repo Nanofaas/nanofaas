@@ -307,6 +307,10 @@ public class ExecutionRecord {
 
     /** Marks an error while retaining trusted headers from a terminal remote response. */
     public synchronized void markError(ErrorInfo error, Map<String, String> terminalHeaders) {
+        markError(error, null, terminalHeaders);
+    }
+
+    public synchronized void markError(ErrorInfo error, Integer statusCode, Map<String, String> terminalHeaders) {
         if (!canTransition(ExecutionState.ERROR)) {
             return;
         }
@@ -316,6 +320,7 @@ public class ExecutionRecord {
         this.lastError = error;
         this.output = null;
         this.headers = terminalHeaders;
+        this.statusCode = statusCode;
     }
 
     /**
@@ -370,11 +375,11 @@ public class ExecutionRecord {
         this.output = null;
         this.coldStart = false;
         this.initDurationMs = null;
-        // ponytail: statusCode/headers/encoding are only ever set by markSuccess(),
+        // Response metadata is set only by terminal markSuccess()/markError(),
         // which makes the state terminal, and canTransition() above already refuses
         // this method on a terminal record — so today, these three are always still
         // null here. Kept as defensive insurance against a future change that lets
-        // the envelope be set outside markSuccess(); no test can exercise them
+        // the envelope be set before a terminal transition; no test can exercise them
         // going from non-null to null without breaking that invariant.
         this.statusCode = null;
         this.headers = null;
@@ -463,8 +468,12 @@ public class ExecutionRecord {
 
     /** Choose the exceptional offload answer atomically with its terminal state. */
     public synchronized void markFailure(ErrorInfo error, Throwable failure) {
+        markFailure(error, failure, null, null);
+    }
+
+    public synchronized void markFailure(ErrorInfo error, Throwable failure, Integer statusCode, Map<String, String> headers) {
         if (isTerminal()) return;
-        markError(error);
+        markError(error, statusCode, headers);
         terminalFailure = failure;
     }
 
@@ -547,8 +556,8 @@ public class ExecutionRecord {
                 result = InvocationResult.successWithEnvelope(output, statusCode, headers, encoding);
             } else {
                 ErrorInfo error = lastError != null ? lastError : new ErrorInfo("TIMEOUT", "Execution timed out");
-                result = new InvocationResult(false, null, error, null,
-                        terminalExecutionHeaders(), null);
+                result = new InvocationResult(false, null, error, statusCode,
+                        headers, null);
             }
         }
         if (failure != null) completion.completeExceptionally(failure);

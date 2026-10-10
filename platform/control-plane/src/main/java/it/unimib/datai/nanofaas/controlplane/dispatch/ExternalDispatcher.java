@@ -117,19 +117,49 @@ public class ExternalDispatcher implements Dispatcher {
                             ? parseRetryAfter(responseHeaders.get("Retry-After"), clock.instant()) : null;
                     return response.bodyToMono(String.class)
                             .defaultIfEmpty(response.statusCode().toString())
-                            .map(msg -> new DispatchResult(InvocationResult.error("EXTERNAL_ERROR", msg),
+                            .map(msg -> new DispatchResult(externalFailure(status, msg, responseHeaders, retryAt),
                                     isCold, initMs, retryAt, handlerExecuted))
                             .onErrorResume(ex -> isTimeout(ex) ? Mono.error(ex) : Mono.just(new DispatchResult(
-                                    InvocationResult.error("EXTERNAL_ERROR", ex.getMessage()),
+                                    externalFailure(status, ex.getMessage(), responseHeaders, retryAt),
                                     isCold, initMs, retryAt, handlerExecuted)));
                 })
                 .timeout(Duration.ofMillis(timeoutMs))
                 .onErrorResume(ExternalDispatcher::isTimeout, ex -> reactor.core.publisher.Mono.just(
-                        DispatchResult.warm(InvocationResult.error("EXTERNAL_TIMEOUT", "External request timed out after " + timeoutMs + "ms"))))
+                        DispatchResult.warm(platformFailure(504, "EXTERNAL_TIMEOUT", "External request timed out after " + timeoutMs + "ms", null))))
                 .onErrorResume(ex -> reactor.core.publisher.Mono.just(
-                        DispatchResult.warm(InvocationResult.error("EXTERNAL_ERROR", ex.getMessage()))))
+                        DispatchResult.warm(platformFailure(502, "EXTERNAL_ERROR", ex.getMessage(), null))))
                 .doOnNext(ignored -> InvocationLogs.event(LOG, task, "dispatch-external-completed"))
                 .toFuture();
+    }
+
+    private static InvocationResult platformFailure(int status, String code, String message, Map<String, String> headers) {
+        return new InvocationResult(false, null,
+                new it.unimib.datai.nanofaas.common.model.ErrorInfo(code, message), status, headers, null);
+    }
+
+    private static InvocationResult externalFailure(int upstreamStatus, String body, HttpHeaders headers, Instant retryAt) {
+        int status = switch (upstreamStatus) {
+            case 429, 503, 504 -> upstreamStatus;
+            default -> 502;
+        };
+        String code = "EXTERNAL_ERROR";
+        String message = body;
+        try {
+            var error = JSON_FALLBACK_MAPPER.readTree(body == null || body.isBlank() ? "{}" : body).path("error");
+            String runtimeCode = error.path("code").asText();
+            boolean recognized = upstreamStatus == 429 && ("RUNTIME_HANDLER_SATURATED".equals(runtimeCode)
+                    || "RUNTIME_CALLBACK_SATURATED".equals(runtimeCode))
+                    || upstreamStatus == 503 && "RUNTIME_STOPPING".equals(runtimeCode);
+            if (recognized && error.path("message").isString()) {
+                code = runtimeCode;
+                message = error.path("message").asText();
+            }
+        } catch (JacksonException | IllegalArgumentException ignored) {
+            // Non-JSON upstream errors retain their original diagnostic body.
+        }
+        Map<String, String> retryHeaders = retryAt == null ? null
+                : Map.of("Retry-After", headers.getFirst("Retry-After").trim());
+        return platformFailure(status, code, message, retryHeaders);
     }
 
     private static boolean isTimeout(Throwable error) {

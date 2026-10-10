@@ -43,6 +43,20 @@ import static org.mockito.Mockito.when;
 @Import({GlobalExceptionHandler.class, RateLimiter.class})
 class InvocationControllerTest {
 
+    @ParameterizedTest
+    @CsvSource({"429,RUNTIME_HANDLER_SATURATED", "503,RUNTIME_STOPPING", "504,EXTERNAL_TIMEOUT", "502,EXTERNAL_ERROR"})
+    void platformFailuresUseHttpErrorWithoutFunctionMarker(int status, String code) {
+        var response = new InvocationResponse("platform-error", "error", null,
+                new it.unimib.datai.nanofaas.common.model.ErrorInfo(code, "busy"), status, Map.of("Retry-After", "1"), null);
+        when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
+                .thenReturn(Mono.just(SyncInvocation.local(response)));
+        webClient.post().uri("/v1/functions/echo:invoke").contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(new InvocationRequest("p", Map.of())).exchange().expectStatus().isEqualTo(status)
+                .expectHeader().doesNotExist("X-NanoFaaS-Function-Status")
+                .expectHeader().valueEquals("Retry-After", "1")
+                .expectBody().jsonPath("$.error.code").isEqualTo(code);
+    }
+
     @Test
     void terminalExecutionTimeoutKeepsItsExistingHttpContract() {
         var response=new InvocationResponse("terminal-timeout","timeout",null,null);
@@ -411,14 +425,15 @@ class InvocationControllerTest {
         InvocationRequest request = new InvocationRequest("payload", Map.of());
         String reason = "remote http://peer:8080 returned 429: {\"error\":\"ONE_SHOT_ADMISSION_REJECTED\",\"message\":\"inbound assignment absent or quota exhausted\"}";
         when(invocationService.invokeSyncReactive(eq("echo"), any(), eq(null), eq(null), eq(null), any()))
-                .thenReturn(Mono.error(new OffloadFailedException("http://peer:8080", false, reason)));
+                .thenReturn(Mono.error(new OffloadFailedException("http://peer:8080", 429, "1", reason)));
 
         webClient.post()
                 .uri("/v1/functions/echo:invoke")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .exchange()
-                .expectStatus().isEqualTo(502)
+                .expectStatus().isEqualTo(429)
+                .expectHeader().valueEquals("Retry-After", "1")
                 .expectHeader().valueEquals("X-NanoFaaS-Offloaded", "http://peer:8080")
                 .expectHeader().doesNotExist("X-NanoFaaS-Terminal-Execution-Id")
                 .expectBody()
